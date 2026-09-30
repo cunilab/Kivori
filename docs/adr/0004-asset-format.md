@@ -11,7 +11,9 @@ input; no runtime vector parser, floating-point animation, heap allocation, or e
 framebuffer is introduced. Generic static layers retain the original step-held keyframes.
 
 Format v2 adds an optional alpha-pool reference to each bitmap (two 4-bit coverage samples per
-byte, even pixel in the low nibble), plus `Static`, `Body`, `Eyes`, and `Mouth` layer roles.
+byte, even pixel in the low nibble), plus `Static`, `Body`, `Eyes`, `Mouth` and (appended later,
+keeping postcard indices stable) `Cap` layer roles. The keycap mascot draws `Body` (fixed base),
+`Cap`, both `Eyes`, then `Mouth`; `Cap`, eyes and mouth also move by the pose's press offset.
 All mascot scenes share matching facial layer geometry and order. The compositor mixes bounded
 state weights before alpha composition, clips to each tile, and blinks around each eye's centre.
 Readers reject v1 blobs; desktop and firmware rebuild their embedded blobs together. USB wire

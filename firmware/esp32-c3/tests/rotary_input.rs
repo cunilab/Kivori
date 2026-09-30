@@ -1364,8 +1364,8 @@ fn presentation_scenario(
     display
 }
 
-/// Tile row (40 px tiles) holding the volume bar (y = 180..196).
-const OVERLAY_TILE_ROWS: core::ops::Range<usize> = 160..200;
+/// Rows of the volume bar itself.
+const OVERLAY_BAR_ROWS: core::ops::Range<usize> = 180..196;
 
 #[test]
 fn a_negotiated_presentation_reaches_the_panel_as_a_real_tile_flush() {
@@ -1378,17 +1378,29 @@ fn a_negotiated_presentation_reaches_the_panel_as_a_real_tile_flush() {
         "a negotiated Presentation must actually reach the panel pixels, not just update \
          in-memory state"
     );
-    // The overlay is a layer on top of the mascot pose: every pixel outside the tiles it covers
-    // must be exactly the pose the twin run shows.
-    for y in (0..240).filter(|y| !OVERLAY_TILE_ROWS.contains(y)) {
+    // The mascot makes room for the bar: below the lifted keycap and outside the bar only the
+    // background remains, where the twin run still shows the full-size base.
+    let background = with.pixel(0, 239);
+    let clear = |x: usize, y: usize| {
+        (176..240).contains(&y) && !((24..216).contains(&x) && OVERLAY_BAR_ROWS.contains(&y))
+    };
+    let mut twin_had_mascot_there = false;
+    for y in 0..240 {
         for x in 0..240 {
-            assert_eq!(
-                with.pixel(x, y),
-                without.pixel(x, y),
-                "overlay touched ({x}, {y}) outside the tiles it covers"
-            );
+            if clear(x, y) {
+                assert_eq!(
+                    with.pixel(x, y),
+                    background,
+                    "mascot overlaps the bar at ({x}, {y})"
+                );
+                twin_had_mascot_there |= without.pixel(x, y) != background;
+            }
         }
     }
+    assert!(
+        twin_had_mascot_there,
+        "the full-size base must reach below y176"
+    );
 }
 
 #[test]

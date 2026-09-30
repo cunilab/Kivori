@@ -1,65 +1,42 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240">
-  <title>Kivori — blue companion</title>
-  <desc>Editable vector reconstruction of mascot.png. Body, shine, cheeks, eyes and mouths are independently named. No raster images or external resources.</desc>
+  <title>Kivori — keycap companion</title>
+  <desc>A living keycap. #body is the fixed base (side walls and front lip); #cap is the top face with the
+upper wall wedges and the K legend, and moves down on a press while the base stays on the desk. Eye
+groups draw only the LEFT eye inside its crop (88,96 32x40); the compiler reuses it for the right eye.
+Mouth groups draw inside the mouth crop (96,134 48x24). No raster images or external resources.</desc>
   <defs>
-    <linearGradient id="blue" x1="0" y1="0" x2="0.8" y2="1" gradientUnits="objectBoundingBox">
-      <stop offset="0" stop-color="#63c7ff"/>
-      <stop offset="0.38" stop-color="#098cff"/>
-      <stop offset="0.78" stop-color="#0065f5"/>
-      <stop offset="1" stop-color="#0342db"/>
-    </linearGradient>
-    <radialGradient id="glow" cx="0.25" cy="0.25" r="0.72">
-      <stop offset="0" stop-color="#c5efff" stop-opacity="0.35"/>
-      <stop offset="1" stop-color="#43aaff" stop-opacity="0"/>
-    </radialGradient>
     <g id="body">
-      <g id="silhouette">
-        <path d="M29 169 C33 122 69 49 118 49 C165 49 202 117 210 169 C212 199 179 207 121 207 C64 207 29 202 29 169Z" fill="url(#blue)" stroke="#0ea5ff" stroke-width="1.5"/>
-        <path d="M29 169 C33 122 69 49 118 49 C165 49 202 117 210 169 C212 199 179 207 121 207 C64 207 29 202 29 169Z" fill="url(#glow)"/>
-      </g>
-      <g id="shine" fill="#fff">
-        <path d="M70 88 C74 78 85 69 95 66 C103 63 106 70 100 74 C89 80 82 86 77 94 C73 99 67 96 70 88Z"/>
-      </g>
-      <g id="cheeks" fill="#ffa1bd">
-        <ellipse cx="64" cy="158" rx="10" ry="6"/>
-        <ellipse cx="176" cy="158" rx="10" ry="6"/>
-      </g>
+      <!-- side walls: vertical from the wedge line down, rounded bottom corners -->
+      <path id="walls" d="M44 104 L44 192 Q44 206 58 206 L182 206 Q196 206 196 192 L196 104 Z" fill="#35a87c"/>
+      <!-- front lip under the top face, slanted front corners -->
+      <path id="lip" d="M56 158 L184 158 L190 194 Q189 206 176 206 L64 206 Q51 206 50 194 Z" fill="#4fcf9f"/>
     </g>
-    <g id="eyes-idle">
-      <g fill="#02060c"><ellipse cx="82" cy="130" rx="14" ry="18"/><ellipse cx="158" cy="130" rx="14" ry="18"/></g>
-      <g fill="#fff"><ellipse cx="80" cy="123" rx="6.5" ry="7.5"/><ellipse cx="156" cy="123" rx="6.5" ry="7.5"/></g>
-      <g fill="#9aa7b6"><circle cx="89" cy="140" r="2"/><circle cx="165" cy="140" r="2"/></g>
+    <g id="cap">
+      <!-- upper walls: leave the top face where its rounded corner ends (y72), curve out to the base edge (x44/196), down past the base top; no stroke so they line up with the base walls exactly -->
+      <path id="wedges" d="M52 72 C50 80 44 84 44 94 L44 116 L196 116 L196 94 C196 84 190 80 188 72 Z" fill="#35a87c"/>
+      <rect id="top" x="52" y="56" width="136" height="112" rx="16" fill="#7df2c4"/>
+      <path id="legend" d="M67 71 L67 89 M79 71 L69 80.5 L79.5 89" fill="none" stroke="#10131a" stroke-opacity="0.8" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
     </g>
-    <g id="eyes-booting">
-      <g fill="#02060c"><ellipse cx="82" cy="131" rx="12" ry="15"/><ellipse cx="158" cy="131" rx="12" ry="15"/></g>
-      <g fill="#fff"><circle cx="79" cy="125" r="5"/><circle cx="155" cy="125" r="5"/></g>
-    </g>
-    <g id="eyes-happy" fill="none" stroke="#02060c" stroke-width="5.5" stroke-linecap="round">
-      <path d="M71 132 Q82 114 93 132"/><path d="M147 132 Q158 114 169 132"/>
-    </g>
-    <g id="eyes-busy">
-      <g fill="#02060c"><ellipse cx="84" cy="131" rx="12" ry="14"/><ellipse cx="160" cy="131" rx="12" ry="14"/></g>
-      <g fill="#fff"><ellipse cx="86" cy="125" rx="5" ry="6"/><ellipse cx="162" cy="125" rx="5" ry="6"/></g>
-    </g>
-    <g id="eyes-sleeping" fill="none" stroke="#02060c" stroke-width="4" stroke-linecap="round">
-      <path d="M71 130 Q82 139 93 130"/><path d="M147 130 Q158 139 169 130"/>
-    </g>
-    <g id="eyes-offline">
-      <g fill="#02060c"><ellipse cx="82" cy="133" rx="11" ry="12"/><ellipse cx="158" cy="133" rx="11" ry="12"/></g>
-      <g fill="#e7eef5"><circle cx="79" cy="129" r="4"/><circle cx="155" cy="129" r="4"/></g>
-    </g>
-    <g id="eyes-affectionate" fill="none" stroke="#02060c" stroke-width="5" stroke-linecap="round">
-      <path d="M70 131 Q82 142 94 131"/><path d="M146 131 Q158 142 170 131"/>
-    </g>
-    <g id="mouth-idle" fill="none" stroke="#02060c" stroke-width="5.5" stroke-linecap="round"><path d="M104 152 Q120 172 136 152"/></g>
-    <g id="mouth-booting" fill="#02060c"><ellipse cx="120" cy="156" rx="5" ry="7"/></g>
-    <g id="mouth-happy"><path d="M101 149 Q120 155 139 149 C138 173 103 173 101 149Z" fill="#02060c"/><path d="M109 163 Q120 157 131 163 Q120 171 109 163Z" fill="#ff91b2"/></g>
-    <g id="mouth-busy" fill="none" stroke="#02060c" stroke-width="4" stroke-linecap="round"><path d="M111 158 Q120 162 129 158"/></g>
-    <g id="mouth-sleeping" fill="#02060c"><ellipse cx="120" cy="157" rx="4" ry="5"/></g>
-    <g id="mouth-offline" fill="none" stroke="#02060c" stroke-width="4" stroke-linecap="round"><path d="M110 159 Q120 164 130 159"/></g>
-    <g id="mouth-laughing"><path d="M101 150 Q120 158 139 150 C138 176 102 176 101 150Z" fill="#02060c"/><path d="M108 166 Q120 157 132 166 Q120 176 108 166Z" fill="#ff91b2"/></g>
+    <!-- eyes: left eye only, centred at (104,116) -->
+    <g id="eyes-booting"><circle cx="104" cy="116" r="4.5" fill="#10131a"/></g>
+    <g id="eyes-idle"><rect x="97" y="103" width="14" height="26" rx="7" fill="#10131a"/></g>
+    <g id="eyes-happy"><path d="M93 121 Q104 102 115 121" fill="none" stroke="#10131a" stroke-width="7.5" stroke-linecap="round"/></g>
+    <g id="eyes-busy"><rect x="96" y="111" width="16" height="12" rx="6" fill="#10131a"/></g>
+    <g id="eyes-sleeping"><rect x="93" y="116" width="22" height="6.5" rx="3.25" fill="#10131a"/></g>
+    <g id="eyes-offline"><circle cx="104" cy="116" r="5" fill="#10131a" fill-opacity="0.55"/></g>
+    <g id="eyes-affectionate"><path d="M93 112 Q104 128 115 112" fill="none" stroke="#10131a" stroke-width="7" stroke-linecap="round"/></g>
+    <!-- mouths: centred at (120,146) -->
+    <g id="mouth-booting"><ellipse cx="120" cy="145" rx="4" ry="4.5" fill="#10131a"/></g>
+    <g id="mouth-idle"></g>
+    <g id="mouth-happy"><path d="M111 140 Q120 154 129 140 Z" fill="#10131a"/></g>
+    <g id="mouth-busy"><path d="M114 145 L126 145" stroke="#10131a" stroke-width="4.5" stroke-linecap="round"/></g>
+    <g id="mouth-sleeping"><ellipse cx="120" cy="146" rx="3.5" ry="3.5" fill="#10131a"/></g>
+    <g id="mouth-offline"></g>
+    <g id="mouth-laughing"><path d="M108 139 Q120 158 132 139 Z" fill="#10131a"/><path d="M113 146 Q120 152 127 146" fill="#ff7aa0"/></g>
   </defs>
   <use href="#body"/>
+  <use href="#cap"/>
   <use href="#eyes-idle"/>
+  <use href="#eyes-idle" transform="translate(32 0)"/>
   <use href="#mouth-idle"/>
 </svg>

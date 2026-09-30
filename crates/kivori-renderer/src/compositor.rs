@@ -103,6 +103,7 @@ pub fn render_pose(
         match layer.role {
             LayerRole::Static => render_layer(blob, layer, 0, DrawTransform::IDENTITY, band)?,
             LayerRole::Body => render_layer(blob, layer, 0, body_transform(pose), band)?,
+            LayerRole::Cap => render_layer(blob, layer, 0, pressed_transform(pose), band)?,
             LayerRole::Eyes | LayerRole::Mouth => {
                 render_face_layer(blob, scene, ordinal, layer.role, pose, band)?;
             }
@@ -135,8 +136,15 @@ fn body_transform(pose: &MascotPose) -> DrawTransform {
     }
 }
 
-fn face_transform(layer: &LayerDef, role: LayerRole, pose: &MascotPose) -> DrawTransform {
+/// The body transform plus the press: the cap and the face printed on it sink into the base.
+fn pressed_transform(pose: &MascotPose) -> DrawTransform {
     let mut transform = body_transform(pose);
+    transform.offset_q8.1 += pose.press_q8;
+    transform
+}
+
+fn face_transform(layer: &LayerDef, role: LayerRole, pose: &MascotPose) -> DrawTransform {
+    let mut transform = pressed_transform(pose);
     if role == LayerRole::Eyes {
         let individual_scale = if layer.origin.x < MASCOT_ANCHOR.x {
             pose.left_eye_scale_y_q8
@@ -238,7 +246,9 @@ fn render_face_layer(
     let frame = match role {
         LayerRole::Eyes => pose.expression.eye_frame(),
         LayerRole::Mouth => pose.expression.mouth_frame(),
-        LayerRole::Static | LayerRole::Body => return Err(RenderError::IncompatibleFaceLayer),
+        LayerRole::Static | LayerRole::Body | LayerRole::Cap => {
+            return Err(RenderError::IncompatibleFaceLayer)
+        }
     };
     draw_sprite(
         blob,
@@ -439,9 +449,79 @@ mod tests {
                 frame_size: Size::new(32, 40),
             },
             role: LayerRole::Eyes,
-            origin: Point::new(66, 110),
+            origin: Point::new(88, 96),
             keyframes: Vec::<Keyframe, { kivori_assets::MAX_KEYFRAMES }>::new(),
         }
+    }
+
+    fn mouth_layer() -> LayerDef {
+        LayerDef {
+            kind: LayerKind::Sprite {
+                asset: 0,
+                frame_size: Size::new(48, 24),
+            },
+            role: LayerRole::Mouth,
+            origin: Point::new(96, 134),
+            keyframes: Vec::<Keyframe, { kivori_assets::MAX_KEYFRAMES }>::new(),
+        }
+    }
+
+    /// Output y (Q8) of canonical art row `y` under `transform`.
+    fn art_y_q8(y: i16, transform: DrawTransform) -> i64 {
+        transformed_origin(0, y, transform).1
+    }
+
+    #[test]
+    fn press_sinks_cap_and_face_but_leaves_the_base_on_the_desk() {
+        let rest = MascotPose::for_state(CompanionState::Idle);
+        let mut pressed = rest;
+        pressed.press_q8 = 16 * 256;
+
+        assert_eq!(
+            body_transform(&pressed).offset_q8,
+            body_transform(&rest).offset_q8
+        );
+        let sunk = |a: DrawTransform, b: DrawTransform| art_y_q8(100, a) - art_y_q8(100, b);
+        assert_eq!(
+            sunk(pressed_transform(&pressed), pressed_transform(&rest)),
+            16 * 256
+        );
+        for (layer, role) in [
+            (eyes_layer(), LayerRole::Eyes),
+            (mouth_layer(), LayerRole::Mouth),
+        ] {
+            assert_eq!(
+                sunk(
+                    face_transform(&layer, role, &pressed),
+                    face_transform(&layer, role, &rest)
+                ),
+                16 * 256,
+                "{role:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn overlay_room_shrinks_and_lifts_the_keycap_clear_of_the_volume_bar() {
+        const BAR_TOP: i64 = 180 * 256;
+        let rest = MascotPose::for_state(CompanionState::Idle).with_overlay_room();
+        assert_eq!(rest.body_scale_q8, 184);
+        // The base's bottom edge (art row 206) lands at ~y172, above the bar.
+        let base_bottom = art_y_q8(206, body_transform(&rest));
+        assert!(
+            (172 * 256..173 * 256).contains(&base_bottom),
+            "{base_bottom}"
+        );
+        // Even a full press keeps the cap (art rows ..172) above the bar and on its base.
+        let mut pressed = MascotPose::for_state(CompanionState::Happy);
+        pressed.press_q8 = 16 * 256;
+        let pressed = pressed.with_overlay_room();
+        let cap_bottom = art_y_q8(172, pressed_transform(&pressed));
+        assert!(cap_bottom < BAR_TOP && cap_bottom < base_bottom);
+        // Horizontal centre stays on the anchor.
+        let (left, _) = transformed_origin(28, 48, body_transform(&rest));
+        let right = left + 184 * i64::from(rest.body_scale_q8);
+        assert_eq!(left + right, 2 * i64::from(MASCOT_ANCHOR.x) * 256);
     }
 
     #[test]

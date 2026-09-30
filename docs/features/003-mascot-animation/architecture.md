@@ -15,9 +15,15 @@ on the [Feature 001 foundation](../001-device-connection-foundation/architecture
 ## Mascot rendering
 
 
-The mascot source is `assets/mascot.svg`, reconstructed from `assets/mascot.png`. Format v2 stores
-cropped RGB565 sprites with packed alpha4. Body/shine/cheeks are shared across all six states;
-each eye texture is reused for both eyes. The full pack is limited to 128 KiB at build time.
+The mascot is a living keycap drawn in `assets/mascot.svg`. Format v2 stores cropped RGB565 sprites
+with packed alpha4, drawn in order: the fixed **base** (`Body`: side walls and front lip), the
+**cap** (`Cap`: top face, upper wall wedges, legend), then the two eyes and the mouth. Base and cap
+are shared across all six states; each eye texture is reused for both eyes. Base, cap and mouth are
+stored trimmed to their drawn pixels (lossless) so the full pack, limited to 128 KiB at build time,
+is 116,113 bytes.
+
+A pose's `press_q8` sinks the cap and the face printed on it while the base stays on the desk, so
+the walls visibly shorten. Happy holds a 16 px press, eased in and out with the other pose fields.
 `MascotAnimator` resolves blinking, state-specific motion, and 350 ms eased transitions (600 ms entering
 sleep) in fixed-point arithmetic. Expression changes are hidden inside a blink so eye and mouth sprites
 do not overlap. The firmware retains this controller between state changes and renders its pose through
@@ -35,7 +41,9 @@ is still a placeholder. Use the native Tauri app to review actual mascot/device 
 
 
 Slice 002's volume overlay composites on top of the mascot pose inside this same tile pass; it never
-replaces the mascot or companion state.
+replaces the mascot or companion state. While it shows, the pose is drawn through
+`MascotPose::with_overlay_room` (x0.72, lifted 34 px) so the keycap sits above the bar. The switch is
+instant, not eased.
 
 ## Companion director, firmware update, activity log
 

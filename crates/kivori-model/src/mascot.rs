@@ -17,6 +17,9 @@ pub const MASCOT_ANCHOR: Point = Point::new(120, 208);
 /// Stable default seed used by firmware and native preview for ambient facial motion.
 pub const DEFAULT_IDLE_SEED: u32 = 0x4B49_564F;
 
+// Happy's "deep press": how far the keycap's cap sinks into its base, in Q8 pixels.
+const HAPPY_PRESS_Q8: i32 = 16 * 256;
+
 const IDLE_EPOCH_MS: u32 = 6_000;
 const BLINK_HALF_WINDOW_MS: u32 = 80;
 
@@ -148,6 +151,9 @@ pub struct MascotPose {
     pub body_offset_q8: (i32, i32),
     /// Uniform body scale in Q8 units.
     pub body_scale_q8: u16,
+    /// How far the cap (and the face printed on it) sinks into the fixed base, in Q8 pixels
+    /// (+down). The base stays on the desk, so its walls visibly shorten.
+    pub press_q8: i32,
     /// Whole-mascot opacity (`0..=255`).
     pub opacity: u8,
     /// Vertical eye scale in Q8 units; blinking squashes this value.
@@ -173,6 +179,7 @@ impl MascotPose {
         Self {
             body_offset_q8: (0, 0),
             body_scale_q8: SCALE_Q8_ONE,
+            press_q8: 0,
             opacity: u8::MAX,
             eyes_scale_y_q8: SCALE_Q8_ONE,
             left_eye_scale_y_q8: SCALE_Q8_ONE,
@@ -181,6 +188,17 @@ impl MascotPose {
             expression: MascotExpression::for_state(state),
             state_weights,
         }
+    }
+
+    /// This pose shrunk (x0.72) and lifted so the keycap clears the volume bar (y180..196): its
+    /// base bottom lands near y172. Pure; applied by every renderer that draws the overlay.
+    #[must_use]
+    pub const fn with_overlay_room(mut self) -> Self {
+        self.body_scale_q8 = (self.body_scale_q8 as u32 * 184 / 256) as u16;
+        // The press is an unscaled offset, so shrink it with the art to keep the cap on its base.
+        self.press_q8 = self.press_q8 * 184 / 256;
+        self.body_offset_q8.1 -= 34 * 256;
+        self
     }
 }
 
@@ -362,6 +380,9 @@ fn target_pose(
     };
     pose.body_offset_q8 = (x, y);
     pose.body_scale_q8 = scale;
+    if state == CompanionState::Happy {
+        pose.press_q8 = HAPPY_PRESS_Q8;
+    }
     pose.eyes_scale_y_q8 = match state {
         CompanionState::Sleeping => SCALE_Q8_ONE,
         CompanionState::Booting => {
@@ -581,6 +602,7 @@ fn blend_pose(from: MascotPose, to: MascotPose, progress_q8: u16) -> MascotPose 
             lerp_i32(from.body_offset_q8.1, to.body_offset_q8.1, progress_q8),
         ),
         body_scale_q8: lerp_u16(from.body_scale_q8, to.body_scale_q8, progress_q8),
+        press_q8: lerp_i32(from.press_q8, to.press_q8, progress_q8),
         opacity: lerp_u8(from.opacity, to.opacity, progress_q8),
         eyes_scale_y_q8: lerp_u16(from.eyes_scale_y_q8, to.eyes_scale_y_q8, progress_q8),
         left_eye_scale_y_q8: lerp_u16(

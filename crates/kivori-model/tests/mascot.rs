@@ -232,3 +232,29 @@ fn reactions_are_ignored_over_meaningful_states() {
         }
     }
 }
+
+#[test]
+fn only_happy_presses_the_cap_and_the_press_eases_in_and_out() {
+    for state in CompanionState::ALL {
+        let expected = if state == CompanionState::Happy {
+            16 * 256
+        } else {
+            0
+        };
+        let pose = MascotAnimator::new(state, 0).pose_at(5_000);
+        assert_eq!(pose.press_q8, expected, "{state:?}");
+    }
+    let mut animator = MascotAnimator::new(CompanionState::Idle, 0);
+    animator.set_state(CompanionState::Happy, 1_000);
+    let entering: Vec<i32> = (1_000..=1_350)
+        .step_by(50)
+        .map(|ms| animator.pose_at(ms).press_q8)
+        .collect();
+    assert_eq!(entering.first(), Some(&0));
+    assert_eq!(entering.last(), Some(&(16 * 256)));
+    assert!(entering.windows(2).all(|w| w[0] <= w[1]), "{entering:?}");
+    assert!(entering.iter().any(|&p| p > 0 && p < 16 * 256));
+    animator.set_state(CompanionState::Busy, 2_000);
+    assert_eq!(animator.pose_at(2_000).press_q8, 16 * 256);
+    assert_eq!(animator.pose_at(2_350).press_q8, 0);
+}

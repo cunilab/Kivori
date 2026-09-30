@@ -1,20 +1,41 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
 <title>Kivori</title>
-<desc>The buddy rising under the detent scale of its knob: control physically, understand visually.</desc>
+<desc>The keycap buddy under the detent scale of its knob: control physically, understand visually. Built from assets/mascot.svg.</desc>
 <defs>
 <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#111c30"/><stop offset="1" stop-color="#04070d"/></linearGradient>
-<linearGradient id="blue" x1="0" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#63c7ff"/><stop offset="0.38" stop-color="#098cff"/><stop offset="0.78" stop-color="#0065f5"/><stop offset="1" stop-color="#0342db"/></linearGradient>
-<linearGradient id="lit" gradientUnits="userSpaceOnUse" x1="180" y1="560" x2="560" y2="200"><stop offset="0" stop-color="#0a7cff"/><stop offset="1" stop-color="#8fdcff"/></linearGradient>
-<clipPath id="sq"><rect x="100" y="100" width="824" height="824" rx="186"/></clipPath>
+<linearGradient id="lit" gradientUnits="userSpaceOnUse" x1="180" y1="560" x2="560" y2="200"><stop offset="0" stop-color="#2fbf88"/><stop offset="1" stop-color="#b8f7dd"/></linearGradient>
+
+    <g id="body">
+      <!-- side walls: vertical from the wedge line down, rounded bottom corners -->
+      <path id="walls" d="M44 104 L44 192 Q44 206 58 206 L182 206 Q196 206 196 192 L196 104 Z" fill="#35a87c"/>
+      <!-- front lip under the top face, slanted front corners -->
+      <path id="lip" d="M56 158 L184 158 L190 194 Q189 206 176 206 L64 206 Q51 206 50 194 Z" fill="#4fcf9f"/>
+    </g>
+    <g id="cap">
+      <!-- upper walls: leave the top face where its rounded corner ends (y72), curve out to the base edge (x44/196), down past the base top; no stroke so they line up with the base walls exactly -->
+      <path id="wedges" d="M52 72 C50 80 44 84 44 94 L44 116 L196 116 L196 94 C196 84 190 80 188 72 Z" fill="#35a87c"/>
+      <rect id="top" x="52" y="56" width="136" height="112" rx="16" fill="#7df2c4"/>
+      <path id="legend" d="M67 71 L67 89 M79 71 L69 80.5 L79.5 89" fill="none" stroke="#10131a" stroke-opacity="0.8" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <!-- eyes: left eye only, centred at (104,116) -->
+    <g id="eyes-booting"><circle cx="104" cy="116" r="4.5" fill="#10131a"/></g>
+    <g id="eyes-idle"><rect x="97" y="103" width="14" height="26" rx="7" fill="#10131a"/></g>
+    <g id="eyes-happy"><path d="M93 121 Q104 102 115 121" fill="none" stroke="#10131a" stroke-width="7.5" stroke-linecap="round"/></g>
+    <g id="eyes-busy"><rect x="96" y="111" width="16" height="12" rx="6" fill="#10131a"/></g>
+    <g id="eyes-sleeping"><rect x="93" y="116" width="22" height="6.5" rx="3.25" fill="#10131a"/></g>
+    <g id="eyes-offline"><circle cx="104" cy="116" r="5" fill="#10131a" fill-opacity="0.55"/></g>
+    <g id="eyes-affectionate"><path d="M93 112 Q104 128 115 112" fill="none" stroke="#10131a" stroke-width="7" stroke-linecap="round"/></g>
+    <!-- mouths: centred at (120,146) -->
+    <g id="mouth-booting"><ellipse cx="120" cy="145" rx="4" ry="4.5" fill="#10131a"/></g>
+    <g id="mouth-idle"></g>
+    <g id="mouth-happy"><path d="M111 140 Q120 154 129 140 Z" fill="#10131a"/></g>
+    <g id="mouth-busy"><path d="M114 145 L126 145" stroke="#10131a" stroke-width="4.5" stroke-linecap="round"/></g>
+    <g id="mouth-sleeping"><ellipse cx="120" cy="146" rx="3.5" ry="3.5" fill="#10131a"/></g>
+    <g id="mouth-offline"></g>
+    <g id="mouth-laughing"><path d="M108 139 Q120 158 132 139 Z" fill="#10131a"/><path d="M113 146 Q120 152 127 146" fill="#ff7aa0"/></g>
+  
 </defs>
 <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
-<line x1="193.0" y1="511.2" x2="145.9" y2="489.3" stroke="url(#lit)" stroke-width="30" stroke-linecap="round"/><line x1="247.4" y1="427.9" x2="208.3" y2="393.6" stroke="url(#lit)" stroke-width="30" stroke-linecap="round"/><line x1="322.9" y1="363.1" x2="294.9" y2="319.3" stroke="url(#lit)" stroke-width="30" stroke-linecap="round"/><line x1="413.5" y1="322.1" x2="398.9" y2="272.1" stroke="url(#lit)" stroke-width="30" stroke-linecap="round"/><line x1="512.0" y1="308.0" x2="512.0" y2="256.0" stroke="url(#lit)" stroke-width="30" stroke-linecap="round"/><line x1="610.5" y1="322.1" x2="625.1" y2="272.1" stroke="#24344f" stroke-width="30" stroke-linecap="round"/><line x1="701.1" y1="363.1" x2="729.1" y2="319.3" stroke="#24344f" stroke-width="30" stroke-linecap="round"/><line x1="776.6" y1="427.9" x2="815.7" y2="393.6" stroke="#24344f" stroke-width="30" stroke-linecap="round"/><line x1="831.0" y1="511.2" x2="878.1" y2="489.3" stroke="#24344f" stroke-width="30" stroke-linecap="round"/>
-<g clip-path="url(#sq)"><g transform="translate(146.0 388.5) scale(3.05)">
-<path d="M29 169 C33 122 69 49 118 49 C165 49 202 117 210 169 C212 199 179 207 121 207 C64 207 29 202 29 169Z" fill="url(#blue)"/>
-<path d="M70 88 C74 78 85 69 95 66 C103 63 106 70 100 74 C89 80 82 86 77 94 C73 99 67 96 70 88Z" fill="#fff" opacity="0.92"/>
-<ellipse cx="94" cy="128" rx="12" ry="15" fill="#02060c"/><ellipse cx="146" cy="128" rx="12" ry="15" fill="#02060c"/>
-<circle cx="90" cy="121" r="4.5" fill="#fff"/><circle cx="142" cy="121" r="4.5" fill="#fff"/>
-<path d="M106 151 Q120 163 134 151" fill="none" stroke="#02060c" stroke-width="6.5" stroke-linecap="round"/>
-<ellipse cx="70" cy="150" rx="10" ry="5.5" fill="#ffa1bd"/><ellipse cx="170" cy="150" rx="10" ry="5.5" fill="#ffa1bd"/>
-</g></g>
+<line x1="193.0" y1="551.2" x2="145.9" y2="529.3" stroke="url(#lit)" stroke-width="30" stroke-linecap="round"/><line x1="247.4" y1="467.9" x2="208.3" y2="433.6" stroke="url(#lit)" stroke-width="30" stroke-linecap="round"/><line x1="322.9" y1="403.1" x2="294.9" y2="359.3" stroke="url(#lit)" stroke-width="30" stroke-linecap="round"/><line x1="413.5" y1="362.1" x2="398.9" y2="312.1" stroke="url(#lit)" stroke-width="30" stroke-linecap="round"/><line x1="512.0" y1="348.0" x2="512.0" y2="296.0" stroke="url(#lit)" stroke-width="30" stroke-linecap="round"/><line x1="610.5" y1="362.1" x2="625.1" y2="312.1" stroke="#24344f" stroke-width="30" stroke-linecap="round"/><line x1="701.1" y1="403.1" x2="729.1" y2="359.3" stroke="#24344f" stroke-width="30" stroke-linecap="round"/><line x1="776.6" y1="467.9" x2="815.7" y2="433.6" stroke="#24344f" stroke-width="30" stroke-linecap="round"/><line x1="831.0" y1="551.2" x2="878.1" y2="529.3" stroke="#24344f" stroke-width="30" stroke-linecap="round"/>
+<g transform="translate(164 292) scale(2.9)"><use href="#body"/><use href="#cap"/><use href="#eyes-idle"/><use href="#eyes-idle" transform="translate(32 0)"/></g>
 </svg>

@@ -18,18 +18,23 @@ pub type StringId = u16;
 /// Semantic role of an asset layer in the shared mascot composition contract.
 ///
 /// `Static` preserves generic scene behavior. The remaining roles are composed using a
-/// [`crate::MascotPose`]: the body and its children share a bottom-centre transform, while eyes
-/// additionally receive the blink squash and mouths/eyes are cross-faded by expression weights.
+/// [`crate::MascotPose`]: every mascot layer shares a bottom-centre transform; the cap and the face
+/// printed on it additionally sink by the pose's press, eyes receive the blink squash, and
+/// mouths/eyes are selected by expression.
+///
+/// Variants are postcard-encoded by index: append new roles at the end only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LayerRole {
     /// A generic layer unaffected by mascot pose composition.
     Static,
-    /// The mascot body, including baked shading, cheeks, and shine.
+    /// The keycap's fixed base (side walls and front lip); it stays on the desk during a press.
     Body,
     /// The interchangeable pair of eyes.
     Eyes,
     /// The interchangeable mouth expression.
     Mouth,
+    /// The keycap's cap (top face, upper wall wedges, legend); it sinks into the base on a press.
+    Cap,
 }
 
 /// One keyframe of a layer's timeline. At `at_ms` (and until the next keyframe), the layer uses this

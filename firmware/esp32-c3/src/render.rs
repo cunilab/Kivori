@@ -10,7 +10,7 @@ use crate::ports::DisplaySink;
 use kivori_assets::AssetBlob;
 use kivori_framebuffer::{hash_rgb565, TileBand};
 use kivori_model::presentation::ValueDisplay;
-use kivori_model::{CompanionState, ElapsedMs, MascotPose, Rect, Rgb565};
+use kivori_model::{CompanionState, ElapsedMs, MascotAnimator, MascotPose, Rect, Rgb565};
 use kivori_renderer::overlay::render_volume_overlay;
 use kivori_renderer::render_scene;
 
@@ -108,7 +108,8 @@ impl<'a> TileRenderer<'a> {
 
     /// Renders `state` at `elapsed_ms` from `blob`, compositing `overlay` (if any) as the final
     /// pass so it is included in the hash that decides which tiles are flushed, then flushes only
-    /// changed tiles to `sink`.
+    /// changed tiles to `sink`. While an overlay shows, the mascot uses
+    /// [`MascotPose::with_overlay_room`].
     ///
     /// # Errors
     /// [`RenderError`] if the scene is missing, a tile can't be built, the compositor fails, or the
@@ -136,8 +137,8 @@ impl<'a> TileRenderer<'a> {
     }
 
     /// Renders a resolved shared pose, then composites `overlay` (if any) on top of the pose
-    /// before hashing, so only tiles the overlay covers change and no second frame buffer is
-    /// needed.
+    /// before hashing, so no second frame buffer is needed. While an overlay shows, the pose is
+    /// drawn with [`MascotPose::with_overlay_room`] so the keycap clears the bar.
     ///
     /// # Errors
     /// [`RenderError`] if the scene is missing, a tile can't be built, the compositor fails, or the
@@ -163,6 +164,17 @@ impl<'a> TileRenderer<'a> {
         sink: &mut S,
     ) -> Result<(), RenderError<S::Error>> {
         let scene = blob.scene(state).ok_or(RenderError::MissingScene)?;
+        // The mascot makes room for the overlay (shrunk and lifted clear of the bar).
+        // ponytail: instant switch in and out; ease `with_overlay_room` like state transitions
+        // if the jump reads as harsh on the panel.
+        let pose = match overlay {
+            Some(_) => Some(
+                pose.copied()
+                    .unwrap_or_else(|| MascotAnimator::new(state, 0).pose_at(elapsed_ms))
+                    .with_overlay_room(),
+            ),
+            None => pose.copied(),
+        };
         let buffered = self.frame_buffer.is_some();
         let mut prepared_signatures = [0; TILE_COUNT];
         for tile in 0..TILE_COUNT {
@@ -174,7 +186,7 @@ impl<'a> TileRenderer<'a> {
                 None => &mut self.buf[..],
             };
             let mut band = TileBand::new(rect, pixels).ok_or(RenderError::Band)?;
-            match pose {
+            match &pose {
                 Some(pose) => kivori_renderer::render_pose(blob, scene, pose, &mut band),
                 None => render_scene(blob, scene, elapsed_ms, &mut band),
             }

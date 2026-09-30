@@ -11,6 +11,19 @@ use kivori_model::{
 const DIM: u16 = 240;
 const PACKED_ALPHA_MAX: usize = 131_072;
 
+/// Source crops `(x, y, w, h)` in the 240x240 mascot artwork, one per compiled layer.
+///
+/// The SVG's drawing contract gives the base (28,48 184x160), cap (40,52 160x120) and mouth
+/// (96,134 48x24) roomier boxes; they are stored trimmed to their drawn pixels to fit the 128 KiB
+/// budget. Trimming is lossless: anchored sampling depends only on absolute art coordinates.
+/// The eye crop stays as specified because blinks squash about the crop's centre (the eye centre).
+const BODY_CROP: (u32, u32, u32, u32) = (44, 88, 152, 118);
+const CAP_CROP: (u32, u32, u32, u32) = (42, 56, 156, 112);
+const EYE_CROP: (u32, u32, u32, u32) = (88, 96, 32, 40);
+const MOUTH_CROP: (u32, u32, u32, u32) = (108, 139, 24, 11);
+/// The right eye reuses the left-eye sheet, shifted by one eye crop width.
+const RIGHT_EYE_ORIGIN: Point = Point::new(120, 96);
+
 /// Assembles a compiled asset blob from rasterized sprites and scene definitions.
 pub struct BlobBuilder {
     profile: DeviceProfile,
@@ -147,32 +160,19 @@ impl BlobBuilder {
             .expect("scene capacity");
     }
 
-    fn add_mascot_scene(&mut self, state: CompanionState, body: u16, eyes: u16, mouth: u16) {
+    fn add_mascot_scene(&mut self, state: CompanionState, [body, cap, eyes, mouth]: [u16; 4]) {
+        let crop =
+            |c @ (x, y, _, _): (u32, u32, u32, u32)| (crop_size(c), Point::new(x as i16, y as i16));
+        let (body_size, body_origin) = crop(BODY_CROP);
+        let (cap_size, cap_origin) = crop(CAP_CROP);
+        let (eye_size, left_eye) = crop(EYE_CROP);
+        let (mouth_size, mouth_origin) = crop(MOUTH_CROP);
         let specs = [
-            (
-                LayerRole::Body,
-                body,
-                Size::new(184, 160),
-                Point::new(28, 48),
-            ),
-            (
-                LayerRole::Eyes,
-                eyes,
-                Size::new(32, 40),
-                Point::new(66, 110),
-            ),
-            (
-                LayerRole::Eyes,
-                eyes,
-                Size::new(32, 40),
-                Point::new(142, 110),
-            ),
-            (
-                LayerRole::Mouth,
-                mouth,
-                Size::new(48, 24),
-                Point::new(96, 146),
-            ),
+            (LayerRole::Body, body, body_size, body_origin),
+            (LayerRole::Cap, cap, cap_size, cap_origin),
+            (LayerRole::Eyes, eyes, eye_size, left_eye),
+            (LayerRole::Eyes, eyes, eye_size, RIGHT_EYE_ORIGIN),
+            (LayerRole::Mouth, mouth, mouth_size, mouth_origin),
         ];
         let mut layers = HVec::new();
         for (role, asset, size, origin) in specs {
@@ -230,6 +230,10 @@ impl BlobBuilder {
     }
 }
 
+fn crop_size((_, _, w, h): (u32, u32, u32, u32)) -> Size {
+    Size::new(w as u16, h as u16)
+}
+
 fn layer_svg(source: &str, id: &str) -> Vec<u8> {
     let (_, rest) = source.split_once("<defs>").expect("mascot SVG has defs");
     let (defs, _) = rest.split_once("</defs>").expect("mascot SVG closes defs");
@@ -255,8 +259,10 @@ fn compile_layer(source: &str, id: &str, crop: (u32, u32, u32, u32)) -> (Vec<u8>
 pub fn compile_default_blob() -> Vec<u8> {
     let source = include_str!("../../../assets/mascot.svg");
     let mut builder = BlobBuilder::new(DeviceProfile::KIVORI_240);
-    let (body_pixels, body_alpha) = compile_layer(source, "body", (28, 48, 184, 160));
-    let body = builder.add_masked_bitmap(Size::new(184, 160), 1, &body_pixels, &body_alpha);
+    let (body_pixels, body_alpha) = compile_layer(source, "body", BODY_CROP);
+    let body = builder.add_masked_bitmap(crop_size(BODY_CROP), 1, &body_pixels, &body_alpha);
+    let (cap_pixels, cap_alpha) = compile_layer(source, "cap", CAP_CROP);
+    let cap = builder.add_masked_bitmap(crop_size(CAP_CROP), 1, &cap_pixels, &cap_alpha);
     let eye_names = [
         "booting",
         "idle",
@@ -272,12 +278,12 @@ pub fn compile_default_blob() -> Vec<u8> {
     let mut eye_pixels = Vec::new();
     let mut eye_alpha = Vec::new();
     for name in eye_names {
-        let (pixels, alpha) = compile_layer(source, &format!("eyes-{name}"), (66, 110, 32, 40));
+        let (pixels, alpha) = compile_layer(source, &format!("eyes-{name}"), EYE_CROP);
         eye_pixels.extend_from_slice(&pixels);
         eye_alpha.extend_from_slice(&alpha);
     }
     let eyes = builder.add_masked_bitmap(
-        Size::new(32, 40),
+        crop_size(EYE_CROP),
         eye_names.len() as u16,
         &eye_pixels,
         &eye_alpha,
@@ -285,12 +291,12 @@ pub fn compile_default_blob() -> Vec<u8> {
     let mut mouth_pixels = Vec::new();
     let mut mouth_alpha = Vec::new();
     for name in mouth_names {
-        let (pixels, alpha) = compile_layer(source, &format!("mouth-{name}"), (96, 146, 48, 24));
+        let (pixels, alpha) = compile_layer(source, &format!("mouth-{name}"), MOUTH_CROP);
         mouth_pixels.extend_from_slice(&pixels);
         mouth_alpha.extend_from_slice(&alpha);
     }
     let mouth = builder.add_masked_bitmap(
-        Size::new(48, 24),
+        crop_size(MOUTH_CROP),
         mouth_names.len() as u16,
         &mouth_pixels,
         &mouth_alpha,
@@ -304,7 +310,7 @@ pub fn compile_default_blob() -> Vec<u8> {
         (CompanionState::Offline, "offline"),
     ];
     for (state, _name) in states {
-        builder.add_mascot_scene(state, body, eyes, mouth);
+        builder.add_mascot_scene(state, [body, cap, eyes, mouth]);
     }
     let blob = builder.finish();
     assert!(
@@ -320,14 +326,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn body_crop_contains_all_nontransparent_pixels() {
+    fn every_layer_crop_contains_all_of_its_nontransparent_pixels() {
         let source = include_str!("../../../assets/mascot.svg");
-        let svg = layer_svg(source, "body");
-        let (_, alpha) = svg_to_rgb565_alpha(&svg, DIM as u32, DIM as u32).unwrap();
-        for y in 0..DIM as usize {
-            for x in 0..DIM as usize {
-                if !(28..212).contains(&x) || !(48..208).contains(&y) {
-                    assert_eq!(alpha[y * DIM as usize + x], 0, "body overflow at ({x},{y})");
+        let faces = ["booting", "idle", "happy", "busy", "sleeping", "offline"];
+        let mut layers = vec![("body".to_owned(), BODY_CROP), ("cap".to_owned(), CAP_CROP)];
+        for name in faces.iter().chain(&["affectionate"]) {
+            layers.push((format!("eyes-{name}"), EYE_CROP));
+        }
+        for name in faces.iter().chain(&["laughing"]) {
+            layers.push((format!("mouth-{name}"), MOUTH_CROP));
+        }
+        for (id, (cx, cy, cw, ch)) in layers {
+            let svg = layer_svg(source, &id);
+            let (_, alpha) = svg_to_rgb565_alpha(&svg, DIM as u32, DIM as u32).unwrap();
+            for y in 0..u32::from(DIM) {
+                for x in 0..u32::from(DIM) {
+                    if !(cx..cx + cw).contains(&x) || !(cy..cy + ch).contains(&y) {
+                        let a = alpha[(y * u32::from(DIM) + x) as usize];
+                        assert_eq!(a, 0, "{id} overflows its crop at ({x},{y})");
+                    }
                 }
             }
         }

@@ -14,43 +14,52 @@ fn blob_is_byte_reproducible_and_within_budget() {
 }
 
 #[test]
-fn blob_has_six_four_layer_scenes_and_shared_expression_sheets() {
+fn blob_has_six_five_layer_scenes_and_shared_expression_sheets() {
     let blob = compile_default_blob();
     let asset = AssetBlob::parse(&blob).expect("blob parses");
     assert_eq!(
         asset.manifest().bitmaps.len(),
-        3,
-        "one body + one eye sheet + one mouth sheet"
+        4,
+        "one base + one cap + one eye sheet + one mouth sheet"
     );
 
     for state in CompanionState::ALL {
         let scene = asset.scene(state).expect("state present");
-        assert_eq!(scene.layers.len(), 4);
+        assert_eq!(scene.layers.len(), 5);
         assert_eq!(scene.frame_count, 120);
         assert_eq!(scene.fps.num, 30);
         assert_eq!(scene.fps.den, 1);
-        assert_eq!(scene.layers[0].role, LayerRole::Body);
-        assert_eq!(scene.layers[1].role, LayerRole::Eyes);
-        assert_eq!(scene.layers[2].role, LayerRole::Eyes);
-        assert_eq!(scene.layers[3].role, LayerRole::Mouth);
-        assert_eq!(scene.layers[1].origin.x, 66);
-        assert_eq!(scene.layers[2].origin.x, 142);
-        assert_eq!(scene.layers[1].origin.y, 110);
-        assert_eq!(scene.layers[2].origin.y, 110);
-        assert!(
-            matches!(scene.layers[0].kind, LayerKind::Sprite { frame_size, .. } if frame_size.w == 184 && frame_size.h == 160)
+        let roles = scene.layers.iter().map(|l| l.role).collect::<Vec<_>>();
+        assert_eq!(
+            roles,
+            [
+                LayerRole::Body,
+                LayerRole::Cap,
+                LayerRole::Eyes,
+                LayerRole::Eyes,
+                LayerRole::Mouth
+            ],
+            "the cap draws over the base, and the face over the cap"
         );
-        assert!(
-            matches!(scene.layers[1].kind, LayerKind::Sprite { frame_size, .. } if frame_size.w == 32 && frame_size.h == 40)
-        );
-        assert!(
-            matches!(scene.layers[3].kind, LayerKind::Sprite { frame_size, .. } if frame_size.w == 48 && frame_size.h == 24)
-        );
-        let eyes = match scene.layers[1].kind {
+        let geometry = |i: usize| match scene.layers[i].kind {
+            LayerKind::Sprite { frame_size, .. } => (
+                scene.layers[i].origin.x,
+                scene.layers[i].origin.y,
+                frame_size.w,
+                frame_size.h,
+            ),
+            _ => panic!("mascot layers are sprites"),
+        };
+        assert_eq!(geometry(0), (44, 88, 152, 118));
+        assert_eq!(geometry(1), (42, 56, 156, 112));
+        assert_eq!(geometry(2), (88, 96, 32, 40));
+        assert_eq!(geometry(3), (120, 96, 32, 40));
+        assert_eq!(geometry(4), (108, 139, 24, 11));
+        let eyes = match scene.layers[2].kind {
             LayerKind::Sprite { asset, .. } => asset,
             _ => panic!("eyes are sprites"),
         };
-        let mouth = match scene.layers[3].kind {
+        let mouth = match scene.layers[4].kind {
             LayerKind::Sprite { asset, .. } => asset,
             _ => panic!("mouth is sprite"),
         };
