@@ -1,14 +1,18 @@
 //! Detent-qualified quadrature decoding.
 //!
-//! Phase is the 2-bit Gray code `(a << 1) | b`. Each legal transition moves one
-//! quarter-step. A `Direction` is emitted only when four quarter-steps have
-//! accumulated in the same rotational sense, i.e. a complete mechanical detent.
-//! Partial motion that reverses before completing simply unwinds the accumulator.
+//! Phase is the 2-bit Gray code `(a << 1) | b`; the HW-040 rests at `00` (both pins high,
+//! inverted). Each legal transition moves one quarter-step. A `Direction` is emitted only on
+//! arrival back at rest after four quarter-steps in the same rotational sense, i.e. a complete
+//! mechanical detent. The accumulator is re-zeroed at every rest arrival, so partial motion or
+//! a count broken by a missed state can never carry over into a bounce at rest.
 
 use kivori_model::input::Direction;
 
 /// Quarter-steps in one full HW-040 detent.
 const QUARTER_STEPS_PER_DETENT: i8 = 4;
+
+/// Logical phase of a knob sitting in a detent.
+const REST_PHASE: u8 = 0b00;
 
 /// Pure state machine turning raw quadrature `(a, b)` samples into validated logical
 /// detents.
@@ -74,16 +78,19 @@ impl QuadratureDecoder {
 
         self.phase = Some(next);
         self.accumulator += step;
+        if next != REST_PHASE {
+            return None;
+        }
 
-        if self.accumulator >= QUARTER_STEPS_PER_DETENT {
-            self.accumulator = 0;
-            return Some(Direction::Cw);
+        // Back at rest: a detent only if a full, continuous cycle was observed since the last
+        // rest arrival. Anything short of that (bounce, a count restarted mid-cycle by an
+        // invalid transition or `reset`) is discarded here rather than completed later.
+        let accumulated = core::mem::take(&mut self.accumulator);
+        match accumulated {
+            QUARTER_STEPS_PER_DETENT => Some(Direction::Cw),
+            a if a == -QUARTER_STEPS_PER_DETENT => Some(Direction::Ccw),
+            _ => None,
         }
-        if self.accumulator <= -QUARTER_STEPS_PER_DETENT {
-            self.accumulator = 0;
-            return Some(Direction::Ccw);
-        }
-        None
     }
 
     /// Count of electrically impossible transitions observed so far (both bits changed

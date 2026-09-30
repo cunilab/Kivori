@@ -326,7 +326,6 @@ impl<'a> Runtime<'a> {
         {
             let _ = self.device.apply(DeviceEvent::LinkDown);
             self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
-            self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
             // A transport failure is a session boundary too, even with no `Bye`: clear the
             // accepted session/negotiated capability so a stale gesture cannot keep emitting
             // once the link recovers.
@@ -364,6 +363,12 @@ impl<'a> Runtime<'a> {
         // 3. Physical input: sample once per tick, turn validated detents into gestures, and emit
         //    semantic `InputEvent`s. `send_input_event` itself gates on capability/session, so this
         //    stays silent until the desktop has negotiated `PHYSICAL_INPUT_V1`.
+        //    The idle boundary is closed first: after a stall, a detent this tick opens a new
+        //    gesture instead of extending one that already went quiet.
+        if let Some(RotaryEvent::GestureEnded { gesture_id }) = self.gesture.poll(now) {
+            self.dispatcher
+                .send_input_event(transport, gesture_id, InputKind::GestureEnded, now);
+        }
         let levels = input.sample();
         if let Some(direction) = self.decoder.update(levels.a, levels.b) {
             let (started, detent) = self.gesture.on_detent(direction, now);
@@ -391,10 +396,6 @@ impl<'a> Runtime<'a> {
                     self.latency.on_detent(now);
                 }
             }
-        }
-        if let Some(RotaryEvent::GestureEnded { gesture_id }) = self.gesture.poll(now) {
-            self.dispatcher
-                .send_input_event(transport, gesture_id, InputKind::GestureEnded, now);
         }
 
         // Resolve changes immediately after protocol handling. Reporting remains semantic and does

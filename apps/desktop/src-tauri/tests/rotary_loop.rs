@@ -310,6 +310,17 @@ fn an_external_change_during_a_gesture_does_not_overwrite_the_preview() {
 }
 
 #[test]
+fn a_gesture_dropped_by_a_session_end_releases_the_preview() {
+    let backend = FakeVolumeBackend::new(50);
+    let mut gv = GestureValue::new();
+    gv.on_input(LogicalInput::GestureStarted { gesture_id: 1 }, &backend);
+
+    // The link drops mid-turn: the device never sends `GestureEnded` for gesture 1.
+    gv.end_session();
+    assert_eq!(gv.on_external_change(20), confirmed(20));
+}
+
+#[test]
 fn an_external_change_outside_a_gesture_is_confirmed_immediately() {
     let mut gv = GestureValue::new();
     assert_eq!(gv.on_external_change(77), confirmed(77));

@@ -605,6 +605,7 @@ impl RotaryPipeline {
             }
         } else if previous == ConnectionState::Connected {
             self.ingress.end_session();
+            self.gesture_value.end_session();
         }
     }
 

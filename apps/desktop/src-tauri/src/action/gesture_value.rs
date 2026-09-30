@@ -112,6 +112,13 @@ impl GestureValue {
         }
     }
 
+    /// The session ended. The device drops an open gesture on a session boundary without sending
+    /// `GestureEnded`, so release the preview here or external changes would stay suppressed.
+    pub fn end_session(&mut self) {
+        self.active = None;
+        self.abandoned = false;
+    }
+
     /// A change Kivori did not originate. Ignored while a gesture owns the preview.
     pub fn on_external_change(&mut self, percent: u8) -> Option<ValueUpdate> {
         if self.active.is_some() {
