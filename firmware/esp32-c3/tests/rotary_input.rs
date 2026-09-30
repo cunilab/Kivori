@@ -142,6 +142,44 @@ fn detent_completes_normally_immediately_after_an_invalid_transition() {
 }
 
 #[test]
+fn a_count_restarted_mid_cycle_never_completes_on_a_bounce_at_rest() {
+    // A missed state (10 -> 01) restarts the count off-rest; the rest of that cycle
+    // (01 -> 11 -> 10 -> 00) is only three quarter-steps, so arriving at rest emits nothing,
+    // and a bounce at rest afterwards must not complete a phantom detent (invariant 46).
+    let seq = [
+        (false, false),
+        (false, true),
+        (true, true),
+        (true, false),
+        (false, true), // illegal: 10 -> 01, both bits change
+        (true, true),
+        (true, false),
+        (false, false), // rest
+        (false, true),  // bounce
+        (false, false),
+    ];
+    assert_eq!(drive(&seq), vec![]);
+}
+
+#[test]
+fn a_reset_off_rest_never_completes_on_a_bounce_at_rest() {
+    let mut d = QuadratureDecoder::new();
+    let mut out = Vec::new();
+    // First sample after a reset lands mid-cycle at 01, then the knob settles and bounces.
+    for &(a, b) in &[
+        (false, true),
+        (true, true),
+        (true, false),
+        (false, false),
+        (false, true),
+        (false, false),
+    ] {
+        out.extend(d.update(a, b));
+    }
+    assert_eq!(out, vec![]);
+}
+
+#[test]
 fn reset_drops_both_phase_and_accumulator() {
     // Bank three of the four quarter-steps of a clockwise detent, then reset. If
     // `reset` failed to clear the accumulator, the very next quarter-step after the
@@ -639,6 +677,79 @@ fn cw_cycle_levels() -> FixedVec<InputLevels, SCRIPT_CAPACITY> {
         lv(true, false),
         lv(false, false),
     ])
+}
+
+#[test]
+fn a_detent_after_a_stall_opens_a_new_gesture_instead_of_extending_the_quiet_one() {
+    let mut runtime = Runtime::new(gating_identity(), RuntimeConfig::default());
+    let clock = VirtualClock::new();
+    let mut pipe = SimPipe::new();
+    let mut display = CaptureDisplay::new();
+    let blob_bytes = compile_default_blob();
+    let blob = AssetBlob::parse(&blob_bytes).expect("valid blob");
+    let mut idle = ScriptedInput::new(script([lv(false, false)]));
+
+    gating_host_write(
+        &mut pipe,
+        &Message::Hello(Hello {
+            desktop_version: FirmwareVersion {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            desktop_caps: Capabilities::PHYSICAL_INPUT_V1,
+            nonce: 0xC000_0003,
+        }),
+        0,
+    );
+    runtime.step(&clock, &mut pipe, &mut idle, &mut display, &blob);
+    gating_host_write(
+        &mut pipe,
+        &Message::Ready(Ready {
+            negotiated_minor: 0,
+            negotiated_caps: Capabilities::PHYSICAL_INPUT_V1,
+        }),
+        1,
+    );
+    runtime.step(&clock, &mut pipe, &mut idle, &mut display, &blob);
+    let _ = pipe.host_recv();
+
+    // Detent 1, then three quarter-steps of detent 2 inside the window...
+    let mut levels = cw_cycle_levels();
+    levels
+        .extend_from_slice(&[
+            lv(false, true),
+            lv(true, true),
+            lv(true, false),
+            lv(false, false),
+        ])
+        .expect("scenario fits SCRIPT_CAPACITY");
+    let mut input = ScriptedInput::new(levels);
+    for _ in 0..8 {
+        clock.advance(1);
+        runtime.step(&clock, &mut pipe, &mut input, &mut display, &blob);
+    }
+    // ...then a render stall longer than the idle window before the tick that completes it.
+    clock.advance(300);
+    runtime.step(&clock, &mut pipe, &mut input, &mut display, &blob);
+
+    let kinds: Vec<(u16, InputKind)> = gating_host_drain(&mut pipe)
+        .into_iter()
+        .filter_map(|m| match m {
+            Message::InputEvent(e) => Some((e.gesture_id, e.kind)),
+            _ => None,
+        })
+        .collect();
+    let ended_1 = kinds
+        .iter()
+        .position(|&(id, k)| id == 1 && matches!(k, InputKind::GestureEnded));
+    let started_2 = kinds
+        .iter()
+        .position(|&(id, k)| id == 2 && matches!(k, InputKind::GestureStarted));
+    assert!(
+        matches!((ended_1, started_2), (Some(e), Some(s)) if e < s),
+        "gesture 1 must end before the stalled detent opens gesture 2: {kinds:?}"
+    );
 }
 
 #[test]
