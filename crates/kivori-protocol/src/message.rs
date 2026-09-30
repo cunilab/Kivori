@@ -1,4 +1,4 @@
-//! Wire message set (contracts/protocol.md §3). The top-level [`Message`] is an **append-only** enum;
+//! Wire message set (docs/architecture.md, wire protocol). The top-level [`Message`] is an **append-only** enum;
 //! the `postcard` variant index is the wire tag.
 
 use crate::error::{ByeReason, ErrorCategory};

@@ -103,7 +103,7 @@ fn invalid_transition_discards_quarter_steps_banked_before_it() {
     // 00 -> 01 -> 11 banks two clockwise quarter-steps, then 11 -> 00 is an illegal
     // double-bit transition. Two more clockwise quarter-steps follow. If the banked
     // steps survived the discontinuity they would splice with the steps after it
-    // (2 + 2 = 4) and wrongly complete a detent; invariant 42 / R-77 / R-82 require
+    // (2 + 2 = 4) and wrongly complete a detent; product invariant 42 requires
     // that a detent only ever be emitted for a continuous, fully observed traversal.
     let mut d = QuadratureDecoder::new();
     let mut out = Vec::new();

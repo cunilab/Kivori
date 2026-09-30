@@ -1,4 +1,4 @@
-//! Frame layer: CRC-32, COBS framing, and the fixed header (ADR-0002, contracts/protocol.md §2).
+//! Frame layer: CRC-32, COBS framing, and the fixed header (ADR-0002, docs/architecture.md, wire protocol).
 //!
 //! Wire packet = `COBS(magic || ver_major || ver_minor || seq || payload_len || payload || crc32)`
 //! followed by a `0x00` delimiter. All multi-byte fields are little-endian.

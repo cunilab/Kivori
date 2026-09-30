@@ -162,7 +162,7 @@ mod windows_backend {
                 eprintln!(
                     "SKIPPED: no default render endpoint on this machine ({other:?}). \
                      Real Core Audio behaviour is PHYSICAL WINDOWS EVIDENCE, recorded in \
-                     docs/features/002-rotary-volume-control/validation-checklist.md"
+                     docs/validation.md"
                 );
             }
         }

@@ -36,7 +36,7 @@ pub enum ValueKind {
 /// How well the displayed value is known.
 ///
 /// An optimistic local preview MUST NOT be rendered as observed desktop truth
-/// (user-story-contract invariant 3).
+/// (product invariant 3).
 ///
 /// Wire-significant (nested inside `kivori_protocol::message::Presentation` via [`ValueDisplay`]):
 /// the variant index is part of the postcard wire encoding. **Append-only** — variants may only be

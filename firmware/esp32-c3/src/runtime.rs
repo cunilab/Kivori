@@ -41,7 +41,7 @@ use kivori_model::{CompanionState, ElapsedMs, MascotAnimator};
 use kivori_protocol::{InputKind, Message, Nonce, Presentation};
 
 /// Inactivity window, in milliseconds, after which an open rotary gesture ends
-/// (user-story-contract section 5). Firmware-wide: both the production runtime and the host-sim
+/// (docs/product.md, gesture boundary). Firmware-wide: both the production runtime and the host-sim
 /// scenario helper (`sim::drive_rotary`) commit to this same boundary.
 pub const GESTURE_END_MS: u32 = 250;
 
@@ -123,7 +123,7 @@ impl<S: DisplaySink> DisplaySink for CountingSink<'_, S> {
 /// Device-side presentation acceptance and local transient expiry.
 ///
 /// Firmware expires the overlay itself so it cannot stick if the host disappears mid-transient,
-/// restoring the underlying `primary` (contract invariant 50).
+/// restoring the underlying `primary` (product invariant 50).
 #[derive(Debug)]
 pub struct PresentationState {
     session: Option<Nonce>,

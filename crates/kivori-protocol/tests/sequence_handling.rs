@@ -1,5 +1,5 @@
 //! T031 — sequence policy: duplicate, gap, and wraparound classified as valid decoded frames
-//! (contracts/protocol.md §6), not as malformed bytes.
+//! (docs/architecture.md, wire protocol), not as malformed bytes.
 
 use kivori_protocol::{SeqClass, SequenceTracker};
 

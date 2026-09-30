@@ -19,7 +19,7 @@ const REST_PHASE: u8 = 0b00;
 ///
 /// A legal electrical transition is NOT automatically a completed detent: mechanical
 /// bounce can legally walk between adjacent Gray states and back without the knob
-/// completing a detent (user-story-contract invariant 46). Only a fully traversed
+/// completing a detent (product invariant 46). Only a fully traversed
 /// four-quarter-step cycle emits a [`Direction`].
 #[derive(Debug)]
 pub struct QuadratureDecoder {
@@ -68,7 +68,7 @@ impl QuadratureDecoder {
                 // or the signal was corrupted. The traversal is no longer continuous, so
                 // banked quarter-steps cannot be trusted to splice with what comes after
                 // this gap — reset the accumulator rather than risk completing a detent
-                // that was never fully, legally observed (contract invariant 42; R-77).
+                // that was never fully, legally observed (product invariant 42).
                 self.invalid = self.invalid.saturating_add(1);
                 self.phase = Some(next);
                 self.accumulator = 0;

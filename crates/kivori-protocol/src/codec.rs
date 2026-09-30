@@ -1,5 +1,5 @@
 //! Message-level encode/decode over the [`crate::frame`] layer, plus the sequence policy
-//! (contracts/protocol.md §3, §6).
+//! (docs/architecture.md, wire protocol, §6).
 
 use crate::error::ProtoError;
 use crate::frame::{decode_frame, encode_frame, Header};

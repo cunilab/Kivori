@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Offline dependency guard (FR-029, SC-006; docs/offline-boundary.md).
+# Offline dependency guard (offline-first rule; docs/architecture.md).
 #
 # Fails if any first-party crate declares a network-client crate as a DIRECT dependency. Kivori is
 # offline-first: the only link is USB serial, so no first-party crate should pull an HTTP/socket

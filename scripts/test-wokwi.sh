@@ -217,4 +217,4 @@ echo "Wokwi simulation gate OK — internal self-test, external serial path, and
 echo "tile-transfer probe all verified in simulation."
 echo "NOTE: simulation is not physical validation. USB enumeration, the real panel controller's init"
 echo "      sequence, panel offsets/orientation/colour order, analog SPI integrity, sustained frame rate,"
-echo "      and unplug/reconnect remain hardware tasks (docs/validation-checklist.md)."
+echo "      and unplug/reconnect remain hardware tasks (docs/validation.md)."

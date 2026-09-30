@@ -1,7 +1,7 @@
 //! Rotary gesture formation: identity plus the inactivity boundary.
 //!
 //! A gesture opens on the first validated detent and closes after
-//! `gesture_end_ms` with no new detent (user-story-contract section 5). A
+//! `gesture_end_ms` with no new detent (docs/product.md, gesture boundary). A
 //! direction reversal mid-gesture does not split it: one physical twiddle back
 //! and forth is one gesture. Gesture identity is session-unique only —
 //! [`RotaryGesture::reset`] restarts numbering, which is what a host session
@@ -37,7 +37,7 @@ pub enum RotaryEvent {
 /// A gesture opens on the first detent and stays open, regardless of direction
 /// reversals, until [`poll`](Self::poll) observes that `gesture_end_ms` has
 /// elapsed since the last detent. The inactivity window is a tuning target
-/// (user-story-contract section 5), so it is a constructor parameter rather
+/// (docs/product.md, gesture boundary), so it is a constructor parameter rather
 /// than a hardcoded constant.
 #[derive(Debug)]
 pub struct RotaryGesture {

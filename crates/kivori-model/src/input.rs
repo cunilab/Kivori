@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 /// Direction of one completed, validated logical detent.
 ///
 /// Electrical quarter-step transitions are NOT directions; only a fully traversed
-/// detent produces one (user-story-contract invariant 46).
+/// detent produces one (product invariant 46).
 ///
 /// Wire-significant (nested inside `kivori_protocol::message::InputEvent`): the variant index is
 /// part of the postcard wire encoding. **Append-only** — variants may only be added at the end,
