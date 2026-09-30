@@ -8,10 +8,3 @@ pnpm-lock.yaml
 # Generated Wokwi automation scenarios/vectors — byte-exact output of `cargo run -p kivori-wokwi-vectors`.
 # Reformatting them would fight the generator and break the CI staleness check.
 sim/wokwi/generated/
-
-# Spec Kit installer output. `.specify/extensions.yml` and everything under
-# `.specify/extensions/` is written by `specify extension add`; hand-formatting it would be
-# reverted on the next install. The version-controlled SOURCE under
-# tools/spec-kit-extensions/ stays prettier-checked.
-.specify/extensions.yml
-.specify/extensions/

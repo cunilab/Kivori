@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 
 use tauri::AppHandle;
 
+use crate::action::gesture_value::{GestureValue, ValueUpdate};
 use crate::activity::{
     ActivityEventKind, ActivityLog, ActivityMetadata, RuntimeActivityPlanner,
     RuntimeActivityRequest, SessionActivity,
@@ -28,12 +29,15 @@ use crate::device::reconnect::base_delay_ms;
 use crate::device::serial::{first_candidate, SerialPortLink};
 use crate::device::session::{Session, SessionConfig};
 use crate::firmware::{self, FirmwareStatus, FlashWorkflow, ResumeTarget};
+use crate::input::{InputIngress, RejectReason};
 use crate::ipc::dto::{connection_status, ConnectionStatusDto};
 use crate::ipc::events;
 use crate::orchestrator::Orchestrator;
+use crate::platform::{self, ActionAvailability, VolumeBackend};
+use crate::presentation::{PresentationResolver, ProductSnapshot};
 use crate::runtime::state::DeviceCommand;
-use kivori_model::{CompanionState, ConnectionState, MascotPersonality};
-use kivori_protocol::PlayMascotAction;
+use kivori_model::{Capabilities, CompanionState, ConnectionState, MascotPersonality};
+use kivori_protocol::{ErrorCategory, InputEvent, PlayMascotAction, Presentation};
 
 const TICK: Duration = Duration::from_millis(50);
 
@@ -128,6 +132,14 @@ fn device_loop(
     let mut orchestrator = Orchestrator::new();
     let mut session = Session::new(SessionConfig::default());
     let mut companion = CompanionDirector::new(MascotPersonality::Cozy, true, 0x4B49_564F, 0);
+    // Windows has a real backend (`platform::windows`); every other target falls back to the
+    // honest "not implemented yet" backend so this crate always compiles. Kept concrete (not
+    // boxed) so the Windows branch can reach the Windows-only `try_recv_change` below.
+    #[cfg(windows)]
+    let backend = platform::windows::WindowsVolumeBackend::new();
+    #[cfg(not(windows))]
+    let backend = platform::unimplemented::UnimplementedVolumeBackend::new(std::env::consts::OS);
+    let mut rotary = RotaryPipeline::new(&backend);
     let mut link: Option<SerialPortLink> = None;
     let mut connected_port: Option<String> = None;
     let mut retry_at: Option<Instant> = None;
@@ -408,6 +420,53 @@ fn device_loop(
             }
         }
 
+        // Slice 002: rotary input -> volume -> transient `Presentation` overlay. Paused while a
+        // firmware flash owns the serial session: queued input is discarded unexecuted.
+        let mut presentations = Vec::new();
+        let inputs = session.take_input_events();
+        if !flash.is_busy() {
+            rotary.accept_inputs(&inputs, &backend, &mut presentations, |observation| {
+                record_observations(&app, &activity_log, [observation]);
+            });
+        }
+        #[cfg(windows)]
+        while let Some(change) = backend.try_recv_change() {
+            rotary.on_backend_change(change, &mut presentations, |observation| {
+                record_observations(&app, &activity_log, [observation]);
+            });
+        }
+        rotary.observe_backend_availability(&backend, |observation| {
+            record_observations(&app, &activity_log, [observation]);
+        });
+        if !flash.is_busy()
+            && session
+                .negotiated_caps()
+                .contains(Capabilities::PRESENTATION_V1)
+        {
+            if let Some(open_link) = link.as_mut() {
+                let write_failed = presentations.into_iter().any(|presentation| {
+                    session.send_presentation(open_link, presentation).is_err()
+                });
+                if write_failed {
+                    recover_link(
+                        &mut activity_planner,
+                        &mut manager,
+                        ManagerEvent::IoError,
+                        LinkRecovery::new(
+                            &mut link,
+                            &mut connected_port,
+                            &mut retry_at,
+                            &mut deadlines,
+                            &flash,
+                        ),
+                        |observation| {
+                            record_observations(&app, &activity_log, [observation]);
+                        },
+                    );
+                }
+            }
+        }
+
         drain_session_activity(&app, &activity_log, &mut session);
 
         if flash.status().phase == crate::firmware::FirmwarePhase::Reconnecting
@@ -485,6 +544,7 @@ fn device_loop(
         // 4. Record typed activity for every lifecycle transition (connect, incompatible,
         //    disconnect, recoverable error, reconnect attempt) — T105.
         let current_state = manager.state();
+        rotary.on_connection_state(previous_state, current_state, session.current_session());
         if observe_connection_transition(
             &mut activity_planner,
             &mut previous_state,
@@ -496,6 +556,157 @@ fn device_loop(
 
         std::thread::sleep(TICK);
     }
+}
+
+/// The Slice 002 rotary pipeline owned by the device task: input ingress -> gesture value ->
+/// presentation resolver, plus the typed activity for its failures.
+///
+/// `Presentation` carries only the transient volume overlay. Its `primary` is the interaction
+/// channel (`Idle` unless a volume write is known to have failed); the companion director and the
+/// device's mascot state still own the screen.
+pub struct RotaryPipeline {
+    ingress: InputIngress,
+    gesture_value: GestureValue,
+    resolver: PresentationResolver,
+    volume_failed: bool,
+    audio_available: bool,
+}
+
+impl RotaryPipeline {
+    /// Starts with no session. The resolver's initial nonce is a placeholder: every entry to
+    /// `Connected` rebinds it (and restarts `revision`) before any `Presentation` is resolved.
+    #[must_use]
+    pub fn new(backend: &dyn VolumeBackend) -> Self {
+        Self {
+            ingress: InputIngress::new(),
+            gesture_value: GestureValue::new(),
+            resolver: PresentationResolver::new(0),
+            volume_failed: false,
+            audio_available: is_available(backend),
+        }
+    }
+
+    /// (Re)scopes session state on a connection-state transition. Keyed off the manager state,
+    /// not `Session::current_session()`, because heartbeat timeouts and port removal are applied
+    /// outside `Session` — the connection state is the only place that sees every exit.
+    pub fn on_connection_state(
+        &mut self,
+        previous: ConnectionState,
+        current: ConnectionState,
+        session: Option<u32>,
+    ) {
+        if previous == current {
+            return;
+        }
+        if current == ConnectionState::Connected {
+            if let Some(nonce) = session {
+                self.ingress.begin_session(nonce);
+                self.resolver.begin_session(nonce);
+            }
+        } else if previous == ConnectionState::Connected {
+            self.ingress.end_session();
+            self.gesture_value.end_session();
+        }
+    }
+
+    /// Validates and executes decoded input, queueing any resulting presentations. Rejected input
+    /// is dropped unexecuted and recorded by safe category only (never its payload).
+    pub fn accept_inputs(
+        &mut self,
+        events: &[InputEvent],
+        backend: &dyn VolumeBackend,
+        presentations: &mut Vec<Presentation>,
+        mut observe: impl FnMut(SessionActivity),
+    ) {
+        for event in events {
+            match self.ingress.accept(event) {
+                Ok(Some(input)) => {
+                    if let Some(update) = self.gesture_value.on_input(input, backend) {
+                        self.push_update(update, presentations, &mut observe);
+                    }
+                }
+                Ok(None) => {}
+                Err(reason) => observe(SessionActivity::new(
+                    match reason {
+                        RejectReason::NoSession | RejectReason::StaleSession => {
+                            ActivityEventKind::InputStaleSessionRejected
+                        }
+                        RejectReason::UnknownGesture => {
+                            ActivityEventKind::InputUnstartedGestureRejected
+                        }
+                    },
+                    Some(ActivityMetadata::HostDiagnostic {
+                        category: ErrorCategory::BadPayload,
+                    }),
+                )),
+            }
+        }
+    }
+
+    /// Routes one backend-originated volume change. Every percent here was read from the OS by the
+    /// owning audio thread, so `Confirmed` still only ever follows a real backend read.
+    #[cfg(windows)]
+    pub fn on_backend_change(
+        &mut self,
+        change: platform::windows::VolumeChange,
+        presentations: &mut Vec<Presentation>,
+        mut observe: impl FnMut(SessionActivity),
+    ) {
+        let update = match change.origin {
+            platform::windows::ChangeOrigin::External => {
+                self.gesture_value.on_external_change(change.percent)
+            }
+            platform::windows::ChangeOrigin::EndpointRebind => {
+                observe(SessionActivity::new(
+                    ActivityEventKind::AudioEndpointChanged,
+                    None,
+                ));
+                self.gesture_value.on_endpoint_rebind(change.percent)
+            }
+            // Kivori's own write, echoed back; `set()` already confirmed it via its read-back.
+            platform::windows::ChangeOrigin::Kivori => None,
+        };
+        if let Some(update) = update {
+            self.push_update(update, presentations, &mut observe);
+        }
+    }
+
+    /// Records `AudioEndpointLost` when the backend stops being available.
+    pub fn observe_backend_availability(
+        &mut self,
+        backend: &dyn VolumeBackend,
+        mut observe: impl FnMut(SessionActivity),
+    ) {
+        let available = is_available(backend);
+        if self.audio_available && !available {
+            observe(SessionActivity::new(
+                ActivityEventKind::AudioEndpointLost,
+                None,
+            ));
+        }
+        self.audio_available = available;
+    }
+
+    fn push_update(
+        &mut self,
+        update: ValueUpdate,
+        presentations: &mut Vec<Presentation>,
+        observe: &mut impl FnMut(SessionActivity),
+    ) {
+        // One entry per failure streak: a failing backend fails every detent of a gesture.
+        if update.failed && !self.volume_failed {
+            observe(SessionActivity::new(
+                ActivityEventKind::VolumeWriteFailed,
+                None,
+            ));
+        }
+        self.volume_failed = update.failed;
+        presentations.push(self.resolver.resolve(&ProductSnapshot::with_value(update)));
+    }
+}
+
+fn is_available(backend: &dyn VolumeBackend) -> bool {
+    matches!(backend.availability(), ActionAvailability::Available { .. })
 }
 
 fn elapsed_ms(elapsed: Duration) -> u32 {

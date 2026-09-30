@@ -6,7 +6,8 @@ use std::collections::VecDeque;
 use std::convert::Infallible;
 
 use kivori_desktop::device::fsm::ConnectionManager;
-use kivori_desktop::device::session::{Session, SessionConfig};
+use kivori_desktop::device::nonce::{FailingNonceSource, FixedNonceSource};
+use kivori_desktop::device::session::{Session, SessionConfig, SessionError};
 use kivori_desktop::device::transport::SerialLink;
 use kivori_desktop::device::ManagerEvent;
 use kivori_desktop::orchestrator::Orchestrator;
@@ -14,8 +15,8 @@ use kivori_model::{
     Capabilities, ConnectionState, MascotAction, MascotPersonality, ProtocolVersion, SendableState,
 };
 use kivori_protocol::{
-    decode_message, encode_message, FirmwareVersion, HelloAck, MascotActionApplied, Message, Pong,
-    PROTOCOL_MAJOR, PROTOCOL_MINOR,
+    decode_message, encode_message, Bye, ByeReason, FirmwareVersion, HelloAck, MascotActionApplied,
+    Message, Pong, PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 #[derive(Default)]
@@ -258,6 +259,11 @@ fn bad_nonce_fails_the_handshake() {
         ConnectionState::Error,
         "unconfirmed identity → error"
     );
+    assert_eq!(
+        session.current_session(),
+        None,
+        "a failed handshake leaves no session identity behind"
+    );
 }
 
 #[test]
@@ -340,5 +346,283 @@ fn reconnect_resyncs_the_within_process_desired_state() {
     assert_eq!(
         set_state_desired(&desktop_drain(&mut link)),
         Some(SendableState::Busy)
+    );
+}
+
+/// A link whose `read` always fails, used to simulate an I/O loss on an already-connected session.
+#[derive(Default)]
+struct AlwaysFailingReadLink;
+
+impl SerialLink for AlwaysFailingReadLink {
+    type Error = &'static str;
+
+    fn read(&mut self, _buf: &mut [u8]) -> Result<usize, Self::Error> {
+        Err("simulated read failure")
+    }
+
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+        Ok(buf.len())
+    }
+}
+
+#[test]
+fn a_nonce_unavailable_source_fails_the_attempt_and_never_reaches_connected() {
+    let mut link = FakeLink::default();
+    let mut session =
+        Session::with_nonce_source(SessionConfig::default(), Box::new(FailingNonceSource));
+    let mut manager = ConnectionManager::new();
+
+    let result = session.open(&mut link, &mut manager);
+
+    assert_eq!(
+        result,
+        Err(SessionError::NonceUnavailable),
+        "no OS entropy → the connection attempt fails, it does not panic"
+    );
+    assert_ne!(
+        manager.state(),
+        ConnectionState::Connected,
+        "a session with no nonce must never reach Connected"
+    );
+    // No Hello was ever sent — the failure is before any wire traffic.
+    assert!(desktop_drain(&mut link).is_empty());
+}
+
+#[test]
+fn current_session_is_none_before_handshake_and_set_after_it_is_accepted() {
+    let mut link = FakeLink::default();
+    let mut session = Session::with_nonce_source(
+        SessionConfig::default(),
+        Box::new(FixedNonceSource::new(vec![42])),
+    );
+    let mut manager = ConnectionManager::new();
+    let mut orchestrator = Orchestrator::new();
+
+    assert_eq!(session.current_session(), None);
+
+    session.open(&mut link, &mut manager).expect("open");
+    assert_eq!(
+        session.current_session(),
+        None,
+        "not yet connection-scoped identity until the handshake is accepted"
+    );
+
+    device_push(&mut link, &device_ack(42), wire_version(), 0);
+    session
+        .pump(&mut link, &mut manager, &mut orchestrator)
+        .expect("pump");
+
+    assert_eq!(manager.state(), ConnectionState::Connected);
+    assert_eq!(session.current_session(), Some(42));
+}
+
+#[test]
+fn current_session_is_cleared_on_a_received_bye() {
+    let (mut link, mut session, mut manager, mut orch) = connect(SendableState::Idle);
+    assert_eq!(manager.state(), ConnectionState::Connected);
+    assert!(session.current_session().is_some());
+
+    device_push(
+        &mut link,
+        &Message::Bye(Bye {
+            reason: ByeReason::Shutdown,
+        }),
+        wire_version(),
+        1,
+    );
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump handles Bye");
+
+    assert_eq!(
+        session.current_session(),
+        None,
+        "a received Bye ends the session's identity"
+    );
+}
+
+#[test]
+fn current_session_is_cleared_when_the_link_fails() {
+    let (_link, mut session, mut manager, mut orch) = connect(SendableState::Idle);
+    assert!(session.current_session().is_some());
+
+    let mut failing_link = AlwaysFailingReadLink;
+    let result = session.pump(&mut failing_link, &mut manager, &mut orch);
+
+    assert!(result.is_err(), "the read failure must surface as an error");
+    assert_eq!(
+        session.current_session(),
+        None,
+        "an I/O failure must not leave a stale session identity behind"
+    );
+}
+
+/// `sent_hello` is not cleared after acceptance (pre-existing Feature 001 behaviour, out of scope
+/// here), so an already-`Connected` session still evaluates a later stray/duplicate `HelloAck`
+/// frame. A frame at an unsupported major is intercepted by `decode_message`'s own gate before it
+/// ever reaches `evaluate_hello_ack` — both check the identical `supported_majors` list — so this
+/// is a frame-level incompatibility, not a `HandshakeOutcome::Incompatible` from the handshake
+/// evaluation. The FSM has no legal `Connected -> Incompatible` transition (only
+/// `Connecting -> Incompatible`), so the manager stays `Connected` and the stray frame is
+/// effectively dropped: the live session identity must survive it.
+///
+/// (`HandshakeOutcome::Incompatible`'s own `current_session = None`, in `handle_message`, is
+/// therefore unreachable through `Session`'s public wire path for any `SessionConfig` — confirmed
+/// empirically while writing this test. It is covered directly, at the unit that decides it, by
+/// `handle_message_clears_current_session_on_incompatible_outcome` in `src/device/session.rs`.)
+#[test]
+fn a_stray_unsupported_major_frame_after_connect_is_dropped_and_session_identity_survives() {
+    let (mut link, mut session, mut manager, mut orch) = connect(SendableState::Idle);
+    assert_eq!(manager.state(), ConnectionState::Connected);
+    let nonce = session
+        .current_session()
+        .expect("a connected session has a current nonce");
+
+    // A stray frame at an unsupported major — `decode_message` rejects it before any handshake
+    // re-evaluation happens.
+    device_push(&mut link, &device_ack(nonce), ProtocolVersion::new(2, 0), 1);
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump survives the frame it cannot decode for this session");
+
+    assert_eq!(
+        manager.state(),
+        ConnectionState::Connected,
+        "no legal Connected -> Incompatible transition exists; the frame is dropped"
+    );
+    assert_eq!(
+        session.current_session(),
+        Some(nonce),
+        "a dropped frame must not disturb the live session identity"
+    );
+}
+
+/// Unlike an unsupported major, a bad nonce is NOT caught by `decode_message` (which only checks
+/// the protocol major) — the frame decodes fine and reaches `evaluate_hello_ack`.
+///
+/// This test previously asserted the opposite of what it asserts now: that a stray bad-nonce
+/// `HelloAck` arriving AFTER the handshake clears the live session. That was the defect, not the
+/// contract. Protocol contract section 8 requires a message invalid for the current phase to be
+/// rejected, and the handshake phase is over once `Connected` is reached — so the ack is
+/// unsolicited and must be ignored, never re-evaluated as a handshake where a nonce mismatch
+/// tears down session identity, capabilities and any open gesture. The `BadNonce` clearing site
+/// itself stays covered by `bad_nonce_fails_the_handshake`, where it is still reachable.
+#[test]
+fn a_stray_hello_ack_while_connected_does_not_tear_down_the_session() {
+    let (mut link, mut session, mut manager, mut orch) = connect(SendableState::Idle);
+    assert_eq!(manager.state(), ConnectionState::Connected);
+    let established = session.current_session().expect("handshake accepted");
+    let caps = session.negotiated_caps();
+    let _ = desktop_drain(&mut link); // clear the connect traffic
+
+    // A stray HelloAck echoing the wrong nonce (it can never match the original Hello's nonce).
+    device_push(&mut link, &device_ack(0xBAD_BAD), wire_version(), 1);
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+
+    assert_eq!(
+        manager.state(),
+        ConnectionState::Connected,
+        "a stray HelloAck must not tear down a healthy session"
+    );
+    assert_eq!(
+        session.current_session(),
+        Some(established),
+        "the live session identity survives an unsolicited ack"
+    );
+    assert_eq!(session.negotiated_caps(), caps, "capabilities survive");
+    assert!(
+        desktop_drain(&mut link).is_empty(),
+        "an unsolicited HelloAck is ignored, not answered"
+    );
+}
+
+// --- capability gating (finding 1, task-11 review round 1): a desktop that never negotiated
+// `PHYSICAL_INPUT_V1` must never execute an `InputEvent` — not queue it, not hand it to
+// `InputIngress`, not reach a backend write. Mirrors the firmware's own receive-side gate on
+// `Presentation` (`proto.rs`).
+
+use kivori_protocol::{ControlId, InputEvent, InputKind};
+
+fn detent_event(session: u32) -> Message {
+    Message::InputEvent(InputEvent {
+        session,
+        gesture_id: 1,
+        control: ControlId::Rotary,
+        kind: InputKind::GestureStarted,
+        device_ms: 0,
+    })
+}
+
+#[test]
+fn input_events_are_dropped_without_a_negotiated_physical_input_capability() {
+    // `connect()` negotiates `Capabilities::NONE` (the device in `device_ack()` advertises none).
+    let (mut link, mut session, mut manager, mut orch) = connect(SendableState::Idle);
+    assert!(
+        !session
+            .negotiated_caps()
+            .contains(Capabilities::PHYSICAL_INPUT_V1),
+        "test setup: PHYSICAL_INPUT_V1 must not be negotiated here"
+    );
+    let nonce = session.current_session().expect("connected session");
+
+    device_push(&mut link, &detent_event(nonce), wire_version(), 1);
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+
+    assert!(
+        session.take_input_events().is_empty(),
+        "an InputEvent must never be queued for execution without a negotiated capability"
+    );
+}
+
+#[test]
+fn input_events_are_accepted_once_physical_input_v1_is_negotiated() {
+    let mut link = FakeLink::default();
+    let mut session = Session::new(SessionConfig::default());
+    let mut manager = ConnectionManager::new();
+    let mut orchestrator = Orchestrator::new();
+
+    session.open(&mut link, &mut manager).expect("open");
+    let nonce = hello_nonce(&desktop_drain(&mut link));
+    device_push(
+        &mut link,
+        &Message::HelloAck(HelloAck {
+            device_caps: Capabilities::PHYSICAL_INPUT_V1,
+            device_id: [0x5A; 16],
+            firmware_version: FirmwareVersion {
+                major: 1,
+                minor: 4,
+                patch: 2,
+            },
+            nonce_echo: nonce,
+        }),
+        wire_version(),
+        0,
+    );
+    session
+        .pump(&mut link, &mut manager, &mut orchestrator)
+        .expect("pump");
+    assert!(session
+        .negotiated_caps()
+        .contains(Capabilities::PHYSICAL_INPUT_V1));
+
+    device_push(&mut link, &detent_event(nonce), wire_version(), 1);
+    session
+        .pump(&mut link, &mut manager, &mut orchestrator)
+        .expect("pump");
+
+    assert_eq!(
+        session.take_input_events(),
+        vec![InputEvent {
+            session: nonce,
+            gesture_id: 1,
+            control: ControlId::Rotary,
+            kind: InputKind::GestureStarted,
+            device_ms: 0,
+        }],
+        "a negotiated capability must let the InputEvent reach execution"
     );
 }

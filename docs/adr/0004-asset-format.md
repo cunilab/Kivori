@@ -15,7 +15,7 @@ byte, even pixel in the low nibble), plus `Static`, `Body`, `Eyes`, and `Mouth` 
 All mascot scenes share matching facial layer geometry and order. The compositor mixes bounded
 state weights before alpha composition, clips to each tile, and blinks around each eye's centre.
 Readers reject v1 blobs; desktop and firmware rebuild their embedded blobs together. USB wire
-messages and protocol versions are unchanged. See [mascot verification](../evidence/mascot-animation.md).
+messages and protocol versions are unchanged. See [mascot verification](../features/003-mascot-animation/evidence/mascot-animation.md).
 
 Principle II ("one canonical visual model") requires that Device Studio and the firmware render from
 the **same** scene definitions, assets, timing, colors, and renderer. Principle XI requires that SVG/PNG

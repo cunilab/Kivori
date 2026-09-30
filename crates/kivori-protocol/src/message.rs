@@ -2,6 +2,8 @@
 //! the `postcard` variant index is the wire tag.
 
 use crate::error::{ByeReason, ErrorCategory};
+use kivori_model::input::Direction;
+use kivori_model::presentation::{PrimaryState, ValueDisplay};
 use kivori_model::{Capabilities, CompanionState, MascotAction, MascotPersonality, SendableState};
 use serde::{Deserialize, Serialize};
 
@@ -145,6 +147,62 @@ pub struct MascotActionApplied {
     pub applied_at_ms: u32,
 }
 
+/// Which physical control produced an event. Extensible; only `Rotary` in Slice 002.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ControlId {
+    /// The rotary encoder knob.
+    Rotary,
+}
+
+/// Semantic input. Raw electrical edges never reach the wire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InputKind {
+    /// A gesture (e.g. a rotation) has begun.
+    GestureStarted,
+    /// One completed, validated logical detent in the given direction.
+    Detent(Direction),
+    /// The gesture has ended.
+    GestureEnded,
+}
+
+/// Device -> desktop physical input.
+///
+/// `session` is the handshake nonce of the session that produced this event; the
+/// desktop rejects any event that does not match its current session.
+/// `device_ms` is carried for the deferred acceleration slice and is unused here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InputEvent {
+    /// The handshake nonce of the session that produced this event.
+    pub session: Nonce,
+    /// Identifies the gesture this event belongs to; stable across a gesture's lifetime.
+    pub gesture_id: u16,
+    /// Which physical control produced this event.
+    pub control: ControlId,
+    /// What kind of input this event represents.
+    pub kind: InputKind,
+    /// Device-local elapsed time (ms) at which this event was produced. Unused in this slice.
+    pub device_ms: u32,
+}
+
+/// Desktop -> device semantic presentation.
+///
+/// `primary` is the underlying truth; `value` is a transient overlay that the
+/// device expires locally after `transient_ms` (0 = persistent), falling back to
+/// `primary`. `revision` is strictly increasing WITHIN a session and resets with it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Presentation {
+    /// The handshake nonce of the session this presentation applies to.
+    pub session: Nonce,
+    /// Strictly increasing within a session; resets with it.
+    pub revision: u32,
+    /// The underlying truth beneath any transient overlay.
+    pub primary: PrimaryState,
+    /// A transient value overlay, if any.
+    pub value: Option<ValueDisplay>,
+    /// How long (ms) the device should show `value` before falling back to `primary`. 0 = persistent.
+    pub transient_ms: u16,
+}
+
 /// The top-level wire message.
 ///
 /// **Append-only**: new variants are added at the end within a major version — the `postcard`
@@ -177,4 +235,8 @@ pub enum Message {
     PlayMascotAction(PlayMascotAction),
     /// Device confirms the reaction's canonical start time.
     MascotActionApplied(MascotActionApplied),
+    /// Tag 13 — device -> desktop physical input (capability `PHYSICAL_INPUT_V1`).
+    InputEvent(InputEvent),
+    /// Tag 14 — desktop -> device semantic presentation (capability `PRESENTATION_V1`).
+    Presentation(Presentation),
 }

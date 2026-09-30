@@ -82,6 +82,18 @@ pub enum ActivityEventKind {
     FirmwareReconnectTimedOut,
     FirmwarePostFlashVerified,
     FirmwarePreparationRejected,
+    /// The OS could not supply a fresh session nonce; this connection attempt was aborted.
+    SessionNonceUnavailable,
+    /// A rotary `InputEvent` arrived outside the current session and was dropped unexecuted.
+    InputStaleSessionRejected,
+    /// A rotary `InputEvent` referenced a gesture never started in this session and was dropped.
+    InputUnstartedGestureRejected,
+    /// A master-volume write was attempted and is known to have failed.
+    VolumeWriteFailed,
+    /// The default audio render endpoint changed; volume was re-read from the new endpoint.
+    AudioEndpointChanged,
+    /// No default audio render endpoint is available any more.
+    AudioEndpointLost,
 }
 
 /// Closed severity vocabulary for native activity.
@@ -314,6 +326,33 @@ impl ActivityEventKind {
                 source: ActivitySource::Firmware,
                 outcome: ActivityOutcome::Rejected,
             },
+            Self::SessionNonceUnavailable => ActivityClassification {
+                severity: ActivitySeverity::Error,
+                source: ActivitySource::Connection,
+                outcome: ActivityOutcome::Failed,
+            },
+            Self::InputStaleSessionRejected | Self::InputUnstartedGestureRejected => {
+                ActivityClassification {
+                    severity: ActivitySeverity::Warning,
+                    source: ActivitySource::Protocol,
+                    outcome: ActivityOutcome::Rejected,
+                }
+            }
+            Self::VolumeWriteFailed => ActivityClassification {
+                severity: ActivitySeverity::Error,
+                source: ActivitySource::Action,
+                outcome: ActivityOutcome::Failed,
+            },
+            Self::AudioEndpointChanged => ActivityClassification {
+                severity: ActivitySeverity::Info,
+                source: ActivitySource::Action,
+                outcome: ActivityOutcome::Observed,
+            },
+            Self::AudioEndpointLost => ActivityClassification {
+                severity: ActivitySeverity::Warning,
+                source: ActivitySource::Action,
+                outcome: ActivityOutcome::Unavailable,
+            },
         }
     }
 }
@@ -365,6 +404,22 @@ pub enum ActivityMetadata {
     DeviceState {
         reported: kivori_model::CompanionState,
     },
+    /// A safe category the desktop itself assigned to a host-side fault (no device code, no raw
+    /// payload).
+    HostDiagnostic {
+        category: kivori_protocol::ErrorCategory,
+    },
+}
+
+/// Maps a session-nonce failure to its safe [`kivori_protocol::ErrorCategory`]. The OS entropy
+/// source is an I/O-class host dependency, so its unavailability is categorized the same as any
+/// other I/O fault (the nonce is a freshness token, not a security credential — this is not a
+/// `Handshake` failure).
+#[must_use]
+pub const fn category_for_nonce_error(
+    _error: &crate::device::nonce::NonceError,
+) -> kivori_protocol::ErrorCategory {
+    kivori_protocol::ErrorCategory::Io
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -755,6 +810,18 @@ fn summary_for(kind: ActivityEventKind, metadata: Option<&ActivityMetadata>) -> 
         (ActivityEventKind::FirmwarePreparationRejected, _) => {
             "Firmware preparation was rejected.".to_string()
         }
+        (ActivityEventKind::SessionNonceUnavailable, _) => {
+            "Session nonce unavailable; connection attempt aborted.".to_string()
+        }
+        (ActivityEventKind::InputStaleSessionRejected, _) => {
+            "Stale-session input rejected.".to_string()
+        }
+        (ActivityEventKind::InputUnstartedGestureRejected, _) => {
+            "Input for an unstarted gesture rejected.".to_string()
+        }
+        (ActivityEventKind::VolumeWriteFailed, _) => "Volume change failed.".to_string(),
+        (ActivityEventKind::AudioEndpointChanged, _) => "Audio output device changed.".to_string(),
+        (ActivityEventKind::AudioEndpointLost, _) => "Audio output device unavailable.".to_string(),
     }
 }
 

@@ -186,3 +186,49 @@ fn gaze_and_wink_can_move_each_eye_independently() {
     assert_ne!(pose.eye_offset_q8, (0, 0));
     assert_ne!(pose.left_eye_scale_y_q8, pose.right_eye_scale_y_q8);
 }
+
+/// PRD §9.5: a personality reaction must never wear a desktop state's face.
+#[test]
+fn no_reaction_face_matches_a_state_face() {
+    let faces = |e: MascotExpression| (e.eye_frame(), e.mouth_frame());
+    let actions = [
+        MascotAction::Greet,
+        MascotAction::Pet,
+        MascotAction::Tickle,
+        MascotAction::Surprise,
+        MascotAction::Comfort,
+    ];
+    for action in actions {
+        let mut animator = MascotAnimator::new(CompanionState::Idle, 0);
+        assert!(animator.trigger_action(action, MascotPersonality::Cozy, 1, 1_000));
+        let face = faces(
+            animator
+                .pose_at(1_000 + action.duration_ms() / 2)
+                .expression,
+        );
+        for state in CompanionState::ALL {
+            assert_ne!(
+                face,
+                faces(MascotExpression::for_state(state)),
+                "{action:?} looks like {state:?}"
+            );
+        }
+    }
+}
+
+/// PRD §9.5: reactions give way to meaningful states.
+#[test]
+fn reactions_are_ignored_over_meaningful_states() {
+    for state in CompanionState::ALL {
+        let mut animator = MascotAnimator::new(state, 0);
+        let played =
+            animator.trigger_action(MascotAction::Greet, MascotPersonality::Playful, 1, 10);
+        assert_eq!(played, state.allows_reaction(), "{state:?}");
+        if !played {
+            assert_eq!(
+                animator.pose_at(500),
+                MascotAnimator::new(state, 0).pose_at(500)
+            );
+        }
+    }
+}

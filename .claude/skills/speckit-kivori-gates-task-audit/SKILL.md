@@ -1,1 +1,0 @@
-../../../.specify/extensions/kivori-gates/.specify-dev/agent-commands/claude/speckit-kivori-gates-task-audit/SKILL.md

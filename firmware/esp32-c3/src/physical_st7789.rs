@@ -16,7 +16,7 @@ use esp_hal::{
     delay::Delay,
     dma::{DmaRxBuf, DmaTxBuf},
     dma_buffers_chunk_size,
-    gpio::{Level, Output, OutputConfig},
+    gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull},
     peripherals::Peripherals,
     spi::master::{Config, Spi},
     time::Rate,
@@ -30,6 +30,7 @@ use mipidsi::{interface::SpiInterface, Builder};
 
 use crate::{
     display::MipidsiSink,
+    physical_rotary::PhysicalRotary,
     profile::physical_st7789 as hw,
     proto::DeviceIdentity,
     render::FRAME_PIXELS,
@@ -64,6 +65,9 @@ const _: () = {
     assert!(hw::RST == 3);
     assert!(hw::BL == 8);
     assert!(hw::CS.is_none());
+    assert!(hw::ROTARY.clk == 4);
+    assert!(hw::ROTARY.dt == 5);
+    assert!(hw::ROTARY.sw == 10);
 };
 
 /// Runs Kivori on the verified physical ESP32-C3 + ST7789 hardware.
@@ -184,6 +188,26 @@ pub fn run_mode(
     let mut display = MipidsiSink::new(display, hw::geometry());
 
     // -------------------------------------------------------------------------
+    // Rotary encoder input
+    //
+    // Wiring specification (unverified on physical hardware; see
+    // `profile::physical_st7789::ROTARY`):
+    //   CLK -> GPIO4
+    //   DT  -> GPIO5
+    //   SW  -> GPIO10
+    //
+    // All three lines are active-low (HW-040 COM to GND), so they are read with
+    // internal pull-ups. `PhysicalRotary` only reads and inverts pin levels; all
+    // conditioning and semantics live above the port.
+    // -------------------------------------------------------------------------
+
+    let rotary_pull = InputConfig::default().with_pull(Pull::Up);
+    let rotary_clk = Input::new(peripherals.GPIO4, rotary_pull);
+    let rotary_dt = Input::new(peripherals.GPIO5, rotary_pull);
+    let rotary_sw = Input::new(peripherals.GPIO10, rotary_pull);
+    let mut rotary = PhysicalRotary::new(rotary_clk, rotary_dt, rotary_sw);
+
+    // -------------------------------------------------------------------------
     // Compiled Kivori assets
     // -------------------------------------------------------------------------
 
@@ -207,7 +231,9 @@ pub fn run_mode(
             patch: 0,
         },
 
-        capabilities: Capabilities::MASCOT_INTERACTION,
+        capabilities: Capabilities::MASCOT_INTERACTION
+            .union(Capabilities::PHYSICAL_INPUT_V1)
+            .union(Capabilities::PRESENTATION_V1),
     };
 
     esp_println::println!("KIVORI runtime starting");
@@ -239,6 +265,7 @@ pub fn run_mode(
         RuntimeConfig::default(),
         &clock,
         &mut transport,
+        &mut rotary,
         &mut display,
         &blob,
         frame_buffer,

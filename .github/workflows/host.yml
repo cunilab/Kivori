@@ -26,6 +26,12 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      - name: Build the Windows Core Audio backend
+        if: runner.os == 'Windows'
+        run: cargo build -p kivori-desktop
+      - name: Volume backend contract suite (fake everywhere; real backend skips without an endpoint)
+        if: runner.os == 'Windows'
+        run: cargo test -p kivori-desktop --test volume_backend_contract -- --nocapture
       - name: Direct-dependency firewall (ADR-0001)
         run: bash scripts/check-crate-boundaries.sh
         shell: bash

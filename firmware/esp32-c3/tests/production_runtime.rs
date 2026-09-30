@@ -11,11 +11,12 @@
 use heapless::Vec as HVec;
 use kivori_asset_compiler::compile_default_blob;
 use kivori_assets::AssetBlob;
-use kivori_firmware::ports::Clock;
+use kivori_firmware::ports::{Clock, InputSource};
 use kivori_firmware::proto::DeviceIdentity;
 use kivori_firmware::render::{TILE_COLS, TILE_COUNT};
 use kivori_firmware::runtime::{Runtime, RuntimeConfig, Tick};
 use kivori_firmware::sim::{CaptureDisplay, SimPipe, VirtualClock};
+use kivori_model::input::InputLevels;
 use kivori_model::{
     Capabilities, CompanionState, MascotAction, MascotPersonality, ProtocolVersion, SendableState,
 };
@@ -63,11 +64,26 @@ fn host_drain(pipe: &mut SimPipe) -> Vec<Message> {
     messages
 }
 
-/// The whole test rig: runtime plus its three ports and the compiled asset blob.
+/// A stub input source: this suite exercises the protocol/lifecycle/render loop, not physical
+/// input, so it always reports no motion (Task 4 wires the port; Task 13 replaces it on device).
+struct NoInput;
+
+impl InputSource for NoInput {
+    fn sample(&mut self) -> InputLevels {
+        InputLevels {
+            a: false,
+            b: false,
+            sw: false,
+        }
+    }
+}
+
+/// The whole test rig: runtime plus its four ports and the compiled asset blob.
 struct Harness {
     runtime: Runtime<'static>,
     clock: VirtualClock,
     pipe: SimPipe,
+    input: NoInput,
     display: Box<CaptureDisplay>,
     blob_bytes: Vec<u8>,
 }
@@ -78,6 +94,7 @@ impl Harness {
             runtime: Runtime::new(identity(), RuntimeConfig::default()),
             clock: VirtualClock::new(),
             pipe: SimPipe::new(),
+            input: NoInput,
             display: Box::new(CaptureDisplay::new()),
             blob_bytes: compile_default_blob(),
         }
@@ -86,8 +103,13 @@ impl Harness {
     /// One production tick at the current virtual time.
     fn step(&mut self) -> Tick {
         let blob = AssetBlob::parse(&self.blob_bytes).expect("valid blob");
-        self.runtime
-            .step(&self.clock, &mut self.pipe, self.display.as_mut(), &blob)
+        self.runtime.step(
+            &self.clock,
+            &mut self.pipe,
+            &mut self.input,
+            self.display.as_mut(),
+            &blob,
+        )
     }
 
     /// Advances the clock past the frame interval and ticks.
@@ -569,4 +591,65 @@ fn emission_order_is_stable() {
 
     // Therefore the scenario order is: lifecycle -> first-frame -> health-report -> unchanged-frame.
     // If a future change moves health off the first tick, this test fails before the simulator does.
+}
+
+/// PRD §9.5: a reaction never masks Busy, and a refused reaction is never acknowledged.
+#[test]
+fn social_action_over_busy_is_refused_unacknowledged_and_draws_nothing() {
+    let mut h = Harness::new();
+    h.step();
+    host_write(
+        &mut h.pipe,
+        &Message::Hello(Hello {
+            desktop_version: FirmwareVersion {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            desktop_caps: Capabilities::MASCOT_INTERACTION,
+            nonce: 1,
+        }),
+        0,
+    );
+    h.tick_next_frame();
+    let _ = host_drain(&mut h.pipe);
+    host_write(
+        &mut h.pipe,
+        &Message::Ready(Ready {
+            negotiated_minor: PROTOCOL_MINOR,
+            negotiated_caps: Capabilities::MASCOT_INTERACTION,
+        }),
+        1,
+    );
+    h.tick_next_frame();
+    host_write(
+        &mut h.pipe,
+        &Message::SetState(SetState {
+            desired: SendableState::Busy,
+            at_ms: None,
+        }),
+        2,
+    );
+    h.tick_next_frame();
+    let _ = host_drain(&mut h.pipe);
+    // Let the Busy transition settle so any later pixel change could only come from the reaction.
+    h.clock.advance(1_000);
+    h.tick_next_frame();
+
+    host_write(
+        &mut h.pipe,
+        &Message::PlayMascotAction(PlayMascotAction {
+            action: MascotAction::Greet,
+            personality: MascotPersonality::Playful,
+            seed: 5,
+        }),
+        3,
+    );
+    h.tick_next_frame();
+    h.tick_next_frame();
+
+    assert_eq!(h.runtime.state(), CompanionState::Busy);
+    assert!(!host_drain(&mut h.pipe)
+        .iter()
+        .any(|m| matches!(m, Message::MascotActionApplied(_))));
 }

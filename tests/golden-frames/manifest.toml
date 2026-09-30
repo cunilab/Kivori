@@ -24,3 +24,46 @@ happy = "0x934B4C317C1604B6"
 busy = "0x7B250F89E9EB9001"
 sleeping = "0x3EA79ECC486418A4"
 offline = "0x520E0C2BC013788A"
+
+# Task 10 — canonical volume overlay (kivori_renderer::overlay::render_volume_overlay), sampled at the
+# (percent, confidence, at_boundary) combinations exercised by tests/overlay_golden.rs.
+[[overlay.frame]]
+percent = 0
+confidence = "confirmed"
+at_boundary = false
+hash = "0xBC2ED144C58185E5"
+[[overlay.frame]]
+percent = 49
+confidence = "confirmed"
+at_boundary = false
+hash = "0xFA46442C70DB3145"
+[[overlay.frame]]
+percent = 50
+confidence = "confirmed"
+at_boundary = false
+hash = "0xD454B4041BAED395"
+[[overlay.frame]]
+percent = 51
+confidence = "confirmed"
+at_boundary = false
+hash = "0xE6C3040C16312CBD"
+[[overlay.frame]]
+percent = 100
+confidence = "confirmed"
+at_boundary = false
+hash = "0x416FA57FDB1E6145"
+[[overlay.frame]]
+percent = 100
+confidence = "confirmed"
+at_boundary = true
+hash = "0xA7059821BF58F325"
+[[overlay.frame]]
+percent = 50
+confidence = "preview"
+at_boundary = false
+hash = "0xEC9B2BEE3F4F44AD"
+[[overlay.frame]]
+percent = 50
+confidence = "unverified"
+at_boundary = false
+hash = "0x0682064E865BB565"

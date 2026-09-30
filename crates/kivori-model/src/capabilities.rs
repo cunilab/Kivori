@@ -1,9 +1,10 @@
 //! Capability bitset for additive, minor-version feature negotiation (data-model §3).
 //!
-//! No concrete capability flags are defined yet — they are introduced with the protocol phase. The
-//! representation is an opaque `u32` bitset; unknown/higher bits are preserved and ignored by older
-//! peers (append-only forward-compatibility). The key negotiation operation is [`Capabilities::
-//! intersection`] (features advertised by both peers).
+//! Concrete capability flags are allocated centrally as associated constants below (see the bit
+//! registry comment in `impl Capabilities`) and never reused once retired. The representation is an
+//! opaque `u32` bitset; unknown/higher bits are preserved and ignored by older peers (append-only
+//! forward-compatibility). The key negotiation operation is [`Capabilities::intersection`] (features
+//! advertised by both peers).
 
 use serde::{Deserialize, Serialize};
 
@@ -14,8 +15,20 @@ pub struct Capabilities(u32);
 impl Capabilities {
     /// The empty capability set.
     pub const NONE: Capabilities = Capabilities(0);
-    /// Device accepts deterministic social mascot actions and returns applied-time acknowledgments.
+    // CAPABILITY BIT REGISTRY — allocate centrally, never reuse a retired bit.
+    //   bit 0  MASCOT_INTERACTION  mascot animation (PR #3)
+    //   bit 1  PHYSICAL_INPUT_V1   Slice 002
+    //   bit 2  PRESENTATION_V1     Slice 002
+
+    /// Bit 0 — device accepts deterministic social mascot actions and returns applied-time
+    /// acknowledgments.
     pub const MASCOT_INTERACTION: Capabilities = Capabilities(1 << 0);
+
+    /// Bit 1 — the device may emit `InputEvent` (Slice 002, rotary input).
+    pub const PHYSICAL_INPUT_V1: Capabilities = Capabilities(1 << 1);
+
+    /// Bit 2 — the device renders semantic `Presentation` (Slice 002).
+    pub const PRESENTATION_V1: Capabilities = Capabilities(1 << 2);
 
     /// Creates a capability set from a raw bitmask.
     #[must_use]

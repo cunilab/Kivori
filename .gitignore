@@ -24,8 +24,8 @@ Thumbs.db
 .idea
 .vscode
 
-# Spec Kit extension catalog cache — network-fetched, regenerated on demand, never source.
-.specify/extensions/.cache/
-
 # Captured application stdout from a validation attempt is a runtime artifact, not evidence.
 docs/evidence/*-app-stdout.log
+
+# Superpowers SDD scratch workspace (ledger, briefs, review packages)
+.superpowers/

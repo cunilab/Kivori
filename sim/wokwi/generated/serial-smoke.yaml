@@ -11,6 +11,6 @@ author: Kivori
 steps:
   - wait-serial: 'KIVORI-EXT READY iface=usb-serial-jtag'
   # ping: heartbeat — expects a Pong echoing the timestamp
-  - write-serial: [4, 86, 75, 1, 2, 1, 2, 1, 2, 3, 8, 6, 146, 33, 67, 131, 91, 219, 0]
+  - write-serial: [4, 86, 75, 1, 2, 2, 2, 1, 2, 3, 8, 6, 146, 33, 134, 191, 214, 226, 0]
   - wait-serial: 'KIVORI-EXT RX kind=Ping'
   - wait-serial: 'KIVORI-EXT TX kind=Pong echo=4242'

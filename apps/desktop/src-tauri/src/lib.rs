@@ -4,12 +4,16 @@
 //! firmware (constitution Principle II). The Tauri command surface, connection manager, and window
 //! lifecycle are added in their feature phases; the binary (`main.rs`) wires them together.
 
+pub mod action;
 pub mod activity;
 pub mod companion;
 pub mod device;
 pub mod firmware;
+pub mod input;
 pub mod ipc;
 pub mod orchestrator;
+pub mod platform;
+pub mod presentation;
 pub mod render;
 pub mod runtime;
 pub mod window_lifecycle;
@@ -89,10 +93,17 @@ pub fn run() {
     builder
         .build(tauri::generate_context!())
         .expect("error while building the Kivori application")
-        .run(|app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
+        .run(|app_handle, event| match event {
+            tauri::RunEvent::ExitRequested { .. } => {
                 use tauri::Manager;
                 app_handle.state::<runtime::state::AppState>().shutdown();
             }
+            // macOS Dock click while the window is hidden (FR-030 re-activate).
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen {
+                has_visible_windows: false,
+                ..
+            } => runtime::lifecycle::show_main(app_handle),
+            _ => {}
         });
 }

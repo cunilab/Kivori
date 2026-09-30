@@ -55,6 +55,9 @@ wokwi-runtime = ["embedded"]
 # DEVELOPMENT ONLY (T102; ADR-0005 §3): raw wire-byte tracing. Compiled out of every release artifact;
 # `scripts/check-release-surface.sh` proves both its absence and, with the feature on, its presence.
 debug-payloads = []
+# DEVELOPMENT ONLY: on-panel detent -> flushed-frame latency readout (Slice 002 checklist row 14).
+# Never in `default` or a release/product profile; flash with `just fw-flash-latency`.
+latency-probe = []
 
 # Path-linked shared crates (single source of truth, no publishing). Declared here to lock the
 # isolated cross-workspace path-linking per ADR-0001; consumed once the runtime lands (Phase 7/8).

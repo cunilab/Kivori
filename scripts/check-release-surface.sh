@@ -65,43 +65,49 @@ FIRMWARE_PRODUCTION_SURFACE=(MipidsiSink PanelGeometry)
 DESKTOP_BIN="target/debug/kivori-desktop"
 FIRMWARE_LIB="firmware/esp32-c3/target/riscv32imc-unknown-none-elf/debug/libkivori_firmware.rlib"
 
-echo "[1/7] desktop, production features (Device Studio + debug-payloads OFF)…"
+echo "[1/8] desktop, production features (Device Studio + debug-payloads OFF)…"
 cargo build -q -p kivori-desktop --no-default-features
 [ -f "$DESKTOP_BIN" ] || { echo "error: $DESKTOP_BIN not found" >&2; exit 2; }
 absent "the production desktop binary" "$DESKTOP_BIN" "${DESKTOP_DEV_SURFACE[@]}"
 
-echo "[2/7] desktop positive control (Device Studio ON)…"
+echo "[2/8] desktop positive control (Device Studio ON)…"
 cargo build -q -p kivori-desktop
 present "the dev desktop binary" "$DESKTOP_BIN" render_preview_frame mirror_state open_preview_stream
 
-echo "[3/7] firmware, production features (host-sim OFF, riscv target)…"
+echo "[3/8] firmware, production features (host-sim OFF, riscv target)…"
 (cd firmware/esp32-c3 && cargo build -q --lib)
 [ -f "$FIRMWARE_LIB" ] || { echo "error: $FIRMWARE_LIB not found" >&2; exit 2; }
 absent "the production firmware library" "$FIRMWARE_LIB" "${FIRMWARE_SIM_SURFACE[@]}"
 present "the production firmware library" "$FIRMWARE_LIB" "${FIRMWARE_PRODUCTION_SURFACE[@]}"
 
-echo "[4/7] firmware positive controls (host-sim ON, then wokwi ON)…"
+echo "[4/8] firmware positive controls (host-sim ON, then wokwi ON)…"
 (cd firmware/esp32-c3 && cargo build -q --lib --features host-sim)
 present "the host-sim firmware library" "$FIRMWARE_LIB" SimPipe CaptureDisplay
 (cd firmware/esp32-c3 && cargo build -q --lib --features wokwi)
 present "the wokwi firmware library" "$FIRMWARE_LIB" LoopbackTransport TileProbe KIVORI-SIM
 
-echo "[5/7] firmware SPI-probe positive control (wokwi-spi ON)…"
+echo "[5/8] firmware SPI-probe positive control (wokwi-spi ON)…"
 (cd firmware/esp32-c3 && cargo build -q --lib --features wokwi-spi)
 present "the wokwi-spi firmware library" "$FIRMWARE_LIB" KIVORI-SPI WokwiSpiPins BusCounters CountedSpi
 # …and the ordinary host-sim configuration must NOT drag the probe in.
 (cd firmware/esp32-c3 && cargo build -q --lib --features host-sim)
 absent "the host-sim firmware library" "$FIRMWARE_LIB" KIVORI-SPI WokwiSpiPins BusCounters
-echo "[6/7] firmware production-runtime positive control (wokwi-runtime ON)…"
+echo "[6/8] firmware production-runtime positive control (wokwi-runtime ON)…"
 (cd firmware/esp32-c3 && cargo build -q --lib --features wokwi-runtime)
 present "the wokwi-runtime firmware library" "$FIRMWARE_LIB" KIVORI-RUN WokwiSpiPins
 
-echo "[7/7] firmware raw-payload gate (T102): absent in production, present with debug-payloads…"
+echo "[7/8] firmware raw-payload gate (T102): absent in production, present with debug-payloads…"
 # The production `embedded` build is what ships; prove the raw path is not in it.
 (cd firmware/esp32-c3 && cargo build -q --lib --features embedded)
 absent "the production embedded firmware library" "$FIRMWARE_LIB" "${FIRMWARE_DEBUG_SURFACE[@]}"
 (cd firmware/esp32-c3 && cargo build -q --lib --features embedded,debug-payloads)
 present "the debug-payloads firmware library" "$FIRMWARE_LIB" "${FIRMWARE_DEBUG_SURFACE[@]}"
+echo "[8/8] firmware latency-probe gate: absent from the product build, present with latency-probe…"
+# `physical-st7789` is the product firmware (`just fw-build`); the probe is a dev-only readout.
+(cd firmware/esp32-c3 && cargo build -q --lib --features physical-st7789)
+absent "the product physical-st7789 firmware library" "$FIRMWARE_LIB" LatencyProbe
+(cd firmware/esp32-c3 && cargo build -q --lib --features physical-st7789,latency-probe)
+present "the latency-probe firmware library" "$FIRMWARE_LIB" LatencyProbe
 # Leave the firmware artifact in its production configuration.
 (cd firmware/esp32-c3 && cargo build -q --lib)
 
@@ -111,5 +117,5 @@ if [ "$fail" -ne 0 ]; then
 fi
 
 echo "Release feature-surface OK: dev-only desktop commands, the raw-payload path, the firmware host-sim"
-echo "adapters, the Wokwi SPI/runtime markers, and the raw-payload dump are all absent from production"
+echo "adapters, the Wokwi SPI/runtime markers, the raw-payload dump, and the latency probe are all absent from production"
 echo "builds, while the T072 display adapter is present (every positive control passed)."

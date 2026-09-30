@@ -19,6 +19,10 @@ pub mod clock;
 pub mod debug_payloads;
 pub mod display;
 pub mod health;
+pub mod input;
+/// Detent -> on-panel latency readout, development-only (Slice 002 checklist row 14).
+#[cfg(feature = "latency-probe")]
+pub mod latency_probe;
 pub mod ports;
 /// Board profiles. The only concrete profile is simulation-only; no physical panel is described anywhere.
 pub mod profile;
@@ -51,5 +55,8 @@ pub mod transport;
 #[cfg(feature = "wokwi-runtime")]
 pub mod wokwi_runtime;
 
+/// Physical HW-040 rotary encoder `InputSource` adapter (Task 13).
+#[cfg(feature = "physical-st7789")]
+pub mod physical_rotary;
 #[cfg(feature = "physical-st7789")]
 pub mod physical_st7789;

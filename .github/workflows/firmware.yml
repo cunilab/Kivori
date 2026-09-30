@@ -24,11 +24,16 @@ jobs:
       # T076: the hardware adapters are built COMPILE-ONLY. No hardware test runs here, and none can —
       # this job has no board and no simulator. Every feature configuration that ships or is gated is
       # compiled, so a broken adapter fails CI instead of surfacing at flash time.
+      # `physical-st7789` is the configuration that actually ships to the device (ST7789 display +
+      # HW-040 rotary adapter) — it must be built here, not just `embedded` (which only reaches
+      # main.rs's bare fallback and compiles neither adapter).
       - name: Build the hardware adapters compile-only (no hardware test)
         working-directory: firmware/esp32-c3
         run: |
           cargo build --release --features embedded
           cargo build --release --features embedded,debug-payloads
+          cargo build --release --features physical-st7789
+          cargo build --release --features physical-st7789,debug-payloads
       - name: Firmware format + clippy (RISC-V, every feature configuration)
         working-directory: firmware/esp32-c3
         run: |
@@ -37,6 +42,8 @@ jobs:
           cargo clippy --lib --features embedded -- -D warnings
           cargo clippy --lib --features wokwi-runtime -- -D warnings
           cargo clippy --lib --features wokwi-spi -- -D warnings
+          cargo clippy --lib --features wokwi-serial -- -D warnings
+          cargo clippy --lib --features physical-st7789 -- -D warnings
 
   host-sim-tests:
     # The hardware-neutral device core is validated on the host (FR-035). The forced RISC-V build

@@ -4,6 +4,7 @@
 //! USB Serial/JTAG, SPI, and a hardware timer; the host [`crate::sim`] adapters implement them in
 //! memory. Nothing above this layer knows which is in use (constraint 4).
 
+use kivori_model::input::InputLevels;
 use kivori_model::{ElapsedMs, Rect, Rgb565};
 
 /// A bounded, non-blocking byte transport (USB Serial/JTAG on device; an in-memory pipe in sim).
@@ -41,4 +42,14 @@ pub trait DisplaySink {
 pub trait Clock {
     /// Milliseconds since boot (monotonic, non-decreasing).
     fn now_ms(&self) -> ElapsedMs;
+}
+
+/// Instantaneous physical input levels.
+///
+/// Sampling and pin mapping live in the adapter; ALL semantics (debounce,
+/// detent qualification, gesture formation) live above this port so they are
+/// provable without hardware.
+pub trait InputSource {
+    /// Read the current levels. MUST NOT block.
+    fn sample(&mut self) -> InputLevels;
 }

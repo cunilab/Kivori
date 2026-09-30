@@ -287,6 +287,12 @@ pub enum ActivityEventTypeDto {
     FirmwareReconnectTimedOut,
     FirmwarePostFlashVerified,
     FirmwarePreparationRejected,
+    SessionNonceUnavailable,
+    InputStaleSessionRejected,
+    InputUnstartedGestureRejected,
+    VolumeWriteFailed,
+    AudioEndpointChanged,
+    AudioEndpointLost,
 }
 
 /// Closed connection-state token serialized in activity metadata.
@@ -502,6 +508,16 @@ fn activity_kind_token(kind: ActivityEventKind) -> ActivityEventTypeDto {
         ActivityEventKind::FirmwarePreparationRejected => {
             ActivityEventTypeDto::FirmwarePreparationRejected
         }
+        ActivityEventKind::SessionNonceUnavailable => ActivityEventTypeDto::SessionNonceUnavailable,
+        ActivityEventKind::InputStaleSessionRejected => {
+            ActivityEventTypeDto::InputStaleSessionRejected
+        }
+        ActivityEventKind::InputUnstartedGestureRejected => {
+            ActivityEventTypeDto::InputUnstartedGestureRejected
+        }
+        ActivityEventKind::VolumeWriteFailed => ActivityEventTypeDto::VolumeWriteFailed,
+        ActivityEventKind::AudioEndpointChanged => ActivityEventTypeDto::AudioEndpointChanged,
+        ActivityEventKind::AudioEndpointLost => ActivityEventTypeDto::AudioEndpointLost,
     }
 }
 
@@ -569,29 +585,10 @@ fn activity_metadata(metadata: &ActivityMetadata) -> ActivityMetadataDto {
             skipped: None,
             reported: None,
         },
-        ActivityMetadata::DeviceDiagnostic { category, code } => ActivityMetadataDto {
-            connection: None,
-            retry_count: 0,
-            elapsed_ms: 0,
-            diagnostic_category: Some(activity_diagnostic_category(*category)),
-            diagnostic_code: Some(*code),
-            firmware_version: None,
-            protocol_version: None,
-            device_id_hash_short: None,
-            capabilities: None,
-            state: None,
-            personality: None,
-            self_play: None,
-            action: None,
-            seed: None,
-            applied_at_ms: None,
-            autonomous: None,
-            protocol_category: None,
-            payload_len: None,
-            sequence: None,
-            skipped: None,
-            reported: None,
-        },
+        ActivityMetadata::DeviceDiagnostic { category, code } => {
+            diagnostic_metadata(*category, Some(*code))
+        }
+        ActivityMetadata::HostDiagnostic { category } => diagnostic_metadata(*category, None),
         ActivityMetadata::Negotiated {
             firmware_major,
             firmware_minor,
@@ -747,6 +744,35 @@ fn activity_metadata(metadata: &ActivityMetadata) -> ActivityMetadataDto {
             skipped: None,
             reported: Some(companion_token(*reported).to_string()),
         },
+    }
+}
+
+fn diagnostic_metadata(
+    category: kivori_protocol::ErrorCategory,
+    code: Option<u16>,
+) -> ActivityMetadataDto {
+    ActivityMetadataDto {
+        connection: None,
+        retry_count: 0,
+        elapsed_ms: 0,
+        diagnostic_category: Some(activity_diagnostic_category(category)),
+        diagnostic_code: code,
+        firmware_version: None,
+        protocol_version: None,
+        device_id_hash_short: None,
+        capabilities: None,
+        state: None,
+        personality: None,
+        self_play: None,
+        action: None,
+        seed: None,
+        applied_at_ms: None,
+        autonomous: None,
+        protocol_category: None,
+        payload_len: None,
+        sequence: None,
+        skipped: None,
+        reported: None,
     }
 }
 

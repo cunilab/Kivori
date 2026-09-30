@@ -68,8 +68,8 @@ fn malformed_postcard_payload_is_rejected() {
 
 #[test]
 fn unknown_message_discriminant_is_rejected() {
-    // Variant index 11 does not exist (Message has 11 variants, indices 0..=10).
-    let frame = frame_with_len_field(1, &[0x0B]);
+    // Variant index 13 does not exist (Message has 13 variants, indices 0..=12).
+    let frame = frame_with_len_field(1, &[0x0D]);
     let packet = cobs(frame.as_slice());
     let mut scratch: Vec<u8, MAX_FRAME> = Vec::new();
     assert_eq!(

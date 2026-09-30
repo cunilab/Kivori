@@ -109,7 +109,13 @@ export type ActivityEventType =
   | 'firmwareReconnectWaiting'
   | 'firmwareReconnectTimedOut'
   | 'firmwarePostFlashVerified'
-  | 'firmwarePreparationRejected';
+  | 'firmwarePreparationRejected'
+  | 'sessionNonceUnavailable'
+  | 'inputStaleSessionRejected'
+  | 'inputUnstartedGestureRejected'
+  | 'volumeWriteFailed'
+  | 'audioEndpointChanged'
+  | 'audioEndpointLost';
 
 export type ActivitySeverity = 'info' | 'warning' | 'error';
 export type ActivitySource = 'connection' | 'action' | 'device' | 'protocol' | 'firmware';

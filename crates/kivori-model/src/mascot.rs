@@ -100,9 +100,9 @@ impl MascotExpression {
     #[must_use]
     pub const fn eye_frame(self) -> u16 {
         match self {
-            Self::Booting | Self::Surprised => 0,
-            Self::Idle | Self::Reassuring => 1,
-            Self::Happy | Self::Delighted | Self::Laughing => 2,
+            Self::Booting => 0,
+            Self::Idle | Self::Reassuring | Self::Delighted | Self::Surprised => 1,
+            Self::Happy | Self::Laughing => 2,
             Self::Busy => 3,
             Self::Sleeping => 4,
             Self::Offline => 5,
@@ -253,13 +253,19 @@ impl MascotAnimator {
     }
 
     /// Starts a social reaction. A new action replaces any earlier reaction immediately.
+    ///
+    /// Reactions give way to meaningful states (PRD §9.5): outside
+    /// [`CompanionState::allows_reaction`] the request is ignored and `false` is returned.
     pub fn trigger_action(
         &mut self,
         action: MascotAction,
         personality: MascotPersonality,
         seed: u32,
         now_ms: ElapsedMs,
-    ) {
+    ) -> bool {
+        if !self.target.allows_reaction() {
+            return false;
+        }
         let from = self.pose_at(now_ms);
         self.action = Some(ActiveAction {
             action,
@@ -268,6 +274,7 @@ impl MascotAnimator {
             started_at: now_ms,
             from,
         });
+        true
     }
 
     /// Resolves the target loop and any in-flight eased transition at `now_ms`.
@@ -305,6 +312,14 @@ impl MascotAnimator {
 }
 
 impl CompanionState {
+    /// Whether a social reaction may play over this state (PRD §9.5). Busy, Booting and Offline are
+    /// meaningful states a reaction must not mask. Sleeping allows the deliberate gentle, sleepy
+    /// response; autonomous self-play is stricter still (see the desktop companion director).
+    #[must_use]
+    pub const fn allows_reaction(self) -> bool {
+        matches!(self, Self::Idle | Self::Happy | Self::Sleeping)
+    }
+
     /// Stable zero-based index used by mascot expression weights.
     #[must_use]
     pub const fn index(self) -> usize {

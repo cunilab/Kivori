@@ -9,6 +9,7 @@ pub mod connection;
 pub mod discovery;
 pub mod fsm;
 pub mod heartbeat;
+pub mod nonce;
 pub mod reconnect;
 pub mod serial;
 pub mod session;

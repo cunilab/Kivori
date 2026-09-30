@@ -9,7 +9,9 @@
 use crate::ports::DisplaySink;
 use kivori_assets::AssetBlob;
 use kivori_framebuffer::{hash_rgb565, TileBand};
+use kivori_model::presentation::ValueDisplay;
 use kivori_model::{CompanionState, ElapsedMs, MascotPose, Rect, Rgb565};
+use kivori_renderer::overlay::render_volume_overlay;
 use kivori_renderer::render_scene;
 
 /// Tile width.
@@ -47,6 +49,8 @@ pub struct TileRenderer<'a> {
     buf: [Rgb565; TILE_PIXELS],
     signatures: [Option<u64>; TILE_COUNT],
     frame_buffer: Option<&'a mut [Rgb565; FRAME_PIXELS]>,
+    #[cfg(feature = "latency-probe")]
+    latency: crate::latency_probe::Readout,
 }
 
 const _: () = assert!(core::mem::size_of::<TileRenderer>() <= 4_096);
@@ -59,6 +63,11 @@ impl<'a> TileRenderer<'a> {
             buf: [Rgb565::from_raw(0); TILE_PIXELS],
             signatures: [None; TILE_COUNT],
             frame_buffer: None,
+            #[cfg(feature = "latency-probe")]
+            latency: crate::latency_probe::Readout {
+                last: None,
+                max: None,
+            },
         }
     }
 
@@ -69,6 +78,12 @@ impl<'a> TileRenderer<'a> {
             frame_buffer: Some(frame_buffer),
             ..Self::new()
         }
+    }
+
+    /// Sets the latency readout composited as the last layer of every following frame.
+    #[cfg(feature = "latency-probe")]
+    pub fn set_latency_readout(&mut self, readout: crate::latency_probe::Readout) {
+        self.latency = readout;
     }
 
     /// Forces every tile to be re-flushed on the next [`Self::render`] (e.g. after a display re-init).
@@ -88,7 +103,25 @@ impl<'a> TileRenderer<'a> {
         elapsed_ms: ElapsedMs,
         sink: &mut S,
     ) -> Result<(), RenderError<S::Error>> {
-        self.render_inner(blob, state, elapsed_ms, None, sink)
+        self.render_with_overlay(blob, state, elapsed_ms, None, sink)
+    }
+
+    /// Renders `state` at `elapsed_ms` from `blob`, compositing `overlay` (if any) as the final
+    /// pass so it is included in the hash that decides which tiles are flushed, then flushes only
+    /// changed tiles to `sink`.
+    ///
+    /// # Errors
+    /// [`RenderError`] if the scene is missing, a tile can't be built, the compositor fails, or the
+    /// sink errors.
+    pub fn render_with_overlay<S: DisplaySink>(
+        &mut self,
+        blob: &AssetBlob,
+        state: CompanionState,
+        elapsed_ms: ElapsedMs,
+        overlay: Option<ValueDisplay>,
+        sink: &mut S,
+    ) -> Result<(), RenderError<S::Error>> {
+        self.render_inner(blob, state, elapsed_ms, None, overlay, sink)
     }
 
     /// Renders a resolved shared pose, preserving transitions across state changes.
@@ -99,7 +132,25 @@ impl<'a> TileRenderer<'a> {
         pose: &MascotPose,
         sink: &mut S,
     ) -> Result<(), RenderError<S::Error>> {
-        self.render_inner(blob, state, 0, Some(pose), sink)
+        self.render_animation_with_overlay(blob, state, pose, None, sink)
+    }
+
+    /// Renders a resolved shared pose, then composites `overlay` (if any) on top of the pose
+    /// before hashing, so only tiles the overlay covers change and no second frame buffer is
+    /// needed.
+    ///
+    /// # Errors
+    /// [`RenderError`] if the scene is missing, a tile can't be built, the compositor fails, or the
+    /// sink errors.
+    pub fn render_animation_with_overlay<S: DisplaySink>(
+        &mut self,
+        blob: &AssetBlob,
+        state: CompanionState,
+        pose: &MascotPose,
+        overlay: Option<ValueDisplay>,
+        sink: &mut S,
+    ) -> Result<(), RenderError<S::Error>> {
+        self.render_inner(blob, state, 0, Some(pose), overlay, sink)
     }
 
     fn render_inner<S: DisplaySink>(
@@ -108,6 +159,7 @@ impl<'a> TileRenderer<'a> {
         state: CompanionState,
         elapsed_ms: ElapsedMs,
         pose: Option<&MascotPose>,
+        overlay: Option<ValueDisplay>,
         sink: &mut S,
     ) -> Result<(), RenderError<S::Error>> {
         let scene = blob.scene(state).ok_or(RenderError::MissingScene)?;
@@ -127,6 +179,17 @@ impl<'a> TileRenderer<'a> {
                 None => render_scene(blob, scene, elapsed_ms, &mut band),
             }
             .map_err(|_| RenderError::Compositor)?;
+            // The overlay is the final layer: after the pose, before the tile hash.
+            if let Some(value) = overlay {
+                render_volume_overlay(
+                    &mut band,
+                    value.current_percent,
+                    value.confidence,
+                    value.at_boundary,
+                );
+            }
+            #[cfg(feature = "latency-probe")]
+            crate::latency_probe::draw(&mut band, self.latency);
             let signature = hash_rgb565(band.pixels());
             prepared_signatures[tile] = signature;
             if !buffered && self.signatures[tile] != Some(signature) {

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<title>Kivori</title>
+<desc>The buddy rising under the detent scale of its knob: control physically, understand visually.</desc>
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#111c30"/><stop offset="1" stop-color="#04070d"/></linearGradient>
+<linearGradient id="blue" x1="0" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#63c7ff"/><stop offset="0.38" stop-color="#098cff"/><stop offset="0.78" stop-color="#0065f5"/><stop offset="1" stop-color="#0342db"/></linearGradient>
+<linearGradient id="lit" gradientUnits="userSpaceOnUse" x1="180" y1="560" x2="560" y2="200"><stop offset="0" stop-color="#0a7cff"/><stop offset="1" stop-color="#8fdcff"/></linearGradient>
+<clipPath id="sq"><rect x="100" y="100" width="824" height="824" rx="186"/></clipPath>
+</defs>
+<rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
+<line x1="193.0" y1="511.2" x2="145.9" y2="489.3" stroke="url(#lit)" stroke-width="30" stroke-linecap="round"/><line x1="247.4" y1="427.9" x2="208.3" y2="393.6" stroke="url(#lit)" stroke-width="30" stroke-linecap="round"/><line x1="322.9" y1="363.1" x2="294.9" y2="319.3" stroke="url(#lit)" stroke-width="30" stroke-linecap="round"/><line x1="413.5" y1="322.1" x2="398.9" y2="272.1" stroke="url(#lit)" stroke-width="30" stroke-linecap="round"/><line x1="512.0" y1="308.0" x2="512.0" y2="256.0" stroke="url(#lit)" stroke-width="30" stroke-linecap="round"/><line x1="610.5" y1="322.1" x2="625.1" y2="272.1" stroke="#24344f" stroke-width="30" stroke-linecap="round"/><line x1="701.1" y1="363.1" x2="729.1" y2="319.3" stroke="#24344f" stroke-width="30" stroke-linecap="round"/><line x1="776.6" y1="427.9" x2="815.7" y2="393.6" stroke="#24344f" stroke-width="30" stroke-linecap="round"/><line x1="831.0" y1="511.2" x2="878.1" y2="489.3" stroke="#24344f" stroke-width="30" stroke-linecap="round"/>
+<g clip-path="url(#sq)"><g transform="translate(146.0 388.5) scale(3.05)">
+<path d="M29 169 C33 122 69 49 118 49 C165 49 202 117 210 169 C212 199 179 207 121 207 C64 207 29 202 29 169Z" fill="url(#blue)"/>
+<path d="M70 88 C74 78 85 69 95 66 C103 63 106 70 100 74 C89 80 82 86 77 94 C73 99 67 96 70 88Z" fill="#fff" opacity="0.92"/>
+<ellipse cx="94" cy="128" rx="12" ry="15" fill="#02060c"/><ellipse cx="146" cy="128" rx="12" ry="15" fill="#02060c"/>
+<circle cx="90" cy="121" r="4.5" fill="#fff"/><circle cx="142" cy="121" r="4.5" fill="#fff"/>
+<path d="M106 151 Q120 163 134 151" fill="none" stroke="#02060c" stroke-width="6.5" stroke-linecap="round"/>
+<ellipse cx="70" cy="150" rx="10" ry="5.5" fill="#ffa1bd"/><ellipse cx="170" cy="150" rx="10" ry="5.5" fill="#ffa1bd"/>
+</g></g>
+</svg>

@@ -33,27 +33,34 @@ build:
 fw-check:
     cd firmware/esp32-c3 && cargo build -p kivori-model -p kivori-protocol -p kivori-framebuffer -p kivori-renderer -p kivori-assets
 
-# The flashable binary needs `--features embedded`: the bin target declares it in `required-features`, so a
-# plain `cargo build --release` silently builds only the library and produces NO binary.
+# The flashable binary needs `--features embedded` at minimum: the bin target declares it in
+# `required-features`, so a plain `cargo build --release` silently builds only the library and
+# produces NO binary. `embedded` alone only selects main.rs's bare fallback mode (clock + serial,
+# no display, no input) — the shipped product firmware needs `physical-st7789` (which enables
+# `embedded` transitively via Cargo.toml), so that is the default here.
 
-# Build the flashable RISC-V firmware binary.
+# Build the flashable RISC-V firmware binary (the physical ST7789 + rotary product runtime).
 fw-build:
-    cd firmware/esp32-c3 && cargo build --release --features embedded
+    cd firmware/esp32-c3 && cargo build --release --features physical-st7789
 
 # Host-side device-core tests (no hardware, no simulator).
 fw-test:
     cd firmware/esp32-c3 && cargo test --features host-sim --target $(rustc -vV | sed -n 's/^host: //p')
 
 # Flashes and monitors via the `espflash` runner in .cargo/config.toml.
-#
-# NOTE: the `embedded` build brings up the clock and USB Serial/JTAG and then deliberately STOPS before the
-# render loop, because no confirmed panel profile exists (controller, pin map, offsets are unmeasured — see
-# docs/validation-checklist.md items 23-25). It will NOT draw scenes. Add a real profile to
-# firmware/esp32-c3/src/profile.rs first; until then use `just sim-test` for end-to-end behaviour.
+# The physical ESP32-C3 + ST7789 profile is verified in docs/validation-checklist.md; simulator profiles
+# remain separate evidence and are not substitutes for physical wiring/controller validation.
+# `--features physical-st7789` is required to select that runtime; `embedded` alone builds only
+# main.rs's bare fallback (no display, no input) and would silently flash non-product firmware.
 
-# Flash + monitor a real board (see the note above: no panel profile yet, so no scenes).
+# Flash + monitor the verified physical board profile (ST7789 + rotary product runtime).
 fw-flash:
-    cd firmware/esp32-c3 && cargo run --release --features embedded
+    cd firmware/esp32-c3 && cargo run --release --features physical-st7789
+
+# DEVELOPMENT ONLY: physical profile plus the on-panel detent -> flush latency readout (Slice 002
+# checklist row 14). Never a product build.
+fw-flash-latency:
+    cd firmware/esp32-c3 && cargo run --release --features physical-st7789,latency-probe
 
 # ---- Wokwi pre-hardware simulation gate (sim/wokwi/README.md) ----
 
@@ -65,7 +72,7 @@ sim-build:
 sim-test: sim-build
     bash scripts/test-wokwi.sh
 
-# Offline checks for the gate's own tooling (no token, no simulator).
+# Offline checks for the simulator's own tooling (no token, no simulator).
 sim-check:
     cargo test -p kivori-wokwi-vectors -p kivori-wokwi-vcd
     bash scripts/test-wokwi-evidence.sh

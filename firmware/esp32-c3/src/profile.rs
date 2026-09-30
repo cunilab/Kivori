@@ -54,9 +54,15 @@ pub mod wokwi {
 }
 
 /// Verified physical ESP32-C3 + ST7789 240x240 hardware profile.
-#[cfg(feature = "physical-st7789")]
+///
+/// Gated on `host-sim` as well as `physical-st7789` so the plain pin-map data (and the
+/// profile-collision test in `tests/rotary_input.rs`) is host-testable. The esp-hal-typed
+/// helpers below (which cannot build for a host target at all) stay gated on
+/// `physical-st7789` alone.
+#[cfg(any(feature = "physical-st7789", feature = "host-sim"))]
 pub mod physical_st7789 {
     use crate::display::PanelGeometry;
+    #[cfg(feature = "physical-st7789")]
     use esp_hal::{gpio::Level, spi::Mode};
     use mipidsi::{
         models::ST7789,
@@ -106,6 +112,7 @@ pub mod physical_st7789 {
     }
 
     /// Verified SPI mode.
+    #[cfg(feature = "physical-st7789")]
     #[must_use]
     pub const fn spi_mode() -> Mode {
         Mode::_3
@@ -136,6 +143,7 @@ pub mod physical_st7789 {
     }
 
     /// Backlight output level.
+    #[cfg(feature = "physical-st7789")]
     #[must_use]
     pub const fn backlight_level() -> Level {
         if BACKLIGHT_ACTIVE_HIGH {
@@ -144,4 +152,49 @@ pub mod physical_st7789 {
             Level::Low
         }
     }
+
+    /// HW-040 rotary encoder pin map.
+    ///
+    /// ISOLATED HERE ON PURPOSE: this is the single place to correct if the wiring changes.
+    /// `sw` is wired and sampled but unused in Slice 002; the push-switch gesture machine is a
+    /// later slice.
+    ///
+    /// **This is a SPECIFICATION, not measured evidence.** Unlike the rest of this module
+    /// (`SCK`/`MOSI`/`DC`/`RST`/`BL`, all verified against a real board), nobody has verified
+    /// continuity of this rotary wiring on physical hardware yet — the maintainer is wiring the
+    /// HW-040 module to these GPIOs, and Task 14 carries the verification row. Do not read this
+    /// struct as confirmed hardware fact.
+    ///
+    /// Pin choices, decided deliberately:
+    ///
+    /// * **CLK = GPIO4, DT = GPIO5, SW = GPIO10.**
+    /// * **GPIO9 was rejected for `sw`** despite being the devkit BOOT button. Holding GPIO9 low
+    ///   at reset enters ROM download mode, and the encoder switch is Kivori's recovery control —
+    ///   a user power-cycling while holding it for recovery would land in the downloader instead
+    ///   of booting Kivori.
+    /// * GPIO2 and GPIO8 are strapping pins and already taken (D/C, backlight); GPIO0/GPIO1 are
+    ///   the XTAL_32K pair and unusable if a 32.768 kHz crystal is fitted; GPIO20/GPIO21 are left
+    ///   free so the UART0 boot console stays available.
+    /// * **Known tradeoff:** only GPIO0-5 can wake the C3 from deep sleep, so `sw` on GPIO10
+    ///   cannot. Kivori's Display Sleep is panel blanking with the MCU awake, so this is outside
+    ///   the MVP contract; if deep-sleep wake is ever wanted, `sw` moves to GPIO1.
+    ///
+    /// The three lines are wired active-low (HW-040 COM to GND) and read with internal pull-ups;
+    /// the adapter in `physical_rotary` inverts them to logical levels.
+    #[derive(Debug, Clone, Copy)]
+    pub struct RotaryProfile {
+        /// Quadrature channel A (CLK) pin.
+        pub clk: u8,
+        /// Quadrature channel B (DT) pin.
+        pub dt: u8,
+        /// Push-switch (SW) pin.
+        pub sw: u8,
+    }
+
+    /// HW-040 wiring specification decided for this board (see [`RotaryProfile`]).
+    pub const ROTARY: RotaryProfile = RotaryProfile {
+        clk: 4,
+        dt: 5,
+        sw: 10,
+    };
 }

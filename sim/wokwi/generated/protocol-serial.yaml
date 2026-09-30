@@ -11,24 +11,24 @@ author: Kivori
 steps:
   - wait-serial: 'KIVORI-EXT READY'
   # hello: handshake open at the current protocol version
-  - write-serial: [4, 86, 75, 1, 2, 1, 1, 1, 2, 10, 1, 2, 1, 1, 1, 10, 248, 172, 209, 145, 1, 214, 200, 174, 233, 0]
+  - write-serial: [4, 86, 75, 1, 2, 2, 1, 1, 2, 10, 1, 2, 1, 1, 1, 10, 248, 172, 209, 145, 1, 36, 124, 102, 192, 0]
   - wait-serial: 'KIVORI-EXT RX kind=Hello'
   - wait-serial: 'KIVORI-EXT TX kind=HelloAck nonce=ok'
   # ping: heartbeat — expects a Pong echoing the timestamp
-  - write-serial: [4, 86, 75, 1, 2, 1, 2, 1, 2, 3, 8, 6, 146, 33, 67, 131, 91, 219, 0]
+  - write-serial: [4, 86, 75, 1, 2, 2, 2, 1, 2, 3, 8, 6, 146, 33, 134, 191, 214, 226, 0]
   - wait-serial: 'KIVORI-EXT RX kind=Ping'
   - wait-serial: 'KIVORI-EXT TX kind=Pong echo=4242'
   # hello_compatible_minor: same major, higher minor — must be accepted (FR-003)
-  - write-serial: [4, 86, 75, 1, 2, 6, 1, 1, 2, 10, 1, 2, 1, 1, 1, 10, 248, 172, 209, 145, 1, 163, 48, 87, 20, 0]
+  - write-serial: [4, 86, 75, 1, 2, 7, 1, 1, 2, 10, 1, 2, 1, 1, 1, 10, 248, 172, 209, 145, 1, 50, 161, 63, 186, 0]
   - wait-serial: 'KIVORI-EXT TX kind=HelloAck nonce=ok'
   # hello_unsupported_capability: host advertises capability bits the device does not implement — intersection must hold
-  - write-serial: [4, 86, 75, 1, 2, 1, 2, 2, 2, 14, 1, 2, 1, 1, 15, 255, 255, 255, 255, 15, 248, 172, 209, 145, 1, 79, 41, 158, 178, 0]
-  - wait-serial: 'KIVORI-EXT CAPS advertised=0x00000001'
+  - write-serial: [4, 86, 75, 1, 2, 2, 2, 2, 2, 14, 1, 2, 1, 1, 15, 255, 255, 255, 255, 15, 248, 172, 209, 145, 1, 133, 100, 55, 29, 0]
+  - wait-serial: 'KIVORI-EXT CAPS advertised=0x00000007'
   # hello_incompatible_major: unsupported major — must be rejected with no valid response (FR-003)
   - write-serial: [4, 86, 75, 2, 1, 1, 1, 1, 2, 10, 1, 2, 1, 1, 1, 10, 248, 172, 209, 145, 1, 37, 132, 64, 173, 0]
   - wait-serial: 'KIVORI-EXT DROP reason=decode'
   # ping_crc_invalid: valid framing, corrupted CRC-32 — must be dropped, never dispatched (SC-008)
-  - write-serial: [4, 86, 75, 1, 2, 1, 2, 4, 2, 3, 8, 6, 146, 33, 228, 172, 99, 118, 0]
+  - write-serial: [4, 86, 75, 1, 2, 2, 2, 4, 2, 3, 8, 6, 146, 33, 33, 144, 238, 79, 0]
   - wait-serial: 'KIVORI-EXT DROP reason=decode'
   # malformed_cobs: invalid COBS run length — must be dropped without panic (SC-008)
   - write-serial: [5, 255, 1, 0]
@@ -37,16 +37,16 @@ steps:
   - write-serial: [3, 86, 75, 0]
   - wait-serial: 'KIVORI-EXT DROP reason=decode'
   # ping: heartbeat — expects a Pong echoing the timestamp
-  - write-serial: [4, 86, 75, 1, 2, 1, 2, 1, 2, 3, 8, 6, 146, 33, 67, 131, 91, 219, 0]
+  - write-serial: [4, 86, 75, 1, 2, 2, 2, 1, 2, 3, 8, 6, 146, 33, 134, 191, 214, 226, 0]
   - wait-serial: 'KIVORI-EXT TX kind=Pong echo=4242'
   # ping_seq_duplicate: same sequence number as the previous frame — side effects must not repeat
-  - write-serial: [4, 86, 75, 1, 2, 1, 2, 1, 2, 3, 8, 6, 146, 33, 67, 131, 91, 219, 0]
+  - write-serial: [4, 86, 75, 1, 2, 2, 2, 1, 2, 3, 8, 6, 146, 33, 134, 191, 214, 226, 0]
   - wait-serial: 'KIVORI-EXT SEQ seq=1 class=duplicate'
   # ping_seq_gap: forward jump in sequence — accepted, classified as a gap
-  - write-serial: [4, 86, 75, 1, 2, 1, 4, 132, 3, 3, 8, 6, 146, 33, 184, 52, 225, 135, 0]
+  - write-serial: [4, 86, 75, 1, 2, 2, 4, 132, 3, 3, 8, 6, 146, 33, 125, 8, 108, 190, 0]
   - wait-serial: 'KIVORI-EXT SEQ seq=900 class=gap'
   # ping_seq_wrap_max: sequence at u16::MAX, before the wraparound
-  - write-serial: [4, 86, 75, 1, 2, 1, 4, 255, 255, 3, 8, 6, 146, 33, 11, 105, 222, 11, 0]
+  - write-serial: [4, 86, 75, 1, 2, 2, 4, 255, 255, 3, 8, 6, 146, 33, 206, 85, 83, 50, 0]
   # ping_seq_wrap_zero: sequence wrapped to 0 — must be treated as the expected next value
-  - write-serial: [4, 86, 75, 1, 2, 1, 1, 1, 2, 3, 8, 6, 146, 33, 247, 136, 44, 125, 0]
+  - write-serial: [4, 86, 75, 1, 2, 2, 1, 1, 2, 3, 8, 6, 146, 33, 50, 180, 161, 68, 0]
   - wait-serial: 'KIVORI-EXT SEQ seq=0 class=ok'

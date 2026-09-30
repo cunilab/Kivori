@@ -22,6 +22,7 @@
 
 use crate::display::init_panel;
 use crate::health::DeviceDiagnostic;
+use crate::ports::InputSource;
 use crate::profile::wokwi::{geometry, WokwiSpiPins};
 use crate::proto::DeviceIdentity;
 use crate::runtime::{run, RuntimeConfig, Tick};
@@ -32,10 +33,27 @@ use esp_hal::gpio::{Level, Output, OutputConfig};
 use esp_hal::peripherals::Peripherals;
 use heapless::String;
 use kivori_assets::AssetBlob;
+use kivori_model::input::InputLevels;
 use kivori_model::{Capabilities, CompanionState};
 use kivori_protocol::FirmwareVersion;
 use mipidsi::interface::SpiInterface;
 use mipidsi::models::ILI9341Rgb565;
+
+/// A constant-level stub: always reports no motion on any channel.
+///
+/// Physical GPIO sampling for the rotary encoder is not implemented until Task 13; until then this
+/// keeps the run loop's `InputSource` port wired with a placeholder that never produces a detent.
+struct NoInput;
+
+impl InputSource for NoInput {
+    fn sample(&mut self) -> InputLevels {
+        InputLevels {
+            a: false,
+            b: false,
+            sw: false,
+        }
+    }
+}
 
 /// Marker prefix every line shares.
 const TAG: &str = "KIVORI-RUN";
@@ -63,7 +81,9 @@ fn identity() -> DeviceIdentity {
             minor: 0,
             patch: 0,
         },
-        capabilities: Capabilities::MASCOT_INTERACTION,
+        capabilities: Capabilities::MASCOT_INTERACTION
+            .union(Capabilities::PHYSICAL_INPUT_V1)
+            .union(Capabilities::PRESENTATION_V1),
     }
 }
 
@@ -215,6 +235,7 @@ pub fn run_mode(peripherals: Peripherals, clock: crate::clock::EspClock, assets:
         RuntimeConfig::default(),
         &clock,
         &mut serial,
+        &mut NoInput,
         &mut display,
         &blob,
         |tick, link| {

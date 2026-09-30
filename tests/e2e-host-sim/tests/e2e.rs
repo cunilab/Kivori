@@ -13,8 +13,10 @@ use kivori_desktop::orchestrator::Orchestrator;
 use kivori_firmware::ports::Transport;
 use kivori_firmware::proto::{DeviceIdentity, Dispatcher};
 use kivori_firmware::state::{DeviceEvent, DeviceState};
+use kivori_model::presentation::{PrimaryState, ValueConfidence, ValueDisplay, ValueKind};
 use kivori_model::{Capabilities, CompanionState, ConnectionState, SendableState};
-use kivori_protocol::FirmwareVersion;
+use kivori_protocol::message::Presentation;
+use kivori_protocol::{ControlId, FirmwareVersion, InputEvent, InputKind};
 
 /// A shared in-memory duplex link: two byte queues between the desktop and the firmware.
 #[derive(Default)]
@@ -71,7 +73,10 @@ fn device_identity() -> DeviceIdentity {
             minor: 0,
             patch: 0,
         },
-        capabilities: Capabilities::NONE,
+        // Matches the real firmware identities (Slice 002): both bits are implemented, so both
+        // are advertised — negotiation (the desktop side's own `SessionConfig::default()`
+        // advertises both too) is what actually gates behaviour.
+        capabilities: Capabilities::PHYSICAL_INPUT_V1.union(Capabilities::PRESENTATION_V1),
     }
 }
 
@@ -240,4 +245,95 @@ fn booting_and_offline_are_never_transmitted() {
         manager.apply(ManagerEvent::PortRemoved);
         device.apply(DeviceEvent::LinkDown);
     }
+}
+
+#[test]
+fn negotiated_capabilities_actually_carry_an_input_event_and_a_presentation() {
+    // Task-11 review round 1, finding 2: capability bits being allocated and gated is worthless
+    // if nothing ever advertises them — this proves the real desktop `Session` and real firmware
+    // `Dispatcher` not only negotiate PHYSICAL_INPUT_V1 + PRESENTATION_V1 with each other, but
+    // that a real InputEvent and a real Presentation actually cross the wire once negotiated.
+    let mut wire = Wire::default();
+    let mut session = Session::new(SessionConfig::default());
+    let mut manager = ConnectionManager::new();
+    let mut orch = Orchestrator::new();
+    let mut dispatcher = Dispatcher::new(device_identity());
+    let mut device = DeviceState::new();
+    device.apply(DeviceEvent::BootComplete);
+
+    session
+        .open(&mut HostEnd(&mut wire), &mut manager)
+        .expect("open");
+    settle(
+        &mut wire,
+        &mut session,
+        &mut manager,
+        &mut orch,
+        &mut dispatcher,
+        &mut device,
+        100,
+    );
+    assert_eq!(manager.state(), ConnectionState::Connected);
+    assert!(
+        session
+            .negotiated_caps()
+            .contains(Capabilities::PHYSICAL_INPUT_V1),
+        "the desktop must negotiate PHYSICAL_INPUT_V1 with a device that advertises it"
+    );
+    assert!(
+        session
+            .negotiated_caps()
+            .contains(Capabilities::PRESENTATION_V1),
+        "the desktop must negotiate PRESENTATION_V1 with a device that advertises it"
+    );
+
+    // Firmware -> desktop: a real InputEvent, gated on the negotiated capability and the accepted
+    // session, must actually reach the desktop's `Session`.
+    let nonce = dispatcher.accepted_session().expect("accepted session");
+    let sent =
+        dispatcher.send_input_event(&mut DeviceEnd(&mut wire), 1, InputKind::GestureStarted, 100);
+    assert!(
+        sent,
+        "a negotiated capability and an accepted session must emit"
+    );
+    session
+        .pump(&mut HostEnd(&mut wire), &mut manager, &mut orch)
+        .expect("desktop pump");
+    assert_eq!(
+        session.take_input_events(),
+        vec![InputEvent {
+            session: nonce,
+            gesture_id: 1,
+            control: ControlId::Rotary,
+            kind: InputKind::GestureStarted,
+            device_ms: 100,
+        }],
+        "the InputEvent must actually reach the desktop's Session"
+    );
+
+    // Desktop -> firmware: a real Presentation, gated on the negotiated capability, must actually
+    // reach the firmware's `Dispatcher`.
+    let presentation = Presentation {
+        session: nonce,
+        revision: 1,
+        primary: PrimaryState::Idle,
+        value: Some(ValueDisplay {
+            kind: ValueKind::Volume,
+            current_percent: 42,
+            confidence: ValueConfidence::Confirmed,
+            at_boundary: false,
+        }),
+        transient_ms: 800,
+    };
+    session
+        .send_presentation(&mut HostEnd(&mut wire), presentation)
+        .expect("send_presentation");
+    dispatcher
+        .poll(&mut DeviceEnd(&mut wire), &mut device, 200)
+        .expect("firmware poll");
+    assert_eq!(
+        dispatcher.take_presentation(),
+        Some(presentation),
+        "the Presentation must actually reach the firmware's Dispatcher"
+    );
 }

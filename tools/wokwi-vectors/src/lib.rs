@@ -263,7 +263,10 @@ pub fn protocol_serial() -> String {
         &mut s,
         &format!(
             "KIVORI-EXT CAPS advertised={:#010x}",
-            Capabilities::MASCOT_INTERACTION.bits()
+            Capabilities::MASCOT_INTERACTION
+                .union(Capabilities::PHYSICAL_INPUT_V1)
+                .union(Capabilities::PRESENTATION_V1)
+                .bits()
         ),
     );
 

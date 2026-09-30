@@ -25,12 +25,29 @@ kivori-framebuffer = { path = "../../../crates/kivori-framebuffer" }
 kivori-renderer = { path = "../../../crates/kivori-renderer" }
 kivori-protocol = { path = "../../../crates/kivori-protocol" }
 heapless = "0.8"  # fixed-capacity buffers for the shared protocol codec (no_std-friendly)
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-single-instance = "2"
 serialport = "4"  # production USB-serial transport (research R-5). Windows/macOS build; Linux CI needs libudev-dev.
 serde = { version = "1", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+getrandom = "0.2"  # session-nonce freshness (Slice 002). NOT a security credential; not a network crate.
+
+[target.'cfg(windows)'.dependencies]
+# Windows Core Audio (WASAPI) master-volume backend (Task 12).
+windows = { version = "0.58", features = [
+  "implement",
+  "Win32_Foundation",
+  "Win32_Media_Audio",
+  "Win32_Media_Audio_Endpoints",
+  "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_UI_Shell_PropertiesSystem",
+] }
+# The `implement` attribute macro (used to author `IAudioEndpointVolumeCallback` /
+# `IMMNotificationClient`) expands to paths rooted at `::windows_core`, so that crate name must
+# also resolve directly, not just via `windows::core`.
+windows-core = "0.58"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

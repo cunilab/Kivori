@@ -9,11 +9,11 @@ vectors:
   - name: hello
     purpose: 'handshake open at the current protocol version'
     len: 26
-    bytes: [4, 86, 75, 1, 2, 1, 1, 1, 2, 10, 1, 2, 1, 1, 1, 10, 248, 172, 209, 145, 1, 214, 200, 174, 233, 0]
+    bytes: [4, 86, 75, 1, 2, 2, 1, 1, 2, 10, 1, 2, 1, 1, 1, 10, 248, 172, 209, 145, 1, 36, 124, 102, 192, 0]
   - name: hello_compatible_minor
     purpose: 'same major, higher minor — must be accepted (FR-003)'
     len: 26
-    bytes: [4, 86, 75, 1, 2, 6, 1, 1, 2, 10, 1, 2, 1, 1, 1, 10, 248, 172, 209, 145, 1, 163, 48, 87, 20, 0]
+    bytes: [4, 86, 75, 1, 2, 7, 1, 1, 2, 10, 1, 2, 1, 1, 1, 10, 248, 172, 209, 145, 1, 50, 161, 63, 186, 0]
   - name: hello_incompatible_major
     purpose: 'unsupported major — must be rejected with no valid response (FR-003)'
     len: 26
@@ -21,39 +21,39 @@ vectors:
   - name: hello_unsupported_capability
     purpose: 'host advertises capability bits the device does not implement — intersection must hold'
     len: 30
-    bytes: [4, 86, 75, 1, 2, 1, 2, 2, 2, 14, 1, 2, 1, 1, 15, 255, 255, 255, 255, 15, 248, 172, 209, 145, 1, 79, 41, 158, 178, 0]
+    bytes: [4, 86, 75, 1, 2, 2, 2, 2, 2, 14, 1, 2, 1, 1, 15, 255, 255, 255, 255, 15, 248, 172, 209, 145, 1, 133, 100, 55, 29, 0]
   - name: ping
     purpose: 'heartbeat — expects a Pong echoing the timestamp'
     len: 19
-    bytes: [4, 86, 75, 1, 2, 1, 2, 1, 2, 3, 8, 6, 146, 33, 67, 131, 91, 219, 0]
+    bytes: [4, 86, 75, 1, 2, 2, 2, 1, 2, 3, 8, 6, 146, 33, 134, 191, 214, 226, 0]
   - name: set_state_idle
     purpose: 'desired state idle — expects StateReport(idle)'
     len: 19
-    bytes: [4, 86, 75, 1, 2, 1, 2, 2, 2, 3, 2, 4, 1, 5, 118, 181, 41, 230, 0]
+    bytes: [4, 86, 75, 1, 2, 2, 2, 2, 2, 3, 2, 4, 1, 5, 179, 137, 164, 223, 0]
   - name: set_state_happy
     purpose: 'desired state happy — expects StateReport(happy)'
     len: 19
-    bytes: [4, 86, 75, 1, 2, 1, 2, 3, 2, 3, 3, 4, 1, 5, 131, 143, 69, 89, 0]
+    bytes: [4, 86, 75, 1, 2, 2, 2, 3, 2, 3, 3, 4, 1, 5, 70, 179, 200, 96, 0]
   - name: ping_seq_duplicate
     purpose: 'same sequence number as the previous frame — side effects must not repeat'
     len: 19
-    bytes: [4, 86, 75, 1, 2, 1, 2, 1, 2, 3, 8, 6, 146, 33, 67, 131, 91, 219, 0]
+    bytes: [4, 86, 75, 1, 2, 2, 2, 1, 2, 3, 8, 6, 146, 33, 134, 191, 214, 226, 0]
   - name: ping_seq_gap
     purpose: 'forward jump in sequence — accepted, classified as a gap'
     len: 19
-    bytes: [4, 86, 75, 1, 2, 1, 4, 132, 3, 3, 8, 6, 146, 33, 184, 52, 225, 135, 0]
+    bytes: [4, 86, 75, 1, 2, 2, 4, 132, 3, 3, 8, 6, 146, 33, 125, 8, 108, 190, 0]
   - name: ping_seq_wrap_max
     purpose: 'sequence at u16::MAX, before the wraparound'
     len: 19
-    bytes: [4, 86, 75, 1, 2, 1, 4, 255, 255, 3, 8, 6, 146, 33, 11, 105, 222, 11, 0]
+    bytes: [4, 86, 75, 1, 2, 2, 4, 255, 255, 3, 8, 6, 146, 33, 206, 85, 83, 50, 0]
   - name: ping_seq_wrap_zero
     purpose: 'sequence wrapped to 0 — must be treated as the expected next value'
     len: 19
-    bytes: [4, 86, 75, 1, 2, 1, 1, 1, 2, 3, 8, 6, 146, 33, 247, 136, 44, 125, 0]
+    bytes: [4, 86, 75, 1, 2, 2, 1, 1, 2, 3, 8, 6, 146, 33, 50, 180, 161, 68, 0]
   - name: ping_crc_invalid
     purpose: 'valid framing, corrupted CRC-32 — must be dropped, never dispatched (SC-008)'
     len: 19
-    bytes: [4, 86, 75, 1, 2, 1, 2, 4, 2, 3, 8, 6, 146, 33, 228, 172, 99, 118, 0]
+    bytes: [4, 86, 75, 1, 2, 2, 2, 4, 2, 3, 8, 6, 146, 33, 33, 144, 238, 79, 0]
   - name: malformed_cobs
     purpose: 'invalid COBS run length — must be dropped without panic (SC-008)'
     len: 4

@@ -45,7 +45,9 @@ fn identity() -> DeviceIdentity {
             minor: 0,
             patch: 0,
         },
-        capabilities: Capabilities::MASCOT_INTERACTION,
+        capabilities: Capabilities::MASCOT_INTERACTION
+            .union(Capabilities::PHYSICAL_INPUT_V1)
+            .union(Capabilities::PRESENTATION_V1),
     }
 }
 
@@ -85,6 +87,8 @@ fn kind_name(message: &Message) -> &'static str {
         Message::Error(_) => "Error",
         Message::PlayMascotAction(_) => "PlayMascotAction",
         Message::MascotActionApplied(_) => "MascotActionApplied",
+        Message::InputEvent(_) => "InputEvent",
+        Message::Presentation(_) => "Presentation",
     }
 }
 

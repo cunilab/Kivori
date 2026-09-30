@@ -11,6 +11,7 @@
 pub mod compositor;
 pub mod frame_select;
 pub mod hash;
+pub mod overlay;
 pub mod render;
 
 pub use compositor::{render_pose, render_scene, RenderError};

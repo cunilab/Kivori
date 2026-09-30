@@ -28,12 +28,19 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Open Kivori", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &quit])?;
+    // macOS: a monochrome template (alpha only) the menu bar tints to match light/dark mode. Other
+    // platforms keep the full-colour app icon, which stays visible on a dark taskbar.
+    // Source artwork: assets/icon/.
+    #[cfg(target_os = "macos")]
+    let icon = tauri::image::Image::from_bytes(include_bytes!("../../icons/tray-template.png"))?;
+    #[cfg(not(target_os = "macos"))]
+    let icon = app
+        .default_window_icon()
+        .expect("bundled default icon")
+        .clone();
     TrayIconBuilder::new()
-        .icon(
-            app.default_window_icon()
-                .expect("bundled default icon")
-                .clone(),
-        )
+        .icon(icon)
+        .icon_as_template(cfg!(target_os = "macos"))
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => show_main(app),
