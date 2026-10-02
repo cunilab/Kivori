@@ -25,10 +25,11 @@ use kivori_model::ElapsedMs;
 use crate::clock::EspClock;
 use crate::ports::{Clock, InputSource};
 
-/// Edge snapshots buffered between two drains. One detent is four edges; 64 covers a fast spin
-/// across the longest render pass. On overflow new edges are dropped: the decoder then sees a
-/// jump it counts as an invalid transition, which loses that detent but never invents one.
-const EDGE_QUEUE: usize = 64;
+/// Edge snapshots buffered between two drains. One detent is four edges; 128 covers a fast spin
+/// plus switch bounce across the longest render pass. On overflow the OLDEST edge is dropped, so
+/// the latest edges (a switch release) keep their timing; the decoder sees a jump it counts as an
+/// invalid transition, which loses that detent but never invents one.
+const EDGE_QUEUE: usize = 128;
 
 type Pins = (Input<'static>, Input<'static>, Input<'static>);
 
@@ -54,9 +55,11 @@ fn on_edge() {
         pins.0.clear_interrupt();
         pins.1.clear_interrupt();
         pins.2.clear_interrupt();
-        let _dropped_when_full = EDGES
-            .borrow_ref_mut(cs)
-            .push_back((read(pins), EspClock::new().now_ms()));
+        let mut edges = EDGES.borrow_ref_mut(cs);
+        if edges.is_full() {
+            let _ = edges.pop_front();
+        }
+        let _ = edges.push_back((read(pins), EspClock::new().now_ms()));
     });
 }
 

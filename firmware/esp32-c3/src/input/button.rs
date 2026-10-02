@@ -193,15 +193,20 @@ impl ButtonGesture {
     /// host session ends, so a half-done Press cannot fire into the next session. Recovery is not
     /// session-scoped and is never reset here: callers only reset when no recovery is running.
     pub fn reset(&mut self) {
-        if !matches!(self.phase, Phase::Down { recovery: true, .. }) {
-            self.phase = if self.stable {
-                Phase::Down {
-                    since_ms: self.raw_since_ms,
-                    eligible: false,
-                    recovery: false,
-                }
-            } else {
-                Phase::Up
+        // A key-down still debouncing at the boundary is ineligible too; the next raw key-down
+        // edge sets this afresh.
+        self.raw_other_open = true;
+        if let Phase::Down {
+            since_ms,
+            recovery: false,
+            ..
+        } = self.phase
+        {
+            // Keep the real key-down time: recovery stays 2 s / 10 s from key-down.
+            self.phase = Phase::Down {
+                since_ms,
+                eligible: false,
+                recovery: false,
             };
         }
     }
@@ -353,6 +358,28 @@ mod tests {
         let _ = b.poll(2_000);
         b.reset();
         assert_eq!(b.poll(10_000), Some(ButtonEvent::Reboot));
+    }
+
+    #[test]
+    fn a_key_down_still_debouncing_at_a_session_boundary_fires_nothing() {
+        let mut b = ButtonGesture::new();
+        let _ = b.update(true, 1_000, false);
+        b.reset();
+        let _ = b.poll(1_030);
+        let _ = b.update(false, 1_200, false);
+        assert_eq!(b.poll(1_230), Some(ButtonEvent::Released));
+    }
+
+    #[test]
+    fn reset_keeps_the_key_down_time_for_recovery() {
+        let mut b = ButtonGesture::new();
+        let _ = b.update(true, 0, false);
+        let _ = b.poll(30);
+        // A contact glitch, then a session boundary.
+        let _ = b.update(false, 1_000, false);
+        let _ = b.update(true, 1_005, false);
+        b.reset();
+        assert_eq!(b.poll(2_000), Some(ButtonEvent::RecoveryStarted));
     }
 
     #[test]

@@ -345,6 +345,8 @@ impl Dispatcher {
                 self.negotiated_caps = Capabilities::NONE;
                 self.hello_caps = Some(hello.desktop_caps);
                 self.pending_action = None;
+                // Whatever is still queued was meant for a session that is over (or for no one).
+                transport.discard_unsent();
                 let ack = HelloAck {
                     device_caps: self.identity.capabilities,
                     device_id: self.identity.device_id,

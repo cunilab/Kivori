@@ -51,6 +51,8 @@ pub mod spi_probe;
 /// Real USB Serial/JTAG transport (also the hardware adapter core, T071).
 #[cfg(any(feature = "wokwi-serial", feature = "embedded"))]
 pub mod transport;
+/// Whole-frame outbound queue (hardware-neutral).
+pub mod tx_buffer;
 /// Wokwi PRODUCTION-RUNTIME mode: constructs ports for the real [`runtime::run`] loop (T074).
 #[cfg(feature = "wokwi-runtime")]
 pub mod wokwi_runtime;

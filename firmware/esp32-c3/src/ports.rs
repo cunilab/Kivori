@@ -24,6 +24,12 @@ pub trait Transport {
     /// # Errors
     /// Returns [`Self::Error`] on an unrecoverable transport failure.
     fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error>;
+
+    /// Drops outbound bytes not yet handed to the hardware, and makes sure a frame cut short on
+    /// the wire is terminated. Called when a new session starts: frames queued for nobody (while
+    /// no host was reading) are stale and must not crowd out the `HelloAck`. Unbuffered
+    /// transports have nothing to drop.
+    fn discard_unsent(&mut self) {}
 }
 
 /// A pixel sink for one tile region (the SPI panel on device; a capture buffer in sim).

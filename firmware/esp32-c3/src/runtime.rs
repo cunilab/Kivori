@@ -49,7 +49,7 @@ use kivori_protocol::{Bye, ByeReason, Feedback, InputKind, Message, Nonce, Prese
 pub const GESTURE_END_MS: u32 = 250;
 
 /// Input snapshots processed per tick: the physical edge queue plus the closing current sample.
-const INPUT_SAMPLES: usize = 65;
+const INPUT_SAMPLES: usize = 129;
 
 /// How far the keycap sinks while the switch is held: the device's own instant acknowledgement,
 /// shallower than Happy's 16 px press so it never reads as that state (Q8 pixels).
@@ -483,24 +483,24 @@ impl<'a> Runtime<'a> {
         // 3. Physical input: sample once per tick, turn validated detents into gestures, and emit
         //    semantic `InputEvent`s. `send_input_event` itself gates on capability/session, so this
         //    stays silent until the desktop has negotiated `PHYSICAL_INPUT_V1`.
-        //    The idle boundary is closed first: after a stall, a detent this tick opens a new
-        //    gesture instead of extending one that already went quiet.
-        if let Some(RotaryEvent::GestureEnded { gesture_id }) = self.gesture.poll(now) {
-            self.dispatcher
-                .send_input_event(transport, gesture_id, InputKind::GestureEnded, now);
-        }
+        //    Each snapshot first closes the idle boundary at its own capture time, so a loop that
+        //    got back late neither splits a gesture whose detents were inside the window nor
+        //    extends one that had already gone quiet; the boundary is closed at `now` last.
         let mut samples = heapless::Vec::<(InputLevels, ElapsedMs), INPUT_SAMPLES>::new();
         input.drain(now, &mut |levels, at_ms| {
-            // Overflow keeps the newest levels: the decoder counts the gap as one invalid
-            // transition, which can lose a detent but never invents one.
+            // Overflow drops the OLDEST levels, so the latest edges (a switch release) keep their
+            // timing; the decoder counts the gap as one invalid transition, which can lose a
+            // detent but never invents one.
             if samples.is_full() {
-                samples.pop();
+                samples.remove(0);
             }
             let _ = samples.push((levels, at_ms));
         });
         for (levels, at_ms) in samples {
+            self.close_idle_gesture(transport, at_ms);
             self.on_levels(transport, levels, at_ms);
         }
+        self.close_idle_gesture(transport, now);
 
         // Resolve changes immediately after protocol handling. Reporting remains semantic and does
         // not wait for the visual transition. Pixel hashes still detect which bands changed.
@@ -521,8 +521,8 @@ impl<'a> Runtime<'a> {
             self.on_button(transport, event, now);
         }
         let redraw = core::mem::take(&mut self.redraw);
-        if now >= self.next_frame_ms || presentation_applied || redraw {
-            if now >= self.next_frame_ms {
+        if reached(now, self.next_frame_ms) || presentation_applied || redraw {
+            if reached(now, self.next_frame_ms) {
                 self.next_frame_ms =
                     next_frame_deadline(self.next_frame_ms, now, self.config.frame_interval_ms);
             }
@@ -581,8 +581,8 @@ impl<'a> Runtime<'a> {
         }
 
         // 6. Heartbeat health on a fixed cadence.
-        if now >= self.next_health_ms {
-            self.next_health_ms = now.saturating_add(self.config.health_interval_ms);
+        if reached(now, self.next_health_ms) {
+            self.next_health_ms = now.wrapping_add(self.config.health_interval_ms);
             let message = Message::Health(build_health(free_bytes()));
             if self.dispatcher.emit(transport, &message).is_ok() {
                 tick.health_sent = true;
@@ -598,6 +598,14 @@ impl<'a> Runtime<'a> {
         tick.pongs = self.dispatcher.pongs();
         tick.state_reports = self.dispatcher.state_reports();
         tick
+    }
+
+    /// Ends the open rotary gesture if its inactivity window has passed by `at_ms`.
+    fn close_idle_gesture<T: Transport>(&mut self, transport: &mut T, at_ms: ElapsedMs) {
+        if let Some(RotaryEvent::GestureEnded { gesture_id }) = self.gesture.poll(at_ms) {
+            self.dispatcher
+                .send_input_event(transport, gesture_id, InputKind::GestureEnded, at_ms);
+        }
     }
 
     /// Decodes one level snapshot captured at `at_ms` and emits the semantic events it completes.
@@ -622,7 +630,9 @@ impl<'a> Runtime<'a> {
         let Some(direction) = self.decoder.update(levels.a, levels.b) else {
             return;
         };
-        if self.button.is_down() {
+        // The raw level counts too: a knob wobbles as it is pressed, and a detent inside the
+        // switch's debounce window must not change the volume either.
+        if levels.sw || self.button.is_down() {
             return;
         }
         let (started, detent) = self.gesture.on_detent(direction, at_ms);
@@ -686,12 +696,14 @@ fn next_frame_deadline(
     interval_ms: ElapsedMs,
 ) -> ElapsedMs {
     let interval_ms = interval_ms.max(1);
-    let elapsed_intervals = now_ms.saturating_sub(previous_deadline_ms) / interval_ms;
-    previous_deadline_ms.saturating_add(
-        elapsed_intervals
-            .saturating_add(1)
-            .saturating_mul(interval_ms),
-    )
+    let elapsed_intervals = now_ms.wrapping_sub(previous_deadline_ms) / interval_ms;
+    previous_deadline_ms.wrapping_add(elapsed_intervals.wrapping_add(1).wrapping_mul(interval_ms))
+}
+
+/// `now` is at or past `deadline` on the wrapping millisecond clock (deadlines are always less
+/// than ~24 days ahead, so the signed difference is exact).
+const fn reached(now: ElapsedMs, deadline: ElapsedMs) -> bool {
+    now.wrapping_sub(deadline) as i32 >= 0
 }
 
 /// Free SRAM in bytes.
