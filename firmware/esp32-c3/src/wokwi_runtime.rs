@@ -83,7 +83,10 @@ fn identity() -> DeviceIdentity {
         },
         capabilities: Capabilities::MASCOT_INTERACTION
             .union(Capabilities::PHYSICAL_INPUT_V1)
-            .union(Capabilities::PRESENTATION_V1),
+            .union(Capabilities::PRESENTATION_V1)
+            .union(Capabilities::BUTTON_INPUT_V1)
+            .union(Capabilities::DESK_STATUS_V1)
+            .union(Capabilities::ACTION_FEEDBACK_V1),
     }
 }
 

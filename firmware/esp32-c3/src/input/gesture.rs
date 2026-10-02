@@ -112,6 +112,12 @@ impl RotaryGesture {
         None
     }
 
+    /// A gesture is open (a detent arrived inside the inactivity window).
+    #[must_use]
+    pub const fn is_open(&self) -> bool {
+        self.open.is_some()
+    }
+
     /// Drops any open gesture without emitting `GestureEnded`, and restarts
     /// gesture numbering.
     ///
