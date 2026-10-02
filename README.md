@@ -1,6 +1,6 @@
 # Kivori
 
-Kivori is a physical desktop companion that lets people control their computer through tactile input while representing important desktop state on a dedicated display.
+Kivori is a programmable desk controller with a buddy and a PC monitor: control the computer through a physical knob and button, and see important desktop and system state on a dedicated display.
 
 > **Product thesis:** Control the desktop physically. Understand the desktop visually.
 
@@ -12,7 +12,7 @@ Kivori is a physical desktop companion that lets people control their computer t
 
 **Feature 003 — Mascot animation and activity log** ([PR #3](https://github.com/Vellixia/Kivori/pull/3), merged). Expressive, interactive mascot shared by Device Studio and the device, social reactions over the wire (`MASCOT_INTERACTION`), bundled firmware flashing from Device Studio, and a typed session-only activity log. Manual on-device check outstanding.
 
-The product contract extends beyond these. Product behavior is defined by the PRD and User Story Contract. Technical research records possibilities and uncertainties; accepted durable technical choices belong in ADRs.
+Next: finish the M0 hardware sanity checks, then M1 (button, actions, monitoring) on the way to a Windows paid beta; see [`docs/roadmap.md`](docs/roadmap.md). Product behavior is defined in [`docs/product.md`](docs/product.md); durable technical choices are the ADRs in [`docs/architecture.md`](docs/architecture.md).
 
 ## Hardware
 
@@ -38,7 +38,7 @@ Encoder COM to **GND**, VCC to **3V3**. **Not 5V — ESP32-C3 GPIOs are not 5 V 
 
 **GPIO9 is deliberately avoided for the switch**, even though it is the BOOT button on most devkits. Holding GPIO9 low at reset enters the ROM download mode, and the encoder switch is Kivori's recovery control — a user power-cycling while holding it for recovery would land in the downloader instead of booting Kivori.
 
-**The display pins are measured evidence; the encoder pins are not.** The display profile was physically verified on 2026-08-11 and is recorded in the Feature 001 validation checklist. The encoder pin map is a *specification* wired to on request, pending physical confirmation — row 15 of the Slice 002 checklist. Do not treat the two as equally settled.
+**The display pins are measured evidence; the encoder pins are not.** The display profile was physically verified on 2026-08-11 and is recorded in [`docs/validation.md`](docs/validation.md) (rows 1.9, 1.24, 1.25). The encoder pin map is a *specification* wired to on request, pending physical confirmation — row 3.15 of the same checklist. Do not treat the two as equally settled.
 
 Both live in one place, [`firmware/esp32-c3/src/profile.rs`](firmware/esp32-c3/src/profile.rs), so a rewire is a single constant change.
 
@@ -82,92 +82,35 @@ just golden                    # deterministic rendering, frame-hash goldens
 just sim-test                  # Wokwi scenarios (needs a token)
 ```
 
-Host-sim, Wokwi simulation, and physical hardware are **separate classes of evidence** in this project, and simulation never gets promoted to physical proof. See any feature's validation checklist for how results are recorded.
+Host-sim, Wokwi simulation, and physical hardware are **separate classes of evidence** in this project, and simulation never gets promoted to physical proof. Hardware results are recorded in [`docs/validation.md`](docs/validation.md).
 
-## Documentation map
+## Documentation
 
-| Need | Source |
+Four files, one topic each:
+
+| File | What it answers |
 |---|---|
-| Product goals, scope, and acceptance gates | [`docs/product/prd.md`](docs/product/prd.md) |
-| Build order, phases and checklists | [`docs/roadmap.md`](docs/roadmap.md) |
-| Exact user-visible behavior | [`docs/product/user-story-contract.md`](docs/product/user-story-contract.md) |
-| Engineering invariants and decision discipline | [`docs/engineering-principles.md`](docs/engineering-principles.md) |
-| Cross-platform technical research | [`docs/research/technical-research.md`](docs/research/technical-research.md) |
-| Accepted durable architecture decisions | [`docs/adr/`](docs/adr/) |
-| Feature 001 requirements, implementation record, contracts, and evidence | [`docs/features/001-device-connection-foundation/`](docs/features/001-device-connection-foundation/) |
-| Feature 001 closure status | [`docs/features/001-device-connection-foundation/closure-status.md`](docs/features/001-device-connection-foundation/closure-status.md) |
-| Feature 001 validation ledger | [`docs/features/001-device-connection-foundation/validation-checklist.md`](docs/features/001-device-connection-foundation/validation-checklist.md) |
-| Wire protocol contract (framing, messages, capabilities, session identity) | [`docs/features/001-device-connection-foundation/contracts/protocol.md`](docs/features/001-device-connection-foundation/contracts/protocol.md) |
-| Native core ↔ webview IPC contract | [`docs/features/001-device-connection-foundation/contracts/ipc.md`](docs/features/001-device-connection-foundation/contracts/ipc.md) |
-| Slice 002 rotary volume control — records and architecture | [`docs/features/002-rotary-volume-control/`](docs/features/002-rotary-volume-control/) |
-| Slice 002 physical validation ledger (**15 rows, all outstanding**) | [`docs/features/002-rotary-volume-control/validation-checklist.md`](docs/features/002-rotary-volume-control/validation-checklist.md) |
-| Feature 003 mascot animation — record and evidence | [`docs/features/003-mascot-animation/`](docs/features/003-mascot-animation/) |
-| Typed session activity log (the only runtime log) | [`docs/activity-log.md`](docs/activity-log.md) |
-| Flashing bundled firmware from Device Studio | [`docs/firmware-update.md`](docs/firmware-update.md) |
-| Superpowers design records | [`docs/superpowers/specs/`](docs/superpowers/specs/) |
-| Superpowers implementation plans | [`docs/superpowers/plans/`](docs/superpowers/plans/) |
-| Wokwi simulation | [`sim/wokwi/README.md`](sim/wokwi/README.md) |
+| [`docs/product.md`](docs/product.md) | What Kivori must do: scope, behavior rules, numbered invariants, acceptance gates |
+| [`docs/architecture.md`](docs/architecture.md) | How it works: components, wire protocol, IPC, rendering, rotary loop, decisions, principles |
+| [`docs/roadmap.md`](docs/roadmap.md) | What gets built next, milestone by milestone (M0 to paid beta to v1) |
+| [`docs/validation.md`](docs/validation.md) | The hardware checklist and how to run a validation session |
 
-## Document authority
-
-When documents disagree, use this hierarchy:
-
-1. **PRD + User Story Contract** — product behavior and user guarantees.
-2. **Engineering Principles** — implementation invariants and development discipline.
-3. **ADRs** — durable technical decisions that have been explicitly accepted.
-4. **Technical Research** — researched suggestions, alternatives, caveats, and required validation; intentionally challengeable.
-5. **Feature records** — requirements, architecture, validation, contracts, and evidence for a particular implemented slice.
-6. **Superpowers specs/plans** — design and execution artifacts for individual changes.
-
-## Development workflow
-
-Kivori uses **Superpowers** as the active workflow for new engineering work. Spec Kit is retired.
-
-```text
-problem / idea
-    ↓
-brainstorm + research
-    ↓
-approved design (docs/superpowers/specs/)
-    ↓
-implementation plan (docs/superpowers/plans/)
-    ↓
-implementation + tests
-    ↓
-verification / review
-    ↓
-ADR when a durable architecture choice is accepted
-```
-
-Research recommendations are not mandates. If implementation evidence disproves a recommendation, update the research or ADR while preserving the product contract.
+Wokwi simulation setup lives in [`sim/wokwi/README.md`](sim/wokwi/README.md). If the docs disagree,
+`product.md` wins on behavior and the code wins on facts. Older plans, specs and research are in Git
+history.
 
 ## Repository layout
 
 ```text
 Kivori/
-├── README.md
-├── docs/
-│   ├── product/
-│   │   ├── prd.md
-│   │   └── user-story-contract.md
-│   ├── engineering-principles.md
-│   ├── research/
-│   │   └── technical-research.md
-│   ├── adr/
-│   ├── features/
-│   │   └── 001-device-connection-foundation/
-│   └── superpowers/
-│       ├── specs/
-│       └── plans/
-├── apps/
-├── crates/
-├── firmware/
-├── sim/
-├── tests/
-└── tools/
+├── docs/        product, architecture, roadmap, validation
+├── apps/        Tauri desktop app (native core + Device Studio webview)
+├── crates/      shared no_std crates: model, protocol, renderer, assets, framebuffer
+├── firmware/    ESP32-C3 firmware
+├── sim/         Wokwi simulation
+├── tests/       golden frames and cross-crate tests
+└── tools/       asset compiler and generators
 ```
-
-Feature records contain durable project knowledge, not workflow scaffolding. The retired Feature 001 Spec Kit `plan.md`, `tasks.md`, and requirement-writing checklist remain available in Git history if historical investigation is needed.
 
 ## Common commands
 
@@ -198,4 +141,4 @@ bash scripts/check-offline-deps.sh      # no first-party crate pulls a network c
 
 `check-release-surface.sh` compiles the shared crates for the device target on purpose, including a positive control that proves the absence checks are not vacuous. It is the one gate most likely to catch a change that every test suite still passes.
 
-See [`docs/features/001-device-connection-foundation/quickstart.md`](docs/features/001-device-connection-foundation/quickstart.md) and [`sim/wokwi/README.md`](sim/wokwi/README.md) for environment-specific setup and validation detail.
+See [`docs/validation.md`](docs/validation.md) and [`sim/wokwi/README.md`](sim/wokwi/README.md) for hardware and simulator setup.

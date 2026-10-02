@@ -13,7 +13,7 @@ pub enum ActionId {
 
 /// Typed execution outcome.
 ///
-/// Execution MUST NOT collapse into `bool success` (user-story-contract US2).
+/// Execution MUST NOT collapse into `bool success` (product US2).
 /// Slice 002 produces StateConfirmed, TriggeredUnverified, and Failed; the other
 /// arms exist because later slices produce them and the distinction is contractual.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,7 +28,7 @@ pub enum Outcome {
 /// The entire Slice 002 binding table: one Global bidirectional rotary binding.
 ///
 /// A bidirectional `Rotate` binding owns BOTH directions as one logical control
-/// (user-story-contract invariant 54).
+/// (product invariant 54).
 pub const fn resolve_binding(control: ControlId) -> Option<ActionId> {
     match control {
         ControlId::Rotary => Some(ActionId::MasterVolume),

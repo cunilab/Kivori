@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Frontend offline-asset guard (FR-029, SC-006; docs/offline-boundary.md).
+// Frontend offline-asset guard (offline-first rule; docs/architecture.md).
 //
 // Fails if the desktop frontend references any remote URL (CDN script/style/font/image, or any
 // http(s) origin other than the local dev server). All assets must be bundled locally so the app

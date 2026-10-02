@@ -3,7 +3,7 @@
 //! While a gesture is open the local target owns the display (Preview). External
 //! changes are recorded but never rendered over an active gesture. On gesture end
 //! the value reconciles to what the backend reports (Confirmed) — desktop truth
-//! wins (user-story-contract invariants 1 and 30, US3, US4).
+//! wins (product invariants 1 and 30, US3, US4).
 
 use super::volume::apply_step;
 use super::{execute_volume, Outcome};
@@ -19,7 +19,7 @@ pub struct ValueUpdate {
     /// The action was attempted and is known to have failed.
     ///
     /// Known failure, known success and unknown outcome MUST stay distinct
-    /// (user-story-contract invariant 4), so this is carried out of `GestureValue`
+    /// (product invariant 4), so this is carried out of `GestureValue`
     /// separately from `confidence` — `Unverified` means "we could not observe the
     /// result", never "it did not happen". When set, `percent` is the last value the
     /// desktop actually knows about and MUST NOT be displayed as a volume: the

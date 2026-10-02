@@ -6,7 +6,7 @@ anyone flashes a board.
 
 > **Simulation does not replace physical validation.** A green Wokwi run says the firmware's logic
 > executes correctly on a simulated RISC-V core. It says nothing about whether the product works on real
-> hardware. The physical checks in [`docs/validation-checklist.md`](../../docs/validation-checklist.md)
+> hardware. The physical checks in [`docs/validation.md`](../../docs/validation.md)
 > remain mandatory and unchecked until someone runs them on a device.
 
 ## Four modes, four artifacts
@@ -212,7 +212,7 @@ host tests (primary)        cargo test --workspace, firmware --features host-sim
 Wokwi simulation (this)     embedded runtime + protocol/lifecycle/render on a simulated C3
         │
         ▼
-physical hardware (final)   docs/validation-checklist.md — still required, still unchecked
+physical hardware (final)   docs/validation.md — still required, still unchecked
 ```
 
 Simulation may fail a change that host tests pass (e.g. a real linker/runtime problem), which is exactly

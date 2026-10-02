@@ -1,4 +1,4 @@
-//! The device-side protocol dispatcher (contracts/protocol.md §4/§6; FR-002).
+//! The device-side protocol dispatcher (docs/architecture.md, wire protocol; FR-002).
 //!
 //! Reads framed messages off a [`Transport`], applies the sequence policy, answers the handshake and
 //! heartbeat, applies `SetState` to the [`DeviceState`], and emits `StateReport` on change. Malformed
@@ -342,7 +342,7 @@ impl Dispatcher {
                 self.send(transport, &Message::Pong(build_pong(ping.t_ms, now_ms)))?;
                 self.pongs = self.pongs.saturating_add(1);
             }
-            // Acknowledge only a reaction that will actually play (PRD §9.5): over Busy, Booting or
+            // Acknowledge only a reaction that will actually play (docs/product.md, display and buddy): over Busy, Booting or
             // Offline the request is dropped unacknowledged, so the desktop never believes it ran.
             Message::PlayMascotAction(action)
                 if self

@@ -24,8 +24,5 @@ Thumbs.db
 .idea
 .vscode
 
-# Captured application stdout from a validation attempt is a runtime artifact, not evidence.
-docs/evidence/*-app-stdout.log
-
 # Superpowers SDD scratch workspace (ledger, briefs, review packages)
 .superpowers/

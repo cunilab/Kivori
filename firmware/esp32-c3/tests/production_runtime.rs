@@ -593,7 +593,7 @@ fn emission_order_is_stable() {
     // If a future change moves health off the first tick, this test fails before the simulator does.
 }
 
-/// PRD §9.5: a reaction never masks Busy, and a refused reaction is never acknowledged.
+/// docs/product.md, display and buddy: a reaction never masks Busy, and a refused reaction is never acknowledged.
 #[test]
 fn social_action_over_busy_is_refused_unacknowledged_and_draws_nothing() {
     let mut h = Harness::new();

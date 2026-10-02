@@ -1,4 +1,4 @@
-//! Heartbeat and safe diagnostics (contracts/protocol.md §7; FR-031/032; ADR-0005).
+//! Heartbeat and safe diagnostics (docs/architecture.md, wire protocol; FR-031/032; ADR-0005).
 //!
 //! `Pong` echoes the desktop's ping timestamp and reports uptime; `Health` carries only free SRAM; and
 //! [`DeviceDiagnostic`] is **the safe-category allowlist made a type** — the device mirror of the desktop's

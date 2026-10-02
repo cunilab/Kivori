@@ -1,4 +1,4 @@
-# Root Cargo workspace — HOST targets only (see docs/adr/0001-two-workspace-cargo-split.md).
+# Root Cargo workspace — HOST targets only (see ADR-0001 in docs/architecture.md).
 # The ESP32-C3 firmware lives in its OWN workspace at firmware/esp32-c3/ (feature-unification firewall).
 [workspace]
 resolver = "2"

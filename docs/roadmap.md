@@ -1,165 +1,136 @@
 # Kivori Roadmap
 
-The path from today's code to the product in the [PRD](./product/prd.md). Each phase delivers
-something usable and ends with a checklist. The PRD says what Kivori must be; this file says the order
-it is built in.
+The order Kivori is built in. What it must be is in [product.md](./product.md); how it works is in
+[architecture.md](./architecture.md); hardware checks are in [validation.md](./validation.md).
 
-**Target for v1:** the maintainer uses Kivori every workday, on both Windows and macOS (PRD §2.1).
+**Direction:** a programmable desktop controller, a desk buddy and a PC monitor, in that order of
+pillars: **control, buddy, monitoring.** Next work must serve at least one of them.
+
+**Sequence:** working foundation → useful device → configurable device → paid beta → customer
+feedback → v1 investment. The aim is to learn whether people pay for Kivori before building every
+long-term concern. Engineering rigor stays; only the order changes.
+
+**Beta platform:** Windows is supported. macOS is later or experimental. Linux is later.
 
 ## Rules
 
-1. **A phase is closed only when every checkbox is ticked.** Physical validation cannot be replaced by
-   simulation or host tests. Write the evidence (date, measurement) in that phase's validation
-   checklist.
-2. **Don't start the next phase while the current one still has open physical-validation rows.**
-   Software can run ahead, but it doesn't count as done.
-3. **Each phase must keep every [PRD acceptance gate](./product/prd.md#18-product-acceptance-gates)
-   intact.** Tick the gates that apply in the phase's checklist.
-4. **Both OSes ship together.** A desktop capability is not done until it works on Windows *and*
-   macOS, or the PRD explicitly marks it as unavailable on one of them.
-5. **Keep scope small.** Anything not listed goes to [Later](#later) until a phase needs it.
-
-Open physical rows for Phases 1–3 are walked in one sitting via [`validation-session.md`](./validation-session.md).
-
-Every phase checklist has the same five parts: **Build**, **Automated**, **Physical**,
-**PRD gates**, **Docs**.
+1. A milestone is done only when every box is ticked, including its hardware rows in
+   [validation.md](./validation.md). Simulation and host tests never replace a physical check.
+2. Don't start the next milestone while the current one has open hardware rows. Code may run ahead,
+   but it doesn't count as done.
+3. Every milestone keeps all [product acceptance gates](./product.md#product-acceptance-gates) intact.
+   Moving a feature later never relaxes a gate for what does ship.
+4. Until v1, a feature is done when it works on Windows. macOS code may land but is not a blocker.
+5. Anything not listed waits in [Later](#later). Move something earlier only if it blocks the beta.
 
 ---
 
-## Phase 1: Device connection foundation ✅ software, 🟡 physical
+## M0: Kivori Core (mostly done)
 
-Record: [`features/001-device-connection-foundation/`](./features/001-device-connection-foundation/)
+Software for the device link, mascot, rotary volume and flashing is built and green in CI
+(about 300 workspace and 80 firmware tests; RISC-V clippy on every profile; Windows CI).
 
-- [x] Build: framed protocol (postcard + CRC), handshake, version and capability negotiation
-- [x] Build: automatic discovery with no port picker; reconnect state machine; heartbeat
-- [x] Build: deterministic renderer, asset pipeline, Device Studio preview
-- [x] Build: ESP32-C3 + ST7789 runtime; Wokwi simulation; offline-first boundary
-- [x] Automated: host, firmware host-sim, golden frames, Wokwi scenarios green in CI
-- [ ] Physical: the remaining open rows in the [validation checklist](./features/001-device-connection-foundation/validation-checklist.md)
-      (5 of 25 done; rows 1, 3 and 4 also passed on macOS, and Windows is still to run), including plug-in → connected in under 5 s, and device output matching the
-      preview pixel for pixel
+- [x] ESP32-C3 ↔ desktop protocol: postcard + CRC frames, handshake, version and capability negotiation, nonce as session identity
+- [x] Automatic discovery, reconnect state machine, heartbeat, offline-first boundary
+- [x] ST7789 rendering: deterministic renderer, 36-tile DMA path, Device Studio preview, golden-frame and Wokwi tests
+- [x] Rotary input: HW-040 decoder (detent only on return to rest), 250 ms gesture boundary
+- [x] Windows volume control: Core Audio backend, fixed-step volume, preview → confirmed overlay
+- [x] Mascot: keycap buddy, social reactions, companion personality, typed session-only activity log
+- [x] Firmware flashing of the bundled build from Device Studio
+- [ ] Hardware sanity checks needed to build on safely (Windows only), in [validation.md](./validation.md):
+  - wiring and rotary fidelity: 3.15, 3.1–3.4
+  - discovery and recovery: 1.5–1.8, 1.15–1.17
+  - volume truth and bounds: 3.5, 3.6, 3.11–3.13
+  - detent → feedback under 50 ms: 3.14
+  - panel and flashing: 2.1, 2.9
+  - gates G1 (no false confirmation) and G2 (no stale replay)
 
-## Phase 2: Mascot, reactions, activity log ✅ software, 🟡 physical
+**Exit:** the foundation is reliable enough to build product features on. The remaining Phase 1–3
+rows move to M3 hardware QA.
 
-Record: [`features/003-mascot-animation/`](./features/003-mascot-animation/) (PR #3)
+## M1: Useful desk device
 
-- [x] Build: layered mascot sprites, `MascotAnimator` (blink, motion, eased transitions)
-- [x] Build: social reactions over the wire (`MASCOT_INTERACTION`); companion director and personality
-- [x] Build: 36-tile DMA render path; bundled firmware flashing from Device Studio
-- [x] Build: typed, session-only activity log, the only runtime log (Log view)
-- [x] Automated: render-parity and golden tests; Wokwi vectors for frame version 2
-- [ ] Physical: every mascot state and reaction on the panel; flash → reconnect to the same port
-- [x] PRD gate: the personality layer never shows a desktop state that isn't happening (PRD §9.5).
-      [Review](./features/003-mascot-animation/personality-review.md) found and fixed 3 violations; regression tests added
+**Outcome:** Kivori gives daily value beyond being a volume knob.
 
-## Phase 3: Rotary volume loop (Slice 002) ✅ software, 🟡 physical
+- [ ] Button press / hold input: short press released within 500 ms, mapped Hold released between 500 ms and ~2 s, one action per press, no auto-repeat
+- [ ] Recovery hold: ~10 s reboots the MCU, with visible progress and without the desktop app (gate 8)
+- [ ] Media play/pause, master mute
+- [ ] Keyboard shortcut action (shown as Unverified, never Success)
+- [ ] Launch application action (Execution Confirmed)
+- [ ] CPU and RAM monitoring
+- [ ] Display modes: buddy, clock, volume, media, CPU / RAM
+- [ ] Buddy reacts to real state: volume change → short reaction; muted → muted state; high load → load cue (distinct from the Busy job face); media playing → subtle animation; action success → acknowledgement; disconnected → offline
+- [ ] Every result shown as State Confirmed, Execution Confirmed or Unverified
+- [ ] Hardware: press/hold timing on the real switch; mute and media state stay in sync with Windows; reboot works without the desktop app
+- [ ] Gates 1, 5, 6, 8, 9
 
-Record: [`features/002-rotary-volume-control/`](./features/002-rotary-volume-control/) (PR #2)
+## M2: Configurable product
 
-- [x] Build: HW-040 quadrature decoder, detent-qualified gestures, 250 ms gesture boundary
-- [x] Build: `InputEvent` / `Presentation` (tags 13/14); nonce as connection-scoped session identity
-- [x] Build: Windows Core Audio backend; fixed-step volume; preview → confirmed overlay
-- [x] Build: consolidated on top of Phase 2 (tags, capability bits, activity log, mascot layering)
-- [x] Automated: 294 workspace + 74 firmware tests; RISC-V clippy on every profile
-- [ ] Automated: PR #2 CI green on Windows, then merged
-- [ ] Physical: all 15 rows of the [validation checklist](./features/002-rotary-volume-control/validation-checklist.md),
-      including measured detent → feedback latency under 50 ms
-- [ ] PRD gates: no false confirmation (1), no stale replay (2)
+**Outcome:** someone who did not build Kivori can configure and use it without editing code.
 
----
+- [ ] Config UI for Rotate / Press / Hold bindings
+- [ ] Action catalog with explicit scope (System Volume ≠ App Volume)
+- [ ] Simple ordered macros (a macro reports its least-confirmed step; no rollback)
+- [ ] Choose what the display shows (default and secondary modes)
+- [ ] Buddy settings: reactions on/off, intensity
+- [ ] Config stored locally per OS user and machine; survives restarts and updates; reset to defaults
+- [ ] Basic device status and diagnostics (versions, connection, health)
+- [ ] Hardware: rebind → use → restart → binding still there
+- [ ] Gates 3, 4, 5
 
-## Phase 4: Daily knob on both OSes
+Example config:
 
-**Outcome:** plug Kivori into either machine and it controls volume all day without any attention.
+```text
+Control   Rotate: Volume   Press: Play / Pause   Hold: Open Spotify
+Display   Default: Buddy   Secondary: CPU / RAM
+Buddy     Reactions: On    Intensity: Normal
+```
 
-- [ ] Build: macOS volume backend (CoreAudio default output device; follows device changes)
-- [ ] Build: launch at login + tray/menu-bar presence; the app window stays optional (PRD §6.5)
-- [ ] Build: survives host sleep/wake and lock/unlock; shows Sleeping/Locked and Reconnecting
-      screens, not a frozen frame (PRD §10)
-- [ ] Build: external volume changes (keyboard or OS slider) show up on the device (PRD §5.1)
-- [ ] Automated: the volume-backend contract tests run against both backends
-- [ ] Physical: on Windows and macOS, measure detent → feedback under 50 ms; sleep/wake ×10 with
-      no stuck state
-- [ ] PRD gates: 1, 2, 6, 9
-- [ ] Docs: install and run guide for macOS and Windows
+## M3: Paid beta
 
-## Phase 5: Button and core actions
+**Outcome:** an external user receives Kivori, installs it, configures it, recovers from common
+problems and uses it without developer help. Start charging for beta units here.
 
-**Outcome:** pressing the knob does real work, and the device shows the resulting state.
+- [ ] Enclosure (keeps the USB port and the ESP32-C3 BOOT path reachable for recovery)
+- [ ] BOM and real unit cost
+- [ ] Repeatable assembly process
+- [ ] Device flashing and provisioning process
+- [ ] Hardware QA checklist per unit (built from the remaining Phase 1–3 rows in [validation.md](./validation.md))
+- [ ] Signed Windows installer, bundling the known-compatible firmware (this is the beta's update authentication, gate 10)
+- [ ] Launch at login and tray presence; the window stays optional
+- [ ] Survive sleep/wake and lock/unlock with intentional screens, never a frozen frame (gate 9)
+- [ ] First-run onboarding
+- [ ] User-facing firmware update and recovery flow (flash the bundled build; a failed flash says so)
+- [ ] Device and software version shown to the user
+- [ ] Regulatory check before selling (FCC Part 15 / CE for the finished unit, not just the module)
+- [ ] Basic packaging and a short user guide
+- [ ] Build and ship the first 5–20 beta units
+- [ ] All 10 gates for what ships
 
-- [ ] Build: press/release input; one action per press, no auto-repeat (PRD §7.1)
-- [ ] Build: media play/pause and next; **microphone mute** with confirmed state; master mute
-- [ ] Build: secondary indicators for mic mute, audio mute and media activity (PRD §9.4)
-- [ ] Build: holding the button ~10 s reboots the MCU, with visible hold progress (PRD §14.1)
-- [ ] Build: each action result is shown as State Confirmed, Execution Confirmed or Unverified
-      (PRD §7.3)
-- [ ] Automated: action outcome tests for each confirmation level; gesture arbitration tests
-- [ ] Physical: mic mute stays in sync when toggled from the OS or the call app; reboot gesture
-      works when the desktop app is not running
-- [ ] PRD gates: 1, 5, 6, 8
+## M4: v1
 
-## Phase 6: Configuration
+Use paid-beta evidence to pick what deserves deeper investment. None of these is assumed required
+before demand is proven.
 
-**Outcome:** change what the knob and button do without touching code.
-
-- [ ] Build: config UI covering General-profile bindings for Rotate / Press, sensitivity and
-      acceleration (PRD §7.2)
-- [ ] Build: explicit action catalog with scope (`System Volume` ≠ `App Volume`); keyboard
-      shortcut and app-launch actions
-- [ ] Build: config stored locally per OS user and per machine (PRD §8.4–8.5); survives updates
-- [ ] Build: macOS Accessibility permission flow; Permission Required state when it is missing
-      (PRD §11)
-- [ ] Automated: config migration and round-trip tests; permission-denied behavior tests
-- [ ] Physical: rebind → use → restart → the binding is still there, on both OSes
-- [ ] PRD gates: 3, 4, 5
-
-## Phase 7: App-aware profiles
-
-**Outcome:** the knob means different things in different apps, with no surprises.
-
-- [ ] Build: detect the focused app (Windows and macOS), with 300–500 ms stabilization (PRD §8.1)
-- [ ] Build: per-app profiles that override the General profile explicitly; no split-direction
-      mixing (PRD §8.3)
-- [ ] Build: a gesture stays bound to the app it started in (PRD §8.2)
-- [ ] Build: the device shows which profile is active, briefly, on change
-- [ ] Automated: focus-flapping and mid-gesture focus-change tests
-- [ ] Physical: Alt-Tab / Cmd-Tab during rotation never leaks the input into the new app
-- [ ] PRD gates: 2, 3, 5
-
-## Phase 8: Lives on the desk (v1.0)
-
-**Outcome:** a finished-feeling object that is always honest about what is going on.
-
-- [ ] Build: the buddy's primary state follows the desktop: Idle, Active, Busy, Success, Error,
-      Unknown (PRD §9.3)
-- [ ] Build: display idle Normal → Dim → Low Motion → Display Sleep; the first touch only wakes the
-      screen (PRD §12)
-- [ ] Build: burn-in protection (pixel shift, reduced motion)
-- [ ] Build: every takeover state has an intentional screen (PRD §9.1)
-- [ ] Physical: 8 h idle soak with no burn-in artifacts; every takeover state seen on the panel
-- [ ] PRD gates: all 10
-- [ ] **v1 exit:** 10 workdays of real use on both machines, with no restart, no reflash and no
-      opening the config window except to change a setting on purpose (PRD §2.1)
-
----
-
-## v2: Beta track (other people can use it)
-
-- [ ] Signed release manifest; desktop and firmware compatibility checks; `Update All` ordering
-      (PRD §14.4)
-- [ ] A/B firmware slots with post-boot validation and automatic rollback (PRD §14.3)
-- [ ] Production PCB with an accessible ROM-recovery mechanism; Desktop detects recovery mode
-      (PRD §14.2)
-- [ ] Installers and auto-update for the desktop app on both OSes (PRD §14.5)
-- [ ] Enclosure and hardware revision; hardware revision reported over the protocol
-- [ ] Multi-user session switching; a second device stays Passive (PRD §8.4, §15)
-- [ ] Factory reset procedure, separate from recovery
+- Better macros; more monitoring (GPU temperature, mic where available, custom sources)
+- App-aware profiles (stable focus, 300–500 ms stabilization, gesture stays bound to its app)
+- More physical inputs
+- macOS support (CoreAudio backend, Accessibility permission flow, menu-bar presence)
+- Integrations (Discord, Teams, OBS) as indicators
+- Production PCB with an app-independent ROM recovery path
+- Signed release manifest, compatibility checks, `Update All`; A/B firmware with rollback
+- Installers with auto-update
+- Long-term reliability: 8 h idle soak, display idle and burn-in protection, 10 workdays of real use
 
 ## Later
 
-- [ ] Input hardware revision: more controls, buzzer or haptic feedback (PRD §13, §19)
-- [ ] Call/app state integrations (Discord, Teams, OBS) shown as indicators
-- [ ] Scripts and macros as first-class actions
-- [ ] Explicit composite inputs (`Hold + Rotate`) and split-direction bindings
-- [ ] Linux support
-- [ ] Monitor Mode for a second device
+Unless it blocks the beta:
+
+- Windows/macOS feature parity
+- Exhaustive sleep/lock edge cases
+- Multi-user session switching; a second device stays Passive
+- Factory reset, separate from recovery
+- Composite inputs (`Hold + Rotate`) and split-direction bindings
+- Buzzer or haptics
+- Linux support
+- Monitor Mode for a second device

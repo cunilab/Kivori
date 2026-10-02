@@ -133,7 +133,7 @@ pub fn vectors() -> Vec<Vector> {
                 3,
             ),
         },
-        // Sequence policy (contracts/protocol.md §6): a duplicate must not re-apply side effects; a gap
+        // Sequence policy (docs/architecture.md, wire protocol): a duplicate must not re-apply side effects; a gap
         // and a wraparound are both valid decodes the device accepts.
         Vector {
             name: "ping_seq_duplicate",

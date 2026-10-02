@@ -13,7 +13,7 @@
 //! Consequently this module compiles for a board whose panel is still unknown, and **no physical Kivori
 //! profile exists here**. The only concrete profile in the tree is the simulation-only one in
 //! [`crate::profile`], which belongs to `sim/wokwi/diagram-spi.json`. The real profile must come from the
-//! hardware design (see `docs/validation-checklist.md` items 23-25: controller identity, pin map, offsets).
+//! hardware design (see `docs/validation.md` rows 1.23-1.25: controller identity, pin map, offsets).
 //!
 //! What simulation cannot establish: SPI clock rate margins, drive strength, pull-ups, level shifting,
 //! backlight polarity, or whether the chosen GPIOs are actually routed on the physical board.

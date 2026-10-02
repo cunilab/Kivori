@@ -1,4 +1,4 @@
-//! Handshake evaluation helpers (contracts/protocol.md §4). Pure decisions; the connection actor
+//! Handshake evaluation helpers (docs/architecture.md, wire protocol). Pure decisions; the connection actor
 //! (Phase 9) orchestrates timing and I/O.
 
 use crate::message::{Hello, HelloAck, Ready};

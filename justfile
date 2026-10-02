@@ -48,7 +48,7 @@ fw-test:
     cd firmware/esp32-c3 && cargo test --features host-sim --target $(rustc -vV | sed -n 's/^host: //p')
 
 # Flashes and monitors via the `espflash` runner in .cargo/config.toml.
-# The physical ESP32-C3 + ST7789 profile is verified in docs/validation-checklist.md; simulator profiles
+# The physical ESP32-C3 + ST7789 profile is verified in docs/validation.md; simulator profiles
 # remain separate evidence and are not substitutes for physical wiring/controller validation.
 # `--features physical-st7789` is required to select that runtime; `embedded` alone builds only
 # main.rs's bare fallback (no display, no input) and would silently flash non-product firmware.

@@ -187,7 +187,7 @@ fn gaze_and_wink_can_move_each_eye_independently() {
     assert_ne!(pose.left_eye_scale_y_q8, pose.right_eye_scale_y_q8);
 }
 
-/// PRD §9.5: a personality reaction must never wear a desktop state's face.
+/// docs/product.md, display and buddy: a personality reaction must never wear a desktop state's face.
 #[test]
 fn no_reaction_face_matches_a_state_face() {
     let faces = |e: MascotExpression| (e.eye_frame(), e.mouth_frame());
@@ -216,7 +216,7 @@ fn no_reaction_face_matches_a_state_face() {
     }
 }
 
-/// PRD §9.5: reactions give way to meaningful states.
+/// docs/product.md, display and buddy: reactions give way to meaningful states.
 #[test]
 fn reactions_are_ignored_over_meaningful_states() {
     for state in CompanionState::ALL {

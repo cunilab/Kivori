@@ -272,7 +272,7 @@ impl MascotAnimator {
 
     /// Starts a social reaction. A new action replaces any earlier reaction immediately.
     ///
-    /// Reactions give way to meaningful states (PRD §9.5): outside
+    /// Reactions give way to meaningful states (docs/product.md, display and buddy): outside
     /// [`CompanionState::allows_reaction`] the request is ignored and `false` is returned.
     pub fn trigger_action(
         &mut self,
@@ -330,7 +330,7 @@ impl MascotAnimator {
 }
 
 impl CompanionState {
-    /// Whether a social reaction may play over this state (PRD §9.5). Busy, Booting and Offline are
+    /// Whether a social reaction may play over this state (docs/product.md, display and buddy). Busy, Booting and Offline are
     /// meaningful states a reaction must not mask. Sleeping allows the deliberate gentle, sleepy
     /// response; autonomous self-play is stricter still (see the desktop companion director).
     #[must_use]

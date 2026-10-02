@@ -701,6 +701,8 @@ impl ActivityLog {
     }
 }
 
+// ponytail: `fetch_update` is deprecated on Rust 1.99 but `try_update` needs 1.95 (MSRV is 1.90); switch when MSRV moves.
+#[allow(deprecated)]
 fn next_activity_id() -> u64 {
     NEXT_ACTIVITY_ID
         .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
