@@ -91,6 +91,8 @@ impl StreamControl {
 
     /// Takes a back-pressure slot. Returns `false` when [`MAX_IN_FLIGHT`] frames are already
     /// outstanding, in which case the producer MUST stall instead of queueing another frame.
+    // ponytail: `fetch_update` is deprecated on Rust 1.99 but `try_update` needs 1.95 (MSRV is 1.90); switch when MSRV moves.
+    #[allow(deprecated)]
     pub fn try_reserve(&self) -> bool {
         self.in_flight
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
@@ -100,6 +102,7 @@ impl StreamControl {
     }
 
     /// Releases one slot (a delivered frame was acknowledged). Saturating: a duplicate ack is a no-op.
+    #[allow(deprecated)]
     pub fn release(&self) {
         let _ = self
             .in_flight
