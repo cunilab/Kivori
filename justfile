@@ -103,3 +103,11 @@ check-boundaries:
 # Run the desktop UI dev server.
 dev:
     bun --filter kivori-desktop-ui dev
+
+# A plain `cargo run` bundles no firmware on purpose (no stale artifact can slip in), which logs
+# `firmwareUnavailable` and disables Flash firmware. Start `just dev` first.
+
+# Run Kivori Desktop with the freshly built product firmware embedded.
+app:
+    just fw-build
+    KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/esp32-c3/target/riscv32imc-unknown-none-elf/release/kivori-firmware" cargo run -p kivori-desktop

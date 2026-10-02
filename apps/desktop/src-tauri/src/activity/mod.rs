@@ -837,7 +837,7 @@ fn summary_for(kind: ActivityEventKind, metadata: Option<&ActivityMetadata>) -> 
         (ActivityEventKind::FirmwareUpdateFailed, _) => "Firmware update failed.".to_string(),
         (ActivityEventKind::FirmwareAvailable, _) => "Bundled firmware is available.".to_string(),
         (ActivityEventKind::FirmwareUnavailable, _) => {
-            "Bundled firmware is unavailable.".to_string()
+            "This build has no bundled firmware, so Flash firmware is off (development: run `just app`).".to_string()
         }
         (ActivityEventKind::FirmwareFlashRequested, _) => "Firmware flash requested.".to_string(),
         (ActivityEventKind::FirmwarePreparing, _) => "Preparing firmware update.".to_string(),

@@ -25,7 +25,9 @@ specification until row 3.15 is ticked.
 
 1. Once per machine: `bun install`, `cargo install espflash`, install `just`.
 2. Flash the product firmware: `just fw-flash` (builds with `physical-st7789`, then flashes and monitors).
-3. Start the app: `just dev` (Vite UI), then `cargo run -p kivori-desktop` in a second terminal.
+3. Start the app: `just dev` (Vite UI), then `just app` in a second terminal (builds the firmware and
+   embeds it so Flash firmware works; plain `cargo run -p kivori-desktop` bundles none and logs
+   `firmwareUnavailable`).
    Discovery is automatic; there is no port picker. Expect **Connected**, firmware 1.1.0, protocol 1.3.
    On macOS, shortcuts and media keys need Accessibility permission for the app that runs Kivori
    (during development, the terminal running `cargo run`): System Settings > Privacy & Security >
