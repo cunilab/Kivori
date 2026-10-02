@@ -1,54 +1,61 @@
 # Kivori Product
 
-What Kivori is, what v1 must do, and the rules every build keeps. See also [roadmap.md](roadmap.md), [validation.md](validation.md).
+What Kivori is, what the beta must do, and the rules every build keeps. See also [roadmap.md](roadmap.md), [validation.md](validation.md).
 
 ## What Kivori is
 
-Kivori is a desk companion. You control your computer with a physical knob, and a mascot,
-the buddy, shows important desktop state. Hardware: ESP32-C3, ST7789 240x240 display,
-HW-040 rotary encoder with push button; no buzzer, haptics or light sensor. A Tauri app,
-Kivori Desktop, drives it on Windows and macOS and is the configuration center. The buddy
-has personality but only reports the desktop; it is not a virtual pet with its own goals.
+Kivori is a programmable desk controller with a buddy and a PC monitor. You control your
+computer with a physical knob and button; a mascot, the buddy, shows important desktop state; the
+display shows simple system signals when you are not touching it. Hardware: ESP32-C3, ST7789
+240x240 display, HW-040 rotary encoder with push button; no buzzer, haptics or light sensor. A Tauri
+app, Kivori Desktop, drives it and is the configuration center. The buddy has personality but only
+reports the desktop; it is not a virtual pet with its own goals.
 
-**v1 target:** the maintainer uses Kivori every workday for 10 consecutive workdays, on
-both a Windows and a macOS machine, with no restart, no reflash, and no opening of the
-config window except to change a setting on purpose. **v2 target:** a non-maintainer
-installs, configures, updates and recovers Kivori using only the shipped docs.
+**Beta target:** a non-maintainer on Windows receives a unit, installs, configures, updates and
+recovers Kivori using only the shipped docs, and pays for it. **v1 target:** decided from beta
+evidence (see [roadmap.md](roadmap.md#m4-v1)).
 
 ## Scope
 
-### In v1
+### In the paid beta
 
-- One Kivori on one active desktop session. Windows and macOS equally: a capability is
-  done only when it works on both, or is documented and shown as unavailable on one.
-- Rotary + button input. Actions: system volume, media, mic mute, master mute, keyboard
-  shortcut, app launch.
+- One Kivori on one active desktop session, on Windows. macOS code may exist but is not supported.
+- Rotary + button input (press, hold). Actions: system volume, media, master mute, keyboard
+  shortcut, app launch, simple ordered macros.
+- Monitoring: CPU, RAM, volume / mute, current media, clock, connection and device health.
 - Immediate acknowledgement, honest confirmation, live state sync (including changes
   made outside Kivori).
-- General profile plus app-aware profiles; config UI; config local per OS user and machine.
-- Full presentation model (buddy, personality, takeover, health, indicators) with
-  intentional visuals for every waiting, failure and recovery state.
-- Recovery across sleep, wake, lock and reconnect; Permission Required handling
-  (especially macOS Accessibility); display idle and burn-in protection.
-- The ~10 s MCU reboot gesture; launch at login; tray / menu-bar presence.
-- Visible desktop and firmware versions; user-initiated flashing of the bundled firmware.
+- General profile; config UI; config local per OS user and machine; reset to defaults.
+- Presentation model (buddy, personality, takeover, health, indicators) with intentional
+  visuals for every waiting, failure and recovery state the beta can reach.
+- Recovery across sleep, wake, lock and reconnect.
+- The ~10 s MCU reboot gesture; launch at login; tray presence.
+- Visible desktop and firmware versions; user-initiated flashing of the bundled firmware,
+  shipped inside a signed installer.
 
-### Not in v1 (planned for v2)
+### After the beta (decided from beta evidence)
 
-- Authenticated release manifest, compatibility checks, `Update All`; desktop installers
-  and authenticated desktop updates; rollback-safe (A/B) firmware install.
+- macOS support (including Accessibility permission handling) and parity with Windows.
+- App-aware profiles; mic mute and call indicators; GPU temperature and custom sources.
+- Display idle and burn-in protection beyond the basics.
+- Authenticated release manifest, compatibility checks, `Update All`; desktop auto-update;
+  rollback-safe (A/B) firmware install.
 - Production hardware with an app-independent recovery path, detected by Desktop;
   hardware revision identity reported to Desktop.
 - OS user switching; Passive handling of extra devices; factory reset.
 
-### Not in v1 or v2
+### Not planned
 
-- Linux; cloud sync; news/weather dashboards; pet progression; workflow orchestration.
+- Linux (until demand shows); cloud sync; news/weather dashboards; pet progression; workflow
+  orchestration.
 - Implicit chords, implicit key-repeat, split rotary directions, guessing sub-apps.
 - Replaying input or transients after reconnect; auto-restarting uncertain host jobs.
 - More than one Active Kivori; Passive as Monitor Mode; driverless mode; waking the host.
 - Process injection, memory inspection or anti-cheat hooks to detect overlays.
 - Silent flashing, unauthenticated or known-incompatible installs, fake progress.
+
+The rules below are written for the whole product. A rule for a feature that is not shipped yet
+(profiles, macOS, multi-user) applies when that feature ships.
 
 ## Core behavior
 
@@ -172,9 +179,9 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
 
 ### Updates (US10, US11)
 
-- v1: flashing is manual and user-initiated with the bundled, known-compatible build. A
+- Beta: flashing is manual and user-initiated with the bundled, known-compatible build. A
   failed flash is reported as failed.
-- v2: Desktop reads an authenticated manifest and checks compatibility and order before
+- Later: Desktop reads an authenticated manifest and checks compatibility and order before
   touching either side. `Update All` updates Desktop first when firmware needs it and
   stops if that fails.
 - An available update is not consent. Firmware update is a takeover with truthful phases;

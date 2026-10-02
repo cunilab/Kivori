@@ -26,7 +26,7 @@ specification until row 3.15 is ticked.
 1. Once per machine: `bun install`, `cargo install espflash`, install `just`.
 2. Flash the product firmware: `just fw-flash` (builds with `physical-st7789`, then flashes and monitors).
 3. Start the app: `just dev` (Vite UI), then `cargo run -p kivori-desktop` in a second terminal.
-   Discovery is automatic; there is no port picker. Expect **Connected**, firmware 1.0.0, protocol 1.0.
+   Discovery is automatic; there is no port picker. Expect **Connected**, firmware 1.0.0, protocol 1.2.
 4. Latency only: `just fw-flash-latency` (dev-only probe build), then `just fw-flash` to restore the product build.
 
 Suggested order: wiring (3.15) and flash, then Phase 1 (Windows, then macOS), Phase 2, Phase 3, latency.

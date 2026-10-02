@@ -3,126 +3,134 @@
 The order Kivori is built in. What it must be is in [product.md](./product.md); how it works is in
 [architecture.md](./architecture.md); hardware checks are in [validation.md](./validation.md).
 
-**v1 target:** the maintainer uses Kivori every workday on both Windows and macOS.
+**Direction:** a programmable desktop controller, a desk buddy and a PC monitor, in that order of
+pillars: **control, buddy, monitoring.** Next work must serve at least one of them.
+
+**Sequence:** working foundation → useful device → configurable device → paid beta → customer
+feedback → v1 investment. The aim is to learn whether people pay for Kivori before building every
+long-term concern. Engineering rigor stays; only the order changes.
+
+**Beta platform:** Windows is supported. macOS is later or experimental. Linux is later.
 
 ## Rules
 
-1. A phase is done only when every box is ticked, including its hardware rows in
+1. A milestone is done only when every box is ticked, including its hardware rows in
    [validation.md](./validation.md). Simulation and host tests never replace a physical check.
-2. Don't start the next phase while the current one has open hardware rows. Code may run ahead, but
-   it doesn't count as done.
-3. Every phase keeps all [product acceptance gates](./product.md) intact.
-4. Windows and macOS ship together, unless the product doc marks a feature as unavailable on one.
-5. Anything not listed waits in [Later](#later).
+2. Don't start the next milestone while the current one has open hardware rows. Code may run ahead,
+   but it doesn't count as done.
+3. Every milestone keeps all [product acceptance gates](./product.md#product-acceptance-gates) intact.
+   Moving a feature later never relaxes a gate for what does ship.
+4. Until v1, a feature is done when it works on Windows. macOS code may land but is not a blocker.
+5. Anything not listed waits in [Later](#later). Move something earlier only if it blocks the beta.
 
 ---
 
-## Phase 1: Device connection ✅ software, 🟡 hardware
+## M0: Kivori Core (mostly done)
 
-- [x] Framed protocol (postcard + CRC), handshake, version and capability negotiation
-- [x] Automatic discovery (no port picker), reconnect state machine, heartbeat
-- [x] Deterministic renderer, asset pipeline, Device Studio preview
-- [x] ESP32-C3 + ST7789 runtime, Wokwi simulation, offline-first boundary
-- [x] Host, firmware host-sim, golden-frame and Wokwi tests green in CI
-- [ ] Hardware: Phase 1 rows in [validation.md](./validation.md) (5 of 25 done; Windows not run yet)
+Software for the device link, mascot, rotary volume and flashing is built and green in CI
+(about 300 workspace and 80 firmware tests; RISC-V clippy on every profile; Windows CI).
 
-## Phase 2: Mascot, reactions, activity log ✅ software, 🟡 hardware
+- [x] ESP32-C3 ↔ desktop protocol: postcard + CRC frames, handshake, version and capability negotiation, nonce as session identity
+- [x] Automatic discovery, reconnect state machine, heartbeat, offline-first boundary
+- [x] ST7789 rendering: deterministic renderer, 36-tile DMA path, Device Studio preview, golden-frame and Wokwi tests
+- [x] Rotary input: HW-040 decoder (detent only on return to rest), 250 ms gesture boundary
+- [x] Windows volume control: Core Audio backend, fixed-step volume, preview → confirmed overlay
+- [x] Mascot: keycap buddy, social reactions, companion personality, typed session-only activity log
+- [x] Firmware flashing of the bundled build from Device Studio
+- [ ] Hardware sanity checks needed to build on safely (Windows only), in [validation.md](./validation.md):
+  - wiring and rotary fidelity: 3.15, 3.1–3.4
+  - discovery and recovery: 1.5–1.8, 1.15–1.17
+  - volume truth and bounds: 3.5, 3.6, 3.11–3.13
+  - detent → feedback under 50 ms: 3.14
+  - panel and flashing: 2.1, 2.9
+  - gates G1 (no false confirmation) and G2 (no stale replay)
 
-- [x] Keycap mascot: fixed base + pressing cap, blink, motion, eased transitions
-- [x] Social reactions over the wire; companion director and personality
-- [x] 36-tile DMA render path; flashing bundled firmware from Device Studio
-- [x] Typed, session-only activity log (the only runtime log)
-- [x] Render-parity and golden-frame tests
-- [x] Gate: the personality never shows a desktop state that isn't happening
-- [ ] Hardware: Phase 2 rows in [validation.md](./validation.md)
+**Exit:** the foundation is reliable enough to build product features on. The remaining Phase 1–3
+rows move to M3 hardware QA.
 
-## Phase 3: Rotary volume loop ✅ software, 🟡 hardware
+## M1: Useful desk device
 
-- [x] HW-040 decoder (detent only on return to rest), 250 ms gesture boundary
-- [x] `InputEvent` / `Presentation` messages; nonce as session identity
-- [x] Windows Core Audio backend; fixed-step volume; preview → confirmed overlay
-- [x] 300 workspace + 78 firmware tests; RISC-V clippy on every profile; merged with Windows CI green
-- [ ] Hardware: Phase 3 rows in [validation.md](./validation.md), including detent → feedback under 50 ms
-- [ ] Gates 1 (no false confirmation) and 2 (no stale replay) confirmed on hardware
+**Outcome:** Kivori gives daily value beyond being a volume knob.
 
----
-
-## Phase 4: Daily knob on both OSes (next)
-
-**Outcome:** plug Kivori into either machine and it controls volume all day without attention.
-
-- [ ] macOS volume backend (CoreAudio default output; follows device changes)
-- [ ] Launch at login + tray / menu-bar presence; the window stays optional
-- [ ] Survive sleep/wake and lock/unlock with Sleeping/Locked and Reconnecting screens, never a frozen frame
-- [ ] External volume changes (keyboard, OS slider) show on the device
-- [ ] Volume-backend contract tests run against both backends
-- [ ] Hardware: detent → feedback under 50 ms on both OSes; sleep/wake ×10 with no stuck state
-- [ ] Gates 1, 2, 6, 9
-- [ ] Install and run guide for macOS and Windows
-
-## Phase 5: Button and core actions
-
-**Outcome:** pressing the knob does real work and the device shows the result.
-
-- [ ] Press/release input; one action per press, no auto-repeat
-- [ ] Media play/pause and next; microphone mute with confirmed state; master mute
-- [ ] Indicators for mic mute, audio mute and media activity
-- [ ] Hold ~10 s reboots the MCU, with visible hold progress
+- [ ] Button press / hold input: short press released within 500 ms, mapped Hold released between 500 ms and ~2 s, one action per press, no auto-repeat
+- [ ] Recovery hold: ~10 s reboots the MCU, with visible progress and without the desktop app (gate 8)
+- [ ] Media play/pause, master mute
+- [ ] Keyboard shortcut action (shown as Unverified, never Success)
+- [ ] Launch application action (Execution Confirmed)
+- [ ] CPU and RAM monitoring
+- [ ] Display modes: buddy, clock, volume, media, CPU / RAM
+- [ ] Buddy reacts to real state: volume change → short reaction; muted → muted state; high load → load cue (distinct from the Busy job face); media playing → subtle animation; action success → acknowledgement; disconnected → offline
 - [ ] Every result shown as State Confirmed, Execution Confirmed or Unverified
-- [ ] Hardware: mic mute stays in sync with the OS and call apps; reboot works without the desktop app
-- [ ] Gates 1, 5, 6, 8
+- [ ] Hardware: press/hold timing on the real switch; mute and media state stay in sync with Windows; reboot works without the desktop app
+- [ ] Gates 1, 5, 6, 8, 9
 
-## Phase 6: Configuration
+## M2: Configurable product
 
-**Outcome:** change what the knob and button do without touching code.
+**Outcome:** someone who did not build Kivori can configure and use it without editing code.
 
-- [ ] Config UI for Rotate / Press bindings, sensitivity and acceleration
-- [ ] Action catalog with explicit scope (System Volume ≠ App Volume); shortcut and app-launch actions
-- [ ] Config stored locally per OS user and machine; survives updates
-- [ ] macOS Accessibility permission flow; Permission Required state when missing
-- [ ] Hardware: rebind → use → restart → binding still there, on both OSes
+- [ ] Config UI for Rotate / Press / Hold bindings
+- [ ] Action catalog with explicit scope (System Volume ≠ App Volume)
+- [ ] Simple ordered macros (a macro reports its least-confirmed step; no rollback)
+- [ ] Choose what the display shows (default and secondary modes)
+- [ ] Buddy settings: reactions on/off, intensity
+- [ ] Config stored locally per OS user and machine; survives restarts and updates; reset to defaults
+- [ ] Basic device status and diagnostics (versions, connection, health)
+- [ ] Hardware: rebind → use → restart → binding still there
 - [ ] Gates 3, 4, 5
 
-## Phase 7: App-aware profiles
+Example config:
 
-**Outcome:** the knob means different things in different apps, with no surprises.
+```text
+Control   Rotate: Volume   Press: Play / Pause   Hold: Open Spotify
+Display   Default: Buddy   Secondary: CPU / RAM
+Buddy     Reactions: On    Intensity: Normal
+```
 
-- [ ] Detect the focused app on both OSes, with 300–500 ms stabilization
-- [ ] Per-app profiles that explicitly override the General profile
-- [ ] A gesture stays bound to the app it started in
-- [ ] The device briefly shows the active profile on change
-- [ ] Hardware: Alt-Tab / Cmd-Tab mid-rotation never leaks input into the new app
-- [ ] Gates 2, 3, 5
+## M3: Paid beta
 
-## Phase 8: Lives on the desk (v1.0)
+**Outcome:** an external user receives Kivori, installs it, configures it, recovers from common
+problems and uses it without developer help. Start charging for beta units here.
 
-**Outcome:** a finished object that is always honest about what is going on.
+- [ ] Enclosure (keeps the USB port and the ESP32-C3 BOOT path reachable for recovery)
+- [ ] BOM and real unit cost
+- [ ] Repeatable assembly process
+- [ ] Device flashing and provisioning process
+- [ ] Hardware QA checklist per unit (built from the remaining Phase 1–3 rows in [validation.md](./validation.md))
+- [ ] Signed Windows installer, bundling the known-compatible firmware (this is the beta's update authentication, gate 10)
+- [ ] Launch at login and tray presence; the window stays optional
+- [ ] Survive sleep/wake and lock/unlock with intentional screens, never a frozen frame (gate 9)
+- [ ] First-run onboarding
+- [ ] User-facing firmware update and recovery flow (flash the bundled build; a failed flash says so)
+- [ ] Device and software version shown to the user
+- [ ] Regulatory check before selling (FCC Part 15 / CE for the finished unit, not just the module)
+- [ ] Basic packaging and a short user guide
+- [ ] Build and ship the first 5–20 beta units
+- [ ] All 10 gates for what ships
 
-- [ ] Primary state follows the desktop: Idle, Active, Busy, Success, Error, Unknown
-- [ ] Display idle: Normal → Dim → Low Motion → Sleep; the first touch only wakes the screen
-- [ ] Burn-in protection (pixel shift, reduced motion)
-- [ ] Every takeover state has an intentional screen
-- [ ] Hardware: 8 h idle soak with no burn-in; every takeover state seen on the panel
-- [ ] All 10 gates
-- [ ] **v1 exit:** 10 workdays of real use on both machines with no restart, reflash or config fiddling
+## M4: v1
 
----
+Use paid-beta evidence to pick what deserves deeper investment. None of these is assumed required
+before demand is proven.
 
-## v2: Beta (other people can use it)
-
-- Signed release manifest, compatibility checks, `Update All` ordering
-- A/B firmware slots with post-boot validation and automatic rollback
-- Production PCB with accessible ROM recovery; desktop detects recovery mode
-- Installers and auto-update on both OSes
-- Enclosure and hardware revision reported over the protocol
-- Multi-user session switching; a second device stays passive
-- Factory reset, separate from recovery
+- Better macros; more monitoring (GPU temperature, mic where available, custom sources)
+- App-aware profiles (stable focus, 300–500 ms stabilization, gesture stays bound to its app)
+- More physical inputs
+- macOS support (CoreAudio backend, Accessibility permission flow, menu-bar presence)
+- Integrations (Discord, Teams, OBS) as indicators
+- Production PCB with an app-independent ROM recovery path
+- Signed release manifest, compatibility checks, `Update All`; A/B firmware with rollback
+- Installers with auto-update
+- Long-term reliability: 8 h idle soak, display idle and burn-in protection, 10 workdays of real use
 
 ## Later
 
-- More controls, buzzer or haptics
-- Call/app integrations (Discord, Teams, OBS) as indicators
-- Scripts and macros as actions
+Unless it blocks the beta:
+
+- Windows/macOS feature parity
+- Exhaustive sleep/lock edge cases
+- Multi-user session switching; a second device stays Passive
+- Factory reset, separate from recovery
 - Composite inputs (`Hold + Rotate`) and split-direction bindings
+- Buzzer or haptics
 - Linux support
 - Monitor Mode for a second device

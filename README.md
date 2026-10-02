@@ -1,6 +1,6 @@
 # Kivori
 
-Kivori is a physical desktop companion that lets people control their computer through tactile input while representing important desktop state on a dedicated display.
+Kivori is a programmable desk controller with a buddy and a PC monitor: control the computer through a physical knob and button, and see important desktop and system state on a dedicated display.
 
 > **Product thesis:** Control the desktop physically. Understand the desktop visually.
 
@@ -12,7 +12,7 @@ Kivori is a physical desktop companion that lets people control their computer t
 
 **Feature 003 — Mascot animation and activity log** ([PR #3](https://github.com/Vellixia/Kivori/pull/3), merged). Expressive, interactive mascot shared by Device Studio and the device, social reactions over the wire (`MASCOT_INTERACTION`), bundled firmware flashing from Device Studio, and a typed session-only activity log. Manual on-device check outstanding.
 
-The product contract extends beyond these. Product behavior is defined by the PRD and User Story Contract. Technical research records possibilities and uncertainties; accepted durable technical choices belong in ADRs.
+Next: finish the M0 hardware sanity checks, then M1 (button, actions, monitoring) on the way to a Windows paid beta; see [`docs/roadmap.md`](docs/roadmap.md). Product behavior is defined in [`docs/product.md`](docs/product.md); durable technical choices are the ADRs in [`docs/architecture.md`](docs/architecture.md).
 
 ## Hardware
 
@@ -38,7 +38,7 @@ Encoder COM to **GND**, VCC to **3V3**. **Not 5V — ESP32-C3 GPIOs are not 5 V 
 
 **GPIO9 is deliberately avoided for the switch**, even though it is the BOOT button on most devkits. Holding GPIO9 low at reset enters the ROM download mode, and the encoder switch is Kivori's recovery control — a user power-cycling while holding it for recovery would land in the downloader instead of booting Kivori.
 
-**The display pins are measured evidence; the encoder pins are not.** The display profile was physically verified on 2026-08-11 and is recorded in the Feature 001 validation checklist. The encoder pin map is a *specification* wired to on request, pending physical confirmation — row 15 of the Slice 002 checklist. Do not treat the two as equally settled.
+**The display pins are measured evidence; the encoder pins are not.** The display profile was physically verified on 2026-08-11 and is recorded in [`docs/validation.md`](docs/validation.md) (rows 1.9, 1.24, 1.25). The encoder pin map is a *specification* wired to on request, pending physical confirmation — row 3.15 of the same checklist. Do not treat the two as equally settled.
 
 Both live in one place, [`firmware/esp32-c3/src/profile.rs`](firmware/esp32-c3/src/profile.rs), so a rewire is a single constant change.
 
@@ -92,7 +92,7 @@ Four files, one topic each:
 |---|---|
 | [`docs/product.md`](docs/product.md) | What Kivori must do: scope, behavior rules, numbered invariants, acceptance gates |
 | [`docs/architecture.md`](docs/architecture.md) | How it works: components, wire protocol, IPC, rendering, rotary loop, decisions, principles |
-| [`docs/roadmap.md`](docs/roadmap.md) | What gets built next, phase by phase |
+| [`docs/roadmap.md`](docs/roadmap.md) | What gets built next, milestone by milestone (M0 to paid beta to v1) |
 | [`docs/validation.md`](docs/validation.md) | The hardware checklist and how to run a validation session |
 
 Wokwi simulation setup lives in [`sim/wokwi/README.md`](sim/wokwi/README.md). If the docs disagree,
