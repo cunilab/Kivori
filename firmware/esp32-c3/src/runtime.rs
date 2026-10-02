@@ -36,6 +36,7 @@ use crate::proto::{DeviceIdentity, Dispatcher};
 use crate::render::TileRenderer;
 use crate::state::{DeviceEvent, DeviceState};
 use kivori_assets::AssetBlob;
+use kivori_model::input::InputLevels;
 use kivori_model::presentation::{PrimaryState, ValueDisplay};
 use kivori_model::{CompanionState, ElapsedMs, MascotAnimator};
 use kivori_protocol::{InputKind, Message, Nonce, Presentation};
@@ -44,6 +45,9 @@ use kivori_protocol::{InputKind, Message, Nonce, Presentation};
 /// (docs/product.md, gesture boundary). Firmware-wide: both the production runtime and the host-sim
 /// scenario helper (`sim::drive_rotary`) commit to this same boundary.
 pub const GESTURE_END_MS: u32 = 250;
+
+/// Input snapshots processed per tick: the physical edge queue plus the closing current sample.
+const INPUT_SAMPLES: usize = 65;
 
 /// Loop timings. Both are integer milliseconds, so behaviour is deterministic (ADR-0003).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -352,10 +356,11 @@ impl<'a> Runtime<'a> {
         // Apply any `Presentation` the dispatcher accepted this poll. Capability negotiation and
         // session/revision freshness are already enforced by the dispatcher and `PresentationState`
         // themselves, so this is unconditional.
+        let mut presentation_applied = false;
         if let Some(presentation) = self.dispatcher.take_presentation() {
-            let _applied = self.presentation.apply(&presentation, now);
+            presentation_applied = self.presentation.apply(&presentation, now);
             #[cfg(feature = "latency-probe")]
-            if _applied {
+            if presentation_applied {
                 self.latency.on_presentation(now);
             }
         }
@@ -369,33 +374,17 @@ impl<'a> Runtime<'a> {
             self.dispatcher
                 .send_input_event(transport, gesture_id, InputKind::GestureEnded, now);
         }
-        let levels = input.sample();
-        if let Some(direction) = self.decoder.update(levels.a, levels.b) {
-            let (started, detent) = self.gesture.on_detent(direction, now);
-            if let Some(RotaryEvent::GestureStarted { gesture_id }) = started {
-                self.dispatcher.send_input_event(
-                    transport,
-                    gesture_id,
-                    InputKind::GestureStarted,
-                    now,
-                );
+        let mut samples = heapless::Vec::<(InputLevels, ElapsedMs), INPUT_SAMPLES>::new();
+        input.drain(now, &mut |levels, at_ms| {
+            // Overflow keeps the newest levels: the decoder counts the gap as one invalid
+            // transition, which can lose a detent but never invents one.
+            if samples.is_full() {
+                samples.pop();
             }
-            if let RotaryEvent::Detent {
-                gesture_id,
-                direction,
-            } = detent
-            {
-                let _sent = self.dispatcher.send_input_event(
-                    transport,
-                    gesture_id,
-                    InputKind::Detent(direction),
-                    now,
-                );
-                #[cfg(feature = "latency-probe")]
-                if _sent {
-                    self.latency.on_detent(now);
-                }
-            }
+            let _ = samples.push((levels, at_ms));
+        });
+        for (levels, at_ms) in samples {
+            self.on_levels(transport, levels, at_ms);
         }
 
         // Resolve changes immediately after protocol handling. Reporting remains semantic and does
@@ -408,10 +397,14 @@ impl<'a> Runtime<'a> {
             self.animator
                 .trigger_action(action.action, action.personality, action.seed, now);
         }
-        // 4. Render on the frame cadence: only changed tiles reach the panel (FR-013).
-        if now >= self.next_frame_ms {
-            self.next_frame_ms =
-                next_frame_deadline(self.next_frame_ms, now, self.config.frame_interval_ms);
+        // 4. Render on the frame cadence, or at once when fresh feedback arrived, so detent ->
+        //    panel latency does not wait out the frame interval (validation row 3.14). Only changed
+        //    tiles reach the panel (FR-013).
+        if now >= self.next_frame_ms || presentation_applied {
+            if now >= self.next_frame_ms {
+                self.next_frame_ms =
+                    next_frame_deadline(self.next_frame_ms, now, self.config.frame_interval_ms);
+            }
             tick.frame_rendered = true;
             let state = self.device.current();
             if self.last_rendered != Some(state) {
@@ -479,6 +472,43 @@ impl<'a> Runtime<'a> {
         tick.pongs = self.dispatcher.pongs();
         tick.state_reports = self.dispatcher.state_reports();
         tick
+    }
+
+    /// Decodes one level snapshot captured at `at_ms` and emits the semantic events it completes.
+    fn on_levels<T: Transport>(
+        &mut self,
+        transport: &mut T,
+        levels: InputLevels,
+        at_ms: ElapsedMs,
+    ) {
+        let Some(direction) = self.decoder.update(levels.a, levels.b) else {
+            return;
+        };
+        let (started, detent) = self.gesture.on_detent(direction, at_ms);
+        if let Some(RotaryEvent::GestureStarted { gesture_id }) = started {
+            self.dispatcher.send_input_event(
+                transport,
+                gesture_id,
+                InputKind::GestureStarted,
+                at_ms,
+            );
+        }
+        if let RotaryEvent::Detent {
+            gesture_id,
+            direction,
+        } = detent
+        {
+            let _sent = self.dispatcher.send_input_event(
+                transport,
+                gesture_id,
+                InputKind::Detent(direction),
+                at_ms,
+            );
+            #[cfg(feature = "latency-probe")]
+            if _sent {
+                self.latency.on_detent(at_ms);
+            }
+        }
     }
 }
 

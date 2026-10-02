@@ -1,7 +1,7 @@
 //! The device-side protocol dispatcher (docs/architecture.md, wire protocol; FR-002).
 //!
 //! Reads framed messages off a [`Transport`], applies the sequence policy, answers the handshake and
-//! heartbeat, applies `SetState` to the [`DeviceState`], and emits `StateReport` on change. Malformed
+//! heartbeat, applies `SetState` to the [`DeviceState`], and answers each with a `StateReport`. Malformed
 //! frames are dropped without side effects and never panic (SC-008).
 
 use crate::health::{build_pong, diagnostic_for_sequence, DeviceDiagnostic, RejectReason};
@@ -328,15 +328,17 @@ impl Dispatcher {
                         .intersection(hello_caps);
                 }
             }
+            // Every accepted `SetState` is answered with the state now shown, changed or not: a
+            // desktop reconnecting to a device already in the desired state must still learn it
+            // (row 1.16). Duplicate sequence numbers never reach this arm.
             Message::SetState(set) => {
-                if let Some(now) = device.apply(DeviceEvent::SetState(set.desired)) {
-                    let report = StateReport {
-                        reported: now,
-                        elapsed_ms: now_ms,
-                    };
-                    self.send(transport, &Message::StateReport(report))?;
-                    self.state_reports = self.state_reports.saturating_add(1);
-                }
+                let _changed = device.apply(DeviceEvent::SetState(set.desired));
+                let report = StateReport {
+                    reported: device.current(),
+                    elapsed_ms: now_ms,
+                };
+                self.send(transport, &Message::StateReport(report))?;
+                self.state_reports = self.state_reports.saturating_add(1);
             }
             Message::Ping(ping) => {
                 self.send(transport, &Message::Pong(build_pong(ping.t_ms, now_ms)))?;

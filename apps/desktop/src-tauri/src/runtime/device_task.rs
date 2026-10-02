@@ -554,7 +554,14 @@ fn device_loop(
             record(&app, &activity_log, &manager, started);
         }
 
-        std::thread::sleep(TICK);
+        // With a link open, wake as soon as device bytes arrive (TICK is only the upper bound);
+        // otherwise pace discovery and backoff with a plain sleep.
+        if link
+            .as_mut()
+            .is_none_or(|open_link| open_link.wait(TICK).is_err())
+        {
+            std::thread::sleep(TICK);
+        }
     }
 }
 

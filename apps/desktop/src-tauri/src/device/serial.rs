@@ -41,6 +41,8 @@ pub fn first_candidate(allowlist: &[UsbId]) -> Option<String> {
 /// A [`SerialLink`] over a blocking `serialport` handle configured for non-blocking reads.
 pub struct SerialPortLink {
     port: Box<dyn serialport::SerialPort>,
+    /// Bytes [`SerialPortLink::wait`] received, handed out by the next [`SerialLink::read`].
+    pending: Vec<u8>,
 }
 
 impl SerialPortLink {
@@ -52,7 +54,34 @@ impl SerialPortLink {
         let port = serialport::new(port_name, BAUD)
             .timeout(Duration::from_millis(0))
             .open()?;
-        Ok(Self { port })
+        Ok(Self {
+            port,
+            pending: Vec::new(),
+        })
+    }
+
+    /// Blocks until bytes arrive or `timeout` passes, so the device thread reacts to input as it
+    /// lands instead of on its next fixed tick (validation row 3.14). Received bytes are kept for
+    /// the next `read`; reads themselves stay non-blocking.
+    ///
+    /// # Errors
+    /// Returns the I/O error if the port failed; the caller's next `read` surfaces it as link loss.
+    pub fn wait(&mut self, timeout: Duration) -> std::io::Result<()> {
+        if !self.pending.is_empty() {
+            return Ok(());
+        }
+        self.port.set_timeout(timeout)?;
+        let mut chunk = [0u8; 256];
+        let result = self.port.read(&mut chunk);
+        self.port.set_timeout(Duration::ZERO)?;
+        match result {
+            Ok(n) => {
+                self.pending.extend_from_slice(&chunk[..n]);
+                Ok(())
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::TimedOut => Ok(()),
+            Err(e) => Err(e),
+        }
     }
 }
 
@@ -60,6 +89,12 @@ impl SerialLink for SerialPortLink {
     type Error = std::io::Error;
 
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        if !self.pending.is_empty() {
+            let n = buf.len().min(self.pending.len());
+            buf[..n].copy_from_slice(&self.pending[..n]);
+            self.pending.drain(..n);
+            return Ok(n);
+        }
         match self.port.read(buf) {
             Ok(n) => Ok(n),
             // A zero-timeout read reports "no data available now" as a timeout; that is 0 bytes, not an error.

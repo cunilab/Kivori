@@ -16,7 +16,7 @@ use esp_hal::{
     delay::Delay,
     dma::{DmaRxBuf, DmaTxBuf},
     dma_buffers_chunk_size,
-    gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull},
+    gpio::{Input, InputConfig, Io, Level, Output, OutputConfig, Pull},
     peripherals::Peripherals,
     spi::master::{Config, Spi},
     time::Rate,
@@ -205,7 +205,8 @@ pub fn run_mode(
     let rotary_clk = Input::new(peripherals.GPIO4, rotary_pull);
     let rotary_dt = Input::new(peripherals.GPIO5, rotary_pull);
     let rotary_sw = Input::new(peripherals.GPIO10, rotary_pull);
-    let mut rotary = PhysicalRotary::new(rotary_clk, rotary_dt, rotary_sw);
+    let mut io = Io::new(peripherals.IO_MUX);
+    let mut rotary = PhysicalRotary::new(&mut io, rotary_clk, rotary_dt, rotary_sw);
 
     // -------------------------------------------------------------------------
     // Compiled Kivori assets

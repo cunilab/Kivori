@@ -27,7 +27,13 @@ required-features = ["embedded"]
 default = []
 # esp-hal runtime + flashable entry point. Board peripherals (USB Serial/JTAG transport, SPI display)
 # are still Phase 8; this feature provides boot, the monotonic clock, and serial output.
-embedded = ["dep:esp-hal", "dep:esp-println", "dep:esp-backtrace", "dep:embedded-hal-bus"]
+embedded = [
+  "dep:esp-hal",
+  "dep:esp-println",
+  "dep:esp-backtrace",
+  "dep:embedded-hal-bus",
+  "dep:critical-section",
+]
 # Host simulation adapters (in-memory transport, capture display, virtual clock) for testing the
 # device core with no hardware.
 host-sim = []
@@ -69,6 +75,8 @@ kivori-renderer = { path = "../../crates/kivori-renderer" }
 kivori-assets = { path = "../../crates/kivori-assets" }
 heapless = "0.8"
 static_cell = { version = "2.1", optional = true }
+# Shares the edge-capture queue between the GPIO interrupt and the run loop (`physical_rotary`).
+critical-section = { version = "1", optional = true }
 # `rt` provides the runtime entry point (`#[esp_hal::main]`) and `init()`; `unstable` is required by
 # the peripheral drivers the Phase 8 adapters will use.
 esp-hal = { version = "1.1.1", default-features = false, features = ["esp32c3", "rt", "unstable"], optional = true }

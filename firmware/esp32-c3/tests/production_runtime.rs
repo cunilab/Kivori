@@ -653,3 +653,32 @@ fn social_action_over_busy_is_refused_unacknowledged_and_draws_nothing() {
         .iter()
         .any(|m| matches!(m, Message::MascotActionApplied(_))));
 }
+
+#[test]
+fn a_set_state_that_changes_nothing_is_still_answered_with_the_current_state() {
+    let mut h = Harness::new();
+    h.step();
+    for seq in [5, 6] {
+        host_write(
+            &mut h.pipe,
+            &Message::SetState(SetState {
+                desired: SendableState::Idle,
+                at_ms: None,
+            }),
+            seq,
+        );
+        h.tick_next_frame();
+        let reports: Vec<_> = host_drain(&mut h.pipe)
+            .into_iter()
+            .filter_map(|m| match m {
+                Message::StateReport(r) => Some(r.reported),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            reports,
+            [CompanionState::Idle],
+            "a reconnecting desktop must learn the state even when it did not change"
+        );
+    }
+}
