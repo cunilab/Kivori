@@ -68,3 +68,33 @@ percent = 50
 confidence = "unverified"
 at_boundary = false
 hash = "0x0682064E865BB565"
+
+# M1 desk views (kivori_renderer::desk render_mode/render_recovery then render_chrome), the frames named in
+# tests/golden-frames/src/desk_frames.rs and asserted by tests/desk_golden.rs. Export PNGs to review them:
+#   cargo run -p kivori-golden-frames --example desk_review -- <dir>
+[desk_frames]
+clock_0941_colon = "0x19D7C5A521F880A5"
+clock_0941_blink_off = "0xF6AD2B8D5BAB53A5"
+clock_unknown = "0x09A6C29C2F0F0F25"
+volume_42 = "0xBB526C92F248A484"
+volume_100_muted = "0xA74089E5A4761983"
+volume_unknown = "0xAD61F7A044659DA5"
+volume_overlay_unverified_75 = "0x275385477F80994F"
+media_playing = "0x9EE878BCDF03CEF4"
+media_paused = "0xE026A0DFB355D514"
+media_stopped = "0xAAAA8D35E71F25F8"
+media_unknown = "0xA494934B6C5898C7"
+system_normal = "0x0B5B7A82F2A7B5B4"
+system_high_load = "0x5E82FDE4FEAB548C"
+system_unknown = "0x03DE286D5F9B0F39"
+recovery_0 = "0xDA38426609203FFD"
+recovery_50 = "0xA712FB47037D48DD"
+recovery_100 = "0xE1D9622086BDB959"
+buddy_load_pressed = "0x3B445B3CE2D12695"
+buddy_indicators = "0xCA7EBEEEEBFC3254"
+feedback_state_confirmed = "0x1B2AD7C7DDFAA891"
+feedback_execution_confirmed = "0xBF2888C1B03260C5"
+feedback_unverified = "0xE9DDE03CCF2F115C"
+feedback_error = "0x6852FBD07E05AB19"
+feedback_processing_0 = "0xD6DE190EB4C4BE3D"
+feedback_processing_300 = "0x1DCE7E9E4EC2ABF9"
