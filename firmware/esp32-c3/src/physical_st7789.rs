@@ -227,9 +227,10 @@ pub fn run_mode(
             0x00, 0x01,
         ],
 
+        // 1.1: M1 (push switch, recovery hold, desk status and feedback; protocol 1.3).
         firmware_version: FirmwareVersion {
             major: 1,
-            minor: 0,
+            minor: 1,
             patch: 0,
         },
 
