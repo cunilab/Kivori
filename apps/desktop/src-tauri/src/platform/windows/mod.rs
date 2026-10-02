@@ -32,7 +32,9 @@ use windows::Win32::System::Com::{
 };
 use windows::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 
-use crate::platform::{ActionAvailability, BackendError, ConfirmationClass, VolumeBackend};
+use crate::platform::{
+    ActionAvailability, BackendError, ChangeOrigin, ConfirmationClass, VolumeBackend, VolumeChange,
+};
 
 /// Identifies volume changes Kivori itself originated. `SetMasterVolumeLevelScalar` takes this
 /// GUID as its event context, and `OnNotify` reports it back in
@@ -46,29 +48,14 @@ const KIVORI_EVENT_CONTEXT: GUID = GUID::from_u128(0x4b49_564f_5249_0002_0000_00
 const ROLE: ERole = eConsole;
 const FLOW: EDataFlow = eRender;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChangeOrigin {
-    /// The echo of a write Kivori itself just performed. `set()` already confirmed it
-    /// synchronously via its own read-back, so this is informational only.
-    Kivori,
-    /// A change Kivori did not originate: the Windows flyout, a media key, another app.
-    External,
-    /// The default render endpoint changed; this is the new endpoint's freshly read volume.
-    EndpointRebind,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct VolumeChange {
-    pub percent: u8,
-    pub origin: ChangeOrigin,
-}
-
 /// Requests handled on the owning `kivori-audio` thread. `Read`/`Set` carry a one-shot reply
 /// channel so the public, `Sync` API can make a synchronous call into the thread that actually
 /// owns the non-`Send` COM objects.
 enum Command {
     Read(Sender<Result<u8, BackendError>>),
     Set(u8, Sender<Result<u8, BackendError>>),
+    ReadMute(Sender<Result<bool, BackendError>>),
+    SetMute(bool, Sender<Result<bool, BackendError>>),
     /// Raised by the `IMMNotificationClient` callback when the default render endpoint changes.
     /// All COM work for the rebind happens here, on the owning thread — never in the callback.
     Rebind,
@@ -179,6 +166,30 @@ impl VolumeBackend for WindowsVolumeBackend {
             .recv()
             .map_err(|_| BackendError::Os("kivori-audio thread is gone".to_string()))?
     }
+
+    fn read_mute(&self) -> Result<bool, BackendError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.commands
+            .send(Command::ReadMute(reply_tx))
+            .map_err(|_| BackendError::Os("kivori-audio thread is gone".to_string()))?;
+        reply_rx
+            .recv()
+            .map_err(|_| BackendError::Os("kivori-audio thread is gone".to_string()))?
+    }
+
+    fn set_mute(&self, muted: bool) -> Result<bool, BackendError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.commands
+            .send(Command::SetMute(muted, reply_tx))
+            .map_err(|_| BackendError::Os("kivori-audio thread is gone".to_string()))?;
+        reply_rx
+            .recv()
+            .map_err(|_| BackendError::Os("kivori-audio thread is gone".to_string()))?
+    }
+
+    fn try_recv_change(&self) -> Option<VolumeChange> {
+        WindowsVolumeBackend::try_recv_change(self)
+    }
 }
 
 /// State the owning thread holds for the currently-bound endpoint. `None` when there is no
@@ -239,6 +250,20 @@ fn audio_thread(
             Ok(Command::Set(percent, reply)) => {
                 let result = match &state.volume {
                     Some(volume) => write_scalar(volume, percent),
+                    None => Err(BackendError::NoEndpoint),
+                };
+                let _ = reply.send(result);
+            }
+            Ok(Command::ReadMute(reply)) => {
+                let result = match &state.volume {
+                    Some(volume) => read_mute(volume),
+                    None => Err(BackendError::NoEndpoint),
+                };
+                let _ = reply.send(result);
+            }
+            Ok(Command::SetMute(muted, reply)) => {
+                let result = match &state.volume {
+                    Some(volume) => write_mute(volume, muted),
                     None => Err(BackendError::NoEndpoint),
                 };
                 let _ = reply.send(result);
@@ -314,9 +339,10 @@ fn rebind(
         return;
     }
 
-    if let Ok(percent) = read_scalar(&volume) {
+    if let (Ok(percent), Ok(muted)) = (read_scalar(&volume), read_mute(&volume)) {
         let _ = changes.send(VolumeChange {
             percent,
+            muted,
             origin: ChangeOrigin::EndpointRebind,
         });
     }
@@ -355,6 +381,22 @@ fn write_scalar(volume: &IAudioEndpointVolume, percent: u8) -> Result<u8, Backen
     read_scalar(volume).map_err(|_| BackendError::ReadBackUnavailable)
 }
 
+fn read_mute(volume: &IAudioEndpointVolume) -> Result<bool, BackendError> {
+    // SAFETY: `volume` is a live, activated `IAudioEndpointVolume`.
+    unsafe { volume.GetMute() }
+        .map(|muted| muted.as_bool())
+        .map_err(|err| BackendError::Os(err.to_string()))
+}
+
+/// Same rule as [`write_scalar`]: write, then re-read; a failed read-back is reported as such.
+fn write_mute(volume: &IAudioEndpointVolume, muted: bool) -> Result<bool, BackendError> {
+    // SAFETY: `volume` is a live, activated `IAudioEndpointVolume`; `KIVORI_EVENT_CONTEXT` is a
+    // valid `'static` GUID.
+    unsafe { volume.SetMute(muted, &KIVORI_EVENT_CONTEXT) }
+        .map_err(|err| BackendError::Os(err.to_string()))?;
+    read_mute(volume).map_err(|_| BackendError::ReadBackUnavailable)
+}
+
 /// `IAudioEndpointVolumeCallback`: INGRESS ONLY. `OnNotify` performs no COM calls — it classifies
 /// the write's origin by comparing `guidEventContext` to `KIVORI_EVENT_CONTEXT` and pushes onto
 /// the channel. All further handling happens on the owning `kivori-audio` thread.
@@ -376,7 +418,11 @@ impl IAudioEndpointVolumeCallback_Impl for VolumeCallback_Impl {
             ChangeOrigin::External
         };
         let percent = scalar_to_percent(data.fMasterVolume);
-        let _ = self.changes.send(VolumeChange { percent, origin });
+        let _ = self.changes.send(VolumeChange {
+            percent,
+            muted: data.bMuted.as_bool(),
+            origin,
+        });
         Ok(())
     }
 }

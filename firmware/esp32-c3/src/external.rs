@@ -89,6 +89,8 @@ fn kind_name(message: &Message) -> &'static str {
         Message::MascotActionApplied(_) => "MascotActionApplied",
         Message::InputEvent(_) => "InputEvent",
         Message::Presentation(_) => "Presentation",
+        Message::Status(_) => "Status",
+        Message::Feedback(_) => "Feedback",
     }
 }
 

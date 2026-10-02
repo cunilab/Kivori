@@ -2,6 +2,7 @@
 //! the `postcard` variant index is the wire tag.
 
 use crate::error::{ByeReason, ErrorCategory};
+use kivori_model::desk::{ActionKind, DeskStatus, FeedbackKind};
 use kivori_model::input::Direction;
 use kivori_model::presentation::{PrimaryState, ValueDisplay};
 use kivori_model::{Capabilities, CompanionState, MascotAction, MascotPersonality, SendableState};
@@ -147,11 +148,13 @@ pub struct MascotActionApplied {
     pub applied_at_ms: u32,
 }
 
-/// Which physical control produced an event. Extensible; only `Rotary` in Slice 002.
+/// Which physical control produced an event. Append-only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ControlId {
     /// The rotary encoder knob.
     Rotary,
+    /// The encoder's push switch (M1, capability `BUTTON_INPUT_V1`).
+    Button,
 }
 
 /// Semantic input. Raw electrical edges never reach the wire.
@@ -163,6 +166,11 @@ pub enum InputKind {
     Detent(Direction),
     /// The gesture has ended.
     GestureEnded,
+    /// The push switch was released within the short-press window (M1). Fires once per press.
+    Press,
+    /// The push switch was released inside the Hold window, before recovery took the gesture
+    /// (M1). Fires once per press.
+    Hold,
 }
 
 /// Device -> desktop physical input.
@@ -203,6 +211,29 @@ pub struct Presentation {
     pub transient_ms: u16,
 }
 
+/// Desktop -> device desk status: display mode and monitored desktop state (M1, capability
+/// `DESK_STATUS_V1`). The whole status is sent on every change; the device keeps the latest of
+/// the current session and forgets it when the session ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Status {
+    /// The handshake nonce of the session this status applies to.
+    pub session: Nonce,
+    /// The status itself.
+    pub status: DeskStatus,
+}
+
+/// Desktop -> device action outcome (M1, capability `ACTION_FEEDBACK_V1`). The device shows it
+/// for `FeedbackKind::transient_ms`, and a newer one replaces it at once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Feedback {
+    /// The handshake nonce of the session this feedback applies to.
+    pub session: Nonce,
+    /// Which action.
+    pub action: ActionKind,
+    /// What is known about its outcome.
+    pub kind: FeedbackKind,
+}
+
 /// The top-level wire message.
 ///
 /// **Append-only**: new variants are added at the end within a major version — the `postcard`
@@ -239,4 +270,8 @@ pub enum Message {
     InputEvent(InputEvent),
     /// Tag 14 — desktop -> device semantic presentation (capability `PRESENTATION_V1`).
     Presentation(Presentation),
+    /// Tag 15 — desktop -> device desk status (capability `DESK_STATUS_V1`).
+    Status(Status),
+    /// Tag 16 — desktop -> device action outcome (capability `ACTION_FEEDBACK_V1`).
+    Feedback(Feedback),
 }

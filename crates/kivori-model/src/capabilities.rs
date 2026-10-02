@@ -19,6 +19,9 @@ impl Capabilities {
     //   bit 0  MASCOT_INTERACTION  mascot animation (PR #3)
     //   bit 1  PHYSICAL_INPUT_V1   Slice 002
     //   bit 2  PRESENTATION_V1     Slice 002
+    //   bit 3  BUTTON_INPUT_V1     M1 push switch (Press / Hold input events)
+    //   bit 4  DESK_STATUS_V1      M1 `Status` message (display mode + monitoring)
+    //   bit 5  ACTION_FEEDBACK_V1  M1 `Feedback` message (action outcome)
 
     /// Bit 0 — device accepts deterministic social mascot actions and returns applied-time
     /// acknowledgments.
@@ -29,6 +32,15 @@ impl Capabilities {
 
     /// Bit 2 — the device renders semantic `Presentation` (Slice 002).
     pub const PRESENTATION_V1: Capabilities = Capabilities(1 << 2);
+
+    /// Bit 3 — the device may emit push-switch `InputEvent`s (`ControlId::Button`, M1).
+    pub const BUTTON_INPUT_V1: Capabilities = Capabilities(1 << 3);
+
+    /// Bit 4 — the device renders the `Status` message: display modes and monitoring (M1).
+    pub const DESK_STATUS_V1: Capabilities = Capabilities(1 << 4);
+
+    /// Bit 5 — the device renders the `Feedback` message: action outcomes (M1).
+    pub const ACTION_FEEDBACK_V1: Capabilities = Capabilities(1 << 5);
 
     /// Creates a capability set from a raw bitmask.
     #[must_use]

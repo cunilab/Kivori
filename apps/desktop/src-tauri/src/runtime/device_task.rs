@@ -429,7 +429,6 @@ fn device_loop(
                 record_observations(&app, &activity_log, [observation]);
             });
         }
-        #[cfg(windows)]
         while let Some(change) = backend.try_recv_change() {
             rotary.on_backend_change(change, &mut presentations, |observation| {
                 record_observations(&app, &activity_log, [observation]);
@@ -638,7 +637,8 @@ impl RotaryPipeline {
                         RejectReason::NoSession | RejectReason::StaleSession => {
                             ActivityEventKind::InputStaleSessionRejected
                         }
-                        RejectReason::UnknownGesture => {
+                        // Both are input that fits no gesture the device could have produced.
+                        RejectReason::UnknownGesture | RejectReason::ControlMismatch => {
                             ActivityEventKind::InputUnstartedGestureRejected
                         }
                     },
@@ -652,18 +652,17 @@ impl RotaryPipeline {
 
     /// Routes one backend-originated volume change. Every percent here was read from the OS by the
     /// owning audio thread, so `Confirmed` still only ever follows a real backend read.
-    #[cfg(windows)]
     pub fn on_backend_change(
         &mut self,
-        change: platform::windows::VolumeChange,
+        change: platform::VolumeChange,
         presentations: &mut Vec<Presentation>,
         mut observe: impl FnMut(SessionActivity),
     ) {
         let update = match change.origin {
-            platform::windows::ChangeOrigin::External => {
+            platform::ChangeOrigin::External => {
                 self.gesture_value.on_external_change(change.percent)
             }
-            platform::windows::ChangeOrigin::EndpointRebind => {
+            platform::ChangeOrigin::EndpointRebind => {
                 observe(SessionActivity::new(
                     ActivityEventKind::AudioEndpointChanged,
                     None,
@@ -671,7 +670,7 @@ impl RotaryPipeline {
                 self.gesture_value.on_endpoint_rebind(change.percent)
             }
             // Kivori's own write, echoed back; `set()` already confirmed it via its read-back.
-            platform::windows::ChangeOrigin::Kivori => None,
+            platform::ChangeOrigin::Kivori => None,
         };
         if let Some(update) = update {
             self.push_update(update, presentations, &mut observe);
