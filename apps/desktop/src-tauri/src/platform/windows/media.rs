@@ -70,28 +70,34 @@ impl MediaObserver for WindowsMediaObserver {
 }
 
 /// Maps a GSMTC playback status to ours. `Opened`/`Changing` are transitions, so they keep the
-/// previous known value (or `Stopped` if there is none).
-fn map_playback(status: PlaybackStatus, prev: Option<MediaStatus>) -> MediaStatus {
+/// previous known value, or stay unknown if there is none (never guessed as Stopped).
+fn map_playback(status: PlaybackStatus, prev: Option<MediaStatus>) -> Option<MediaStatus> {
     if status == PlaybackStatus::Playing {
-        MediaStatus::Playing
+        Some(MediaStatus::Playing)
     } else if status == PlaybackStatus::Paused {
-        MediaStatus::Paused
+        Some(MediaStatus::Paused)
     } else if status == PlaybackStatus::Opened || status == PlaybackStatus::Changing {
-        prev.unwrap_or(MediaStatus::Stopped)
+        prev
     } else {
         // Stopped, Closed.
-        MediaStatus::Stopped
+        Some(MediaStatus::Stopped)
     }
 }
 
-/// One poll. `Err` = a WinRT call failed (unknown). No current session is `Ok(Stopped)`.
-fn poll(manager: &Manager, prev: Option<MediaStatus>) -> windows::core::Result<MediaStatus> {
+/// One poll. `Err` = a WinRT call failed (unknown).
+fn poll(
+    manager: &Manager,
+    prev: Option<MediaStatus>,
+) -> windows::core::Result<Option<MediaStatus>> {
     let session = match manager.GetCurrentSession() {
         Ok(session) => session,
-        // GetCurrentSession returns a null object (surfaced as an error) when nothing is playing.
-        // ponytail: a genuine failure is indistinguishable here; the manager re-request below
-        // keeps it from sticking.
-        Err(_) => return Ok(MediaStatus::Stopped),
+        // No current session: windows-rs turns the null object into an *empty* error (code
+        // S_OK, windows-core `Type::from_abi`). That is "nothing is playing"; any other error is
+        // a real failure and stays unknown.
+        Err(error) if error.code() == windows::core::HRESULT(0) => {
+            return Ok(Some(MediaStatus::Stopped))
+        }
+        Err(error) => return Err(error),
     };
     let playback = session.GetPlaybackInfo()?.PlaybackStatus()?;
     Ok(map_playback(playback, prev))
@@ -116,11 +122,15 @@ fn poll_loop(shared: &Shared, stop: &AtomicBool) {
             manager = Manager::RequestAsync().and_then(|op| op.get()).ok();
         }
         let prev = *shared.lock().expect("media status mutex");
-        let next = manager.as_ref().and_then(|m| poll(m, prev).ok());
-        if next.is_none() {
-            // Drop the manager so the next tick re-requests a fresh one.
-            manager = None;
-        }
+        let next = match manager.as_ref().map(|m| poll(m, prev)) {
+            Some(Ok(status)) => status,
+            Some(Err(_)) => {
+                // Drop the manager so the next tick re-requests a fresh one.
+                manager = None;
+                None
+            }
+            None => None,
+        };
         *shared.lock().expect("media status mutex") = next;
 
         for _ in 0..POLL_SLICES {
@@ -141,19 +151,19 @@ mod tests {
         for prev in [None, Some(MediaStatus::Paused)] {
             assert_eq!(
                 map_playback(PlaybackStatus::Playing, prev),
-                MediaStatus::Playing
+                Some(MediaStatus::Playing)
             );
             assert_eq!(
                 map_playback(PlaybackStatus::Paused, prev),
-                MediaStatus::Paused
+                Some(MediaStatus::Paused)
             );
             assert_eq!(
                 map_playback(PlaybackStatus::Stopped, prev),
-                MediaStatus::Stopped
+                Some(MediaStatus::Stopped)
             );
             assert_eq!(
                 map_playback(PlaybackStatus::Closed, prev),
-                MediaStatus::Stopped
+                Some(MediaStatus::Stopped)
             );
         }
     }
@@ -163,13 +173,13 @@ mod tests {
         for transient in [PlaybackStatus::Opened, PlaybackStatus::Changing] {
             assert_eq!(
                 map_playback(transient, Some(MediaStatus::Playing)),
-                MediaStatus::Playing
+                Some(MediaStatus::Playing)
             );
             assert_eq!(
                 map_playback(transient, Some(MediaStatus::Paused)),
-                MediaStatus::Paused
+                Some(MediaStatus::Paused)
             );
-            assert_eq!(map_playback(transient, None), MediaStatus::Stopped);
+            assert_eq!(map_playback(transient, None), None, "never guessed");
         }
     }
 }

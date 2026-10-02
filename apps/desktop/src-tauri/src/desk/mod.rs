@@ -221,7 +221,6 @@ impl DeskRuntime {
             synth,
             media: Arc::clone(&media),
             launch: crate::platform::launch::launch,
-            media_confirm_window: Duration::from_millis(1_000),
         });
         Self {
             bindings: Bindings::default(),
@@ -258,12 +257,6 @@ impl DeskRuntime {
         self.last_action
     }
 
-    /// Playback can be observed on this OS right now.
-    #[must_use]
-    pub fn media_observable(&self) -> bool {
-        self.media.status().is_some()
-    }
-
     /// The user picked a display mode.
     pub fn set_mode(&mut self, mode: DisplayMode, observe: &mut impl FnMut(SessionActivity)) {
         if mode != self.publisher.mode() {
@@ -286,8 +279,11 @@ impl DeskRuntime {
         let id = self.ladder.start(kind, now);
         observe(desk_activity(ActivityEventKind::DeskActionRequested, kind));
         if !self.worker.request(id, action) {
+            // The worker is gone: say so on the device too, never stay silent (gate 9).
             self.finish(kind, Outcome::error(), observe);
-            self.ladder.clear();
+            if let Some(feedback) = self.ladder.on_outcome(id, FeedbackKind::Error) {
+                self.outbox.push(feedback);
+            }
         }
     }
 
@@ -312,7 +308,7 @@ impl DeskRuntime {
     pub fn on_audio_change(&mut self, change: &VolumeChange) {
         self.publisher.observe(Observed {
             volume_percent: Some(change.percent),
-            muted: Some(change.muted),
+            muted: change.muted,
             ..self.publisher.observed()
         });
     }
@@ -326,6 +322,9 @@ impl DeskRuntime {
     pub fn on_session_end(&mut self) {
         self.ladder.clear();
         self.outbox.clear();
+        // Presses still queued for the worker belong to the old session: they must not run
+        // (gate 2). One already executing cannot be recalled.
+        self.worker.cancel_pending();
     }
 
     /// Samples on schedule, collects finished actions and ladder steps, and returns what the

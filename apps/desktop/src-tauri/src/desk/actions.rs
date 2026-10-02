@@ -6,12 +6,12 @@
 //! dispatched input whose effect cannot be seen is Unverified (never success), and a known failure
 //! is Error. Nothing falls back to another mechanism when an action cannot run (invariant 19).
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
 
-use kivori_model::desk::{ActionKind, FeedbackKind, MediaStatus};
+use kivori_model::desk::{ActionKind, FeedbackKind};
 
 use crate::platform::{
     ActionError, BackendError, InputSynth, MediaObserver, Shortcut, VolumeBackend,
@@ -96,40 +96,19 @@ pub struct Platform {
     pub synth: Arc<dyn InputSynth>,
     pub media: Arc<dyn MediaObserver>,
     pub launch: fn(&str) -> Result<(), ActionError>,
-    /// How long play/pause watches the media observer for the resulting state.
-    pub media_confirm_window: Duration,
 }
 
-/// Runs `action` and classifies what is known about its outcome. May block (play/pause watches
-/// for up to `media_confirm_window`); call it on the action worker, never the device thread.
+/// Runs `action` and classifies what is known about its outcome. Call it on the action worker,
+/// never the device thread (a launch can take a moment).
 pub fn execute(action: &Action, platform: &Platform) -> Outcome {
     match action {
-        Action::PlayPause => {
-            let before = platform.media.status();
-            if let Err(error) = platform.synth.send_media_play_pause() {
-                return Outcome::from_error(&error);
-            }
-            // A media key's effect is only knowable where playback is observable. The key
-            // toggles, so a known state flipping to its opposite is the observed result.
-            let expected = match before {
-                Some(MediaStatus::Playing) => Some(MediaStatus::Paused),
-                Some(MediaStatus::Paused) => Some(MediaStatus::Playing),
-                Some(MediaStatus::Stopped) | None => None,
-            };
-            let Some(expected) = expected else {
-                return Outcome::of(FeedbackKind::Unverified);
-            };
-            let deadline = Instant::now() + platform.media_confirm_window;
-            loop {
-                if platform.media.status() == Some(expected) {
-                    return Outcome::of(FeedbackKind::StateConfirmed);
-                }
-                if Instant::now() >= deadline {
-                    return Outcome::of(FeedbackKind::Unverified);
-                }
-                std::thread::sleep(Duration::from_millis(50));
-            }
-        }
+        // A media key's effect cannot be tied to this press: the observer's state may be stale
+        // or changed by something else, so a matching state is never proof. Always Unverified;
+        // the media indicator and view show the playback the OS actually reports.
+        Action::PlayPause => match platform.synth.send_media_play_pause() {
+            Ok(()) => Outcome::of(FeedbackKind::Unverified),
+            Err(error) => Outcome::from_error(&error),
+        },
         Action::ToggleMute => {
             let Ok(muted) = platform.volume.read_mute() else {
                 return Outcome::of(FeedbackKind::Error);
@@ -164,20 +143,27 @@ pub struct Finished {
 /// Runs actions one at a time on a `kivori-actions` thread, so a slow action never stalls the
 /// device link. Dropping it stops the thread after the action in progress.
 pub struct ActionWorker {
-    requests: Option<Sender<(u64, Action)>>,
+    requests: Option<Sender<(u64, u64, Action)>>,
     finished: Receiver<Finished>,
+    /// Requests stamped with an older epoch are skipped, not run.
+    epoch: Arc<AtomicU64>,
     thread: Option<JoinHandle<()>>,
 }
 
 impl ActionWorker {
     #[must_use]
     pub fn spawn(platform: Platform) -> Self {
-        let (request_tx, request_rx) = mpsc::channel::<(u64, Action)>();
+        let (request_tx, request_rx) = mpsc::channel::<(u64, u64, Action)>();
         let (finished_tx, finished_rx) = mpsc::channel();
+        let epoch = Arc::new(AtomicU64::new(0));
+        let current = Arc::clone(&epoch);
         let thread = std::thread::Builder::new()
             .name("kivori-actions".to_string())
             .spawn(move || {
-                while let Ok((id, action)) = request_rx.recv() {
+                while let Ok((id, stamped, action)) = request_rx.recv() {
+                    if stamped != current.load(Ordering::SeqCst) {
+                        continue;
+                    }
                     let outcome = execute(&action, &platform);
                     let finished = Finished {
                         id,
@@ -193,15 +179,22 @@ impl ActionWorker {
         Self {
             requests: Some(request_tx),
             finished: finished_rx,
+            epoch,
             thread,
         }
     }
 
     /// Queues `action` under `id`. Returns `false` if the worker is gone.
     pub fn request(&self, id: u64, action: Action) -> bool {
+        let epoch = self.epoch.load(Ordering::SeqCst);
         self.requests
             .as_ref()
-            .is_some_and(|tx| tx.send((id, action)).is_ok())
+            .is_some_and(|tx| tx.send((id, epoch, action)).is_ok())
+    }
+
+    /// Every request queued so far is skipped instead of run.
+    pub fn cancel_pending(&self) {
+        self.epoch.fetch_add(1, Ordering::SeqCst);
     }
 
     /// One finished action, if any. Never blocks.
@@ -226,6 +219,7 @@ mod tests {
     use crate::platform::{
         ActionAvailability, FakeInputSynth, FakeMediaObserver, FakeVolumeBackend,
     };
+    use kivori_model::desk::MediaStatus;
 
     fn platform(
         synth: Result<(), ActionError>,
@@ -246,7 +240,6 @@ mod tests {
                         Ok(())
                     }
                 },
-                media_confirm_window: Duration::ZERO,
             },
             observer,
         )
@@ -273,38 +266,47 @@ mod tests {
     }
 
     #[test]
-    fn play_pause_is_confirmed_only_when_playback_is_seen_to_flip() {
-        let (p, observer) = platform(Ok(()), Some(MediaStatus::Paused), FakeVolumeBackend::new(0));
-        // The observer still reports Paused: the key went out, the effect is unknown.
-        assert_eq!(kind(&Action::PlayPause, &p), FeedbackKind::Unverified);
-        *observer.status.lock().unwrap() = Some(MediaStatus::Playing);
-        // Reported Playing before the key; the fake keeps Playing, so no flip is seen.
-        assert_eq!(kind(&Action::PlayPause, &p), FeedbackKind::Unverified);
-
-        let (p, _) = platform(Ok(()), None, FakeVolumeBackend::new(0));
-        assert_eq!(
-            kind(&Action::PlayPause, &p),
-            FeedbackKind::Unverified,
-            "unobservable playback is never confirmed"
-        );
+    fn play_pause_is_never_more_than_unverified() {
+        for media in [None, Some(MediaStatus::Paused), Some(MediaStatus::Playing)] {
+            let (p, _) = platform(Ok(()), media, FakeVolumeBackend::new(0));
+            assert_eq!(kind(&Action::PlayPause, &p), FeedbackKind::Unverified);
+        }
     }
 
     #[test]
-    fn play_pause_confirms_when_the_observer_sees_the_opposite_state() {
-        struct Flips(std::sync::Mutex<Vec<MediaStatus>>);
-        impl MediaObserver for Flips {
-            fn status(&self) -> Option<MediaStatus> {
-                let mut s = self.0.lock().unwrap();
-                Some(if s.len() > 1 { s.remove(0) } else { s[0] })
-            }
-        }
+    fn requests_queued_before_a_cancel_are_skipped_not_run() {
         let (mut p, _) = platform(Ok(()), None, FakeVolumeBackend::new(0));
-        p.media = Arc::new(Flips(std::sync::Mutex::new(vec![
-            MediaStatus::Playing,
-            MediaStatus::Paused,
-        ])));
-        p.media_confirm_window = Duration::from_millis(200);
-        assert_eq!(kind(&Action::PlayPause, &p), FeedbackKind::StateConfirmed);
+        p.launch = |target| {
+            if target == "Slow" {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            Ok(())
+        };
+        let volume = Arc::clone(&p.volume);
+        let worker = ActionWorker::spawn(p);
+        assert!(worker.request(1, Action::Launch("Slow".into())));
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert!(
+            worker.request(2, Action::ToggleMute),
+            "queued behind the slow launch"
+        );
+        worker.cancel_pending();
+        assert!(worker.request(3, Action::Launch("Calculator".into())));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        let mut ids = Vec::new();
+        while ids.len() < 2 {
+            if let Some(f) = worker.try_finished() {
+                ids.push(f.id);
+            }
+            assert!(std::time::Instant::now() < deadline, "got only {ids:?}");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(
+            ids,
+            [1, 3],
+            "the in-flight launch finishes; the stale mute never runs"
+        );
+        assert_eq!(volume.read_mute(), Ok(false));
     }
 
     #[test]
@@ -353,13 +355,16 @@ mod tests {
         let (p, _) = platform(Ok(()), None, FakeVolumeBackend::new(0));
         let worker = ActionWorker::spawn(p);
         assert!(worker.request(7, Action::ToggleMute));
-        let deadline = Instant::now() + Duration::from_secs(2);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
         let finished = loop {
             if let Some(f) = worker.try_finished() {
                 break f;
             }
-            assert!(Instant::now() < deadline, "worker never answered");
-            std::thread::sleep(Duration::from_millis(5));
+            assert!(
+                std::time::Instant::now() < deadline,
+                "worker never answered"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
         };
         assert_eq!(finished.id, 7);
         assert_eq!(finished.action, ActionKind::Mute);

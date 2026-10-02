@@ -174,7 +174,7 @@ fn write_round_trips_and_classifies_echo_versus_external() {
     assert_eq!(backend.set_mute(!guard.muted), Ok(!guard.muted));
     assert_eq!(backend.read_mute(), Ok(!guard.muted));
     let echo = collect(&backend, Duration::from_millis(500), |s| {
-        s.iter().any(|c| c.muted != guard.muted)
+        s.iter().any(|c| c.muted != Some(guard.muted))
     });
     eprintln!("after own set_mute({}): {echo:?}", !guard.muted);
     assert!(

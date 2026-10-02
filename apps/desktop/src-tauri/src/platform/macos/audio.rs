@@ -298,8 +298,8 @@ enum OwnWrite {
 /// last state reported. It is Kivori's echo only if the field Kivori wrote now holds the written
 /// value, the other field is unchanged, and the write was at most [`ECHO_WINDOW`] ago.
 fn classify(
-    observed: (u8, bool),
-    previous: Option<(u8, bool)>,
+    observed: (u8, Option<bool>),
+    previous: Option<(u8, Option<bool>)>,
     last_write: Option<(OwnWrite, Instant)>,
     now: Instant,
 ) -> ChangeOrigin {
@@ -315,7 +315,8 @@ fn classify(
             observed.0 == p && other_unchanged(previous.is_some_and(|prev| prev.1 == observed.1))
         }
         OwnWrite::Mute(m) => {
-            observed.1 == m && other_unchanged(previous.is_some_and(|prev| prev.0 == observed.0))
+            observed.1 == Some(m)
+                && other_unchanged(previous.is_some_and(|prev| prev.0 == observed.0))
         }
     };
     if echo {
@@ -431,7 +432,7 @@ struct Audio {
     token: usize,
     binding: Result<AudioObjectId, BackendError>,
     /// Last state sent on `changes`; notifications that do not change it are dropped.
-    reported: Option<(u8, bool)>,
+    reported: Option<(u8, Option<bool>)>,
     last_write: Option<(OwnWrite, Instant)>,
     changes: Sender<VolumeChange>,
 }
@@ -479,7 +480,9 @@ impl Audio {
             return;
         };
         self.device_listeners(device, true);
-        if let (Ok(percent), Ok(muted)) = (read_volume(device), read_mute(device)) {
+        // A device without a readable mute still reports volume; its mute is unknown.
+        if let Ok(percent) = read_volume(device) {
+            let muted = read_mute(device).ok();
             self.reported = Some((percent, muted));
             let _ = self.changes.send(VolumeChange {
                 percent,
@@ -493,9 +496,10 @@ impl Audio {
         let Ok(device) = self.binding else {
             return;
         };
-        let (Ok(percent), Ok(muted)) = (read_volume(device), read_mute(device)) else {
+        let Ok(percent) = read_volume(device) else {
             return;
         };
+        let muted = read_mute(device).ok();
         let observed = (percent, muted);
         if self.reported == Some(observed) {
             return;
@@ -639,38 +643,44 @@ mod tests {
         let t0 = Instant::now();
         let soon = t0 + Duration::from_millis(100);
         let late = t0 + Duration::from_millis(300);
-        let prev = Some((40, false));
+        let prev = Some((40, Some(false)));
         let vol = Some((OwnWrite::Volume(50), t0));
         let mute = Some((OwnWrite::Mute(true), t0));
 
-        assert_eq!(classify((50, false), prev, vol, soon), ChangeOrigin::Kivori);
         assert_eq!(
-            classify((50, false), prev, vol, late),
+            classify((50, Some(false)), prev, vol, soon),
+            ChangeOrigin::Kivori
+        );
+        assert_eq!(
+            classify((50, Some(false)), prev, vol, late),
             ChangeOrigin::External,
             "too late"
         );
         assert_eq!(
-            classify((51, false), prev, vol, soon),
+            classify((51, Some(false)), prev, vol, soon),
             ChangeOrigin::External,
             "other value"
         );
         assert_eq!(
-            classify((50, true), prev, vol, soon),
+            classify((50, Some(true)), prev, vol, soon),
             ChangeOrigin::External,
             "mute moved too"
         );
         assert_eq!(
-            classify((50, false), prev, None, soon),
+            classify((50, Some(false)), prev, None, soon),
             ChangeOrigin::External,
             "no write"
         );
-        assert_eq!(classify((40, true), prev, mute, soon), ChangeOrigin::Kivori);
         assert_eq!(
-            classify((41, true), prev, mute, soon),
+            classify((40, Some(true)), prev, mute, soon),
+            ChangeOrigin::Kivori
+        );
+        assert_eq!(
+            classify((41, Some(true)), prev, mute, soon),
             ChangeOrigin::External
         );
         assert_eq!(
-            classify((50, false), None, vol, soon),
+            classify((50, Some(false)), None, vol, soon),
             ChangeOrigin::Kivori,
             "nothing reported yet"
         );

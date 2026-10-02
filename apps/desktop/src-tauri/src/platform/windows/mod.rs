@@ -345,10 +345,10 @@ fn rebind(
         return;
     }
 
-    if let (Ok(percent), Ok(muted)) = (read_scalar(&volume), read_mute(&volume)) {
+    if let Ok(percent) = read_scalar(&volume) {
         let _ = changes.send(VolumeChange {
             percent,
-            muted,
+            muted: read_mute(&volume).ok(),
             origin: ChangeOrigin::EndpointRebind,
         });
     }
@@ -426,7 +426,7 @@ impl IAudioEndpointVolumeCallback_Impl for VolumeCallback_Impl {
         let percent = scalar_to_percent(data.fMasterVolume);
         let _ = self.changes.send(VolumeChange {
             percent,
-            muted: data.bMuted.as_bool(),
+            muted: Some(data.bMuted.as_bool()),
             origin,
         });
         Ok(())

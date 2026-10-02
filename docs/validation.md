@@ -149,8 +149,8 @@ Hold = master mute. Shortcut and launch run from Device Studio's Test action pan
 
 - [ ] 4.9 Hold to mute, then again to unmute; compare the OS mixer | OS mute matches each time; badge is the green check (State Confirmed). Windows and macOS
 - [ ] 4.10 Mute or unmute from the OS (keyboard key, flyout, menu bar) | the panel's mute indicator follows with no Kivori input. Windows and macOS
-- [ ] 4.11 Press while Spotify or a browser plays (Windows) | playback toggles; badge is the green check once Windows reports the new state
-- [ ] 4.12 Press while something plays (macOS) | playback toggles; badge is the amber "?" (Unverified), never a check
+- [ ] 4.11 Press while Spotify or a browser plays (Windows) | playback toggles; badge is the amber "?" (Unverified, never a check); the media indicator and Media view follow the real state within about 1 s
+- [ ] 4.12 Press while something plays (macOS) | playback toggles; badge is the amber "?" (Unverified), never a check; Kivori does not crash (input runs on the main thread)
 - [ ] 4.13 Test action: shortcut (Windows `Ctrl+Shift+Esc`, macOS `Cmd+Space`) | the shortcut happens; badge is the amber "?" (Unverified). Windows and macOS
 - [ ] 4.14 Test action: launch (`notepad` / `Calculator`), then a name that does not exist | the app starts with the blue arrow (Execution Confirmed); the missing one shows the red cross. Windows and macOS
 - [ ] 4.15 macOS with Accessibility permission removed: Press | red cross, the app says Accessibility permission is needed, nothing is sent another way (gate 5); after granting, Press works without restarting Kivori

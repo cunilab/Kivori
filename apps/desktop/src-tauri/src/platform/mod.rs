@@ -80,7 +80,8 @@ pub enum ChangeOrigin {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VolumeChange {
     pub percent: u8,
-    pub muted: bool,
+    /// `None` when the device's mute cannot be read (some devices have none): unknown, not false.
+    pub muted: Option<bool>,
     pub origin: ChangeOrigin,
 }
 
@@ -188,7 +189,9 @@ impl FakeVolumeBackend {
     /// Simulates an observed external change, delivered through `try_recv_change`.
     pub fn push_change(&self, change: VolumeChange) {
         *self.state.lock().expect("fake backend mutex") = change.percent;
-        *self.muted.lock().expect("fake backend mutex") = change.muted;
+        if let Some(muted) = change.muted {
+            *self.muted.lock().expect("fake backend mutex") = muted;
+        }
         self.changes
             .lock()
             .expect("fake backend mutex")
@@ -302,15 +305,22 @@ pub struct OsServices {
     pub clock: LocalClock,
 }
 
+/// Runs a closure on the app's main thread (Tauri's `run_on_main_thread`).
+pub type MainThread = std::sync::Arc<dyn Fn(Box<dyn FnOnce() + Send>) + Send + Sync>;
+
 /// Builds [`OsServices`] for this OS. Spawns the audio (and, on Windows, media) threads.
+///
+/// `main` is how macOS key synthesis reaches the main thread: since macOS 15 the keyboard-layout
+/// lookups it needs assert they run there and kill the process otherwise. `None` runs input on the
+/// calling thread (fine on Windows; on macOS only for code that never synthesizes input).
 #[must_use]
-pub fn os_services() -> OsServices {
+pub fn os_services(main: Option<MainThread>) -> OsServices {
     use std::sync::Arc;
     #[cfg(windows)]
     {
         OsServices {
             volume: Arc::new(windows::WindowsVolumeBackend::new()),
-            synth: Arc::new(synth::EnigoInputSynth),
+            synth: Arc::new(synth::EnigoInputSynth::new(main)),
             media: Arc::new(windows::WindowsMediaObserver::new()),
             system: Box::new(windows::WindowsSystemProbe),
             clock: windows::local_time,
@@ -320,7 +330,7 @@ pub fn os_services() -> OsServices {
     {
         OsServices {
             volume: Arc::new(macos::MacVolumeBackend::new()),
-            synth: Arc::new(synth::EnigoInputSynth),
+            synth: Arc::new(synth::EnigoInputSynth::new(main)),
             media: Arc::new(unimplemented::NoMediaObserver),
             system: Box::new(macos::MacSystemProbe),
             clock: macos::local_time,
@@ -329,6 +339,7 @@ pub fn os_services() -> OsServices {
     #[cfg(not(any(windows, target_os = "macos")))]
     {
         let target = std::env::consts::OS;
+        let _ = main;
         OsServices {
             volume: Arc::new(unimplemented::UnimplementedVolumeBackend::new(target)),
             synth: Arc::new(unimplemented::UnimplementedInputSynth { target }),

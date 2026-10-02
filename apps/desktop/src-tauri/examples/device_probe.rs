@@ -1,4 +1,6 @@
-//! Bounded USB diagnostic. Never flashes or resets. `session` uses the app's idle-state resync.
+//! Bounded USB diagnostic. Never flashes or resets. `session` uses the app's idle-state resync;
+//! `desk` also runs the M1 desk pipeline on this computer's real OS services for 10 s, cycling the
+//! device through every display mode, and reports what was sent (no actions are run).
 use std::io::{Read, Write};
 use std::time::{Duration, Instant};
 
@@ -13,6 +15,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("usage: device_probe PORT [timeout-ms]")?;
     if std::env::args().nth(2).as_deref() == Some("session") {
         return probe_session(&port_name);
+    }
+    if std::env::args().nth(2).as_deref() == Some("desk") {
+        return probe_desk(&port_name);
     }
     let timeout_ms: u64 = std::env::args()
         .nth(2)
@@ -199,5 +204,88 @@ fn probe_session(port: &str) -> Result<(), Box<dyn std::error::Error>> {
         "Connection and heartbeats stable for 8 seconds; reported state: {:?}.",
         session.reported()
     );
+    Ok(())
+}
+
+fn probe_desk(port: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use kivori_desktop::desk::DeskRuntime;
+    use kivori_desktop::device::{
+        fsm::ConnectionManager,
+        serial::SerialPortLink,
+        session::{Session, SessionConfig},
+    };
+    use kivori_desktop::orchestrator::Orchestrator;
+    use kivori_model::desk::DisplayMode;
+
+    let mut link = SerialPortLink::open(port)?;
+    let mut session = Session::new(SessionConfig::default());
+    let mut manager = ConnectionManager::new();
+    let mut orchestrator = Orchestrator::new();
+    session
+        .open(&mut link, &mut manager)
+        .map_err(|e| format!("Open: {e:?}"))?;
+    let built = Instant::now();
+    // No main-thread runner: this probe never synthesizes input.
+    let mut desk = DeskRuntime::new(kivori_desktop::platform::os_services(None));
+    println!("OS services ready in {} ms.", built.elapsed().as_millis());
+    let start = Instant::now();
+    let (mut sent, mut modes) = (0, DisplayMode::ALL.into_iter().cycle());
+    let mut next_mode = Duration::from_secs(1);
+    let mut next_ping = Duration::from_secs(1);
+    let mut connected = false;
+    while start.elapsed() < Duration::from_secs(12) {
+        session
+            .pump(&mut link, &mut manager, &mut orchestrator)
+            .map_err(|e| format!("Pump: {e:?}"))?;
+        if !manager.state().can_drive_device() {
+            std::thread::sleep(Duration::from_millis(20));
+            continue;
+        }
+        if !connected {
+            connected = true;
+            desk.on_session_begin();
+            println!(
+                "Connected after {} ms; negotiated caps {:#x}.",
+                start.elapsed().as_millis(),
+                session.negotiated_caps().bits()
+            );
+        }
+        let now = start.elapsed();
+        if now >= next_mode {
+            next_mode = now + Duration::from_secs(2);
+            let mode = modes.next().expect("cycle");
+            desk.set_mode(mode, &mut |_| {});
+            println!("Mode -> {mode:?}");
+        }
+        let out = desk.tick(now, &mut |_| {});
+        if let Some(status) = out.status {
+            if session
+                .send_status(&mut link, status)
+                .map_err(|e| format!("Status: {e:?}"))?
+            {
+                sent += 1;
+                println!("Status sent: {status:?}");
+            }
+        }
+        if now >= next_ping {
+            if session.heartbeat_timed_out() {
+                return Err("Heartbeat timed out".into());
+            }
+            session
+                .send_ping(&mut link, now.as_millis() as u32)
+                .map_err(|e| format!("Ping: {e:?}"))?;
+            next_ping = now + Duration::from_secs(1);
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    if sent == 0 {
+        return Err(format!(
+            "No desk status was sent; connection state {:?}, caps {:#x}",
+            manager.state(),
+            session.negotiated_caps().bits()
+        )
+        .into());
+    }
+    println!("{sent} statuses sent; link healthy throughout.");
     Ok(())
 }

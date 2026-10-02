@@ -148,7 +148,10 @@ fn device_loop(
     let mut companion = CompanionDirector::new(MascotPersonality::Cozy, true, 0x4B49_564F, 0);
     // Windows and macOS have real backends; every other target gets the honest "not implemented
     // yet" services so this crate always compiles (`platform::os_services`).
-    let services = platform::os_services();
+    let main_app = app.clone();
+    let services = platform::os_services(Some(Arc::new(move |run| {
+        let _ = main_app.run_on_main_thread(run);
+    })));
     let backend = Arc::clone(&services.volume);
     let mut desk = DeskRuntime::new(services);
     let mut last_desk: Option<DeskStatusDto> = None;

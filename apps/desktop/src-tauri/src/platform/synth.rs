@@ -5,13 +5,43 @@
 //! [`ActionError::PermissionRequired`] (and asks the OS to show its prompt), and sends nothing:
 //! a missing permission is a capability state, never a reason to try another mechanism.
 
+use std::sync::mpsc;
+use std::time::Duration;
+
 use enigo::{Direction, Enigo, Key, Keyboard, NewConError, Settings};
 
-use super::{ActionError, InputSynth, Shortcut, ShortcutKey};
+use super::{ActionError, InputSynth, MainThread, Shortcut, ShortcutKey};
+
+/// How long a synthesized input may wait for the main thread before it counts as failed.
+const MAIN_THREAD_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Key synthesis for the current desktop session.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct EnigoInputSynth;
+pub struct EnigoInputSynth {
+    main: Option<MainThread>,
+}
+
+impl EnigoInputSynth {
+    /// `main` runs the input on the app's main thread (required on macOS, see `os_services`).
+    #[must_use]
+    pub fn new(main: Option<MainThread>) -> Self {
+        Self { main }
+    }
+
+    fn on_main(
+        &self,
+        input: impl FnOnce() -> Result<(), ActionError> + Send + 'static,
+    ) -> Result<(), ActionError> {
+        let Some(run) = &self.main else {
+            return input();
+        };
+        let (tx, rx) = mpsc::channel();
+        run(Box::new(move || {
+            let _ = tx.send(input());
+        }));
+        rx.recv_timeout(MAIN_THREAD_TIMEOUT)
+            .unwrap_or_else(|_| Err(ActionError::Failed("the app did not respond".into())))
+    }
+}
 
 fn connect() -> Result<Enigo, ActionError> {
     let settings = Settings {
@@ -75,12 +105,21 @@ fn key_of(key: ShortcutKey) -> Result<Key, ActionError> {
 
 impl InputSynth for EnigoInputSynth {
     fn send_media_play_pause(&self) -> Result<(), ActionError> {
-        connect()?
-            .key(Key::MediaPlayPause, Direction::Click)
-            .map_err(failed)
+        self.on_main(|| {
+            connect()?
+                .key(Key::MediaPlayPause, Direction::Click)
+                .map_err(failed)
+        })
     }
 
     fn send_shortcut(&self, shortcut: &Shortcut) -> Result<(), ActionError> {
+        let shortcut = *shortcut;
+        self.on_main(move || send_shortcut(&shortcut))
+    }
+}
+
+fn send_shortcut(shortcut: &Shortcut) -> Result<(), ActionError> {
+    {
         let key = key_of(shortcut.key)?;
         let mut enigo = connect()?;
         let modifiers: Vec<Key> = [
