@@ -16,6 +16,10 @@ import {
   isTauri,
   listStates,
   onActivityLog,
+  getDeskStatus,
+  onDeskStatus,
+  runTestAction,
+  setDisplayMode,
   renderPreviewFrame,
 } from '../index';
 import { COMPANION_STATES, PREVIEW_DIM } from '../types';
@@ -70,5 +74,92 @@ describe('ipc wrappers (browser mock fallback)', () => {
 
     expect(tauri.invoke).toHaveBeenCalledWith('get_activity_log', { limit: 17 });
     expect(tauri.listen).toHaveBeenCalledWith('activity-log://event', expect.any(Function));
+  });
+});
+
+const validDesk = {
+  mode: 'clock',
+  volumePercent: 40,
+  muted: null,
+  media: null,
+  cpuPercent: 12,
+  ramPercent: null,
+  highLoad: false,
+  pressAction: 'playPause',
+  holdAction: 'mute',
+  lastAction: { action: 'shortcut', result: 'unverified', permissionRequired: true },
+};
+
+describe('desk ipc (Tauri)', () => {
+  const enterTauri = (): void => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} });
+  };
+
+  it('passes a valid status, nulls included, and uses the exact command names', async () => {
+    enterTauri();
+    tauri.invoke.mockResolvedValue(validDesk);
+    await expect(getDeskStatus()).resolves.toEqual(validDesk);
+    tauri.invoke.mockResolvedValue(undefined);
+    await setDisplayMode('media');
+    await runTestAction({ action: 'shortcut', shortcut: 'Ctrl+M' });
+    expect(tauri.invoke).toHaveBeenCalledWith('get_desk_status', undefined);
+    expect(tauri.invoke).toHaveBeenCalledWith('set_display_mode', { mode: 'media' });
+    expect(tauri.invoke).toHaveBeenCalledWith('run_test_action', {
+      action: 'shortcut',
+      shortcut: 'Ctrl+M',
+    });
+  });
+
+  it.each([
+    ['mode', { mode: 'rainbow' }],
+    ['media', { media: 'buffering' }],
+    ['result', { lastAction: { action: 'mute', result: 'success', permissionRequired: false } }],
+    ['action', { pressAction: 'format-disk' }],
+    ['percent', { cpuPercent: 250 }],
+  ])('rejects an unknown %s token', async (_name, patch) => {
+    enterTauri();
+    tauri.invoke.mockResolvedValue({ ...validDesk, ...patch });
+    await expect(getDeskStatus()).rejects.toThrow();
+  });
+
+  it('drops an invalid desk://status payload and forwards a valid one', async () => {
+    enterTauri();
+    let emit: (event: { payload: unknown }) => void = () => {};
+    tauri.listen.mockImplementation((_name: string, cb: typeof emit) => {
+      emit = cb;
+      return Promise.resolve(() => {});
+    });
+    const handler = vi.fn();
+    await onDeskStatus(handler);
+    expect(tauri.listen).toHaveBeenCalledWith('desk://status', expect.any(Function));
+    emit({ payload: { ...validDesk, mode: 'nope' } });
+    expect(handler).not.toHaveBeenCalled();
+    emit({ payload: validDesk });
+    expect(handler).toHaveBeenCalledWith(validDesk);
+  });
+
+  it('accepts the new activity types and rejects unknown ones', async () => {
+    enterTauri();
+    const base = { id: 1, at: 't', summary: 's', severity: 'info', source: 'action' };
+    const good = [
+      'displayModeChanged',
+      'deskActionRequested',
+      'deskActionConfirmed',
+      'deskActionUnverified',
+      'deskActionFailed',
+      'deskActionPermissionRequired',
+    ].map((type, i) => ({
+      ...base,
+      id: i,
+      type,
+      outcome: 'observed',
+      metadata: { retryCount: 0, elapsedMs: 0, action: 'playPause' },
+    }));
+    const bad = [
+      { ...base, type: 'deskActionExploded', outcome: 'observed', metadata: null },
+      { ...base, type: 'deskActionFailed', outcome: 'observed', metadata: { action: 'rm -rf' } },
+    ];
+    tauri.invoke.mockResolvedValue([...good, ...bad]);
+    await expect(getActivityLog(10)).resolves.toEqual(good);
   });
 });

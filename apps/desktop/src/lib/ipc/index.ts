@@ -16,7 +16,11 @@ import type {
   FirmwareStatusDto,
   MascotAction,
   MascotPersonality,
+  DeskStatusDto,
+  DisplayMode,
+  TestActionRequest,
 } from './types';
+import { isActivityEvent, parseDeskStatus } from './validate';
 
 /// Handle returned by an event subscription; call it to unsubscribe.
 export type Unlisten = () => void;
@@ -115,7 +119,10 @@ export async function playMascotAction(action: MascotAction): Promise<void> {
 
 /** Returns up to `limit` typed, safe events from this native process session. */
 export async function getActivityLog(limit: number): Promise<ActivityEventDto[]> {
-  if (isTauri()) return invoke<ActivityEventDto[]>('get_activity_log', { limit });
+  if (isTauri()) {
+    const events = await invoke<unknown[]>('get_activity_log', { limit });
+    return events.filter(isActivityEvent);
+  }
   if (import.meta.env.DEV) return (await devMock()).mockActivityLog();
   return unavailable();
 }
@@ -170,9 +177,48 @@ export async function onActivityLog(
 ): Promise<Unlisten> {
   if (isTauri()) {
     const { listen } = await import('@tauri-apps/api/event');
-    return listen<ActivityEventDto>('activity-log://event', (event) => handler(event.payload));
+    return listen<unknown>('activity-log://event', (event) => {
+      if (isActivityEvent(event.payload)) handler(event.payload);
+    });
   }
   if (import.meta.env.DEV) return () => {};
+  return unavailable();
+}
+
+/** The current desk projection (display mode, monitored values, last action outcome). */
+export async function getDeskStatus(): Promise<DeskStatusDto> {
+  if (isTauri()) return parseDeskStatus(await invoke<unknown>('get_desk_status'));
+  if (import.meta.env.DEV) return (await devMock()).mockDeskStatus();
+  return unavailable();
+}
+
+/** Selects the device's full-screen view; rejects with the native error string. */
+export async function setDisplayMode(mode: DisplayMode): Promise<void> {
+  if (isTauri()) return invoke<void>('set_display_mode', { mode });
+  if (import.meta.env.DEV) return (await devMock()).mockSetDisplayMode(mode);
+  return unavailable();
+}
+
+/** Dev-only (Device Studio): runs one desk action now; rejects with the native error string. */
+export async function runTestAction(request: TestActionRequest): Promise<void> {
+  if (isTauri()) return invoke<void>('run_test_action', { ...request });
+  if (import.meta.env.DEV) return (await devMock()).mockRunTestAction(request);
+  return unavailable();
+}
+
+/** Subscribes to desk projection changes; a payload with an unknown token is dropped. */
+export async function onDeskStatus(handler: (status: DeskStatusDto) => void): Promise<Unlisten> {
+  if (isTauri()) {
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen<unknown>('desk://status', (event) => {
+      try {
+        handler(parseDeskStatus(event.payload));
+      } catch {
+        // Invalid payloads never reach the UI.
+      }
+    });
+  }
+  if (import.meta.env.DEV) return (await devMock()).mockOnDeskStatus(handler);
   return unavailable();
 }
 

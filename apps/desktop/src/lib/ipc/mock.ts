@@ -4,7 +4,15 @@
 // Vite/Rollup drop it entirely from production Tauri bundles (T124). The sentinel below is asserted
 // absent from the production build by `scripts/check-mock-excluded.mjs`.
 
-import type { ActivityEventDto, AppInfoDto, CompanionState, ConnectionStatusDto } from './types';
+import type {
+  ActivityEventDto,
+  AppInfoDto,
+  CompanionState,
+  ConnectionStatusDto,
+  DeskStatusDto,
+  DisplayMode,
+  TestActionRequest,
+} from './types';
 import { COMPANION_STATES, PREVIEW_DIM } from './types';
 
 /// A unique marker string; `scripts/check-mock-excluded.mjs` fails if it appears in a prod bundle.
@@ -39,6 +47,56 @@ export function mockListStates(): CompanionState[] {
 
 export function mockActivityLog(): ActivityEventDto[] {
   return [];
+}
+
+let deskStatus: DeskStatusDto = {
+  mode: 'buddy',
+  volumePercent: 42,
+  muted: false,
+  media: null,
+  cpuPercent: 23,
+  ramPercent: 61,
+  highLoad: false,
+  pressAction: 'playPause',
+  holdAction: 'mute',
+  lastAction: null,
+};
+const deskListeners = new Set<(status: DeskStatusDto) => void>();
+
+function updateDesk(next: Partial<DeskStatusDto>): void {
+  deskStatus = { ...deskStatus, ...next };
+  for (const listener of deskListeners) listener(deskStatus);
+}
+
+export function mockDeskStatus(): DeskStatusDto {
+  return deskStatus;
+}
+
+export function mockSetDisplayMode(mode: DisplayMode): void {
+  updateDesk({ mode });
+}
+
+/** Mirrors native rules loosely: a shortcut/launch needs its text; the outcome is "unverified". */
+export function mockRunTestAction(request: TestActionRequest): void {
+  if (request.action === 'shortcut' && !request.shortcut?.trim()) {
+    throw new Error('a shortcut action needs a shortcut');
+  }
+  if (request.action === 'launch' && !request.target?.trim()) {
+    throw new Error('a launch action needs an application');
+  }
+  const result = request.action === 'mute' ? 'stateConfirmed' : 'unverified';
+  updateDesk({
+    muted: request.action === 'mute' ? !deskStatus.muted : deskStatus.muted,
+    lastAction: { action: request.action, result, permissionRequired: false },
+  });
+}
+
+export function mockOnDeskStatus(handler: (status: DeskStatusDto) => void): () => void {
+  deskListeners.add(handler);
+  handler(deskStatus);
+  return () => {
+    deskListeners.delete(handler);
+  };
 }
 
 const STATE_TINT: Record<CompanionState, readonly [number, number, number]> = {

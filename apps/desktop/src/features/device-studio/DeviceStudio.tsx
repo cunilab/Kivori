@@ -7,6 +7,7 @@ import { PREVIEW_FPS } from '../../lib/ipc/types';
 import type { AnimationTimeline, ConnectionStatusDto } from '../../lib/ipc/types';
 import { strings } from '../../lib/i18n/strings';
 import { Controls } from './Controls';
+import { TestAction } from './TestAction';
 import { useStudioStore } from './store';
 
 /**
@@ -143,14 +144,21 @@ export function DeviceStudio(): ReactElement {
             {streamError && <p role="alert">{streamError}</p>}
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>{t.controls}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Controls />
-          </CardContent>
-        </Card>
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>{t.controls}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Controls />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent>
+              <TestAction />
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </section>
   );

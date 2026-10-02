@@ -250,6 +250,23 @@ describe('Log view', () => {
     );
   });
 
+  it('renders desk action events with their action detail', async () => {
+    h.history = Promise.resolve([
+      event({
+        id: 7,
+        type: 'deskActionUnverified',
+        summary: 'Desk action sent; result unknown.',
+        source: 'action',
+        outcome: 'observed',
+        metadata: { retryCount: 0, elapsedMs: 0, action: 'playPause' },
+      }),
+    ]);
+    render(<Log />);
+    await finishSetup();
+    expect(await screen.findByText(/deskActionUnverified: Desk action sent/)).toBeInTheDocument();
+    expect(screen.getByText('action playPause')).toBeInTheDocument();
+  });
+
   it('has no axe violations for empty, populated, and filtered log states', async () => {
     const empty = render(<Log />);
     await finishSetup();

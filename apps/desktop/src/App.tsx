@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
+import { DeskPanel } from './features/desk/DeskPanel';
 import { ConnectionStatus } from './features/connection/ConnectionStatus';
 import { Log } from './features/connection/Log';
 import { DeviceStudio } from './features/device-studio/DeviceStudio';
@@ -42,7 +43,10 @@ export function App(): ReactElement {
         </TabsList>
 
         <TabsContent value="overview" className="pt-4">
-          <ConnectionStatus />
+          <div className="space-y-4">
+            <ConnectionStatus />
+            <DeskPanel />
+          </div>
         </TabsContent>
         {showStudio ? (
           <TabsContent value="studio" className="pt-4">
