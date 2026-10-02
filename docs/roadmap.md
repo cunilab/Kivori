@@ -37,6 +37,11 @@ Software for the device link, mascot, rotary volume and flashing is built and gr
 - [x] Windows volume control: Core Audio backend, fixed-step volume, preview → confirmed overlay
 - [x] Mascot: keycap buddy, social reactions, companion personality, typed session-only activity log
 - [x] Firmware flashing of the bundled build from Device Studio
+- [x] Hardening before the hardware session (2026-10-02): interrupt-captured encoder and switch edges
+  (no lost quarter-steps during a frame flush), render on the tick feedback arrives, a desktop device
+  thread that wakes on serial bytes instead of a fixed 50 ms sleep (row 3.14 remedies 1 and 2), and a
+  `StateReport` answer to every `SetState` (row 1.16). Flashing and the session handshake verified on
+  the real board from macOS; every row below still needs the human session
 - [ ] Hardware sanity checks needed to build on safely (Windows only), in [validation.md](./validation.md):
   - wiring and rotary fidelity: 3.15, 3.1–3.4
   - discovery and recovery: 1.5–1.8, 1.15–1.17
@@ -52,16 +57,20 @@ rows move to M3 hardware QA.
 
 **Outcome:** Kivori gives daily value beyond being a volume knob.
 
-- [ ] Button press / hold input: short press released within 500 ms, mapped Hold released between 500 ms and ~2 s, one action per press, no auto-repeat
-- [ ] Recovery hold: ~10 s reboots the MCU, with visible progress and without the desktop app (gate 8)
-- [ ] Media play/pause, master mute
-- [ ] Keyboard shortcut action (shown as Unverified, never Success)
-- [ ] Launch application action (Execution Confirmed)
-- [ ] CPU and RAM monitoring
-- [ ] Display modes: buddy, clock, volume, media, CPU / RAM
-- [ ] Buddy reacts to real state: volume change → short reaction; muted → muted state; high load → load cue (distinct from the Busy job face); media playing → subtle animation; action success → acknowledgement; disconnected → offline
-- [ ] Every result shown as State Confirmed, Execution Confirmed or Unverified
-- [ ] Hardware: press/hold timing on the real switch; mute and media state stay in sync with Windows; reboot works without the desktop app
+Software is complete and host-tested (2026-10-02); the hardware rows are Phase 4 in
+[validation.md](./validation.md). Built for Windows and macOS: macOS is the daily test bed, Windows
+stays the beta platform and its rows are tracked in a GitHub issue.
+
+- [x] Button press / hold input: short press released within 500 ms, mapped Hold released between 500 ms and ~2 s, one action per press, no auto-repeat
+- [x] Recovery hold: ~10 s reboots the MCU, with visible progress and without the desktop app (gate 8)
+- [x] Media play/pause, master mute (Press and Hold by default)
+- [x] Keyboard shortcut action (shown as Unverified, never Success); runs from Device Studio until M2 bindings
+- [x] Launch application action (Execution Confirmed); runs from Device Studio until M2 bindings
+- [x] CPU and RAM monitoring
+- [x] Display modes: buddy, clock, volume, media, CPU / RAM (picked in Overview)
+- [x] Buddy reacts to real state: volume change → the keycap shrinks and lifts for the volume bar; muted → mute indicator; high load → heat cue (distinct from the Busy job face); media playing → bobbing note (Windows; macOS cannot observe playback); action outcome → badge; disconnected → offline
+- [x] Every result shown as State Confirmed, Execution Confirmed or Unverified
+- [ ] Hardware: press/hold timing on the real switch; mute and media state stay in sync with Windows; reboot works without the desktop app (Phase 4 rows)
 - [ ] Gates 1, 5, 6, 8, 9
 
 ## M2: Configurable product

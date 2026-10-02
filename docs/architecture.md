@@ -4,7 +4,7 @@ How Kivori is built today. Product goals are in [product.md](./product.md), open
 
 ## 1. Overview
 
-Kivori is a small desk companion. A keycap-shaped mascot lives on a 240x240 screen, reacts to what the desktop tells it, and a rotary knob controls system volume.
+Kivori is a small desk companion. A keycap-shaped mascot lives on a 240x240 screen, reacts to what the desktop tells it, a rotary knob controls system volume, and its push switch runs actions (Press, Hold) and the out-of-band recovery hold. The display can also show a clock, volume, media and CPU/RAM view.
 
 | Component | What it is |
 |---|---|
@@ -64,9 +64,13 @@ Desktop state is in memory only. `desired` defaults to `idle` and is re-sent aft
 - Transport: ESP32-C3 native USB Serial/JTAG (VID:PID `0x303A:0x1001`). It has a 64-byte FIFO and TX can stall if the host does not drain, so frames are small and writes are bounded.
 - Firmware HAL: `esp-hal`, bare metal. Display: `mipidsi` with windowed writes.
 - Desktop serial: blocking `serialport` on a dedicated device thread.
-- Windows volume: Core Audio `IAudioEndpointVolume` with callbacks, on its own COM thread.
+- Windows volume and mute: Core Audio `IAudioEndpointVolume` with callbacks, on its own COM thread.
+- macOS volume and mute: CoreAudio `kAudioHardwareServiceDeviceProperty_VirtualMainVolume` and `kAudioDevicePropertyMute` on the default output device, with HAL property listeners, on its own `kivori-audio` thread (FFI declared by hand in `platform/macos/audio.rs`).
+- Media keys and shortcuts: `enigo` (Windows `SendInput`, macOS Quartz events; macOS needs Accessibility permission).
+- Media playback observation: Windows Global System Media Transport Controls, polled on a `kivori-media` thread. macOS has no public API for system-wide now-playing state, so playback is unobservable there and shown as unknown.
+- CPU/RAM: Windows `GetSystemTimes` / `GlobalMemoryStatusEx`; macOS per-CPU `host_processor_info` (`host_statistics` is rate-limited for third-party apps) and Activity Monitor's "Memory Used". Local time: `GetLocalTime` / `localtime_r`.
 - Flashing: the installed `espflash` utility, driven by the native core.
-- Not built yet: macOS and Linux volume backends, desktop self-update, a per-device stable id (the firmware uses a fixed 16-byte id).
+- Not built yet: a Linux backend, desktop self-update, a per-device stable id (the firmware uses a fixed 16-byte id).
 
 ## 2. Wire protocol
 
@@ -85,7 +89,7 @@ One packet is `COBS(frame) || 0x00`. COBS makes the stream self-synchronizing, s
 | `payload` | bytes | postcard-encoded `Message` |
 | `crc32` | u32 | CRC-32/IEEE over header and payload |
 
-Constants: `PROTOCOL_MAJOR` 1, `PROTOCOL_MINOR` 2. COBS and CRC are implemented in-crate.
+Constants: `PROTOCOL_MAJOR` 1, `PROTOCOL_MINOR` 3. COBS and CRC are implemented in-crate.
 
 Every decode failure is a typed `ProtoError` (`BufferOverflow, Cobs, TooShort, BadMagic, UnsupportedVersion, PayloadTooLarge, LengthMismatch, BadCrc, Postcard`). The decoder never panics, always makes forward progress, and never dispatches a frame that failed CRC.
 
@@ -144,14 +148,21 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 | 12 | `MascotActionApplied` | V to D | action, personality, seed, applied_at_ms | `MASCOT_INTERACTION` |
 | 13 | `InputEvent` | V to D | session, gesture_id, control (`Rotary`), kind, device_ms | `PHYSICAL_INPUT_V1` |
 | 14 | `Presentation` | D to V | session, revision, primary, value (optional), transient_ms | `PRESENTATION_V1` |
+| 15 | `Status` | D to V | session, `DeskStatus` | `DESK_STATUS_V1` |
+| 16 | `Feedback` | D to V | session, action, kind | `ACTION_FEEDBACK_V1` |
 
-`InputEvent.kind` is `GestureStarted`, `Detent(Cw|Ccw)` or `GestureEnded`. `Presentation.primary` is `Idle, Active, Error, Unknown`. `value` is `{ kind: Volume, current_percent, confidence, at_boundary }`.
+`InputEvent.control` is `Rotary` or `Button`. With `Rotary`, `kind` is `GestureStarted`, `Detent(Cw|Ccw)` or `GestureEnded`; with `Button` (needs `BUTTON_INPUT_V1` too), it is `Press` or `Hold`, sent once on release. The desktop rejects a kind that does not belong to its control. `Presentation.primary` is `Idle, Active, Error, Unknown`. `value` is `{ kind: Volume, current_percent, confidence, at_boundary }`.
+
+`DeskStatus` (`kivori-model::desk`) is `{ mode, clock, volume_percent, muted, media, cpu_percent, ram_percent, high_load }`; every value is an `Option` and `None` is rendered as unknown. `mode` is `Buddy, Clock, Volume, Media, System`; `media` is `Playing, Paused, Stopped`. `Feedback.kind` is `Processing, StateConfirmed, ExecutionConfirmed, Unverified, Error` and `action` is `Volume, PlayPause, Mute, Shortcut, Launch`. Status and feedback are session-scoped like `Presentation`: the device drops either from another session and forgets both on every session boundary.
 
 | Bit | Capability |
 |---:|---|
 | 0 | `MASCOT_INTERACTION` |
 | 1 | `PHYSICAL_INPUT_V1` |
 | 2 | `PRESENTATION_V1` |
+| 3 | `BUTTON_INPUT_V1` |
+| 4 | `DESK_STATUS_V1` |
+| 5 | `ACTION_FEEDBACK_V1` |
 
 `Capabilities` is a `u32` set in `kivori-model`. Bits are allocated centrally and never reused.
 
@@ -171,11 +182,15 @@ The webview may call only these commands and listen to these events. No command 
 | `get_firmware_status`, `flash_firmware` | Firmware update status and request (no arguments) | all |
 | `render_preview_frame`, `open_preview_stream`, `update_preview_stream`, `ack_preview_frame`, `close_preview_stream` | Native-rendered RGBA frames for Device Studio | `device-studio` only |
 | `mirror_state` | Dev-labelled `set_desired_state` | `device-studio` only |
+| `get_desk_status` | Display mode, monitored values (`null` = unknown), Press/Hold bindings, last action outcome | all |
+| `set_display_mode` | `buddy, clock, volume, media, system` | all |
+| `run_test_action` | Run `playPause`, `mute`, `shortcut` (text, parsed natively) or `launch` (target, validated natively) now | `device-studio` only |
 
 | Event | Payload | When |
 |---|---|---|
 | `connection://status` | `ConnectionStatusDto` | Any change to connection, desired or reported |
 | `activity-log://event` | `ActivityEventDto` | A new activity record |
+| `desk://status` | `DeskStatusDto` | Any change to the desk projection |
 
 - Events are small JSON. Frame bytes travel as raw RGBA8888 (240x240, no JSON or base64) through a `tauri::ipc::Response` or a `Channel<ArrayBuffer>`. The canvas only blits. RGB565 to RGBA happens in Rust.
 - Dev-only commands are compiled out of release builds, and so is the Device Studio route.
@@ -245,11 +260,34 @@ Everything between the two hardware adapters (`PhysicalRotary` in firmware, the 
   - `Unverified` means the set was dispatched but the read-back failed.
 - `VolumeBackend` trait: `availability`, `read`, `set` (returns the OS read-back value, so `StateConfirmed` is honest).
   - Windows: Core Audio `IAudioEndpointVolume` on the default render endpoint (`eRender` + `eConsole`). A dedicated `kivori-audio` thread owns COM and both callbacks (`IAudioEndpointVolumeCallback`, `IMMNotificationClient`). Callbacks only post to a channel. Kivori writes carry a Kivori GUID, so its own echo is ignored while external changes and endpoint switches are applied.
-  - macOS and Linux: `NotImplementedYet { target }`. A deterministic `FakeVolumeBackend` runs all host tests.
+  - macOS: CoreAudio (see Chosen platform APIs). It has no event-context GUID, so a notification is tagged `Kivori` when it matches Kivori's own write within 250 ms.
+  - Linux: `NotImplementedYet { target }`. A deterministic `FakeVolumeBackend` runs all host tests.
   - Keep three ideas apart: `BackendAvailability` (implemented or not), `ConfirmationClass` (`StateConfirmed`, `ExecutionConfirmed`, `TriggeredUnverified`), and the derived `ActionAvailability`. An OS-level `PlatformCapability` is deferred until an OS-restricted action exists.
-- Presentation: `PresentationResolver` is a pure function from `ProductSnapshot` to `Presentation`. `value` is a transient overlay of 800 ms (`VALUE_TRANSIENT_MS`). Firmware expires it locally, so the overlay clears without a host timer. Firmware stores `primary` but does not render it yet, so a failed volume write (`primary = Error`, no value) shows nothing on the device.
+- Presentation: `PresentationResolver` is a pure function from `ProductSnapshot` to `Presentation`. `value` is a transient overlay of 800 ms (`VALUE_TRANSIENT_MS`). Firmware expires it locally, so the overlay clears without a host timer. Firmware stores `primary` but does not render it; a failed volume write is shown through `Feedback { Volume, Error }` instead (section 5b).
 - Overlay: `render_volume_overlay` (`kivori-renderer/src/overlay.rs`) draws a solid-rect bar with no glyphs. `Confirmed` is a solid fill, `Preview` is hollow (top and bottom rows only), and the track outline turns white at a boundary. It is composited over the mascot in the same tile pass.
-- Firmware owns raw input truth (conditioning, detents, gestures). The desktop owns action meaning. The push-switch gesture machine is not built.
+- Firmware owns raw input truth (conditioning, detents, gestures). The desktop owns action meaning.
+- Edge capture: every edge on CLK, DT or SW raises the GPIO interrupt, whose handler only stores a timestamped level snapshot in a 64-entry queue (`physical_rotary.rs`). The run loop drains it each tick (`InputSource::drain`), so quarter-steps and switch edges during a frame compose or flush are not lost. On overflow new edges are dropped: the decoder counts one invalid transition, which can lose a detent but never invents one.
+- Latency: the firmware renders on the tick a `Presentation` or `Feedback` arrives instead of waiting for the 33 ms frame cadence, and the desktop device thread blocks on serial bytes (bounded by its 50 ms tick) instead of sleeping. Row 3.14 measures the result.
+- Every `SetState` is answered with a `StateReport` of the current state, changed or not, so a reconnecting desktop always learns it.
+
+## 5b. Push switch, recovery hold and desk
+
+```text
+SW edge -> InputSource::drain -> ButtonGesture (debounce 20 ms, edge-timed)
+  Press (< 500 ms) / Hold (500 ms - 2 s) -> InputEvent{Button} -> InputIngress -> Bindings
+  -> ActionWorker (kivori-actions thread) -> Outcome -> FeedbackLadder -> Feedback (tag 16)
+  2 s: recovery takeover (time-based progress) ... 10 s from key-down: Bye, software_reset
+desktop 1 Hz: CPU/RAM, volume/mute, media, local time -> StatusPublisher -> Status (tag 15)
+```
+
+- `ButtonGesture` (`firmware/.../input/button.rs`) is pure and host-tested. Times are measured between debounced edges at the moment the switch first changed, and a release still inside its debounce window stops the hold clock. A press that starts while a rotary gesture is open never becomes Press or Hold (one gesture owns input) but can still recover. While the switch is down, detents are decoded but swallowed (invariant 33).
+- The recovery hold needs no host, session or capability (invariant 24). A session boundary drops a half-done press but never a running recovery. On the reboot tick the device renders "Restarting", queues `Bye(Shutdown)` for an accepted session, flushes it for at most 20 ms and calls `esp_hal::system::software_reset`.
+- Local acknowledgement: while the switch is down the keycap sinks 8 px (Buddy view) or the screen gets a white frame. This is the device's own < 50 ms acknowledgement, not a confirmation.
+- Bindings (M1, fixed until the M2 config UI): Press = Play/Pause, Hold = master mute. Shortcut and launch actions exist and run from Device Studio's test action.
+- Classification (`desk/actions.rs`): mute is State Confirmed only when the OS read-back shows the new state; play/pause is State Confirmed only when the media observer sees playback flip within 1 s, otherwise Unverified; a shortcut is always Unverified; a launch is Execution Confirmed once the OS accepted it (`open -a` exit 0 on macOS, process created on Windows; no shell). A missing permission is Error with `permission_required`, never another mechanism.
+- `FeedbackLadder` (`desk/mod.rs`): Processing at 500 ms, Unverified at 1.5 s, after which a late outcome is logged but not shown. Timeout is never Error. A newer action replaces the pending one; a session end clears it. A new streak of failed volume writes is shown once as a volume Error.
+- `StatusPublisher`: sends `Status` when anything shown changes, when the minute rolls over, or every 30 s; the device advances the clock locally in between. High load is CPU at or above 85 % for 3 samples, cleared below 70 % or when CPU is unknown.
+- Device rendering order (`firmware/.../render.rs`, `kivori-renderer::desk`): recovery takeover, else the Buddy pose or the selected desk view, then the volume overlay (except in the Volume view, which shows the value itself), then the chrome: mute and media indicators, the high-load cue (Buddy only), the press frame and the feedback badge. Unverified is an amber ring with `?`, never a check mark.
 
 ## 6. Activity log, flashing, offline rule
 
@@ -291,6 +329,9 @@ Core function needs no internet, cloud, CDN, telemetry or licence check. Discove
 - **ADR-0004 Layered scenes and a compiled asset blob.** Scenes are layers with integer keyframes, drawn with `embedded-graphics`, and compiled from SVG into a deterministic blob (format v2 adds alpha4 and the mascot roles, and allows Q8 interpolation for the mascot). Because baked frames cost too much flash and fight tile rendering, and byte-reproducible assets keep host and device pixels equal.
 - **ADR-0005 Typed activity log with an allowlist.** Closed types, fixed metadata, hashed device id, raw payloads compiled out, session-only history. Because payloads, identity, paths and tool output are sensitive. Support loses raw-byte detail in release builds on purpose.
 - **ADR-0006 The handshake nonce is the session identity.** One OS-random `u32` per connection attempt stamps `InputEvent` and `Presentation`, and `revision` is session-scoped. Because a complete stale gesture pair buffered across a disconnect would otherwise pass the observed-`GestureStarted` check and change the volume. A dedicated `SessionEpoch` message was rejected because the nonce already has the right lifecycle. `gesture_id` only needs to be unique inside a session.
+
+- **ADR-0007 Interrupt-captured input edges.** The GPIO interrupt records a timestamped level snapshot on every edge of CLK, DT and SW into a bounded queue; decoding stays above the port. Because the loop only returns to input between render passes, and composing plus flushing a frame takes longer than the quarter-steps of a detent, so polling once per tick loses detents and mistimes presses. Rejected: sampling between tile writes (still blind during composition) and a timer-sampled ISR (fixed cost whether or not anything moves).
+- **ADR-0008 Desk state as two new messages.** Display mode plus monitored values travel as `Status` (tag 15, the whole snapshot on every change) and action outcomes as `Feedback` (tag 16, transient, newest wins), each behind its own capability. Because `Presentation` is a fixed wire struct (adding fields is a major change) whose job is the rotary overlay, and persistent truth and transient outcomes expire differently. Rejected: a per-field delta protocol (more states to get wrong for a payload under 64 bytes).
 
 ## 8. Engineering principles
 
