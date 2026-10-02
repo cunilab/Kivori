@@ -14,7 +14,7 @@ use kivori_model::{MascotAction, MascotPersonality, SendableState};
 
 use crate::activity::ActivityLog;
 use crate::firmware::{self, FirmwarePhase, FirmwareStatus};
-use crate::ipc::dto::ConnectionStatusDto;
+use crate::ipc::dto::{ConnectionStatusDto, DeskStatusDto};
 use crate::window_lifecycle::WindowLifecycle;
 
 /// A message from a Tauri command (UI thread) to the background device thread.
@@ -37,6 +37,10 @@ pub enum DeviceCommand {
     FlashFirmware,
     /// Re-publish the current status (used by an explicit UI resync).
     Refresh,
+    /// Show another full-screen view on the device.
+    SetDisplayMode(kivori_model::desk::DisplayMode),
+    /// Run one desk action now, exactly as if its control fired (Device Studio test action).
+    RunAction(crate::desk::Action),
 }
 
 /// Tauri-managed application state (`Send + Sync`, accessed via `State<'_, AppState>`).
@@ -45,6 +49,8 @@ pub struct AppState {
     pub device_studio_enabled: bool,
     /// Latest projected connection snapshot — written by the device thread, read by commands/events.
     pub status: Arc<Mutex<ConnectionStatusDto>>,
+    /// Latest desk projection (mode, monitoring, last action), written by the device thread.
+    pub desk_status: Arc<Mutex<DeskStatusDto>>,
     /// Session-only typed activity ring.
     pub activity_log: Arc<ActivityLog>,
     /// Latest safe firmware-update status, written only by the device thread.
@@ -95,6 +101,7 @@ impl AppState {
         Self {
             device_studio_enabled,
             status,
+            desk_status: Arc::new(Mutex::new(crate::ipc::dto::initial_desk_status())),
             activity_log,
             firmware_status,
             lifecycle: Mutex::new(WindowLifecycle::new()),
@@ -104,6 +111,19 @@ impl AppState {
             cancel,
             device_thread: Mutex::new(Some(device_thread)),
         }
+    }
+
+    /// Shares the desk projection cell the device thread writes.
+    #[must_use]
+    pub fn with_desk_status(mut self, desk_status: Arc<Mutex<DeskStatusDto>>) -> Self {
+        self.desk_status = desk_status;
+        self
+    }
+
+    /// The current desk projection.
+    #[must_use]
+    pub fn desk_snapshot(&self) -> DeskStatusDto {
+        self.desk_status.lock().expect("desk status lock").clone()
     }
 
     /// The current connection snapshot (the initial-sync command reads this so UI correctness does not

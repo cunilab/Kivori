@@ -14,6 +14,12 @@
 //! identically to `eConsole` is a physical-validation item (Task 14), not an assumption baked in
 //! here.
 
+pub mod media;
+pub mod system;
+
+pub use media::WindowsMediaObserver;
+pub use system::{local_time, WindowsSystemProbe};
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};

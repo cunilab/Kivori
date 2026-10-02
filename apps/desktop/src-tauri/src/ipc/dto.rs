@@ -293,6 +293,12 @@ pub enum ActivityEventTypeDto {
     VolumeWriteFailed,
     AudioEndpointChanged,
     AudioEndpointLost,
+    DisplayModeChanged,
+    DeskActionRequested,
+    DeskActionConfirmed,
+    DeskActionUnverified,
+    DeskActionFailed,
+    DeskActionPermissionRequired,
 }
 
 /// Closed connection-state token serialized in activity metadata.
@@ -518,6 +524,14 @@ fn activity_kind_token(kind: ActivityEventKind) -> ActivityEventTypeDto {
         ActivityEventKind::VolumeWriteFailed => ActivityEventTypeDto::VolumeWriteFailed,
         ActivityEventKind::AudioEndpointChanged => ActivityEventTypeDto::AudioEndpointChanged,
         ActivityEventKind::AudioEndpointLost => ActivityEventTypeDto::AudioEndpointLost,
+        ActivityEventKind::DisplayModeChanged => ActivityEventTypeDto::DisplayModeChanged,
+        ActivityEventKind::DeskActionRequested => ActivityEventTypeDto::DeskActionRequested,
+        ActivityEventKind::DeskActionConfirmed => ActivityEventTypeDto::DeskActionConfirmed,
+        ActivityEventKind::DeskActionUnverified => ActivityEventTypeDto::DeskActionUnverified,
+        ActivityEventKind::DeskActionFailed => ActivityEventTypeDto::DeskActionFailed,
+        ActivityEventKind::DeskActionPermissionRequired => {
+            ActivityEventTypeDto::DeskActionPermissionRequired
+        }
     }
 }
 
@@ -589,6 +603,10 @@ fn activity_metadata(metadata: &ActivityMetadata) -> ActivityMetadataDto {
             diagnostic_metadata(*category, Some(*code))
         }
         ActivityMetadata::HostDiagnostic { category } => diagnostic_metadata(*category, None),
+        ActivityMetadata::DeskAction { action } => ActivityMetadataDto {
+            action: Some(desk_action_token(*action).to_string()),
+            ..diagnostic_metadata_empty()
+        },
         ActivityMetadata::Negotiated {
             firmware_major,
             firmware_minor,
@@ -747,6 +765,26 @@ fn activity_metadata(metadata: &ActivityMetadata) -> ActivityMetadataDto {
     }
 }
 
+/// The closed webview token for a desk action.
+#[must_use]
+pub const fn desk_action_token(action: kivori_model::desk::ActionKind) -> &'static str {
+    use kivori_model::desk::ActionKind;
+    match action {
+        ActionKind::Volume => "volume",
+        ActionKind::PlayPause => "playPause",
+        ActionKind::Mute => "mute",
+        ActionKind::Shortcut => "shortcut",
+        ActionKind::Launch => "launch",
+    }
+}
+
+fn diagnostic_metadata_empty() -> ActivityMetadataDto {
+    ActivityMetadataDto {
+        diagnostic_category: None,
+        ..diagnostic_metadata(kivori_protocol::ErrorCategory::BadPayload, None)
+    }
+}
+
 fn diagnostic_metadata(
     category: kivori_protocol::ErrorCategory,
     code: Option<u16>,
@@ -863,4 +901,117 @@ pub fn initial_status() -> ConnectionStatusDto {
         None,
         0,
     )
+}
+
+/// The desk projection the UI shows: display mode, monitored values and the last action outcome.
+/// Unknown values are `null`, never guessed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeskStatusDto {
+    /// `buddy`, `clock`, `volume`, `media` or `system`.
+    pub mode: &'static str,
+    pub volume_percent: Option<u8>,
+    pub muted: Option<bool>,
+    /// `playing`, `paused` or `stopped`; `null` when playback cannot be observed on this OS.
+    pub media: Option<&'static str>,
+    pub cpu_percent: Option<u8>,
+    pub ram_percent: Option<u8>,
+    pub high_load: bool,
+    /// Desk action tokens bound to Press and Hold.
+    pub press_action: &'static str,
+    pub hold_action: &'static str,
+    pub last_action: Option<DeskActionDto>,
+}
+
+/// One action outcome for the UI.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeskActionDto {
+    /// A desk action token (see [`desk_action_token`]).
+    pub action: &'static str,
+    /// `processing`, `stateConfirmed`, `executionConfirmed`, `unverified` or `error`.
+    pub result: &'static str,
+    /// The OS needs a permission first (macOS Accessibility).
+    pub permission_required: bool,
+}
+
+/// The webview token for a display mode.
+#[must_use]
+pub const fn display_mode_token(mode: kivori_model::desk::DisplayMode) -> &'static str {
+    use kivori_model::desk::DisplayMode;
+    match mode {
+        DisplayMode::Buddy => "buddy",
+        DisplayMode::Clock => "clock",
+        DisplayMode::Volume => "volume",
+        DisplayMode::Media => "media",
+        DisplayMode::System => "system",
+    }
+}
+
+/// Parses a display-mode token from the webview.
+#[must_use]
+pub fn display_mode_from_token(token: &str) -> Option<kivori_model::desk::DisplayMode> {
+    kivori_model::desk::DisplayMode::ALL
+        .into_iter()
+        .find(|mode| display_mode_token(*mode) == token)
+}
+
+const fn feedback_token(kind: kivori_model::desk::FeedbackKind) -> &'static str {
+    use kivori_model::desk::FeedbackKind;
+    match kind {
+        FeedbackKind::Processing => "processing",
+        FeedbackKind::StateConfirmed => "stateConfirmed",
+        FeedbackKind::ExecutionConfirmed => "executionConfirmed",
+        FeedbackKind::Unverified => "unverified",
+        FeedbackKind::Error => "error",
+    }
+}
+
+const fn media_token(media: kivori_model::desk::MediaStatus) -> &'static str {
+    use kivori_model::desk::MediaStatus;
+    match media {
+        MediaStatus::Playing => "playing",
+        MediaStatus::Paused => "paused",
+        MediaStatus::Stopped => "stopped",
+    }
+}
+
+/// The desk projection before the device thread has observed anything.
+#[must_use]
+pub fn initial_desk_status() -> DeskStatusDto {
+    let bindings = crate::desk::Bindings::default();
+    DeskStatusDto {
+        mode: display_mode_token(kivori_model::desk::DisplayMode::Buddy),
+        volume_percent: None,
+        muted: None,
+        media: None,
+        cpu_percent: None,
+        ram_percent: None,
+        high_load: false,
+        press_action: desk_action_token(bindings.press.kind()),
+        hold_action: desk_action_token(bindings.hold.kind()),
+        last_action: None,
+    }
+}
+
+/// Projects the device task's desk runtime for the UI.
+#[must_use]
+pub fn desk_status_dto(desk: &crate::desk::DeskRuntime) -> DeskStatusDto {
+    let observed = desk.observed();
+    DeskStatusDto {
+        mode: display_mode_token(desk.mode()),
+        volume_percent: observed.volume_percent,
+        muted: observed.muted,
+        media: observed.media.map(media_token),
+        cpu_percent: observed.system.cpu_percent,
+        ram_percent: observed.system.ram_percent,
+        high_load: observed.system.high_load,
+        press_action: desk_action_token(desk.bindings().press.kind()),
+        hold_action: desk_action_token(desk.bindings().hold.kind()),
+        last_action: desk.last_action().map(|last| DeskActionDto {
+            action: desk_action_token(last.action),
+            result: feedback_token(last.kind),
+            permission_required: last.permission_required,
+        }),
+    }
 }

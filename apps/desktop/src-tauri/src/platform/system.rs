@@ -30,6 +30,15 @@ pub trait SystemProbe: Send {
     fn ram_percent(&self) -> Option<u8>;
 }
 
+impl<P: SystemProbe + ?Sized> SystemProbe for Box<P> {
+    fn cpu_times(&self) -> Option<CpuTimes> {
+        (**self).cpu_times()
+    }
+    fn ram_percent(&self) -> Option<u8> {
+        (**self).ram_percent()
+    }
+}
+
 /// A probe for targets without an implementation: everything unknown.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NoSystemProbe;

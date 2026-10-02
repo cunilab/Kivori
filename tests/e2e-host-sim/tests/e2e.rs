@@ -337,3 +337,133 @@ fn negotiated_capabilities_actually_carry_an_input_event_and_a_presentation() {
         "the Presentation must actually reach the firmware's Dispatcher"
     );
 }
+
+/// M1 across the real boundary: a push-switch Press and Hold leave the real firmware dispatcher,
+/// pass the desktop's session freshness checks, run their bound actions against fake OS services,
+/// and the classified outcome plus the desk status arrive back at the firmware dispatcher.
+#[test]
+fn a_button_press_round_trips_to_an_honest_feedback_and_a_desk_status() {
+    use kivori_desktop::desk::DeskRuntime;
+    use kivori_desktop::platform::system::NoSystemProbe;
+    use kivori_desktop::platform::{
+        FakeInputSynth, FakeMediaObserver, FakeVolumeBackend, OsServices,
+    };
+    use kivori_desktop::runtime::device_task::RotaryPipeline;
+    use kivori_model::desk::{ActionKind, FeedbackKind};
+    use kivori_protocol::Feedback;
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+
+    let mut wire = Wire::default();
+    let mut session = Session::new(SessionConfig::default());
+    let mut manager = ConnectionManager::new();
+    let mut orch = Orchestrator::new();
+    let identity = DeviceIdentity {
+        capabilities: Capabilities::PHYSICAL_INPUT_V1
+            .union(Capabilities::BUTTON_INPUT_V1)
+            .union(Capabilities::DESK_STATUS_V1)
+            .union(Capabilities::ACTION_FEEDBACK_V1),
+        ..device_identity()
+    };
+    let mut dispatcher = Dispatcher::new(identity);
+    let mut device = DeviceState::new();
+    device.apply(DeviceEvent::BootComplete);
+    session
+        .open(&mut HostEnd(&mut wire), &mut manager)
+        .expect("open");
+    settle(
+        &mut wire,
+        &mut session,
+        &mut manager,
+        &mut orch,
+        &mut dispatcher,
+        &mut device,
+        100,
+    );
+    assert_eq!(manager.state(), ConnectionState::Connected);
+    let nonce = dispatcher.accepted_session().expect("accepted session");
+
+    let volume = Arc::new(FakeVolumeBackend::new(30));
+    let mut rotary = RotaryPipeline::new(volume.as_ref());
+    rotary.on_connection_state(
+        ConnectionState::Connecting,
+        ConnectionState::Connected,
+        session.current_session(),
+    );
+    let mut desk = DeskRuntime::new(OsServices {
+        volume: volume.clone(),
+        synth: Arc::new(FakeInputSynth::new(Ok(()))),
+        media: Arc::new(FakeMediaObserver::default()),
+        system: Box::new(NoSystemProbe),
+        clock: || None,
+    });
+    desk.on_session_begin();
+
+    let started = Instant::now();
+    let mut received = Vec::new();
+    for (id, kind) in [(1, InputKind::Press), (2, InputKind::Hold)] {
+        assert!(dispatcher.send_button_event(&mut DeviceEnd(&mut wire), id, kind, 500));
+        session
+            .pump(&mut HostEnd(&mut wire), &mut manager, &mut orch)
+            .expect("desktop pump");
+        let inputs = session.take_input_events();
+        rotary.accept_inputs(&inputs, volume.as_ref(), &mut Vec::new(), |_| {});
+        for input in rotary.take_button_inputs() {
+            desk.on_input(&input, started.elapsed(), &mut |_| {});
+        }
+        // The action runs on the worker thread; collect its outcome as the device task would.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            let out = desk.tick(started.elapsed(), &mut |_| {});
+            if let Some(status) = out.status {
+                assert!(session
+                    .send_status(&mut HostEnd(&mut wire), status)
+                    .expect("send_status"));
+            }
+            let done = !out.feedback.is_empty();
+            for feedback in out.feedback {
+                assert!(session
+                    .send_feedback(&mut HostEnd(&mut wire), feedback)
+                    .expect("send_feedback"));
+            }
+            dispatcher
+                .poll(&mut DeviceEnd(&mut wire), &mut device, 600)
+                .expect("firmware poll");
+            if let Some(feedback) = dispatcher.take_feedback() {
+                received.push(feedback);
+            }
+            if done {
+                break;
+            }
+            assert!(Instant::now() < deadline, "no outcome for {kind:?}");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    assert_eq!(
+        received,
+        [
+            // A media key's effect cannot be observed here: never shown as success.
+            Feedback {
+                session: nonce,
+                action: ActionKind::PlayPause,
+                kind: FeedbackKind::Unverified,
+            },
+            // Mute was read back from the (fake) OS: observed state.
+            Feedback {
+                session: nonce,
+                action: ActionKind::Mute,
+                kind: FeedbackKind::StateConfirmed,
+            },
+        ]
+    );
+    assert_eq!(
+        kivori_desktop::platform::VolumeBackend::read_mute(volume.as_ref()),
+        Ok(true)
+    );
+    let status = dispatcher
+        .take_status()
+        .expect("a desk status reached the device");
+    assert_eq!(status.session, nonce);
+    assert_eq!(status.status.volume_percent, Some(30));
+}

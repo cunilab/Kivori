@@ -291,3 +291,50 @@ impl MediaObserver for FakeMediaObserver {
         *self.status.lock().expect("fake media mutex")
     }
 }
+
+/// Every OS service the device task uses, built for the current target. Targets without an
+/// implementation get the honest "not implemented" / "not observable" variants.
+pub struct OsServices {
+    pub volume: std::sync::Arc<dyn VolumeBackend>,
+    pub synth: std::sync::Arc<dyn InputSynth>,
+    pub media: std::sync::Arc<dyn MediaObserver>,
+    pub system: Box<dyn system::SystemProbe>,
+    pub clock: LocalClock,
+}
+
+/// Builds [`OsServices`] for this OS. Spawns the audio (and, on Windows, media) threads.
+#[must_use]
+pub fn os_services() -> OsServices {
+    use std::sync::Arc;
+    #[cfg(windows)]
+    {
+        OsServices {
+            volume: Arc::new(windows::WindowsVolumeBackend::new()),
+            synth: Arc::new(synth::EnigoInputSynth),
+            media: Arc::new(windows::WindowsMediaObserver::new()),
+            system: Box::new(windows::WindowsSystemProbe),
+            clock: windows::local_time,
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        OsServices {
+            volume: Arc::new(macos::MacVolumeBackend::new()),
+            synth: Arc::new(synth::EnigoInputSynth),
+            media: Arc::new(unimplemented::NoMediaObserver),
+            system: Box::new(macos::MacSystemProbe),
+            clock: macos::local_time,
+        }
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let target = std::env::consts::OS;
+        OsServices {
+            volume: Arc::new(unimplemented::UnimplementedVolumeBackend::new(target)),
+            synth: Arc::new(unimplemented::UnimplementedInputSynth { target }),
+            media: Arc::new(unimplemented::NoMediaObserver),
+            system: Box::new(system::NoSystemProbe),
+            clock: || None,
+        }
+    }
+}

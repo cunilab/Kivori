@@ -7,10 +7,12 @@
 use tauri::{AppHandle, Emitter};
 
 use crate::activity::ActivityEvent;
-use crate::ipc::dto::{self, ActivityEventDto, ConnectionStatusDto};
+use crate::ipc::dto::{self, ActivityEventDto, ConnectionStatusDto, DeskStatusDto};
 
 /// Event name for connection-snapshot changes.
 pub const CONNECTION_STATUS: &str = "connection://status";
+/// Event name for desk projection changes (mode, monitoring, last action).
+pub const DESK_STATUS: &str = "desk://status";
 /// Event name for typed session activity records.
 pub const ACTIVITY_LOG_EVENT: &str = "activity-log://event";
 
@@ -39,4 +41,9 @@ pub fn activity_log_emission(event: &ActivityEvent) -> ActivityLogEmission {
 pub fn emit_activity_log(app: &AppHandle, event: &ActivityEvent) {
     let emission = activity_log_emission(event);
     let _ = app.emit(emission.name, &emission.payload);
+}
+
+/// Broadcasts the latest desk projection to the webview.
+pub fn emit_desk_status(app: &AppHandle, status: &DeskStatusDto) {
+    let _ = app.emit(DESK_STATUS, status);
 }
