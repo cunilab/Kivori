@@ -69,9 +69,7 @@ function Clock(): ReactElement {
       <span className="text-[24cqw] leading-none font-semibold tracking-tight text-white tabular-nums">
         {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
       </span>
-      <span className="text-[7cqw] font-medium tracking-wide text-panel-blue uppercase">
-        {now.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}
-      </span>
+      {/* The device clock shows time only (no date), so the picture does too. */}
     </div>
   );
 }
