@@ -126,40 +126,6 @@ impl BlobBuilder {
         }
     }
 
-    /// Adds a static scene consisting of a single full-frame opaque sprite layer.
-    pub fn add_full_sprite_scene(&mut self, id: CompanionState, background: Rgb565, asset: u16) {
-        let mut keyframes = HVec::new();
-        keyframes
-            .push(Keyframe {
-                at_ms: 0,
-                offset: Point::ORIGIN,
-                sprite_frame: 0,
-                visible: true,
-            })
-            .expect("keyframe capacity");
-        let mut layers = HVec::new();
-        layers
-            .push(LayerDef {
-                role: LayerRole::Static,
-                kind: LayerKind::Sprite {
-                    asset,
-                    frame_size: Size::new(DIM, DIM),
-                },
-                origin: Point::ORIGIN,
-                keyframes,
-            })
-            .expect("layer capacity");
-        self.scenes
-            .push(SceneDef {
-                id,
-                background,
-                fps: FrameRate::fps(1),
-                frame_count: 1,
-                layers,
-            })
-            .expect("scene capacity");
-    }
-
     fn add_mascot_scene(&mut self, state: CompanionState, [body, cap, eyes, mouth]: [u16; 4]) {
         let crop =
             |c @ (x, y, _, _): (u32, u32, u32, u32)| (crop_size(c), Point::new(x as i16, y as i16));

@@ -12,16 +12,6 @@ pub enum RasterError {
     Alloc,
 }
 
-/// Rasterizes `svg` to `width x height` and returns row-major RGB565 pixels as little-endian bytes
-/// (`width * height * 2` bytes). Deterministic for a pinned `resvg` version on a given host.
-///
-/// # Errors
-/// [`RasterError::Parse`] if the SVG is invalid; [`RasterError::Alloc`] if the pixmap can't be made.
-pub fn svg_to_rgb565(svg: &[u8], width: u32, height: u32) -> Result<Vec<u8>, RasterError> {
-    let (pixels, _) = svg_to_rgb565_alpha(svg, width, height)?;
-    Ok(pixels)
-}
-
 /// Rasterizes an SVG and returns RGB565 bytes plus one 8-bit alpha value per pixel.
 pub fn svg_to_rgb565_alpha(
     svg: &[u8],
@@ -55,6 +45,10 @@ pub fn svg_to_rgb565_alpha(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn svg_to_rgb565(svg: &[u8], width: u32, height: u32) -> Result<Vec<u8>, RasterError> {
+        svg_to_rgb565_alpha(svg, width, height).map(|(pixels, _)| pixels)
+    }
 
     #[test]
     fn solid_red_svg_becomes_red_rgb565() {
