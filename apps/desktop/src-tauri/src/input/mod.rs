@@ -42,6 +42,11 @@ pub enum LogicalInput {
         /// The device's identifier for this press.
         gesture_id: u16,
     },
+    /// Two short presses in a row (next display view).
+    DoublePress {
+        /// The device's identifier for this pair.
+        gesture_id: u16,
+    },
 }
 
 /// Why an `InputEvent` was rejected by [`InputIngress::accept`].
@@ -96,7 +101,10 @@ impl InputIngress {
             return Err(RejectReason::StaleSession);
         }
 
-        let button_kind = matches!(event.kind, InputKind::Press | InputKind::Hold);
+        let button_kind = matches!(
+            event.kind,
+            InputKind::Press | InputKind::Hold | InputKind::DoublePress
+        );
         if button_kind != (event.control == ControlId::Button) {
             return Err(RejectReason::ControlMismatch);
         }
@@ -108,6 +116,9 @@ impl InputIngress {
                 gesture_id: event.gesture_id,
             })),
             InputKind::Hold => Ok(Some(LogicalInput::Hold {
+                gesture_id: event.gesture_id,
+            })),
+            InputKind::DoublePress => Ok(Some(LogicalInput::DoublePress {
                 gesture_id: event.gesture_id,
             })),
             InputKind::GestureStarted => {

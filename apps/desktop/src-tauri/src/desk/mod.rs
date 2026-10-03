@@ -12,13 +12,16 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use kivori_model::desk::{
-    ActionFeedback, ActionKind, ClockTime, DeskStatus, DisplayMode, FeedbackKind, MediaStatus,
+    ActionFeedback, ActionKind, ClockTime, DeskStatus, DisplayMode, FeedbackKind, MediaInfo,
+    MediaStatus, MediaText,
 };
 
 use crate::activity::{ActivityEventKind, ActivityMetadata, SessionActivity};
 use crate::input::LogicalInput;
 use crate::platform::system::{SystemMonitor, SystemProbe, SystemSample};
-use crate::platform::{LocalClock, MediaObserver, OsServices, VolumeBackend, VolumeChange};
+use crate::platform::{
+    LocalClock, MediaObserver, NowPlaying, OsServices, VolumeBackend, VolumeChange,
+};
 pub use actions::{Action, ActionWorker, Bindings, Finished, Outcome, Platform};
 
 /// Show Processing when an action has not finished after this long.
@@ -180,6 +183,8 @@ pub const SAMPLE_EVERY: Duration = Duration::from_secs(1);
 pub struct DeskOutput {
     pub status: Option<DeskStatus>,
     pub feedback: Vec<ActionFeedback>,
+    /// New now-playing text to send (`Some(None)` clears it on the device).
+    pub media_info: Option<Option<MediaInfo>>,
 }
 
 /// The last action outcome, for the desktop UI.
@@ -203,6 +208,9 @@ pub struct DeskRuntime {
     next_sample: Duration,
     outbox: Vec<ActionFeedback>,
     last_action: Option<LastAction>,
+    now_playing: Option<NowPlaying>,
+    /// What the device was last sent, `None` = nothing sent this session.
+    sent_media: Option<Option<MediaInfo>>,
 }
 
 impl DeskRuntime {
@@ -234,6 +242,8 @@ impl DeskRuntime {
             next_sample: Duration::ZERO,
             outbox: Vec::new(),
             last_action: None,
+            now_playing: None,
+            sent_media: None,
         }
     }
 
@@ -255,6 +265,19 @@ impl DeskRuntime {
     #[must_use]
     pub const fn last_action(&self) -> Option<LastAction> {
         self.last_action
+    }
+
+    /// What is playing, as last observed.
+    #[must_use]
+    pub const fn now_playing(&self) -> Option<&NowPlaying> {
+        self.now_playing.as_ref()
+    }
+
+    /// Shows the next display view (double press on the device).
+    pub fn next_mode(&mut self, observe: &mut impl FnMut(SessionActivity)) {
+        let all = DisplayMode::ALL;
+        let at = all.iter().position(|m| *m == self.mode()).unwrap_or(0);
+        self.set_mode(all[(at + 1) % all.len()], observe);
     }
 
     /// The user picked a display mode.
@@ -294,7 +317,9 @@ impl DeskRuntime {
         now: Duration,
         observe: &mut impl FnMut(SessionActivity),
     ) {
-        if let Some(action) = bound_action(&self.bindings, input).cloned() {
+        if matches!(input, LogicalInput::DoublePress { .. }) {
+            self.next_mode(observe);
+        } else if let Some(action) = bound_action(&self.bindings, input).cloned() {
             self.run(action, now, observe);
         }
     }
@@ -316,6 +341,7 @@ impl DeskRuntime {
     /// A new session: the device knows nothing yet.
     pub fn on_session_begin(&mut self) {
         self.publisher.invalidate();
+        self.sent_media = None;
     }
 
     /// The session ended: nothing in flight reaches a later session.
@@ -338,7 +364,16 @@ impl DeskRuntime {
                 media: self.media.status(),
                 system: self.monitor.sample(),
             });
+            self.now_playing = self.media.now_playing();
         }
+        let media_info = self.now_playing.as_ref().map(|np| MediaInfo {
+            title: MediaText::from_text(&np.title),
+            artist: MediaText::from_text(&np.artist),
+        });
+        let media_update = (self.sent_media != Some(media_info)).then(|| {
+            self.sent_media = Some(media_info);
+            media_info
+        });
         while let Some(finished) = self.worker.try_finished() {
             self.finish(finished.action, finished.outcome, observe);
             if let Some(feedback) = self.ladder.on_outcome(finished.id, finished.outcome.kind) {
@@ -357,6 +392,7 @@ impl DeskRuntime {
         DeskOutput {
             status: self.publisher.due((self.clock)(), now),
             feedback: std::mem::take(&mut self.outbox),
+            media_info: media_update,
         }
     }
 

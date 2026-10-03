@@ -22,19 +22,19 @@ steps:
   - wait-serial: 'KIVORI-RUN PASS health-report'
   - wait-serial: 'KIVORI-RUN PASS unchanged-frame-no-reflush'
   # hello: handshake open at the current protocol version
-  - write-serial: [4, 86, 75, 1, 2, 3, 1, 1, 2, 10, 1, 2, 1, 1, 1, 10, 248, 172, 209, 145, 1, 181, 237, 14, 110, 0]
+  - write-serial: [4, 86, 75, 1, 2, 4, 1, 1, 2, 10, 1, 2, 1, 1, 1, 10, 248, 172, 209, 145, 1, 192, 21, 247, 147, 0]
   - wait-serial: 'KIVORI-RUN PASS hello-ack'
   # set_state_idle: desired state idle — expects StateReport(idle)
-  - write-serial: [4, 86, 75, 1, 2, 3, 2, 2, 2, 3, 2, 4, 1, 5, 240, 157, 223, 200, 0]
+  - write-serial: [4, 86, 75, 1, 2, 4, 2, 2, 2, 3, 2, 4, 1, 5, 57, 240, 190, 172, 0]
   - wait-serial: 'KIVORI-RUN PASS state-idle'
   # set_state_happy: desired state happy — expects StateReport(happy)
-  - write-serial: [4, 86, 75, 1, 2, 3, 2, 3, 2, 3, 3, 4, 1, 5, 5, 167, 179, 119, 0]
+  - write-serial: [4, 86, 75, 1, 2, 4, 2, 3, 2, 3, 3, 4, 1, 5, 204, 202, 210, 19, 0]
   - wait-serial: 'KIVORI-RUN PASS state-happy'
   # malformed_cobs: invalid COBS run length — must be dropped without panic (SC-008)
   - write-serial: [5, 255, 1, 0]
   - wait-serial: 'KIVORI-RUN PASS diagnostic label=frame-rejected-framing'
   # ping: heartbeat — expects a Pong echoing the timestamp
-  - write-serial: [4, 86, 75, 1, 2, 3, 2, 1, 2, 3, 8, 6, 146, 33, 197, 171, 173, 245, 0]
+  - write-serial: [4, 86, 75, 1, 2, 4, 2, 1, 2, 3, 8, 6, 146, 33, 12, 198, 204, 145, 0]
   - wait-serial: 'KIVORI-RUN PASS pong'
   - wait-serial: 'KIVORI-RUN PASS recovery-after-reject'
   - wait-serial: 'KIVORI-RUN ALL PASS production-runtime'

@@ -56,7 +56,10 @@ impl Rig {
                 minor: 0,
                 patch: 0,
             },
-            capabilities: M1.union(Capabilities::PRESENTATION_V1),
+            capabilities: M1
+                .union(Capabilities::PRESENTATION_V1)
+                .union(Capabilities::DOUBLE_PRESS_V1)
+                .union(Capabilities::MEDIA_INFO_V1),
         };
         let mut rig = Self {
             runtime: Runtime::new(identity, RuntimeConfig::default()),
@@ -303,4 +306,35 @@ fn a_desk_status_from_the_session_changes_the_view_and_a_session_end_forgets_it(
     rig.connect(M1);
     rig.run(50);
     assert_ne!(rig.display.frame(), system_frame.as_slice());
+}
+
+#[test]
+fn with_double_press_negotiated_two_quick_presses_are_one_double_press() {
+    let mut rig = Rig::new();
+    rig.connect(M1.union(Capabilities::DOUBLE_PRESS_V1));
+    rig.switch(true);
+    rig.run(100);
+    rig.switch(false);
+    rig.run(100);
+    rig.switch(true);
+    rig.run(100);
+    rig.switch(false);
+    rig.run(500);
+    assert_eq!(rig.button_kinds(), [InputKind::DoublePress]);
+
+    // A lone press still fires once, after the double-press window.
+    rig.press_for(100);
+    rig.run(300);
+    assert_eq!(rig.button_kinds(), [InputKind::Press]);
+}
+
+#[test]
+fn without_double_press_a_press_is_sent_without_waiting() {
+    let mut rig = Rig::new();
+    rig.connect(M1);
+    rig.switch(true);
+    rig.run(100);
+    rig.switch(false);
+    rig.run(40);
+    assert_eq!(rig.button_kinds(), [InputKind::Press]);
 }

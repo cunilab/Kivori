@@ -516,6 +516,9 @@ fn device_loop(
                 for feedback in desk_out.feedback {
                     write_failed |= session.send_feedback(open_link, feedback).is_err();
                 }
+                if let Some(info) = desk_out.media_info {
+                    write_failed |= session.send_media_info(open_link, info).is_err();
+                }
                 if write_failed {
                     recover_link(
                         &mut activity_planner,
@@ -715,7 +718,11 @@ impl RotaryPipeline {
     ) {
         for event in events {
             match self.ingress.accept(event) {
-                Ok(Some(input @ (LogicalInput::Press { .. } | LogicalInput::Hold { .. }))) => {
+                Ok(Some(
+                    input @ (LogicalInput::Press { .. }
+                    | LogicalInput::Hold { .. }
+                    | LogicalInput::DoublePress { .. }),
+                )) => {
                     self.buttons.push(input);
                 }
                 Ok(Some(input)) => {

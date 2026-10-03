@@ -14,16 +14,16 @@ author: Kivori
 steps:
   - wait-serial: 'KIVORI-EXT READY iface=usb-serial-jtag'
   # hello: handshake open at the current protocol version
-  - write-serial: [4, 86, 75, 1, 2, 3, 1, 1, 2, 10, 1, 2, 1, 1, 1, 10, 248, 172, 209, 145, 1, 181, 237, 14, 110, 0]
+  - write-serial: [4, 86, 75, 1, 2, 4, 1, 1, 2, 10, 1, 2, 1, 1, 1, 10, 248, 172, 209, 145, 1, 192, 21, 247, 147, 0]
   - wait-serial: 'KIVORI-EXT RX kind=Hello'
   - wait-serial: 'KIVORI-EXT TX kind=HelloAck nonce=ok'
   # set_state_idle: desired state idle — expects StateReport(idle)
-  - write-serial: [4, 86, 75, 1, 2, 3, 2, 2, 2, 3, 2, 4, 1, 5, 240, 157, 223, 200, 0]
+  - write-serial: [4, 86, 75, 1, 2, 4, 2, 2, 2, 3, 2, 4, 1, 5, 57, 240, 190, 172, 0]
   - wait-serial: 'KIVORI-EXT RX kind=SetState'
   - wait-serial: 'KIVORI-EXT TX kind=StateReport reported=idle'
   - wait-serial: 'KIVORI-EXT STATE current=idle'
   # set_state_happy: desired state happy — expects StateReport(happy)
-  - write-serial: [4, 86, 75, 1, 2, 3, 2, 3, 2, 3, 3, 4, 1, 5, 5, 167, 179, 119, 0]
+  - write-serial: [4, 86, 75, 1, 2, 4, 2, 3, 2, 3, 3, 4, 1, 5, 204, 202, 210, 19, 0]
   - wait-serial: 'KIVORI-EXT TX kind=StateReport reported=happy'
   - wait-serial: 'KIVORI-EXT STATE current=happy'
   # malformed_cobs: invalid COBS run length — must be dropped without panic (SC-008)
@@ -31,6 +31,6 @@ steps:
   - wait-serial: 'KIVORI-EXT DROP reason=decode'
   - wait-serial: 'KIVORI-EXT STATE current=happy'
   # ping: heartbeat — expects a Pong echoing the timestamp
-  - write-serial: [4, 86, 75, 1, 2, 3, 2, 1, 2, 3, 8, 6, 146, 33, 197, 171, 173, 245, 0]
+  - write-serial: [4, 86, 75, 1, 2, 4, 2, 1, 2, 3, 8, 6, 146, 33, 12, 198, 204, 145, 0]
   - wait-serial: 'KIVORI-EXT TX kind=Pong'
   - wait-serial: 'KIVORI-EXT ALL PASS state-cycle'

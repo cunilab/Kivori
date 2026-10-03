@@ -920,6 +920,11 @@ pub struct DeskStatusDto {
     /// Desk action tokens bound to Press and Hold.
     pub press_action: &'static str,
     pub hold_action: &'static str,
+    /// Always `nextView` in M1: a double press shows the next display mode.
+    pub double_press_action: &'static str,
+    /// Now playing, when observable (`null` = unknown; empty string = the player gave none).
+    pub media_title: Option<String>,
+    pub media_artist: Option<String>,
     pub last_action: Option<DeskActionDto>,
 }
 
@@ -990,6 +995,9 @@ pub fn initial_desk_status() -> DeskStatusDto {
         high_load: false,
         press_action: desk_action_token(bindings.press.kind()),
         hold_action: desk_action_token(bindings.hold.kind()),
+        double_press_action: "nextView",
+        media_title: None,
+        media_artist: None,
         last_action: None,
     }
 }
@@ -1008,6 +1016,9 @@ pub fn desk_status_dto(desk: &crate::desk::DeskRuntime) -> DeskStatusDto {
         high_load: observed.system.high_load,
         press_action: desk_action_token(desk.bindings().press.kind()),
         hold_action: desk_action_token(desk.bindings().hold.kind()),
+        double_press_action: "nextView",
+        media_title: desk.now_playing().map(|np| np.title.clone()),
+        media_artist: desk.now_playing().map(|np| np.artist.clone()),
         last_action: desk.last_action().map(|last| DeskActionDto {
             action: desk_action_token(last.action),
             result: feedback_token(last.kind),

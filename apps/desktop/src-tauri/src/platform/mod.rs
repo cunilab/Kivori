@@ -126,10 +126,21 @@ pub trait InputSynth: Send + Sync {
     fn send_shortcut(&self, shortcut: &Shortcut) -> Result<(), ActionError>;
 }
 
+/// What is playing, as the OS (or player) reports it. Either part may be empty.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NowPlaying {
+    pub title: String,
+    pub artist: String,
+}
+
 /// Media playback observation. `None` means this OS gives Kivori no way to observe playback;
 /// it is shown as unknown, never guessed.
 pub trait MediaObserver: Send + Sync {
     fn status(&self) -> Option<MediaStatus>;
+    /// Title and artist of what is playing, when observable. Never blocks (observers cache).
+    fn now_playing(&self) -> Option<NowPlaying> {
+        None
+    }
 }
 
 /// The local wall-clock time of day, or `None` if it cannot be read.
@@ -287,11 +298,15 @@ impl InputSynth for FakeInputSynth {
 #[derive(Debug, Default)]
 pub struct FakeMediaObserver {
     pub status: Mutex<Option<MediaStatus>>,
+    pub now_playing: Mutex<Option<NowPlaying>>,
 }
 
 impl MediaObserver for FakeMediaObserver {
     fn status(&self) -> Option<MediaStatus> {
         *self.status.lock().expect("fake media mutex")
+    }
+    fn now_playing(&self) -> Option<NowPlaying> {
+        self.now_playing.lock().expect("fake media mutex").clone()
     }
 }
 

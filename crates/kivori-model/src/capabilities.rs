@@ -22,6 +22,8 @@ impl Capabilities {
     //   bit 3  BUTTON_INPUT_V1     M1 push switch (Press / Hold input events)
     //   bit 4  DESK_STATUS_V1      M1 `Status` message (display mode + monitoring)
     //   bit 5  ACTION_FEEDBACK_V1  M1 `Feedback` message (action outcome)
+    //   bit 6  DOUBLE_PRESS_V1     M1.1 push-switch `DoublePress` input (next view)
+    //   bit 7  MEDIA_INFO_V1       M1.1 `MediaInfo` message (now-playing title / artist)
 
     /// Bit 0 — device accepts deterministic social mascot actions and returns applied-time
     /// acknowledgments.
@@ -41,6 +43,13 @@ impl Capabilities {
 
     /// Bit 5 — the device renders the `Feedback` message: action outcomes (M1).
     pub const ACTION_FEEDBACK_V1: Capabilities = Capabilities(1 << 5);
+
+    /// Bit 6 — the device detects double presses and sends `InputKind::DoublePress`. Without it the
+    /// device never waits for a second press, so a single press fires immediately.
+    pub const DOUBLE_PRESS_V1: Capabilities = Capabilities(1 << 6);
+
+    /// Bit 7 — the device renders the `MediaInfo` message (now-playing title and artist).
+    pub const MEDIA_INFO_V1: Capabilities = Capabilities(1 << 7);
 
     /// Creates a capability set from a raw bitmask.
     #[must_use]

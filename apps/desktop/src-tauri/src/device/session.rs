@@ -16,15 +16,15 @@ use crate::device::heartbeat::HeartbeatMonitor;
 use crate::device::nonce::{NonceSource, OsNonceSource};
 use crate::device::transport::SerialLink;
 use crate::orchestrator::Orchestrator;
-use kivori_model::desk::{ActionFeedback, DeskStatus};
+use kivori_model::desk::{ActionFeedback, DeskStatus, MediaInfo};
 use kivori_model::{
     Capabilities, CompanionState, MascotAction, MascotPersonality, ProtocolVersion, SendableState,
 };
 use kivori_protocol::{
     decode_frame, decode_message, encode_message, evaluate_hello_ack, Bye, ByeReason, Feedback,
-    FirmwareVersion, HandshakeOutcome, Hello, InputEvent, MascotActionApplied, Message, Ping,
-    PlayMascotAction, Presentation, ProtoError, SeqClass, SequenceTracker, SetState, Status,
-    MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
+    FirmwareVersion, HandshakeOutcome, Hello, InputEvent, MascotActionApplied, MediaInfoUpdate,
+    Message, Ping, PlayMascotAction, Presentation, ProtoError, SeqClass, SequenceTracker, SetState,
+    Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 /// Static session parameters (the desktop's advertised identity + compatibility).
@@ -57,7 +57,9 @@ impl Default for SessionConfig {
                 .union(Capabilities::PRESENTATION_V1)
                 .union(Capabilities::BUTTON_INPUT_V1)
                 .union(Capabilities::DESK_STATUS_V1)
-                .union(Capabilities::ACTION_FEEDBACK_V1),
+                .union(Capabilities::ACTION_FEEDBACK_V1)
+                .union(Capabilities::DOUBLE_PRESS_V1)
+                .union(Capabilities::MEDIA_INFO_V1),
             supported_majors: vec![PROTOCOL_MAJOR],
         }
     }
@@ -334,6 +336,26 @@ impl Session {
             return Ok(false);
         }
         self.send(link, &Message::Status(Status { session, status }))?;
+        Ok(true)
+    }
+
+    /// Sends now-playing text (`None` clears it) for the current session. Returns `Ok(false)`
+    /// without encoding anything when there is no session or `MEDIA_INFO_V1` was not negotiated.
+    ///
+    /// # Errors
+    /// [`SessionError::Transport`] if the write fails.
+    pub fn send_media_info<L: SerialLink>(
+        &mut self,
+        link: &mut L,
+        info: Option<MediaInfo>,
+    ) -> Result<bool, SessionError<L::Error>> {
+        let Some(session) = self.current_session else {
+            return Ok(false);
+        };
+        if !self.negotiated_caps.contains(Capabilities::MEDIA_INFO_V1) {
+            return Ok(false);
+        }
+        self.send(link, &Message::MediaInfo(MediaInfoUpdate { session, info }))?;
         Ok(true)
     }
 

@@ -174,6 +174,122 @@ pub struct ActionFeedback {
     pub kind: FeedbackKind,
 }
 
+/// Up to [`MediaText::CAPACITY`] characters of display text in ISO-8859-1 (one byte per char),
+/// which the device's Latin-1 bitmap font can draw. Built only through [`MediaText::from_text`],
+/// so it never holds control bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct MediaText {
+    bytes: [u8; 32],
+    len: u8,
+}
+
+impl MediaText {
+    /// Longest text kept, in characters.
+    pub const CAPACITY: usize = 32;
+
+    /// Converts `text` for the device: Latin-1 characters are kept, anything else becomes `?`,
+    /// control characters and surrounding whitespace are dropped, runs of whitespace collapse to
+    /// one space, and the result is cut to [`Self::CAPACITY`] characters (a cut ends in `~`).
+    #[must_use]
+    pub fn from_text(text: &str) -> Self {
+        let mut out = Self::default();
+        let mut pending_space = false;
+        for c in text.trim().chars() {
+            if c.is_whitespace() {
+                pending_space = out.len > 0;
+                continue;
+            }
+            if c.is_control() {
+                continue;
+            }
+            let byte = u8::try_from(u32::from(c)).unwrap_or(b'?');
+            let needed = 1 + usize::from(pending_space);
+            if usize::from(out.len) + needed > Self::CAPACITY {
+                out.bytes[Self::CAPACITY - 1] = b'~';
+                out.len = Self::CAPACITY as u8;
+                return out;
+            }
+            if pending_space {
+                out.push(b' ');
+                pending_space = false;
+            }
+            out.push(byte);
+        }
+        out
+    }
+
+    fn push(&mut self, byte: u8) {
+        self.bytes[usize::from(self.len)] = byte;
+        self.len += 1;
+    }
+
+    /// The text as Latin-1 bytes (a malformed wire length is clamped, never trusted).
+    #[must_use]
+    pub fn as_latin1(&self) -> &[u8] {
+        &self.bytes[..usize::from(self.len).min(Self::CAPACITY)]
+    }
+
+    /// Nothing to show.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.as_latin1().is_empty()
+    }
+}
+
+/// What is playing, as the OS reports it. Either part may be empty when the player gives none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct MediaInfo {
+    /// Track title.
+    pub title: MediaText,
+    /// Artist (or channel / show).
+    pub artist: MediaText,
+}
+
+/// The last CPU samples the device received (one per `Status`), oldest first, for a sparkline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CpuHistory {
+    samples: [u8; CpuHistory::CAPACITY],
+    len: u8,
+}
+
+impl CpuHistory {
+    /// Samples kept (about a minute at one status per second).
+    pub const CAPACITY: usize = 60;
+
+    /// No samples yet.
+    pub const EMPTY: CpuHistory = CpuHistory {
+        samples: [0; CpuHistory::CAPACITY],
+        len: 0,
+    };
+
+    /// Appends one sample (clamped to 100), dropping the oldest when full.
+    pub fn push(&mut self, percent: u8) {
+        let percent = percent.min(100);
+        if usize::from(self.len) == Self::CAPACITY {
+            self.samples.copy_within(1.., 0);
+            self.samples[Self::CAPACITY - 1] = percent;
+        } else {
+            self.samples[usize::from(self.len)] = percent;
+            self.len += 1;
+        }
+    }
+
+    /// The samples, oldest first.
+    #[must_use]
+    pub fn as_slice(&self) -> &[u8] {
+        &self.samples[..usize::from(self.len)]
+    }
+}
+
+impl Default for CpuHistory {
+    fn default() -> Self {
+        Self::EMPTY
+    }
+}
+
+/// How long switching views animates. `DeskView::previous_mode` is set only within this window.
+pub const VIEW_TRANSITION_MS: u32 = 320;
+
 /// Everything the desk renderer needs for one frame besides the mascot pose. Device-local; not on
 /// the wire.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -189,6 +305,14 @@ pub struct DeskView {
     pub recovery_percent: Option<u8>,
     /// Device time for subtle animation only (never shown as a value).
     pub elapsed_ms: u32,
+    /// What is playing, when the desktop could observe it (`None` = unknown).
+    pub media_info: Option<MediaInfo>,
+    /// Recent CPU samples for a sparkline; empty when none arrived this session.
+    pub cpu_history: CpuHistory,
+    /// The view shown before the current one, while the switch animation runs.
+    pub previous_mode: Option<DisplayMode>,
+    /// Milliseconds since the current view appeared (drives the switch animation).
+    pub mode_age_ms: u32,
 }
 
 #[cfg(test)]
@@ -214,6 +338,33 @@ mod tests {
     #[test]
     fn out_of_range_fields_are_clamped_not_overflowed() {
         assert_eq!(t(99, 99, 99).advanced_by(0), t(23, 59, 59));
+    }
+
+    #[test]
+    fn media_text_keeps_latin1_replaces_the_rest_and_cuts_with_a_marker() {
+        assert_eq!(
+            MediaText::from_text("  Café  del\tMar ").as_latin1(),
+            b"Caf\xe9 del Mar"
+        );
+        assert_eq!(MediaText::from_text("夜に駆ける").as_latin1(), b"?????");
+        assert_eq!(MediaText::from_text("a\u{7}b").as_latin1(), b"ab");
+        let long = MediaText::from_text(&"x".repeat(40));
+        assert_eq!(long.as_latin1().len(), MediaText::CAPACITY);
+        assert_eq!(long.as_latin1()[MediaText::CAPACITY - 1], b'~');
+        assert!(MediaText::from_text("   ").is_empty());
+    }
+
+    #[test]
+    fn cpu_history_keeps_the_latest_samples_oldest_first() {
+        let mut h = CpuHistory::EMPTY;
+        for n in 0..65u8 {
+            h.push(n);
+        }
+        assert_eq!(h.as_slice().len(), CpuHistory::CAPACITY);
+        assert_eq!(h.as_slice()[0], 5);
+        assert_eq!(*h.as_slice().last().unwrap(), 64);
+        h.push(250);
+        assert_eq!(*h.as_slice().last().unwrap(), 100);
     }
 
     #[test]

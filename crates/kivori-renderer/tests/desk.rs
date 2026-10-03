@@ -128,6 +128,7 @@ fn all_views() -> Vec<DeskView> {
                         button_down,
                         recovery_percent: None,
                         elapsed_ms: 1_250,
+                        ..DeskView::default()
                     });
                 }
             }

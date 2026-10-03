@@ -2,7 +2,7 @@
 //! the `postcard` variant index is the wire tag.
 
 use crate::error::{ByeReason, ErrorCategory};
-use kivori_model::desk::{ActionKind, DeskStatus, FeedbackKind};
+use kivori_model::desk::{ActionKind, DeskStatus, FeedbackKind, MediaInfo};
 use kivori_model::input::Direction;
 use kivori_model::presentation::{PrimaryState, ValueDisplay};
 use kivori_model::{Capabilities, CompanionState, MascotAction, MascotPersonality, SendableState};
@@ -171,6 +171,8 @@ pub enum InputKind {
     /// The push switch was released inside the Hold window, before recovery took the gesture
     /// (M1). Fires once per press.
     Hold,
+    /// Two short presses in a row (capability `DOUBLE_PRESS_V1`). Replaces both `Press` events.
+    DoublePress,
 }
 
 /// Device -> desktop physical input.
@@ -234,6 +236,16 @@ pub struct Feedback {
     pub kind: FeedbackKind,
 }
 
+/// Desktop -> device now-playing text (capability `MEDIA_INFO_V1`). `None` clears it. Session
+/// scoped like `Status`; the playback state itself stays in `Status::media`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MediaInfoUpdate {
+    /// The handshake nonce of the session this applies to.
+    pub session: Nonce,
+    /// Title and artist, or `None` when nothing (observable) is playing.
+    pub info: Option<MediaInfo>,
+}
+
 /// The top-level wire message.
 ///
 /// **Append-only**: new variants are added at the end within a major version — the `postcard`
@@ -274,4 +286,6 @@ pub enum Message {
     Status(Status),
     /// Tag 16 — desktop -> device action outcome (capability `ACTION_FEEDBACK_V1`).
     Feedback(Feedback),
+    /// Tag 17 — desktop -> device now-playing text (capability `MEDIA_INFO_V1`).
+    MediaInfo(MediaInfoUpdate),
 }

@@ -22,14 +22,20 @@ pub const PRESS_MAX_MS: u32 = 500;
 pub const RECOVERY_START_MS: u32 = 2_000;
 /// At this many ms after key-down the MCU reboots.
 pub const REBOOT_MS: u32 = 10_000;
+/// With double press enabled, a second key-down within this many ms of a short press's release
+/// makes the pair a `DoublePress`; otherwise the first press fires as `Press` when it lapses.
+pub const DOUBLE_WINDOW_MS: u32 = 250;
 
 /// What a debounced switch edge or the passage of time produced.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ButtonEvent {
     /// The switch went down: show the local acknowledgement now (not a confirmation).
     Down,
-    /// Released within the short-press window.
+    /// Released within the short-press window (and, with double press enabled, no second press
+    /// followed inside [`DOUBLE_WINDOW_MS`]).
     Press,
+    /// Two short presses in a row (double press enabled only). Replaces both `Press` events.
+    DoublePress,
     /// Released inside the Hold window.
     Hold,
     /// Released, firing nothing (ineligible press, or recovery cancelled).
@@ -49,6 +55,9 @@ enum Phase {
         /// recovery hold, but never a Press or Hold (one gesture owns all input at a time).
         eligible: bool,
         recovery: bool,
+        /// This press began inside the double-press window of a short press: if it is short
+        /// too, the pair is a `DoublePress`.
+        second: bool,
     },
 }
 
@@ -64,6 +73,10 @@ pub struct ButtonGesture {
     stable: bool,
     phase: Phase,
     rebooted: bool,
+    /// Double-press detection is on (negotiated with the host).
+    double_press: bool,
+    /// Release time of a short press still waiting to see whether a second press follows.
+    pending_press_ms: Option<u32>,
 }
 
 impl ButtonGesture {
@@ -76,7 +89,15 @@ impl ButtonGesture {
             stable: false,
             phase: Phase::Up,
             rebooted: false,
+            double_press: false,
+            pending_press_ms: None,
         }
+    }
+
+    /// Turns double-press detection on or off. Off, a short press fires on release with no wait.
+    /// Turning it off releases a waiting press at once (as `Press` on the next poll).
+    pub fn set_double_press(&mut self, enabled: bool) {
+        self.double_press = enabled;
     }
 
     /// The debounced switch is down.
@@ -128,10 +149,21 @@ impl ButtonGesture {
         if let Some(edge) = self.settle(now_ms) {
             return Some(edge);
         }
+        if let Some(released_ms) = self.pending_press_ms {
+            // A second key-down still debouncing inside the window keeps the first press waiting.
+            let second_coming =
+                self.raw && self.raw_since_ms.wrapping_sub(released_ms) < DOUBLE_WINDOW_MS;
+            let lapsed = now_ms.wrapping_sub(released_ms) >= DOUBLE_WINDOW_MS;
+            if !second_coming && (lapsed || !self.double_press) {
+                self.pending_press_ms = None;
+                return Some(ButtonEvent::Press);
+            }
+        }
         let Phase::Down {
             since_ms,
             eligible,
             recovery,
+            second,
         } = self.phase
         else {
             return None;
@@ -140,11 +172,23 @@ impl ButtonGesture {
         // hold clock stops there, or a 1.99 s hold would turn into recovery while debouncing.
         let until_ms = if self.raw { now_ms } else { self.raw_since_ms };
         let held = until_ms.wrapping_sub(since_ms);
+        if second && held >= PRESS_MAX_MS {
+            // The second press is no longer short: no double press. The first one still fires
+            // once, and this one goes on as a normal Hold / recovery.
+            self.phase = Phase::Down {
+                since_ms,
+                eligible,
+                recovery,
+                second: false,
+            };
+            return Some(ButtonEvent::Press);
+        }
         if !recovery && held >= RECOVERY_START_MS {
             self.phase = Phase::Down {
                 since_ms,
                 eligible,
                 recovery: true,
+                second,
             };
             return Some(ButtonEvent::RecoveryStarted);
         }
@@ -163,18 +207,30 @@ impl ButtonGesture {
         self.stable = self.raw;
         let edge_ms = self.raw_since_ms;
         if self.stable {
+            let eligible = !self.raw_other_open;
+            let waiting = self.pending_press_ms.take();
+            let second = eligible
+                && waiting
+                    .is_some_and(|released| edge_ms.wrapping_sub(released) < DOUBLE_WINDOW_MS);
             self.phase = Phase::Down {
                 since_ms: edge_ms,
-                eligible: !self.raw_other_open,
+                eligible,
                 recovery: false,
+                second,
             };
-            return Some(ButtonEvent::Down);
+            // A waiting first press that is not part of a pair fires now, exactly once.
+            return Some(if waiting.is_some() && !second {
+                ButtonEvent::Press
+            } else {
+                ButtonEvent::Down
+            });
         }
         self.rebooted = false;
         let Phase::Down {
             since_ms,
             eligible,
             recovery,
+            second,
         } = core::mem::replace(&mut self.phase, Phase::Up)
         else {
             return None;
@@ -183,7 +239,15 @@ impl ButtonGesture {
         Some(if recovery || !eligible || held >= RECOVERY_START_MS {
             ButtonEvent::Released
         } else if held < PRESS_MAX_MS {
-            ButtonEvent::Press
+            if second {
+                ButtonEvent::DoublePress
+            } else if self.double_press {
+                // Wait to see whether a second press follows; `poll` fires it otherwise.
+                self.pending_press_ms = Some(edge_ms);
+                ButtonEvent::Released
+            } else {
+                ButtonEvent::Press
+            }
         } else {
             ButtonEvent::Hold
         })
@@ -196,6 +260,7 @@ impl ButtonGesture {
         // A key-down still debouncing at the boundary is ineligible too; the next raw key-down
         // edge sets this afresh.
         self.raw_other_open = true;
+        self.pending_press_ms = None;
         if let Phase::Down {
             since_ms,
             recovery: false,
@@ -207,6 +272,7 @@ impl ButtonGesture {
                 since_ms,
                 eligible: false,
                 recovery: false,
+                second: false,
             };
         }
     }
@@ -380,6 +446,98 @@ mod tests {
         let _ = b.update(true, 1_005, false);
         b.reset();
         assert_eq!(b.poll(2_000), Some(ButtonEvent::RecoveryStarted));
+    }
+
+    /// Drives a script of (pressed, at_ms) edges with double press on, polling every 10 ms.
+    fn script_double(edges: &[(bool, u32)], until: u32) -> heapless::Vec<ButtonEvent, 16> {
+        let mut b = ButtonGesture::new();
+        b.set_double_press(true);
+        let mut events = heapless::Vec::new();
+        let mut t = 0;
+        let mut next = 0;
+        while t <= until {
+            let mut out = [b.poll(t), None];
+            if next < edges.len() && edges[next].1 == t {
+                out = b.update(edges[next].0, t, false);
+                next += 1;
+            }
+            for e in out.into_iter().flatten() {
+                if e != ButtonEvent::Down && e != ButtonEvent::Released {
+                    events.push(e).unwrap();
+                }
+            }
+            t += 10;
+        }
+        events
+    }
+
+    #[test]
+    fn two_quick_short_presses_are_one_double_press() {
+        let events = script_double(
+            &[(true, 100), (false, 200), (true, 350), (false, 450)],
+            1_500,
+        );
+        assert_eq!(events.as_slice(), [ButtonEvent::DoublePress]);
+    }
+
+    #[test]
+    fn a_single_press_waits_out_the_window_then_fires_once() {
+        let mut b = ButtonGesture::new();
+        b.set_double_press(true);
+        let _ = b.update(true, 0, false);
+        let _ = b.poll(30);
+        let _ = b.update(false, 100, false);
+        assert_eq!(b.poll(130), Some(ButtonEvent::Released));
+        assert_eq!(
+            b.poll(349),
+            None,
+            "still inside the window from release at 100"
+        );
+        assert_eq!(b.poll(350), Some(ButtonEvent::Press));
+        assert_eq!(b.poll(900), None);
+    }
+
+    #[test]
+    fn a_second_press_after_the_window_is_two_presses() {
+        let events = script_double(
+            &[(true, 100), (false, 200), (true, 500), (false, 600)],
+            1_500,
+        );
+        assert_eq!(events.as_slice(), [ButtonEvent::Press, ButtonEvent::Press]);
+    }
+
+    #[test]
+    fn a_long_second_press_fires_the_first_press_then_a_hold() {
+        let events = script_double(
+            &[(true, 100), (false, 200), (true, 350), (false, 1_350)],
+            2_000,
+        );
+        assert_eq!(events.as_slice(), [ButtonEvent::Press, ButtonEvent::Hold]);
+    }
+
+    #[test]
+    fn a_press_then_a_recovery_hold_still_recovers() {
+        let events = script_double(&[(true, 100), (false, 200), (true, 350)], 10_500);
+        assert_eq!(
+            events.as_slice(),
+            [
+                ButtonEvent::Press,
+                ButtonEvent::RecoveryStarted,
+                ButtonEvent::Reboot
+            ]
+        );
+    }
+
+    #[test]
+    fn a_session_boundary_drops_a_waiting_press() {
+        let mut b = ButtonGesture::new();
+        b.set_double_press(true);
+        let _ = b.update(true, 0, false);
+        let _ = b.poll(30);
+        let _ = b.update(false, 100, false);
+        let _ = b.poll(130);
+        b.reset();
+        assert_eq!(b.poll(400), None);
     }
 
     #[test]

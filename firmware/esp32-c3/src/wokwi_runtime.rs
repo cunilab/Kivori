@@ -87,7 +87,9 @@ fn identity() -> DeviceIdentity {
             .union(Capabilities::PRESENTATION_V1)
             .union(Capabilities::BUTTON_INPUT_V1)
             .union(Capabilities::DESK_STATUS_V1)
-            .union(Capabilities::ACTION_FEEDBACK_V1),
+            .union(Capabilities::ACTION_FEEDBACK_V1)
+            .union(Capabilities::DOUBLE_PRESS_V1)
+            .union(Capabilities::MEDIA_INFO_V1),
     }
 }
 

@@ -11,9 +11,9 @@ use heapless::Vec;
 use kivori_model::{Capabilities, ProtocolVersion};
 use kivori_protocol::{
     decode_message, encode_message, ControlId, DeviceId, Feedback, FirmwareVersion, HelloAck,
-    InputEvent, InputKind, MascotActionApplied, Message, Nonce, PlayMascotAction, Presentation,
-    SeqClass, SequenceTracker, StateReport, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR,
-    PROTOCOL_MINOR,
+    InputEvent, InputKind, MascotActionApplied, MediaInfoUpdate, Message, Nonce, PlayMascotAction,
+    Presentation, SeqClass, SequenceTracker, StateReport, Status, MAX_FRAME, MAX_WIRE,
+    PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 /// Inbound accumulation capacity: room for a partial packet plus one full wire packet.
@@ -78,6 +78,8 @@ pub struct Dispatcher {
     pending_status: Option<Status>,
     /// The latest negotiated `Feedback`, awaiting [`Self::take_feedback`]. Newest wins.
     pending_feedback: Option<Feedback>,
+    /// The latest negotiated `MediaInfo`, awaiting [`Self::take_media_info`].
+    pending_media_info: Option<MediaInfoUpdate>,
 }
 
 impl Dispatcher {
@@ -103,6 +105,7 @@ impl Dispatcher {
             pending_presentation: None,
             pending_status: None,
             pending_feedback: None,
+            pending_media_info: None,
         }
     }
 
@@ -197,6 +200,17 @@ impl Dispatcher {
     /// Takes the pending accepted `Status`, if any.
     pub fn take_status(&mut self) -> Option<Status> {
         self.pending_status.take()
+    }
+
+    /// Takes the pending accepted `MediaInfo`, if any.
+    pub fn take_media_info(&mut self) -> Option<MediaInfoUpdate> {
+        self.pending_media_info.take()
+    }
+
+    /// Whether the session negotiated double-press detection.
+    #[must_use]
+    pub const fn double_press_enabled(&self) -> bool {
+        self.negotiated_caps.contains(Capabilities::DOUBLE_PRESS_V1)
     }
 
     /// Takes the pending accepted `Feedback`, if any.
@@ -423,6 +437,11 @@ impl Dispatcher {
             Message::Status(status) => {
                 if self.negotiated_caps.contains(Capabilities::DESK_STATUS_V1) {
                     self.pending_status = Some(status);
+                }
+            }
+            Message::MediaInfo(update) => {
+                if self.negotiated_caps.contains(Capabilities::MEDIA_INFO_V1) {
+                    self.pending_media_info = Some(update);
                 }
             }
             Message::Feedback(feedback) => {

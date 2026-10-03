@@ -37,11 +37,15 @@ use crate::proto::{DeviceIdentity, Dispatcher};
 use crate::render::TileRenderer;
 use crate::state::{DeviceEvent, DeviceState};
 use kivori_assets::AssetBlob;
-use kivori_model::desk::{ActionFeedback, DeskStatus, DeskView, DisplayMode};
+use kivori_model::desk::{
+    ActionFeedback, CpuHistory, DeskStatus, DeskView, DisplayMode, MediaInfo, VIEW_TRANSITION_MS,
+};
 use kivori_model::input::InputLevels;
 use kivori_model::presentation::{PrimaryState, ValueDisplay};
 use kivori_model::{CompanionState, ElapsedMs, MascotAnimator};
-use kivori_protocol::{Bye, ByeReason, Feedback, InputKind, Message, Nonce, Presentation, Status};
+use kivori_protocol::{
+    Bye, ByeReason, Feedback, InputKind, MediaInfoUpdate, Message, Nonce, Presentation, Status,
+};
 
 /// Inactivity window, in milliseconds, after which an open rotary gesture ends
 /// (docs/product.md, gesture boundary). Firmware-wide: both the production runtime and the host-sim
@@ -241,6 +245,11 @@ pub struct DeskState {
     /// Device-ms the status arrived, to keep its clock running locally.
     status_at_ms: u32,
     feedback: Option<(ActionFeedback, u32)>,
+    media_info: Option<MediaInfo>,
+    cpu_history: CpuHistory,
+    /// The view before the latest switch, and when the switch happened.
+    previous_mode: Option<DisplayMode>,
+    mode_since_ms: u32,
 }
 
 impl DeskState {
@@ -262,8 +271,24 @@ impl DeskState {
         if self.session != Some(status.session) {
             return false;
         }
+        if status.status.mode != self.status.mode {
+            self.previous_mode = Some(self.status.mode);
+            self.mode_since_ms = now_ms;
+        }
+        if let Some(cpu) = status.status.cpu_percent {
+            self.cpu_history.push(cpu);
+        }
         self.status = status.status;
         self.status_at_ms = now_ms;
+        true
+    }
+
+    /// Applies now-playing text of the current session (`None` clears it).
+    pub fn apply_media_info(&mut self, update: &MediaInfoUpdate) -> bool {
+        if self.session != Some(update.session) {
+            return false;
+        }
+        self.media_info = update.info;
         true
     }
 
@@ -294,12 +319,19 @@ impl DeskState {
             .feedback
             .filter(|(f, at)| now_ms.wrapping_sub(*at) < f.kind.transient_ms())
             .map(|(f, _)| f);
+        let mode_age_ms = now_ms.wrapping_sub(self.mode_since_ms);
         DeskView {
             status,
             feedback,
             button_down,
             recovery_percent: recovery,
             elapsed_ms: now_ms,
+            media_info: self.media_info,
+            cpu_history: self.cpu_history,
+            previous_mode: self
+                .previous_mode
+                .filter(|_| mode_age_ms < VIEW_TRANSITION_MS),
+            mode_age_ms,
         }
     }
 }
@@ -467,6 +499,9 @@ impl<'a> Runtime<'a> {
         if let Some(feedback) = self.dispatcher.take_feedback() {
             self.redraw |= self.desk.apply_feedback(&feedback, now);
         }
+        if let Some(update) = self.dispatcher.take_media_info() {
+            self.redraw |= self.desk.apply_media_info(&update);
+        }
 
         // Apply any `Presentation` the dispatcher accepted this poll. Capability negotiation and
         // session/revision freshness are already enforced by the dispatcher and `PresentationState`
@@ -486,6 +521,9 @@ impl<'a> Runtime<'a> {
         //    Each snapshot first closes the idle boundary at its own capture time, so a loop that
         //    got back late neither splits a gesture whose detents were inside the window nor
         //    extends one that had already gone quiet; the boundary is closed at `now` last.
+        // Only wait for a second press when the host understands `DoublePress`.
+        self.button
+            .set_double_press(self.dispatcher.double_press_enabled());
         let mut samples = heapless::Vec::<(InputLevels, ElapsedMs), INPUT_SAMPLES>::new();
         input.drain(now, &mut |levels, at_ms| {
             // Overflow drops the OLDEST levels, so the latest edges (a switch release) keep their
@@ -669,6 +707,7 @@ impl<'a> Runtime<'a> {
         let kind = match event {
             ButtonEvent::Press => InputKind::Press,
             ButtonEvent::Hold => InputKind::Hold,
+            ButtonEvent::DoublePress => InputKind::DoublePress,
             ButtonEvent::Reboot => {
                 if !self.reboot {
                     self.reboot = true;

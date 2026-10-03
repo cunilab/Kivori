@@ -642,7 +642,7 @@ fn assert_clean_input_stream(events: &[Message], session: Nonce) {
                 );
             }
             // Discrete push-switch events have no gesture lifecycle to check.
-            InputKind::Press | InputKind::Hold => {}
+            InputKind::Press | InputKind::Hold | InputKind::DoublePress => {}
         }
     }
 }
