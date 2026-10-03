@@ -3,12 +3,14 @@
 
 use kivori_framebuffer::TileBand;
 use kivori_model::desk::{
-    ActionFeedback, ActionKind, ClockTime, DeskStatus, DeskView, DisplayMode, FeedbackKind,
-    MediaStatus,
+    ActionFeedback, ActionKind, ClockTime, CpuHistory, DeskStatus, DeskView, DisplayMode,
+    FeedbackKind, MediaInfo, MediaStatus, MediaText, VIEW_TRANSITION_MS,
 };
 use kivori_model::presentation::{ValueConfidence, ValueDisplay, ValueKind};
 use kivori_model::{Rect, Rgb565};
-use kivori_renderer::desk::{render_chrome, render_mode, render_recovery};
+use kivori_renderer::desk::{
+    render_chrome, render_mode, render_recovery, render_view, render_views, view_switch,
+};
 
 const DIM: u16 = 240;
 const TILE: u16 = 40;
@@ -146,6 +148,39 @@ fn overlay(confidence: ValueConfidence, percent: u8) -> ValueDisplay {
     }
 }
 
+/// The view layer as the device composes it (Buddy paints a stand-in so its slice is visible),
+/// then the chrome.
+fn composed(band: &mut TileBand, view: &DeskView) {
+    let _ = render_views(band, view, |b, mode| {
+        render_view(b, mode, view, None);
+        if mode == DisplayMode::Buddy {
+            let r = b.rect();
+            for y in r.y..r.y + r.h {
+                for x in r.x..r.x + r.w {
+                    if (x / 8 + y / 8) % 2 == 0 {
+                        b.set(x, y, Rgb565::from_raw(0x07E0));
+                    }
+                }
+            }
+        }
+        Ok::<(), ()>(())
+    });
+    render_chrome(band, view);
+}
+
+fn switching(from: DisplayMode, to: DisplayMode, age: u32) -> DeskView {
+    let mut v = view(to, |s| {
+        s.clock = clock(9, 41, 30);
+        s.volume_percent = Some(42);
+        s.media = Some(MediaStatus::Playing);
+        s.cpu_percent = Some(37);
+        s.ram_percent = Some(62);
+    });
+    v.previous_mode = Some(from);
+    v.mode_age_ms = age;
+    v
+}
+
 // 1. Tile-stitch equality ---------------------------------------------------------------------
 
 #[test]
@@ -174,6 +209,19 @@ fn tiles_stitch_to_the_full_frame_for_recovery() {
     for percent in [0, 1, 50, 99, 100, 255] {
         let f = |b: &mut TileBand| render_recovery(b, percent);
         assert_eq!(tiled(f), full(f), "{percent}");
+    }
+}
+
+#[test]
+fn tiles_stitch_to_the_full_frame_mid_switch_between_every_pair_of_views() {
+    for from in DisplayMode::ALL {
+        for to in DisplayMode::ALL {
+            for age in [1, 37, 160, 319] {
+                let v = switching(from, to, age);
+                let f = |b: &mut TileBand| composed(b, &v);
+                assert_eq!(tiled(f), full(f), "{from:?} -> {to:?} at {age}");
+            }
+        }
     }
 }
 
@@ -236,14 +284,147 @@ fn elapsed_time_moves_only_the_animated_elements() {
 }
 
 #[test]
-fn the_clock_colon_blinks_with_the_seconds_not_the_device_timer() {
-    let with = |second| {
-        let v = view(DisplayMode::Clock, |s| s.clock = clock(9, 41, second));
+fn the_seconds_ring_follows_the_clock_not_the_device_timer() {
+    let with = |second, elapsed_ms| {
+        let mut v = view(DisplayMode::Clock, |s| s.clock = clock(9, 41, second));
+        v.elapsed_ms = elapsed_ms;
         full(|b| scene(b, &v, None))
     };
-    assert_eq!(with(0), with(2));
-    assert_eq!(with(1), with(3));
-    assert_ne!(with(0), with(1));
+    assert_eq!(with(7, 0), with(7, 54_321));
+    assert_ne!(with(7, 0), with(8, 0));
+    assert_ne!(with(0, 0), with(59, 0));
+}
+
+// Transitions -----------------------------------------------------------------------------------
+
+#[test]
+fn a_switch_slides_between_the_two_views_and_settles_on_the_plain_view() {
+    for (from, to) in [
+        (DisplayMode::Clock, DisplayMode::Volume),
+        (DisplayMode::Buddy, DisplayMode::Media),
+        (DisplayMode::System, DisplayMode::Buddy),
+    ] {
+        let render = |age| full(|b| composed(b, &switching(from, to, age)));
+        let settled = {
+            let mut v = switching(from, to, 0);
+            v.previous_mode = None;
+            full(|b| composed(b, &v))
+        };
+        let outgoing = {
+            let mut v = switching(from, from, 0);
+            v.previous_mode = None;
+            full(|b| composed(b, &v))
+        };
+        let mid = render(VIEW_TRANSITION_MS / 3);
+        assert_ne!(mid, settled, "{from:?} -> {to:?}");
+        assert_ne!(mid, outgoing, "{from:?} -> {to:?}");
+        // From the transition's end on, and with no previous view, the plain view is drawn.
+        assert_eq!(render(VIEW_TRANSITION_MS), settled);
+        assert_eq!(render(VIEW_TRANSITION_MS + 5_000), settled);
+    }
+}
+
+#[test]
+fn the_switch_offset_eases_out_monotonically_and_ignores_a_same_mode_switch() {
+    let mut last = -1;
+    for age in 0..VIEW_TRANSITION_MS {
+        let (prev, shift) = view_switch(&switching(DisplayMode::Clock, DisplayMode::Media, age))
+            .expect("animating");
+        assert_eq!(prev, DisplayMode::Clock);
+        assert!(
+            (0..=240).contains(&shift) && shift >= last,
+            "{age}: {shift}"
+        );
+        last = shift;
+    }
+    // Ease-out: more than half the travel is done in the first third.
+    let (_, early) = view_switch(&switching(
+        DisplayMode::Clock,
+        DisplayMode::Media,
+        VIEW_TRANSITION_MS / 3,
+    ))
+    .unwrap();
+    assert!(early > 120, "{early}");
+    assert_eq!(
+        view_switch(&switching(DisplayMode::Clock, DisplayMode::Clock, 10)),
+        None
+    );
+}
+
+// Media text ------------------------------------------------------------------------------------
+
+fn media_view(title: &str, artist: &str, elapsed_ms: u32) -> DeskView {
+    let mut v = view(DisplayMode::Media, |s| s.media = Some(MediaStatus::Paused));
+    v.media_info = Some(MediaInfo {
+        title: MediaText::from_text(title),
+        artist: MediaText::from_text(artist),
+    });
+    v.elapsed_ms = elapsed_ms;
+    v
+}
+
+#[test]
+fn a_long_title_scrolls_deterministically_and_a_short_one_stays_put() {
+    let long = "An unreasonably long track title that cannot fit";
+    let frame = |title, ms| full(|b| scene(b, &media_view(title, "Artist", ms), None));
+    // Holds still at the start of each pass, then moves with elapsed time only.
+    assert_eq!(frame(long, 0), frame(long, 1_000));
+    assert_ne!(frame(long, 0), frame(long, 3_000));
+    assert_eq!(frame(long, 3_000), frame(long, 3_000));
+    let moved = diff(&frame(long, 2_000), &frame(long, 2_500));
+    assert!(!moved.is_empty());
+    assert!(
+        moved.iter().all(|&(_, y)| (130..170).contains(&y)),
+        "{moved:?}"
+    );
+    let f = |b: &mut TileBand| scene(b, &media_view(long, "Artist", 2_345), None);
+    assert_eq!(tiled(f), full(f));
+    // A title that fits never moves.
+    assert_eq!(frame("Short", 0), frame("Short", 7_777));
+}
+
+#[test]
+fn every_latin1_byte_renders_without_panicking() {
+    let bytes: Vec<u8> = (0x20..=0xFFu8).collect();
+    for chunk in bytes.chunks(MediaText::CAPACITY) {
+        let s: String = chunk.iter().map(|&b| char::from(b)).collect();
+        for ms in [0, 2_000, 9_999] {
+            let v = media_view(&s, &s, ms);
+            let f = |b: &mut TileBand| scene(b, &v, None);
+            assert_eq!(tiled(f), full(f));
+        }
+    }
+}
+
+#[test]
+fn media_info_unknown_says_so_and_known_info_is_shown() {
+    let mut none = view(DisplayMode::Media, |s| s.media = Some(MediaStatus::Playing));
+    none.media_info = None;
+    let mut some = none;
+    some.media_info = Some(MediaInfo {
+        title: MediaText::from_text("Title"),
+        artist: MediaText::from_text("Artist"),
+    });
+    assert_ne!(
+        full(|b| scene(b, &none, None)),
+        full(|b| scene(b, &some, None))
+    );
+}
+
+#[test]
+fn the_cpu_history_draws_a_sparkline() {
+    let mut empty = view(DisplayMode::System, |s| s.cpu_percent = Some(40));
+    empty.cpu_history = CpuHistory::EMPTY;
+    let mut filled = empty;
+    for n in 0..60u8 {
+        filled.cpu_history.push(n);
+    }
+    assert_ne!(
+        full(|b| scene(b, &empty, None)),
+        full(|b| scene(b, &filled, None))
+    );
+    let f = |b: &mut TileBand| scene(b, &filled, None);
+    assert_eq!(tiled(f), full(f));
 }
 
 // 3. Distinctness -----------------------------------------------------------------------------
@@ -468,8 +649,8 @@ fn recovery_progress_is_real_and_clamped() {
     assert_ne!(frame(0), frame(50));
     assert_ne!(frame(50), frame(100));
     assert_eq!(frame(100), frame(200));
-    // The outline is visible even at 0%.
-    assert_ne!(px(&frame(0), 24, 150), px(&frame(0), 120, 100));
+    // The track ring is visible even at 0%: its top differs from the background.
+    assert_ne!(px(&frame(0), 120, 100 - 57), px(&frame(0), 5, 5));
 }
 
 // 5. Nothing to show draws nothing -------------------------------------------------------------
@@ -488,7 +669,12 @@ fn chrome_with_nothing_to_show_leaves_the_band_untouched() {
                     s.high_load = high_load;
                     s.volume_percent = Some(50);
                     s.cpu_percent = Some(99);
-                    s.clock = clock(1, 2, 3);
+                    // The status-row time is something to show, except on the Clock view.
+                    s.clock = (mode == DisplayMode::Clock).then_some(ClockTime {
+                        hour: 1,
+                        minute: 2,
+                        second: 3,
+                    });
                 }));
             }
         }
@@ -496,6 +682,28 @@ fn chrome_with_nothing_to_show_leaves_the_band_untouched() {
     for v in quiet {
         let frame = full(|b| render_chrome(b, &v));
         assert!(frame.iter().all(|p| *p == SENT), "{v:?}");
+    }
+}
+
+#[test]
+fn the_status_row_shows_a_known_time_except_on_the_clock_view() {
+    for mode in DisplayMode::ALL {
+        let with = |c| full(|b| render_chrome(b, &view(mode, |s| s.clock = c)));
+        let drawn = with(clock(9, 41, 0));
+        assert!(with(None).iter().all(|p| *p == SENT));
+        let touched: Vec<_> = (0..DIM * DIM)
+            .filter(|i| drawn[usize::from(*i)] != SENT)
+            .map(|i| (i % DIM, i / DIM))
+            .collect();
+        if mode == DisplayMode::Clock {
+            assert!(touched.is_empty());
+        } else {
+            assert!(!touched.is_empty());
+            // A small centred row clear of the badge and the indicators.
+            assert!(touched
+                .iter()
+                .all(|&(x, y)| (60..180).contains(&x) && y < 32));
+        }
     }
 }
 

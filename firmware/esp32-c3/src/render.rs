@@ -12,7 +12,7 @@ use kivori_framebuffer::{hash_rgb565, TileBand};
 use kivori_model::desk::{DeskView, DisplayMode};
 use kivori_model::presentation::ValueDisplay;
 use kivori_model::{CompanionState, ElapsedMs, MascotAnimator, MascotPose, Rect, Rgb565};
-use kivori_renderer::desk::{render_chrome, render_mode, render_recovery};
+use kivori_renderer::desk::{render_chrome, render_recovery, render_view, render_views};
 use kivori_renderer::overlay::render_volume_overlay;
 use kivori_renderer::render_scene;
 
@@ -222,15 +222,20 @@ impl<'a> TileRenderer<'a> {
                 render_recovery(&mut band, percent);
             } else {
                 let mode = view.status.mode;
-                if mode == DisplayMode::Buddy {
-                    match &pose {
-                        Some(pose) => kivori_renderer::render_pose(blob, scene, pose, &mut band),
-                        None => render_scene(blob, scene, elapsed_ms, &mut band),
+                // The view layer, including the switch slide: `render_views` hands each mode a
+                // (possibly scrolled) row slice of the tile, so the mascot slides like any view.
+                render_views(&mut band, view, |band, m| {
+                    if m == DisplayMode::Buddy {
+                        match &pose {
+                            Some(pose) => kivori_renderer::render_pose(blob, scene, pose, band),
+                            None => render_scene(blob, scene, elapsed_ms, band),
+                        }
+                        .map_err(|_| RenderError::Compositor)
+                    } else {
+                        render_view(band, m, view, overlay);
+                        Ok(())
                     }
-                    .map_err(|_| RenderError::Compositor)?;
-                } else {
-                    render_mode(&mut band, view, overlay);
-                }
+                })?;
                 // The volume bar sits over any view except Volume, which shows the value itself.
                 if let (Some(value), true) = (overlay, mode != DisplayMode::Volume) {
                     render_volume_overlay(
