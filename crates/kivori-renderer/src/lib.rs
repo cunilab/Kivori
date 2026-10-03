@@ -9,6 +9,7 @@
 //! provisional [`Scene`] trait remains for the code-defined golden-frame harness.
 
 pub mod compositor;
+pub mod desk;
 pub mod frame_select;
 pub mod hash;
 pub mod overlay;

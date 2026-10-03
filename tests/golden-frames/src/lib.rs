@@ -6,6 +6,9 @@ use kivori_framebuffer::TileBand;
 use kivori_model::{FrameRate, Rect, Rgb565};
 use kivori_renderer::{render_tile, Scene};
 
+mod desk_frames;
+pub use desk_frames::{desk_frames, render_desk, render_desk_with, DeskFrame};
+
 /// Display dimension (square) used by the harness.
 pub const DIM: u16 = 240;
 

@@ -103,3 +103,31 @@ check-boundaries:
 # Run the desktop UI dev server.
 dev:
     bun --filter kivori-desktop-ui dev
+
+# A plain `cargo run` bundles no firmware on purpose (no stale artifact can slip in), which logs
+# `firmwareUnavailable` and disables Flash firmware. Start `just dev` first.
+
+# Run Kivori Desktop in one command: UI dev server + native app with the bundled firmware.
+desktop:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if curl -sf -o /dev/null http://localhost:1420; then
+        echo "Port 1420 is already in use (another UI dev server?). Stop it, then retry." >&2
+        exit 1
+    fi
+    just fw-build
+    set -m  # the UI server gets its own process group, so Ctrl-C / exit stops all of it
+    bun --filter kivori-desktop-ui dev &
+    ui=$!
+    trap 'kill -- -"$ui" 2>/dev/null || true' EXIT
+    echo "Waiting for the UI dev server on :1420..."
+    until curl -sf -o /dev/null http://localhost:1420; do
+        kill -0 "$ui" 2>/dev/null || { echo "The UI dev server exited." >&2; exit 1; }
+        sleep 0.3
+    done
+    KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/esp32-c3/target/riscv32imc-unknown-none-elf/release/kivori-firmware" cargo run -p kivori-desktop
+
+# Run Kivori Desktop with the freshly built product firmware embedded.
+app:
+    just fw-build
+    KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/esp32-c3/target/riscv32imc-unknown-none-elf/release/kivori-firmware" cargo run -p kivori-desktop

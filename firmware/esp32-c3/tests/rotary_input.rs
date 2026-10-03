@@ -641,6 +641,8 @@ fn assert_clean_input_stream(events: &[Message], session: Nonce) {
                     event.gesture_id
                 );
             }
+            // Discrete push-switch events have no gesture lifecycle to check.
+            InputKind::Press | InputKind::Hold | InputKind::DoublePress => {}
         }
     }
 }
@@ -1535,5 +1537,128 @@ fn a_reconnect_hello_clears_the_previous_sessions_capabilities() {
     assert!(
         dispatcher.send_input_event(&mut pipe, 2, InputKind::Detent(Direction::Cw), 2),
         "the new session negotiated the capability, so it emits again"
+    );
+}
+
+/// Row 3.14: fresh feedback must not wait out the frame interval. A `Presentation` arriving
+/// mid-interval renders on the very tick it is applied; with no new presentation the next tick
+/// still waits for the frame deadline.
+#[test]
+fn an_applied_presentation_renders_at_once_without_waiting_for_the_frame_deadline() {
+    let mut runtime = Runtime::new(
+        presentation_gating_identity(Capabilities::PRESENTATION_V1),
+        RuntimeConfig::default(),
+    );
+    let clock = VirtualClock::new();
+    let mut pipe = SimPipe::new();
+    let mut display = Box::new(CaptureDisplay::new());
+    let blob_bytes = compile_default_blob();
+    let blob = AssetBlob::parse(&blob_bytes).expect("valid blob");
+    let mut idle = ScriptedInput::new(script([lv(false, false)]));
+    let nonce: Nonce = 0xC0DE_0002;
+    let hello = Message::Hello(Hello {
+        desktop_version: FirmwareVersion {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        desktop_caps: Capabilities::PRESENTATION_V1,
+        nonce,
+    });
+    gating_host_write(&mut pipe, &hello, 0);
+    runtime.step(&clock, &mut pipe, &mut idle, display.as_mut(), &blob);
+    let ready = Message::Ready(Ready {
+        negotiated_minor: 0,
+        negotiated_caps: Capabilities::PRESENTATION_V1,
+    });
+    gating_host_write(&mut pipe, &ready, 1);
+    clock.advance(1);
+    assert!(
+        !runtime
+            .step(&clock, &mut pipe, &mut idle, display.as_mut(), &blob)
+            .frame_rendered,
+        "mid-interval with nothing new: the frame cadence holds"
+    );
+
+    gating_host_write(&mut pipe, &presentation_message(nonce, 1), 2);
+    clock.advance(1);
+    assert!(
+        runtime
+            .step(&clock, &mut pipe, &mut idle, display.as_mut(), &blob)
+            .frame_rendered,
+        "an applied presentation renders on the tick it arrives"
+    );
+}
+
+/// An input source that delivers a whole detent's worth of edge snapshots in one drain, the way
+/// the interrupt-driven physical adapter does after a long render pass.
+struct BurstInput(Vec<(InputLevels, u32)>);
+
+impl kivori_firmware::ports::InputSource for BurstInput {
+    fn sample(&mut self) -> InputLevels {
+        lv(false, false)
+    }
+
+    fn drain(&mut self, now_ms: u32, f: &mut dyn FnMut(InputLevels, u32)) {
+        for (levels, at_ms) in self.0.drain(..) {
+            f(levels, at_ms);
+        }
+        f(self.sample(), now_ms);
+    }
+}
+
+/// Edges captured while the loop was busy rendering are all decoded on the next tick, and each
+/// event carries the time its edge was captured, not the time the loop got around to it.
+#[test]
+fn every_drained_edge_snapshot_is_decoded_in_one_tick_with_its_capture_time() {
+    let mut runtime = Runtime::new(gating_identity(), RuntimeConfig::default());
+    let clock = VirtualClock::new();
+    let mut pipe = SimPipe::new();
+    let mut display = Box::new(CaptureDisplay::new());
+    let blob_bytes = compile_default_blob();
+    let blob = AssetBlob::parse(&blob_bytes).expect("valid blob");
+    let nonce: Nonce = 0xBEEF_0001;
+    let mut input = BurstInput(Vec::new());
+    let hello = Message::Hello(Hello {
+        desktop_version: FirmwareVersion {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        desktop_caps: Capabilities::PHYSICAL_INPUT_V1,
+        nonce,
+    });
+    gating_host_write(&mut pipe, &hello, 0);
+    runtime.step(&clock, &mut pipe, &mut input, display.as_mut(), &blob);
+    let ready = Message::Ready(Ready {
+        negotiated_minor: 0,
+        negotiated_caps: Capabilities::PHYSICAL_INPUT_V1,
+    });
+    gating_host_write(&mut pipe, &ready, 1);
+    runtime.step(&clock, &mut pipe, &mut input, display.as_mut(), &blob);
+    let _ = gating_host_drain(&mut pipe);
+
+    clock.advance(60);
+    input.0 = vec![
+        (lv(false, true), 10),
+        (lv(true, true), 12),
+        (lv(true, false), 14),
+        (lv(false, false), 16),
+    ];
+    runtime.step(&clock, &mut pipe, &mut input, display.as_mut(), &blob);
+
+    let events: Vec<_> = gating_host_drain(&mut pipe)
+        .into_iter()
+        .filter_map(|message| match message {
+            Message::InputEvent(event) => Some((event.kind, event.device_ms)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        events,
+        [
+            (InputKind::GestureStarted, 16),
+            (InputKind::Detent(Direction::Cw), 16)
+        ]
     );
 }

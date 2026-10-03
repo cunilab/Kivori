@@ -16,7 +16,7 @@ use esp_hal::{
     delay::Delay,
     dma::{DmaRxBuf, DmaTxBuf},
     dma_buffers_chunk_size,
-    gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull},
+    gpio::{Input, InputConfig, Io, Level, Output, OutputConfig, Pull},
     peripherals::Peripherals,
     spi::master::{Config, Spi},
     time::Rate,
@@ -31,6 +31,7 @@ use mipidsi::{interface::SpiInterface, Builder};
 use crate::{
     display::MipidsiSink,
     physical_rotary::PhysicalRotary,
+    ports::Clock,
     profile::physical_st7789 as hw,
     proto::DeviceIdentity,
     render::FRAME_PIXELS,
@@ -205,7 +206,8 @@ pub fn run_mode(
     let rotary_clk = Input::new(peripherals.GPIO4, rotary_pull);
     let rotary_dt = Input::new(peripherals.GPIO5, rotary_pull);
     let rotary_sw = Input::new(peripherals.GPIO10, rotary_pull);
-    let mut rotary = PhysicalRotary::new(rotary_clk, rotary_dt, rotary_sw);
+    let mut io = Io::new(peripherals.IO_MUX);
+    let mut rotary = PhysicalRotary::new(&mut io, rotary_clk, rotary_dt, rotary_sw);
 
     // -------------------------------------------------------------------------
     // Compiled Kivori assets
@@ -225,15 +227,21 @@ pub fn run_mode(
             0x00, 0x01,
         ],
 
+        // 1.1: M1 (push switch, recovery hold, desk status and feedback; protocol 1.3).
         firmware_version: FirmwareVersion {
             major: 1,
-            minor: 0,
+            minor: 1,
             patch: 0,
         },
 
         capabilities: Capabilities::MASCOT_INTERACTION
             .union(Capabilities::PHYSICAL_INPUT_V1)
-            .union(Capabilities::PRESENTATION_V1),
+            .union(Capabilities::PRESENTATION_V1)
+            .union(Capabilities::BUTTON_INPUT_V1)
+            .union(Capabilities::DESK_STATUS_V1)
+            .union(Capabilities::ACTION_FEEDBACK_V1)
+            .union(Capabilities::DOUBLE_PRESS_V1)
+            .union(Capabilities::MEDIA_INFO_V1),
     };
 
     esp_println::println!("KIVORI runtime starting");
@@ -269,7 +277,17 @@ pub fn run_mode(
         &mut display,
         &blob,
         frame_buffer,
-        |_tick, _transport| {},
+        |tick, transport| {
+            if tick.reboot {
+                // Give the queued `Bye` a bounded moment to reach the host, then reboot. The
+                // recovery hold must work with no host at all, so nothing here waits for one.
+                let deadline = clock.now_ms().saturating_add(20);
+                while transport.pending() > 0 && clock.now_ms() < deadline {
+                    let _ = transport.pump();
+                }
+                esp_hal::system::software_reset();
+            }
+        },
     );
 }
 

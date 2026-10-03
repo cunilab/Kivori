@@ -159,3 +159,57 @@ pub fn mirror_state(app: State<'_, AppState>, state: String) -> Result<(), Strin
         dto::sendable_from_token(&state).ok_or_else(|| format!("not a sendable state: {state}"))?;
     app.send_command(DeviceCommand::MirrorDesired(desired))
 }
+
+/// The current desk projection (initial sync; `desk://status` carries changes).
+#[tauri::command]
+pub fn get_desk_status(app: State<'_, AppState>) -> crate::ipc::dto::DeskStatusDto {
+    app.desk_snapshot()
+}
+
+/// Selects the device's full-screen view.
+///
+/// # Errors
+/// Returns an error string if `mode` is not a display-mode token.
+#[tauri::command]
+pub fn set_display_mode(app: State<'_, AppState>, mode: String) -> Result<(), String> {
+    let mode = crate::ipc::dto::display_mode_from_token(&mode)
+        .ok_or_else(|| format!("unknown display mode: {mode}"))?;
+    app.send_command(DeviceCommand::SetDisplayMode(mode))
+}
+
+/// Runs one desk action now (dev-only Device Studio test action). Inputs are validated here, at
+/// the trust boundary: a shortcut must parse, a launch target must be a plain bounded string.
+///
+/// # Errors
+/// Returns an error string for an unknown action, a missing or invalid shortcut or target, or an
+/// unavailable device runtime.
+#[cfg(feature = "device-studio")]
+#[tauri::command]
+pub fn run_test_action(
+    app: State<'_, AppState>,
+    action: String,
+    shortcut: Option<String>,
+    target: Option<String>,
+) -> Result<(), String> {
+    use crate::desk::Action;
+    let action = match action.as_str() {
+        "playPause" => Action::PlayPause,
+        "mute" => Action::ToggleMute,
+        "shortcut" => Action::Shortcut(
+            shortcut
+                .ok_or("a shortcut action needs a shortcut")?
+                .parse()
+                .map_err(|e: crate::platform::shortcut::ShortcutError| e.to_string())?,
+        ),
+        "launch" => {
+            let target = target.ok_or("a launch action needs an application")?;
+            let valid = crate::platform::launch::validate_target(&target).map_err(|e| match e {
+                crate::platform::ActionError::Failed(reason) => reason,
+                _ => "not a valid application".to_string(),
+            })?;
+            Action::Launch(valid.to_string())
+        }
+        other => return Err(format!("unknown action: {other}")),
+    };
+    app.send_command(DeviceCommand::RunAction(action))
+}

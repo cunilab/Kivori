@@ -24,6 +24,12 @@ pub trait Transport {
     /// # Errors
     /// Returns [`Self::Error`] on an unrecoverable transport failure.
     fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error>;
+
+    /// Drops outbound bytes not yet handed to the hardware, and makes sure a frame cut short on
+    /// the wire is terminated. Called when a new session starts: frames queued for nobody (while
+    /// no host was reading) are stale and must not crowd out the `HelloAck`. Unbuffered
+    /// transports have nothing to drop.
+    fn discard_unsent(&mut self) {}
 }
 
 /// A pixel sink for one tile region (the SPI panel on device; a capture buffer in sim).
@@ -52,4 +58,14 @@ pub trait Clock {
 pub trait InputSource {
     /// Read the current levels. MUST NOT block.
     fn sample(&mut self) -> InputLevels;
+
+    /// Hands every level snapshot observed since the last call to `f`, oldest first, each with the
+    /// device-ms it was captured at, ending with the current levels at `now_ms`.
+    ///
+    /// The default is one [`Self::sample`] per call, which is all a polled source can offer. The
+    /// physical adapter overrides it with snapshots captured on every pin edge, so encoder steps and
+    /// switch edges that happen while a frame is composed or flushed are not lost. MUST NOT block.
+    fn drain(&mut self, now_ms: ElapsedMs, f: &mut dyn FnMut(InputLevels, ElapsedMs)) {
+        f(self.sample(), now_ms);
+    }
 }

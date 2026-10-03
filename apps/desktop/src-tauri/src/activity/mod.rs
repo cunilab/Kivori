@@ -94,6 +94,19 @@ pub enum ActivityEventKind {
     AudioEndpointChanged,
     /// No default audio render endpoint is available any more.
     AudioEndpointLost,
+    /// The user picked another device display mode.
+    DisplayModeChanged,
+    /// A desk action (push switch or test action) was dispatched.
+    DeskActionRequested,
+    /// A desk action's result was observed (State Confirmed) or its start is known (Execution
+    /// Confirmed).
+    DeskActionConfirmed,
+    /// A desk action was dispatched but its effect cannot be observed.
+    DeskActionUnverified,
+    /// A desk action is known to have failed.
+    DeskActionFailed,
+    /// A desk action needs an OS permission Kivori does not have (macOS Accessibility).
+    DeskActionPermissionRequired,
 }
 
 /// Closed severity vocabulary for native activity.
@@ -353,6 +366,36 @@ impl ActivityEventKind {
                 source: ActivitySource::Action,
                 outcome: ActivityOutcome::Unavailable,
             },
+            Self::DisplayModeChanged => ActivityClassification {
+                severity: ActivitySeverity::Info,
+                source: ActivitySource::Device,
+                outcome: ActivityOutcome::Applied,
+            },
+            Self::DeskActionRequested => ActivityClassification {
+                severity: ActivitySeverity::Info,
+                source: ActivitySource::Action,
+                outcome: ActivityOutcome::Started,
+            },
+            Self::DeskActionConfirmed => ActivityClassification {
+                severity: ActivitySeverity::Info,
+                source: ActivitySource::Action,
+                outcome: ActivityOutcome::Succeeded,
+            },
+            Self::DeskActionUnverified => ActivityClassification {
+                severity: ActivitySeverity::Info,
+                source: ActivitySource::Action,
+                outcome: ActivityOutcome::Observed,
+            },
+            Self::DeskActionFailed => ActivityClassification {
+                severity: ActivitySeverity::Error,
+                source: ActivitySource::Action,
+                outcome: ActivityOutcome::Failed,
+            },
+            Self::DeskActionPermissionRequired => ActivityClassification {
+                severity: ActivitySeverity::Warning,
+                source: ActivitySource::Action,
+                outcome: ActivityOutcome::Unavailable,
+            },
         }
     }
 }
@@ -408,6 +451,11 @@ pub enum ActivityMetadata {
     /// payload).
     HostDiagnostic {
         category: kivori_protocol::ErrorCategory,
+    },
+    /// Which desk action an event is about. Only the closed kind: never shortcut keys or an
+    /// application path.
+    DeskAction {
+        action: kivori_model::desk::ActionKind,
     },
 }
 
@@ -789,7 +837,7 @@ fn summary_for(kind: ActivityEventKind, metadata: Option<&ActivityMetadata>) -> 
         (ActivityEventKind::FirmwareUpdateFailed, _) => "Firmware update failed.".to_string(),
         (ActivityEventKind::FirmwareAvailable, _) => "Bundled firmware is available.".to_string(),
         (ActivityEventKind::FirmwareUnavailable, _) => {
-            "Bundled firmware is unavailable.".to_string()
+            "This build has no bundled firmware, so Flash firmware is off (development: run `just app`).".to_string()
         }
         (ActivityEventKind::FirmwareFlashRequested, _) => "Firmware flash requested.".to_string(),
         (ActivityEventKind::FirmwarePreparing, _) => "Preparing firmware update.".to_string(),
@@ -824,6 +872,14 @@ fn summary_for(kind: ActivityEventKind, metadata: Option<&ActivityMetadata>) -> 
         (ActivityEventKind::VolumeWriteFailed, _) => "Volume change failed.".to_string(),
         (ActivityEventKind::AudioEndpointChanged, _) => "Audio output device changed.".to_string(),
         (ActivityEventKind::AudioEndpointLost, _) => "Audio output device unavailable.".to_string(),
+        (ActivityEventKind::DisplayModeChanged, _) => "Display mode changed.".to_string(),
+        (ActivityEventKind::DeskActionRequested, _) => "Action requested.".to_string(),
+        (ActivityEventKind::DeskActionConfirmed, _) => "Action confirmed.".to_string(),
+        (ActivityEventKind::DeskActionUnverified, _) => "Action sent; result unknown.".to_string(),
+        (ActivityEventKind::DeskActionFailed, _) => "Action failed.".to_string(),
+        (ActivityEventKind::DeskActionPermissionRequired, _) => {
+            "Action needs a system permission.".to_string()
+        }
     }
 }
 

@@ -12,7 +12,9 @@ Kivori is a programmable desk controller with a buddy and a PC monitor: control 
 
 **Feature 003 — Mascot animation and activity log** ([PR #3](https://github.com/Vellixia/Kivori/pull/3), merged). Expressive, interactive mascot shared by Device Studio and the device, social reactions over the wire (`MASCOT_INTERACTION`), bundled firmware flashing from Device Studio, and a typed session-only activity log. Manual on-device check outstanding.
 
-Next: finish the M0 hardware sanity checks, then M1 (button, actions, monitoring) on the way to a Windows paid beta; see [`docs/roadmap.md`](docs/roadmap.md). Product behavior is defined in [`docs/product.md`](docs/product.md); durable technical choices are the ADRs in [`docs/architecture.md`](docs/architecture.md).
+**M1 — Useful desk device.** Software complete on Windows and macOS, host-tested end to end. The push switch does Press (Play/Pause), Hold (mute) and Double press (next view); holding it ~10 s reboots the device with no app needed. The display has Buddy, Clock, Volume, Media and CPU/RAM views, and every action outcome is shown honestly as Confirmed, Started, Unverified or Failed. **Physical validation is outstanding:** the M0 rows and the new Phase 4 rows in [`docs/validation.md`](docs/validation.md) need one human session.
+
+Next: the combined M0 + M1 hardware session (macOS daily use, then Windows), then M2 (configurable bindings) on the way to a Windows paid beta; see [`docs/roadmap.md`](docs/roadmap.md). Product behavior is defined in [`docs/product.md`](docs/product.md); durable technical choices are the ADRs in [`docs/architecture.md`](docs/architecture.md).
 
 ## Hardware
 
@@ -29,7 +31,7 @@ One ESP32-C3, one ST7789 240×240 panel, one HW-040 rotary encoder. USB provides
 | Backlight | 8 | active-high; strapping pin, must be high at reset anyway |
 | Encoder CLK (A) | 4 | |
 | Encoder DT (B) | 5 | |
-| Encoder SW | 10 | |
+| Encoder SW | 10 | push switch: Press, Hold, ~10 s recovery reboot |
 | USB D− / D+ | 18 / 19 | native USB Serial/JTAG, `0x303A:0x1001` |
 
 Encoder COM to **GND**, VCC to **3V3**. **Not 5V — ESP32-C3 GPIOs are not 5 V tolerant.** Firmware enables internal pull-ups and reads all three encoder lines active-low, so it works whether or not your HW-040 board populates its own pull-ups.
@@ -57,7 +59,7 @@ Both live in one place, [`firmware/esp32-c3/src/profile.rs`](firmware/esp32-c3/s
 
 ```bash
 bun install
-just dev                       # Vite dev server for the Device Studio UI
+just desktop                   # UI dev server + native app with the bundled firmware, one command
 ```
 
 The native core owns the serial link; the webview receives only typed IPC commands. Device discovery is automatic — there is no COM-port picker by design.

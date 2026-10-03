@@ -653,3 +653,104 @@ fn social_action_over_busy_is_refused_unacknowledged_and_draws_nothing() {
         .iter()
         .any(|m| matches!(m, Message::MascotActionApplied(_))));
 }
+
+#[test]
+fn a_set_state_that_changes_nothing_is_still_answered_with_the_current_state() {
+    let mut h = Harness::new();
+    h.step();
+    for seq in [5, 6] {
+        host_write(
+            &mut h.pipe,
+            &Message::SetState(SetState {
+                desired: SendableState::Idle,
+                at_ms: None,
+            }),
+            seq,
+        );
+        h.tick_next_frame();
+        let reports: Vec<_> = host_drain(&mut h.pipe)
+            .into_iter()
+            .filter_map(|m| match m {
+                Message::StateReport(r) => Some(r.reported),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            reports,
+            [CompanionState::Idle],
+            "a reconnecting desktop must learn the state even when it did not change"
+        );
+    }
+}
+
+/// A host that left the port unread for a while: the device's outbound queue is full of stale
+/// frames. A new `Hello` must still get a complete, decodable `HelloAck`.
+#[test]
+fn a_hello_after_an_unread_backlog_still_gets_a_whole_hello_ack() {
+    use kivori_firmware::ports::Transport;
+    use kivori_firmware::tx_buffer::TxBuffered;
+    use kivori_protocol::{decode_message, Hello, MAX_FRAME, PROTOCOL_MAJOR};
+
+    /// A hardware link the host is not draining: it accepts nothing.
+    struct Stalled<'p>(&'p mut SimPipe, bool);
+    impl Transport for Stalled<'_> {
+        type Error = core::convert::Infallible;
+        fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+            self.0.read(buf)
+        }
+        fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+            if self.1 {
+                Ok(0)
+            } else {
+                self.0.write(buf)
+            }
+        }
+    }
+
+    let mut pipe = SimPipe::new();
+    let mut runtime = Runtime::new(identity(), RuntimeConfig::default());
+    let clock = VirtualClock::new();
+    let mut display = Box::new(CaptureDisplay::new());
+    let blob_bytes = kivori_asset_compiler::compile_default_blob();
+    let blob = kivori_assets::AssetBlob::parse(&blob_bytes).expect("blob");
+    let mut input = NoInput;
+    {
+        let mut tx = TxBuffered::new(Stalled(&mut pipe, true));
+        // Two minutes of Health with nobody reading.
+        for _ in 0..120 {
+            clock.advance(1_000);
+            runtime.step(&clock, &mut tx, &mut input, display.as_mut(), &blob);
+        }
+        // The host opens the port: reads work, the backlog starts draining, a Hello arrives.
+        tx.inner_mut().1 = false;
+        host_write(
+            tx.inner_mut().0,
+            &Message::Hello(Hello {
+                desktop_version: kivori_protocol::FirmwareVersion {
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                },
+                desktop_caps: kivori_model::Capabilities::NONE,
+                nonce: 77,
+            }),
+            0,
+        );
+        for _ in 0..5 {
+            clock.advance(10);
+            runtime.step(&clock, &mut tx, &mut input, display.as_mut(), &blob);
+        }
+    }
+    let bytes = pipe.host_recv();
+    let mut scratch = heapless::Vec::<u8, MAX_FRAME>::new();
+    let acked = bytes.split(|&b| b == 0).any(|packet| {
+        matches!(
+            decode_message(packet, &mut scratch, &[PROTOCOL_MAJOR]),
+            Ok((_, Message::HelloAck(ack))) if ack.nonce_echo == 77
+        )
+    });
+    assert!(
+        acked,
+        "the HelloAck must arrive whole after a stale backlog"
+    );
+}

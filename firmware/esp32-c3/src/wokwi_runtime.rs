@@ -76,14 +76,20 @@ const SPI_BATCH_BYTES: usize = 512;
 fn identity() -> DeviceIdentity {
     DeviceIdentity {
         device_id: [0x5A; 16],
+        // 1.1: M1 (push switch, recovery hold, desk status and feedback; protocol 1.3).
         firmware_version: FirmwareVersion {
             major: 1,
-            minor: 0,
+            minor: 1,
             patch: 0,
         },
         capabilities: Capabilities::MASCOT_INTERACTION
             .union(Capabilities::PHYSICAL_INPUT_V1)
-            .union(Capabilities::PRESENTATION_V1),
+            .union(Capabilities::PRESENTATION_V1)
+            .union(Capabilities::BUTTON_INPUT_V1)
+            .union(Capabilities::DESK_STATUS_V1)
+            .union(Capabilities::ACTION_FEEDBACK_V1)
+            .union(Capabilities::DOUBLE_PRESS_V1)
+            .union(Capabilities::MEDIA_INFO_V1),
     }
 }
 

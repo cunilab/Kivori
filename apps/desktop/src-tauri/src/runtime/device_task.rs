@@ -23,19 +23,21 @@ use crate::activity::{
     RuntimeActivityRequest, SessionActivity,
 };
 use crate::companion::CompanionDirector;
+use crate::desk::DeskRuntime;
 use crate::device::discovery::DEFAULT_ALLOWLIST;
 use crate::device::fsm::{ConnectionManager, ManagerEvent};
 use crate::device::reconnect::base_delay_ms;
 use crate::device::serial::{first_candidate, SerialPortLink};
 use crate::device::session::{Session, SessionConfig};
 use crate::firmware::{self, FirmwareStatus, FlashWorkflow, ResumeTarget};
-use crate::input::{InputIngress, RejectReason};
-use crate::ipc::dto::{connection_status, ConnectionStatusDto};
+use crate::input::{InputIngress, LogicalInput, RejectReason};
+use crate::ipc::dto::{connection_status, desk_status_dto, ConnectionStatusDto, DeskStatusDto};
 use crate::ipc::events;
 use crate::orchestrator::Orchestrator;
 use crate::platform::{self, ActionAvailability, VolumeBackend};
 use crate::presentation::{PresentationResolver, ProductSnapshot};
 use crate::runtime::state::DeviceCommand;
+use kivori_model::desk::{ActionFeedback, ActionKind, FeedbackKind};
 use kivori_model::{Capabilities, CompanionState, ConnectionState, MascotPersonality};
 use kivori_protocol::{ErrorCategory, InputEvent, PlayMascotAction, Presentation};
 
@@ -109,6 +111,7 @@ impl ConnectionDeadlines {
 pub fn spawn(
     app: AppHandle,
     status: Arc<Mutex<ConnectionStatusDto>>,
+    desk_status: Arc<Mutex<DeskStatusDto>>,
     activity_log: Arc<ActivityLog>,
     firmware_status: Arc<Mutex<FirmwareStatus>>,
     commands: Receiver<DeviceCommand>,
@@ -116,13 +119,24 @@ pub fn spawn(
 ) -> JoinHandle<()> {
     std::thread::Builder::new()
         .name("kivori-device".to_string())
-        .spawn(move || device_loop(app, status, activity_log, firmware_status, commands, cancel))
+        .spawn(move || {
+            device_loop(
+                app,
+                status,
+                desk_status,
+                activity_log,
+                firmware_status,
+                commands,
+                cancel,
+            );
+        })
         .expect("spawn kivori-device thread")
 }
 
 fn device_loop(
     app: AppHandle,
     status: Arc<Mutex<ConnectionStatusDto>>,
+    desk_status: Arc<Mutex<DeskStatusDto>>,
     activity_log: Arc<ActivityLog>,
     firmware_status: Arc<Mutex<FirmwareStatus>>,
     commands: Receiver<DeviceCommand>,
@@ -132,14 +146,16 @@ fn device_loop(
     let mut orchestrator = Orchestrator::new();
     let mut session = Session::new(SessionConfig::default());
     let mut companion = CompanionDirector::new(MascotPersonality::Cozy, true, 0x4B49_564F, 0);
-    // Windows has a real backend (`platform::windows`); every other target falls back to the
-    // honest "not implemented yet" backend so this crate always compiles. Kept concrete (not
-    // boxed) so the Windows branch can reach the Windows-only `try_recv_change` below.
-    #[cfg(windows)]
-    let backend = platform::windows::WindowsVolumeBackend::new();
-    #[cfg(not(windows))]
-    let backend = platform::unimplemented::UnimplementedVolumeBackend::new(std::env::consts::OS);
-    let mut rotary = RotaryPipeline::new(&backend);
+    // Windows and macOS have real backends; every other target gets the honest "not implemented
+    // yet" services so this crate always compiles (`platform::os_services`).
+    let main_app = app.clone();
+    let services = platform::os_services(Some(Arc::new(move |run| {
+        let _ = main_app.run_on_main_thread(run);
+    })));
+    let backend = Arc::clone(&services.volume);
+    let mut desk = DeskRuntime::new(services);
+    let mut last_desk: Option<DeskStatusDto> = None;
+    let mut rotary = RotaryPipeline::new(&*backend);
     let mut link: Option<SerialPortLink> = None;
     let mut connected_port: Option<String> = None;
     let mut retry_at: Option<Instant> = None;
@@ -261,6 +277,16 @@ fn device_loop(
                     }
                 }
                 DeviceCommand::Refresh => {}
+                DeviceCommand::SetDisplayMode(mode) => {
+                    desk.set_mode(mode, &mut |observation| {
+                        record_observations(&app, &activity_log, [observation]);
+                    });
+                }
+                DeviceCommand::RunAction(action) => {
+                    desk.run(action, started.elapsed(), &mut |observation| {
+                        record_observations(&app, &activity_log, [observation]);
+                    });
+                }
                 DeviceCommand::FlashFirmware => {
                     let requested = flash.request(
                         manager.state().can_drive_device(),
@@ -425,17 +451,28 @@ fn device_loop(
         let mut presentations = Vec::new();
         let inputs = session.take_input_events();
         if !flash.is_busy() {
-            rotary.accept_inputs(&inputs, &backend, &mut presentations, |observation| {
+            rotary.accept_inputs(&inputs, &*backend, &mut presentations, |observation| {
                 record_observations(&app, &activity_log, [observation]);
             });
+            for input in rotary.take_button_inputs() {
+                desk.on_input(&input, started.elapsed(), &mut |observation| {
+                    record_observations(&app, &activity_log, [observation]);
+                });
+            }
+            if rotary.take_volume_failure() {
+                desk.report(ActionFeedback {
+                    action: ActionKind::Volume,
+                    kind: FeedbackKind::Error,
+                });
+            }
         }
-        #[cfg(windows)]
         while let Some(change) = backend.try_recv_change() {
+            desk.on_audio_change(&change);
             rotary.on_backend_change(change, &mut presentations, |observation| {
                 record_observations(&app, &activity_log, [observation]);
             });
         }
-        rotary.observe_backend_availability(&backend, |observation| {
+        rotary.observe_backend_availability(&*backend, |observation| {
             record_observations(&app, &activity_log, [observation]);
         });
         if !flash.is_busy()
@@ -465,6 +502,47 @@ fn device_loop(
                     );
                 }
             }
+        }
+
+        // M1 desk: status and action feedback, each sent only if the session negotiated it.
+        let desk_out = desk.tick(started.elapsed(), &mut |observation| {
+            record_observations(&app, &activity_log, [observation]);
+        });
+        if !flash.is_busy() && manager.state().can_drive_device() {
+            if let Some(open_link) = link.as_mut() {
+                let mut write_failed = desk_out.status.is_some_and(|desk_status| {
+                    session.send_status(open_link, desk_status).is_err()
+                });
+                for feedback in desk_out.feedback {
+                    write_failed |= session.send_feedback(open_link, feedback).is_err();
+                }
+                if let Some(info) = desk_out.media_info {
+                    write_failed |= session.send_media_info(open_link, info).is_err();
+                }
+                if write_failed {
+                    recover_link(
+                        &mut activity_planner,
+                        &mut manager,
+                        ManagerEvent::IoError,
+                        LinkRecovery::new(
+                            &mut link,
+                            &mut connected_port,
+                            &mut retry_at,
+                            &mut deadlines,
+                            &flash,
+                        ),
+                        |observation| {
+                            record_observations(&app, &activity_log, [observation]);
+                        },
+                    );
+                }
+            }
+        }
+        let desk_snapshot = desk_status_dto(&desk);
+        if last_desk.as_ref() != Some(&desk_snapshot) {
+            *desk_status.lock().expect("desk status lock") = desk_snapshot.clone();
+            events::emit_desk_status(&app, &desk_snapshot);
+            last_desk = Some(desk_snapshot);
         }
 
         drain_session_activity(&app, &activity_log, &mut session);
@@ -545,6 +623,13 @@ fn device_loop(
         //    disconnect, recoverable error, reconnect attempt) — T105.
         let current_state = manager.state();
         rotary.on_connection_state(previous_state, current_state, session.current_session());
+        if previous_state != current_state {
+            if current_state == ConnectionState::Connected {
+                desk.on_session_begin();
+            } else if previous_state == ConnectionState::Connected {
+                desk.on_session_end();
+            }
+        }
         if observe_connection_transition(
             &mut activity_planner,
             &mut previous_state,
@@ -554,7 +639,14 @@ fn device_loop(
             record(&app, &activity_log, &manager, started);
         }
 
-        std::thread::sleep(TICK);
+        // With a link open, wake as soon as device bytes arrive (TICK is only the upper bound);
+        // otherwise pace discovery and backoff with a plain sleep.
+        if link
+            .as_mut()
+            .is_none_or(|open_link| open_link.wait(TICK).is_err())
+        {
+            std::thread::sleep(TICK);
+        }
     }
 }
 
@@ -570,6 +662,10 @@ pub struct RotaryPipeline {
     resolver: PresentationResolver,
     volume_failed: bool,
     audio_available: bool,
+    /// Validated push-switch inputs awaiting [`Self::take_button_inputs`].
+    buttons: Vec<LogicalInput>,
+    /// A new volume-failure streak began since the last [`Self::take_volume_failure`].
+    failure_started: bool,
 }
 
 impl RotaryPipeline {
@@ -583,6 +679,8 @@ impl RotaryPipeline {
             resolver: PresentationResolver::new(0),
             volume_failed: false,
             audio_available: is_available(backend),
+            buttons: Vec::new(),
+            failure_started: false,
         }
     }
 
@@ -620,6 +718,13 @@ impl RotaryPipeline {
     ) {
         for event in events {
             match self.ingress.accept(event) {
+                Ok(Some(
+                    input @ (LogicalInput::Press { .. }
+                    | LogicalInput::Hold { .. }
+                    | LogicalInput::DoublePress { .. }),
+                )) => {
+                    self.buttons.push(input);
+                }
                 Ok(Some(input)) => {
                     if let Some(update) = self.gesture_value.on_input(input, backend) {
                         self.push_update(update, presentations, &mut observe);
@@ -631,7 +736,8 @@ impl RotaryPipeline {
                         RejectReason::NoSession | RejectReason::StaleSession => {
                             ActivityEventKind::InputStaleSessionRejected
                         }
-                        RejectReason::UnknownGesture => {
+                        // Both are input that fits no gesture the device could have produced.
+                        RejectReason::UnknownGesture | RejectReason::ControlMismatch => {
                             ActivityEventKind::InputUnstartedGestureRejected
                         }
                     },
@@ -645,18 +751,17 @@ impl RotaryPipeline {
 
     /// Routes one backend-originated volume change. Every percent here was read from the OS by the
     /// owning audio thread, so `Confirmed` still only ever follows a real backend read.
-    #[cfg(windows)]
     pub fn on_backend_change(
         &mut self,
-        change: platform::windows::VolumeChange,
+        change: platform::VolumeChange,
         presentations: &mut Vec<Presentation>,
         mut observe: impl FnMut(SessionActivity),
     ) {
         let update = match change.origin {
-            platform::windows::ChangeOrigin::External => {
+            platform::ChangeOrigin::External => {
                 self.gesture_value.on_external_change(change.percent)
             }
-            platform::windows::ChangeOrigin::EndpointRebind => {
+            platform::ChangeOrigin::EndpointRebind => {
                 observe(SessionActivity::new(
                     ActivityEventKind::AudioEndpointChanged,
                     None,
@@ -664,7 +769,7 @@ impl RotaryPipeline {
                 self.gesture_value.on_endpoint_rebind(change.percent)
             }
             // Kivori's own write, echoed back; `set()` already confirmed it via its read-back.
-            platform::windows::ChangeOrigin::Kivori => None,
+            platform::ChangeOrigin::Kivori => None,
         };
         if let Some(update) = update {
             self.push_update(update, presentations, &mut observe);
@@ -699,9 +804,23 @@ impl RotaryPipeline {
                 ActivityEventKind::VolumeWriteFailed,
                 None,
             ));
+            self.failure_started = true;
         }
         self.volume_failed = update.failed;
         presentations.push(self.resolver.resolve(&ProductSnapshot::with_value(update)));
+    }
+}
+
+impl RotaryPipeline {
+    /// Push-switch inputs validated since the last call; the desk pipeline owns their meaning.
+    pub fn take_button_inputs(&mut self) -> Vec<LogicalInput> {
+        std::mem::take(&mut self.buttons)
+    }
+
+    /// Whether a new streak of failed volume writes began since the last call: shown once on the
+    /// device as a volume Error, so a failed turn is never silent (gate 9).
+    pub fn take_volume_failure(&mut self) -> bool {
+        std::mem::take(&mut self.failure_started)
     }
 }
 
@@ -747,7 +866,10 @@ pub fn plan_device_request(
                 autonomous: false,
             })
         }
-        DeviceCommand::FlashFirmware | DeviceCommand::Refresh => None,
+        DeviceCommand::FlashFirmware
+        | DeviceCommand::Refresh
+        | DeviceCommand::SetDisplayMode(_)
+        | DeviceCommand::RunAction(_) => None,
     };
     request.map_or_else(Vec::new, |request| activity_planner.requests(request))
 }

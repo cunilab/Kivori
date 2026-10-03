@@ -9,8 +9,10 @@
 use crate::ports::DisplaySink;
 use kivori_assets::AssetBlob;
 use kivori_framebuffer::{hash_rgb565, TileBand};
+use kivori_model::desk::{DeskView, DisplayMode};
 use kivori_model::presentation::ValueDisplay;
 use kivori_model::{CompanionState, ElapsedMs, MascotAnimator, MascotPose, Rect, Rgb565};
+use kivori_renderer::desk::{render_chrome, render_recovery, render_view, render_views};
 use kivori_renderer::overlay::render_volume_overlay;
 use kivori_renderer::render_scene;
 
@@ -122,7 +124,15 @@ impl<'a> TileRenderer<'a> {
         overlay: Option<ValueDisplay>,
         sink: &mut S,
     ) -> Result<(), RenderError<S::Error>> {
-        self.render_inner(blob, state, elapsed_ms, None, overlay, sink)
+        self.render_inner(
+            blob,
+            state,
+            elapsed_ms,
+            None,
+            overlay,
+            &DeskView::default(),
+            sink,
+        )
     }
 
     /// Renders a resolved shared pose, preserving transitions across state changes.
@@ -151,9 +161,29 @@ impl<'a> TileRenderer<'a> {
         overlay: Option<ValueDisplay>,
         sink: &mut S,
     ) -> Result<(), RenderError<S::Error>> {
-        self.render_inner(blob, state, 0, Some(pose), overlay, sink)
+        self.render_frame(blob, state, pose, overlay, &DeskView::default(), sink)
     }
 
+    /// Renders one full device frame (M1): the recovery takeover when it owns the screen;
+    /// otherwise the Buddy pose (plus volume overlay) or the selected desk view, then the
+    /// indicator / feedback chrome over it. Only changed tiles are flushed.
+    ///
+    /// # Errors
+    /// [`RenderError`] if the scene is missing, a tile can't be built, the compositor fails, or the
+    /// sink errors.
+    pub fn render_frame<S: DisplaySink>(
+        &mut self,
+        blob: &AssetBlob,
+        state: CompanionState,
+        pose: &MascotPose,
+        overlay: Option<ValueDisplay>,
+        view: &DeskView,
+        sink: &mut S,
+    ) -> Result<(), RenderError<S::Error>> {
+        self.render_inner(blob, state, 0, Some(pose), overlay, view, sink)
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn render_inner<S: DisplaySink>(
         &mut self,
         blob: &AssetBlob,
@@ -161,6 +191,7 @@ impl<'a> TileRenderer<'a> {
         elapsed_ms: ElapsedMs,
         pose: Option<&MascotPose>,
         overlay: Option<ValueDisplay>,
+        view: &DeskView,
         sink: &mut S,
     ) -> Result<(), RenderError<S::Error>> {
         let scene = blob.scene(state).ok_or(RenderError::MissingScene)?;
@@ -186,19 +217,35 @@ impl<'a> TileRenderer<'a> {
                 None => &mut self.buf[..],
             };
             let mut band = TileBand::new(rect, pixels).ok_or(RenderError::Band)?;
-            match &pose {
-                Some(pose) => kivori_renderer::render_pose(blob, scene, pose, &mut band),
-                None => render_scene(blob, scene, elapsed_ms, &mut band),
-            }
-            .map_err(|_| RenderError::Compositor)?;
-            // The overlay is the final layer: after the pose, before the tile hash.
-            if let Some(value) = overlay {
-                render_volume_overlay(
-                    &mut band,
-                    value.current_percent,
-                    value.confidence,
-                    value.at_boundary,
-                );
+            if let Some(percent) = view.recovery_percent {
+                // The recovery takeover owns the whole screen (highest layer).
+                render_recovery(&mut band, percent);
+            } else {
+                let mode = view.status.mode;
+                // The view layer, including the switch slide: `render_views` hands each mode a
+                // (possibly scrolled) row slice of the tile, so the mascot slides like any view.
+                render_views(&mut band, view, |band, m| {
+                    if m == DisplayMode::Buddy {
+                        match &pose {
+                            Some(pose) => kivori_renderer::render_pose(blob, scene, pose, band),
+                            None => render_scene(blob, scene, elapsed_ms, band),
+                        }
+                        .map_err(|_| RenderError::Compositor)
+                    } else {
+                        render_view(band, m, view, overlay);
+                        Ok(())
+                    }
+                })?;
+                // The volume bar sits over any view except Volume, which shows the value itself.
+                if let (Some(value), true) = (overlay, mode != DisplayMode::Volume) {
+                    render_volume_overlay(
+                        &mut band,
+                        value.current_percent,
+                        value.confidence,
+                        value.at_boundary,
+                    );
+                }
+                render_chrome(&mut band, view);
             }
             #[cfg(feature = "latency-probe")]
             crate::latency_probe::draw(&mut band, self.latency);

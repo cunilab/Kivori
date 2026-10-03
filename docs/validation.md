@@ -25,11 +25,17 @@ specification until row 3.15 is ticked.
 
 1. Once per machine: `bun install`, `cargo install espflash`, install `just`.
 2. Flash the product firmware: `just fw-flash` (builds with `physical-st7789`, then flashes and monitors).
-3. Start the app: `just dev` (Vite UI), then `cargo run -p kivori-desktop` in a second terminal.
-   Discovery is automatic; there is no port picker. Expect **Connected**, firmware 1.0.0, protocol 1.2.
+3. Start the app: `just desktop` (one command: builds the firmware, starts the UI dev server, runs the
+   app with the firmware embedded so Flash firmware works, and stops the UI server when the app quits).
+   Plain `cargo run -p kivori-desktop` bundles no firmware and logs `firmwareUnavailable`.
+   Discovery is automatic; there is no port picker. Expect **Connected**, firmware 1.1.0, protocol 1.3.
+   On macOS, shortcuts and media keys need Accessibility permission for the app that runs Kivori
+   (during development, the terminal running `cargo run`): System Settings > Privacy & Security >
+   Accessibility.
 4. Latency only: `just fw-flash-latency` (dev-only probe build), then `just fw-flash` to restore the product build.
 
-Suggested order: wiring (3.15) and flash, then Phase 1 (Windows, then macOS), Phase 2, Phase 3, latency.
+Suggested order: wiring (3.15) and flash, then Phase 1 (Windows, then macOS), Phase 2, Phase 3, latency,
+then Phase 4 (M1). Rows marked macOS run on the Mac; everything else on Windows.
 
 ## Phase 1: Device connection
 
@@ -124,6 +130,57 @@ Desktop automation was unavailable, so no native click-through has been verified
 - [ ] G1 No false confirmation | the panel never shows Confirmed for a volume Windows did not actually report, across 3.5 to 3.13
 - [ ] G2 No stale replay | after unplug, restart or device switch, no old gesture or overlay is ever replayed (3.10, 3.12, 3.13)
 
+## Phase 4: Push switch, actions, monitoring (M1)
+
+Software is done and host-tested (button machine, recovery, desk pipeline, e2e host-sim round trip);
+these rows need the real switch, the real OS and eyes on the panel. Default bindings: Press = Play/Pause,
+Hold = master mute. Shortcut and launch run from Device Studio's Test action panel until M2.
+
+**Switch and recovery**
+
+- [ ] 4.1 Short press (well under 0.5 s), ten times | exactly one Play/Pause per press; the keycap dips (or a white frame shows) the moment you press; holding never auto-repeats
+- [ ] 4.2 Hold about 1 s and release, five times | exactly one mute toggle each time; never also a Play/Pause
+- [ ] 4.3 Hold 3 s, release | the recovery screen with a filling bar appears at about 2 s; release cancels it; nothing runs
+- [ ] 4.4 Hold 10 s with Kivori Desktop running | "Restarting", the device reboots, the app shows the disconnect and reconnects by itself (gate 8)
+- [ ] 4.5 Hold 10 s with Kivori Desktop quit | the device still reboots (gate 8, invariant 24)
+- [ ] 4.6 Turn the knob while holding the switch | volume does not change and recovery is not cancelled (invariant 33)
+- [ ] 4.7 Press while the knob is still turning | no Play/Pause fires
+- [ ] 4.8 Unplug, press and hold during the outage, replug | nothing runs after reconnect (gate 2)
+
+- [ ] 4.24 Double press, ten times at a natural speed | the device moves to the next view each time (Buddy, Clock, Volume, Media, System, Buddy); no Play/Pause fires
+- [ ] 4.25 Single press after the double-press change | Play/Pause still fires once, about a quarter second after release; note whether the delay feels acceptable
+
+- [ ] 4.26 Double press through every view and watch the slide | smooth vertical slide, no tearing or leftover pixels; the status-row time sliding past content is acceptable
+- [ ] 4.27 Media view with a long title (macOS adapter or Windows) | title and artist correct, long text scrolls smoothly; accented Latin-1 letters render; other scripts show `?`
+- [ ] 4.28 Frame cost of the redesigned views | `just fw-flash-latency`, show the Volume view and turn the knob: latency max still under 50 ms (row 3.14); note any visible stutter in Clock / System
+
+**Actions and confirmation**
+
+- [ ] 4.9 Hold to mute, then again to unmute; compare the OS mixer | OS mute matches each time; badge is the green check (State Confirmed). Windows and macOS
+- [ ] 4.10 Mute or unmute from the OS (keyboard key, flyout, menu bar) | the panel's mute indicator follows with no Kivori input. Windows and macOS
+- [ ] 4.11 Press while Spotify or a browser plays (Windows) | playback toggles; badge is the amber "?" (Unverified, never a check); the media indicator and Media view follow the real state within about 1 s
+- [ ] 4.12 Press while something plays (macOS) | playback toggles; badge is the amber "?" (Unverified), never a check; Kivori does not crash (input runs on the main thread)
+- [ ] 4.13 Test action: shortcut (Windows `Ctrl+Shift+Esc`, macOS `Cmd+Space`) | the shortcut happens; badge is the amber "?" (Unverified). Windows and macOS
+- [ ] 4.14 Test action: launch (`notepad` / `Calculator`), then a name that does not exist | the app starts with the blue arrow (Execution Confirmed); the missing one shows the red cross. Windows and macOS
+- [ ] 4.15 macOS with Accessibility permission removed: Press | red cross, the app says Accessibility permission is needed, nothing is sent another way (gate 5); after granting, Press works without restarting Kivori
+- [ ] 4.16 Force a volume failure (Windows: disable the output device) and turn the knob | red cross on the panel, never a fake volume (gates 6 and 9)
+
+**Monitoring and display**
+
+- [ ] 4.17 Pick each mode in Overview | the panel shows Buddy, Clock, Volume, Media, System; each is recognisable. Windows and macOS
+- [ ] 4.18 Clock view | matches the computer clock; still within a minute after 10 minutes
+- [ ] 4.19 System view | CPU and RAM within about 10 points of Task Manager / Activity Monitor; a 10 s CPU stress turns the CPU bar amber and shows the heat cue over the buddy, which clears once load drops
+- [ ] 4.20 Media view | Windows follows Playing / Paused / Stopped within about 1 s; macOS shows "No media info"
+- [ ] 4.21 Volume view | follows the OS volume and mute; turning the knob shows the hollow preview, then the solid confirmed value
+- [ ] 4.22 Quit Kivori Desktop | the device shows the offline buddy within the heartbeat timeout; no stale mode or values remain (gate 9)
+- [ ] 4.23 Daily use for a few days (subjective, record notes) | press and hold timing feel natural; accidental holds or missed presses are noted for tuning
+
+**PRD gates**
+
+- [ ] G5 No hidden fallback | an action that cannot run says so and never switches mechanism (4.15)
+- [ ] G6 No state invention | unknown values show as `--` on the panel and `—` in the app (4.17 to 4.20)
+- [ ] G8 Recoverability | recovery works without healthy desktop software (4.4, 4.5)
+
 ## Evidence log
 
 | Date | What | Result |
@@ -133,5 +190,7 @@ Desktop automation was unavailable, so no native click-through has been verified
 | 2026-09-07 | CI Windows startup smoke (automated) | `kivori-desktop.exe` alive for 10 s, no stack overflow. Not a manual row |
 | 2026-09-08 | Mascot automated checks | 204 workspace tests, 36 firmware host-sim tests, clippy clean, blob 116,634 of 131,072 bytes. Panel fps, SPI time and playback not measured |
 | 2026-09-25 | macOS 27, debug build, no device | Rows 1.1, 1.3, 1.4 passed on macOS; 1.22 partial; 1.19 code review only |
+| 2026-10-02 | macOS 27, ESP32-C3 over USB, automated (no human input) | `espflash` flashed the product build (4 MB flash, rev v0.4); production `Session` handshake Connected in 25 to 776 ms over repeated warm reconnects, heartbeats stable for 8 s each. Found and fixed: a reconnect to a device already in the desired state never learned it (no `StateReport`); verified fixed on the board. Interrupt edge-capture and M1 firmware boot and connect. Not a manual row: cold plug, knob, switch and panel were not exercised |
+| 2026-10-02 | macOS 27, CoreAudio backend, automated | Volume set and read-back, mute toggle and read-back, an external `osascript` change arriving as External, own writes tagged Kivori; original volume and mute restored. CPU, RAM and local time read |
 
 Screenshots and logs from before this consolidation stay in git history.

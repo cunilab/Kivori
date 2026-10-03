@@ -8,7 +8,7 @@
 //! defence in depth against intra-session reordering.
 
 use kivori_model::input::Direction;
-use kivori_protocol::message::{InputEvent, InputKind};
+use kivori_protocol::message::{ControlId, InputEvent, InputKind};
 use std::collections::HashSet;
 
 /// A validated, session-fresh input, ready for later tasks to bind to an action.
@@ -31,6 +31,22 @@ pub enum LogicalInput {
         /// The gesture identifier that ended.
         gesture_id: u16,
     },
+    /// A short press of the push switch: one discrete action, already release-qualified by the
+    /// device.
+    Press {
+        /// The device's identifier for this press.
+        gesture_id: u16,
+    },
+    /// A Hold of the push switch, released before recovery took the gesture.
+    Hold {
+        /// The device's identifier for this press.
+        gesture_id: u16,
+    },
+    /// Two short presses in a row (next display view).
+    DoublePress {
+        /// The device's identifier for this pair.
+        gesture_id: u16,
+    },
 }
 
 /// Why an `InputEvent` was rejected by [`InputIngress::accept`].
@@ -42,6 +58,8 @@ pub enum RejectReason {
     StaleSession,
     /// No `GestureStarted` for this gesture was observed in this session.
     UnknownGesture,
+    /// The kind does not belong to the control (a rotary `Press`, a button `Detent`).
+    ControlMismatch,
 }
 
 /// A pure, self-contained state machine that admits only fresh, in-session input.
@@ -83,7 +101,26 @@ impl InputIngress {
             return Err(RejectReason::StaleSession);
         }
 
+        let button_kind = matches!(
+            event.kind,
+            InputKind::Press | InputKind::Hold | InputKind::DoublePress
+        );
+        if button_kind != (event.control == ControlId::Button) {
+            return Err(RejectReason::ControlMismatch);
+        }
+
         match event.kind {
+            // Discrete and release-qualified on the device: the session check above is the
+            // freshness rule, and there is no open gesture to track.
+            InputKind::Press => Ok(Some(LogicalInput::Press {
+                gesture_id: event.gesture_id,
+            })),
+            InputKind::Hold => Ok(Some(LogicalInput::Hold {
+                gesture_id: event.gesture_id,
+            })),
+            InputKind::DoublePress => Ok(Some(LogicalInput::DoublePress {
+                gesture_id: event.gesture_id,
+            })),
             InputKind::GestureStarted => {
                 self.open_gestures.insert(event.gesture_id);
                 Ok(Some(LogicalInput::GestureStarted {

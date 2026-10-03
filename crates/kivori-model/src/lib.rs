@@ -14,6 +14,7 @@
 pub mod capabilities;
 pub mod color;
 pub mod connection;
+pub mod desk;
 pub mod geometry;
 pub mod input;
 pub mod mascot;

@@ -1017,6 +1017,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
 
 [[package]]
+name = "enigo"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71c6c56e50f7acae2906a0dcbb34529ca647e40421119ad5d12e7f8ba6e50010"
+dependencies = [
+ "core-foundation",
+ "core-graphics",
+ "foreign-types-shared",
+ "libc",
+ "log",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "windows 0.61.3",
+ "xkbcommon",
+ "xkeysym",
+]
+
+[[package]]
 name = "enumflags2"
 version = "0.7.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2217,7 +2236,7 @@ dependencies = [
 
 [[package]]
 name = "kivori-asset-compiler"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "heapless 0.8.0",
  "kivori-assets",
@@ -2228,7 +2247,7 @@ dependencies = [
 
 [[package]]
 name = "kivori-assets"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "heapless 0.8.0",
  "kivori-model",
@@ -2238,8 +2257,9 @@ dependencies = [
 
 [[package]]
 name = "kivori-desktop"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
+ "enigo",
  "getrandom 0.2.17",
  "heapless 0.8.0",
  "kivori-asset-compiler",
@@ -2248,6 +2268,7 @@ dependencies = [
  "kivori-model",
  "kivori-protocol",
  "kivori-renderer",
+ "libc",
  "serde",
  "serde_json",
  "serialport",
@@ -2262,7 +2283,7 @@ dependencies = [
 
 [[package]]
 name = "kivori-e2e-host-sim"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "kivori-desktop",
  "kivori-firmware",
@@ -2289,7 +2310,7 @@ dependencies = [
 
 [[package]]
 name = "kivori-framebuffer"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "embedded-graphics",
  "embedded-graphics-core",
@@ -2298,7 +2319,7 @@ dependencies = [
 
 [[package]]
 name = "kivori-golden-frames"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "kivori-asset-compiler",
  "kivori-assets",
@@ -2309,14 +2330,14 @@ dependencies = [
 
 [[package]]
 name = "kivori-model"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "kivori-protocol"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "heapless 0.8.0",
  "kivori-model",
@@ -2326,7 +2347,7 @@ dependencies = [
 
 [[package]]
 name = "kivori-renderer"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "embedded-graphics",
  "heapless 0.8.0",
@@ -2338,11 +2359,11 @@ dependencies = [
 
 [[package]]
 name = "kivori-wokwi-vcd"
-version = "0.0.0"
+version = "0.1.0"
 
 [[package]]
 name = "kivori-wokwi-vectors"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "heapless 0.8.0",
  "kivori-model",
@@ -5855,6 +5876,23 @@ dependencies = [
  "once_cell",
  "pkg-config",
 ]
+
+[[package]]
+name = "xkbcommon"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7a974f48060a14e95705c01f24ad9c3345022f4d97441b8a36beb7ed5c4a02d"
+dependencies = [
+ "libc",
+ "memmap2",
+ "xkeysym",
+]
+
+[[package]]
+name = "xkeysym"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9cc00251562a284751c9973bace760d86c0276c471b4be569fe6b068ee97a56"
 
 [[package]]
 name = "xmlwriter"

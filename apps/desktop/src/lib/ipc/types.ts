@@ -53,69 +53,139 @@ export interface MascotActionAppliedDto {
   appliedAtMs: number;
 }
 
-export type ActivityEventType =
-  | 'connectionAttempted'
-  | 'connectionOpened'
-  | 'handshakeStarted'
-  | 'handshakeSucceeded'
-  | 'connectionRetryScheduled'
-  | 'incompatibleFirmware'
-  | 'connectionIoFailure'
-  | 'handshakeTimedOut'
-  | 'heartbeatTimedOut'
-  | 'connectionRecovered'
-  | 'connectionDisconnected'
-  | 'connectionStateChanged'
-  | 'deviceNegotiated'
-  | 'personalityConfigured'
-  | 'selfPlayConfigured'
-  | 'stateRequested'
-  | 'mirroredStateRequested'
-  | 'manualSocialActionRequested'
-  | 'autonomousSocialActionRequested'
-  | 'socialActionApplied'
-  | 'stateSynchronized'
-  | 'deviceStateObserved'
-  | 'deviceDiagnosticFraming'
-  | 'deviceDiagnosticChecksum'
-  | 'deviceDiagnosticVersion'
-  | 'deviceDiagnosticPayload'
-  | 'deviceSequenceGap'
-  | 'deviceDisplayFault'
-  | 'deviceLinkLost'
-  | 'deviceDiagnosticUnknown'
-  | 'deviceError'
-  | 'deviceBusy'
-  | 'deviceTimedOut'
-  | 'protocolMalformedFrame'
-  | 'protocolSequenceGap'
-  | 'actionRequested'
-  | 'actionCompleted'
-  | 'actionFailed'
-  | 'deviceDiscovered'
-  | 'deviceRejected'
-  | 'protocolMessageRejected'
-  | 'protocolFailed'
-  | 'firmwareUpdateStarted'
-  | 'firmwareUpdateCompleted'
-  | 'firmwareUpdateFailed'
-  | 'firmwareAvailable'
-  | 'firmwareUnavailable'
-  | 'firmwareFlashRequested'
-  | 'firmwarePreparing'
-  | 'firmwareSerialReleased'
-  | 'firmwareFlasherStarted'
-  | 'firmwareFlashSucceeded'
-  | 'firmwareReconnectWaiting'
-  | 'firmwareReconnectTimedOut'
-  | 'firmwarePostFlashVerified'
-  | 'firmwarePreparationRejected'
-  | 'sessionNonceUnavailable'
-  | 'inputStaleSessionRejected'
-  | 'inputUnstartedGestureRejected'
-  | 'volumeWriteFailed'
-  | 'audioEndpointChanged'
-  | 'audioEndpointLost';
+/** Closed activity-event vocabulary: runtime validation rejects any other token. */
+export const ACTIVITY_EVENT_TYPES = [
+  'connectionAttempted',
+  'connectionOpened',
+  'handshakeStarted',
+  'handshakeSucceeded',
+  'connectionRetryScheduled',
+  'incompatibleFirmware',
+  'connectionIoFailure',
+  'handshakeTimedOut',
+  'heartbeatTimedOut',
+  'connectionRecovered',
+  'connectionDisconnected',
+  'connectionStateChanged',
+  'deviceNegotiated',
+  'personalityConfigured',
+  'selfPlayConfigured',
+  'stateRequested',
+  'mirroredStateRequested',
+  'manualSocialActionRequested',
+  'autonomousSocialActionRequested',
+  'socialActionApplied',
+  'stateSynchronized',
+  'deviceStateObserved',
+  'deviceDiagnosticFraming',
+  'deviceDiagnosticChecksum',
+  'deviceDiagnosticVersion',
+  'deviceDiagnosticPayload',
+  'deviceSequenceGap',
+  'deviceDisplayFault',
+  'deviceLinkLost',
+  'deviceDiagnosticUnknown',
+  'deviceError',
+  'deviceBusy',
+  'deviceTimedOut',
+  'protocolMalformedFrame',
+  'protocolSequenceGap',
+  'actionRequested',
+  'actionCompleted',
+  'actionFailed',
+  'deviceDiscovered',
+  'deviceRejected',
+  'protocolMessageRejected',
+  'protocolFailed',
+  'firmwareUpdateStarted',
+  'firmwareUpdateCompleted',
+  'firmwareUpdateFailed',
+  'firmwareAvailable',
+  'firmwareUnavailable',
+  'firmwareFlashRequested',
+  'firmwarePreparing',
+  'firmwareSerialReleased',
+  'firmwareFlasherStarted',
+  'firmwareFlashSucceeded',
+  'firmwareReconnectWaiting',
+  'firmwareReconnectTimedOut',
+  'firmwarePostFlashVerified',
+  'firmwarePreparationRejected',
+  'sessionNonceUnavailable',
+  'inputStaleSessionRejected',
+  'inputUnstartedGestureRejected',
+  'volumeWriteFailed',
+  'audioEndpointChanged',
+  'audioEndpointLost',
+  'displayModeChanged',
+  'deskActionRequested',
+  'deskActionConfirmed',
+  'deskActionUnverified',
+  'deskActionFailed',
+  'deskActionPermissionRequired',
+] as const;
+export type ActivityEventType = (typeof ACTIVITY_EVENT_TYPES)[number];
+
+export const MASCOT_ACTIONS: readonly MascotAction[] = [
+  'greet',
+  'pet',
+  'tickle',
+  'surprise',
+  'comfort',
+];
+
+export const DISPLAY_MODES = ['buddy', 'clock', 'volume', 'media', 'system'] as const;
+export type DisplayMode = (typeof DISPLAY_MODES)[number];
+export const MEDIA_STATUSES = ['playing', 'paused', 'stopped'] as const;
+export type MediaStatus = (typeof MEDIA_STATUSES)[number];
+export const DESK_ACTIONS = ['volume', 'playPause', 'mute', 'shortcut', 'launch'] as const;
+export type DeskActionToken = (typeof DESK_ACTIONS)[number];
+export const DESK_RESULTS = [
+  'processing',
+  'stateConfirmed',
+  'executionConfirmed',
+  'unverified',
+  'error',
+] as const;
+export type DeskResult = (typeof DESK_RESULTS)[number];
+
+/** What a double press does. Fixed in M1: show the next display mode. */
+export const DOUBLE_PRESS_ACTIONS = ['nextView'] as const;
+export type DoublePressAction = (typeof DOUBLE_PRESS_ACTIONS)[number];
+
+/** Actions the dev-only Device Studio can trigger (`volume` is device-driven only). */
+export type TestActionKind = 'playPause' | 'mute' | 'shortcut' | 'launch';
+
+export interface DeskActionDto {
+  action: DeskActionToken;
+  result: DeskResult;
+  /** The OS needs a permission first (macOS Accessibility). */
+  permissionRequired: boolean;
+}
+
+/** Desk projection. Every unknown value is `null` (never guessed). */
+export interface DeskStatusDto {
+  mode: DisplayMode;
+  volumePercent: number | null;
+  muted: boolean | null;
+  media: MediaStatus | null;
+  cpuPercent: number | null;
+  ramPercent: number | null;
+  highLoad: boolean;
+  pressAction: DeskActionToken;
+  holdAction: DeskActionToken;
+  doublePressAction: DoublePressAction;
+  /** Now playing, when observable: `null` = unknown, `''` = the player shared none. */
+  mediaTitle: string | null;
+  mediaArtist: string | null;
+  lastAction: DeskActionDto | null;
+}
+
+export interface TestActionRequest {
+  action: TestActionKind;
+  shortcut?: string;
+  target?: string;
+}
 
 export type ActivitySeverity = 'info' | 'warning' | 'error';
 export type ActivitySource = 'connection' | 'action' | 'device' | 'protocol' | 'firmware';
@@ -151,7 +221,8 @@ export interface ActivityMetadataDto {
   state?: SendableState;
   personality?: MascotPersonality;
   selfPlay?: boolean;
-  action?: MascotAction;
+  /** A mascot action name, or (for desk events) a desk action token. */
+  action?: MascotAction | DeskActionToken;
   seed?: number;
   appliedAtMs?: number;
   autonomous?: boolean;

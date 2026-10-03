@@ -1,0 +1,9 @@
+Vendored from https://github.com/ungive/mediaremote-adapter
+Commit: 29718252613a5b0e210bdc64de0bd944ab379706 (2026-09-30)
+License: BSD-3-Clause (see LICENSE; keep it with every copy, including the app bundle).
+
+Copied unmodified: LICENSE, bin/mediaremote-adapter.pl, include/, src/{adapter,private,utility,test}.
+Left out: CMake/Makefile, dev scripts, editor settings. build.rs compiles the sources with
+plain clang instead of CMake (no extra build tool), into OUT_DIR. Nothing prebuilt is committed.
+
+To update: replace these files with a newer upstream commit and update the line above.

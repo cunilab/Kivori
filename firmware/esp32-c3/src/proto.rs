@@ -1,7 +1,7 @@
 //! The device-side protocol dispatcher (docs/architecture.md, wire protocol; FR-002).
 //!
 //! Reads framed messages off a [`Transport`], applies the sequence policy, answers the handshake and
-//! heartbeat, applies `SetState` to the [`DeviceState`], and emits `StateReport` on change. Malformed
+//! heartbeat, applies `SetState` to the [`DeviceState`], and answers each with a `StateReport`. Malformed
 //! frames are dropped without side effects and never panic (SC-008).
 
 use crate::health::{build_pong, diagnostic_for_sequence, DeviceDiagnostic, RejectReason};
@@ -10,9 +10,10 @@ use crate::state::{DeviceEvent, DeviceState};
 use heapless::Vec;
 use kivori_model::{Capabilities, ProtocolVersion};
 use kivori_protocol::{
-    decode_message, encode_message, ControlId, DeviceId, FirmwareVersion, HelloAck, InputEvent,
-    InputKind, MascotActionApplied, Message, Nonce, PlayMascotAction, Presentation, SeqClass,
-    SequenceTracker, StateReport, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
+    decode_message, encode_message, ControlId, DeviceId, Feedback, FirmwareVersion, HelloAck,
+    InputEvent, InputKind, MascotActionApplied, MediaInfoUpdate, Message, Nonce, PlayMascotAction,
+    Presentation, SeqClass, SequenceTracker, StateReport, Status, MAX_FRAME, MAX_WIRE,
+    PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 /// Inbound accumulation capacity: room for a partial packet plus one full wire packet.
@@ -73,6 +74,12 @@ pub struct Dispatcher {
     /// set when `PRESENTATION_V1` is negotiated — an unnegotiated capability leaves this field
     /// permanently empty, never merely unread.
     pending_presentation: Option<Presentation>,
+    /// The latest negotiated `Status`, awaiting [`Self::take_status`].
+    pending_status: Option<Status>,
+    /// The latest negotiated `Feedback`, awaiting [`Self::take_feedback`]. Newest wins.
+    pending_feedback: Option<Feedback>,
+    /// The latest negotiated `MediaInfo`, awaiting [`Self::take_media_info`].
+    pending_media_info: Option<MediaInfoUpdate>,
 }
 
 impl Dispatcher {
@@ -96,6 +103,9 @@ impl Dispatcher {
             accepted_session: None,
             session_ended: false,
             pending_presentation: None,
+            pending_status: None,
+            pending_feedback: None,
+            pending_media_info: None,
         }
     }
 
@@ -156,6 +166,56 @@ impl Dispatcher {
             device_ms,
         });
         self.send(transport, &msg).is_ok()
+    }
+
+    /// Emits one push-switch `InputEvent` (`Press` or `Hold`) for the accepted session.
+    ///
+    /// Inert (returns `false`, writes nothing) unless both `PHYSICAL_INPUT_V1` and
+    /// `BUTTON_INPUT_V1` were negotiated and a session is accepted. Nothing is buffered: a press
+    /// with no session is simply not sent (no stale replay).
+    pub fn send_button_event<T: Transport>(
+        &mut self,
+        transport: &mut T,
+        gesture_id: u16,
+        kind: InputKind,
+        device_ms: u32,
+    ) -> bool {
+        let needed = Capabilities::PHYSICAL_INPUT_V1.union(Capabilities::BUTTON_INPUT_V1);
+        if !self.negotiated_caps.contains(needed) {
+            return false;
+        }
+        let Some(session) = self.accepted_session else {
+            return false;
+        };
+        let msg = Message::InputEvent(InputEvent {
+            session,
+            gesture_id,
+            control: ControlId::Button,
+            kind,
+            device_ms,
+        });
+        self.send(transport, &msg).is_ok()
+    }
+
+    /// Takes the pending accepted `Status`, if any.
+    pub fn take_status(&mut self) -> Option<Status> {
+        self.pending_status.take()
+    }
+
+    /// Takes the pending accepted `MediaInfo`, if any.
+    pub fn take_media_info(&mut self) -> Option<MediaInfoUpdate> {
+        self.pending_media_info.take()
+    }
+
+    /// Whether the session negotiated double-press detection.
+    #[must_use]
+    pub const fn double_press_enabled(&self) -> bool {
+        self.negotiated_caps.contains(Capabilities::DOUBLE_PRESS_V1)
+    }
+
+    /// Takes the pending accepted `Feedback`, if any.
+    pub fn take_feedback(&mut self) -> Option<Feedback> {
+        self.pending_feedback.take()
     }
 
     /// Takes the pending accepted `Presentation`, if any (see [`Self::pending_presentation`]).
@@ -299,6 +359,8 @@ impl Dispatcher {
                 self.negotiated_caps = Capabilities::NONE;
                 self.hello_caps = Some(hello.desktop_caps);
                 self.pending_action = None;
+                // Whatever is still queued was meant for a session that is over (or for no one).
+                transport.discard_unsent();
                 let ack = HelloAck {
                     device_caps: self.identity.capabilities,
                     device_id: self.identity.device_id,
@@ -328,15 +390,17 @@ impl Dispatcher {
                         .intersection(hello_caps);
                 }
             }
+            // Every accepted `SetState` is answered with the state now shown, changed or not: a
+            // desktop reconnecting to a device already in the desired state must still learn it
+            // (row 1.16). Duplicate sequence numbers never reach this arm.
             Message::SetState(set) => {
-                if let Some(now) = device.apply(DeviceEvent::SetState(set.desired)) {
-                    let report = StateReport {
-                        reported: now,
-                        elapsed_ms: now_ms,
-                    };
-                    self.send(transport, &Message::StateReport(report))?;
-                    self.state_reports = self.state_reports.saturating_add(1);
-                }
+                let _changed = device.apply(DeviceEvent::SetState(set.desired));
+                let report = StateReport {
+                    reported: device.current(),
+                    elapsed_ms: now_ms,
+                };
+                self.send(transport, &Message::StateReport(report))?;
+                self.state_reports = self.state_reports.saturating_add(1);
             }
             Message::Ping(ping) => {
                 self.send(transport, &Message::Pong(build_pong(ping.t_ms, now_ms)))?;
@@ -367,6 +431,25 @@ impl Dispatcher {
                 // no render.
                 if self.negotiated_caps.contains(Capabilities::PRESENTATION_V1) {
                     self.pending_presentation = Some(presentation);
+                }
+            }
+            // Same inertness rule as `Presentation`: unnegotiated means dropped, unseen.
+            Message::Status(status) => {
+                if self.negotiated_caps.contains(Capabilities::DESK_STATUS_V1) {
+                    self.pending_status = Some(status);
+                }
+            }
+            Message::MediaInfo(update) => {
+                if self.negotiated_caps.contains(Capabilities::MEDIA_INFO_V1) {
+                    self.pending_media_info = Some(update);
+                }
+            }
+            Message::Feedback(feedback) => {
+                if self
+                    .negotiated_caps
+                    .contains(Capabilities::ACTION_FEEDBACK_V1)
+                {
+                    self.pending_feedback = Some(feedback);
                 }
             }
             Message::Bye(_) => {

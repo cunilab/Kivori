@@ -4,7 +4,15 @@
 // Vite/Rollup drop it entirely from production Tauri bundles (T124). The sentinel below is asserted
 // absent from the production build by `scripts/check-mock-excluded.mjs`.
 
-import type { ActivityEventDto, AppInfoDto, CompanionState, ConnectionStatusDto } from './types';
+import type {
+  ActivityEventDto,
+  AppInfoDto,
+  CompanionState,
+  ConnectionStatusDto,
+  DeskStatusDto,
+  DisplayMode,
+  TestActionRequest,
+} from './types';
 import { COMPANION_STATES, PREVIEW_DIM } from './types';
 
 /// A unique marker string; `scripts/check-mock-excluded.mjs` fails if it appears in a prod bundle.
@@ -19,8 +27,16 @@ export function mockAppInfo(): AppInfoDto {
   };
 }
 
+// Browser preview scenarios for design review: `?mock=connected`, `?mock=incompatible`,
+// `?mock=connecting`. Without the parameter the mock is the plain disconnected default.
+function scenario(): string {
+  return typeof location === 'undefined'
+    ? ''
+    : (new URLSearchParams(location.search).get('mock') ?? '');
+}
+
 export function mockConnectionStatus(): ConnectionStatusDto {
-  return {
+  const base: ConnectionStatusDto = {
     connection: 'disconnected',
     desired: 'idle',
     reported: null,
@@ -31,6 +47,31 @@ export function mockConnectionStatus(): ConnectionStatusDto {
     mascotInteraction: false,
     mascotAction: null,
   };
+  switch (scenario()) {
+    case 'connected':
+      return {
+        ...base,
+        connection: 'connected',
+        reported: 'idle',
+        device: {
+          firmwareVersion: '0.4.0',
+          protocolVersion: { major: 1, minor: 3 },
+          deviceIdHashShort: '3fa9c1d2',
+        },
+        connectionGeneration: 1,
+        mascotInteraction: true,
+      };
+    case 'incompatible':
+      return {
+        ...base,
+        connection: 'incompatible',
+        incompatibleReason: 'This Kivori runs protocol v2, which this app does not support yet.',
+      };
+    case 'connecting':
+      return { ...base, connection: 'connecting', retryCount: 2 };
+    default:
+      return base;
+  }
 }
 
 export function mockListStates(): CompanionState[] {
@@ -38,7 +79,147 @@ export function mockListStates(): CompanionState[] {
 }
 
 export function mockActivityLog(): ActivityEventDto[] {
-  return [];
+  if (scenario() !== 'connected') return [];
+  const at = (s: number): string => new Date(Date.now() - s * 1000).toISOString();
+  const meta = { retryCount: 0, elapsedMs: 0 };
+  return [
+    {
+      id: 1,
+      at: at(320),
+      type: 'connectionAttempted',
+      summary: 'Looking for a Kivori.',
+      severity: 'info',
+      source: 'connection',
+      outcome: 'started',
+      metadata: meta,
+    },
+    {
+      id: 2,
+      at: at(318),
+      type: 'handshakeSucceeded',
+      summary: 'Handshake complete.',
+      severity: 'info',
+      source: 'connection',
+      outcome: 'succeeded',
+      metadata: { ...meta, firmwareVersion: '0.4.0', protocolVersion: { major: 1, minor: 3 } },
+    },
+    {
+      id: 3,
+      at: at(240),
+      type: 'displayModeChanged',
+      summary: 'Display view changed.',
+      severity: 'info',
+      source: 'action',
+      outcome: 'applied',
+      metadata: meta,
+    },
+    {
+      id: 4,
+      at: at(200),
+      type: 'deskActionUnverified',
+      summary: 'Desk action sent; result unknown.',
+      severity: 'warning',
+      source: 'action',
+      outcome: 'observed',
+      metadata: { ...meta, action: 'playPause' },
+    },
+    {
+      id: 5,
+      at: at(120),
+      type: 'deskActionConfirmed',
+      summary: 'Desk action confirmed.',
+      severity: 'info',
+      source: 'action',
+      outcome: 'succeeded',
+      metadata: { ...meta, action: 'mute' },
+    },
+    {
+      id: 6,
+      at: at(60),
+      type: 'heartbeatTimedOut',
+      summary: 'Heartbeat timed out.',
+      severity: 'error',
+      source: 'device',
+      outcome: 'timedOut',
+      metadata: { ...meta, retryCount: 1 },
+    },
+    {
+      id: 7,
+      at: at(55),
+      type: 'connectionRecovered',
+      summary: 'Connection recovered.',
+      severity: 'info',
+      source: 'connection',
+      outcome: 'succeeded',
+      metadata: meta,
+    },
+  ];
+}
+
+const connectedDesk: Partial<DeskStatusDto> =
+  scenario() === 'connected'
+    ? {
+        media: 'playing',
+        mediaTitle: 'Weightless',
+        mediaArtist: 'Marconi Union',
+        cpuPercent: 87,
+        highLoad: true,
+        lastAction: { action: 'playPause', result: 'unverified', permissionRequired: false },
+      }
+    : {};
+
+let deskStatus: DeskStatusDto = {
+  mode: 'buddy',
+  volumePercent: 42,
+  muted: false,
+  media: null,
+  cpuPercent: 23,
+  ramPercent: 61,
+  highLoad: false,
+  pressAction: 'playPause',
+  holdAction: 'mute',
+  doublePressAction: 'nextView',
+  mediaTitle: null,
+  mediaArtist: null,
+  lastAction: null,
+  ...connectedDesk,
+};
+const deskListeners = new Set<(status: DeskStatusDto) => void>();
+
+function updateDesk(next: Partial<DeskStatusDto>): void {
+  deskStatus = { ...deskStatus, ...next };
+  for (const listener of deskListeners) listener(deskStatus);
+}
+
+export function mockDeskStatus(): DeskStatusDto {
+  return deskStatus;
+}
+
+export function mockSetDisplayMode(mode: DisplayMode): void {
+  updateDesk({ mode });
+}
+
+/** Mirrors native rules loosely: a shortcut/launch needs its text; the outcome is "unverified". */
+export function mockRunTestAction(request: TestActionRequest): void {
+  if (request.action === 'shortcut' && !request.shortcut?.trim()) {
+    throw new Error('a shortcut action needs a shortcut');
+  }
+  if (request.action === 'launch' && !request.target?.trim()) {
+    throw new Error('a launch action needs an application');
+  }
+  const result = request.action === 'mute' ? 'stateConfirmed' : 'unverified';
+  updateDesk({
+    muted: request.action === 'mute' ? !deskStatus.muted : deskStatus.muted,
+    lastAction: { action: request.action, result, permissionRequired: false },
+  });
+}
+
+export function mockOnDeskStatus(handler: (status: DeskStatusDto) => void): () => void {
+  deskListeners.add(handler);
+  handler(deskStatus);
+  return () => {
+    deskListeners.delete(handler);
+  };
 }
 
 const STATE_TINT: Record<CompanionState, readonly [number, number, number]> = {

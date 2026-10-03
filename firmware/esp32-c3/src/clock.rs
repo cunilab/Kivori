@@ -24,8 +24,8 @@ impl Clock for EspClock {
         let micros = esp_hal::time::Instant::now()
             .duration_since_epoch()
             .as_micros();
-        // Saturating: the device is not expected to run for ~49 days, but wrapping time would break
-        // the monotonicity the render loop relies on.
-        u32::try_from(micros / 1000).unwrap_or(u32::MAX)
+        // Wrapping (every ~49.7 days), never saturating: a clock stuck at `u32::MAX` would freeze
+        // every timer, including the recovery hold. All consumers compare with `wrapping_sub`.
+        (micros / 1000) as u32
     }
 }

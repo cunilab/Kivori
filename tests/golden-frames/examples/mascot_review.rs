@@ -28,16 +28,6 @@ fn main() {
         std::mem::size_of::<kivori_model::MascotPose>()
     );
     for state in CompanionState::ALL {
-        let name = format!("{state:?}").to_lowercase();
-        let source = fs::read(format!("assets/scenes/{name}.svg")).unwrap();
-        let old = kivori_asset_compiler::rasterize::svg_to_rgb565(&source, 240, 240).unwrap();
-        let old_pixels: Vec<_> = old
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|p| Rgb565::from_raw(u16::from_le_bytes([p[0], p[1]])))
-            .collect();
-        ppm(&directory.join(format!("before-{name}.ppm")), &old_pixels);
         for ms in [0, 300, 600, 1200, 2400, 3600] {
             let mut pixels = vec![Rgb565::from_raw(0); 240 * 240];
             let mut band = TileBand::new(Rect::new(0, 0, 240, 240), &mut pixels).unwrap();

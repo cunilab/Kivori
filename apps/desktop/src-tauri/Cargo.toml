@@ -33,15 +33,31 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 getrandom = "0.2"  # session-nonce freshness (Slice 002). NOT a security credential; not a network crate.
 
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+# Media keys and keyboard shortcuts (M1): SendInput on Windows, Quartz events on macOS. Linux
+# would pull X11/Wayland stacks for an unsupported OS, so it stays NotImplemented there.
+enigo = { version = "0.6", default-features = false }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Mach host statistics (CPU/RAM) and localtime_r (M1 monitoring). CoreAudio is declared by hand.
+libc = "0.2"
+# Parses the now-playing adapter's JSON lines (ADR-0009). Already in the tree via tauri; no new code.
+serde_json = "1"
+
 [target.'cfg(windows)'.dependencies]
-# Windows Core Audio (WASAPI) master-volume backend (Task 12).
+# Windows Core Audio (WASAPI) master-volume backend (Task 12), CPU/RAM and local time (M1), and
+# the media session manager for observing playback (M1).
 windows = { version = "0.58", features = [
   "implement",
+  "Foundation",
+  "Media_Control",
   "Win32_Foundation",
   "Win32_Media_Audio",
   "Win32_Media_Audio_Endpoints",
   "Win32_System_Com",
   "Win32_System_Com_StructuredStorage",
+  "Win32_System_SystemInformation",
+  "Win32_System_Threading",
   "Win32_UI_Shell_PropertiesSystem",
 ] }
 # The `implement` attribute macro (used to author `IAudioEndpointVolumeCallback` /
