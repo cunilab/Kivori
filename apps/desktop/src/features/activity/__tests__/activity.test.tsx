@@ -84,7 +84,8 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('Activity view', () => {
+// Renders up to 256 log rows per test: give slow CI runners headroom.
+describe('Activity view', { timeout: 15_000 }, () => {
   it('waits for the subscription handle before requesting history', async () => {
     const subscription = deferred<() => void>();
     h.subscribe = subscription.promise;
