@@ -3,11 +3,14 @@ import { CircleCheck, LoaderCircle, TriangleAlert, Unplug } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
 import { Known } from '@/components/kivori/known';
 import { Page } from '@/components/kivori/page';
 import { uiConnection, type UiConnection } from '@/hooks/use-kivori';
 import type { AppInfoDto, ConnectionStatusDto } from '@/lib/ipc/types';
+import { setDevMode, useDevMode } from '@/lib/dev-mode';
 import { strings } from '@/lib/i18n/strings';
 import { cn } from '@/lib/utils';
 import { FirmwareUpdate } from './FirmwareUpdate';
@@ -53,6 +56,7 @@ export function DevicePage({
 }): ReactElement {
   const ui = uiConnection(connection);
   const device = connection?.device ?? null;
+  const devMode = useDevMode();
 
   return (
     <Page title={t.title} description={t.description}>
@@ -81,26 +85,30 @@ export function DevicePage({
                   {(v) => v}
                 </Known>
               </Row>
-              <Row label={t.protocol}>
-                <Known value={device?.protocolVersion} why={strings.why.firmware}>
-                  {version}
-                </Known>
-              </Row>
-              <Row label={t.deviceId}>
-                <Known value={device?.deviceIdHashShort} why={strings.why.firmware}>
-                  {(id) => <span className="font-mono">{id}</span>}
-                </Known>
-              </Row>
-              <Row label={t.buddyRequested} testId="desired">
-                <Known value={connection?.desired} why={strings.why.buddy}>
-                  {(state) => strings.studio.states[state]}
-                </Known>
-              </Row>
-              <Row label={t.buddyReported} testId="reported">
-                <Known value={connection?.reported} why={strings.why.buddy}>
-                  {(state) => strings.studio.states[state]}
-                </Known>
-              </Row>
+              {devMode ? (
+                <>
+                  <Row label={t.protocol}>
+                    <Known value={device?.protocolVersion} why={strings.why.firmware}>
+                      {version}
+                    </Known>
+                  </Row>
+                  <Row label={t.deviceId}>
+                    <Known value={device?.deviceIdHashShort} why={strings.why.firmware}>
+                      {(id) => <span className="font-mono">{id}</span>}
+                    </Known>
+                  </Row>
+                  <Row label={t.buddyRequested} testId="desired">
+                    <Known value={connection?.desired} why={strings.why.buddy}>
+                      {(state) => strings.studio.states[state]}
+                    </Known>
+                  </Row>
+                  <Row label={t.buddyReported} testId="reported">
+                    <Known value={connection?.reported} why={strings.why.buddy}>
+                      {(state) => strings.studio.states[state]}
+                    </Known>
+                  </Row>
+                </>
+              ) : null}
             </dl>
           </CardContent>
         </Card>
@@ -116,10 +124,35 @@ export function DevicePage({
                 <Row label={t.appVersion}>
                   {appInfo ? appInfo.appVersion : <Skeleton className="h-4 w-16" />}
                 </Row>
-                <Row label={t.appProtocol}>
-                  {appInfo ? version(appInfo.protocolVersion) : <Skeleton className="h-4 w-10" />}
-                </Row>
+                {devMode ? (
+                  <Row label={t.appProtocol}>
+                    {appInfo ? version(appInfo.protocolVersion) : <Skeleton className="h-4 w-10" />}
+                  </Row>
+                ) : null}
               </dl>
+            </CardContent>
+          </Card>
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle id="advanced-heading" role="heading" aria-level={2}>
+                {t.advanced}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="developer-mode">{t.developerMode}</Label>
+                  <p id="developer-mode-hint" className="text-xs text-muted-foreground">
+                    {t.developerModeHint}
+                  </p>
+                </div>
+                <Switch
+                  id="developer-mode"
+                  aria-describedby="developer-mode-hint"
+                  checked={devMode}
+                  onCheckedChange={setDevMode}
+                />
+              </div>
             </CardContent>
           </Card>
         </div>

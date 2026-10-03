@@ -151,6 +151,17 @@ describe('HomePage', () => {
     ).toBeInTheDocument();
   });
 
+  it('draws the real keycap mascot on the Buddy screen, not the old blob face', () => {
+    const { container } = render(view(desk({ mode: 'buddy' })));
+    expect(screen.getByTestId('buddy-mascot')).toHaveAttribute(
+      'src',
+      expect.stringContaining('mascot.svg'),
+    );
+    // The old blob blinked its CSS eyes; the mascot is one image and nothing blinks.
+    expect(container.querySelector('.motion-safe\\:animate-blink')).toBeNull();
+    expect(screen.getByRole('img').querySelectorAll('img')).toHaveLength(1);
+  });
+
   it('guides the user to plug in Kivori when disconnected', () => {
     render(view(desk(), connection({ connection: 'disconnected', device: null, reported: null })));
     expect(screen.getByText('Plug in your Kivori')).toBeInTheDocument();

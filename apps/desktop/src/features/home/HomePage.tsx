@@ -37,6 +37,8 @@ import { Known } from '@/components/kivori/known';
 import { Page } from '@/components/kivori/page';
 import { ResultBadge } from '@/components/kivori/result-badge';
 import { uiConnection } from '@/hooks/use-kivori';
+import { mascotUrl } from '@/lib/brand';
+import { useDevMode } from '@/lib/dev-mode';
 import { playMascotAction } from '@/lib/ipc';
 import type { ConnectionStatusDto, DeskStatusDto } from '@/lib/ipc/types';
 import { format, strings } from '@/lib/i18n/strings';
@@ -82,11 +84,14 @@ function Hero({
                   <Usb className="size-7" aria-hidden="true" />
                 </div>
                 <Cable className="size-5 opacity-60" aria-hidden="true" />
-                <div className="flex size-14 items-center justify-center rounded-2xl bg-panel text-panel-blue shadow-lg">
-                  <span className="flex gap-1.5">
-                    <span className="h-4 w-2 rounded-full bg-current" />
-                    <span className="h-4 w-2 rounded-full bg-current" />
-                  </span>
+                <div className="flex size-14 items-center justify-center rounded-2xl bg-panel shadow-lg">
+                  <img
+                    src={mascotUrl}
+                    alt=""
+                    data-testid="empty-mascot"
+                    draggable={false}
+                    className="size-12 select-none"
+                  />
                 </div>
               </div>
             </EmptyMedia>
@@ -127,7 +132,9 @@ function Hero({
     reconnecting: t.hero.reconnectingBody,
     incompatible: connection?.incompatibleReason ?? t.hero.incompatibleBody,
   }[ui];
-  const canGreet = ui === 'connected' && connection?.mascotInteraction === true;
+  // Social reactions are a developer tool (owner's call): customers never see "Say hi".
+  const devMode = useDevMode();
+  const canGreet = devMode && ui === 'connected' && connection?.mascotInteraction === true;
   const modeName = strings.display.modes[desk.mode].name;
 
   return (

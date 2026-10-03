@@ -19,6 +19,8 @@ beforeEach(() => {
   h.configure.mockClear();
   h.play.mockClear();
   localStorage.clear();
+  // Social reactions and self-play are developer-mode surfaces (app.test covers the gate).
+  localStorage.setItem('kivori.developerMode', 'true');
 });
 
 describe('CompanionControls', () => {

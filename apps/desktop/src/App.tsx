@@ -56,6 +56,8 @@ import {
   useDeskStatus,
   type UiConnection,
 } from './hooks/use-kivori';
+import { brandIconUrl } from './lib/brand';
+import { useDevMode } from './lib/dev-mode';
 import { format, strings } from './lib/i18n/strings';
 import { setTheme, useTheme, type ThemeChoice } from './lib/theme';
 import { cn } from './lib/utils';
@@ -133,14 +135,15 @@ function ThemeMenu(): ReactElement {
 }
 
 function BrandMark(): ReactElement {
+  // The icon's own tile has a transparent margin, so it sits a little larger than a 32 px box.
   return (
-    <div className="relative flex size-8 shrink-0 items-center justify-center rounded-lg bg-panel ring-1 ring-white/10">
-      <span className="flex gap-[3px]">
-        <span className="h-2.5 w-1.5 rounded-full bg-panel-blue" />
-        <span className="h-2.5 w-1.5 rounded-full bg-panel-blue" />
-      </span>
-      <span className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-panel-amber ring-2 ring-sidebar" />
-    </div>
+    <img
+      src={brandIconUrl}
+      alt=""
+      data-testid="brand-mark"
+      draggable={false}
+      className="-m-1 size-10 shrink-0 select-none"
+    />
   );
 }
 
@@ -164,8 +167,16 @@ export function App(): ReactElement {
   const ui = uiConnection(connection);
   useConnectionToasts(ui);
 
-  const showStudio = DEVICE_STUDIO_BUILD && (appInfo?.deviceStudioEnabled ?? false);
-  const current = page === 'studio' && !showStudio ? 'home' : page;
+  const devMode = useDevMode();
+  // Developer mode never reveals Device Studio in a production build: the build gate comes first.
+  const showStudio = DEVICE_STUDIO_BUILD && devMode && (appInfo?.deviceStudioEnabled ?? false);
+  const hidden = (id: PageId): boolean =>
+    (id === 'studio' && !showStudio) || (id === 'activity' && !devMode);
+  const current = hidden(page) ? 'home' : page;
+  // A page that just became hidden (developer mode turned off) lands on Home for good.
+  useEffect(() => {
+    if (current !== page) setPage(current);
+  }, [current, page]);
 
   const go = (next: PageId): void => {
     setPage(next);
@@ -219,7 +230,7 @@ export function App(): ReactElement {
               <SidebarGroup>
                 <SidebarGroupLabel>{nav.groups.system}</SidebarGroupLabel>
                 <SidebarGroupContent>
-                  <SidebarMenu>{SECONDARY.map(item)}</SidebarMenu>
+                  <SidebarMenu>{SECONDARY.filter(({ id }) => !hidden(id)).map(item)}</SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>
               {showStudio ? (

@@ -190,6 +190,9 @@ export const strings = {
     appProtocol: 'App protocol',
     retries: 'Reconnect attempts',
     notConnected: 'Connect Kivori to see its details.',
+    advanced: 'Advanced',
+    developerMode: 'Developer mode',
+    developerModeHint: 'Show developer tools and diagnostics on this computer.',
   },
   firmwareUpdate: {
     heading: 'Firmware update',

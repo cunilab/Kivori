@@ -11,6 +11,7 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react';
+import { mascotUrl } from '@/lib/brand';
 import { cn } from '@/lib/utils';
 import type { DeskStatusDto, DisplayMode } from '@/lib/ipc/types';
 
@@ -48,16 +49,16 @@ function Line({ w }: { w: string }): ReactElement {
 }
 
 function Buddy(): ReactElement {
+  // The real mascot (assets/mascot.svg, the firmware's own source) on the panel navy.
   return (
     <div className="flex size-full items-center justify-center">
-      <div className="relative size-[56%] motion-safe:animate-float">
-        <div className="absolute inset-0 translate-y-[6%] rounded-[24%] bg-[#2c5fb8]" />
-        <div className="absolute inset-0 flex items-center justify-center gap-[18%] rounded-[24%] bg-panel-blue shadow-[inset_0_-6px_0_rgb(0_0_0/0.15)]">
-          <span className="h-[26%] w-[13%] rounded-full bg-white motion-safe:animate-blink" />
-          <span className="h-[26%] w-[13%] rounded-full bg-white motion-safe:animate-blink" />
-        </div>
-        <span className="absolute bottom-[22%] left-1/2 h-[7%] w-[22%] -translate-x-1/2 rounded-b-full bg-panel/70" />
-      </div>
+      <img
+        src={mascotUrl}
+        alt=""
+        data-testid="buddy-mascot"
+        draggable={false}
+        className="size-[80%] select-none motion-safe:animate-float"
+      />
     </div>
   );
 }
@@ -164,7 +165,7 @@ export function DeviceScreen({
         className,
       )}
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,rgb(76_141_246/0.18),transparent_60%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,rgb(125_242_196/0.08),transparent_60%)]" />
       {busy ? (
         <div className="flex size-full items-center justify-center">
           <LoaderCircle className="size-[22cqw] animate-spin text-panel-blue" aria-hidden="true" />

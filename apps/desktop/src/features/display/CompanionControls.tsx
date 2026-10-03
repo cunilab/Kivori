@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { useDevMode } from '@/lib/dev-mode';
 import { configureCompanion, playMascotAction } from '@/lib/ipc';
 import type { MascotAction, MascotPersonality } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
@@ -40,6 +41,7 @@ export function CompanionControls({ connected, supported }: CompanionControlsPro
   const [configurationError, setConfigurationError] = useState(false);
   const configurationAttempt = useRef(0);
   const t = strings.companion;
+  const devMode = useDevMode();
 
   const applyConfiguration = useCallback(
     (nextPersonality: MascotPersonality, nextSelfPlay: boolean): void => {
@@ -89,38 +91,43 @@ export function CompanionControls({ connected, supported }: CompanionControlsPro
           </ToggleGroup>
         </fieldset>
 
-        <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
-          <div className="space-y-0.5">
-            <Label htmlFor="self-play">{t.selfPlay}</Label>
-            <p className="text-xs text-muted-foreground">{t.selfPlayHint}</p>
-          </div>
-          <Switch id="self-play" checked={selfPlay} onCheckedChange={setSelfPlay} />
-        </div>
+        {/* Self-play and the direct reactions are developer tools; personality is for everyone. */}
+        {devMode ? (
+          <>
+            <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="self-play">{t.selfPlay}</Label>
+                <p className="text-xs text-muted-foreground">{t.selfPlayHint}</p>
+              </div>
+              <Switch id="self-play" checked={selfPlay} onCheckedChange={setSelfPlay} />
+            </div>
 
-        <fieldset className="space-y-2">
-          <legend className="mb-2 text-sm font-medium">{t.actions}</legend>
-          <div className="flex flex-wrap gap-2">
-            {ACTIONS.map((action) => (
-              <Button
-                key={action}
-                type="button"
-                variant="secondary"
-                disabled={!available}
-                onClick={() => {
-                  void playMascotAction(action).catch((error: unknown) =>
-                    toast.error(t.failed, { description: errorText(error) }),
-                  );
-                }}
-              >
-                {t.actionLabels[action]}
-              </Button>
-            ))}
-          </div>
-          {!connected ? <p className="text-xs text-muted-foreground">{t.connect}</p> : null}
-          {connected && !supported ? (
-            <p className="text-xs text-muted-foreground">{t.update}</p>
-          ) : null}
-        </fieldset>
+            <fieldset className="space-y-2">
+              <legend className="mb-2 text-sm font-medium">{t.actions}</legend>
+              <div className="flex flex-wrap gap-2">
+                {ACTIONS.map((action) => (
+                  <Button
+                    key={action}
+                    type="button"
+                    variant="secondary"
+                    disabled={!available}
+                    onClick={() => {
+                      void playMascotAction(action).catch((error: unknown) =>
+                        toast.error(t.failed, { description: errorText(error) }),
+                      );
+                    }}
+                  >
+                    {t.actionLabels[action]}
+                  </Button>
+                ))}
+              </div>
+              {!connected ? <p className="text-xs text-muted-foreground">{t.connect}</p> : null}
+              {connected && !supported ? (
+                <p className="text-xs text-muted-foreground">{t.update}</p>
+              ) : null}
+            </fieldset>
+          </>
+        ) : null}
 
         {configurationError ? (
           <Alert variant="destructive">

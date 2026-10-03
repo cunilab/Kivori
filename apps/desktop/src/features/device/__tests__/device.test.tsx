@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import axe from 'axe-core';
 import type { ReactElement } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { ConnectionStatusDto } from '../../../lib/ipc/types';
 
@@ -33,6 +33,9 @@ const view = (s: ConnectionStatusDto): ReactElement => (
     <DevicePage connection={s} appInfo={null} />
   </TooltipProvider>
 );
+
+// These cases cover the technical rows, which only developer mode shows (app.test covers the gate).
+beforeEach(() => localStorage.setItem('kivori.developerMode', 'true'));
 
 describe('DevicePage', () => {
   it('shows connected device details and both buddy state axes', () => {
