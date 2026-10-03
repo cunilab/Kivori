@@ -54,13 +54,25 @@ describe('firmware update', () => {
     const user = userEvent.setup();
     render(<FirmwareUpdate connected />);
     await screen.findByText(ready.message);
-    await user.dblClick(screen.getByRole('button', { name: 'Flash firmware' }));
+    await user.click(screen.getByRole('button', { name: 'Flash firmware' }));
+    expect(bridge.flash).not.toHaveBeenCalled();
+    await user.dblClick(await screen.findByRole('button', { name: 'Flash now' }));
     expect(bridge.flash).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('button')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Updating firmware…' })).toBeDisabled();
     bridge.get.mockResolvedValue({ ...ready, phase: 'flashing', message: 'Writing firmware.' });
     await act(async () => resolve());
     await screen.findByText('Writing firmware.');
-    expect(screen.getByRole('button')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Updating firmware…' })).toBeDisabled();
+  });
+
+  it('asks for confirmation and does nothing when cancelled', async () => {
+    const user = userEvent.setup();
+    render(<FirmwareUpdate connected />);
+    await screen.findByText(ready.message);
+    await user.click(screen.getByRole('button', { name: 'Flash firmware' }));
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent('Keep USB connected');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(bridge.flash).not.toHaveBeenCalled();
   });
 
   it('restores progress after navigation and waits for native reconnect success', async () => {
@@ -71,7 +83,7 @@ describe('firmware update', () => {
     });
     render(<FirmwareUpdate connected={false} />);
     await screen.findByText('Waiting for device.');
-    expect(screen.getByRole('button')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Updating firmware…' })).toBeDisabled();
     bridge.get.mockResolvedValue({ ...ready, phase: 'succeeded', message: 'Firmware installed.' });
     await waitFor(() => expect(screen.getByText('Firmware installed.')).toBeInTheDocument(), {
       timeout: 2000,
@@ -84,6 +96,7 @@ describe('firmware update', () => {
     render(<FirmwareUpdate connected />);
     await screen.findByText(ready.message);
     await user.click(screen.getByRole('button', { name: 'Flash firmware' }));
+    await user.click(await screen.findByRole('button', { name: 'Flash now' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('The device disconnected.');
     expect(screen.getByRole('button', { name: 'Flash firmware' })).toBeEnabled();
   });

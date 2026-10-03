@@ -1,62 +1,279 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
-import { DeskPanel } from './features/desk/DeskPanel';
-import { ConnectionStatus } from './features/connection/ConnectionStatus';
-import { Log } from './features/connection/Log';
+import { toast } from 'sonner';
+import {
+  Activity,
+  Cpu,
+  FlaskConical,
+  Gamepad2,
+  House,
+  LayoutGrid,
+  Monitor,
+  Moon,
+  Sun,
+  type LucideIcon,
+} from 'lucide-react';
+import { Badge } from './components/ui/badge';
+import { Button } from './components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from './components/ui/dropdown-menu';
+import { Separator } from './components/ui/separator';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+} from './components/ui/sidebar';
+import { Toaster } from './components/ui/sonner';
+import { TooltipProvider } from './components/ui/tooltip';
+import { ActivityPage } from './features/activity/ActivityPage';
+import { ControlsPage } from './features/controls/ControlsPage';
+import { DevicePage } from './features/device/DevicePage';
 import { DeviceStudio } from './features/device-studio/DeviceStudio';
-import { getAppInfo } from './lib/ipc';
-import { strings } from './lib/i18n/strings';
+import { DisplayPage } from './features/display/DisplayPage';
+import { HomePage } from './features/home/HomePage';
+import {
+  uiConnection,
+  useAppInfo,
+  useConnectionStatus,
+  useDeskStatus,
+  type UiConnection,
+} from './hooks/use-kivori';
+import { format, strings } from './lib/i18n/strings';
+import { setTheme, useTheme, type ThemeChoice } from './lib/theme';
+import { cn } from './lib/utils';
 
 // The Device Studio route is served in dev builds only (FR-028). The backend independently gates its
 // dev-only IPC commands behind the `device-studio` Cargo feature, so both layers must agree.
 const DEVICE_STUDIO_BUILD = import.meta.env.DEV;
 
-export function App(): ReactElement {
-  const [studioEnabled, setStudioEnabled] = useState(false);
+type PageId = 'home' | 'controls' | 'display' | 'activity' | 'device' | 'studio';
 
+const nav = strings.navigation;
+const PRIMARY: { id: PageId; label: string; Icon: LucideIcon }[] = [
+  { id: 'home', label: nav.home, Icon: House },
+  { id: 'controls', label: nav.controls, Icon: Gamepad2 },
+  { id: 'display', label: nav.display, Icon: LayoutGrid },
+];
+const SECONDARY: { id: PageId; label: string; Icon: LucideIcon }[] = [
+  { id: 'activity', label: nav.activity, Icon: Activity },
+  { id: 'device', label: nav.device, Icon: Cpu },
+];
+
+const DOT: Record<UiConnection, string> = {
+  loading: 'bg-muted-foreground/40',
+  disconnected: 'bg-muted-foreground/60',
+  connecting: 'bg-warning motion-safe:animate-pulse',
+  reconnecting: 'bg-warning motion-safe:animate-pulse',
+  connected: 'bg-success',
+  incompatible: 'bg-destructive',
+};
+
+function ConnectionPill({ ui }: { ui: UiConnection }): ReactElement | null {
+  if (ui === 'loading') return null;
+  return (
+    <Badge variant="outline" className="h-7 gap-2 rounded-full px-3" data-state={ui}>
+      <span aria-hidden="true" className={cn('size-2 rounded-full', DOT[ui])} />
+      {strings.connection.status[ui]}
+    </Badge>
+  );
+}
+
+function ThemeMenu(): ReactElement {
+  const { theme, resolved } = useTheme();
+  const Icon = resolved === 'dark' ? Moon : Sun;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={<Button variant="ghost" size="icon" aria-label={strings.theme.label} />}
+      >
+        <Icon aria-hidden="true" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-40">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>{strings.theme.label}</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={theme}
+            onValueChange={(value) => setTheme(value as ThemeChoice)}
+          >
+            <DropdownMenuRadioItem value="light">
+              <Sun aria-hidden="true" />
+              {strings.theme.light}
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="dark">
+              <Moon aria-hidden="true" />
+              {strings.theme.dark}
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="system">
+              <Monitor aria-hidden="true" />
+              {strings.theme.system}
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function BrandMark(): ReactElement {
+  return (
+    <div className="relative flex size-8 shrink-0 items-center justify-center rounded-lg bg-panel ring-1 ring-white/10">
+      <span className="flex gap-[3px]">
+        <span className="h-2.5 w-1.5 rounded-full bg-panel-blue" />
+        <span className="h-2.5 w-1.5 rounded-full bg-panel-blue" />
+      </span>
+      <span className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-panel-amber ring-2 ring-sidebar" />
+    </div>
+  );
+}
+
+/** Announces real connection transitions (never the first snapshot) as toasts. */
+function useConnectionToasts(ui: UiConnection): void {
+  const previous = useRef<UiConnection>('loading');
   useEffect(() => {
-    let active = true;
-    void getAppInfo().then((info) => {
-      if (active) setStudioEnabled(info.deviceStudioEnabled);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
+    const before = previous.current;
+    previous.current = ui;
+    if (before === 'loading' || before === ui) return;
+    if (ui === 'connected') toast.success(strings.connection.toastConnected);
+    else if (before === 'connected') toast.warning(strings.connection.toastLost);
+  }, [ui]);
+}
 
-  const showStudio = DEVICE_STUDIO_BUILD && studioEnabled;
-  const nav = strings.navigation;
+export function App(): ReactElement {
+  const [page, setPage] = useState<PageId>('home');
+  const connection = useConnectionStatus();
+  const desk = useDeskStatus();
+  const appInfo = useAppInfo();
+  const ui = uiConnection(connection);
+  useConnectionToasts(ui);
+
+  const showStudio = DEVICE_STUDIO_BUILD && (appInfo?.deviceStudioEnabled ?? false);
+  const current = page === 'studio' && !showStudio ? 'home' : page;
+
+  const go = (next: PageId): void => {
+    setPage(next);
+    // Move focus to the new page title so keyboard and screen-reader users land in context.
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>('[data-page-title]')?.focus({ preventScroll: true }),
+    );
+  };
+
+  const item = ({ id, label, Icon }: { id: PageId; label: string; Icon: LucideIcon }) => (
+    <SidebarMenuItem key={id}>
+      <SidebarMenuButton
+        isActive={current === id}
+        aria-current={current === id ? 'page' : undefined}
+        tooltip={label}
+        onClick={() => go(id)}
+      >
+        <Icon aria-hidden="true" />
+        <span>{label}</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+
+  const allItems = [...PRIMARY, ...SECONDARY];
+  const title =
+    current === 'studio'
+      ? nav.studio
+      : (allItems.find((entry) => entry.id === current)?.label ?? '');
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-6xl px-4 py-6 sm:px-6">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">{strings.appTitle}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{strings.connectingHint}</p>
-      </header>
+    <TooltipProvider>
+      <SidebarProvider>
+        <Sidebar collapsible="icon">
+          <SidebarHeader>
+            <div className="flex items-center gap-2.5 px-1 py-1.5">
+              <BrandMark />
+              <div className="grid leading-tight group-data-[collapsible=icon]:hidden">
+                <span className="font-semibold tracking-tight">{strings.appTitle}</span>
+                <span className="text-xs text-muted-foreground">{strings.tagline}</span>
+              </div>
+            </div>
+          </SidebarHeader>
+          <SidebarContent>
+            <nav aria-label={nav.label}>
+              <SidebarGroup>
+                <SidebarGroupLabel>{nav.groups.device}</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>{PRIMARY.map(item)}</SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+              <SidebarGroup>
+                <SidebarGroupLabel>{nav.groups.system}</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>{SECONDARY.map(item)}</SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+              {showStudio ? (
+                <SidebarGroup>
+                  <SidebarGroupLabel>{nav.groups.developer}</SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {item({ id: 'studio', label: nav.studio, Icon: FlaskConical })}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              ) : null}
+            </nav>
+          </SidebarContent>
+          <SidebarFooter>
+            {appInfo ? (
+              <p className="px-2 pb-1 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
+                {format(nav.version, { version: appInfo.appVersion })}
+              </p>
+            ) : null}
+          </SidebarFooter>
+          <SidebarRail />
+        </Sidebar>
 
-      <Tabs defaultValue="overview" className="w-full">
-        <TabsList aria-label={strings.appTitle}>
-          <TabsTrigger value="overview">{nav.overview}</TabsTrigger>
-          {showStudio ? <TabsTrigger value="studio">{nav.studio}</TabsTrigger> : null}
-          <TabsTrigger value="log">{nav.log}</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="overview" className="pt-4">
-          <div className="space-y-4">
-            <ConnectionStatus />
-            <DeskPanel />
+        <SidebarInset>
+          <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+            <SidebarTrigger aria-label={nav.toggle} className="-ml-1" />
+            <Separator orientation="vertical" className="mr-1 h-4" />
+            <span className="text-sm font-medium" aria-hidden="true">
+              {title}
+            </span>
+            <div className="ml-auto flex items-center gap-2">
+              <ConnectionPill ui={ui} />
+              <ThemeMenu />
+            </div>
+          </header>
+          <div className="flex-1">
+            {current === 'home' ? (
+              <HomePage connection={connection} desk={desk} onNavigate={go} />
+            ) : current === 'controls' ? (
+              <ControlsPage desk={desk} />
+            ) : current === 'display' ? (
+              <DisplayPage desk={desk} connection={connection} />
+            ) : current === 'activity' ? (
+              <ActivityPage />
+            ) : current === 'device' ? (
+              <DevicePage connection={connection} appInfo={appInfo} />
+            ) : showStudio ? (
+              <DeviceStudio />
+            ) : null}
           </div>
-        </TabsContent>
-        {showStudio ? (
-          <TabsContent value="studio" className="pt-4">
-            <DeviceStudio />
-          </TabsContent>
-        ) : null}
-        <TabsContent value="log" className="pt-4">
-          <Log />
-        </TabsContent>
-      </Tabs>
-    </main>
+        </SidebarInset>
+      </SidebarProvider>
+      <Toaster position="bottom-right" richColors closeButton />
+    </TooltipProvider>
   );
 }

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -40,7 +40,7 @@ vi.mock('../../../lib/ipc', () => ({
 }));
 
 import { strings } from '../../../lib/i18n/strings';
-import { Log, VIEW_LIMIT } from '../Log';
+import { ActivityPage as Log, VIEW_LIMIT } from '../ActivityPage';
 
 function event(overrides: Partial<ActivityEventDto> = {}): ActivityEventDto {
   return {
@@ -64,6 +64,18 @@ async function finishSetup(events: ActivityEventDto[] = []): Promise<void> {
   );
 }
 
+type User = ReturnType<typeof userEvent.setup>;
+
+async function pickSeverity(user: User, name: string): Promise<void> {
+  const group = screen.getByRole('group', { name: strings.log.filters.severity });
+  await user.click(within(group).getByRole('button', { name }));
+}
+
+async function pickSource(user: User, name: string): Promise<void> {
+  await user.click(screen.getByRole('combobox', { name: strings.log.filters.source }));
+  await user.click(await screen.findByRole('option', { name }));
+}
+
 afterEach(() => {
   h.calls = [];
   h.history = null;
@@ -72,7 +84,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('Log view', () => {
+describe('Activity view', () => {
   it('waits for the subscription handle before requesting history', async () => {
     const subscription = deferred<() => void>();
     h.subscribe = subscription.promise;
@@ -95,7 +107,7 @@ describe('Log view', () => {
     expect(screen.getAllByRole('row')).toHaveLength(2);
   });
 
-  it('sorts merged history and live entries oldest first by numeric id', async () => {
+  it('sorts merged history and live entries newest first by numeric id', async () => {
     const history = deferred<unknown[]>();
     h.history = history.promise;
     render(<Log />);
@@ -104,16 +116,16 @@ describe('Log view', () => {
     await act(async () =>
       history.resolve([event({ id: 2, summary: 'second' }), event({ id: 1, summary: 'first' })]),
     );
-    await waitFor(() => expect(screen.getByText(/first/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByRole('row')).toHaveLength(4));
     expect(
       screen
         .getAllByRole('row')
         .slice(1)
         .map((row) => row.textContent),
     ).toEqual([
-      expect.stringContaining('first'),
-      expect.stringContaining('second'),
       expect.stringContaining('third'),
+      expect.stringContaining('second'),
+      expect.stringContaining('first'),
     ]);
   });
 
@@ -127,13 +139,13 @@ describe('Log view', () => {
     render(<Log />);
     await finishSetup();
     await waitFor(() => expect(screen.getByText(/connection info/)).toBeInTheDocument());
-    await user.selectOptions(screen.getByLabelText(strings.log.filters.severity), 'error');
-    await user.selectOptions(screen.getByLabelText(strings.log.filters.source), 'connection');
+    await pickSeverity(user, 'Error');
+    await pickSource(user, 'Connection');
     expect(screen.getByText(/connection error/)).toBeInTheDocument();
     expect(screen.queryByText(/device error/)).not.toBeInTheDocument();
     expect(screen.queryByText(/connection info/)).not.toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText(strings.log.filters.severity), 'all');
-    await user.selectOptions(screen.getByLabelText(strings.log.filters.source), 'all');
+    await pickSeverity(user, 'All');
+    await pickSource(user, 'All sources');
     expect(screen.getByText(/connection info/)).toBeInTheDocument();
     expect(screen.getByText(/device error/)).toBeInTheDocument();
   });
@@ -147,9 +159,11 @@ describe('Log view', () => {
     const populated = render(<Log />);
     await finishSetup();
     const user = userEvent.setup();
-    await user.selectOptions(populated.getByLabelText(strings.log.filters.severity), 'error');
+    await pickSeverity(user, 'Error');
     expect(populated.getByText(strings.log.noMatches)).toBeInTheDocument();
     expect(populated.queryByText(strings.log.empty)).not.toBeInTheDocument();
+    await user.click(populated.getByRole('button', { name: strings.log.clearFilters }));
+    expect(populated.queryByText(strings.log.noMatches)).not.toBeInTheDocument();
   });
 
   it('shows starting, live, and safe unavailable setup statuses without error text', async () => {
@@ -263,7 +277,8 @@ describe('Log view', () => {
     ]);
     render(<Log />);
     await finishSetup();
-    expect(await screen.findByText(/deskActionUnverified: Desk action sent/)).toBeInTheDocument();
+    expect(await screen.findByText('Desk action unverified')).toBeInTheDocument();
+    expect(screen.getByText(/Desk action sent; result unknown/)).toBeInTheDocument();
     expect(screen.getByText('action playPause')).toBeInTheDocument();
   });
 
@@ -279,7 +294,7 @@ describe('Log view', () => {
     const populated = render(<Log />);
     await finishSetup();
     const user = userEvent.setup();
-    await user.selectOptions(populated.getByLabelText(strings.log.filters.severity), 'info');
+    await pickSeverity(user, 'Info');
     expect(
       (await axe.run(populated.container, { rules: { 'color-contrast': { enabled: false } } }))
         .violations,

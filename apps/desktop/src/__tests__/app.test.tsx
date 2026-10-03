@@ -1,13 +1,39 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { App } from '../App';
 
-describe('App navigation', () => {
-  it('keeps the dev build to Overview, Device Studio, and Log tabs', async () => {
+describe('App shell', () => {
+  it('offers the product sections, plus Device Studio in the dev build', async () => {
     render(<App />);
-    await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(3));
-    expect(screen.getByRole('tab', { name: 'Log' })).toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: 'Diagnostics' })).not.toBeInTheDocument();
+    const nav = screen.getByRole('navigation', { name: 'Main navigation' });
+    await waitFor(() =>
+      expect(within(nav).getByRole('button', { name: 'Device Studio' })).toBeInTheDocument(),
+    );
+    expect(
+      within(nav)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['Home', 'Controls', 'Display', 'Activity', 'Device', 'Device Studio']);
+  });
+
+  it('navigates between sections and marks the current one', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    expect(await screen.findByRole('heading', { level: 1, name: 'Home' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Controls' }));
+    expect(screen.getByRole('heading', { level: 1, name: 'Controls' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Controls' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await user.click(screen.getByRole('button', { name: 'Activity' }));
+    expect(screen.getByRole('heading', { level: 1, name: 'Activity' })).toBeInTheDocument();
+  });
+
+  it('shows the plug-in guidance when no Kivori is connected', async () => {
+    render(<App />);
+    expect(await screen.findByText('Plug in your Kivori')).toBeInTheDocument();
   });
 });

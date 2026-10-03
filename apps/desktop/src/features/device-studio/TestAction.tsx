@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import type { FormEvent, ReactElement } from 'react';
 import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
 import { runTestAction } from '../../lib/ipc';
 import type { TestActionRequest } from '../../lib/ipc/types';
 import { strings } from '../../lib/i18n/strings';
-import { errorText } from '../desk/DeskPanel';
+import { errorText } from '../../lib/utils';
 
 /** Dev-only Device Studio panel: fires one desk action; the outcome shows in Overview and the Log. */
 export function TestAction(): ReactElement {
@@ -27,7 +29,7 @@ export function TestAction(): ReactElement {
   return (
     <section aria-labelledby="test-action-heading" className="space-y-4">
       <div>
-        <h2 id="test-action-heading" className="font-medium">
+        <h2 id="test-action-heading" className="text-base font-medium">
           {t.heading}
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">{t.description}</p>
@@ -44,15 +46,15 @@ export function TestAction(): ReactElement {
         className="flex flex-wrap items-end gap-2"
         onSubmit={submit(() => ({ action: 'shortcut', shortcut }))}
       >
-        <label className="flex flex-col gap-1 text-sm">
-          {t.shortcut}
-          <input
-            className="rounded-md border px-2 py-1"
+        <div className="flex min-w-48 flex-1 flex-col gap-1.5">
+          <Label htmlFor="test-shortcut">{t.shortcut}</Label>
+          <Input
+            id="test-shortcut"
             value={shortcut}
             placeholder={t.shortcutPlaceholder}
             onChange={(e) => setShortcut(e.target.value)}
           />
-        </label>
+        </div>
         <Button type="submit" variant="outline">
           {t.runShortcut}
         </Button>
@@ -61,15 +63,15 @@ export function TestAction(): ReactElement {
         className="flex flex-wrap items-end gap-2"
         onSubmit={submit(() => ({ action: 'launch', target }))}
       >
-        <label className="flex flex-col gap-1 text-sm">
-          {t.launch}
-          <input
-            className="rounded-md border px-2 py-1"
+        <div className="flex min-w-48 flex-1 flex-col gap-1.5">
+          <Label htmlFor="test-launch">{t.launch}</Label>
+          <Input
+            id="test-launch"
             value={target}
             placeholder={t.launchPlaceholder}
             onChange={(e) => setTarget(e.target.value)}
           />
-        </label>
+        </div>
         <Button type="submit" variant="outline">
           {t.runLaunch}
         </Button>

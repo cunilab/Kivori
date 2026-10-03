@@ -23,6 +23,7 @@ import {
   renderPreviewFrame,
 } from '../index';
 import { COMPANION_STATES, PREVIEW_DIM } from '../types';
+import { MAX_MEDIA_TEXT } from '../validate';
 
 afterEach(() => {
   delete (window as Window & { __TAURI_INTERNALS__?: object }).__TAURI_INTERNALS__;
@@ -87,6 +88,9 @@ const validDesk = {
   highLoad: false,
   pressAction: 'playPause',
   holdAction: 'mute',
+  doublePressAction: 'nextView',
+  mediaTitle: 'Weightless',
+  mediaArtist: '',
   lastAction: { action: 'shortcut', result: 'unverified', permissionRequired: true },
 };
 
@@ -116,10 +120,24 @@ describe('desk ipc (Tauri)', () => {
     ['result', { lastAction: { action: 'mute', result: 'success', permissionRequired: false } }],
     ['action', { pressAction: 'format-disk' }],
     ['percent', { cpuPercent: 250 }],
+    ['double-press action', { doublePressAction: 'formatDisk' }],
+    ['missing double-press action', { doublePressAction: undefined }],
+    ['media title type', { mediaTitle: 42 }],
+    ['media artist type', { mediaArtist: { name: 'x' } }],
   ])('rejects an unknown %s token', async (_name, patch) => {
     enterTauri();
     tauri.invoke.mockResolvedValue({ ...validDesk, ...patch });
     await expect(getDeskStatus()).rejects.toThrow();
+  });
+
+  it('keeps unknown now-playing as null and clamps an overlong title instead of dropping status', async () => {
+    enterTauri();
+    tauri.invoke.mockResolvedValue({ ...validDesk, mediaTitle: null, mediaArtist: null });
+    await expect(getDeskStatus()).resolves.toMatchObject({ mediaTitle: null, mediaArtist: null });
+    tauri.invoke.mockResolvedValue({ ...validDesk, mediaTitle: 'x'.repeat(5000) });
+    const status = await getDeskStatus();
+    expect(status.mediaTitle).toHaveLength(MAX_MEDIA_TEXT);
+    expect(status.mode).toBe('clock');
   });
 
   it('drops an invalid desk://status payload and forwards a valid one', async () => {

@@ -149,6 +149,10 @@ export const DESK_RESULTS = [
 ] as const;
 export type DeskResult = (typeof DESK_RESULTS)[number];
 
+/** What a double press does. Fixed in M1: show the next display mode. */
+export const DOUBLE_PRESS_ACTIONS = ['nextView'] as const;
+export type DoublePressAction = (typeof DOUBLE_PRESS_ACTIONS)[number];
+
 /** Actions the dev-only Device Studio can trigger (`volume` is device-driven only). */
 export type TestActionKind = 'playPause' | 'mute' | 'shortcut' | 'launch';
 
@@ -170,6 +174,10 @@ export interface DeskStatusDto {
   highLoad: boolean;
   pressAction: DeskActionToken;
   holdAction: DeskActionToken;
+  doublePressAction: DoublePressAction;
+  /** Now playing, when observable: `null` = unknown, `''` = the player shared none. */
+  mediaTitle: string | null;
+  mediaArtist: string | null;
   lastAction: DeskActionDto | null;
 }
 

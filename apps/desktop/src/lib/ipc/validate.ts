@@ -6,6 +6,7 @@ import {
   DESK_ACTIONS,
   DESK_RESULTS,
   DISPLAY_MODES,
+  DOUBLE_PRESS_ACTIONS,
   MASCOT_ACTIONS,
   MEDIA_STATUSES,
 } from './types';
@@ -27,6 +28,16 @@ function percentOrNull(name: string, value: unknown): number | null {
 
 function boolOrNull(name: string, value: unknown): boolean | null {
   if (value === null || typeof value === 'boolean') return value;
+  throw new Error(`Kivori: invalid ${name}.`);
+}
+
+// Free text from the OS media session (any player can set it). Clamped rather than rejected, so one
+// overlong title cannot blank the whole desk view; a non-string is still a contract violation.
+export const MAX_MEDIA_TEXT = 200;
+
+function textOrNull(name: string, value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value === 'string') return [...value].slice(0, MAX_MEDIA_TEXT).join('');
   throw new Error(`Kivori: invalid ${name}.`);
 }
 
@@ -57,6 +68,9 @@ export function parseDeskStatus(raw: unknown): DeskStatusDto {
     highLoad: r.highLoad,
     pressAction: oneOf('desk action', DESK_ACTIONS, r.pressAction),
     holdAction: oneOf('desk action', DESK_ACTIONS, r.holdAction),
+    doublePressAction: oneOf('double-press action', DOUBLE_PRESS_ACTIONS, r.doublePressAction),
+    mediaTitle: textOrNull('mediaTitle', r.mediaTitle),
+    mediaArtist: textOrNull('mediaArtist', r.mediaArtist),
     lastAction,
   };
 }

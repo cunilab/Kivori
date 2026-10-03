@@ -7,7 +7,7 @@ import { mirrorState, playMascotAction } from '../../lib/ipc';
 import type { CompanionState, MascotAction, SendableState } from '../../lib/ipc/types';
 import { COMPANION_STATES, SENDABLE_STATES, MAX_ANIMATION_EVENTS } from '../../lib/ipc/types';
 import { strings } from '../../lib/i18n/strings';
-import { currentMascotPersonality } from '../connection/CompanionControls';
+import { currentMascotPersonality } from '../display/CompanionControls';
 import { SCENE_DURATION_MS, STEP_MS, useStudioStore } from './store';
 
 const SENDABLE = new Set<CompanionState>(SENDABLE_STATES);

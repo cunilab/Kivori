@@ -6,6 +6,7 @@ import { onConnectionStatus, openPreviewStream, type PreviewStream } from '../..
 import { PREVIEW_FPS } from '../../lib/ipc/types';
 import type { AnimationTimeline, ConnectionStatusDto } from '../../lib/ipc/types';
 import { strings } from '../../lib/i18n/strings';
+import { Page } from '../../components/kivori/page';
 import { Controls } from './Controls';
 import { TestAction } from './TestAction';
 import { useStudioStore } from './store';
@@ -123,43 +124,42 @@ export function DeviceStudio(): ReactElement {
 
   const t = strings.studio;
   return (
-    <section aria-labelledby="studio-heading" className="device-studio space-y-4">
-      <h2 id="studio-heading" className="text-xl font-semibold tracking-tight">
-        {t.heading}
-      </h2>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.8fr)]">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t.preview}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex justify-center">
-            <DevicePreview
-              state={state}
-              elapsedMs={elapsedMs}
-              label={t.preview}
-              frame={playing && !streamError ? streamFrame : null}
-              animation={animation}
-              streaming={playing && !streamError}
-            />
-            {streamError && <p role="alert">{streamError}</p>}
-          </CardContent>
-        </Card>
-        <div className="space-y-4">
+    <Page title={t.heading} description={t.description}>
+      <section aria-label={t.heading} className="device-studio space-y-4">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.8fr)]">
           <Card>
             <CardHeader>
-              <CardTitle>{t.controls}</CardTitle>
+              <CardTitle>{t.preview}</CardTitle>
             </CardHeader>
-            <CardContent>
-              <Controls />
+            <CardContent className="flex flex-col items-center gap-3">
+              <DevicePreview
+                state={state}
+                elapsedMs={elapsedMs}
+                label={t.preview}
+                frame={playing && !streamError ? streamFrame : null}
+                animation={animation}
+                streaming={playing && !streamError}
+              />
+              {streamError && <p role="alert">{streamError}</p>}
             </CardContent>
           </Card>
-          <Card>
-            <CardContent>
-              <TestAction />
-            </CardContent>
-          </Card>
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>{t.controls}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Controls />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent>
+                <TestAction />
+              </CardContent>
+            </Card>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </Page>
   );
 }
