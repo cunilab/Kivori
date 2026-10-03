@@ -150,6 +150,10 @@ Hold = master mute. Shortcut and launch run from Device Studio's Test action pan
 - [ ] 4.24 Double press, ten times at a natural speed | the device moves to the next view each time (Buddy, Clock, Volume, Media, System, Buddy); no Play/Pause fires
 - [ ] 4.25 Single press after the double-press change | Play/Pause still fires once, about a quarter second after release; note whether the delay feels acceptable
 
+- [ ] 4.26 Double press through every view and watch the slide | smooth vertical slide, no tearing or leftover pixels; the status-row time sliding past content is acceptable
+- [ ] 4.27 Media view with a long title (macOS adapter or Windows) | title and artist correct, long text scrolls smoothly; accented Latin-1 letters render; other scripts show `?`
+- [ ] 4.28 Frame cost of the redesigned views | `just fw-flash-latency`, show the Volume view and turn the knob: latency max still under 50 ms (row 3.14); note any visible stutter in Clock / System
+
 **Actions and confirmation**
 
 - [ ] 4.9 Hold to mute, then again to unmute; compare the OS mixer | OS mute matches each time; badge is the green check (State Confirmed). Windows and macOS
