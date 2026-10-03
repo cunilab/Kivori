@@ -89,7 +89,7 @@ One packet is `COBS(frame) || 0x00`. COBS makes the stream self-synchronizing, s
 | `payload` | bytes | postcard-encoded `Message` |
 | `crc32` | u32 | CRC-32/IEEE over header and payload |
 
-Constants: `PROTOCOL_MAJOR` 1, `PROTOCOL_MINOR` 3. COBS and CRC are implemented in-crate.
+Constants: `PROTOCOL_MAJOR` 1, `PROTOCOL_MINOR` 4. COBS and CRC are implemented in-crate.
 
 Every decode failure is a typed `ProtoError` (`BufferOverflow, Cobs, TooShort, BadMagic, UnsupportedVersion, PayloadTooLarge, LengthMismatch, BadCrc, Postcard`). The decoder never panics, always makes forward progress, and never dispatches a frame that failed CRC.
 
@@ -150,10 +150,11 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 | 14 | `Presentation` | D to V | session, revision, primary, value (optional), transient_ms | `PRESENTATION_V1` |
 | 15 | `Status` | D to V | session, `DeskStatus` | `DESK_STATUS_V1` |
 | 16 | `Feedback` | D to V | session, action, kind | `ACTION_FEEDBACK_V1` |
+| 17 | `MediaInfo` | D to V | session, `Option<MediaInfo>` (title, artist) | `MEDIA_INFO_V1` |
 
-`InputEvent.control` is `Rotary` or `Button`. With `Rotary`, `kind` is `GestureStarted`, `Detent(Cw|Ccw)` or `GestureEnded`; with `Button` (needs `BUTTON_INPUT_V1` too), it is `Press` or `Hold`, sent once on release. The desktop rejects a kind that does not belong to its control. `Presentation.primary` is `Idle, Active, Error, Unknown`. `value` is `{ kind: Volume, current_percent, confidence, at_boundary }`.
+`InputEvent.control` is `Rotary` or `Button`. With `Rotary`, `kind` is `GestureStarted`, `Detent(Cw|Ccw)` or `GestureEnded`; with `Button` (needs `BUTTON_INPUT_V1` too), it is `Press`, `Hold` or `DoublePress` (needs `DOUBLE_PRESS_V1`), sent once per gesture. The desktop rejects a kind that does not belong to its control. `Presentation.primary` is `Idle, Active, Error, Unknown`. `value` is `{ kind: Volume, current_percent, confidence, at_boundary }`.
 
-`DeskStatus` (`kivori-model::desk`) is `{ mode, clock, volume_percent, muted, media, cpu_percent, ram_percent, high_load }`; every value is an `Option` and `None` is rendered as unknown. `mode` is `Buddy, Clock, Volume, Media, System`; `media` is `Playing, Paused, Stopped`. `Feedback.kind` is `Processing, StateConfirmed, ExecutionConfirmed, Unverified, Error` and `action` is `Volume, PlayPause, Mute, Shortcut, Launch`. Status and feedback are session-scoped like `Presentation`: the device drops either from another session and forgets both on every session boundary.
+`DeskStatus` (`kivori-model::desk`) is `{ mode, clock, volume_percent, muted, media, cpu_percent, ram_percent, high_load }`; every value is an `Option` and `None` is rendered as unknown. `mode` is `Buddy, Clock, Volume, Media, System`; `media` is `Playing, Paused, Stopped`. `Feedback.kind` is `Processing, StateConfirmed, ExecutionConfirmed, Unverified, Error` and `action` is `Volume, PlayPause, Mute, Shortcut, Launch`. `MediaInfo` text is `MediaText`: at most 32 ISO-8859-1 characters (what the device's Latin-1 font can draw), sanitized on the desktop (other characters become `?`, control characters dropped, a cut ends in `~`). Status, feedback and media info are session-scoped like `Presentation`: the device drops either from another session and forgets both on every session boundary.
 
 | Bit | Capability |
 |---:|---|
@@ -163,6 +164,8 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 | 3 | `BUTTON_INPUT_V1` |
 | 4 | `DESK_STATUS_V1` |
 | 5 | `ACTION_FEEDBACK_V1` |
+| 6 | `DOUBLE_PRESS_V1` |
+| 7 | `MEDIA_INFO_V1` |
 
 `Capabilities` is a `u32` set in `kivori-model`. Bits are allocated centrally and never reused.
 
@@ -283,7 +286,8 @@ desktop 1 Hz: CPU/RAM, volume/mute, media, local time -> StatusPublisher -> Stat
 - `ButtonGesture` (`firmware/.../input/button.rs`) is pure and host-tested. Times are measured between debounced edges at the moment the switch first changed, and a release still inside its debounce window stops the hold clock. A press that starts while a rotary gesture is open never becomes Press or Hold (one gesture owns input) but can still recover. While the switch is down, detents are decoded but swallowed (invariant 33).
 - The recovery hold needs no host, session or capability (invariant 24). A session boundary drops a half-done press but never a running recovery. On the reboot tick the device renders "Restarting", queues `Bye(Shutdown)` for an accepted session, flushes it for at most 20 ms and calls `esp_hal::system::software_reset`.
 - Local acknowledgement: while the switch is down the keycap sinks 8 px (Buddy view) or the screen gets a white frame. This is the device's own < 50 ms acknowledgement, not a confirmation.
-- Bindings (M1, fixed until the M2 config UI): Press = Play/Pause, Hold = master mute. Shortcut and launch actions exist and run from Device Studio's test action.
+- Double press: with `DOUBLE_PRESS_V1` negotiated, a short press waits 250 ms (`DOUBLE_WINDOW_MS`) for a second key-down; two short presses are one `DoublePress`, which the desktop turns into the next display view. A long second press fires the first `Press`, then behaves normally (Hold, recovery). Without the capability a press fires on release with no wait.
+- Bindings (M1, fixed until the M2 config UI): Press = Play/Pause, Hold = master mute, Double press = next view. Shortcut and launch actions exist and run from Device Studio's test action.
 - Classification (`desk/actions.rs`): mute is State Confirmed only when the OS read-back shows the new state; play/pause and a shortcut are always Unverified (a matching media state can be stale or caused by something else, so it is never proof; the media indicator and view show what the OS reports); a launch is Execution Confirmed once the OS accepted it (`open -a` exit 0 on macOS, process created on Windows; no shell). A missing permission is Error with `permission_required`, never another mechanism.
 - `FeedbackLadder` (`desk/mod.rs`): Processing at 500 ms, Unverified at 1.5 s, after which a late outcome is logged but not shown. Timeout is never Error. A newer action replaces the pending feedback; a session end clears it, and requests still queued for the worker are skipped (an epoch counter), so nothing from an old session runs later. A new streak of failed volume writes is shown once as a volume Error.
 - `StatusPublisher`: sends `Status` when anything shown changes, when the minute rolls over, or every 30 s; the device advances the clock locally in between. High load is CPU at or above 85 % for 3 samples, cleared below 70 % or when CPU is unknown.

@@ -147,6 +147,9 @@ Hold = master mute. Shortcut and launch run from Device Studio's Test action pan
 - [ ] 4.7 Press while the knob is still turning | no Play/Pause fires
 - [ ] 4.8 Unplug, press and hold during the outage, replug | nothing runs after reconnect (gate 2)
 
+- [ ] 4.24 Double press, ten times at a natural speed | the device moves to the next view each time (Buddy, Clock, Volume, Media, System, Buddy); no Play/Pause fires
+- [ ] 4.25 Single press after the double-press change | Play/Pause still fires once, about a quarter second after release; note whether the delay feels acceptable
+
 **Actions and confirmation**
 
 - [ ] 4.9 Hold to mute, then again to unmute; compare the OS mixer | OS mute matches each time; badge is the green check (State Confirmed). Windows and macOS
