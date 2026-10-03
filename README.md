@@ -59,7 +59,7 @@ Both live in one place, [`firmware/esp32-c3/src/profile.rs`](firmware/esp32-c3/s
 
 ```bash
 bun install
-just dev                       # Vite dev server for the Device Studio UI
+just desktop                   # UI dev server + native app with the bundled firmware, one command
 ```
 
 The native core owns the serial link; the webview receives only typed IPC commands. Device discovery is automatic — there is no COM-port picker by design.
