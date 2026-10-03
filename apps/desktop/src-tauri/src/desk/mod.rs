@@ -561,6 +561,72 @@ mod tests {
         );
     }
 
+    fn runtime(media: Arc<crate::platform::FakeMediaObserver>) -> DeskRuntime {
+        use crate::platform::system::NoSystemProbe;
+        use crate::platform::{FakeInputSynth, FakeVolumeBackend};
+        DeskRuntime::new(OsServices {
+            volume: Arc::new(FakeVolumeBackend::new(20)),
+            synth: Arc::new(FakeInputSynth::new(Ok(()))),
+            media,
+            system: Box::new(NoSystemProbe),
+            clock: || None,
+        })
+    }
+
+    #[test]
+    fn a_double_press_cycles_through_every_view_and_wraps() {
+        let mut desk = runtime(Arc::default());
+        let mut seen = vec![desk.mode()];
+        for id in 1..=DisplayMode::ALL.len() as u16 {
+            desk.on_input(
+                &LogicalInput::DoublePress { gesture_id: id },
+                ms(0),
+                &mut |_| {},
+            );
+            seen.push(desk.mode());
+        }
+        assert_eq!(&seen[..5], &DisplayMode::ALL);
+        assert_eq!(seen[5], DisplayMode::Buddy, "wraps back to the buddy");
+        assert!(
+            desk.tick(ms(0), &mut |_| {}).feedback.is_empty(),
+            "not an action"
+        );
+    }
+
+    #[test]
+    fn now_playing_is_sent_once_per_change_and_again_for_a_new_session() {
+        use crate::platform::{FakeMediaObserver, NowPlaying};
+        let media = Arc::new(FakeMediaObserver::default());
+        let mut desk = runtime(Arc::clone(&media));
+        desk.on_session_begin();
+        assert_eq!(
+            desk.tick(ms(0), &mut |_| {}).media_info,
+            Some(None),
+            "clears first"
+        );
+        assert_eq!(
+            desk.tick(ms(100), &mut |_| {}).media_info,
+            None,
+            "unchanged"
+        );
+
+        *media.now_playing.lock().unwrap() = Some(NowPlaying {
+            title: "Song".into(),
+            artist: "Band".into(),
+        });
+        let sent = desk
+            .tick(ms(1_000), &mut |_| {})
+            .media_info
+            .flatten()
+            .unwrap();
+        assert_eq!(sent.title.as_latin1(), b"Song");
+        assert_eq!(sent.artist.as_latin1(), b"Band");
+        assert_eq!(desk.tick(ms(1_100), &mut |_| {}).media_info, None);
+
+        desk.on_session_begin();
+        assert!(desk.tick(ms(1_200), &mut |_| {}).media_info.is_some());
+    }
+
     #[test]
     fn press_and_hold_follow_the_bindings_and_rotation_does_not() {
         let bindings = Bindings::default();
