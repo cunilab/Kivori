@@ -346,7 +346,7 @@ pub fn os_services(main: Option<MainThread>) -> OsServices {
         OsServices {
             volume: Arc::new(macos::MacVolumeBackend::new()),
             synth: Arc::new(synth::EnigoInputSynth::new(main)),
-            media: Arc::new(unimplemented::NoMediaObserver),
+            media: Arc::new(macos::MacMediaObserver::new()),
             system: Box::new(macos::MacSystemProbe),
             clock: macos::local_time,
         }

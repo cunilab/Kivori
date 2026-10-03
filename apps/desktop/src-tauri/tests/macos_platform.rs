@@ -6,10 +6,12 @@ use std::process::Command;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-use kivori_desktop::platform::macos::{local_time, MacSystemProbe, MacVolumeBackend};
+use kivori_desktop::platform::macos::{
+    local_time, MacMediaObserver, MacSystemProbe, MacVolumeBackend,
+};
 use kivori_desktop::platform::system::{cpu_percent, SystemProbe};
 use kivori_desktop::platform::{
-    ActionAvailability, ChangeOrigin, ConfirmationClass, VolumeBackend, VolumeChange,
+    ActionAvailability, ChangeOrigin, ConfirmationClass, MediaObserver, VolumeBackend, VolumeChange,
 };
 
 #[test]
@@ -62,6 +64,62 @@ fn local_time_matches_date_within_a_minute() {
         diff <= 1 || diff == 24 * 60 - 1,
         "date={text} ours={ours:?}"
     );
+}
+
+/// Live smoke test: whatever is (or is not) playing, reads never block and drop is prompt.
+/// Prints only the status and whether a title is known (never the title: ADR-0005).
+#[test]
+fn media_observer_reads_without_blocking_and_stops_promptly() {
+    let observer = MacMediaObserver::new();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let mut status = None;
+    while Instant::now() < deadline {
+        let t = Instant::now();
+        status = observer.status();
+        let now = observer.now_playing();
+        assert!(
+            t.elapsed() < Duration::from_millis(50),
+            "reads must not block"
+        );
+        if status.is_some() {
+            eprintln!("media: status={status:?} title_known={}", now.is_some());
+            break;
+        }
+        sleep(Duration::from_millis(100));
+    }
+    eprintln!("media after <=3 s: status={status:?}");
+    let t = Instant::now();
+    drop(observer);
+    assert!(
+        t.elapsed() < Duration::from_millis(1500),
+        "drop took {:?}",
+        t.elapsed()
+    );
+    // No adapter child may outlive the observer.
+    let leftover = Command::new("pgrep")
+        .args(["-f", "mediaremote-adapter.pl"])
+        .output()
+        .expect("pgrep");
+    let ours = String::from_utf8_lossy(&leftover.stdout)
+        .lines()
+        .filter_map(|pid| pid.trim().parse::<u32>().ok())
+        .filter(|pid| is_child_of_this_test(*pid))
+        .count();
+    assert_eq!(ours, 0, "adapter process left running");
+}
+
+fn is_child_of_this_test(pid: u32) -> bool {
+    Command::new("ps")
+        .args(["-o", "ppid=", "-p", &pid.to_string()])
+        .output()
+        .ok()
+        .and_then(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .trim()
+                .parse::<u32>()
+                .ok()
+        })
+        == Some(std::process::id())
 }
 
 /// Restores the original volume and mute on drop, including on panic.

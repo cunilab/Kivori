@@ -106,6 +106,7 @@ problems and uses it without developer help. Start charging for beta units here.
 - [ ] Device flashing and provisioning process
 - [ ] Hardware QA checklist per unit (built from the remaining Phase 1–3 rows in [validation.md](./validation.md))
 - [ ] Signed Windows installer, bundling the known-compatible firmware (this is the beta's update authentication, gate 10)
+- [ ] macOS build (if shipped): bundle `target/<profile>/mediaremote-adapter/` as a resource, Developer ID-sign its two Mach-O helpers with hardened runtime, add `NSAppleEventsUsageDescription` and the `com.apple.security.automation.apple-events` entitlement, list the adapter (BSD-3) in third-party notices (ADR-0009)
 - [ ] Launch at login and tray presence; the window stays optional
 - [ ] Survive sleep/wake and lock/unlock with intentional screens, never a frozen frame (gate 9)
 - [ ] First-run onboarding
