@@ -43,10 +43,11 @@ pub struct SessionConfig {
 impl Default for SessionConfig {
     fn default() -> Self {
         Self {
+            // The release version, from the workspace `Cargo.toml` (one source of truth).
             app_version: FirmwareVersion {
-                major: 0,
-                minor: 0,
-                patch: 0,
+                major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap_or(0),
+                minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap_or(0),
+                patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap_or(0),
             },
             protocol_version: ProtocolVersion::new(PROTOCOL_MAJOR, PROTOCOL_MINOR),
             // The desktop implements mascot interaction, the rotary input receive path, and the
