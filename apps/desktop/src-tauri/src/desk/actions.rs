@@ -75,6 +75,7 @@ impl Bindings {
             rotate: MediaText::from_text("Volume"),
             press: MediaText::from_text(&self.press.label()),
             hold: MediaText::from_text(&self.hold.label()),
+            buttons: Default::default(),
         }
     }
 }

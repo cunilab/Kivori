@@ -256,6 +256,8 @@ pub struct ControlLabels {
     pub press: MediaText,
     /// A hold of the push switch.
     pub hold: MediaText,
+    /// The three contextual buttons, left to right (M2 hardware; empty until they exist).
+    pub buttons: [MediaText; 3],
 }
 
 /// The last CPU samples the device received (one per `Status`), oldest first, for a sparkline.

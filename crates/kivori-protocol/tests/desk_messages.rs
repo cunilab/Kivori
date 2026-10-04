@@ -171,6 +171,7 @@ fn control_labels_are_tag_18_roundtrip_and_fit_one_frame() {
             rotate: full,
             press: MediaText::from_text("Play/Pause"),
             hold: MediaText::default(),
+            buttons: [full, full, full],
         },
     });
     assert_eq!(roundtrip(&msg), msg);

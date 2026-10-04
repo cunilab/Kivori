@@ -80,7 +80,17 @@ stays the beta platform and its rows are tracked in a GitHub issue.
 
 **Outcome:** someone who did not build Kivori can configure and use it without editing code.
 
-- [ ] Config UI for Rotate / Press / Hold bindings
+- [ ] Three contextual buttons (#9), so the config UI is built once for all six controls:
+  - pins GPIO0, GPIO1, GPIO20 to GND with internal pull-ups; GPIO21 stays the UART0 boot console,
+    GPIO9 stays unused (download mode). First check the devkit has no 32.768 kHz crystal on 0/1
+  - interrupt-captured edges like the encoder (ADR-0007); each button gives Press and Hold, never
+    recovery; one gesture still owns all input, so no chords and nothing during a recovery hold
+  - wire: new `ControlId` variant and capability; labels already travel in `ControlLabels.buttons`
+  - screen: the three button labels take the bottom row, lined up with the physical buttons; the
+    knob label moves to the top row; press / hold labels show while the switch is down. The buddy
+    keeps its full size
+  - Wokwi diagram and scenario with the three buttons
+- [ ] Config UI for Rotate / Press / Hold and the three buttons
 - [ ] Bindings are profile-shaped from day one: General is a profile with no app rule, so app-aware
   profiles add match rules, not a new model. Every binding change re-sends the device labels
 - [ ] Action catalog with explicit scope (System Volume ≠ App Volume)
@@ -90,6 +100,8 @@ stays the beta platform and its rows are tracked in a GitHub issue.
 - [ ] Config stored locally per OS user and machine; survives restarts and updates; reset to defaults
 - [ ] Basic device status and diagnostics (versions, connection, health)
 - [ ] Hardware: rebind → use → restart → binding still there
+- [ ] Hardware: each button's press / hold timing and debounce; two buttons at once fire nothing;
+  the recovery hold still works with a button held
 - [ ] Gates 3, 4, 5
 
 Example config:
@@ -115,9 +127,6 @@ volume knob; capped to keep the beta reachable.
 - [ ] Example profiles: browser (tabs), editor, media player, meeting app. Meeting controls are
   shortcuts and show as Unverified; mic state only from the OS capture endpoint, never from an
   app's own mute
-- [ ] **Decision gate before M3 enclosure work:** three contextual buttons, tried on a breadboard
-  (free non-strapping GPIO 0, 1, 20; never GPIO 9) during a hardware session. Keep them only if
-  real use shows the knob + press + hold run out in common profiles
 - [ ] Hardware: switch apps → labels and bindings change together; UAC prompt → Protected, no action
 - [ ] Gates 3, 4, 6
 
@@ -126,7 +135,8 @@ volume knob; capped to keep the beta reachable.
 **Outcome:** an external user receives Kivori, installs it, configures it, recovers from common
 problems and uses it without developer help. Start charging for beta units here.
 
-- [ ] Enclosure (keeps the USB port and the ESP32-C3 BOOT path reachable for recovery)
+- [ ] Enclosure (keeps the USB port and the ESP32-C3 BOOT path reachable for recovery; the three
+  buttons sit directly under their on-screen labels)
 - [ ] BOM and real unit cost
 - [ ] Repeatable assembly process
 - [ ] Device flashing and provisioning process

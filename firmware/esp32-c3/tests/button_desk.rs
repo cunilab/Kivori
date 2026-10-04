@@ -325,6 +325,7 @@ fn control_labels_show_only_when_negotiated_and_only_for_their_session() {
                 rotate: MediaText::from_text("Volume"),
                 press: MediaText::from_text("Play/Pause"),
                 hold: MediaText::from_text("Mute"),
+                buttons: Default::default(),
             },
         })
     };
