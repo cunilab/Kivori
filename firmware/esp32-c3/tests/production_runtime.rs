@@ -74,6 +74,7 @@ impl InputSource for NoInput {
             a: false,
             b: false,
             sw: false,
+            keys: [false; 3],
         }
     }
 }

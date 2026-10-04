@@ -179,6 +179,7 @@ let deskStatus: DeskStatusDto = {
   pressAction: 'playPause',
   holdAction: 'mute',
   doublePressAction: 'nextView',
+  buttonActions: ['previousTrack', 'playPause', 'nextTrack'],
   mediaTitle: null,
   mediaArtist: null,
   lastAction: null,

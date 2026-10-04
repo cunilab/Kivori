@@ -22,6 +22,7 @@ specification until row 3.15 is ticked.
 | Display D/C | 2 | Encoder SW | 10 |
 | Display RST | 3 | USB D- / D+ | 18 / 19 |
 | Backlight (active-high) | 8 | Encoder COM / VCC | GND / **3V3** (never 5 V) |
+| Button left / middle / right | 0 / 1 / 20 | Button other leg | GND (no resistor) |
 
 1. Once per machine: `bun install`, `cargo install espflash`, install `just`.
 2. Flash the product firmware: `just fw-flash` (builds with `physical-st7789`, then flashes and monitors).
@@ -180,6 +181,22 @@ Hold = master mute. Shortcut and launch run from Device Studio's Test action pan
 - [ ] G5 No hidden fallback | an action that cannot run says so and never switches mechanism (4.15)
 - [ ] G6 No state invention | unknown values show as `--` on the panel and `—` in the app (4.17 to 4.20)
 - [ ] G8 Recoverability | recovery works without healthy desktop software (4.4, 4.5)
+
+## Phase 5: Contextual buttons (M2)
+
+Software is done and host-tested (firmware gesture rules, wire, desktop bindings, e2e round trip).
+Wiring: three momentary tactile switches (6x6 mm), each between its GPIO and GND, no resistors or
+capacitors; firmware enables the internal pull-ups and debounces 20 ms. Default bindings, left to
+right: Previous track, Play/Pause, Next track (Press only; Hold unbound until the config UI).
+
+- [ ] 5.1 Before wiring: inspect the devkit near GPIO0/GPIO1 | no 32.768 kHz crystal fitted (if one is, stop: pick other pins before soldering)
+- [ ] 5.2 Power on with each button held in turn | Kivori boots normally every time (none is a strapping pin); the boot log still appears on GPIO21
+- [ ] 5.3 Each button, ten short presses while music plays | exactly one Previous / Play-Pause / Next per press; amber "?" badge (Unverified); a white frame on press
+- [ ] 5.4 Each button held about 1 s | nothing runs (Hold is unbound); held 12 s | nothing runs and the device never reboots
+- [ ] 5.5 Two buttons pressed together; a button pressed while the knob switch is down; a button pressed mid-turn | nothing fires from the second control (no chords)
+- [ ] 5.6 Hold the knob switch 10 s while a button is held | the device still reboots (invariant 24)
+- [ ] 5.7 Buddy view | button labels sit under the keycap, ticks line up with the physical buttons, `TURN Volume` top left; the keycap is full size
+- [ ] 5.8 Unplug, press buttons during the outage, replug | nothing runs after reconnect (gate 2)
 
 ## Evidence log
 

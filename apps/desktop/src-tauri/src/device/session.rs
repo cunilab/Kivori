@@ -62,7 +62,8 @@ impl Default for SessionConfig {
                 .union(Capabilities::ACTION_FEEDBACK_V1)
                 .union(Capabilities::DOUBLE_PRESS_V1)
                 .union(Capabilities::MEDIA_INFO_V1)
-                .union(Capabilities::CONTROL_LABELS_V1),
+                .union(Capabilities::CONTROL_LABELS_V1)
+                .union(Capabilities::CONTEXT_BUTTONS_V1),
             supported_majors: vec![PROTOCOL_MAJOR],
         }
     }

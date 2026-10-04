@@ -8,7 +8,8 @@ Kivori is a desk buddy you control your computer with. Two pillars carry equal w
 buddy is why people want one, the controller is why they keep using it. You control your computer
 with a physical knob and button; the buddy is always on screen, shows important desktop state and
 says what the controls do; simple system signals support it and never take its place. Hardware: ESP32-C3, ST7789
-240x240 display, HW-040 rotary encoder with push button; no buzzer, haptics or light sensor. A Tauri
+240x240 display, HW-040 rotary encoder with push button, three contextual buttons; no buzzer,
+haptics or light sensor. A Tauri
 app, Kivori Desktop, drives it and is the configuration center. The buddy has personality but only
 reports the desktop; it is not a virtual pet with its own goals.
 
@@ -84,6 +85,8 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   never one direction.
 - Short press fires only if released within **500 ms**. Discrete mappings fire once per
   press; no implicit key-repeat.
+- Contextual buttons give Press and Hold with the same timings, never recovery: held past ~2 s they
+  fire nothing. Their labels on screen always match what they run.
 - Recovery button: release between 500 ms and ~2 s may run a mapped Hold. At ~2 s
   recovery owns the gesture and the Hold is cancelled; at ~10 s from key-down the MCU
   reboots. Rotation during the hold changes nothing. Not configurable in v1.

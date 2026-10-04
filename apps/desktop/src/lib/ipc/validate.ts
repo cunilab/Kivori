@@ -41,6 +41,13 @@ function textOrNull(name: string, value: unknown): string | null {
   throw new Error(`Kivori: invalid ${name}.`);
 }
 
+function buttonActions(value: unknown): DeskStatusDto['buttonActions'] {
+  if (!Array.isArray(value) || value.length !== 3)
+    throw new Error('Kivori: invalid buttonActions.');
+  const one = (v: unknown) => (v === null ? null : oneOf('desk action', DESK_ACTIONS, v));
+  return [one(value[0]), one(value[1]), one(value[2])];
+}
+
 /** Validates a `DeskStatusDto`, throwing on any unknown token or malformed value. */
 export function parseDeskStatus(raw: unknown): DeskStatusDto {
   if (typeof raw !== 'object' || raw === null) throw new Error('Kivori: invalid desk status.');
@@ -69,6 +76,7 @@ export function parseDeskStatus(raw: unknown): DeskStatusDto {
     pressAction: oneOf('desk action', DESK_ACTIONS, r.pressAction),
     holdAction: oneOf('desk action', DESK_ACTIONS, r.holdAction),
     doublePressAction: oneOf('double-press action', DOUBLE_PRESS_ACTIONS, r.doublePressAction),
+    buttonActions: buttonActions(r.buttonActions),
     mediaTitle: textOrNull('mediaTitle', r.mediaTitle),
     mediaArtist: textOrNull('mediaArtist', r.mediaArtist),
     lastAction,

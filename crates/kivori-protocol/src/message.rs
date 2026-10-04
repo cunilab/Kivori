@@ -155,7 +155,13 @@ pub enum ControlId {
     Rotary,
     /// The encoder's push switch (M1, capability `BUTTON_INPUT_V1`).
     Button,
+    /// Contextual button 0, 1 or 2, left to right (capability `CONTEXT_BUTTONS_V1`). Press and
+    /// Hold only; it never runs the recovery hold.
+    ContextButton(u8),
 }
+
+/// How many contextual buttons there are; a `ContextButton` index must be below this.
+pub const CONTEXT_BUTTONS: u8 = 3;
 
 /// Semantic input. Raw electrical edges never reach the wire.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

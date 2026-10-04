@@ -1,5 +1,13 @@
 import type { ReactElement } from 'react';
-import { Hand, MousePointerClick, RefreshCw, RotateCw, Sparkles, TimerReset } from 'lucide-react';
+import {
+  CircleDot,
+  Hand,
+  MousePointerClick,
+  RefreshCw,
+  RotateCw,
+  Sparkles,
+  TimerReset,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -20,7 +28,7 @@ interface Gesture {
   action: string | null;
 }
 
-/** Controls: what each knob gesture does. Read-only in M1, bindings come from the desk status. */
+/** Controls: what each knob gesture and contextual button does. Read-only in M1, bindings come from the desk status. */
 export function ControlsPage({ desk }: { desk: DeskStatusDto | null }): ReactElement {
   const gestures: Gesture[] = [
     // The rotate binding is not part of the desk DTO; in M1 the knob always drives system volume.
@@ -32,6 +40,14 @@ export function ControlsPage({ desk }: { desk: DeskStatusDto | null }): ReactEle
       action: desk && strings.actions[desk.doublePressAction],
     },
     { key: 'hold', Icon: Hand, action: desk && strings.actions[desk.holdAction] },
+    ...(['button1', 'button2', 'button3'] as const).map((key, i) => {
+      const token = desk?.buttonActions[i];
+      return {
+        key,
+        Icon: CircleDot,
+        action: desk && (token ? strings.actions[token] : t.unbound),
+      };
+    }),
   ];
 
   return (

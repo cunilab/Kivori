@@ -133,6 +133,10 @@ pub enum ActionKind {
     Shortcut,
     /// Launching an application.
     Launch,
+    /// Media previous track.
+    PreviousTrack,
+    /// Media next track.
+    NextTrack,
 }
 
 /// How well an action's outcome is known (docs/product.md, actions and confirmation).

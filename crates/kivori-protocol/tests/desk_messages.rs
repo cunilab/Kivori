@@ -180,3 +180,21 @@ fn control_labels_are_tag_18_roundtrip_and_fit_one_frame() {
     assert!(bytes.len() <= kivori_protocol::MAX_PAYLOAD);
     assert_eq!(Capabilities::CONTROL_LABELS_V1.bits(), 1 << 8);
 }
+
+#[test]
+fn context_buttons_are_control_variant_2_with_their_index() {
+    let press = Message::InputEvent(InputEvent {
+        session: 0,
+        gesture_id: 0,
+        control: ControlId::ContextButton(2),
+        kind: InputKind::Hold,
+        device_ms: 0,
+    });
+    assert_eq!(roundtrip(&press), press);
+    assert_eq!(
+        &payload(&press)[..6],
+        &[13, 0, 0, 2, 2, 4],
+        "ContextButton = 2, index, Hold"
+    );
+    assert_eq!(Capabilities::CONTEXT_BUTTONS_V1.bits(), 1 << 9);
+}

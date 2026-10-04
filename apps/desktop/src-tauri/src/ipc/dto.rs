@@ -775,6 +775,8 @@ pub const fn desk_action_token(action: kivori_model::desk::ActionKind) -> &'stat
         ActionKind::Mute => "mute",
         ActionKind::Shortcut => "shortcut",
         ActionKind::Launch => "launch",
+        ActionKind::PreviousTrack => "previousTrack",
+        ActionKind::NextTrack => "nextTrack",
     }
 }
 
@@ -922,6 +924,8 @@ pub struct DeskStatusDto {
     pub hold_action: &'static str,
     /// Always `nextView` in M1: a double press shows the next display mode.
     pub double_press_action: &'static str,
+    /// Desk action tokens bound to the three contextual buttons' Press (`null` = unbound).
+    pub button_actions: [Option<&'static str>; 3],
     /// Now playing, when observable (`null` = unknown; empty string = the player gave none).
     pub media_title: Option<String>,
     pub media_artist: Option<String>,
@@ -982,6 +986,13 @@ const fn media_token(media: kivori_model::desk::MediaStatus) -> &'static str {
 }
 
 /// The desk projection before the device thread has observed anything.
+fn button_tokens(bindings: &crate::desk::Bindings) -> [Option<&'static str>; 3] {
+    bindings
+        .buttons
+        .each_ref()
+        .map(|b| b.as_ref().map(|a| desk_action_token(a.kind())))
+}
+
 #[must_use]
 pub fn initial_desk_status() -> DeskStatusDto {
     let bindings = crate::desk::Bindings::default();
@@ -996,6 +1007,7 @@ pub fn initial_desk_status() -> DeskStatusDto {
         press_action: desk_action_token(bindings.press.kind()),
         hold_action: desk_action_token(bindings.hold.kind()),
         double_press_action: "nextView",
+        button_actions: button_tokens(&bindings),
         media_title: None,
         media_artist: None,
         last_action: None,
@@ -1017,6 +1029,7 @@ pub fn desk_status_dto(desk: &crate::desk::DeskRuntime) -> DeskStatusDto {
         press_action: desk_action_token(desk.bindings().press.kind()),
         hold_action: desk_action_token(desk.bindings().hold.kind()),
         double_press_action: "nextView",
+        button_actions: button_tokens(desk.bindings()),
         media_title: desk.now_playing().map(|np| np.title.clone()),
         media_artist: desk.now_playing().map(|np| np.artist.clone()),
         last_action: desk.last_action().map(|last| DeskActionDto {

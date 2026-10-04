@@ -52,7 +52,7 @@ pub struct UnimplementedInputSynth {
 }
 
 impl InputSynth for UnimplementedInputSynth {
-    fn send_media_play_pause(&self) -> Result<(), ActionError> {
+    fn send_media_key(&self, _key: super::MediaKey) -> Result<(), ActionError> {
         Err(ActionError::NotImplemented {
             target: self.target,
         })

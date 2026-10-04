@@ -8,7 +8,7 @@
 //! defence in depth against intra-session reordering.
 
 use kivori_model::input::Direction;
-use kivori_protocol::message::{ControlId, InputEvent, InputKind};
+use kivori_protocol::message::{ControlId, InputEvent, InputKind, CONTEXT_BUTTONS};
 use std::collections::HashSet;
 
 /// A validated, session-fresh input, ready for later tasks to bind to an action.
@@ -45,6 +45,18 @@ pub enum LogicalInput {
     /// Two short presses in a row (next display view).
     DoublePress {
         /// The device's identifier for this pair.
+        gesture_id: u16,
+    },
+    /// A short press of contextual button `button` (0..3, left to right).
+    ButtonPress {
+        button: u8,
+        /// The device's identifier for this press.
+        gesture_id: u16,
+    },
+    /// A Hold of contextual button `button`.
+    ButtonHold {
+        button: u8,
+        /// The device's identifier for this press.
         gesture_id: u16,
     },
 }
@@ -101,6 +113,15 @@ impl InputIngress {
             return Err(RejectReason::StaleSession);
         }
 
+        if let ControlId::ContextButton(button) = event.control {
+            let gesture_id = event.gesture_id;
+            return match event.kind {
+                _ if button >= CONTEXT_BUTTONS => Err(RejectReason::ControlMismatch),
+                InputKind::Press => Ok(Some(LogicalInput::ButtonPress { button, gesture_id })),
+                InputKind::Hold => Ok(Some(LogicalInput::ButtonHold { button, gesture_id })),
+                _ => Err(RejectReason::ControlMismatch),
+            };
+        }
         let button_kind = matches!(
             event.kind,
             InputKind::Press | InputKind::Hold | InputKind::DoublePress
@@ -144,6 +165,48 @@ impl InputIngress {
                     gesture_id: event.gesture_id,
                 }))
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn event(control: ControlId, kind: InputKind) -> InputEvent {
+        InputEvent {
+            session: 7,
+            gesture_id: 1,
+            control,
+            kind,
+            device_ms: 0,
+        }
+    }
+
+    #[test]
+    fn context_buttons_accept_press_and_hold_for_their_three_indexes_only() {
+        let mut ingress = InputIngress::new();
+        ingress.begin_session(7);
+        assert_eq!(
+            ingress.accept(&event(ControlId::ContextButton(2), InputKind::Press)),
+            Ok(Some(LogicalInput::ButtonPress {
+                button: 2,
+                gesture_id: 1
+            }))
+        );
+        assert_eq!(
+            ingress.accept(&event(ControlId::ContextButton(0), InputKind::Hold)),
+            Ok(Some(LogicalInput::ButtonHold {
+                button: 0,
+                gesture_id: 1
+            }))
+        );
+        for bad in [
+            event(ControlId::ContextButton(3), InputKind::Press),
+            event(ControlId::ContextButton(1), InputKind::DoublePress),
+            event(ControlId::ContextButton(1), InputKind::GestureStarted),
+        ] {
+            assert_eq!(ingress.accept(&bad), Err(RejectReason::ControlMismatch));
         }
     }
 }

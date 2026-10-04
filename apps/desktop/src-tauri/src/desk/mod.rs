@@ -443,6 +443,9 @@ pub fn bound_action<'b>(bindings: &'b Bindings, input: &LogicalInput) -> Option<
     match input {
         LogicalInput::Press { .. } => Some(&bindings.press),
         LogicalInput::Hold { .. } => Some(&bindings.hold),
+        LogicalInput::ButtonPress { button, .. } => {
+            bindings.buttons.get(usize::from(*button))?.as_ref()
+        }
         _ => None,
     }
 }
@@ -647,6 +650,15 @@ mod tests {
         assert_eq!(labels.rotate.as_latin1(), b"Volume");
         assert_eq!(labels.press.as_latin1(), b"Play/Pause");
         assert_eq!(labels.hold.as_latin1(), b"Mute");
+        let buttons = labels.buttons.map(|b| b.as_latin1().to_vec());
+        assert_eq!(
+            buttons,
+            [
+                b"Previous".to_vec(),
+                b"Play/Pause".to_vec(),
+                b"Next".to_vec()
+            ]
+        );
         assert_eq!(desk.tick(ms(100), &mut |_| {}).controls, None, "unchanged");
         desk.on_session_begin();
         assert!(desk.tick(ms(200), &mut |_| {}).controls.is_some());
@@ -670,5 +682,20 @@ mod tests {
             bound_action(&bindings, &LogicalInput::GestureStarted { gesture_id: 3 }),
             None
         );
+        let press = |button| LogicalInput::ButtonPress {
+            button,
+            gesture_id: 4,
+        };
+        assert_eq!(
+            bound_action(&bindings, &press(0)),
+            Some(&Action::PreviousTrack)
+        );
+        assert_eq!(bound_action(&bindings, &press(2)), Some(&Action::NextTrack));
+        assert_eq!(bound_action(&bindings, &press(3)), None, "no such button");
+        let hold = LogicalInput::ButtonHold {
+            button: 0,
+            gesture_id: 5,
+        };
+        assert_eq!(bound_action(&bindings, &hold), None, "unbound until M2");
     }
 }

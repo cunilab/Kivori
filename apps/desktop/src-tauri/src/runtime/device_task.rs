@@ -724,7 +724,9 @@ impl RotaryPipeline {
                 Ok(Some(
                     input @ (LogicalInput::Press { .. }
                     | LogicalInput::Hold { .. }
-                    | LogicalInput::DoublePress { .. }),
+                    | LogicalInput::DoublePress { .. }
+                    | LogicalInput::ButtonPress { .. }
+                    | LogicalInput::ButtonHold { .. }),
                 )) => {
                     self.buttons.push(input);
                 }

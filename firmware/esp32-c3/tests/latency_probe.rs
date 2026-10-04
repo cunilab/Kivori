@@ -46,7 +46,12 @@ struct Rig<'c> {
 }
 
 fn lv(a: bool, b: bool) -> InputLevels {
-    InputLevels { a, b, sw: false }
+    InputLevels {
+        a,
+        b,
+        sw: false,
+        keys: [false; 3],
+    }
 }
 
 impl<'c> Rig<'c> {

@@ -22,7 +22,7 @@ pub use message::{
     Bye, ControlId, ControlLabelsUpdate, DeviceId, Diagnostic, ErrorReport, Feedback,
     FirmwareVersion, Health, Hello, HelloAck, InputEvent, InputKind, MascotActionApplied,
     MediaInfoUpdate, Message, Nonce, Ping, PlayMascotAction, Pong, Presentation, Ready, SetState,
-    StateReport, Status,
+    StateReport, Status, CONTEXT_BUTTONS,
 };
 pub use negotiate::negotiate;
 

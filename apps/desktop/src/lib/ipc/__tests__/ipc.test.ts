@@ -89,6 +89,7 @@ const validDesk = {
   pressAction: 'playPause',
   holdAction: 'mute',
   doublePressAction: 'nextView',
+  buttonActions: ['previousTrack', 'playPause', 'nextTrack'],
   mediaTitle: 'Weightless',
   mediaArtist: '',
   lastAction: { action: 'shortcut', result: 'unverified', permissionRequired: true },

@@ -1,4 +1,4 @@
-//! Physical HW-040 [`InputSource`].
+//! Physical HW-040 + contextual buttons [`InputSource`].
 //!
 //! This adapter does NOTHING but read pin levels. All conditioning and semantics live above
 //! the port in `input::quadrature` and `input::gesture`, which is exactly what makes them
@@ -31,7 +31,12 @@ use crate::ports::{Clock, InputSource};
 /// invalid transition, which loses that detent but never invents one.
 const EDGE_QUEUE: usize = 128;
 
-type Pins = (Input<'static>, Input<'static>, Input<'static>);
+type Pins = (
+    Input<'static>,
+    Input<'static>,
+    Input<'static>,
+    [Input<'static>; 3],
+);
 
 static PINS: Mutex<RefCell<Option<Pins>>> = Mutex::new(RefCell::new(None));
 static EDGES: Mutex<RefCell<Deque<(InputLevels, ElapsedMs), EDGE_QUEUE>>> =
@@ -42,6 +47,7 @@ fn read(pins: &Pins) -> InputLevels {
         a: pins.0.is_low(),
         b: pins.1.is_low(),
         sw: pins.2.is_low(),
+        keys: [pins.3[0].is_low(), pins.3[1].is_low(), pins.3[2].is_low()],
     }
 }
 
@@ -55,6 +61,9 @@ fn on_edge() {
         pins.0.clear_interrupt();
         pins.1.clear_interrupt();
         pins.2.clear_interrupt();
+        for key in &mut pins.3 {
+            key.clear_interrupt();
+        }
         let mut edges = EDGES.borrow_ref_mut(cs);
         if edges.is_full() {
             let _ = edges.pop_front();
@@ -70,7 +79,8 @@ fn on_edge() {
 pub struct PhysicalRotary;
 
 impl PhysicalRotary {
-    /// Takes ownership of already-configured `clk`/`dt`/`sw` inputs and starts capturing edges.
+    /// Takes ownership of already-configured `clk`/`dt`/`sw` and contextual-button inputs and
+    /// starts capturing edges.
     ///
     /// Callers are expected to have configured each pin with an internal pull-up (the HW-040
     /// lines are active-low), matching [`crate::profile::physical_st7789::ROTARY`].
@@ -80,13 +90,17 @@ impl PhysicalRotary {
         mut clk: Input<'static>,
         mut dt: Input<'static>,
         mut sw: Input<'static>,
+        mut keys: [Input<'static>; 3],
     ) -> Self {
         io.set_interrupt_handler(on_edge);
         critical_section::with(|cs| {
             clk.listen(Event::AnyEdge);
             dt.listen(Event::AnyEdge);
             sw.listen(Event::AnyEdge);
-            PINS.borrow_ref_mut(cs).replace((clk, dt, sw));
+            for key in &mut keys {
+                key.listen(Event::AnyEdge);
+            }
+            PINS.borrow_ref_mut(cs).replace((clk, dt, sw, keys));
         });
         Self
     }
@@ -95,14 +109,9 @@ impl PhysicalRotary {
 impl InputSource for PhysicalRotary {
     fn sample(&mut self) -> InputLevels {
         critical_section::with(|cs| {
-            PINS.borrow_ref(cs).as_ref().map_or(
-                InputLevels {
-                    a: false,
-                    b: false,
-                    sw: false,
-                },
-                read,
-            )
+            PINS.borrow_ref(cs)
+                .as_ref()
+                .map_or(InputLevels::default(), read)
         })
     }
 

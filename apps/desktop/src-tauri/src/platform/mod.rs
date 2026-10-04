@@ -121,8 +121,16 @@ pub enum ActionError {
 
 /// Synthesized key input: media keys and keyboard shortcuts. Ok means the input was dispatched;
 /// its effect is never observable, so callers report it as Unverified.
+/// A system media key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaKey {
+    PlayPause,
+    Previous,
+    Next,
+}
+
 pub trait InputSynth: Send + Sync {
-    fn send_media_play_pause(&self) -> Result<(), ActionError>;
+    fn send_media_key(&self, key: MediaKey) -> Result<(), ActionError>;
     fn send_shortcut(&self, shortcut: &Shortcut) -> Result<(), ActionError>;
 }
 
@@ -277,11 +285,16 @@ impl FakeInputSynth {
 }
 
 impl InputSynth for FakeInputSynth {
-    fn send_media_play_pause(&self) -> Result<(), ActionError> {
+    fn send_media_key(&self, key: MediaKey) -> Result<(), ActionError> {
+        let name = match key {
+            MediaKey::PlayPause => "media-play-pause",
+            MediaKey::Previous => "media-previous",
+            MediaKey::Next => "media-next",
+        };
         self.sent
             .lock()
             .expect("fake synth mutex")
-            .push("media-play-pause".to_string());
+            .push(name.to_string());
         self.result.clone()
     }
 

@@ -1355,14 +1355,31 @@ pub fn render_chrome(band: &mut TileBand, view: &DeskView) {
     }
 }
 
-/// What each control does, under the keycap of the Buddy view: three 80 px columns of a small
-/// caption (the control) over its label (the bound action, as the desktop named it). A control
-/// with an empty label is left out, never guessed. A label too wide for its column fades out at
-/// the column edge.
+/// What each control does, on the Buddy view, never shrinking the keycap: one row under it and
+/// the top-left corner. A control with an empty label is left out, never guessed.
+///
+/// With any contextual button bound, the bottom row belongs to the three buttons (each label over
+/// a tick pointing down at its physical button) and the knob's label moves to the top left.
+/// Without buttons, the bottom row is a `TURN` / `PRESS` / `HOLD` legend for the encoder.
 fn control_legend(band: &mut TileBand, labels: &ControlLabels) {
     const COL_W: i32 = SCREEN / 3;
-    const PAD: i32 = 4;
-    const FADE: i32 = 10;
+    if labels.buttons.iter().any(|b| !b.is_empty()) {
+        for (i, label) in labels.buttons.iter().enumerate() {
+            if label.is_empty() {
+                continue;
+            }
+            let x0 = i as i32 * COL_W;
+            column_label(band, label.as_latin1(), (x0, x0 + COL_W), 214);
+            rrect(band, x0 + COL_W / 2 - 8, 234, 16, 3, 1, FAINT);
+        }
+        let rotate = labels.rotate.as_latin1();
+        if !rotate.is_empty() {
+            text(band, F_SMALL, b"TURN", 8, 12, FAINT);
+            let x = 8 + text_width(F_SMALL, b"TURN ");
+            text_clipped(band, F_LABEL, rotate, (x, 10), MUTED, (x - 10, 92, 10));
+        }
+        return;
+    }
     let columns: [(&[u8], &MediaText); 3] = [
         (b"TURN", &labels.rotate),
         (b"PRESS", &labels.press),
@@ -1374,14 +1391,21 @@ fn control_legend(band: &mut TileBand, labels: &ControlLabels) {
             continue;
         }
         let x0 = i as i32 * COL_W;
-        let cx = x0 + COL_W / 2;
-        text_c(band, F_SMALL, caption, cx, 210, FAINT);
-        let (x1, x2) = (x0 + PAD, x0 + COL_W - PAD);
-        let w = text_width(F_LABEL, label);
-        let x = if w <= x2 - x1 { cx - w / 2 } else { x1 };
-        // The left fade zone sits before the text, so only the cut (right) end fades.
-        text_clipped(band, F_LABEL, label, (x, 222), TEXT, (x1 - FADE, x2, FADE));
+        text_c(band, F_SMALL, caption, x0 + COL_W / 2, 210, FAINT);
+        column_label(band, label, (x0, x0 + COL_W), 222);
     }
+}
+
+/// `label` centred in the column `[x0, x1)` at `y`, or, when too wide, left-aligned and faded out
+/// at the column's right edge.
+fn column_label(band: &mut TileBand, label: &[u8], (x0, x1): (i32, i32), y: i32) {
+    const PAD: i32 = 4;
+    const FADE: i32 = 10;
+    let (l, r) = (x0 + PAD, x1 - PAD);
+    let w = text_width(F_LABEL, label);
+    let x = if w <= r - l { (x0 + x1 - w) / 2 } else { l };
+    // The left fade zone sits before the text, so only the cut (right) end fades.
+    text_clipped(band, F_LABEL, label, (x, y), TEXT, (l - FADE, r, FADE));
 }
 
 /// The action feedback badge: a 36 px circle at the top left, cut out of whatever is beneath by

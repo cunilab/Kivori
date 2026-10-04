@@ -100,6 +100,8 @@ export const strings = {
     mute: 'Mute',
     shortcut: 'Keyboard shortcut',
     launch: 'Launch app',
+    previousTrack: 'Previous track',
+    nextTrack: 'Next track',
     nextView: 'Next view',
   },
   results: {
@@ -126,7 +128,11 @@ export const strings = {
       press: { name: 'Press', hint: 'Press and release within half a second.' },
       doublePress: { name: 'Double press', hint: 'Two quick presses.' },
       hold: { name: 'Hold', hint: 'Hold for about one second, then release.' },
+      button1: { name: 'Left button', hint: 'Press and release.' },
+      button2: { name: 'Middle button', hint: 'Press and release.' },
+      button3: { name: 'Right button', hint: 'Press and release.' },
     },
+    unbound: 'Not set',
     systemVolume: 'System volume',
     recoveryTitle: 'Restart Kivori',
     recovery:

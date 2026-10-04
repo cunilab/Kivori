@@ -14,7 +14,7 @@ use std::thread::JoinHandle;
 use kivori_model::desk::{ActionKind, ControlLabels, FeedbackKind, MediaText};
 
 use crate::platform::{
-    ActionError, BackendError, InputSynth, MediaObserver, Shortcut, VolumeBackend,
+    ActionError, BackendError, InputSynth, MediaKey, MediaObserver, Shortcut, VolumeBackend,
 };
 
 /// One discrete action a control can be bound to.
@@ -22,6 +22,10 @@ use crate::platform::{
 pub enum Action {
     /// Media play/pause.
     PlayPause,
+    /// Media previous track.
+    PreviousTrack,
+    /// Media next track.
+    NextTrack,
     /// Toggle master mute on the default output device.
     ToggleMute,
     /// Send a keyboard shortcut.
@@ -36,6 +40,8 @@ impl Action {
     pub const fn kind(&self) -> ActionKind {
         match self {
             Action::PlayPause => ActionKind::PlayPause,
+            Action::PreviousTrack => ActionKind::PreviousTrack,
+            Action::NextTrack => ActionKind::NextTrack,
             Action::ToggleMute => ActionKind::Mute,
             Action::Shortcut(_) => ActionKind::Shortcut,
             Action::Launch(_) => ActionKind::Launch,
@@ -49,6 +55,8 @@ impl Action {
     pub fn label(&self) -> String {
         match self {
             Action::PlayPause => "Play/Pause".into(),
+            Action::PreviousTrack => "Previous".into(),
+            Action::NextTrack => "Next".into(),
             Action::ToggleMute => "Mute".into(),
             Action::Shortcut(shortcut) => shortcut.to_string(),
             // An app name, not a path.
@@ -59,12 +67,15 @@ impl Action {
     }
 }
 
-/// What the push switch does. The rotary binding is fixed to master volume in M1; configurable
-/// bindings arrive with the M2 config UI.
+/// What the push switch and the contextual buttons do. The rotary binding is fixed to master
+/// volume; configurable bindings arrive with the M2 config UI.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Bindings {
     pub press: Action,
     pub hold: Action,
+    /// Press of each contextual button, left to right (`None` = unbound: no label, no action).
+    /// Their Hold is unbound until the config UI.
+    pub buttons: [Option<Action>; 3],
 }
 
 impl Bindings {
@@ -75,7 +86,11 @@ impl Bindings {
             rotate: MediaText::from_text("Volume"),
             press: MediaText::from_text(&self.press.label()),
             hold: MediaText::from_text(&self.hold.label()),
-            buttons: Default::default(),
+            buttons: self.buttons.each_ref().map(|button| {
+                button
+                    .as_ref()
+                    .map_or_else(MediaText::default, |a| MediaText::from_text(&a.label()))
+            }),
         }
     }
 }
@@ -85,6 +100,12 @@ impl Default for Bindings {
         Self {
             press: Action::PlayPause,
             hold: Action::ToggleMute,
+            // A media row: the most common use, and every result is honest (Unverified).
+            buttons: [
+                Some(Action::PreviousTrack),
+                Some(Action::PlayPause),
+                Some(Action::NextTrack),
+            ],
         }
     }
 }
@@ -134,10 +155,17 @@ pub fn execute(action: &Action, platform: &Platform) -> Outcome {
         // A media key's effect cannot be tied to this press: the observer's state may be stale
         // or changed by something else, so a matching state is never proof. Always Unverified;
         // the media indicator and view show the playback the OS actually reports.
-        Action::PlayPause => match platform.synth.send_media_play_pause() {
-            Ok(()) => Outcome::of(FeedbackKind::Unverified),
-            Err(error) => Outcome::from_error(&error),
-        },
+        Action::PlayPause | Action::PreviousTrack | Action::NextTrack => {
+            let key = match action {
+                Action::PreviousTrack => MediaKey::Previous,
+                Action::NextTrack => MediaKey::Next,
+                _ => MediaKey::PlayPause,
+            };
+            match platform.synth.send_media_key(key) {
+                Ok(()) => Outcome::of(FeedbackKind::Unverified),
+                Err(error) => Outcome::from_error(&error),
+            }
+        }
         Action::ToggleMute => {
             let Ok(muted) = platform.volume.read_mute() else {
                 return Outcome::of(FeedbackKind::Error);
@@ -292,6 +320,21 @@ mod tests {
         let unavailable = FakeVolumeBackend::with_availability(ActionAvailability::Unknown);
         let (p, _) = platform(Ok(()), None, unavailable);
         assert_eq!(kind(&Action::ToggleMute, &p), FeedbackKind::Error);
+    }
+
+    #[test]
+    fn previous_and_next_send_their_media_key_and_stay_unverified() {
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let p = Platform {
+            synth: synth.clone(),
+            ..platform(Ok(()), None, FakeVolumeBackend::new(0)).0
+        };
+        assert_eq!(kind(&Action::PreviousTrack, &p), FeedbackKind::Unverified);
+        assert_eq!(kind(&Action::NextTrack, &p), FeedbackKind::Unverified);
+        assert_eq!(
+            *synth.sent.lock().unwrap(),
+            ["media-previous", "media-next"]
+        );
     }
 
     #[test]

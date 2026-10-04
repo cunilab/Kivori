@@ -178,11 +178,16 @@ impl Dispatcher {
     pub fn send_button_event<T: Transport>(
         &mut self,
         transport: &mut T,
+        control: ControlId,
         gesture_id: u16,
         kind: InputKind,
         device_ms: u32,
     ) -> bool {
-        let needed = Capabilities::PHYSICAL_INPUT_V1.union(Capabilities::BUTTON_INPUT_V1);
+        let control_cap = match control {
+            ControlId::ContextButton(_) => Capabilities::CONTEXT_BUTTONS_V1,
+            ControlId::Button | ControlId::Rotary => Capabilities::BUTTON_INPUT_V1,
+        };
+        let needed = Capabilities::PHYSICAL_INPUT_V1.union(control_cap);
         if !self.negotiated_caps.contains(needed) {
             return false;
         }
@@ -192,7 +197,7 @@ impl Dispatcher {
         let msg = Message::InputEvent(InputEvent {
             session,
             gesture_id,
-            control: ControlId::Button,
+            control,
             kind,
             device_ms,
         });
