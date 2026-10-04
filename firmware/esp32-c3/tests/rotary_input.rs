@@ -329,7 +329,12 @@ fn script<const N: usize>(levels: [InputLevels; N]) -> FixedVec<InputLevels, SCR
 use kivori_model::input::InputLevels;
 
 fn lv(a: bool, b: bool) -> InputLevels {
-    InputLevels { a, b, sw: false }
+    InputLevels {
+        a,
+        b,
+        sw: false,
+        keys: [false; 3],
+    }
 }
 
 #[test]

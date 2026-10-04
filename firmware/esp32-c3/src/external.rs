@@ -92,6 +92,7 @@ fn kind_name(message: &Message) -> &'static str {
         Message::Status(_) => "Status",
         Message::Feedback(_) => "Feedback",
         Message::MediaInfo(_) => "MediaInfo",
+        Message::ControlLabels(_) => "ControlLabels",
     }
 }
 

@@ -38,13 +38,15 @@ use crate::render::TileRenderer;
 use crate::state::{DeviceEvent, DeviceState};
 use kivori_assets::AssetBlob;
 use kivori_model::desk::{
-    ActionFeedback, CpuHistory, DeskStatus, DeskView, DisplayMode, MediaInfo, VIEW_TRANSITION_MS,
+    ActionFeedback, ControlLabels, CpuHistory, DeskStatus, DeskView, DisplayMode, MediaInfo,
+    VIEW_TRANSITION_MS,
 };
 use kivori_model::input::InputLevels;
 use kivori_model::presentation::{PrimaryState, ValueDisplay};
 use kivori_model::{CompanionState, ElapsedMs, MascotAnimator};
 use kivori_protocol::{
-    Bye, ByeReason, Feedback, InputKind, MediaInfoUpdate, Message, Nonce, Presentation, Status,
+    Bye, ByeReason, ControlId, ControlLabelsUpdate, Feedback, InputKind, MediaInfoUpdate, Message,
+    Nonce, Presentation, Status,
 };
 
 /// Inactivity window, in milliseconds, after which an open rotary gesture ends
@@ -246,6 +248,7 @@ pub struct DeskState {
     status_at_ms: u32,
     feedback: Option<(ActionFeedback, u32)>,
     media_info: Option<MediaInfo>,
+    controls: Option<ControlLabels>,
     cpu_history: CpuHistory,
     /// The view before the latest switch, and when the switch happened.
     previous_mode: Option<DisplayMode>,
@@ -292,6 +295,15 @@ impl DeskState {
         true
     }
 
+    /// Applies the control labels of the current session.
+    pub fn apply_control_labels(&mut self, update: &ControlLabelsUpdate) -> bool {
+        if self.session != Some(update.session) {
+            return false;
+        }
+        self.controls = Some(update.labels);
+        true
+    }
+
     /// Shows a feedback of the current session, replacing any older one at once.
     pub fn apply_feedback(&mut self, feedback: &Feedback, now_ms: u32) -> bool {
         if self.session != Some(feedback.session) {
@@ -310,7 +322,12 @@ impl DeskState {
     /// What to render at `now_ms`: the clock advanced locally, expired feedback dropped
     /// (wrap-safe elapsed comparison, as in [`PresentationState::value_at`]).
     #[must_use]
-    pub fn view_at(&self, now_ms: u32, button_down: bool, recovery: Option<u8>) -> DeskView {
+    pub fn view_at(
+        &self,
+        now_ms: u32,
+        (button_down, switch_down): (bool, bool),
+        recovery: Option<u8>,
+    ) -> DeskView {
         let mut status = self.status;
         status.clock = status
             .clock
@@ -324,6 +341,7 @@ impl DeskState {
             status,
             feedback,
             button_down,
+            switch_down,
             recovery_percent: recovery,
             elapsed_ms: now_ms,
             media_info: self.media_info,
@@ -332,6 +350,7 @@ impl DeskState {
                 .previous_mode
                 .filter(|_| mode_age_ms < VIEW_TRANSITION_MS),
             mode_age_ms,
+            controls: self.controls,
         }
     }
 }
@@ -355,6 +374,8 @@ pub struct Runtime<'a> {
     presentation: PresentationState,
     /// Push-switch debounce, Press / Hold and the recovery hold.
     button: ButtonGesture,
+    /// The three contextual buttons: Press / Hold only, never recovery.
+    keys: [ButtonGesture; 3],
     /// Identifier of the last push-switch event sent; session-unique, never 0.
     button_id: u16,
     /// Session-scoped desk status and feedback.
@@ -384,6 +405,11 @@ impl<'a> Runtime<'a> {
             gesture: RotaryGesture::new(GESTURE_END_MS),
             presentation: PresentationState::new(),
             button: ButtonGesture::new(),
+            keys: [
+                ButtonGesture::new(),
+                ButtonGesture::new(),
+                ButtonGesture::new(),
+            ],
             button_id: 0,
             desk: DeskState::default(),
             redraw: false,
@@ -490,6 +516,9 @@ impl<'a> Runtime<'a> {
             // A half-done press must not fire into the next session; a running recovery hold is
             // not session-scoped and keeps going (invariant 24).
             self.button.reset();
+            for key in &mut self.keys {
+                key.reset();
+            }
             self.button_id = 0;
             self.redraw = true;
         }
@@ -498,6 +527,9 @@ impl<'a> Runtime<'a> {
         }
         if let Some(feedback) = self.dispatcher.take_feedback() {
             self.redraw |= self.desk.apply_feedback(&feedback, now);
+        }
+        if let Some(update) = self.dispatcher.take_control_labels() {
+            self.redraw |= self.desk.apply_control_labels(&update);
         }
         if let Some(update) = self.dispatcher.take_media_info() {
             self.redraw |= self.desk.apply_media_info(&update);
@@ -558,6 +590,11 @@ impl<'a> Runtime<'a> {
         if let Some(event) = self.button.poll(now) {
             self.on_button(transport, event, now);
         }
+        for index in 0..self.keys.len() {
+            if let Some(event) = self.keys[index].poll(now) {
+                self.on_key(transport, index, event, now);
+            }
+        }
         let redraw = core::mem::take(&mut self.redraw);
         if reached(now, self.next_frame_ms) || presentation_applied || redraw {
             if reached(now, self.next_frame_ms) {
@@ -576,12 +613,23 @@ impl<'a> Runtime<'a> {
             };
             let view = self.desk.view_at(
                 now,
-                self.button.is_down(),
+                (
+                    self.button.is_down() || self.keys.iter().any(ButtonGesture::is_down),
+                    self.button.is_down(),
+                ),
                 self.button.recovery_percent(now),
             );
             let mut pose = self.animator.pose_at(now);
             if view.button_down && view.status.mode == DisplayMode::Buddy {
                 pose.press_q8 = pose.press_q8.max(PRESS_ACK_Q8);
+            }
+            // Observed desk facts pick the buddy's face; the recovery takeover owns the screen.
+            if view.status.mode == DisplayMode::Buddy && view.recovery_percent.is_none() {
+                if let Some(face) = kivori_model::buddy_face(state, &view) {
+                    // ponytail: instant face swap; hide it inside a blink like state transitions if it reads as a pop on the panel
+                    pose.expression = face.expression;
+                    pose.press_q8 = pose.press_q8.max(face.press_q8);
+                }
             }
             // The transient overlay, if still in force, is composited on top of the mascot pose;
             // it expires locally back to `None` so the panel shows the plain pose once it lapses,
@@ -654,13 +702,29 @@ impl<'a> Runtime<'a> {
         at_ms: ElapsedMs,
     ) {
         let rotary_open = self.gesture.is_open();
+        // One gesture owns all input: a switch that goes down while any other control is busy
+        // (raw or debounced) can never fire, so two buttons at once never make a chord.
+        let key_busy = |keys: &[ButtonGesture; 3], i: usize| keys[i].is_down() || levels.keys[i];
+        let keys_busy = (0..3).any(|i| key_busy(&self.keys, i));
         for event in self
             .button
-            .update(levels.sw, at_ms, rotary_open)
+            .update(levels.sw, at_ms, rotary_open || keys_busy)
             .into_iter()
             .flatten()
         {
             self.on_button(transport, event, at_ms);
+        }
+        let switch_busy = levels.sw || self.button.is_down();
+        for index in 0..self.keys.len() {
+            let others = (0..3).any(|i| i != index && key_busy(&self.keys, i));
+            let events = self.keys[index].update(
+                levels.keys[index],
+                at_ms,
+                rotary_open || switch_busy || others,
+            );
+            for event in events.into_iter().flatten() {
+                self.on_key(transport, index, event, at_ms);
+            }
         }
         // The decoder always tracks the phase, but while the switch is down its detents are
         // swallowed: one gesture owns input, and rotation never cancels or acts during a hold
@@ -670,7 +734,7 @@ impl<'a> Runtime<'a> {
         };
         // The raw level counts too: a knob wobbles as it is pressed, and a detent inside the
         // switch's debounce window must not change the volume either.
-        if levels.sw || self.button.is_down() {
+        if levels.sw || self.button.is_down() || keys_busy {
             return;
         }
         let (started, detent) = self.gesture.on_detent(direction, at_ms);
@@ -724,8 +788,39 @@ impl<'a> Runtime<'a> {
             ButtonEvent::Down | ButtonEvent::Released | ButtonEvent::RecoveryStarted => return,
         };
         self.button_id = self.button_id.wrapping_add(1).max(1);
-        self.dispatcher
-            .send_button_event(transport, self.button_id, kind, at_ms);
+        self.dispatcher.send_button_event(
+            transport,
+            ControlId::Button,
+            self.button_id,
+            kind,
+            at_ms,
+        );
+    }
+
+    /// Acts on one contextual-button event: Press / Hold go to the desktop. These buttons never
+    /// run recovery, so a hold past ~2 s simply fires nothing (`ButtonGesture` reports it as
+    /// recovery, which is ignored here, and its `Reboot` never reaches `on_button`).
+    fn on_key<T: Transport>(
+        &mut self,
+        transport: &mut T,
+        index: usize,
+        event: ButtonEvent,
+        at_ms: ElapsedMs,
+    ) {
+        self.redraw = true;
+        let kind = match event {
+            ButtonEvent::Press => InputKind::Press,
+            ButtonEvent::Hold => InputKind::Hold,
+            _ => return,
+        };
+        self.button_id = self.button_id.wrapping_add(1).max(1);
+        self.dispatcher.send_button_event(
+            transport,
+            ControlId::ContextButton(index as u8),
+            self.button_id,
+            kind,
+            at_ms,
+        );
     }
 }
 

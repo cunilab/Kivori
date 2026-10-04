@@ -14,9 +14,11 @@
 //! identically to `eConsole` is a physical-validation item (Task 14), not an assumption baked in
 //! here.
 
+pub mod foreground;
 pub mod media;
 pub mod system;
 
+pub use foreground::WindowsForeground;
 pub use media::WindowsMediaObserver;
 pub use system::{local_time, WindowsSystemProbe};
 

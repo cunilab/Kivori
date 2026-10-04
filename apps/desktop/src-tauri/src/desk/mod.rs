@@ -7,22 +7,26 @@
 //! it shows changes (docs/product.md, actions and confirmation).
 
 pub mod actions;
+pub mod profile;
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use kivori_model::desk::{
-    ActionFeedback, ActionKind, ClockTime, DeskStatus, DisplayMode, FeedbackKind, MediaInfo,
-    MediaStatus, MediaText,
+    ActionFeedback, ActionKind, ClockTime, ControlLabels, DeskStatus, DisplayMode, FeedbackKind,
+    MediaInfo, MediaStatus, MediaText,
 };
 
 use crate::activity::{ActivityEventKind, ActivityMetadata, SessionActivity};
 use crate::input::LogicalInput;
 use crate::platform::system::{SystemMonitor, SystemProbe, SystemSample};
 use crate::platform::{
-    LocalClock, MediaObserver, NowPlaying, OsServices, VolumeBackend, VolumeChange,
+    Foreground, ForegroundObserver, LocalClock, MediaObserver, NowPlaying, OsServices, Shortcut,
+    VolumeBackend, VolumeChange,
 };
 pub use actions::{Action, ActionWorker, Bindings, Finished, Outcome, Platform};
+use kivori_model::input::Direction;
+use profile::{Context, Resolved, RotateBinding};
 
 /// Show Processing when an action has not finished after this long.
 pub const PROCESSING_AFTER: Duration = Duration::from_millis(500);
@@ -177,6 +181,23 @@ impl StatusPublisher {
 
 /// How often CPU/RAM, volume/mute and media are sampled.
 pub const SAMPLE_EVERY: Duration = Duration::from_secs(1);
+/// How often the focused app is observed.
+pub const FOCUS_POLL: Duration = Duration::from_millis(100);
+/// Worker ids of knob-shortcut detents carry this bit; the feedback ladder never tracks them.
+const KNOB: u64 = 1 << 63;
+
+/// A rotary gesture that owns a shortcut binding (a Volume gesture belongs to the volume loop).
+#[derive(Debug, Clone)]
+struct KnobGesture {
+    gesture_id: u16,
+    /// The focused app when the gesture began. Its keys go to whatever has focus, so once focus
+    /// moves the gesture is Context Lost, never retargeted (invariant 12).
+    target: Foreground,
+    /// Worker id for its detents: `KNOB` plus a per-gesture counter.
+    id: u64,
+    /// `(cw, ccw)`; `None` = suspended (a protected context), every detent is refused.
+    keys: Option<(Shortcut, Shortcut)>,
+}
 
 /// What one [`DeskRuntime::tick`] wants sent to the device (if the session negotiated it).
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -185,6 +206,8 @@ pub struct DeskOutput {
     pub feedback: Vec<ActionFeedback>,
     /// New now-playing text to send (`Some(None)` clears it on the device).
     pub media_info: Option<Option<MediaInfo>>,
+    /// Control labels to send: once per session, and again if a binding changes.
+    pub controls: Option<ControlLabels>,
 }
 
 /// The last action outcome, for the desktop UI.
@@ -197,7 +220,13 @@ pub struct LastAction {
 
 /// The desk pipeline the device task drives once per loop iteration.
 pub struct DeskRuntime {
-    bindings: Bindings,
+    context: Context,
+    foreground: Arc<dyn ForegroundObserver>,
+    next_focus_poll: Duration,
+    knob: Option<KnobGesture>,
+    knob_count: u64,
+    /// The knob gesture whose failure was already shown (once per gesture).
+    knob_failed: Option<u64>,
     worker: ActionWorker,
     ladder: FeedbackLadder,
     publisher: StatusPublisher,
@@ -211,6 +240,8 @@ pub struct DeskRuntime {
     now_playing: Option<NowPlaying>,
     /// What the device was last sent, `None` = nothing sent this session.
     sent_media: Option<Option<MediaInfo>>,
+    /// The control labels the device was last sent, `None` = nothing sent this session.
+    sent_controls: Option<ControlLabels>,
 }
 
 impl DeskRuntime {
@@ -223,6 +254,7 @@ impl DeskRuntime {
             media,
             system,
             clock,
+            foreground,
         } = services;
         let worker = ActionWorker::spawn(Platform {
             volume: Arc::clone(&volume),
@@ -231,7 +263,12 @@ impl DeskRuntime {
             launch: crate::platform::launch::launch,
         });
         Self {
-            bindings: Bindings::default(),
+            context: Context::new(profile::builtins()),
+            foreground,
+            next_focus_poll: Duration::ZERO,
+            knob: None,
+            knob_count: 0,
+            knob_failed: None,
             worker,
             ladder: FeedbackLadder::default(),
             publisher: StatusPublisher::default(),
@@ -244,12 +281,26 @@ impl DeskRuntime {
             last_action: None,
             now_playing: None,
             sent_media: None,
+            sent_controls: None,
         }
     }
 
+    /// The active profile's bindings.
     #[must_use]
-    pub const fn bindings(&self) -> &Bindings {
-        &self.bindings
+    pub fn bindings(&self) -> &Bindings {
+        &self.context.profile().bindings
+    }
+
+    /// Which profile owns the controls.
+    #[must_use]
+    pub const fn context(&self) -> &Context {
+        &self.context
+    }
+
+    /// The device legend for the active profile.
+    #[must_use]
+    pub fn labels(&self) -> ControlLabels {
+        self.context.labels()
     }
 
     #[must_use]
@@ -303,25 +354,137 @@ impl DeskRuntime {
         observe(desk_activity(ActivityEventKind::DeskActionRequested, kind));
         if !self.worker.request(id, action) {
             // The worker is gone: say so on the device too, never stay silent (gate 9).
-            self.finish(kind, Outcome::error(), observe);
-            if let Some(feedback) = self.ladder.on_outcome(id, FeedbackKind::Error) {
-                self.outbox.push(feedback);
-            }
+            self.fail(id, kind, observe);
         }
     }
 
-    /// A validated input from the device; only push-switch inputs act here.
+    /// A control whose action can't run here (suspended in a protected context): it says so,
+    /// never silently (invariant 19).
+    fn refuse(
+        &mut self,
+        kind: ActionKind,
+        now: Duration,
+        observe: &mut impl FnMut(SessionActivity),
+    ) {
+        let id = self.ladder.start(kind, now);
+        observe(desk_activity(ActivityEventKind::DeskActionRequested, kind));
+        self.fail(id, kind, observe);
+    }
+
+    fn fail(&mut self, id: u64, kind: ActionKind, observe: &mut impl FnMut(SessionActivity)) {
+        self.finish(kind, Outcome::error(), observe);
+        if let Some(feedback) = self.ladder.on_outcome(id, FeedbackKind::Error) {
+            self.outbox.push(feedback);
+        }
+    }
+
+    /// A validated input from the device, resolved against the active profile. Returns whether
+    /// the rotary volume loop owns it too (a detent or end of a gesture that began bound to
+    /// Volume); every other input is handled here.
     pub fn on_input(
         &mut self,
         input: &LogicalInput,
         now: Duration,
         observe: &mut impl FnMut(SessionActivity),
-    ) {
-        if matches!(input, LogicalInput::DoublePress { .. }) {
-            self.next_mode(observe);
-        } else if let Some(action) = bound_action(&self.bindings, input).cloned() {
-            self.run(action, now, observe);
+    ) -> bool {
+        match *input {
+            LogicalInput::Detent {
+                gesture_id,
+                direction,
+            } => return self.on_detent(gesture_id, direction, observe),
+            LogicalInput::GestureEnded { gesture_id } => {
+                let ours = self
+                    .knob
+                    .as_ref()
+                    .is_some_and(|k| k.gesture_id == gesture_id);
+                if ours {
+                    self.knob = None;
+                }
+                return !ours;
+            }
+            _ => {}
         }
+        // Deliberate input: Protected is classified first, then a pending app commits at once
+        // (invariants 8 and 9).
+        self.poll_focus(now);
+        self.context.commit_pending();
+        match *input {
+            LogicalInput::DoublePress { .. } => self.next_mode(observe),
+            // A gesture keeps the binding it began with until it ends (invariant 12).
+            LogicalInput::GestureStarted { gesture_id } => {
+                self.knob = None;
+                let keys = match self.context.rotate() {
+                    Some(RotateBinding::Volume) => return true,
+                    Some(RotateBinding::Shortcuts { cw, ccw, .. }) => Some((*cw, *ccw)),
+                    None => None,
+                };
+                self.knob_count += 1;
+                self.knob = Some(KnobGesture {
+                    gesture_id,
+                    target: self.context.latest().clone(),
+                    id: KNOB | self.knob_count,
+                    keys,
+                });
+            }
+            _ => match self.context.resolve(input) {
+                Resolved::Nothing => {}
+                Resolved::Run(action) => self.run(action, now, observe),
+                Resolved::Suspended(action) => self.refuse(action.kind(), now, observe),
+                // Not an action: the new labels are the feedback.
+                // ponytail: not in the activity log, no event kind fits; add one if users ask.
+                Resolved::CyclePin => self.context.cycle_pin(),
+            },
+        }
+        false
+    }
+
+    /// One detent of a knob-shortcut gesture: its key goes through the action worker with no
+    /// feedback of its own (the label is the feedback). Returns `true` for a Volume gesture.
+    fn on_detent(
+        &mut self,
+        gesture_id: u16,
+        direction: Direction,
+        observe: &mut impl FnMut(SessionActivity),
+    ) -> bool {
+        let Some(knob) = self.knob.clone().filter(|k| k.gesture_id == gesture_id) else {
+            return true;
+        };
+        // Protected beats even the binding a gesture began with: no keys into a secure surface.
+        // Focus moved since the gesture began: Context Lost, its remaining detents are ignored.
+        let keys = knob
+            .keys
+            .filter(|_| !self.context.protected() && *self.context.latest() == knob.target);
+        let sent = keys.is_some_and(|(cw, ccw)| {
+            let key = if direction == Direction::Cw { cw } else { ccw };
+            self.worker.request(knob.id, Action::Shortcut(key))
+        });
+        if !sent {
+            self.knob_failure(knob.id, Outcome::error(), observe);
+        }
+        false
+    }
+
+    /// A knob gesture failed: shown once per gesture, never per detent.
+    fn knob_failure(
+        &mut self,
+        id: u64,
+        outcome: Outcome,
+        observe: &mut impl FnMut(SessionActivity),
+    ) {
+        if self.knob_failed == Some(id) {
+            return;
+        }
+        self.knob_failed = Some(id);
+        self.finish(ActionKind::Shortcut, outcome, observe);
+        self.outbox.push(ActionFeedback {
+            action: ActionKind::Shortcut,
+            kind: FeedbackKind::Error,
+        });
+    }
+
+    fn poll_focus(&mut self, now: Duration) {
+        self.next_focus_poll = now + FOCUS_POLL;
+        self.context.observe(self.foreground.foreground(), now);
     }
 
     /// An outcome known elsewhere (a failed volume write) shown through the same channel.
@@ -342,12 +505,15 @@ impl DeskRuntime {
     pub fn on_session_begin(&mut self) {
         self.publisher.invalidate();
         self.sent_media = None;
+        self.sent_controls = None;
     }
 
     /// The session ended: nothing in flight reaches a later session.
     pub fn on_session_end(&mut self) {
         self.ladder.clear();
         self.outbox.clear();
+        // The device drops an open gesture with the session.
+        self.knob = None;
         // Presses still queued for the worker belong to the old session: they must not run
         // (gate 2). One already executing cannot be recalled.
         self.worker.cancel_pending();
@@ -366,6 +532,9 @@ impl DeskRuntime {
             });
             self.now_playing = self.media.now_playing();
         }
+        if now >= self.next_focus_poll {
+            self.poll_focus(now);
+        }
         let media_info = self.now_playing.as_ref().map(|np| MediaInfo {
             title: MediaText::from_text(&np.title),
             artist: MediaText::from_text(&np.artist),
@@ -374,7 +543,19 @@ impl DeskRuntime {
             self.sent_media = Some(media_info);
             media_info
         });
+        // From the same context the inputs resolve against: labels and bindings switch together.
+        let labels = self.context.labels();
+        let controls = (self.sent_controls != Some(labels)).then(|| {
+            self.sent_controls = Some(labels);
+            labels
+        });
         while let Some(finished) = self.worker.try_finished() {
+            if finished.id & KNOB != 0 {
+                if finished.outcome.kind == FeedbackKind::Error {
+                    self.knob_failure(finished.id, finished.outcome, observe);
+                }
+                continue;
+            }
             self.finish(finished.action, finished.outcome, observe);
             if let Some(feedback) = self.ladder.on_outcome(finished.id, finished.outcome.kind) {
                 self.outbox.push(feedback);
@@ -393,6 +574,7 @@ impl DeskRuntime {
             status: self.publisher.due((self.clock)(), now),
             feedback: std::mem::take(&mut self.outbox),
             media_info: media_update,
+            controls,
         }
     }
 
@@ -431,6 +613,9 @@ pub fn bound_action<'b>(bindings: &'b Bindings, input: &LogicalInput) -> Option<
     match input {
         LogicalInput::Press { .. } => Some(&bindings.press),
         LogicalInput::Hold { .. } => Some(&bindings.hold),
+        LogicalInput::ButtonPress { button, .. } => {
+            bindings.buttons.get(usize::from(*button))?.as_ref()
+        }
         _ => None,
     }
 }
@@ -570,7 +755,315 @@ mod tests {
             media,
             system: Box::new(NoSystemProbe),
             clock: || None,
+            foreground: Arc::new(crate::platform::FakeForeground::default()),
         })
+    }
+
+    use crate::platform::{ActionError, FakeForeground, FakeInputSynth, Foreground};
+
+    fn desk_with(foreground: &Arc<FakeForeground>, synth: &Arc<FakeInputSynth>) -> DeskRuntime {
+        use crate::platform::system::NoSystemProbe;
+        use crate::platform::FakeVolumeBackend;
+        let mut desk = DeskRuntime::new(OsServices {
+            volume: Arc::new(FakeVolumeBackend::new(20)),
+            synth: synth.clone(),
+            media: Arc::new(crate::platform::FakeMediaObserver::default()),
+            system: Box::new(NoSystemProbe),
+            clock: || None,
+            foreground: foreground.clone(),
+        });
+        desk.on_session_begin();
+        desk
+    }
+
+    fn focus(foreground: &FakeForeground, id: &str) {
+        *foreground.0.lock().unwrap() = Foreground::App {
+            id: id.into(),
+            name: id.into(),
+        };
+    }
+
+    fn sent(synth: &FakeInputSynth) -> Vec<String> {
+        synth.sent.lock().unwrap().clone()
+    }
+
+    fn text(t: MediaText) -> String {
+        t.as_latin1().iter().map(|&b| char::from(b)).collect()
+    }
+
+    /// Ticks until the worker has reported `n` more results' worth of time, collecting output.
+    fn settle(
+        desk: &mut DeskRuntime,
+        at: Duration,
+        until: impl Fn(&[ActionFeedback]) -> bool,
+    ) -> Vec<ActionFeedback> {
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        let mut feedback = Vec::new();
+        loop {
+            feedback.extend(desk.tick(at, &mut |_| {}).feedback);
+            if until(&feedback) || std::time::Instant::now() > deadline {
+                return feedback;
+            }
+            std::thread::sleep(ms(5));
+        }
+    }
+
+    const fn button(button: u8, gesture_id: u16) -> LogicalInput {
+        LogicalInput::ButtonPress { button, gesture_id }
+    }
+
+    #[test]
+    fn labels_and_bindings_switch_together_in_the_same_tick() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        let first = desk.tick(ms(0), &mut |_| {}).controls.unwrap();
+        assert_eq!(text(first.profile), "", "General fallback is calm");
+        focus(&fg, "chrome.exe");
+        let pending = desk.tick(ms(100), &mut |_| {});
+        assert_eq!(pending.controls, None, "not stable yet");
+        assert_eq!(desk.bindings(), &Bindings::default());
+        let out = desk.tick(ms(500), &mut |_| {});
+        let labels = out.controls.expect("new labels in the commit tick");
+        assert_eq!(text(labels.profile), "Browser");
+        assert_eq!(text(labels.rotate), "Tabs");
+        assert_eq!(labels.buttons.map(text), ["Back", "Reload", "New tab"]);
+        assert!(matches!(
+            bound_action(desk.bindings(), &button(1, 1)),
+            Some(Action::Shortcut(_))
+        ));
+        assert_eq!(desk.labels(), labels);
+    }
+
+    #[test]
+    fn deliberate_input_commits_the_pending_app_before_it_resolves() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        let _ = desk.tick(ms(0), &mut |_| {});
+        focus(&fg, "chrome.exe");
+        // 50 ms after focus moved, long before 400 ms: the press belongs to the browser.
+        let _ = desk.tick(ms(10), &mut |_| {});
+        desk.on_input(&button(1, 1), ms(50), &mut |_| {});
+        let feedback = settle(&mut desk, ms(60), |f| !f.is_empty());
+        let reload = if cfg!(target_os = "macos") {
+            "Meta+R"
+        } else {
+            "Ctrl+R"
+        };
+        assert_eq!(sent(&synth), [reload]);
+        assert_eq!(feedback[0].kind, FeedbackKind::Unverified);
+        assert_eq!(text(desk.labels().profile), "Browser");
+    }
+
+    #[test]
+    fn protected_suspends_shortcuts_with_an_error_and_keeps_system_actions() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        // Pin Browser (Auto -> General -> Browser), then a protected surface takes focus.
+        for id in 1..=2 {
+            desk.on_input(
+                &LogicalInput::ButtonHold {
+                    button: 1,
+                    gesture_id: id,
+                },
+                ms(0),
+                &mut |_| {},
+            );
+        }
+        assert_eq!(text(desk.labels().profile), "Browser");
+        assert!(
+            desk.tick(ms(0), &mut |_| {}).feedback.is_empty(),
+            "a pin is not an action"
+        );
+        *fg.0.lock().unwrap() = Foreground::Protected;
+        // The press itself classifies Protected first, without waiting for a poll.
+        let mut log = Vec::new();
+        desk.on_input(&button(0, 3), ms(10), &mut |o| log.push(o.kind));
+        let out = desk.tick(ms(10), &mut |_| {});
+        assert_eq!(
+            out.feedback,
+            [ActionFeedback {
+                action: ActionKind::Shortcut,
+                kind: FeedbackKind::Error
+            }]
+        );
+        assert_eq!(
+            log,
+            [
+                ActivityEventKind::DeskActionRequested,
+                ActivityEventKind::DeskActionFailed
+            ]
+        );
+        let labels = out.controls.unwrap();
+        assert_eq!(text(labels.profile), "Protected");
+        assert!(labels.pinned);
+        assert_eq!(text(labels.rotate), "");
+        assert!(labels.buttons.iter().all(MediaText::is_empty));
+        // The knob's shortcuts are suspended too: one Error for the gesture, no keys.
+        assert!(!desk.on_input(
+            &LogicalInput::GestureStarted { gesture_id: 4 },
+            ms(20),
+            &mut |_| {}
+        ));
+        for _ in 0..3 {
+            let detent = LogicalInput::Detent {
+                gesture_id: 4,
+                direction: Direction::Cw,
+            };
+            assert!(!desk.on_input(&detent, ms(30), &mut |_| {}));
+        }
+        assert_eq!(desk.tick(ms(30), &mut |_| {}).feedback.len(), 1);
+        // A system action still runs.
+        desk.on_input(&LogicalInput::Hold { gesture_id: 5 }, ms(40), &mut |_| {});
+        let feedback = settle(&mut desk, ms(50), |f| !f.is_empty());
+        assert_eq!(feedback[0].action, ActionKind::Mute);
+        assert_eq!(feedback[0].kind, FeedbackKind::StateConfirmed);
+        assert!(
+            sent(&synth).is_empty(),
+            "no key ever reached the protected surface"
+        );
+    }
+
+    #[test]
+    fn a_gesture_keeps_the_binding_it_began_with() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        focus(&fg, "chrome.exe");
+        let _ = desk.tick(ms(0), &mut |_| {});
+        let _ = desk.tick(ms(400), &mut |_| {});
+        let start = LogicalInput::GestureStarted { gesture_id: 1 };
+        assert!(
+            !desk.on_input(&start, ms(500), &mut |_| {}),
+            "a Tabs gesture is not volume"
+        );
+        let detent = |direction| LogicalInput::Detent {
+            gesture_id: 1,
+            direction,
+        };
+        assert!(!desk.on_input(&detent(Direction::Cw), ms(520), &mut |_| {}));
+        // Focus moves to the editor (a Volume knob) and commits mid-gesture. The gesture is not
+        // retargeted to Volume, and its keys must not land in the editor: Context Lost, shown
+        // once, remaining detents ignored (invariant 12).
+        focus(&fg, "code.exe");
+        let _ = desk.tick(ms(600), &mut |_| {});
+        let _ = desk.tick(ms(1_000), &mut |_| {});
+        assert_eq!(text(desk.labels().rotate), "Volume");
+        for direction in [Direction::Cw, Direction::Ccw] {
+            assert!(
+                !desk.on_input(&detent(direction), ms(1_100), &mut |_| {}),
+                "still the Tabs gesture, never the volume loop"
+            );
+        }
+        assert!(!desk.on_input(
+            &LogicalInput::GestureEnded { gesture_id: 1 },
+            ms(1_200),
+            &mut |_| {}
+        ));
+        let feedback = settle(&mut desk, ms(1_300), |f| !f.is_empty());
+        assert_eq!(sent(&synth), ["Ctrl+Tab"], "nothing after focus moved");
+        assert_eq!(
+            feedback.iter().map(|f| f.kind).collect::<Vec<_>>(),
+            [FeedbackKind::Error],
+            "Context Lost is shown once, no badge per detent"
+        );
+
+        // The next gesture is a Volume gesture, and stays one after the browser comes back.
+        assert!(desk.on_input(
+            &LogicalInput::GestureStarted { gesture_id: 2 },
+            ms(1_300),
+            &mut |_| {}
+        ));
+        focus(&fg, "chrome.exe");
+        let _ = desk.tick(ms(1_400), &mut |_| {});
+        let _ = desk.tick(ms(1_800), &mut |_| {});
+        assert_eq!(text(desk.labels().rotate), "Tabs");
+        let detent = LogicalInput::Detent {
+            gesture_id: 2,
+            direction: Direction::Cw,
+        };
+        assert!(
+            desk.on_input(&detent, ms(1_900), &mut |_| {}),
+            "the volume loop owns it"
+        );
+        assert!(desk.on_input(
+            &LogicalInput::GestureEnded { gesture_id: 2 },
+            ms(2_000),
+            &mut |_| {}
+        ));
+        assert_eq!(sent(&synth).len(), 1);
+    }
+
+    #[test]
+    fn protected_mid_gesture_stops_the_knob_keys() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        focus(&fg, "brave.exe");
+        let start = LogicalInput::GestureStarted { gesture_id: 1 };
+        assert!(!desk.on_input(&start, ms(0), &mut |_| {}));
+        *fg.0.lock().unwrap() = Foreground::Protected;
+        let _ = desk.tick(ms(100), &mut |_| {});
+        for _ in 0..2 {
+            let detent = LogicalInput::Detent {
+                gesture_id: 1,
+                direction: Direction::Cw,
+            };
+            assert!(!desk.on_input(&detent, ms(150), &mut |_| {}));
+        }
+        let out = desk.tick(ms(200), &mut |_| {});
+        assert_eq!(out.feedback.len(), 1, "one Error for the gesture");
+        assert_eq!(out.feedback[0].kind, FeedbackKind::Error);
+        std::thread::sleep(ms(20));
+        assert!(sent(&synth).is_empty());
+    }
+
+    #[test]
+    fn a_failing_knob_shortcut_shows_one_error_per_gesture() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Err(ActionError::PermissionRequired)));
+        let mut desk = desk_with(&fg, &synth);
+        focus(&fg, "firefox.exe");
+        for gesture_id in [1, 2] {
+            let mut log = Vec::new();
+            desk.on_input(
+                &LogicalInput::GestureStarted { gesture_id },
+                ms(0),
+                &mut |o| log.push(o.kind),
+            );
+            for _ in 0..3 {
+                let detent = LogicalInput::Detent {
+                    gesture_id,
+                    direction: Direction::Ccw,
+                };
+                desk.on_input(&detent, ms(10), &mut |o| log.push(o.kind));
+            }
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            let mut feedback = Vec::new();
+            while synth.sent.lock().unwrap().len() < 3 * usize::from(gesture_id) {
+                assert!(std::time::Instant::now() < deadline);
+                std::thread::sleep(ms(5));
+            }
+            std::thread::sleep(ms(20));
+            feedback.extend(desk.tick(ms(20), &mut |o| log.push(o.kind)).feedback);
+            assert_eq!(
+                feedback,
+                [ActionFeedback {
+                    action: ActionKind::Shortcut,
+                    kind: FeedbackKind::Error
+                }],
+                "gesture {gesture_id}"
+            );
+            assert_eq!(log, [ActivityEventKind::DeskActionPermissionRequired]);
+            assert!(desk.last_action().unwrap().permission_required);
+            desk.on_input(
+                &LogicalInput::GestureEnded { gesture_id },
+                ms(30),
+                &mut |_| {},
+            );
+        }
     }
 
     #[test]
@@ -628,6 +1121,31 @@ mod tests {
     }
 
     #[test]
+    fn control_labels_follow_the_bindings_once_per_session() {
+        let mut desk = runtime(Arc::default());
+        desk.on_session_begin();
+        let labels = desk.tick(ms(0), &mut |_| {}).controls.unwrap();
+        assert_eq!(labels.rotate.as_latin1(), b"Volume");
+        assert_eq!(labels.press.as_latin1(), b"Play/Pause");
+        assert_eq!(labels.hold.as_latin1(), b"Mute");
+        let buttons = labels.buttons.map(|b| b.as_latin1().to_vec());
+        assert_eq!(
+            buttons,
+            [
+                b"Previous".to_vec(),
+                b"Play/Pause".to_vec(),
+                b"Next".to_vec()
+            ]
+        );
+        assert_eq!(desk.tick(ms(100), &mut |_| {}).controls, None, "unchanged");
+        desk.on_session_begin();
+        assert!(desk.tick(ms(200), &mut |_| {}).controls.is_some());
+
+        let launch = Action::Launch("/Applications/Spotify.app".into());
+        assert_eq!(launch.label(), "Spotify", "an app name, not a path");
+    }
+
+    #[test]
     fn press_and_hold_follow_the_bindings_and_rotation_does_not() {
         let bindings = Bindings::default();
         assert_eq!(
@@ -642,5 +1160,20 @@ mod tests {
             bound_action(&bindings, &LogicalInput::GestureStarted { gesture_id: 3 }),
             None
         );
+        let press = |button| LogicalInput::ButtonPress {
+            button,
+            gesture_id: 4,
+        };
+        assert_eq!(
+            bound_action(&bindings, &press(0)),
+            Some(&Action::PreviousTrack)
+        );
+        assert_eq!(bound_action(&bindings, &press(2)), Some(&Action::NextTrack));
+        assert_eq!(bound_action(&bindings, &press(3)), None, "no such button");
+        let hold = LogicalInput::ButtonHold {
+            button: 0,
+            gesture_id: 5,
+        };
+        assert_eq!(bound_action(&bindings, &hold), None, "unbound until M2");
     }
 }

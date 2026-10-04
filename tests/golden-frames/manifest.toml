@@ -26,6 +26,16 @@ busy = "0xCBA380BEF9D45608"
 sleeping = "0x68E09265B83094EE"
 offline = "0xE477FC3D27A8F331"
 
+# Observed-state buddy faces (issue #13): the Idle scene at elapsed_ms = 0 with the named expression
+# applied (`celebrate` = Happy face with the deep press). Asserted by tests/mascot_faces.rs.
+[mascot_faces]
+error = "0x1437D1566FB38AB2"
+strained = "0x1FAF968520A564AD"
+muted = "0xF002D0A8222C3523"
+listening = "0xDC32707D6C37C51D"
+attentive = "0x3CEAC1707B97941D"
+celebrate = "0xF27A470A3F4D6B85"
+
 # Task 10 — canonical volume overlay (kivori_renderer::overlay::render_volume_overlay), sampled at the
 # (percent, confidence, at_boundary) combinations exercised by tests/overlay_golden.rs.
 [[overlay.frame]]
@@ -92,6 +102,11 @@ recovery_50 = "0x8A545D62C0354989"
 recovery_100 = "0x23637D91409857A2"
 buddy_load_pressed = "0xF50DD6AE8FCE55A5"
 buddy_indicators = "0x43A701082EFC22A2"
+buddy_controls = "0xA2B3172381970EBD"
+buddy_buttons = "0xCF11734419EF61FB"
+buddy_profile = "0xE45E33381C8B927A"
+buddy_pinned_switch_down = "0xFB94A819FEC1BE5A"
+buddy_controls_long_and_empty = "0x6E03924993FCF3ED"
 feedback_state_confirmed = "0x71CE2E66B414E9C7"
 feedback_execution_confirmed = "0x2C090A4006158DD8"
 feedback_unverified = "0xCD9BAAF83E18C40D"

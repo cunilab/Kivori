@@ -14,8 +14,9 @@
 //!
 //! Visual language: one dark palette around the mascot background `#0c101c`, a single cyan
 //! accent for live values, amber for "attention" (high load, unverified, recovery), rounded
-//! monoline digits for every big number, 270-degree ring gauges, and a fixed top status row
-//! (feedback badge left, time centre, indicators right) owned by the chrome.
+//! monoline digits for every big number, 270-degree ring gauges, a fixed top status row
+//! (feedback badge left, time centre, indicators right) owned by the chrome, and on the Buddy
+//! view a bottom legend saying what each control does.
 
 use core::convert::Infallible;
 
@@ -28,8 +29,8 @@ use embedded_graphics::text::{Baseline, Text};
 use embedded_graphics::Pixel;
 use kivori_framebuffer::TileBand;
 use kivori_model::desk::{
-    CpuHistory, DeskStatus, DeskView, DisplayMode, FeedbackKind, MediaInfo, MediaStatus,
-    VIEW_TRANSITION_MS,
+    ControlLabels, CpuHistory, DeskStatus, DeskView, DisplayMode, FeedbackKind, MediaInfo,
+    MediaStatus, MediaText, VIEW_TRANSITION_MS,
 };
 use kivori_model::presentation::{ValueConfidence, ValueDisplay};
 use kivori_model::Rgb565;
@@ -818,7 +819,7 @@ pub fn render_recovery(band: &mut TileBand, percent: u8) {
             cap(band, a, end, 0, AMBER);
         }
     }
-    restart_glyph(band, a.cx, a.cy, TEXT);
+    restart_glyph(band, a.cx, a.cy, 24, TEXT);
     if percent >= 100 {
         text_c(band, F_TITLE, b"Restarting", CENTER, 182, TEXT);
     } else {
@@ -827,13 +828,14 @@ pub fn render_recovery(band: &mut TileBand, percent: u8) {
     }
 }
 
-/// A clockwise circular arrow centred on `(cx, cy)`.
-fn restart_glyph(band: &mut TileBand, cx: i32, cy: i32, col: Rgb565) {
+/// A clockwise circular arrow of outer radius `r` centred on `(cx, cy)`: the recovery restart
+/// glyph at 24, the knob icon when small.
+fn restart_glyph(band: &mut TileBand, cx: i32, cy: i32, r: i32, col: Rgb565) {
     let a = Arc {
         cx,
         cy,
-        ro: 24,
-        ri: 18,
+        ro: r,
+        ri: r * 3 / 4,
         start: TURN / 12,
         sweep: TURN * 3 / 4,
     };
@@ -845,8 +847,8 @@ fn restart_glyph(band: &mut TileBand, cx: i32, cy: i32, col: Rgb565) {
     let (s, c) = (sin_q14(t), sin_q14(t + TURN / 4));
     let along = |d: i32| ((c * d) >> 14, (s * d) >> 14);
     let out = |d: i32| ((s * d) >> 14, -(c * d) >> 14);
-    let (tx, ty) = along(10);
-    let (nx, ny) = out(10);
+    let (tx, ty) = along(r * 10 / 24);
+    let (nx, ny) = out(r * 10 / 24);
     tri(
         band,
         (px + tx, py + ty),
@@ -1337,6 +1339,10 @@ pub fn render_chrome(band: &mut TileBand, view: &DeskView) {
         }
     }
 
+    if let (DisplayMode::Buddy, Some(labels)) = (status.mode, view.controls) {
+        control_legend(band, &labels, view.switch_down);
+    }
+
     if let Some(fb) = view.feedback {
         badge(band, fb.kind, view.elapsed_ms);
     }
@@ -1348,6 +1354,87 @@ pub fn render_chrome(band: &mut TileBand, view: &DeskView) {
         rect(band, 0, 0, 3, n, TEXT);
         rect(band, n - 3, 0, 3, n, TEXT);
     }
+}
+
+/// The Buddy view's context layout (#14), drawn around a keycap that is never shrunk for it. A
+/// control with an empty label is left out, never guessed.
+///
+/// * Top left: the active profile's name, after a dot when it is pinned. The feedback badge
+///   briefly covers it; it is a transient.
+/// * Under the clock: the knob, as a small circular arrow and its label.
+/// * Bottom row: the three contextual buttons, each label over a tick pointing down at its
+///   physical button (the buttons sit in a row under the screen, one per 80 px column). While
+///   the knob's own switch is held, the row shows what releasing it does (`PRESS` / `HOLD`).
+/// * Without contextual buttons, the bottom row is a `TURN` / `PRESS` / `HOLD` legend instead
+///   and the knob label stays there.
+fn control_legend(band: &mut TileBand, labels: &ControlLabels, switch_down: bool) {
+    const COL_W: i32 = SCREEN / 3;
+    let profile = labels.profile.as_latin1();
+    if !profile.is_empty() {
+        let mut x = 8;
+        if labels.pinned {
+            disc(band, x + 3, 16, 3, ACCENT);
+            x += 10;
+        }
+        text_clipped(band, F_LABEL, profile, (x, 10), MUTED, (x - 10, 92, 10));
+    }
+    let buttons = labels.buttons.iter().any(|b| !b.is_empty());
+    if buttons && !switch_down {
+        for (i, label) in labels.buttons.iter().enumerate() {
+            if label.is_empty() {
+                continue;
+            }
+            let x0 = i as i32 * COL_W;
+            column_label(band, label.as_latin1(), (x0, x0 + COL_W), 214);
+            rrect(band, x0 + COL_W / 2 - 8, 234, 16, 3, 1, FAINT);
+        }
+    }
+    if buttons {
+        let rotate = labels.rotate.as_latin1();
+        if !rotate.is_empty() {
+            let w = 16 + text_width(F_LABEL, rotate);
+            let x = CENTER - w / 2;
+            restart_glyph(band, x + 5, 36, 6, FAINT);
+            text(band, F_LABEL, rotate, x + 16, 30, MUTED);
+        }
+    }
+    if !buttons {
+        let columns: [(&[u8], &MediaText); 3] = [
+            (b"TURN", &labels.rotate),
+            (b"PRESS", &labels.press),
+            (b"HOLD", &labels.hold),
+        ];
+        for (i, (caption, label)) in columns.into_iter().enumerate() {
+            let x0 = i as i32 * COL_W;
+            captioned(band, caption, label.as_latin1(), (x0, x0 + COL_W));
+        }
+    } else if switch_down {
+        // What releasing the held switch does, in two halves of the row.
+        captioned(band, b"PRESS", labels.press.as_latin1(), (0, CENTER));
+        captioned(band, b"HOLD", labels.hold.as_latin1(), (CENTER, SCREEN));
+    }
+}
+
+/// A small caption over its label in the column `[x0, x1)` of the bottom row; nothing when the
+/// label is empty.
+fn captioned(band: &mut TileBand, caption: &[u8], label: &[u8], (x0, x1): (i32, i32)) {
+    if label.is_empty() {
+        return;
+    }
+    text_c(band, F_SMALL, caption, (x0 + x1) / 2, 210, FAINT);
+    column_label(band, label, (x0, x1), 222);
+}
+
+/// `label` centred in the column `[x0, x1)` at `y`, or, when too wide, left-aligned and faded out
+/// at the column's right edge.
+fn column_label(band: &mut TileBand, label: &[u8], (x0, x1): (i32, i32), y: i32) {
+    const PAD: i32 = 4;
+    const FADE: i32 = 10;
+    let (l, r) = (x0 + PAD, x1 - PAD);
+    let w = text_width(F_LABEL, label);
+    let x = if w <= r - l { (x0 + x1 - w) / 2 } else { l };
+    // The left fade zone sits before the text, so only the cut (right) end fades.
+    text_clipped(band, F_LABEL, label, (x, y), TEXT, (l - FADE, r, FADE));
 }
 
 /// The action feedback badge: a 36 px circle at the top left, cut out of whatever is beneath by

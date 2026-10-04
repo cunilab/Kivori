@@ -32,7 +32,7 @@ pub enum Outcome {
 pub const fn resolve_binding(control: ControlId) -> Option<ActionId> {
     match control {
         ControlId::Rotary => Some(ActionId::MasterVolume),
-        ControlId::Button => None,
+        ControlId::Button | ControlId::ContextButton(_) => None,
     }
 }
 

@@ -11,12 +11,13 @@ use kivori_firmware::proto::DeviceIdentity;
 use kivori_firmware::runtime::{Runtime, RuntimeConfig, Tick};
 use kivori_firmware::sim::{CaptureDisplay, SimPipe, VirtualClock};
 use kivori_framebuffer::hash_rgb565;
-use kivori_model::desk::{DeskStatus, DisplayMode};
+use kivori_model::desk::{ControlLabels, DeskStatus, DisplayMode, MediaText};
 use kivori_model::input::InputLevels;
-use kivori_model::{Capabilities, ProtocolVersion};
+use kivori_model::{Capabilities, CompanionState, ProtocolVersion, SendableState};
 use kivori_protocol::{
-    decode_message, encode_message, ByeReason, ControlId, FirmwareVersion, Hello, InputKind,
-    Message, Nonce, Ready, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
+    decode_message, encode_message, ByeReason, ControlId, ControlLabelsUpdate, FirmwareVersion,
+    Hello, InputEvent, InputKind, Message, Nonce, Ready, SetState, Status, MAX_FRAME, MAX_WIRE,
+    PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 const M1: Capabilities = Capabilities::PHYSICAL_INPUT_V1
@@ -26,12 +27,17 @@ const M1: Capabilities = Capabilities::PHYSICAL_INPUT_V1
 
 /// Levels the test sets between steps.
 #[derive(Default)]
-struct Levels(Cell<(bool, bool, bool)>);
+struct Levels(Cell<(bool, bool, bool)>, Cell<[bool; 3]>);
 
 impl InputSource for &Levels {
     fn sample(&mut self) -> InputLevels {
         let (a, b, sw) = self.0.get();
-        InputLevels { a, b, sw }
+        InputLevels {
+            a,
+            b,
+            sw,
+            keys: self.1.get(),
+        }
     }
 }
 
@@ -59,7 +65,9 @@ impl Rig {
             capabilities: M1
                 .union(Capabilities::PRESENTATION_V1)
                 .union(Capabilities::DOUBLE_PRESS_V1)
-                .union(Capabilities::MEDIA_INFO_V1),
+                .union(Capabilities::MEDIA_INFO_V1)
+                .union(Capabilities::CONTROL_LABELS_V1)
+                .union(Capabilities::CONTEXT_BUTTONS_V1),
         };
         let mut rig = Self {
             runtime: Runtime::new(identity, RuntimeConfig::default()),
@@ -132,6 +140,36 @@ impl Rig {
     fn switch(&mut self, down: bool) {
         let (a, b, _) = self.levels.0.get();
         self.levels.0.set((a, b, down));
+    }
+
+    fn key(&mut self, index: usize, down: bool) {
+        let mut keys = self.levels.1.get();
+        keys[index] = down;
+        self.levels.1.set(keys);
+    }
+
+    /// Contextual-button events sent so far, as (index, kind).
+    fn key_events(&mut self) -> Vec<(u8, InputKind)> {
+        self.drain()
+            .into_iter()
+            .filter_map(|m| match m {
+                Message::InputEvent(InputEvent {
+                    control: ControlId::ContextButton(i),
+                    kind,
+                    ..
+                }) => Some((i, kind)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Holds contextual button `index` for `ms`, releases, and settles.
+    fn key_for(&mut self, index: usize, ms: u32) -> bool {
+        self.key(index, true);
+        let mut reboot = self.run(ms);
+        self.key(index, false);
+        reboot |= self.run(100);
+        reboot
     }
 
     fn drain(&mut self) -> Vec<Message> {
@@ -308,6 +346,121 @@ fn a_desk_status_from_the_session_changes_the_view_and_a_session_end_forgets_it(
     assert_ne!(rig.display.frame(), system_frame.as_slice());
 }
 
+/// Whether anything is drawn in the legend rows under the keycap (y 209..236).
+fn legend_drawn(frame: &[kivori_model::Rgb565]) -> bool {
+    let rows = &frame[209 * 240..236 * 240];
+    rows.iter().any(|p| *p != rows[0])
+}
+
+const BUTTONS: Capabilities = M1.union(Capabilities::CONTEXT_BUTTONS_V1);
+
+#[test]
+fn a_contextual_button_sends_press_and_hold_with_its_index() {
+    let mut rig = Rig::new();
+    rig.connect(BUTTONS);
+    rig.key_for(0, 200);
+    rig.key_for(2, 1_000);
+    assert_eq!(
+        rig.key_events(),
+        [(0, InputKind::Press), (2, InputKind::Hold)]
+    );
+}
+
+#[test]
+fn contextual_buttons_stay_silent_without_their_capability() {
+    let mut rig = Rig::new();
+    rig.connect(M1);
+    rig.key_for(1, 200);
+    assert!(rig.key_events().is_empty());
+}
+
+#[test]
+fn a_contextual_button_never_reboots_and_a_long_hold_fires_nothing() {
+    let mut rig = Rig::new();
+    rig.connect(BUTTONS);
+    assert!(
+        !rig.key_for(1, 12_000),
+        "only the encoder switch can reboot"
+    );
+    assert!(rig.key_events().is_empty());
+}
+
+#[test]
+fn two_buttons_at_once_fire_nothing() {
+    let mut rig = Rig::new();
+    rig.connect(BUTTONS);
+    rig.key(0, true);
+    rig.key(1, true);
+    rig.run(200);
+    rig.key(0, false);
+    rig.key(1, false);
+    rig.run(100);
+    assert!(rig.key_events().is_empty());
+
+    // A button pressed while the encoder switch is down fires nothing either; the switch press
+    // that owned input still does.
+    rig.switch(true);
+    rig.run(50);
+    rig.key_for(2, 100);
+    rig.switch(false);
+    rig.run(100);
+    assert!(rig.key_events().is_empty());
+}
+
+#[test]
+fn the_recovery_hold_still_reboots_with_a_button_held() {
+    let mut rig = Rig::new();
+    rig.connect(BUTTONS);
+    rig.key(0, true);
+    rig.run(100);
+    rig.switch(true);
+    assert!(rig.run(10_100), "recovery is out-of-band (invariant 24)");
+    assert!(!rig
+        .drain()
+        .iter()
+        .any(|m| matches!(m, Message::InputEvent(_))));
+}
+
+#[test]
+fn control_labels_show_only_when_negotiated_and_only_for_their_session() {
+    let labels = |session| {
+        Message::ControlLabels(ControlLabelsUpdate {
+            session,
+            labels: ControlLabels {
+                rotate: MediaText::from_text("Volume"),
+                press: MediaText::from_text("Play/Pause"),
+                hold: MediaText::from_text("Mute"),
+                ..ControlLabels::default()
+            },
+        })
+    };
+    let mut rig = Rig::new();
+
+    // Not negotiated: the message stays inert.
+    rig.connect(M1);
+    rig.send(&labels(rig.nonce));
+    rig.run(50);
+    assert!(!legend_drawn(rig.display.frame()));
+
+    rig.nonce += 1;
+    rig.connect(M1.union(Capabilities::CONTROL_LABELS_V1));
+    rig.send(&labels(rig.nonce ^ 1));
+    rig.run(50);
+    assert!(
+        !legend_drawn(rig.display.frame()),
+        "another session's labels"
+    );
+    rig.send(&labels(rig.nonce));
+    rig.run(50);
+    assert!(legend_drawn(rig.display.frame()));
+
+    // A new session knows nothing until the desktop says it again.
+    rig.nonce += 1;
+    rig.connect(M1.union(Capabilities::CONTROL_LABELS_V1));
+    rig.run(50);
+    assert!(!legend_drawn(rig.display.frame()));
+}
+
 #[test]
 fn with_double_press_negotiated_two_quick_presses_are_one_double_press() {
     let mut rig = Rig::new();
@@ -337,4 +490,46 @@ fn without_double_press_a_press_is_sent_without_waiting() {
     rig.switch(false);
     rig.run(40);
     assert_eq!(rig.button_kinds(), [InputKind::Press]);
+}
+
+/// The buddy wears the muted face only while the desktop says it is muted (issue #13).
+#[test]
+fn the_buddy_wears_the_muted_face_only_while_the_desktop_reports_mute() {
+    let mut rig = Rig::new();
+    rig.connect(M1);
+    let send = |rig: &mut Rig, muted| {
+        let session = rig.nonce;
+        rig.send(&Message::Status(Status {
+            session,
+            status: DeskStatus {
+                muted,
+                ..DeskStatus::UNKNOWN
+            },
+        }));
+        rig.run(300);
+        // The mouth region (crop 108,139 24x13): the status row draws elsewhere.
+        let frame = rig.display.frame();
+        (139..152)
+            .flat_map(|y| (108..132).map(move |x| frame[y * 240 + x]))
+            .collect::<Vec<_>>()
+    };
+    // Connected but not yet told a state: the device shows Offline, which is never overridden.
+    assert_eq!(rig.runtime.state(), CompanionState::Offline);
+    let offline = send(&mut rig, None);
+    assert_eq!(
+        send(&mut rig, Some(true)),
+        offline,
+        "Offline keeps its face"
+    );
+
+    rig.send(&Message::SetState(SetState {
+        desired: SendableState::Idle,
+        at_ms: None,
+    }));
+    rig.run(1_000);
+    assert_eq!(rig.runtime.state(), CompanionState::Idle);
+    let unknown = send(&mut rig, None);
+    let muted = send(&mut rig, Some(true));
+    assert_ne!(muted, unknown, "muted zips the mouth");
+    assert_eq!(send(&mut rig, Some(false)), unknown, "unmuting restores it");
 }

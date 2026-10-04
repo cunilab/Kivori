@@ -22,6 +22,7 @@ specification until row 3.15 is ticked.
 | Display D/C | 2 | Encoder SW | 10 |
 | Display RST | 3 | USB D- / D+ | 18 / 19 |
 | Backlight (active-high) | 8 | Encoder COM / VCC | GND / **3V3** (never 5 V) |
+| Button left / middle / right | 0 / 1 / 20 | Button other leg | GND (no resistor) |
 
 1. Once per machine: `bun install`, `cargo install espflash`, install `just`.
 2. Flash the product firmware: `just fw-flash` (builds with `physical-st7789`, then flashes and monitors).
@@ -180,6 +181,32 @@ Hold = master mute. Shortcut and launch run from Device Studio's Test action pan
 - [ ] G5 No hidden fallback | an action that cannot run says so and never switches mechanism (4.15)
 - [ ] G6 No state invention | unknown values show as `--` on the panel and `—` in the app (4.17 to 4.20)
 - [ ] G8 Recoverability | recovery works without healthy desktop software (4.4, 4.5)
+
+## Phase 5: Contextual buttons (M2)
+
+Software is done and host-tested (firmware gesture rules, wire, desktop bindings, e2e round trip).
+Wiring: three momentary tactile switches (6x6 mm), each between its GPIO and GND, no resistors or
+capacitors; firmware enables the internal pull-ups and debounces 20 ms. Default bindings, left to
+right: Previous track, Play/Pause, Next track (Press only; Hold unbound until the config UI).
+
+- [ ] 5.1 Before wiring: inspect the devkit near GPIO0/GPIO1 | no 32.768 kHz crystal fitted (if one is, stop: pick other pins before soldering)
+- [ ] 5.2 Power on with each button held in turn | Kivori boots normally every time (none is a strapping pin); the boot log still appears on GPIO21
+- [ ] 5.3 Each button, ten short presses while music plays | exactly one Previous / Play-Pause / Next per press; amber "?" badge (Unverified); a white frame on press
+- [ ] 5.4 Each button held about 1 s | nothing runs (Hold is unbound); held 12 s | nothing runs and the device never reboots
+- [ ] 5.5 Two buttons pressed together; a button pressed while the knob switch is down; a button pressed mid-turn | nothing fires from the second control (no chords)
+- [ ] 5.6 Hold the knob switch 10 s while a button is held | the device still reboots (invariant 24)
+- [ ] 5.7 Buddy view | button labels sit under the keycap, ticks line up with the physical buttons, `TURN Volume` top left; the keycap is full size
+- [ ] 5.8 Unplug, press buttons during the outage, replug | nothing runs after reconnect (gate 2)
+
+## Phase 6: Profiles and layout (M2.5)
+
+- [ ] 6.1 Windows: focus Chrome, VS Code, Spotify, Zoom or Teams in turn | about half a second later the profile name and all labels change together; the knob does tabs in Chrome
+- [ ] 6.2 Turn the knob in Chrome and Alt+Tab mid-turn | tab switching stops at once, one red cross, nothing lands in the new app
+- [ ] 6.3 Trigger a UAC prompt, lock with Win+L, open an elevated app (regedit) | "Protected": button shortcut labels gone, pressing one shows the red cross, the volume knob still works
+- [ ] 6.4 Hold the middle button repeatedly | General, Browser, Code, Media, Zoom, Teams, then back to following focus; a dot shows while pinned; a UAC prompt still wins over a pin
+- [ ] 6.5 macOS: the same app switches (Safari, VS Code, Music) and the lock screen | same behaviour (daily test bed)
+- [ ] 6.7 Buddy faces: mute the OS, play music, run a CPU stress, join a Zoom call, trigger a failing and a confirmed action | muted, listening, strained, attentive, error and celebrate faces each appear only for their real cause; a shortcut (Unverified) never celebrates; unplugging shows the offline face, distinct from sleeping; note whether the instant face swap looks like a pop
+- [ ] 6.6 Layout at desk distance | profile, clock, knob label and button labels readable; button labels sit over their physical buttons; the buddy is full size
 
 ## Evidence log
 

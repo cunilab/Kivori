@@ -4,10 +4,12 @@ What Kivori is, what the beta must do, and the rules every build keeps. See also
 
 ## What Kivori is
 
-Kivori is a programmable desk controller with a buddy and a PC monitor. You control your
-computer with a physical knob and button; a mascot, the buddy, shows important desktop state; the
-display shows simple system signals when you are not touching it. Hardware: ESP32-C3, ST7789
-240x240 display, HW-040 rotary encoder with push button; no buzzer, haptics or light sensor. A Tauri
+Kivori is a desk buddy you control your computer with. Two pillars carry equal weight: the
+buddy is why people want one, the controller is why they keep using it. You control your computer
+with a physical knob and button; the buddy is always on screen, shows important desktop state and
+says what the controls do; simple system signals support it and never take its place. Hardware: ESP32-C3, ST7789
+240x240 display, HW-040 rotary encoder with push button, three contextual buttons; no buzzer,
+haptics or light sensor. A Tauri
 app, Kivori Desktop, drives it and is the configuration center. The buddy has personality but only
 reports the desktop; it is not a virtual pet with its own goals.
 
@@ -26,6 +28,9 @@ evidence (see [roadmap.md](roadmap.md#m4-v1)).
 - Immediate acknowledgement, honest confirmation, live state sync (including changes
   made outside Kivori).
 - General profile; config UI; config local per OS user and machine; reset to defaults.
+- App-aware profiles on Windows: match by executable, General as fallback, Protected classified
+  first. A profile can be pinned from the device (this is what "Focus / Media / Meeting" modes
+  are: pinned profiles, not a second concept).
 - Presentation model (buddy, personality, takeover, health, indicators) with intentional
   visuals for every waiting, failure and recovery state the beta can reach.
 - Recovery across sleep, wake, lock and reconnect.
@@ -36,7 +41,7 @@ evidence (see [roadmap.md](roadmap.md#m4-v1)).
 ### After the beta (decided from beta evidence)
 
 - macOS support (including Accessibility permission handling) and parity with Windows.
-- App-aware profiles; mic mute and call indicators; GPU temperature and custom sources.
+- Mic mute and call indicators; GPU temperature and custom sources.
 - Display idle and burn-in protection beyond the basics.
 - Authenticated release manifest, compatibility checks, `Update All`; desktop auto-update;
   rollback-safe (A/B) firmware install.
@@ -80,6 +85,8 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   never one direction.
 - Short press fires only if released within **500 ms**. Discrete mappings fire once per
   press; no implicit key-repeat.
+- Contextual buttons give Press and Hold with the same timings, never recovery: held past ~2 s they
+  fire nothing. Their labels on screen always match what they run.
 - Recovery button: release between 500 ms and ~2 s may run a mapped Hold. At ~2 s
   recovery owns the gesture and the Hold is cancelled; at ~10 s from key-down the MCU
   reboots. Rotation during the hold changes nothing. Not configurable in v1.
@@ -100,6 +107,13 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   Ambiguous overlays follow normal focus rules.
 - Generic hosts (`chrome.exe`, `python.exe`) use their host profile unless the user
   targets more precisely. Background apps never own physical mappings.
+- Built-in profiles (until the config UI): General (fallback), Browser, Code, Media, Zoom,
+  Teams. Holding the middle contextual button pins the next profile (Auto, then each profile,
+  then back to Auto); a pin ignores focus but never Protected.
+- In a protected context, shortcuts and launches are suspended: their labels disappear and a
+  press says it can't run. System volume, media keys and mute keep working.
+- A knob bound to shortcuts sends one per detent with no badge per detent; the label is the
+  feedback, and a failure shows once per gesture.
 - Actions have explicit scope: `System Volume` and `Discord Volume` differ. Global audio
   follows the OS default endpoint; app audio is configured explicitly.
 
@@ -123,11 +137,25 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
 
 - Layers, highest first: takeover state, system health, primary buddy state, secondary
   indicators. A personality layer animates beneath them.
+- The buddy is the home screen. Clock, indicators and control labels sit around it; other views
+  are details you open on purpose, and transients return to the buddy, never replace it.
+- Home layout, around a full-size buddy: profile name top left (a dot when pinned), clock top
+  centre, indicators top right, the knob's label under the clock, the three button labels along
+  the bottom over ticks pointing at their buttons. While the knob switch is held the bottom row
+  shows what releasing does (Press / Hold).
+- The home screen says what every control does right now, in the active profile's words. The
+  labels come from the bindings Desktop actually runs; with no label the control shows nothing,
+  never a guessed action. A context switch changes labels and bindings together.
 - Takeovers: Sleeping / Locked, Switching User, Protected, Permission Required, Host
   Starting / Resuming, Firmware Updating, Firmware Recovery, Reconnecting, Disconnected,
   Waiting, Passive. A takeover cancels an active gesture and shows at once.
 - Healthy needs no space. Degraded gets its own cue, not an indicator slot.
 - Primary states (Idle, Active, Busy, Success, Error, Unknown) each have a distinct face.
+- The resting buddy reads observed truth (#13), first match wins: an Error result shows the
+  error face; a confirmed result (State or Execution Confirmed, never Unverified) celebrates
+  with a deep press; then sustained high load (strained), master mute (muted), media playing
+  (listening), a meeting profile (attentive). Booting, Offline and Sleeping are never
+  overridden, and Offline never looks like Sleeping.
   One unknown indicator never makes the whole buddy Unknown.
 - Indicator priority: mic, call, master mute, media, custom app. Custom indicators never
   displace the first four. Over budget, hide the lowest. Higher priority appears at once;

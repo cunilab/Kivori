@@ -338,7 +338,8 @@ fn negotiated_capabilities_actually_carry_an_input_event_and_a_presentation() {
     );
 }
 
-/// M1 across the real boundary: a push-switch Press and Hold leave the real firmware dispatcher,
+/// M1 across the real boundary: a push-switch Press and Hold, and a contextual-button Press, leave
+/// the real firmware dispatcher,
 /// pass the desktop's session freshness checks, run their bound actions against fake OS services,
 /// and the classified outcome plus the desk status arrive back at the firmware dispatcher.
 #[test]
@@ -362,7 +363,8 @@ fn a_button_press_round_trips_to_an_honest_feedback_and_a_desk_status() {
         capabilities: Capabilities::PHYSICAL_INPUT_V1
             .union(Capabilities::BUTTON_INPUT_V1)
             .union(Capabilities::DESK_STATUS_V1)
-            .union(Capabilities::ACTION_FEEDBACK_V1),
+            .union(Capabilities::ACTION_FEEDBACK_V1)
+            .union(Capabilities::CONTEXT_BUTTONS_V1),
         ..device_identity()
     };
     let mut dispatcher = Dispatcher::new(identity);
@@ -396,21 +398,30 @@ fn a_button_press_round_trips_to_an_honest_feedback_and_a_desk_status() {
         media: Arc::new(FakeMediaObserver::default()),
         system: Box::new(NoSystemProbe),
         clock: || None,
+        foreground: Arc::new(kivori_desktop::platform::FakeForeground::default()),
     });
     desk.on_session_begin();
 
     let started = Instant::now();
     let mut received = Vec::new();
-    for (id, kind) in [(1, InputKind::Press), (2, InputKind::Hold)] {
-        assert!(dispatcher.send_button_event(&mut DeviceEnd(&mut wire), id, kind, 500));
+    for (control, id, kind) in [
+        (ControlId::Button, 1, InputKind::Press),
+        (ControlId::Button, 2, InputKind::Hold),
+        // The right contextual button: Next track by default.
+        (ControlId::ContextButton(2), 3, InputKind::Press),
+    ] {
+        assert!(dispatcher.send_button_event(&mut DeviceEnd(&mut wire), control, id, kind, 500));
         session
             .pump(&mut HostEnd(&mut wire), &mut manager, &mut orch)
             .expect("desktop pump");
         let inputs = session.take_input_events();
-        rotary.accept_inputs(&inputs, volume.as_ref(), &mut Vec::new(), |_| {});
-        for input in rotary.take_button_inputs() {
-            desk.on_input(&input, started.elapsed(), &mut |_| {});
-        }
+        rotary.accept_inputs(
+            &inputs,
+            volume.as_ref(),
+            &mut Vec::new(),
+            |input| desk.on_input(&input, started.elapsed(), &mut |_| {}),
+            |_| {},
+        );
         // The action runs on the worker thread; collect its outcome as the device task would.
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {
@@ -454,6 +465,11 @@ fn a_button_press_round_trips_to_an_honest_feedback_and_a_desk_status() {
                 session: nonce,
                 action: ActionKind::Mute,
                 kind: FeedbackKind::StateConfirmed,
+            },
+            Feedback {
+                session: nonce,
+                action: ActionKind::NextTrack,
+                kind: FeedbackKind::Unverified,
             },
         ]
     );

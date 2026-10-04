@@ -133,6 +133,10 @@ pub enum ActionKind {
     Shortcut,
     /// Launching an application.
     Launch,
+    /// Media previous track.
+    PreviousTrack,
+    /// Media next track.
+    NextTrack,
 }
 
 /// How well an action's outcome is known (docs/product.md, actions and confirmation).
@@ -245,6 +249,38 @@ pub struct MediaInfo {
     pub artist: MediaText,
 }
 
+/// What kind of context the active profile is, for the buddy's resting face. Only what Desktop
+/// knows from the profile it actually runs. Wire-significant, append-only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ContextMood {
+    /// No special context.
+    #[default]
+    Neutral,
+    /// A meeting app's profile is active.
+    Meeting,
+}
+
+/// What the physical controls do right now, as short labels the desktop derives from its active
+/// bindings (capability `CONTROL_LABELS_V1`). The device only draws them; it never guesses a
+/// binding, so an empty label (or no labels at all) shows nothing for that control.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ControlLabels {
+    /// The knob.
+    pub rotate: MediaText,
+    /// A short press of the push switch.
+    pub press: MediaText,
+    /// A hold of the push switch.
+    pub hold: MediaText,
+    /// The three contextual buttons, left to right (M2 hardware; empty until they exist).
+    pub buttons: [MediaText; 3],
+    /// The active profile's display name; empty draws nothing (the General fallback).
+    pub profile: MediaText,
+    /// The profile was pinned from the device rather than following the foreground app.
+    pub pinned: bool,
+    /// The active profile's context, for the buddy's resting face.
+    pub mood: ContextMood,
+}
+
 /// The last CPU samples the device received (one per `Status`), oldest first, for a sparkline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CpuHistory {
@@ -298,9 +334,12 @@ pub struct DeskView {
     pub status: DeskStatus,
     /// The feedback still in force, if any.
     pub feedback: Option<ActionFeedback>,
-    /// The push switch is held down: the device's own immediate acknowledgement, shown before
-    /// the desktop knows anything (acknowledgement is not confirmation, invariant 3).
+    /// Any switch (knob or contextual button) is held down: the device's own immediate
+    /// acknowledgement, shown before the desktop knows anything (acknowledgement is not
+    /// confirmation, invariant 3).
     pub button_down: bool,
+    /// The knob's own push switch is held down (its Press / Hold labels show meanwhile).
+    pub switch_down: bool,
     /// Recovery-hold progress, 0..=100, while the recovery takeover owns the screen.
     pub recovery_percent: Option<u8>,
     /// Device time for subtle animation only (never shown as a value).
@@ -313,6 +352,8 @@ pub struct DeskView {
     pub previous_mode: Option<DisplayMode>,
     /// Milliseconds since the current view appeared (drives the switch animation).
     pub mode_age_ms: u32,
+    /// What the controls do, when the desktop sent it this session (`None` = not known).
+    pub controls: Option<ControlLabels>,
 }
 
 #[cfg(test)]

@@ -69,6 +69,9 @@ const _: () = {
     assert!(hw::ROTARY.clk == 4);
     assert!(hw::ROTARY.dt == 5);
     assert!(hw::ROTARY.sw == 10);
+    assert!(hw::CONTEXT_BUTTONS[0] == 0);
+    assert!(hw::CONTEXT_BUTTONS[1] == 1);
+    assert!(hw::CONTEXT_BUTTONS[2] == 20);
 };
 
 /// Runs Kivori on the verified physical ESP32-C3 + ST7789 hardware.
@@ -206,8 +209,15 @@ pub fn run_mode(
     let rotary_clk = Input::new(peripherals.GPIO4, rotary_pull);
     let rotary_dt = Input::new(peripherals.GPIO5, rotary_pull);
     let rotary_sw = Input::new(peripherals.GPIO10, rotary_pull);
+    // Contextual buttons: GPIO0 / GPIO1 / GPIO20 to GND, same pull-up active-low reading
+    // (`profile::physical_st7789::CONTEXT_BUTTONS`).
+    let keys = [
+        Input::new(peripherals.GPIO0, rotary_pull),
+        Input::new(peripherals.GPIO1, rotary_pull),
+        Input::new(peripherals.GPIO20, rotary_pull),
+    ];
     let mut io = Io::new(peripherals.IO_MUX);
-    let mut rotary = PhysicalRotary::new(&mut io, rotary_clk, rotary_dt, rotary_sw);
+    let mut rotary = PhysicalRotary::new(&mut io, rotary_clk, rotary_dt, rotary_sw, keys);
 
     // -------------------------------------------------------------------------
     // Compiled Kivori assets
@@ -241,7 +251,9 @@ pub fn run_mode(
             .union(Capabilities::DESK_STATUS_V1)
             .union(Capabilities::ACTION_FEEDBACK_V1)
             .union(Capabilities::DOUBLE_PRESS_V1)
-            .union(Capabilities::MEDIA_INFO_V1),
+            .union(Capabilities::MEDIA_INFO_V1)
+            .union(Capabilities::CONTROL_LABELS_V1)
+            .union(Capabilities::CONTEXT_BUTTONS_V1),
     };
 
     esp_println::println!("KIVORI runtime starting");

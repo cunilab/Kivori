@@ -51,6 +51,7 @@ impl InputSource for NoInput {
             a: false,
             b: false,
             sw: false,
+            keys: [false; 3],
         }
     }
 }
@@ -89,7 +90,9 @@ fn identity() -> DeviceIdentity {
             .union(Capabilities::DESK_STATUS_V1)
             .union(Capabilities::ACTION_FEEDBACK_V1)
             .union(Capabilities::DOUBLE_PRESS_V1)
-            .union(Capabilities::MEDIA_INFO_V1),
+            .union(Capabilities::MEDIA_INFO_V1)
+            .union(Capabilities::CONTROL_LABELS_V1)
+            .union(Capabilities::CONTEXT_BUTTONS_V1),
     }
 }
 

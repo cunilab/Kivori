@@ -94,7 +94,9 @@ impl GestureValue {
             // The push switch never drives the continuous volume value.
             LogicalInput::Press { .. }
             | LogicalInput::Hold { .. }
-            | LogicalInput::DoublePress { .. } => None,
+            | LogicalInput::DoublePress { .. }
+            | LogicalInput::ButtonPress { .. }
+            | LogicalInput::ButtonHold { .. } => None,
             LogicalInput::GestureEnded { gesture_id } => {
                 if self.active != Some(gesture_id) {
                     return None;

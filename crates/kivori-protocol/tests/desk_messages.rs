@@ -2,12 +2,13 @@
 
 use heapless::Vec;
 use kivori_model::desk::{
-    ActionKind, ClockTime, DeskStatus, DisplayMode, FeedbackKind, MediaStatus,
+    ActionKind, ClockTime, ControlLabels, DeskStatus, DisplayMode, FeedbackKind, MediaStatus,
+    MediaText,
 };
 use kivori_model::{Capabilities, ProtocolVersion};
 use kivori_protocol::{
-    decode_frame, decode_message, encode_message, ControlId, Feedback, InputEvent, InputKind,
-    Message, Status, MAX_FRAME, MAX_WIRE,
+    decode_frame, decode_message, encode_message, ControlId, ControlLabelsUpdate, Feedback,
+    InputEvent, InputKind, Message, Status, MAX_FRAME, MAX_WIRE,
 };
 
 fn encode(msg: &Message) -> Vec<u8, MAX_WIRE> {
@@ -159,4 +160,44 @@ fn the_largest_status_fits_one_frame() {
         .len()
             < 64
     );
+}
+
+#[test]
+fn control_labels_are_tag_18_roundtrip_and_fit_one_frame() {
+    let full = MediaText::from_text(&"x".repeat(40));
+    let msg = Message::ControlLabels(ControlLabelsUpdate {
+        session: u32::MAX,
+        labels: ControlLabels {
+            rotate: full,
+            press: MediaText::from_text("Play/Pause"),
+            hold: MediaText::default(),
+            buttons: [full, full, full],
+            profile: full,
+            pinned: true,
+            mood: kivori_model::desk::ContextMood::Meeting,
+        },
+    });
+    assert_eq!(roundtrip(&msg), msg);
+    let bytes = payload(&msg);
+    assert_eq!(bytes[0], 18, "ControlLabels is tag 18");
+    assert!(bytes.len() <= kivori_protocol::MAX_PAYLOAD);
+    assert_eq!(Capabilities::CONTROL_LABELS_V1.bits(), 1 << 8);
+}
+
+#[test]
+fn context_buttons_are_control_variant_2_with_their_index() {
+    let press = Message::InputEvent(InputEvent {
+        session: 0,
+        gesture_id: 0,
+        control: ControlId::ContextButton(2),
+        kind: InputKind::Hold,
+        device_ms: 0,
+    });
+    assert_eq!(roundtrip(&press), press);
+    assert_eq!(
+        &payload(&press)[..6],
+        &[13, 0, 0, 2, 2, 4],
+        "ContextButton = 2, index, Hold"
+    );
+    assert_eq!(Capabilities::CONTEXT_BUTTONS_V1.bits(), 1 << 9);
 }

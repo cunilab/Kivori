@@ -10,10 +10,10 @@ use crate::state::{DeviceEvent, DeviceState};
 use heapless::Vec;
 use kivori_model::{Capabilities, ProtocolVersion};
 use kivori_protocol::{
-    decode_message, encode_message, ControlId, DeviceId, Feedback, FirmwareVersion, HelloAck,
-    InputEvent, InputKind, MascotActionApplied, MediaInfoUpdate, Message, Nonce, PlayMascotAction,
-    Presentation, SeqClass, SequenceTracker, StateReport, Status, MAX_FRAME, MAX_WIRE,
-    PROTOCOL_MAJOR, PROTOCOL_MINOR,
+    decode_message, encode_message, ControlId, ControlLabelsUpdate, DeviceId, Feedback,
+    FirmwareVersion, HelloAck, InputEvent, InputKind, MascotActionApplied, MediaInfoUpdate,
+    Message, Nonce, PlayMascotAction, Presentation, SeqClass, SequenceTracker, StateReport, Status,
+    MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 /// Inbound accumulation capacity: room for a partial packet plus one full wire packet.
@@ -80,6 +80,7 @@ pub struct Dispatcher {
     pending_feedback: Option<Feedback>,
     /// The latest negotiated `MediaInfo`, awaiting [`Self::take_media_info`].
     pending_media_info: Option<MediaInfoUpdate>,
+    pending_controls: Option<ControlLabelsUpdate>,
 }
 
 impl Dispatcher {
@@ -106,6 +107,7 @@ impl Dispatcher {
             pending_status: None,
             pending_feedback: None,
             pending_media_info: None,
+            pending_controls: None,
         }
     }
 
@@ -176,11 +178,16 @@ impl Dispatcher {
     pub fn send_button_event<T: Transport>(
         &mut self,
         transport: &mut T,
+        control: ControlId,
         gesture_id: u16,
         kind: InputKind,
         device_ms: u32,
     ) -> bool {
-        let needed = Capabilities::PHYSICAL_INPUT_V1.union(Capabilities::BUTTON_INPUT_V1);
+        let control_cap = match control {
+            ControlId::ContextButton(_) => Capabilities::CONTEXT_BUTTONS_V1,
+            ControlId::Button | ControlId::Rotary => Capabilities::BUTTON_INPUT_V1,
+        };
+        let needed = Capabilities::PHYSICAL_INPUT_V1.union(control_cap);
         if !self.negotiated_caps.contains(needed) {
             return false;
         }
@@ -190,7 +197,7 @@ impl Dispatcher {
         let msg = Message::InputEvent(InputEvent {
             session,
             gesture_id,
-            control: ControlId::Button,
+            control,
             kind,
             device_ms,
         });
@@ -205,6 +212,11 @@ impl Dispatcher {
     /// Takes the pending accepted `MediaInfo`, if any.
     pub fn take_media_info(&mut self) -> Option<MediaInfoUpdate> {
         self.pending_media_info.take()
+    }
+
+    /// Takes the pending accepted `ControlLabels`, if any.
+    pub fn take_control_labels(&mut self) -> Option<ControlLabelsUpdate> {
+        self.pending_controls.take()
     }
 
     /// Whether the session negotiated double-press detection.
@@ -442,6 +454,14 @@ impl Dispatcher {
             Message::MediaInfo(update) => {
                 if self.negotiated_caps.contains(Capabilities::MEDIA_INFO_V1) {
                     self.pending_media_info = Some(update);
+                }
+            }
+            Message::ControlLabels(update) => {
+                if self
+                    .negotiated_caps
+                    .contains(Capabilities::CONTROL_LABELS_V1)
+                {
+                    self.pending_controls = Some(update);
                 }
             }
             Message::Feedback(feedback) => {

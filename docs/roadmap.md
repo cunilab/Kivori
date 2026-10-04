@@ -3,8 +3,9 @@
 The order Kivori is built in. What it must be is in [product.md](./product.md); how it works is in
 [architecture.md](./architecture.md); hardware checks are in [validation.md](./validation.md).
 
-**Direction:** a programmable desktop controller, a desk buddy and a PC monitor, in that order of
-pillars: **control, buddy, monitoring.** Next work must serve at least one of them.
+**Direction:** a desk buddy you control your computer with. Two equal pillars, **buddy** (the
+reason to buy) and **control** (the daily value), with **monitoring** in support. Next work must
+serve at least one pillar and never make the buddy smaller to fit more text.
 
 **Sequence:** working foundation → useful device → configurable device → paid beta → customer
 feedback → v1 investment. The aim is to learn whether people pay for Kivori before building every
@@ -70,6 +71,8 @@ stays the beta platform and its rows are tracked in a GitHub issue.
 - [x] Display modes: buddy, clock, volume, media, CPU / RAM (picked in Overview)
 - [x] Buddy reacts to real state: volume change → the keycap shrinks and lifts for the volume bar; muted → mute indicator; high load → heat cue (distinct from the Busy job face); media playing → bobbing note (Windows; macOS cannot observe playback); action outcome → badge; disconnected → offline
 - [x] Every result shown as State Confirmed, Execution Confirmed or Unverified
+- [x] Buddy home names the controls: `TURN` / `PRESS` / `HOLD` labels under the keycap, sent by
+  Desktop from its live bindings (`ControlLabels`, tag 18), never guessed by the device (#9)
 - [ ] Hardware: press/hold timing on the real switch; mute and media state stay in sync with Windows; reboot works without the desktop app (Phase 4 rows)
 - [ ] Gates 1, 5, 6, 8, 9
 
@@ -77,7 +80,19 @@ stays the beta platform and its rows are tracked in a GitHub issue.
 
 **Outcome:** someone who did not build Kivori can configure and use it without editing code.
 
-- [ ] Config UI for Rotate / Press / Hold bindings
+- [x] Three contextual buttons (#9), software done and host-tested end to end:
+  - pins GPIO0, GPIO1, GPIO20 to GND, internal pull-ups, no resistors; GPIO21 stays the UART0 boot
+    log, GPIO9 stays unused (download mode)
+  - same edge interrupt as the encoder (ADR-0007); each button gives Press and Hold, never recovery;
+    one gesture owns all input, so no chords and nothing during a recovery hold
+  - wire: `ControlId::ContextButton(0..3)`, `CONTEXT_BUTTONS_V1`; labels in `ControlLabels.buttons`
+  - defaults Previous / Play-Pause / Next (Unverified media keys); Hold unbound until the config UI
+  - screen: button labels under the keycap with ticks toward the buttons, knob label top left; the
+    buddy keeps its full size. Final layout review pending (owner)
+- [ ] Hardware: Phase 5 rows in [validation.md](./validation.md), starting with 5.1 (no 32 kHz crystal)
+- [ ] Config UI for Rotate / Press / Hold and the three buttons
+- [ ] Bindings are profile-shaped from day one: General is a profile with no app rule, so app-aware
+  profiles add match rules, not a new model. Every binding change re-sends the device labels
 - [ ] Action catalog with explicit scope (System Volume ≠ App Volume)
 - [ ] Simple ordered macros (a macro reports its least-confirmed step; no rollback)
 - [ ] Choose what the display shows (default and secondary modes)
@@ -95,12 +110,43 @@ Display   Default: Buddy   Secondary: CPU / RAM
 Buddy     Reactions: On    Intensity: Normal
 ```
 
+## M2.5: Contextual profiles (#9)
+
+**Outcome:** Kivori changes what its controls do with the app in front of you, and says so on the
+screen. Moved before the paid beta because the beta must test the contextual product, not a
+volume knob; capped to keep the beta reachable.
+
+Software done and host-tested (#12); macOS works the same way for daily testing.
+
+- [x] Foreground app: Windows executable name, macOS bundle id; no window titles, no sub-app guessing
+- [x] Focus polled every 100 ms, commits after 400 ms stable; deliberate input commits a pending
+  app first (invariant 8), never a pending Unknown
+- [x] Protected (UAC / secure desktop, lock and login screens, credential prompts, elevated apps)
+  commits at once and beats a pin: shortcuts and launches are suspended (empty labels, Error if
+  pressed), system volume, media keys and mute keep working (invariant 9, gate 3)
+- [x] A knob gesture keeps the binding it began with; if focus moves mid-gesture its keys stop and
+  it ends as Error / Context Lost, shown once (invariant 12)
+- [x] Profile name top left; labels and bindings come from one context and switch together
+- [x] Hold the middle button to pin: Auto → General → Browser → Code → Media → Zoom → Teams → Auto
+- [x] Built-in profiles: General, Browser (knob = tabs), Code, Media, Zoom and Teams (Meeting mood;
+  their buttons are shortcuts and show as Unverified). Knob shortcuts show no badge per detent
+- [x] Buddy faces from observed truth (#13): error, confirmed-only celebration, strained, muted,
+  listening, attentive; offline stays distinct from sleeping
+- [x] Home layout (#14): profile top left, knob label under the clock, button labels over ticks at
+  the bottom, press / hold while the switch is held; the buddy keeps its full size
+- [ ] Hardware: Phase 6 rows in [validation.md](./validation.md)
+- [ ] Gates 3, 4, 6
+- Known limits: Windows Store apps all report `applicationframehost.exe` (they get General);
+  `` ` `` and `[` shortcuts are untested on non-US keyboard layouts
+
 ## M3: Paid beta
 
 **Outcome:** an external user receives Kivori, installs it, configures it, recovers from common
 problems and uses it without developer help. Start charging for beta units here.
 
-- [ ] Enclosure (keeps the USB port and the ESP32-C3 BOOT path reachable for recovery)
+- [ ] Enclosure (keeps the USB port and the ESP32-C3 BOOT path reachable for recovery; the three
+  buttons sit in a row directly under the screen, centres one third of the panel's active width
+  apart, each under its 80 px label column (#14))
 - [ ] BOM and real unit cost
 - [ ] Repeatable assembly process
 - [ ] Device flashing and provisioning process
@@ -123,7 +169,6 @@ Use paid-beta evidence to pick what deserves deeper investment. None of these is
 before demand is proven.
 
 - Better macros; more monitoring (GPU temperature, mic where available, custom sources)
-- App-aware profiles (stable focus, 300–500 ms stabilization, gesture stays bound to its app)
 - More physical inputs
 - macOS support (CoreAudio backend, Accessibility permission flow, menu-bar presence)
 - Integrations (Discord, Teams, OBS) as indicators
@@ -144,3 +189,6 @@ Unless it blocks the beta:
 - Buzzer or haptics
 - Linux support
 - Monitor Mode for a second device
+- Focus timer on the device (truthful, since the device owns it, but not core)
+- External status sources (CLI / local HTTP / WebSocket). A local listener is a new attack surface
+  and breaks the no-network rule, so it needs its own ADR first

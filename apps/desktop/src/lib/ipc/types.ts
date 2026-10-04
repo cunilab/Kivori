@@ -138,7 +138,15 @@ export const DISPLAY_MODES = ['buddy', 'clock', 'volume', 'media', 'system'] as 
 export type DisplayMode = (typeof DISPLAY_MODES)[number];
 export const MEDIA_STATUSES = ['playing', 'paused', 'stopped'] as const;
 export type MediaStatus = (typeof MEDIA_STATUSES)[number];
-export const DESK_ACTIONS = ['volume', 'playPause', 'mute', 'shortcut', 'launch'] as const;
+export const DESK_ACTIONS = [
+  'volume',
+  'playPause',
+  'mute',
+  'shortcut',
+  'launch',
+  'previousTrack',
+  'nextTrack',
+] as const;
 export type DeskActionToken = (typeof DESK_ACTIONS)[number];
 export const DESK_RESULTS = [
   'processing',
@@ -175,6 +183,16 @@ export interface DeskStatusDto {
   pressAction: DeskActionToken;
   holdAction: DeskActionToken;
   doublePressAction: DoublePressAction;
+  /** The three contextual buttons' Press, left to right; `null` = unbound. */
+  buttonActions: [DeskActionToken | null, DeskActionToken | null, DeskActionToken | null];
+  /** The active profile's name as the device shows it; `null` = the General fallback. */
+  profile: string | null;
+  /** The profile was pinned on the device instead of following the app in front. */
+  pinned: boolean;
+  /** What the knob does, as the device labels it; `''` = suspended here. */
+  rotateLabel: string;
+  /** Each contextual button's device label; `''` = unbound or suspended here. */
+  buttonLabels: [string, string, string];
   /** Now playing, when observable: `null` = unknown, `''` = the player shared none. */
   mediaTitle: string | null;
   mediaArtist: string | null;

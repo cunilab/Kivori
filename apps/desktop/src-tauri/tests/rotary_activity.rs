@@ -74,6 +74,8 @@ fn rejected_input_and_failed_volume_writes_become_typed_activity() {
         &[ev(7, 1, InputKind::GestureStarted)],
         &unimplemented,
         &mut presentations,
+        // No desk profile: every gesture is a Volume gesture.
+        |_| true,
         |o| observed.push(o),
     );
     rotary.on_connection_state(
@@ -91,6 +93,8 @@ fn rejected_input_and_failed_volume_writes_become_typed_activity() {
         ],
         &unimplemented,
         &mut presentations,
+        // No desk profile: every gesture is a Volume gesture.
+        |_| true,
         |o| observed.push(o),
     );
 

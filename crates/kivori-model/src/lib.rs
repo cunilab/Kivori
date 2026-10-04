@@ -15,6 +15,7 @@ pub mod capabilities;
 pub mod color;
 pub mod connection;
 pub mod desk;
+pub mod face;
 pub mod geometry;
 pub mod input;
 pub mod mascot;
@@ -28,6 +29,7 @@ pub mod version;
 pub use capabilities::Capabilities;
 pub use color::Rgb565;
 pub use connection::{ConnectionEvent, ConnectionState};
+pub use face::{buddy_face, FaceOverride};
 pub use geometry::{Point, Rect, Size};
 pub use mascot::{
     MascotAction, MascotAnimator, MascotExpression, MascotPersonality, MascotPose, MASCOT_ANCHOR,

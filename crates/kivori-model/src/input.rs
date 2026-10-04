@@ -20,13 +20,15 @@ pub enum Direction {
 
 /// Instantaneous encoder levels sampled from hardware.
 ///
-/// `sw` is carried but unused in Slice 002; the push-switch gesture machine is a later slice.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Pressed is `true` for every switch, whatever the electrical polarity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct InputLevels {
     /// Quadrature channel A level.
     pub a: bool,
     /// Quadrature channel B level.
     pub b: bool,
-    /// Push-switch level. Unused until the gesture machine (later slice) reads it.
+    /// The encoder's push switch.
     pub sw: bool,
+    /// The three contextual buttons, left to right (`false` on boards without them).
+    pub keys: [bool; 3],
 }

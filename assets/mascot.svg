@@ -25,6 +25,8 @@ Mouth groups draw inside the mouth crop (96,134 48x24). No raster images or exte
     <g id="eyes-sleeping"><rect x="93" y="116" width="22" height="6.5" rx="3.25" fill="#10131a"/></g>
     <g id="eyes-offline"><circle cx="104" cy="116" r="5" fill="#10131a" fill-opacity="0.55"/></g>
     <g id="eyes-affectionate"><path d="M93 112 Q104 128 115 112" fill="none" stroke="#10131a" stroke-width="7" stroke-linecap="round"/></g>
+    <g id="eyes-error"><path d="M97 109 L111 123 M111 109 L97 123" fill="none" stroke="#10131a" stroke-width="5.5" stroke-linecap="round"/></g>
+    <g id="eyes-strained"><rect x="96" y="116" width="16" height="9" rx="4.5" fill="#10131a"/></g>
     <!-- mouths: centred at (120,146) -->
     <g id="mouth-booting"><ellipse cx="120" cy="145" rx="4" ry="4.5" fill="#10131a"/></g>
     <g id="mouth-idle"></g>
@@ -33,6 +35,10 @@ Mouth groups draw inside the mouth crop (96,134 48x24). No raster images or exte
     <g id="mouth-sleeping"><ellipse cx="120" cy="146" rx="3.5" ry="3.5" fill="#10131a"/></g>
     <g id="mouth-offline"></g>
     <g id="mouth-laughing"><path d="M108 139 Q120 158 132 139 Z" fill="#10131a"/><path d="M113 146 Q120 152 127 146" fill="#ff7aa0"/></g>
+    <g id="mouth-error"><path d="M111.5 149 Q120 139 128.5 149" fill="none" stroke="#10131a" stroke-width="4.5" stroke-linecap="round"/></g>
+    <g id="mouth-strained"><path d="M110.5 147 L115 142 L120 147 L125 142 L129.5 147" fill="none" stroke="#10131a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <g id="mouth-muted"><path d="M110 145 L130 145" stroke="#10131a" stroke-width="3.5" stroke-linecap="round"/><path d="M114 141 L114 149 M120 141 L120 149 M126 141 L126 149" stroke="#10131a" stroke-width="2.8" stroke-linecap="round"/></g>
+    <g id="mouth-attentive"><circle cx="120" cy="145" r="4" fill="none" stroke="#10131a" stroke-width="3"/></g>
   </defs>
   <use href="#body"/>
   <use href="#cap"/>

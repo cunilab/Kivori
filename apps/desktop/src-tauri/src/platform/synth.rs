@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use enigo::{Direction, Enigo, Key, Keyboard, NewConError, Settings};
 
-use super::{ActionError, InputSynth, MainThread, Shortcut, ShortcutKey};
+use super::{ActionError, InputSynth, MainThread, MediaKey, Shortcut, ShortcutKey};
 
 /// How long a synthesized input may wait for the main thread before it counts as failed.
 const MAIN_THREAD_TIMEOUT: Duration = Duration::from_secs(2);
@@ -104,12 +104,13 @@ fn key_of(key: ShortcutKey) -> Result<Key, ActionError> {
 }
 
 impl InputSynth for EnigoInputSynth {
-    fn send_media_play_pause(&self) -> Result<(), ActionError> {
-        self.on_main(|| {
-            connect()?
-                .key(Key::MediaPlayPause, Direction::Click)
-                .map_err(failed)
-        })
+    fn send_media_key(&self, key: MediaKey) -> Result<(), ActionError> {
+        let key = match key {
+            MediaKey::PlayPause => Key::MediaPlayPause,
+            MediaKey::Previous => Key::MediaPrevTrack,
+            MediaKey::Next => Key::MediaNextTrack,
+        };
+        self.on_main(move || connect()?.key(key, Direction::Click).map_err(failed))
     }
 
     fn send_shortcut(&self, shortcut: &Shortcut) -> Result<(), ActionError> {

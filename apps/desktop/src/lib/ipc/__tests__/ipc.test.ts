@@ -89,6 +89,11 @@ const validDesk = {
   pressAction: 'playPause',
   holdAction: 'mute',
   doublePressAction: 'nextView',
+  buttonActions: ['previousTrack', 'playPause', 'nextTrack'],
+  profile: null,
+  pinned: false,
+  rotateLabel: 'Volume',
+  buttonLabels: ['Previous', 'Play/Pause', 'Next'],
   mediaTitle: 'Weightless',
   mediaArtist: '',
   lastAction: { action: 'shortcut', result: 'unverified', permissionRequired: true },
@@ -124,6 +129,10 @@ describe('desk ipc (Tauri)', () => {
     ['missing double-press action', { doublePressAction: undefined }],
     ['media title type', { mediaTitle: 42 }],
     ['media artist type', { mediaArtist: { name: 'x' } }],
+    ['pinned type', { pinned: 'yes' }],
+    ['missing rotate label', { rotateLabel: undefined }],
+    ['button labels length', { buttonLabels: ['Back'] }],
+    ['profile type', { profile: 7 }],
   ])('rejects an unknown %s token', async (_name, patch) => {
     enterTauri();
     tauri.invoke.mockResolvedValue({ ...validDesk, ...patch });

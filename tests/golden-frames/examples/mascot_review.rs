@@ -3,7 +3,7 @@
 use kivori_asset_compiler::compile_default_blob;
 use kivori_assets::AssetBlob;
 use kivori_framebuffer::TileBand;
-use kivori_model::{CompanionState, MascotAnimator, Rect, Rgb565};
+use kivori_model::{CompanionState, MascotAnimator, MascotExpression, MascotPose, Rect, Rgb565};
 use kivori_renderer::{frame_hash, render_pose, render_scene};
 use std::{fs, io::Write, path::Path};
 
@@ -65,5 +65,27 @@ fn main() {
         .unwrap();
         println!("transition-{ms}=0x{:016X}", frame_hash(&pixels));
         ppm(&directory.join(format!("transition-{ms}.ppm")), &pixels);
+    }
+    // One Idle-scene frame per observed-state face (issue #13), pinned in tests/mascot_faces.rs.
+    for (name, expression) in [
+        ("error", MascotExpression::Error),
+        ("strained", MascotExpression::Strained),
+        ("muted", MascotExpression::Muted),
+        ("listening", MascotExpression::Listening),
+        ("attentive", MascotExpression::Attentive),
+    ] {
+        let mut pose = MascotPose::for_state(CompanionState::Idle);
+        pose.expression = expression;
+        let mut pixels = vec![Rgb565::from_raw(0); 240 * 240];
+        let mut band = TileBand::new(Rect::new(0, 0, 240, 240), &mut pixels).unwrap();
+        render_pose(
+            &blob,
+            blob.scene(CompanionState::Idle).unwrap(),
+            &pose,
+            &mut band,
+        )
+        .unwrap();
+        println!("face-{name}=0x{:016X}", frame_hash(&pixels));
+        ppm(&directory.join(format!("face-{name}.ppm")), &pixels);
     }
 }

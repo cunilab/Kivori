@@ -451,14 +451,20 @@ fn device_loop(
         let mut presentations = Vec::new();
         let inputs = session.take_input_events();
         if !flash.is_busy() {
-            rotary.accept_inputs(&inputs, &*backend, &mut presentations, |observation| {
-                record_observations(&app, &activity_log, [observation]);
-            });
-            for input in rotary.take_button_inputs() {
-                desk.on_input(&input, started.elapsed(), &mut |observation| {
+            let now = started.elapsed();
+            rotary.accept_inputs(
+                &inputs,
+                &*backend,
+                &mut presentations,
+                |input| {
+                    desk.on_input(&input, now, &mut |observation| {
+                        record_observations(&app, &activity_log, [observation]);
+                    })
+                },
+                |observation| {
                     record_observations(&app, &activity_log, [observation]);
-                });
-            }
+                },
+            );
             if rotary.take_volume_failure() {
                 desk.report(ActionFeedback {
                     action: ActionKind::Volume,
@@ -518,6 +524,9 @@ fn device_loop(
                 }
                 if let Some(info) = desk_out.media_info {
                     write_failed |= session.send_media_info(open_link, info).is_err();
+                }
+                if let Some(labels) = desk_out.controls {
+                    write_failed |= session.send_control_labels(open_link, labels).is_err();
                 }
                 if write_failed {
                     recover_link(
@@ -662,8 +671,6 @@ pub struct RotaryPipeline {
     resolver: PresentationResolver,
     volume_failed: bool,
     audio_available: bool,
-    /// Validated push-switch inputs awaiting [`Self::take_button_inputs`].
-    buttons: Vec<LogicalInput>,
     /// A new volume-failure streak began since the last [`Self::take_volume_failure`].
     failure_started: bool,
 }
@@ -679,7 +686,6 @@ impl RotaryPipeline {
             resolver: PresentationResolver::new(0),
             volume_failed: false,
             audio_available: is_available(backend),
-            buttons: Vec::new(),
             failure_started: false,
         }
     }
@@ -707,25 +713,24 @@ impl RotaryPipeline {
         }
     }
 
-    /// Validates and executes decoded input, queueing any resulting presentations. Rejected input
-    /// is dropped unexecuted and recorded by safe category only (never its payload).
+    /// Validates decoded input in order and hands each one to `desk` (the desk pipeline, which
+    /// owns the active profile). Input `desk` returns `true` for belongs to a Volume gesture and
+    /// also drives the volume loop, queueing any resulting presentations. Rejected input is
+    /// dropped unexecuted and recorded by safe category only (never its payload).
     pub fn accept_inputs(
         &mut self,
         events: &[InputEvent],
         backend: &dyn VolumeBackend,
         presentations: &mut Vec<Presentation>,
+        mut desk: impl FnMut(LogicalInput) -> bool,
         mut observe: impl FnMut(SessionActivity),
     ) {
         for event in events {
             match self.ingress.accept(event) {
-                Ok(Some(
-                    input @ (LogicalInput::Press { .. }
-                    | LogicalInput::Hold { .. }
-                    | LogicalInput::DoublePress { .. }),
-                )) => {
-                    self.buttons.push(input);
-                }
                 Ok(Some(input)) => {
+                    if !desk(input) {
+                        continue;
+                    }
                     if let Some(update) = self.gesture_value.on_input(input, backend) {
                         self.push_update(update, presentations, &mut observe);
                     }
@@ -812,11 +817,6 @@ impl RotaryPipeline {
 }
 
 impl RotaryPipeline {
-    /// Push-switch inputs validated since the last call; the desk pipeline owns their meaning.
-    pub fn take_button_inputs(&mut self) -> Vec<LogicalInput> {
-        std::mem::take(&mut self.buttons)
-    }
-
     /// Whether a new streak of failed volume writes began since the last call: shown once on the
     /// device as a volume Error, so a failed turn is never silent (gate 9).
     pub fn take_volume_failure(&mut self) -> bool {

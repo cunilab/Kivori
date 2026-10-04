@@ -17,8 +17,8 @@ pub const MASCOT_ANCHOR: Point = Point::new(120, 208);
 /// Stable default seed used by firmware and native preview for ambient facial motion.
 pub const DEFAULT_IDLE_SEED: u32 = 0x4B49_564F;
 
-// Happy's "deep press": how far the keycap's cap sinks into its base, in Q8 pixels.
-const HAPPY_PRESS_Q8: i32 = 16 * 256;
+/// Happy's "deep press": how far the keycap's cap sinks into its base, in Q8 pixels.
+pub const HAPPY_PRESS_Q8: i32 = 16 * 256;
 
 const IDLE_EPOCH_MS: u32 = 6_000;
 const BLINK_HALF_WINDOW_MS: u32 = 80;
@@ -90,6 +90,16 @@ pub enum MascotExpression {
     Surprised = 9,
     /// Soft reassuring face.
     Reassuring = 10,
+    /// Known action failure: crossed-out eyes and a frown.
+    Error = 11,
+    /// Sustained high machine load: squinting eyes and a wavy mouth.
+    Strained = 12,
+    /// Master mute is on: a zipped mouth.
+    Muted = 13,
+    /// Media is playing: closed contented eyes, no mouth.
+    Listening = 14,
+    /// A meeting profile is active: open eyes and a small round mouth.
+    Attentive = 15,
 }
 
 impl MascotExpression {
@@ -110,6 +120,10 @@ impl MascotExpression {
             Self::Sleeping => 4,
             Self::Offline => 5,
             Self::Affectionate => 6,
+            Self::Error => 7,
+            Self::Strained => 8,
+            Self::Muted | Self::Attentive => 1,
+            Self::Listening => 2,
         }
     }
 
@@ -124,6 +138,11 @@ impl MascotExpression {
             Self::Sleeping => 4,
             Self::Offline => 5,
             Self::Laughing => 6,
+            Self::Error => 7,
+            Self::Strained => 8,
+            Self::Muted => 9,
+            Self::Attentive => 10,
+            Self::Listening => 1,
         }
     }
 

@@ -1,6 +1,6 @@
 # Kivori
 
-Kivori is a programmable desk controller with a buddy and a PC monitor: control the computer through a physical knob and button, and see important desktop and system state on a dedicated display.
+Kivori is a desk buddy you control your computer with: the buddy is why you want one, the physical knob and button are why you keep using it, and the display shows important desktop and system state around the buddy.
 
 > **Product thesis:** Control the desktop physically. Understand the desktop visually.
 
@@ -18,7 +18,7 @@ Next: the combined M0 + M1 hardware session (macOS daily use, then Windows), the
 
 ## Hardware
 
-One ESP32-C3, one ST7789 240×240 panel, one HW-040 rotary encoder. USB provides power, flashing, and the product data link — no external UART bridge.
+One ESP32-C3, one ST7789 240×240 panel, one HW-040 rotary encoder, three momentary push buttons. USB provides power, flashing, and the product data link — no external UART bridge.
 
 ### Pin map
 
@@ -32,6 +32,7 @@ One ESP32-C3, one ST7789 240×240 panel, one HW-040 rotary encoder. USB provides
 | Encoder CLK (A) | 4 | |
 | Encoder DT (B) | 5 | |
 | Encoder SW | 10 | push switch: Press, Hold, ~10 s recovery reboot |
+| Button left / middle / right | 0 / 1 / 20 | to GND, internal pull-up, no resistor; GPIO0/1 need a devkit without a 32 kHz crystal |
 | USB D− / D+ | 18 / 19 | native USB Serial/JTAG, `0x303A:0x1001` |
 
 Encoder COM to **GND**, VCC to **3V3**. **Not 5V — ESP32-C3 GPIOs are not 5 V tolerant.** Firmware enables internal pull-ups and reads all three encoder lines active-low, so it works whether or not your HW-040 board populates its own pull-ups.

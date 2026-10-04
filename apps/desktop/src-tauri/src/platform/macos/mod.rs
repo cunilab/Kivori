@@ -3,9 +3,11 @@
 //! `platform::synth`.
 
 mod audio;
+mod foreground;
 mod media;
 mod system;
 
 pub use audio::MacVolumeBackend;
+pub use foreground::MacForeground;
 pub use media::MacMediaObserver;
 pub use system::{local_time, MacSystemProbe};
