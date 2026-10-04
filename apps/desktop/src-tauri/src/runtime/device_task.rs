@@ -519,6 +519,9 @@ fn device_loop(
                 if let Some(info) = desk_out.media_info {
                     write_failed |= session.send_media_info(open_link, info).is_err();
                 }
+                if let Some(labels) = desk_out.controls {
+                    write_failed |= session.send_control_labels(open_link, labels).is_err();
+                }
                 if write_failed {
                     recover_link(
                         &mut activity_planner,

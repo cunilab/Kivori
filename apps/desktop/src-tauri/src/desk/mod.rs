@@ -12,8 +12,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use kivori_model::desk::{
-    ActionFeedback, ActionKind, ClockTime, DeskStatus, DisplayMode, FeedbackKind, MediaInfo,
-    MediaStatus, MediaText,
+    ActionFeedback, ActionKind, ClockTime, ControlLabels, DeskStatus, DisplayMode, FeedbackKind,
+    MediaInfo, MediaStatus, MediaText,
 };
 
 use crate::activity::{ActivityEventKind, ActivityMetadata, SessionActivity};
@@ -185,6 +185,8 @@ pub struct DeskOutput {
     pub feedback: Vec<ActionFeedback>,
     /// New now-playing text to send (`Some(None)` clears it on the device).
     pub media_info: Option<Option<MediaInfo>>,
+    /// Control labels to send: once per session, and again if a binding changes.
+    pub controls: Option<ControlLabels>,
 }
 
 /// The last action outcome, for the desktop UI.
@@ -211,6 +213,8 @@ pub struct DeskRuntime {
     now_playing: Option<NowPlaying>,
     /// What the device was last sent, `None` = nothing sent this session.
     sent_media: Option<Option<MediaInfo>>,
+    /// The control labels the device was last sent, `None` = nothing sent this session.
+    sent_controls: Option<ControlLabels>,
 }
 
 impl DeskRuntime {
@@ -244,6 +248,7 @@ impl DeskRuntime {
             last_action: None,
             now_playing: None,
             sent_media: None,
+            sent_controls: None,
         }
     }
 
@@ -342,6 +347,7 @@ impl DeskRuntime {
     pub fn on_session_begin(&mut self) {
         self.publisher.invalidate();
         self.sent_media = None;
+        self.sent_controls = None;
     }
 
     /// The session ended: nothing in flight reaches a later session.
@@ -374,6 +380,11 @@ impl DeskRuntime {
             self.sent_media = Some(media_info);
             media_info
         });
+        let labels = self.bindings.labels();
+        let controls = (self.sent_controls != Some(labels)).then(|| {
+            self.sent_controls = Some(labels);
+            labels
+        });
         while let Some(finished) = self.worker.try_finished() {
             self.finish(finished.action, finished.outcome, observe);
             if let Some(feedback) = self.ladder.on_outcome(finished.id, finished.outcome.kind) {
@@ -393,6 +404,7 @@ impl DeskRuntime {
             status: self.publisher.due((self.clock)(), now),
             feedback: std::mem::take(&mut self.outbox),
             media_info: media_update,
+            controls,
         }
     }
 
@@ -625,6 +637,22 @@ mod tests {
 
         desk.on_session_begin();
         assert!(desk.tick(ms(1_200), &mut |_| {}).media_info.is_some());
+    }
+
+    #[test]
+    fn control_labels_follow_the_bindings_once_per_session() {
+        let mut desk = runtime(Arc::default());
+        desk.on_session_begin();
+        let labels = desk.tick(ms(0), &mut |_| {}).controls.unwrap();
+        assert_eq!(labels.rotate.as_latin1(), b"Volume");
+        assert_eq!(labels.press.as_latin1(), b"Play/Pause");
+        assert_eq!(labels.hold.as_latin1(), b"Mute");
+        assert_eq!(desk.tick(ms(100), &mut |_| {}).controls, None, "unchanged");
+        desk.on_session_begin();
+        assert!(desk.tick(ms(200), &mut |_| {}).controls.is_some());
+
+        let launch = Action::Launch("/Applications/Spotify.app".into());
+        assert_eq!(launch.label(), "Spotify", "an app name, not a path");
     }
 
     #[test]

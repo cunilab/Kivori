@@ -11,7 +11,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
-use kivori_model::desk::{ActionKind, FeedbackKind};
+use kivori_model::desk::{ActionKind, ControlLabels, FeedbackKind, MediaText};
 
 use crate::platform::{
     ActionError, BackendError, InputSynth, MediaObserver, Shortcut, VolumeBackend,
@@ -43,12 +43,40 @@ impl Action {
     }
 }
 
+impl Action {
+    /// What the device legend calls this action: short, in the user's terms.
+    #[must_use]
+    pub fn label(&self) -> String {
+        match self {
+            Action::PlayPause => "Play/Pause".into(),
+            Action::ToggleMute => "Mute".into(),
+            Action::Shortcut(shortcut) => shortcut.to_string(),
+            // An app name, not a path.
+            Action::Launch(target) => std::path::Path::new(target)
+                .file_stem()
+                .map_or_else(|| target.clone(), |s| s.to_string_lossy().into_owned()),
+        }
+    }
+}
+
 /// What the push switch does. The rotary binding is fixed to master volume in M1; configurable
 /// bindings arrive with the M2 config UI.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Bindings {
     pub press: Action,
     pub hold: Action,
+}
+
+impl Bindings {
+    /// The device legend for these bindings. The knob is master volume in M1.
+    #[must_use]
+    pub fn labels(&self) -> ControlLabels {
+        ControlLabels {
+            rotate: MediaText::from_text("Volume"),
+            press: MediaText::from_text(&self.press.label()),
+            hold: MediaText::from_text(&self.hold.label()),
+        }
+    }
 }
 
 impl Default for Bindings {

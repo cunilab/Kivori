@@ -10,10 +10,10 @@ use crate::state::{DeviceEvent, DeviceState};
 use heapless::Vec;
 use kivori_model::{Capabilities, ProtocolVersion};
 use kivori_protocol::{
-    decode_message, encode_message, ControlId, DeviceId, Feedback, FirmwareVersion, HelloAck,
-    InputEvent, InputKind, MascotActionApplied, MediaInfoUpdate, Message, Nonce, PlayMascotAction,
-    Presentation, SeqClass, SequenceTracker, StateReport, Status, MAX_FRAME, MAX_WIRE,
-    PROTOCOL_MAJOR, PROTOCOL_MINOR,
+    decode_message, encode_message, ControlId, ControlLabelsUpdate, DeviceId, Feedback,
+    FirmwareVersion, HelloAck, InputEvent, InputKind, MascotActionApplied, MediaInfoUpdate,
+    Message, Nonce, PlayMascotAction, Presentation, SeqClass, SequenceTracker, StateReport, Status,
+    MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 /// Inbound accumulation capacity: room for a partial packet plus one full wire packet.
@@ -80,6 +80,7 @@ pub struct Dispatcher {
     pending_feedback: Option<Feedback>,
     /// The latest negotiated `MediaInfo`, awaiting [`Self::take_media_info`].
     pending_media_info: Option<MediaInfoUpdate>,
+    pending_controls: Option<ControlLabelsUpdate>,
 }
 
 impl Dispatcher {
@@ -106,6 +107,7 @@ impl Dispatcher {
             pending_status: None,
             pending_feedback: None,
             pending_media_info: None,
+            pending_controls: None,
         }
     }
 
@@ -205,6 +207,11 @@ impl Dispatcher {
     /// Takes the pending accepted `MediaInfo`, if any.
     pub fn take_media_info(&mut self) -> Option<MediaInfoUpdate> {
         self.pending_media_info.take()
+    }
+
+    /// Takes the pending accepted `ControlLabels`, if any.
+    pub fn take_control_labels(&mut self) -> Option<ControlLabelsUpdate> {
+        self.pending_controls.take()
     }
 
     /// Whether the session negotiated double-press detection.
@@ -442,6 +449,14 @@ impl Dispatcher {
             Message::MediaInfo(update) => {
                 if self.negotiated_caps.contains(Capabilities::MEDIA_INFO_V1) {
                     self.pending_media_info = Some(update);
+                }
+            }
+            Message::ControlLabels(update) => {
+                if self
+                    .negotiated_caps
+                    .contains(Capabilities::CONTROL_LABELS_V1)
+                {
+                    self.pending_controls = Some(update);
                 }
             }
             Message::Feedback(feedback) => {

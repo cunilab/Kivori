@@ -245,6 +245,19 @@ pub struct MediaInfo {
     pub artist: MediaText,
 }
 
+/// What the physical controls do right now, as short labels the desktop derives from its active
+/// bindings (capability `CONTROL_LABELS_V1`). The device only draws them; it never guesses a
+/// binding, so an empty label (or no labels at all) shows nothing for that control.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ControlLabels {
+    /// The knob.
+    pub rotate: MediaText,
+    /// A short press of the push switch.
+    pub press: MediaText,
+    /// A hold of the push switch.
+    pub hold: MediaText,
+}
+
 /// The last CPU samples the device received (one per `Status`), oldest first, for a sparkline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CpuHistory {
@@ -313,6 +326,8 @@ pub struct DeskView {
     pub previous_mode: Option<DisplayMode>,
     /// Milliseconds since the current view appeared (drives the switch animation).
     pub mode_age_ms: u32,
+    /// What the controls do, when the desktop sent it this session (`None` = not known).
+    pub controls: Option<ControlLabels>,
 }
 
 #[cfg(test)]

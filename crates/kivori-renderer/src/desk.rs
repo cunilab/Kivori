@@ -14,8 +14,9 @@
 //!
 //! Visual language: one dark palette around the mascot background `#0c101c`, a single cyan
 //! accent for live values, amber for "attention" (high load, unverified, recovery), rounded
-//! monoline digits for every big number, 270-degree ring gauges, and a fixed top status row
-//! (feedback badge left, time centre, indicators right) owned by the chrome.
+//! monoline digits for every big number, 270-degree ring gauges, a fixed top status row
+//! (feedback badge left, time centre, indicators right) owned by the chrome, and on the Buddy
+//! view a bottom legend saying what each control does.
 
 use core::convert::Infallible;
 
@@ -28,8 +29,8 @@ use embedded_graphics::text::{Baseline, Text};
 use embedded_graphics::Pixel;
 use kivori_framebuffer::TileBand;
 use kivori_model::desk::{
-    CpuHistory, DeskStatus, DeskView, DisplayMode, FeedbackKind, MediaInfo, MediaStatus,
-    VIEW_TRANSITION_MS,
+    ControlLabels, CpuHistory, DeskStatus, DeskView, DisplayMode, FeedbackKind, MediaInfo,
+    MediaStatus, MediaText, VIEW_TRANSITION_MS,
 };
 use kivori_model::presentation::{ValueConfidence, ValueDisplay};
 use kivori_model::Rgb565;
@@ -1337,6 +1338,10 @@ pub fn render_chrome(band: &mut TileBand, view: &DeskView) {
         }
     }
 
+    if let (DisplayMode::Buddy, Some(labels)) = (status.mode, view.controls) {
+        control_legend(band, &labels);
+    }
+
     if let Some(fb) = view.feedback {
         badge(band, fb.kind, view.elapsed_ms);
     }
@@ -1347,6 +1352,35 @@ pub fn render_chrome(band: &mut TileBand, view: &DeskView) {
         rect(band, 0, n - 3, n, 3, TEXT);
         rect(band, 0, 0, 3, n, TEXT);
         rect(band, n - 3, 0, 3, n, TEXT);
+    }
+}
+
+/// What each control does, under the keycap of the Buddy view: three 80 px columns of a small
+/// caption (the control) over its label (the bound action, as the desktop named it). A control
+/// with an empty label is left out, never guessed. A label too wide for its column fades out at
+/// the column edge.
+fn control_legend(band: &mut TileBand, labels: &ControlLabels) {
+    const COL_W: i32 = SCREEN / 3;
+    const PAD: i32 = 4;
+    const FADE: i32 = 10;
+    let columns: [(&[u8], &MediaText); 3] = [
+        (b"TURN", &labels.rotate),
+        (b"PRESS", &labels.press),
+        (b"HOLD", &labels.hold),
+    ];
+    for (i, (caption, label)) in columns.into_iter().enumerate() {
+        let label = label.as_latin1();
+        if label.is_empty() {
+            continue;
+        }
+        let x0 = i as i32 * COL_W;
+        let cx = x0 + COL_W / 2;
+        text_c(band, F_SMALL, caption, cx, 210, FAINT);
+        let (x1, x2) = (x0 + PAD, x0 + COL_W - PAD);
+        let w = text_width(F_LABEL, label);
+        let x = if w <= x2 - x1 { cx - w / 2 } else { x1 };
+        // The left fade zone sits before the text, so only the cut (right) end fades.
+        text_clipped(band, F_LABEL, label, (x, 222), TEXT, (x1 - FADE, x2, FADE));
     }
 }
 

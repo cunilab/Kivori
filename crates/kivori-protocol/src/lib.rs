@@ -19,9 +19,10 @@ pub use error::{ByeReason, ErrorCategory, ProtoError};
 pub use frame::{crc32, decode_frame, encode_frame, Header};
 pub use handshake::{evaluate_hello_ack, HandshakeOutcome};
 pub use message::{
-    Bye, ControlId, DeviceId, Diagnostic, ErrorReport, Feedback, FirmwareVersion, Health, Hello,
-    HelloAck, InputEvent, InputKind, MascotActionApplied, MediaInfoUpdate, Message, Nonce, Ping,
-    PlayMascotAction, Pong, Presentation, Ready, SetState, StateReport, Status,
+    Bye, ControlId, ControlLabelsUpdate, DeviceId, Diagnostic, ErrorReport, Feedback,
+    FirmwareVersion, Health, Hello, HelloAck, InputEvent, InputKind, MascotActionApplied,
+    MediaInfoUpdate, Message, Nonce, Ping, PlayMascotAction, Pong, Presentation, Ready, SetState,
+    StateReport, Status,
 };
 pub use negotiate::negotiate;
 

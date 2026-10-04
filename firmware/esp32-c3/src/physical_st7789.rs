@@ -241,7 +241,8 @@ pub fn run_mode(
             .union(Capabilities::DESK_STATUS_V1)
             .union(Capabilities::ACTION_FEEDBACK_V1)
             .union(Capabilities::DOUBLE_PRESS_V1)
-            .union(Capabilities::MEDIA_INFO_V1),
+            .union(Capabilities::MEDIA_INFO_V1)
+            .union(Capabilities::CONTROL_LABELS_V1),
     };
 
     esp_println::println!("KIVORI runtime starting");

@@ -11,12 +11,13 @@ use kivori_firmware::proto::DeviceIdentity;
 use kivori_firmware::runtime::{Runtime, RuntimeConfig, Tick};
 use kivori_firmware::sim::{CaptureDisplay, SimPipe, VirtualClock};
 use kivori_framebuffer::hash_rgb565;
-use kivori_model::desk::{DeskStatus, DisplayMode};
+use kivori_model::desk::{ControlLabels, DeskStatus, DisplayMode, MediaText};
 use kivori_model::input::InputLevels;
 use kivori_model::{Capabilities, ProtocolVersion};
 use kivori_protocol::{
-    decode_message, encode_message, ByeReason, ControlId, FirmwareVersion, Hello, InputKind,
-    Message, Nonce, Ready, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
+    decode_message, encode_message, ByeReason, ControlId, ControlLabelsUpdate, FirmwareVersion,
+    Hello, InputKind, Message, Nonce, Ready, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR,
+    PROTOCOL_MINOR,
 };
 
 const M1: Capabilities = Capabilities::PHYSICAL_INPUT_V1
@@ -59,7 +60,8 @@ impl Rig {
             capabilities: M1
                 .union(Capabilities::PRESENTATION_V1)
                 .union(Capabilities::DOUBLE_PRESS_V1)
-                .union(Capabilities::MEDIA_INFO_V1),
+                .union(Capabilities::MEDIA_INFO_V1)
+                .union(Capabilities::CONTROL_LABELS_V1),
         };
         let mut rig = Self {
             runtime: Runtime::new(identity, RuntimeConfig::default()),
@@ -306,6 +308,51 @@ fn a_desk_status_from_the_session_changes_the_view_and_a_session_end_forgets_it(
     rig.connect(M1);
     rig.run(50);
     assert_ne!(rig.display.frame(), system_frame.as_slice());
+}
+
+/// Whether anything is drawn in the legend rows under the keycap (y 209..236).
+fn legend_drawn(frame: &[kivori_model::Rgb565]) -> bool {
+    let rows = &frame[209 * 240..236 * 240];
+    rows.iter().any(|p| *p != rows[0])
+}
+
+#[test]
+fn control_labels_show_only_when_negotiated_and_only_for_their_session() {
+    let labels = |session| {
+        Message::ControlLabels(ControlLabelsUpdate {
+            session,
+            labels: ControlLabels {
+                rotate: MediaText::from_text("Volume"),
+                press: MediaText::from_text("Play/Pause"),
+                hold: MediaText::from_text("Mute"),
+            },
+        })
+    };
+    let mut rig = Rig::new();
+
+    // Not negotiated: the message stays inert.
+    rig.connect(M1);
+    rig.send(&labels(rig.nonce));
+    rig.run(50);
+    assert!(!legend_drawn(rig.display.frame()));
+
+    rig.nonce += 1;
+    rig.connect(M1.union(Capabilities::CONTROL_LABELS_V1));
+    rig.send(&labels(rig.nonce ^ 1));
+    rig.run(50);
+    assert!(
+        !legend_drawn(rig.display.frame()),
+        "another session's labels"
+    );
+    rig.send(&labels(rig.nonce));
+    rig.run(50);
+    assert!(legend_drawn(rig.display.frame()));
+
+    // A new session knows nothing until the desktop says it again.
+    rig.nonce += 1;
+    rig.connect(M1.union(Capabilities::CONTROL_LABELS_V1));
+    rig.run(50);
+    assert!(!legend_drawn(rig.display.frame()));
 }
 
 #[test]

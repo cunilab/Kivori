@@ -151,10 +151,11 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 | 15 | `Status` | D to V | session, `DeskStatus` | `DESK_STATUS_V1` |
 | 16 | `Feedback` | D to V | session, action, kind | `ACTION_FEEDBACK_V1` |
 | 17 | `MediaInfo` | D to V | session, `Option<MediaInfo>` (title, artist) | `MEDIA_INFO_V1` |
+| 18 | `ControlLabels` | D to V | session, `ControlLabels` (rotate, press, hold) | `CONTROL_LABELS_V1` |
 
 `InputEvent.control` is `Rotary` or `Button`. With `Rotary`, `kind` is `GestureStarted`, `Detent(Cw|Ccw)` or `GestureEnded`; with `Button` (needs `BUTTON_INPUT_V1` too), it is `Press`, `Hold` or `DoublePress` (needs `DOUBLE_PRESS_V1`), sent once per gesture. The desktop rejects a kind that does not belong to its control. `Presentation.primary` is `Idle, Active, Error, Unknown`. `value` is `{ kind: Volume, current_percent, confidence, at_boundary }`.
 
-`DeskStatus` (`kivori-model::desk`) is `{ mode, clock, volume_percent, muted, media, cpu_percent, ram_percent, high_load }`; every value is an `Option` and `None` is rendered as unknown. `mode` is `Buddy, Clock, Volume, Media, System`; `media` is `Playing, Paused, Stopped`. `Feedback.kind` is `Processing, StateConfirmed, ExecutionConfirmed, Unverified, Error` and `action` is `Volume, PlayPause, Mute, Shortcut, Launch`. `MediaInfo` text is `MediaText`: at most 32 ISO-8859-1 characters (what the device's Latin-1 font can draw), sanitized on the desktop (other characters become `?`, control characters dropped, a cut ends in `~`). Status, feedback and media info are session-scoped like `Presentation`: the device drops either from another session and forgets both on every session boundary.
+`DeskStatus` (`kivori-model::desk`) is `{ mode, clock, volume_percent, muted, media, cpu_percent, ram_percent, high_load }`; every value is an `Option` and `None` is rendered as unknown. `mode` is `Buddy, Clock, Volume, Media, System`; `media` is `Playing, Paused, Stopped`. `Feedback.kind` is `Processing, StateConfirmed, ExecutionConfirmed, Unverified, Error` and `action` is `Volume, PlayPause, Mute, Shortcut, Launch`. `MediaInfo` text is `MediaText`: at most 32 ISO-8859-1 characters (what the device's Latin-1 font can draw), sanitized on the desktop (other characters become `?`, control characters dropped, a cut ends in `~`). `ControlLabels` holds one `MediaText` per control, derived on the desktop from its live bindings (`Bindings::labels`) and sent once per session and again when a binding changes; an empty label means "draw nothing", never a guess. Status, feedback, media info and control labels are session-scoped like `Presentation`: the device drops any from another session and forgets them all on every session boundary.
 
 | Bit | Capability |
 |---:|---|
@@ -166,6 +167,7 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 | 5 | `ACTION_FEEDBACK_V1` |
 | 6 | `DOUBLE_PRESS_V1` |
 | 7 | `MEDIA_INFO_V1` |
+| 8 | `CONTROL_LABELS_V1` |
 
 `Capabilities` is a `u32` set in `kivori-model`. Bits are allocated centrally and never reused.
 
@@ -291,7 +293,7 @@ desktop 1 Hz: CPU/RAM, volume/mute, media, local time -> StatusPublisher -> Stat
 - Classification (`desk/actions.rs`): mute is State Confirmed only when the OS read-back shows the new state; play/pause and a shortcut are always Unverified (a matching media state can be stale or caused by something else, so it is never proof; the media indicator and view show what the OS reports); a launch is Execution Confirmed once the OS accepted it (`open -a` exit 0 on macOS, process created on Windows; no shell). A missing permission is Error with `permission_required`, never another mechanism.
 - `FeedbackLadder` (`desk/mod.rs`): Processing at 500 ms, Unverified at 1.5 s, after which a late outcome is logged but not shown. Timeout is never Error. A newer action replaces the pending feedback; a session end clears it, and requests still queued for the worker are skipped (an epoch counter), so nothing from an old session runs later. A new streak of failed volume writes is shown once as a volume Error.
 - `StatusPublisher`: sends `Status` when anything shown changes, when the minute rolls over, or every 30 s; the device advances the clock locally in between. High load is CPU at or above 85 % for 3 samples, cleared below 70 % or when CPU is unknown.
-- Device rendering order (`firmware/.../render.rs`, `kivori-renderer::desk`): recovery takeover, else the Buddy pose or the selected desk view, then the volume overlay (except in the Volume view, which shows the value itself), then the chrome: mute and media indicators, the high-load cue (Buddy only), the press frame and the feedback badge. Unverified is an amber ring with `?`, never a check mark.
+- Device rendering order (`firmware/.../render.rs`, `kivori-renderer::desk`): recovery takeover, else the Buddy pose or the selected desk view, then the volume overlay (except in the Volume view, which shows the value itself), then the chrome: mute and media indicators, the high-load cue (Buddy only), the control legend (Buddy only: `TURN` / `PRESS` / `HOLD` captions over the labels, in three fixed 80 px columns under the keycap; a label too wide for its column fades at the edge), the press frame and the feedback badge. Unverified is an amber ring with `?`, never a check mark.
 - View switch (`desk::render_views`): for `VIEW_TRANSITION_MS` (320 ms) the outgoing view slides up and the new one pushes in from below (integer ease-out cubic). Each view is drawn into a row slice of the tile (`TileBand::split_at_row` + `scrolled`), so the mascot slides like any view, no extra buffer is needed and tiles still stitch to the full frame. The volume overlay and chrome stay fixed above it.
 
 ## 6. Activity log, flashing, offline rule

@@ -38,13 +38,15 @@ use crate::render::TileRenderer;
 use crate::state::{DeviceEvent, DeviceState};
 use kivori_assets::AssetBlob;
 use kivori_model::desk::{
-    ActionFeedback, CpuHistory, DeskStatus, DeskView, DisplayMode, MediaInfo, VIEW_TRANSITION_MS,
+    ActionFeedback, ControlLabels, CpuHistory, DeskStatus, DeskView, DisplayMode, MediaInfo,
+    VIEW_TRANSITION_MS,
 };
 use kivori_model::input::InputLevels;
 use kivori_model::presentation::{PrimaryState, ValueDisplay};
 use kivori_model::{CompanionState, ElapsedMs, MascotAnimator};
 use kivori_protocol::{
-    Bye, ByeReason, Feedback, InputKind, MediaInfoUpdate, Message, Nonce, Presentation, Status,
+    Bye, ByeReason, ControlLabelsUpdate, Feedback, InputKind, MediaInfoUpdate, Message, Nonce,
+    Presentation, Status,
 };
 
 /// Inactivity window, in milliseconds, after which an open rotary gesture ends
@@ -246,6 +248,7 @@ pub struct DeskState {
     status_at_ms: u32,
     feedback: Option<(ActionFeedback, u32)>,
     media_info: Option<MediaInfo>,
+    controls: Option<ControlLabels>,
     cpu_history: CpuHistory,
     /// The view before the latest switch, and when the switch happened.
     previous_mode: Option<DisplayMode>,
@@ -292,6 +295,15 @@ impl DeskState {
         true
     }
 
+    /// Applies the control labels of the current session.
+    pub fn apply_control_labels(&mut self, update: &ControlLabelsUpdate) -> bool {
+        if self.session != Some(update.session) {
+            return false;
+        }
+        self.controls = Some(update.labels);
+        true
+    }
+
     /// Shows a feedback of the current session, replacing any older one at once.
     pub fn apply_feedback(&mut self, feedback: &Feedback, now_ms: u32) -> bool {
         if self.session != Some(feedback.session) {
@@ -332,6 +344,7 @@ impl DeskState {
                 .previous_mode
                 .filter(|_| mode_age_ms < VIEW_TRANSITION_MS),
             mode_age_ms,
+            controls: self.controls,
         }
     }
 }
@@ -498,6 +511,9 @@ impl<'a> Runtime<'a> {
         }
         if let Some(feedback) = self.dispatcher.take_feedback() {
             self.redraw |= self.desk.apply_feedback(&feedback, now);
+        }
+        if let Some(update) = self.dispatcher.take_control_labels() {
+            self.redraw |= self.desk.apply_control_labels(&update);
         }
         if let Some(update) = self.dispatcher.take_media_info() {
             self.redraw |= self.desk.apply_media_info(&update);

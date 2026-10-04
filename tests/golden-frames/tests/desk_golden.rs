@@ -25,6 +25,8 @@ const GOLDEN: &[(&str, u64)] = &[
     ("recovery_100", 0x2363_7D91_4098_57A2),
     ("buddy_load_pressed", 0xF50D_D6AE_8FCE_55A5),
     ("buddy_indicators", 0x43A7_0108_2EFC_22A2),
+    ("buddy_controls", 0xA2B3_1723_8197_0EBD),
+    ("buddy_controls_long_and_empty", 0x6E03_9249_93FC_F3ED),
     ("feedback_state_confirmed", 0x71CE_2E66_B414_E9C7),
     ("feedback_execution_confirmed", 0x2C09_0A40_0615_8DD8),
     ("feedback_unverified", 0xCD9B_AAF8_3E18_C40D),

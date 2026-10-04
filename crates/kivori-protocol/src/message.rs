@@ -2,7 +2,7 @@
 //! the `postcard` variant index is the wire tag.
 
 use crate::error::{ByeReason, ErrorCategory};
-use kivori_model::desk::{ActionKind, DeskStatus, FeedbackKind, MediaInfo};
+use kivori_model::desk::{ActionKind, ControlLabels, DeskStatus, FeedbackKind, MediaInfo};
 use kivori_model::input::Direction;
 use kivori_model::presentation::{PrimaryState, ValueDisplay};
 use kivori_model::{Capabilities, CompanionState, MascotAction, MascotPersonality, SendableState};
@@ -246,6 +246,17 @@ pub struct MediaInfoUpdate {
     pub info: Option<MediaInfo>,
 }
 
+/// Desktop -> device control labels (capability `CONTROL_LABELS_V1`): what the knob, press and
+/// hold do under the active bindings. Sent once per session and again whenever a binding changes;
+/// session scoped like `Status`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ControlLabelsUpdate {
+    /// The handshake nonce of the session this applies to.
+    pub session: Nonce,
+    /// The labels.
+    pub labels: ControlLabels,
+}
+
 /// The top-level wire message.
 ///
 /// **Append-only**: new variants are added at the end within a major version — the `postcard`
@@ -288,4 +299,6 @@ pub enum Message {
     Feedback(Feedback),
     /// Tag 17 — desktop -> device now-playing text (capability `MEDIA_INFO_V1`).
     MediaInfo(MediaInfoUpdate),
+    /// Tag 18 — desktop -> device control labels (capability `CONTROL_LABELS_V1`).
+    ControlLabels(ControlLabelsUpdate),
 }

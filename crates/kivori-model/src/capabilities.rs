@@ -24,6 +24,7 @@ impl Capabilities {
     //   bit 5  ACTION_FEEDBACK_V1  M1 `Feedback` message (action outcome)
     //   bit 6  DOUBLE_PRESS_V1     M1.1 push-switch `DoublePress` input (next view)
     //   bit 7  MEDIA_INFO_V1       M1.1 `MediaInfo` message (now-playing title / artist)
+    //   bit 8  CONTROL_LABELS_V1   `ControlLabels` message (what the knob / press / hold do)
 
     /// Bit 0 — device accepts deterministic social mascot actions and returns applied-time
     /// acknowledgments.
@@ -50,6 +51,9 @@ impl Capabilities {
 
     /// Bit 7 — the device renders the `MediaInfo` message (now-playing title and artist).
     pub const MEDIA_INFO_V1: Capabilities = Capabilities(1 << 7);
+
+    /// Bit 8 — the device renders the `ControlLabels` message (what each control does).
+    pub const CONTROL_LABELS_V1: Capabilities = Capabilities(1 << 8);
 
     /// Creates a capability set from a raw bitmask.
     #[must_use]

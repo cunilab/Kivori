@@ -70,6 +70,8 @@ stays the beta platform and its rows are tracked in a GitHub issue.
 - [x] Display modes: buddy, clock, volume, media, CPU / RAM (picked in Overview)
 - [x] Buddy reacts to real state: volume change → the keycap shrinks and lifts for the volume bar; muted → mute indicator; high load → heat cue (distinct from the Busy job face); media playing → bobbing note (Windows; macOS cannot observe playback); action outcome → badge; disconnected → offline
 - [x] Every result shown as State Confirmed, Execution Confirmed or Unverified
+- [x] Buddy home names the controls: `TURN` / `PRESS` / `HOLD` labels under the keycap, sent by
+  Desktop from its live bindings (`ControlLabels`, tag 18), never guessed by the device (#9)
 - [ ] Hardware: press/hold timing on the real switch; mute and media state stay in sync with Windows; reboot works without the desktop app (Phase 4 rows)
 - [ ] Gates 1, 5, 6, 8, 9
 
@@ -78,6 +80,8 @@ stays the beta platform and its rows are tracked in a GitHub issue.
 **Outcome:** someone who did not build Kivori can configure and use it without editing code.
 
 - [ ] Config UI for Rotate / Press / Hold bindings
+- [ ] Bindings are profile-shaped from day one: General is a profile with no app rule, so app-aware
+  profiles add match rules, not a new model. Every binding change re-sends the device labels
 - [ ] Action catalog with explicit scope (System Volume ≠ App Volume)
 - [ ] Simple ordered macros (a macro reports its least-confirmed step; no rollback)
 - [ ] Choose what the display shows (default and secondary modes)
@@ -94,6 +98,27 @@ Control   Rotate: Volume   Press: Play / Pause   Hold: Open Spotify
 Display   Default: Buddy   Secondary: CPU / RAM
 Buddy     Reactions: On    Intensity: Normal
 ```
+
+## M2.5: Contextual profiles (#9)
+
+**Outcome:** Kivori changes what its controls do with the app in front of you, and says so on the
+screen. Moved before the paid beta because the beta must test the contextual product, not a
+volume knob; capped to keep the beta reachable.
+
+- [ ] Foreground app on Windows (executable name only; no window titles, no sub-app guessing)
+- [ ] Focus stabilization 300–500 ms; deliberate input commits a pending app first (invariant 8)
+- [ ] Protected contexts classified before any profile, never General (invariant 9, gate 3)
+- [ ] A gesture stays bound to the profile it began in (invariant 12)
+- [ ] Profile name on the home screen; labels and bindings switch together
+- [ ] Pin a profile from the device ("modes"); Auto = follow focus
+- [ ] Example profiles: browser (tabs), editor, media player, meeting app. Meeting controls are
+  shortcuts and show as Unverified; mic state only from the OS capture endpoint, never from an
+  app's own mute
+- [ ] **Decision gate before M3 enclosure work:** three contextual buttons, tried on a breadboard
+  (free non-strapping GPIO 0, 1, 20; never GPIO 9) during a hardware session. Keep them only if
+  real use shows the knob + press + hold run out in common profiles
+- [ ] Hardware: switch apps → labels and bindings change together; UAC prompt → Protected, no action
+- [ ] Gates 3, 4, 6
 
 ## M3: Paid beta
 
@@ -123,7 +148,6 @@ Use paid-beta evidence to pick what deserves deeper investment. None of these is
 before demand is proven.
 
 - Better macros; more monitoring (GPU temperature, mic where available, custom sources)
-- App-aware profiles (stable focus, 300–500 ms stabilization, gesture stays bound to its app)
 - More physical inputs
 - macOS support (CoreAudio backend, Accessibility permission flow, menu-bar presence)
 - Integrations (Discord, Teams, OBS) as indicators
@@ -144,3 +168,6 @@ Unless it blocks the beta:
 - Buzzer or haptics
 - Linux support
 - Monitor Mode for a second device
+- Focus timer on the device (truthful, since the device owns it, but not core)
+- External status sources (CLI / local HTTP / WebSocket). A local listener is a new attack surface
+  and breaks the no-network rule, so it needs its own ADR first

@@ -3,8 +3,8 @@
 use crate::DIM;
 use kivori_framebuffer::TileBand;
 use kivori_model::desk::{
-    ActionFeedback, ActionKind, ClockTime, CpuHistory, DeskStatus, DeskView, DisplayMode,
-    FeedbackKind, MediaInfo, MediaStatus, MediaText,
+    ActionFeedback, ActionKind, ClockTime, ControlLabels, CpuHistory, DeskStatus, DeskView,
+    DisplayMode, FeedbackKind, MediaInfo, MediaStatus, MediaText,
 };
 use kivori_model::presentation::{ValueConfidence, ValueDisplay, ValueKind};
 use kivori_model::{Rect, Rgb565};
@@ -13,6 +13,8 @@ use kivori_renderer::desk;
 /// One named desk frame: either the recovery takeover or the view layer (with any switch
 /// animation) with the chrome drawn over it (the mascot itself is out of scope here, so `Buddy`
 /// shows its plain background).
+// A short-lived list of test fixtures; boxing the view would only add noise.
+#[allow(clippy::large_enum_variant)]
 pub enum DeskFrame {
     /// `render_recovery` at this percent.
     Recovery(u8),
@@ -61,6 +63,14 @@ fn media(title: &str, artist: &str) -> Option<MediaInfo> {
     Some(MediaInfo {
         title: MediaText::from_text(title),
         artist: MediaText::from_text(artist),
+    })
+}
+
+fn controls(rotate: &str, press: &str, hold: &str) -> Option<ControlLabels> {
+    Some(ControlLabels {
+        rotate: MediaText::from_text(rotate),
+        press: MediaText::from_text(press),
+        hold: MediaText::from_text(hold),
     })
 }
 
@@ -197,6 +207,19 @@ pub fn desk_frames() -> Vec<(&'static str, DeskFrame)> {
                 v.status.muted = Some(true);
                 v.status.media = Some(MediaStatus::Playing);
                 v.elapsed_ms = 600;
+            }),
+        ),
+        (
+            "buddy_controls",
+            view(DisplayMode::Buddy, |v| {
+                v.status.clock = at(19, 52, 0);
+                v.controls = controls("Volume", "Play/Pause", "Mute");
+            }),
+        ),
+        (
+            "buddy_controls_long_and_empty",
+            view(DisplayMode::Buddy, |v| {
+                v.controls = controls("Volume", "Open Spotify Premium", "");
             }),
         ),
         (
