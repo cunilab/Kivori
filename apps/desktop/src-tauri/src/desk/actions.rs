@@ -91,6 +91,7 @@ impl Bindings {
                     .as_ref()
                     .map_or_else(MediaText::default, |a| MediaText::from_text(&a.label()))
             }),
+            ..ControlLabels::default()
         }
     }
 }

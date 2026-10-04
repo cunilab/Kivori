@@ -172,6 +172,9 @@ fn control_labels_are_tag_18_roundtrip_and_fit_one_frame() {
             press: MediaText::from_text("Play/Pause"),
             hold: MediaText::default(),
             buttons: [full, full, full],
+            profile: full,
+            pinned: true,
+            mood: kivori_model::desk::ContextMood::Meeting,
         },
     });
     assert_eq!(roundtrip(&msg), msg);

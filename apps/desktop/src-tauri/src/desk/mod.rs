@@ -227,6 +227,7 @@ impl DeskRuntime {
             media,
             system,
             clock,
+            foreground: _,
         } = services;
         let worker = ActionWorker::spawn(Platform {
             volume: Arc::clone(&volume),
@@ -585,6 +586,7 @@ mod tests {
             media,
             system: Box::new(NoSystemProbe),
             clock: || None,
+            foreground: Arc::new(crate::platform::FakeForeground::default()),
         })
     }
 

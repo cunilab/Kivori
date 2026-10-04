@@ -322,7 +322,12 @@ impl DeskState {
     /// What to render at `now_ms`: the clock advanced locally, expired feedback dropped
     /// (wrap-safe elapsed comparison, as in [`PresentationState::value_at`]).
     #[must_use]
-    pub fn view_at(&self, now_ms: u32, button_down: bool, recovery: Option<u8>) -> DeskView {
+    pub fn view_at(
+        &self,
+        now_ms: u32,
+        (button_down, switch_down): (bool, bool),
+        recovery: Option<u8>,
+    ) -> DeskView {
         let mut status = self.status;
         status.clock = status
             .clock
@@ -336,6 +341,7 @@ impl DeskState {
             status,
             feedback,
             button_down,
+            switch_down,
             recovery_percent: recovery,
             elapsed_ms: now_ms,
             media_info: self.media_info,
@@ -607,7 +613,10 @@ impl<'a> Runtime<'a> {
             };
             let view = self.desk.view_at(
                 now,
-                self.button.is_down() || self.keys.iter().any(ButtonGesture::is_down),
+                (
+                    self.button.is_down() || self.keys.iter().any(ButtonGesture::is_down),
+                    self.button.is_down(),
+                ),
                 self.button.recovery_percent(now),
             );
             let mut pose = self.animator.pose_at(now);

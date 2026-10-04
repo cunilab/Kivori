@@ -74,3 +74,13 @@ impl MediaObserver for NoMediaObserver {
         None
     }
 }
+
+/// Focus observation for a target without a backend: always unknown, so only General applies.
+#[derive(Debug, Clone, Copy)]
+pub struct NoForeground;
+
+impl super::ForegroundObserver for NoForeground {
+    fn foreground(&self) -> super::Foreground {
+        super::Foreground::Unknown
+    }
+}

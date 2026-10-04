@@ -71,7 +71,7 @@ fn controls(rotate: &str, press: &str, hold: &str) -> Option<ControlLabels> {
         rotate: MediaText::from_text(rotate),
         press: MediaText::from_text(press),
         hold: MediaText::from_text(hold),
-        buttons: Default::default(),
+        ..ControlLabels::default()
     })
 }
 

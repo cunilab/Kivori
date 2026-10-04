@@ -398,6 +398,7 @@ fn a_button_press_round_trips_to_an_honest_feedback_and_a_desk_status() {
         media: Arc::new(FakeMediaObserver::default()),
         system: Box::new(NoSystemProbe),
         clock: || None,
+        foreground: Arc::new(kivori_desktop::platform::FakeForeground::default()),
     });
     desk.on_session_begin();
 

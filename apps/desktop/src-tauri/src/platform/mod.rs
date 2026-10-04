@@ -323,6 +323,41 @@ impl MediaObserver for FakeMediaObserver {
     }
 }
 
+/// What has keyboard focus right now (docs/product.md, context and profiles).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Foreground {
+    /// An ordinary app. `id` is the stable match key (Windows: lowercase executable file name such
+    /// as `code.exe`; macOS: bundle identifier such as `com.microsoft.vscode`); `name` is for
+    /// display.
+    App { id: String, name: String },
+    /// A protected surface (UAC / secure desktop, lock or login screen, an admin surface):
+    /// custom actions are suspended and no profile applies, not even General (invariant 9).
+    Protected,
+    /// Focus can't be observed (no backend, or no focused window right now).
+    Unknown,
+}
+
+/// Observes the focused app. Cheap enough to call a few times a second.
+pub trait ForegroundObserver: Send + Sync {
+    fn foreground(&self) -> Foreground;
+}
+
+/// A [`ForegroundObserver`] that reports whatever the test sets.
+#[derive(Debug)]
+pub struct FakeForeground(pub Mutex<Foreground>);
+
+impl Default for FakeForeground {
+    fn default() -> Self {
+        Self(Mutex::new(Foreground::Unknown))
+    }
+}
+
+impl ForegroundObserver for FakeForeground {
+    fn foreground(&self) -> Foreground {
+        self.0.lock().expect("fake foreground mutex").clone()
+    }
+}
+
 /// Every OS service the device task uses, built for the current target. Targets without an
 /// implementation get the honest "not implemented" / "not observable" variants.
 pub struct OsServices {
@@ -331,6 +366,7 @@ pub struct OsServices {
     pub media: std::sync::Arc<dyn MediaObserver>,
     pub system: Box<dyn system::SystemProbe>,
     pub clock: LocalClock,
+    pub foreground: std::sync::Arc<dyn ForegroundObserver>,
 }
 
 /// Runs a closure on the app's main thread (Tauri's `run_on_main_thread`).
@@ -352,6 +388,7 @@ pub fn os_services(main: Option<MainThread>) -> OsServices {
             media: Arc::new(windows::WindowsMediaObserver::new()),
             system: Box::new(windows::WindowsSystemProbe),
             clock: windows::local_time,
+            foreground: Arc::new(unimplemented::NoForeground),
         }
     }
     #[cfg(target_os = "macos")]
@@ -362,6 +399,7 @@ pub fn os_services(main: Option<MainThread>) -> OsServices {
             media: Arc::new(macos::MacMediaObserver::new()),
             system: Box::new(macos::MacSystemProbe),
             clock: macos::local_time,
+            foreground: Arc::new(unimplemented::NoForeground),
         }
     }
     #[cfg(not(any(windows, target_os = "macos")))]
@@ -374,6 +412,7 @@ pub fn os_services(main: Option<MainThread>) -> OsServices {
             media: Arc::new(unimplemented::NoMediaObserver),
             system: Box::new(system::NoSystemProbe),
             clock: || None,
+            foreground: Arc::new(unimplemented::NoForeground),
         }
     }
 }
