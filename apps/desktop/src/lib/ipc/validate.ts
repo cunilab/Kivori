@@ -48,6 +48,22 @@ function buttonActions(value: unknown): DeskStatusDto['buttonActions'] {
   return [one(value[0]), one(value[1]), one(value[2])];
 }
 
+// Labels Desktop derives from its own profiles; clamped like media text, never trusted to be short.
+function label(name: string, value: unknown): string {
+  const text = textOrNull(name, value);
+  if (text === null) throw new Error(`Kivori: invalid ${name}.`);
+  return text;
+}
+
+function buttonLabels(value: unknown): DeskStatusDto['buttonLabels'] {
+  if (!Array.isArray(value) || value.length !== 3) throw new Error('Kivori: invalid buttonLabels.');
+  return [
+    label('buttonLabels', value[0]),
+    label('buttonLabels', value[1]),
+    label('buttonLabels', value[2]),
+  ];
+}
+
 /** Validates a `DeskStatusDto`, throwing on any unknown token or malformed value. */
 export function parseDeskStatus(raw: unknown): DeskStatusDto {
   if (typeof raw !== 'object' || raw === null) throw new Error('Kivori: invalid desk status.');
@@ -65,6 +81,7 @@ export function parseDeskStatus(raw: unknown): DeskStatusDto {
     };
   }
   if (typeof r.highLoad !== 'boolean') throw new Error('Kivori: invalid highLoad.');
+  if (typeof r.pinned !== 'boolean') throw new Error('Kivori: invalid pinned.');
   return {
     mode: oneOf('display mode', DISPLAY_MODES, r.mode),
     volumePercent: percentOrNull('volumePercent', r.volumePercent),
@@ -77,6 +94,10 @@ export function parseDeskStatus(raw: unknown): DeskStatusDto {
     holdAction: oneOf('desk action', DESK_ACTIONS, r.holdAction),
     doublePressAction: oneOf('double-press action', DOUBLE_PRESS_ACTIONS, r.doublePressAction),
     buttonActions: buttonActions(r.buttonActions),
+    profile: textOrNull('profile', r.profile),
+    pinned: r.pinned,
+    rotateLabel: label('rotateLabel', r.rotateLabel),
+    buttonLabels: buttonLabels(r.buttonLabels),
     mediaTitle: textOrNull('mediaTitle', r.mediaTitle),
     mediaArtist: textOrNull('mediaArtist', r.mediaArtist),
     lastAction,

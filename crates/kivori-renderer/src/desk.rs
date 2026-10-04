@@ -819,7 +819,7 @@ pub fn render_recovery(band: &mut TileBand, percent: u8) {
             cap(band, a, end, 0, AMBER);
         }
     }
-    restart_glyph(band, a.cx, a.cy, TEXT);
+    restart_glyph(band, a.cx, a.cy, 24, TEXT);
     if percent >= 100 {
         text_c(band, F_TITLE, b"Restarting", CENTER, 182, TEXT);
     } else {
@@ -828,13 +828,14 @@ pub fn render_recovery(band: &mut TileBand, percent: u8) {
     }
 }
 
-/// A clockwise circular arrow centred on `(cx, cy)`.
-fn restart_glyph(band: &mut TileBand, cx: i32, cy: i32, col: Rgb565) {
+/// A clockwise circular arrow of outer radius `r` centred on `(cx, cy)`: the recovery restart
+/// glyph at 24, the knob icon when small.
+fn restart_glyph(band: &mut TileBand, cx: i32, cy: i32, r: i32, col: Rgb565) {
     let a = Arc {
         cx,
         cy,
-        ro: 24,
-        ri: 18,
+        ro: r,
+        ri: r * 3 / 4,
         start: TURN / 12,
         sweep: TURN * 3 / 4,
     };
@@ -846,8 +847,8 @@ fn restart_glyph(band: &mut TileBand, cx: i32, cy: i32, col: Rgb565) {
     let (s, c) = (sin_q14(t), sin_q14(t + TURN / 4));
     let along = |d: i32| ((c * d) >> 14, (s * d) >> 14);
     let out = |d: i32| ((s * d) >> 14, -(c * d) >> 14);
-    let (tx, ty) = along(10);
-    let (nx, ny) = out(10);
+    let (tx, ty) = along(r * 10 / 24);
+    let (nx, ny) = out(r * 10 / 24);
     tri(
         band,
         (px + tx, py + ty),
@@ -1339,7 +1340,7 @@ pub fn render_chrome(band: &mut TileBand, view: &DeskView) {
     }
 
     if let (DisplayMode::Buddy, Some(labels)) = (status.mode, view.controls) {
-        control_legend(band, &labels);
+        control_legend(band, &labels, view.switch_down);
     }
 
     if let Some(fb) = view.feedback {
@@ -1355,15 +1356,30 @@ pub fn render_chrome(band: &mut TileBand, view: &DeskView) {
     }
 }
 
-/// What each control does, on the Buddy view, never shrinking the keycap: one row under it and
-/// the top-left corner. A control with an empty label is left out, never guessed.
+/// The Buddy view's context layout (#14), drawn around a keycap that is never shrunk for it. A
+/// control with an empty label is left out, never guessed.
 ///
-/// With any contextual button bound, the bottom row belongs to the three buttons (each label over
-/// a tick pointing down at its physical button) and the knob's label moves to the top left.
-/// Without buttons, the bottom row is a `TURN` / `PRESS` / `HOLD` legend for the encoder.
-fn control_legend(band: &mut TileBand, labels: &ControlLabels) {
+/// * Top left: the active profile's name, after a dot when it is pinned. The feedback badge
+///   briefly covers it; it is a transient.
+/// * Under the clock: the knob, as a small circular arrow and its label.
+/// * Bottom row: the three contextual buttons, each label over a tick pointing down at its
+///   physical button (the buttons sit in a row under the screen, one per 80 px column). While
+///   the knob's own switch is held, the row shows what releasing it does (`PRESS` / `HOLD`).
+/// * Without contextual buttons, the bottom row is a `TURN` / `PRESS` / `HOLD` legend instead
+///   and the knob label stays there.
+fn control_legend(band: &mut TileBand, labels: &ControlLabels, switch_down: bool) {
     const COL_W: i32 = SCREEN / 3;
-    if labels.buttons.iter().any(|b| !b.is_empty()) {
+    let profile = labels.profile.as_latin1();
+    if !profile.is_empty() {
+        let mut x = 8;
+        if labels.pinned {
+            disc(band, x + 3, 16, 3, ACCENT);
+            x += 10;
+        }
+        text_clipped(band, F_LABEL, profile, (x, 10), MUTED, (x - 10, 92, 10));
+    }
+    let buttons = labels.buttons.iter().any(|b| !b.is_empty());
+    if buttons && !switch_down {
         for (i, label) in labels.buttons.iter().enumerate() {
             if label.is_empty() {
                 continue;
@@ -1372,28 +1388,41 @@ fn control_legend(band: &mut TileBand, labels: &ControlLabels) {
             column_label(band, label.as_latin1(), (x0, x0 + COL_W), 214);
             rrect(band, x0 + COL_W / 2 - 8, 234, 16, 3, 1, FAINT);
         }
+    }
+    if buttons {
         let rotate = labels.rotate.as_latin1();
         if !rotate.is_empty() {
-            text(band, F_SMALL, b"TURN", 8, 12, FAINT);
-            let x = 8 + text_width(F_SMALL, b"TURN ");
-            text_clipped(band, F_LABEL, rotate, (x, 10), MUTED, (x - 10, 92, 10));
+            let w = 16 + text_width(F_LABEL, rotate);
+            let x = CENTER - w / 2;
+            restart_glyph(band, x + 5, 36, 6, FAINT);
+            text(band, F_LABEL, rotate, x + 16, 30, MUTED);
         }
+    }
+    if !buttons {
+        let columns: [(&[u8], &MediaText); 3] = [
+            (b"TURN", &labels.rotate),
+            (b"PRESS", &labels.press),
+            (b"HOLD", &labels.hold),
+        ];
+        for (i, (caption, label)) in columns.into_iter().enumerate() {
+            let x0 = i as i32 * COL_W;
+            captioned(band, caption, label.as_latin1(), (x0, x0 + COL_W));
+        }
+    } else if switch_down {
+        // What releasing the held switch does, in two halves of the row.
+        captioned(band, b"PRESS", labels.press.as_latin1(), (0, CENTER));
+        captioned(band, b"HOLD", labels.hold.as_latin1(), (CENTER, SCREEN));
+    }
+}
+
+/// A small caption over its label in the column `[x0, x1)` of the bottom row; nothing when the
+/// label is empty.
+fn captioned(band: &mut TileBand, caption: &[u8], label: &[u8], (x0, x1): (i32, i32)) {
+    if label.is_empty() {
         return;
     }
-    let columns: [(&[u8], &MediaText); 3] = [
-        (b"TURN", &labels.rotate),
-        (b"PRESS", &labels.press),
-        (b"HOLD", &labels.hold),
-    ];
-    for (i, (caption, label)) in columns.into_iter().enumerate() {
-        let label = label.as_latin1();
-        if label.is_empty() {
-            continue;
-        }
-        let x0 = i as i32 * COL_W;
-        text_c(band, F_SMALL, caption, x0 + COL_W / 2, 210, FAINT);
-        column_label(band, label, (x0, x0 + COL_W), 222);
-    }
+    text_c(band, F_SMALL, caption, (x0 + x1) / 2, 210, FAINT);
+    column_label(band, label, (x0, x1), 222);
 }
 
 /// `label` centred in the column `[x0, x1)` at `y`, or, when too wide, left-aligned and faded out

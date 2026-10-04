@@ -926,6 +926,14 @@ pub struct DeskStatusDto {
     pub double_press_action: &'static str,
     /// Desk action tokens bound to the three contextual buttons' Press (`null` = unbound).
     pub button_actions: [Option<&'static str>; 3],
+    /// The active profile's name, exactly as the device shows it (`null` = the General fallback).
+    pub profile: Option<String>,
+    /// The profile was pinned from the device instead of following the focused app.
+    pub pinned: bool,
+    /// What the knob does (empty = suspended).
+    pub rotate_label: String,
+    /// What each contextual button does, as the device labels it (empty = unbound or suspended).
+    pub button_labels: [String; 3],
     /// Now playing, when observable (`null` = unknown; empty string = the player gave none).
     pub media_title: Option<String>,
     pub media_artist: Option<String>,
@@ -985,7 +993,6 @@ const fn media_token(media: kivori_model::desk::MediaStatus) -> &'static str {
     }
 }
 
-/// The desk projection before the device thread has observed anything.
 fn button_tokens(bindings: &crate::desk::Bindings) -> [Option<&'static str>; 3] {
     bindings
         .buttons
@@ -993,9 +1000,16 @@ fn button_tokens(bindings: &crate::desk::Bindings) -> [Option<&'static str>; 3] 
         .map(|b| b.as_ref().map(|a| desk_action_token(a.kind())))
 }
 
+fn text(text: kivori_model::desk::MediaText) -> String {
+    text.as_latin1().iter().map(|&b| char::from(b)).collect()
+}
+
+/// The desk projection before the device thread has observed anything.
 #[must_use]
 pub fn initial_desk_status() -> DeskStatusDto {
-    let bindings = crate::desk::Bindings::default();
+    let context = crate::desk::profile::Context::new(crate::desk::profile::builtins());
+    let bindings = &context.profile().bindings;
+    let labels = context.labels();
     DeskStatusDto {
         mode: display_mode_token(kivori_model::desk::DisplayMode::Buddy),
         volume_percent: None,
@@ -1007,7 +1021,11 @@ pub fn initial_desk_status() -> DeskStatusDto {
         press_action: desk_action_token(bindings.press.kind()),
         hold_action: desk_action_token(bindings.hold.kind()),
         double_press_action: "nextView",
-        button_actions: button_tokens(&bindings),
+        button_actions: button_tokens(bindings),
+        profile: None,
+        pinned: false,
+        rotate_label: text(labels.rotate),
+        button_labels: labels.buttons.map(text),
         media_title: None,
         media_artist: None,
         last_action: None,
@@ -1018,6 +1036,7 @@ pub fn initial_desk_status() -> DeskStatusDto {
 #[must_use]
 pub fn desk_status_dto(desk: &crate::desk::DeskRuntime) -> DeskStatusDto {
     let observed = desk.observed();
+    let labels = desk.labels();
     DeskStatusDto {
         mode: display_mode_token(desk.mode()),
         volume_percent: observed.volume_percent,
@@ -1030,6 +1049,10 @@ pub fn desk_status_dto(desk: &crate::desk::DeskRuntime) -> DeskStatusDto {
         hold_action: desk_action_token(desk.bindings().hold.kind()),
         double_press_action: "nextView",
         button_actions: button_tokens(desk.bindings()),
+        profile: Some(text(labels.profile)).filter(|name| !name.is_empty()),
+        pinned: labels.pinned,
+        rotate_label: text(labels.rotate),
+        button_labels: labels.buttons.map(text),
         media_title: desk.now_playing().map(|np| np.title.clone()),
         media_artist: desk.now_playing().map(|np| np.artist.clone()),
         last_action: desk.last_action().map(|last| DeskActionDto {

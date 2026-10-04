@@ -20,7 +20,7 @@ const PACKED_ALPHA_MAX: usize = 131_072;
 const BODY_CROP: (u32, u32, u32, u32) = (44, 88, 152, 118);
 const CAP_CROP: (u32, u32, u32, u32) = (42, 56, 156, 112);
 const EYE_CROP: (u32, u32, u32, u32) = (88, 96, 32, 40);
-const MOUTH_CROP: (u32, u32, u32, u32) = (108, 139, 24, 11);
+const MOUTH_CROP: (u32, u32, u32, u32) = (108, 139, 24, 13);
 /// The right eye reuses the left-eye sheet, shifted by one eye crop width.
 const RIGHT_EYE_ORIGIN: Point = Point::new(120, 96);
 
@@ -237,9 +237,21 @@ pub fn compile_default_blob() -> Vec<u8> {
         "sleeping",
         "offline",
         "affectionate",
+        "error",
+        "strained",
     ];
     let mouth_names = [
-        "booting", "idle", "happy", "busy", "sleeping", "offline", "laughing",
+        "booting",
+        "idle",
+        "happy",
+        "busy",
+        "sleeping",
+        "offline",
+        "laughing",
+        "error",
+        "strained",
+        "muted",
+        "attentive",
     ];
     let mut eye_pixels = Vec::new();
     let mut eye_alpha = Vec::new();
@@ -296,10 +308,13 @@ mod tests {
         let source = include_str!("../../../assets/mascot.svg");
         let faces = ["booting", "idle", "happy", "busy", "sleeping", "offline"];
         let mut layers = vec![("body".to_owned(), BODY_CROP), ("cap".to_owned(), CAP_CROP)];
-        for name in faces.iter().chain(&["affectionate"]) {
+        for name in faces.iter().chain(&["affectionate", "error", "strained"]) {
             layers.push((format!("eyes-{name}"), EYE_CROP));
         }
-        for name in faces.iter().chain(&["laughing"]) {
+        for name in faces
+            .iter()
+            .chain(&["laughing", "error", "strained", "muted", "attentive"])
+        {
             layers.push((format!("mouth-{name}"), MOUTH_CROP));
         }
         for (id, (cx, cy, cw, ch)) in layers {

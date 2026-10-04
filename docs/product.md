@@ -107,6 +107,13 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   Ambiguous overlays follow normal focus rules.
 - Generic hosts (`chrome.exe`, `python.exe`) use their host profile unless the user
   targets more precisely. Background apps never own physical mappings.
+- Built-in profiles (until the config UI): General (fallback), Browser, Code, Media, Zoom,
+  Teams. Holding the middle contextual button pins the next profile (Auto, then each profile,
+  then back to Auto); a pin ignores focus but never Protected.
+- In a protected context, shortcuts and launches are suspended: their labels disappear and a
+  press says it can't run. System volume, media keys and mute keep working.
+- A knob bound to shortcuts sends one per detent with no badge per detent; the label is the
+  feedback, and a failure shows once per gesture.
 - Actions have explicit scope: `System Volume` and `Discord Volume` differ. Global audio
   follows the OS default endpoint; app audio is configured explicitly.
 
@@ -132,6 +139,10 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   indicators. A personality layer animates beneath them.
 - The buddy is the home screen. Clock, indicators and control labels sit around it; other views
   are details you open on purpose, and transients return to the buddy, never replace it.
+- Home layout, around a full-size buddy: profile name top left (a dot when pinned), clock top
+  centre, indicators top right, the knob's label under the clock, the three button labels along
+  the bottom over ticks pointing at their buttons. While the knob switch is held the bottom row
+  shows what releasing does (Press / Hold).
 - The home screen says what every control does right now, in the active profile's words. The
   labels come from the bindings Desktop actually runs; with no label the control shows nothing,
   never a guessed action. A context switch changes labels and bindings together.
@@ -140,6 +151,11 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   Waiting, Passive. A takeover cancels an active gesture and shows at once.
 - Healthy needs no space. Degraded gets its own cue, not an indicator slot.
 - Primary states (Idle, Active, Busy, Success, Error, Unknown) each have a distinct face.
+- The resting buddy reads observed truth (#13), first match wins: an Error result shows the
+  error face; a confirmed result (State or Execution Confirmed, never Unverified) celebrates
+  with a deep press; then sustained high load (strained), master mute (muted), media playing
+  (listening), a meeting profile (attentive). Booting, Offline and Sleeping are never
+  overridden, and Offline never looks like Sleeping.
   One unknown indicator never makes the whole buddy Unknown.
 - Indicator priority: mic, call, master mute, media, custom app. Custom indicators never
   displace the first four. Over budget, hide the lowest. Higher priority appears at once;

@@ -6,7 +6,7 @@ use std::fmt;
 /// A non-modifier key a shortcut may end in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShortcutKey {
-    /// An ASCII letter (stored lowercase) or digit.
+    /// An ASCII letter (stored lowercase), a digit, or one of [`PUNCTUATION`].
     Char(char),
     /// F1..=F24.
     Function(u8),
@@ -60,6 +60,9 @@ impl fmt::Display for ShortcutError {
     }
 }
 
+/// Punctuation keys a shortcut may end in (US layout names; the OS maps them to the user's layout).
+pub const PUNCTUATION: &str = "`[]";
+
 const NAMED: [(&str, ShortcutKey); 17] = [
     ("enter", ShortcutKey::Enter),
     ("return", ShortcutKey::Enter),
@@ -83,8 +86,7 @@ const NAMED: [(&str, ShortcutKey); 17] = [
 fn parse_key(token: &str) -> Option<ShortcutKey> {
     let mut chars = token.chars();
     if let (Some(c), None) = (chars.next(), chars.next()) {
-        return c
-            .is_ascii_alphanumeric()
+        return (c.is_ascii_alphanumeric() || PUNCTUATION.contains(c))
             .then(|| ShortcutKey::Char(c.to_ascii_lowercase()));
     }
     if let Some(n) = token.strip_prefix('f').and_then(|n| n.parse::<u8>().ok()) {
@@ -101,7 +103,8 @@ impl std::str::FromStr for Shortcut {
 
     /// Parses `+`-separated tokens, case-insensitively, ignoring surrounding spaces:
     /// `ctrl`/`control`, `alt`/`option`/`opt`, `shift`, `meta`/`cmd`/`command`/`win`/`super`,
-    /// then one key: a letter, a digit, `F1`..`F24`, or a named key (`Enter`, `Space`, `Up`...).
+    /// then one key: a letter, a digit, `` ` ``, `[`, `]`, `F1`..`F24`, or a named key (`Enter`,
+    /// `Space`, `Up`...).
     fn from_str(text: &str) -> Result<Self, Self::Err> {
         let (mut ctrl, mut alt, mut shift, mut meta) = (false, false, false, false);
         let mut key = None;
@@ -177,11 +180,21 @@ mod tests {
         assert_eq!(parse("Cmd+Option+F12").unwrap().to_string(), "Alt+Meta+F12");
         assert_eq!(parse("win+Up").unwrap().key, ShortcutKey::Up);
         assert_eq!(parse("Space").unwrap().key, ShortcutKey::Space);
+        assert_eq!(parse("Ctrl+`").unwrap().key, ShortcutKey::Char('`'));
+        assert_eq!(parse("cmd+[").unwrap().to_string(), "Meta+[");
     }
 
     #[test]
     fn the_display_form_parses_back_to_the_same_shortcut() {
-        for text in ["Ctrl+Alt+Shift+Meta+Z", "F1", "Shift+PageDown", "Alt+7"] {
+        for text in [
+            "Ctrl+Alt+Shift+Meta+Z",
+            "F1",
+            "Shift+PageDown",
+            "Alt+7",
+            "Ctrl+`",
+            "Meta+[",
+            "Meta+]",
+        ] {
             let shortcut = parse(text).unwrap();
             assert_eq!(parse(&shortcut.to_string()).unwrap(), shortcut);
         }
@@ -202,6 +215,10 @@ mod tests {
         assert_eq!(
             parse("Ctrl+é"),
             Err(ShortcutError::UnknownToken("é".into()))
+        );
+        assert_eq!(
+            parse("Ctrl+;"),
+            Err(ShortcutError::UnknownToken(";".into()))
         );
         assert_eq!(
             parse("Ctrl+Hyper"),

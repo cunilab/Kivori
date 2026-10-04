@@ -120,7 +120,7 @@ export const strings = {
   },
   controls: {
     title: 'Controls',
-    description: 'What each gesture on the knob does.',
+    description: 'What each control does with the app in front of you.',
     soon: 'Customizable soon',
     readOnly: 'Bindings are fixed in this version.',
     gestures: {
@@ -129,10 +129,16 @@ export const strings = {
       doublePress: { name: 'Double press', hint: 'Two quick presses.' },
       hold: { name: 'Hold', hint: 'Hold for about one second, then release.' },
       button1: { name: 'Left button', hint: 'Press and release.' },
-      button2: { name: 'Middle button', hint: 'Press and release.' },
+      button2: { name: 'Middle button', hint: 'Press and release. Hold to pin a profile.' },
       button3: { name: 'Right button', hint: 'Press and release.' },
     },
     unbound: 'Not set',
+    suspended: 'Paused in a protected window',
+    profile: 'Active profile',
+    profileGeneral: 'General',
+    followHint: 'Follows the app in front of you. Hold the middle button to pin a profile.',
+    pinned: 'Pinned on the device',
+    pinnedHint: 'Hold the middle button for the next profile, or to follow the app again.',
     systemVolume: 'System volume',
     recoveryTitle: 'Restart Kivori',
     recovery:

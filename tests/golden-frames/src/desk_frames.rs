@@ -230,6 +230,33 @@ pub fn desk_frames() -> Vec<(&'static str, DeskFrame)> {
             }),
         ),
         (
+            "buddy_profile",
+            view(DisplayMode::Buddy, |v| {
+                v.status.clock = at(19, 52, 0);
+                let mut c = controls("Tabs", "Play/Pause", "Mute");
+                if let Some(c) = c.as_mut() {
+                    c.buttons = ["Back", "Reload", "New tab"].map(MediaText::from_text);
+                    c.profile = MediaText::from_text("Browser");
+                }
+                v.controls = c;
+            }),
+        ),
+        (
+            "buddy_pinned_switch_down",
+            view(DisplayMode::Buddy, |v| {
+                v.status.clock = at(8, 5, 0);
+                let mut c = controls("Volume", "Play/Pause", "Mute");
+                if let Some(c) = c.as_mut() {
+                    c.buttons = ["Previous", "Play/Pause", "Next"].map(MediaText::from_text);
+                    c.profile = MediaText::from_text("Media");
+                    c.pinned = true;
+                }
+                v.controls = c;
+                v.button_down = true;
+                v.switch_down = true;
+            }),
+        ),
+        (
             "buddy_controls_long_and_empty",
             view(DisplayMode::Buddy, |v| {
                 v.controls = controls("Volume", "Open Spotify Premium", "");

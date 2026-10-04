@@ -13,10 +13,10 @@ use kivori_firmware::sim::{CaptureDisplay, SimPipe, VirtualClock};
 use kivori_framebuffer::hash_rgb565;
 use kivori_model::desk::{ControlLabels, DeskStatus, DisplayMode, MediaText};
 use kivori_model::input::InputLevels;
-use kivori_model::{Capabilities, ProtocolVersion};
+use kivori_model::{Capabilities, CompanionState, ProtocolVersion, SendableState};
 use kivori_protocol::{
     decode_message, encode_message, ByeReason, ControlId, ControlLabelsUpdate, FirmwareVersion,
-    Hello, InputEvent, InputKind, Message, Nonce, Ready, Status, MAX_FRAME, MAX_WIRE,
+    Hello, InputEvent, InputKind, Message, Nonce, Ready, SetState, Status, MAX_FRAME, MAX_WIRE,
     PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
@@ -490,4 +490,46 @@ fn without_double_press_a_press_is_sent_without_waiting() {
     rig.switch(false);
     rig.run(40);
     assert_eq!(rig.button_kinds(), [InputKind::Press]);
+}
+
+/// The buddy wears the muted face only while the desktop says it is muted (issue #13).
+#[test]
+fn the_buddy_wears_the_muted_face_only_while_the_desktop_reports_mute() {
+    let mut rig = Rig::new();
+    rig.connect(M1);
+    let send = |rig: &mut Rig, muted| {
+        let session = rig.nonce;
+        rig.send(&Message::Status(Status {
+            session,
+            status: DeskStatus {
+                muted,
+                ..DeskStatus::UNKNOWN
+            },
+        }));
+        rig.run(300);
+        // The mouth region (crop 108,139 24x13): the status row draws elsewhere.
+        let frame = rig.display.frame();
+        (139..152)
+            .flat_map(|y| (108..132).map(move |x| frame[y * 240 + x]))
+            .collect::<Vec<_>>()
+    };
+    // Connected but not yet told a state: the device shows Offline, which is never overridden.
+    assert_eq!(rig.runtime.state(), CompanionState::Offline);
+    let offline = send(&mut rig, None);
+    assert_eq!(
+        send(&mut rig, Some(true)),
+        offline,
+        "Offline keeps its face"
+    );
+
+    rig.send(&Message::SetState(SetState {
+        desired: SendableState::Idle,
+        at_ms: None,
+    }));
+    rig.run(1_000);
+    assert_eq!(rig.runtime.state(), CompanionState::Idle);
+    let unknown = send(&mut rig, None);
+    let muted = send(&mut rig, Some(true));
+    assert_ne!(muted, unknown, "muted zips the mouth");
+    assert_eq!(send(&mut rig, Some(false)), unknown, "unmuting restores it");
 }

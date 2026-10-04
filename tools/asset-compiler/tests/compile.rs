@@ -54,7 +54,7 @@ fn blob_has_six_five_layer_scenes_and_shared_expression_sheets() {
         assert_eq!(geometry(1), (42, 56, 156, 112));
         assert_eq!(geometry(2), (88, 96, 32, 40));
         assert_eq!(geometry(3), (120, 96, 32, 40));
-        assert_eq!(geometry(4), (108, 139, 24, 11));
+        assert_eq!(geometry(4), (108, 139, 24, 13));
         let eyes = match scene.layers[2].kind {
             LayerKind::Sprite { asset, .. } => asset,
             _ => panic!("eyes are sprites"),
@@ -63,8 +63,8 @@ fn blob_has_six_five_layer_scenes_and_shared_expression_sheets() {
             LayerKind::Sprite { asset, .. } => asset,
             _ => panic!("mouth is sprite"),
         };
-        assert_eq!(asset.bitmap(eyes).unwrap().frames, 7);
-        assert_eq!(asset.bitmap(mouth).unwrap().frames, 7);
+        assert_eq!(asset.bitmap(eyes).unwrap().frames, 9);
+        assert_eq!(asset.bitmap(mouth).unwrap().frames, 11);
     }
 
     let first_body = match asset.scene(CompanionState::Booting).unwrap().layers[0].kind {

@@ -415,10 +415,13 @@ fn a_button_press_round_trips_to_an_honest_feedback_and_a_desk_status() {
             .pump(&mut HostEnd(&mut wire), &mut manager, &mut orch)
             .expect("desktop pump");
         let inputs = session.take_input_events();
-        rotary.accept_inputs(&inputs, volume.as_ref(), &mut Vec::new(), |_| {});
-        for input in rotary.take_button_inputs() {
-            desk.on_input(&input, started.elapsed(), &mut |_| {});
-        }
+        rotary.accept_inputs(
+            &inputs,
+            volume.as_ref(),
+            &mut Vec::new(),
+            |input| desk.on_input(&input, started.elapsed(), &mut |_| {}),
+            |_| {},
+        );
         // The action runs on the worker thread; collect its outcome as the device task would.
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {

@@ -198,6 +198,16 @@ right: Previous track, Play/Pause, Next track (Press only; Hold unbound until th
 - [ ] 5.7 Buddy view | button labels sit under the keycap, ticks line up with the physical buttons, `TURN Volume` top left; the keycap is full size
 - [ ] 5.8 Unplug, press buttons during the outage, replug | nothing runs after reconnect (gate 2)
 
+## Phase 6: Profiles and layout (M2.5)
+
+- [ ] 6.1 Windows: focus Chrome, VS Code, Spotify, Zoom or Teams in turn | about half a second later the profile name and all labels change together; the knob does tabs in Chrome
+- [ ] 6.2 Turn the knob in Chrome and Alt+Tab mid-turn | tab switching stops at once, one red cross, nothing lands in the new app
+- [ ] 6.3 Trigger a UAC prompt, lock with Win+L, open an elevated app (regedit) | "Protected": button shortcut labels gone, pressing one shows the red cross, the volume knob still works
+- [ ] 6.4 Hold the middle button repeatedly | General, Browser, Code, Media, Zoom, Teams, then back to following focus; a dot shows while pinned; a UAC prompt still wins over a pin
+- [ ] 6.5 macOS: the same app switches (Safari, VS Code, Music) and the lock screen | same behaviour (daily test bed)
+- [ ] 6.7 Buddy faces: mute the OS, play music, run a CPU stress, join a Zoom call, trigger a failing and a confirmed action | muted, listening, strained, attentive, error and celebrate faces each appear only for their real cause; a shortcut (Unverified) never celebrates; unplugging shows the offline face, distinct from sleeping; note whether the instant face swap looks like a pop
+- [ ] 6.6 Layout at desk distance | profile, clock, knob label and button labels readable; button labels sit over their physical buttons; the buddy is full size
+
 ## Evidence log
 
 | Date | What | Result |

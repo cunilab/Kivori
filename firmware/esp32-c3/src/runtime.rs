@@ -623,6 +623,14 @@ impl<'a> Runtime<'a> {
             if view.button_down && view.status.mode == DisplayMode::Buddy {
                 pose.press_q8 = pose.press_q8.max(PRESS_ACK_Q8);
             }
+            // Observed desk facts pick the buddy's face; the recovery takeover owns the screen.
+            if view.status.mode == DisplayMode::Buddy && view.recovery_percent.is_none() {
+                if let Some(face) = kivori_model::buddy_face(state, &view) {
+                    // ponytail: instant face swap; hide it inside a blink like state transitions if it reads as a pop on the panel
+                    pose.expression = face.expression;
+                    pose.press_q8 = pose.press_q8.max(face.press_q8);
+                }
+            }
             // The transient overlay, if still in force, is composited on top of the mascot pose;
             // it expires locally back to `None` so the panel shows the plain pose once it lapses,
             // with no host timer or round trip needed.

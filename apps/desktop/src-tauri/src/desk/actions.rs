@@ -11,7 +11,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
-use kivori_model::desk::{ActionKind, ControlLabels, FeedbackKind, MediaText};
+use kivori_model::desk::{ActionKind, FeedbackKind};
 
 use crate::platform::{
     ActionError, BackendError, InputSynth, MediaKey, MediaObserver, Shortcut, VolumeBackend,
@@ -50,6 +50,13 @@ impl Action {
 }
 
 impl Action {
+    /// A system action (volume, media keys, mute) still runs in a protected context; shortcuts
+    /// and launches are suspended there (docs/product.md, permissions and protected contexts).
+    #[must_use]
+    pub const fn is_system(&self) -> bool {
+        !matches!(self, Action::Shortcut(_) | Action::Launch(_))
+    }
+
     /// What the device legend calls this action: short, in the user's terms.
     #[must_use]
     pub fn label(&self) -> String {
@@ -67,33 +74,17 @@ impl Action {
     }
 }
 
-/// What the push switch and the contextual buttons do. The rotary binding is fixed to master
-/// volume; configurable bindings arrive with the M2 config UI.
+/// What the push switch and the contextual buttons do in one profile (`profile.rs` owns the knob).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Bindings {
     pub press: Action,
     pub hold: Action,
     /// Press of each contextual button, left to right (`None` = unbound: no label, no action).
-    /// Their Hold is unbound until the config UI.
+    /// Their Hold is unbound (the middle one pins a profile).
     pub buttons: [Option<Action>; 3],
-}
-
-impl Bindings {
-    /// The device legend for these bindings. The knob is master volume in M1.
-    #[must_use]
-    pub fn labels(&self) -> ControlLabels {
-        ControlLabels {
-            rotate: MediaText::from_text("Volume"),
-            press: MediaText::from_text(&self.press.label()),
-            hold: MediaText::from_text(&self.hold.label()),
-            buttons: self.buttons.each_ref().map(|button| {
-                button
-                    .as_ref()
-                    .map_or_else(MediaText::default, |a| MediaText::from_text(&a.label()))
-            }),
-            ..ControlLabels::default()
-        }
-    }
+    /// What the device calls each button when the action's own label says too little
+    /// ("Reload", not `Ctrl+R`). `None` = the action's label.
+    pub button_names: [Option<&'static str>; 3],
 }
 
 impl Default for Bindings {
@@ -107,6 +98,7 @@ impl Default for Bindings {
                 Some(Action::PlayPause),
                 Some(Action::NextTrack),
             ],
+            button_names: [None; 3],
         }
     }
 }

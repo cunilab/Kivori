@@ -9,6 +9,7 @@
 //! every action in Slice 002 is one the OS can perform, so such a type would have
 //! no producer. It arrives with the first genuinely OS-restricted action.
 
+pub mod foreground;
 pub mod launch;
 #[cfg(target_os = "macos")]
 pub mod macos;
@@ -388,7 +389,7 @@ pub fn os_services(main: Option<MainThread>) -> OsServices {
             media: Arc::new(windows::WindowsMediaObserver::new()),
             system: Box::new(windows::WindowsSystemProbe),
             clock: windows::local_time,
-            foreground: Arc::new(unimplemented::NoForeground),
+            foreground: Arc::new(windows::WindowsForeground::new()),
         }
     }
     #[cfg(target_os = "macos")]
@@ -399,7 +400,7 @@ pub fn os_services(main: Option<MainThread>) -> OsServices {
             media: Arc::new(macos::MacMediaObserver::new()),
             system: Box::new(macos::MacSystemProbe),
             clock: macos::local_time,
-            foreground: Arc::new(unimplemented::NoForeground),
+            foreground: Arc::new(macos::MacForeground),
         }
     }
     #[cfg(not(any(windows, target_os = "macos")))]

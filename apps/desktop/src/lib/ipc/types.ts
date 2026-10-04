@@ -185,6 +185,14 @@ export interface DeskStatusDto {
   doublePressAction: DoublePressAction;
   /** The three contextual buttons' Press, left to right; `null` = unbound. */
   buttonActions: [DeskActionToken | null, DeskActionToken | null, DeskActionToken | null];
+  /** The active profile's name as the device shows it; `null` = the General fallback. */
+  profile: string | null;
+  /** The profile was pinned on the device instead of following the app in front. */
+  pinned: boolean;
+  /** What the knob does, as the device labels it; `''` = suspended here. */
+  rotateLabel: string;
+  /** Each contextual button's device label; `''` = unbound or suspended here. */
+  buttonLabels: [string, string, string];
   /** Now playing, when observable: `null` = unknown, `''` = the player shared none. */
   mediaTitle: string | null;
   mediaArtist: string | null;

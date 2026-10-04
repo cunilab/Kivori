@@ -116,17 +116,28 @@ Buddy     Reactions: On    Intensity: Normal
 screen. Moved before the paid beta because the beta must test the contextual product, not a
 volume knob; capped to keep the beta reachable.
 
-- [ ] Foreground app on Windows (executable name only; no window titles, no sub-app guessing)
-- [ ] Focus stabilization 300–500 ms; deliberate input commits a pending app first (invariant 8)
-- [ ] Protected contexts classified before any profile, never General (invariant 9, gate 3)
-- [ ] A gesture stays bound to the profile it began in (invariant 12)
-- [ ] Profile name on the home screen; labels and bindings switch together
-- [ ] Pin a profile from the device ("modes"); Auto = follow focus
-- [ ] Example profiles: browser (tabs), editor, media player, meeting app. Meeting controls are
-  shortcuts and show as Unverified; mic state only from the OS capture endpoint, never from an
-  app's own mute
-- [ ] Hardware: switch apps → labels and bindings change together; UAC prompt → Protected, no action
+Software done and host-tested (#12); macOS works the same way for daily testing.
+
+- [x] Foreground app: Windows executable name, macOS bundle id; no window titles, no sub-app guessing
+- [x] Focus polled every 100 ms, commits after 400 ms stable; deliberate input commits a pending
+  app first (invariant 8), never a pending Unknown
+- [x] Protected (UAC / secure desktop, lock and login screens, credential prompts, elevated apps)
+  commits at once and beats a pin: shortcuts and launches are suspended (empty labels, Error if
+  pressed), system volume, media keys and mute keep working (invariant 9, gate 3)
+- [x] A knob gesture keeps the binding it began with; if focus moves mid-gesture its keys stop and
+  it ends as Error / Context Lost, shown once (invariant 12)
+- [x] Profile name top left; labels and bindings come from one context and switch together
+- [x] Hold the middle button to pin: Auto → General → Browser → Code → Media → Zoom → Teams → Auto
+- [x] Built-in profiles: General, Browser (knob = tabs), Code, Media, Zoom and Teams (Meeting mood;
+  their buttons are shortcuts and show as Unverified). Knob shortcuts show no badge per detent
+- [x] Buddy faces from observed truth (#13): error, confirmed-only celebration, strained, muted,
+  listening, attentive; offline stays distinct from sleeping
+- [x] Home layout (#14): profile top left, knob label under the clock, button labels over ticks at
+  the bottom, press / hold while the switch is held; the buddy keeps its full size
+- [ ] Hardware: Phase 6 rows in [validation.md](./validation.md)
 - [ ] Gates 3, 4, 6
+- Known limits: Windows Store apps all report `applicationframehost.exe` (they get General);
+  `` ` `` and `[` shortcuts are untested on non-US keyboard layouts
 
 ## M3: Paid beta
 
@@ -134,7 +145,8 @@ volume knob; capped to keep the beta reachable.
 problems and uses it without developer help. Start charging for beta units here.
 
 - [ ] Enclosure (keeps the USB port and the ESP32-C3 BOOT path reachable for recovery; the three
-  buttons sit directly under their on-screen labels)
+  buttons sit in a row directly under the screen, centres one third of the panel's active width
+  apart, each under its 80 px label column (#14))
 - [ ] BOM and real unit cost
 - [ ] Repeatable assembly process
 - [ ] Device flashing and provisioning process
