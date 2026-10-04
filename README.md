@@ -1,6 +1,6 @@
 # Kivori
 
-Kivori is a programmable desk controller with a buddy and a PC monitor: control the computer through a physical knob and button, and see important desktop and system state on a dedicated display.
+Kivori is a desk buddy you control your computer with: the buddy is why you want one, the physical knob and button are why you keep using it, and the display shows important desktop and system state around the buddy.
 
 > **Product thesis:** Control the desktop physically. Understand the desktop visually.
 

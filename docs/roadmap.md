@@ -3,8 +3,9 @@
 The order Kivori is built in. What it must be is in [product.md](./product.md); how it works is in
 [architecture.md](./architecture.md); hardware checks are in [validation.md](./validation.md).
 
-**Direction:** a programmable desktop controller, a desk buddy and a PC monitor, in that order of
-pillars: **control, buddy, monitoring.** Next work must serve at least one of them.
+**Direction:** a desk buddy you control your computer with. Two equal pillars, **buddy** (the
+reason to buy) and **control** (the daily value), with **monitoring** in support. Next work must
+serve at least one pillar and never make the buddy smaller to fit more text.
 
 **Sequence:** working foundation → useful device → configurable device → paid beta → customer
 feedback → v1 investment. The aim is to learn whether people pay for Kivori before building every
