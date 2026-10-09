@@ -8,11 +8,18 @@
       "../../../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"
     },
     "windows": {
-      "webviewInstallMode": { "type": "embedBootstrapper" },
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
       "nsis": {
         "installMode": "currentUser",
         "installerHooks": "nsis/hooks.nsh"
       }
+    }
+  },
+  "build": {
+    "windows": {
+      "staticVCRuntime": true
     }
   }
 }

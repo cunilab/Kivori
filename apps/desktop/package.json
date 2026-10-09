@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
-    "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/api": "^2.12.2",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.2.6",
     "lucide-react": "^1.41.0",
@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
-    "@tauri-apps/cli": "~2.11.5",
+    "@tauri-apps/cli": "~2.12.1",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.5.0",
     "@testing-library/react": "^16.0.1",

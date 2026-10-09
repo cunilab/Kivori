@@ -4,7 +4,10 @@
   "identifier": "id.immer.kivori",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:1420"
+    "devUrl": "http://localhost:1420",
+    "windows": {
+      "staticVCRuntime": false
+    }
   },
   "app": {
     "windows": [
