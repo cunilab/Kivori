@@ -31,7 +31,7 @@ permissions:
   contents: read
 
 env:
-  ESPFLASH_VERSION: '4.5.0' # keep in sync with scripts/fetch-espflash.{sh,ps1}
+  ESPFLASH_VERSION: '4.6.0' # keep in sync with scripts/fetch-espflash.{sh,ps1}
 
 jobs:
   firmware:

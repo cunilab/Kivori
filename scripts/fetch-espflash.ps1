@@ -7,11 +7,11 @@ param([string]$Triple = 'x86_64-pc-windows-msvc')
 
 $ErrorActionPreference = 'Stop'
 
-$espflashVersion = '4.5.0'
+$espflashVersion = '4.6.0'
 $assets = @{
     'x86_64-pc-windows-msvc' = @{
         Name   = 'espflash-x86_64-pc-windows-msvc.zip'
-        Sha256 = '854c82c947c20e7f337f120f0398042ed1760f2269cb0f9be3d2beae3b66fbfb'
+        Sha256 = 'b2cb4656b067716fe2b3794cf0604b461b2476d06dee7f481704cb6c8495b11c'
     }
 }
 if (-not $assets.ContainsKey($Triple)) {
