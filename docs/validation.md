@@ -187,7 +187,7 @@ Hold = master mute. Shortcut and launch run from Device Studio's Test action pan
 Software is done and host-tested (firmware gesture rules, wire, desktop bindings, e2e round trip).
 Wiring: three momentary tactile switches (6x6 mm), each between its GPIO and GND, no resistors or
 capacitors; firmware enables the internal pull-ups and debounces 20 ms. Default bindings, left to
-right: Previous track, Play/Pause, Next track (Press only; Hold unbound until the config UI).
+right: Previous track, Play/Pause, Next track (Press only; Hold unbound by default).
 
 - [ ] 5.1 Before wiring: inspect the devkit near GPIO0/GPIO1 | no 32.768 kHz crystal fitted (if one is, stop: pick other pins before soldering)
 - [ ] 5.2 Power on with each button held in turn | Kivori boots normally every time (none is a strapping pin); the boot log still appears on GPIO21
@@ -197,6 +197,21 @@ right: Previous track, Play/Pause, Next track (Press only; Hold unbound until th
 - [ ] 5.6 Hold the knob switch 10 s while a button is held | the device still reboots (invariant 24)
 - [ ] 5.7 Buddy view | button labels sit under the keycap, ticks line up with the physical buttons, `TURN Volume` top left; the keycap is full size
 - [ ] 5.8 Unplug, press buttons during the outage, replug | nothing runs after reconnect (gate 2)
+
+## Phase 5b: Config UI (M2)
+
+Software is done and host-tested (config store, resolve, IPC, Controls page with the browser mock).
+These rows need a person, the real device and the real OS.
+
+- [ ] 5.9 Controls page: Edit Press, pick a keyboard shortcut, save | the "Custom" badge appears on the row and the device label updates within a moment; Reset puts the built-in back
+- [ ] 5.10 Rebind a control, use it on the device, quit and restart Kivori Desktop | the binding is still there (Custom badge, device label) and still works
+- [ ] 5.11 Install a newer build over the old one (settings kept) | the custom bindings are still there; no "settings were damaged" banner
+- [ ] 5.12 Windows: bind the knob to App Volume `spotify.exe` while Spotify plays, turn the knob | Spotify's slider in the Windows volume mixer moves, the master volume does not; one badge at the end of the turn
+- [ ] 5.13 Windows: bind a button to App Mute `spotify.exe`, press it twice | Spotify mutes and unmutes in the mixer, master mute is untouched; badge is the green check
+- [ ] 5.14 Controls page Test on a keyboard shortcut | a 3-second countdown appears (Cancel stops it); after it, the shortcut lands in the app you clicked; badge is the amber "?"
+- [ ] 5.15 Hold on a contextual button bound in the UI | the action runs; the device does not show a label for it yet (known gap)
+- [ ] 5.16 Reset profile and Reset everything | each asks first; afterwards the Custom badges are gone and the device shows the built-in labels
+- [ ] 5.17 macOS: open Edit on the knob | App volume is greyed out with a reason; nothing falls back to system volume
 
 ## Phase 6: Profiles and layout (M2.5)
 
