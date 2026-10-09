@@ -50,6 +50,7 @@ import {
   PROFILE_IDS,
   ROTATE_SPEC_KINDS,
   STEP_SPEC_KINDS,
+  STARTUP_PLATFORMS,
   UPDATE_ADVICE,
 } from '../types';
 import type { MacroSpec } from '../types';
@@ -605,6 +606,7 @@ describe('Rust/TS token vocabulary', () => {
     expect([...HOST_INPUT_PERMISSIONS]).toEqual(vocabulary.hostInputPermission);
     expect([...FLASH_FAILURES]).toEqual(vocabulary.flashFailures);
     expect([...UPDATE_ADVICE]).toEqual(vocabulary.updateAdvice);
+    expect([...STARTUP_PLATFORMS]).toEqual(vocabulary.startupPlatform);
   });
 });
 

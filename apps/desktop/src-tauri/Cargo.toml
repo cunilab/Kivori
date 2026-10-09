@@ -27,6 +27,8 @@ kivori-protocol = { path = "../../../crates/kivori-protocol" }
 heapless = "0.8"  # fixed-capacity buffers for the shared protocol codec (no_std-friendly)
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-single-instance = "2"
+# Launch at login (M3 S4), used from Rust only: no JS package and no webview permission.
+tauri-plugin-autostart = "~2.5.1"  # 2.6+ requires tauri ^2.12; upgrade the framework deliberately, not via a plugin
 serialport = "4"  # production USB-serial transport (research R-5). Windows/macOS build; Linux CI needs libudev-dev.
 serde = { version = "1", features = ["derive"] }
 # Config file (de)serialization and the now-playing adapter's JSON lines (ADR-0009). Already in the tree via tauri.

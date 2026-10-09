@@ -16,6 +16,7 @@ import type {
   SendableState,
   AnimationTimeline,
   FirmwareStatusDto,
+  StartupSettingsDto,
   MascotAction,
   ConfigDto,
   DiagnosticsDto,
@@ -36,6 +37,7 @@ import {
   parseDeskStatus,
   parseDiagnostics,
   parseFirmwareStatus,
+  parseStartupSettings,
 } from './validate';
 
 /// Handle returned by an event subscription; call it to unsubscribe.
@@ -88,6 +90,22 @@ export async function getConnectionStatus(): Promise<ConnectionStatusDto> {
 export async function getFirmwareStatus(): Promise<FirmwareStatusDto> {
   if (isTauri()) return parseFirmwareStatus(await invoke<unknown>('get_firmware_status'));
   if (import.meta.env.DEV) return (await devMock()).mockFirmwareStatus();
+  return unavailable();
+}
+
+/** Whether Kivori starts at login, as the OS reports it. */
+export async function getStartupSettings(): Promise<StartupSettingsDto> {
+  if (isTauri()) return parseStartupSettings(await invoke<unknown>('get_startup_settings'));
+  if (import.meta.env.DEV) return (await devMock()).mockGetStartupSettings();
+  return unavailable();
+}
+
+/** Adds or removes the OS login entry; rejects with the native error string. */
+export async function setLaunchAtLogin(enabled: boolean): Promise<StartupSettingsDto> {
+  if (isTauri()) {
+    return parseStartupSettings(await invoke<unknown>('set_launch_at_login', { enabled }));
+  }
+  if (import.meta.env.DEV) return (await devMock()).mockSetLaunchAtLogin(enabled);
   return unavailable();
 }
 

@@ -158,7 +158,7 @@ problems and uses it without developer help. Start charging for beta units here.
 - [ ] Hardware QA checklist per unit (built from the remaining Phase 1–3 rows in [validation.md](./validation.md))
 - [ ] Signed Windows installer, bundling the known-compatible firmware (this is the beta's update authentication, gate 10)
 - [ ] macOS build (if shipped): bundle `target/<profile>/mediaremote-adapter/` as a resource, Developer ID-sign its two Mach-O helpers with hardened runtime, add `NSAppleEventsUsageDescription` and the `com.apple.security.automation.apple-events` entitlement, list the adapter (BSD-3) in third-party notices (ADR-0009)
-- [ ] Launch at login and tray presence; the window stays optional
+- [ ] Launch at login and tray presence; the window stays optional. Software done in M3 S4 (autostart plugin, hidden start, tray status and switch, Device page switch); stays open until the S4 hardware rows in [validation.md](./validation.md) pass
 - [ ] Survive sleep/wake and lock/unlock with intentional screens, never a frozen frame (gate 9)
 - [ ] First-run onboarding
 - [ ] User-facing firmware update and recovery flow (flash the bundled build; a failed flash says so). Software done in M3 S3 (flash, classified failures, BOOT-button restore, incompatible recovery); stays open until the pinned `espflash` sidecar ships in the installer (S5) and the S3 hardware rows in [validation.md](./validation.md) pass

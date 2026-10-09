@@ -50,6 +50,16 @@ export type FlashFailure = (typeof FLASH_FAILURES)[number];
 export const UPDATE_ADVICE = ['upToDate', 'updateAvailable', 'deviceNewer', 'unknown'] as const;
 export type UpdateAdvice = (typeof UPDATE_ADVICE)[number];
 
+/** Which OS this build runs on, for the wording of the start-at-login switch. */
+export const STARTUP_PLATFORMS = ['windows', 'macos', 'other'] as const;
+export type StartupPlatform = (typeof STARTUP_PLATFORMS)[number];
+
+/** Whether Kivori starts at login; read from the OS entry, never stored in the config file. */
+export interface StartupSettingsDto {
+  launchAtLogin: boolean;
+  platform: StartupPlatform;
+}
+
 export interface FirmwareStatusDto {
   available: boolean;
   phase: (typeof FIRMWARE_PHASES)[number];

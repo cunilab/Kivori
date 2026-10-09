@@ -18,9 +18,13 @@ use kivori_desktop::device::session::{Session, SessionConfig};
 use kivori_desktop::device::transport::SerialLink;
 use kivori_desktop::ipc::dto;
 use kivori_desktop::orchestrator::Orchestrator;
+// The preview renderer ships only with Device Studio; the release feature set skips step 2 below.
+#[cfg(feature = "device-studio")]
 use kivori_desktop::render::render_preview_bundled;
 use kivori_desktop::runtime::state::{AppState, DeviceCommand};
-use kivori_model::{Capabilities, CompanionState, ConnectionState, ProtocolVersion, SendableState};
+#[cfg(feature = "device-studio")]
+use kivori_model::CompanionState;
+use kivori_model::{Capabilities, ConnectionState, ProtocolVersion, SendableState};
 use kivori_protocol::{
     decode_message, encode_message, FirmwareVersion, HelloAck, Message, MAX_FRAME, MAX_WIRE,
     PROTOCOL_MAJOR, PROTOCOL_MINOR,
@@ -141,6 +145,7 @@ fn offline_core_starts_connects_updates_and_reconnects_without_network() {
 
     // 2. Preview renderer — every scene renders from the blob compiled into this binary. No SVG parsed
     //    at runtime, no asset fetched (Constitution XI, FR-021).
+    #[cfg(feature = "device-studio")]
     for state in CompanionState::ALL {
         let rgba = render_preview_bundled(state, 0);
         assert_eq!(rgba.len(), 240 * 240 * 4, "full frame for {state:?}");

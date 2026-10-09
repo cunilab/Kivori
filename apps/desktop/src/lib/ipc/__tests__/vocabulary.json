@@ -61,5 +61,6 @@
   "profileIds": ["general", "browser", "code", "media", "zoom", "teams"],
   "rotateSpecKinds": ["systemVolume", "shortcuts", "appVolume"],
   "stepSpecKinds": ["action", "delay"],
-  "updateAdvice": ["upToDate", "updateAvailable", "deviceNewer", "unknown"]
+  "updateAdvice": ["upToDate", "updateAvailable", "deviceNewer", "unknown"],
+  "startupPlatform": ["windows", "macos", "other"]
 }

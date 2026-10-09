@@ -15,6 +15,7 @@ import { strings } from '@/lib/i18n/strings';
 import { cn } from '@/lib/utils';
 import { Diagnostics } from './Diagnostics';
 import { FirmwareUpdate } from './FirmwareUpdate';
+import { StartupCard } from './StartupCard';
 
 const t = strings.device;
 
@@ -116,6 +117,7 @@ export function DevicePage({
 
         <div className="flex flex-col gap-4">
           <FirmwareUpdate connected={ui === 'connected'} incompatible={ui === 'incompatible'} />
+          <StartupCard />
           <Diagnostics />
           <Card size="sm">
             <CardHeader>

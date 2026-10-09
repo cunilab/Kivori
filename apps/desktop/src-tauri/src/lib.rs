@@ -32,6 +32,10 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             runtime::lifecycle::show_main(app);
         }))
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![window_lifecycle::AUTOSTART_ARG]),
+        ))
         .on_window_event(runtime::lifecycle::on_window_event)
         .setup(|app| {
             use tauri::Manager;
@@ -96,6 +100,16 @@ pub fn run() {
             // After the device thread exists, so the first lock or sleep notice has a reader.
             app.manage(runtime::state::HostEventsHandle::start(host_tx));
             runtime::lifecycle::build_tray(app.handle())?;
+            // The window is configured hidden. A login launch keeps it that way (tray only); any
+            // other launch shows it.
+            if window_lifecycle::launched_at_login(std::env::args()) {
+                *app.state::<runtime::state::AppState>()
+                    .lifecycle
+                    .lock()
+                    .expect("lifecycle lock") = window_lifecycle::WindowLifecycle::hidden();
+            } else {
+                runtime::lifecycle::show_main(app.handle());
+            }
             Ok(())
         });
 
@@ -106,6 +120,8 @@ pub fn run() {
         ipc::commands::list_states,
         ipc::commands::set_desired_state,
         ipc::commands::get_config,
+        ipc::commands::get_startup_settings,
+        ipc::commands::set_launch_at_login,
         ipc::commands::set_display_settings,
         ipc::commands::set_buddy_settings,
         ipc::commands::set_binding,
@@ -138,6 +154,8 @@ pub fn run() {
         ipc::commands::list_states,
         ipc::commands::set_desired_state,
         ipc::commands::get_config,
+        ipc::commands::get_startup_settings,
+        ipc::commands::set_launch_at_login,
         ipc::commands::set_display_settings,
         ipc::commands::set_buddy_settings,
         ipc::commands::set_binding,

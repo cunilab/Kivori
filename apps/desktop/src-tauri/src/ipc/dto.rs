@@ -110,6 +110,36 @@ pub struct AppInfoDto {
     pub device_studio_enabled: bool,
 }
 
+/// Whether Kivori starts when the user signs in (read from the OS entry, never stored in config).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartupSettingsDto {
+    /// Whether the OS login entry exists.
+    pub launch_at_login: bool,
+    /// Which OS this build runs on: `windows`, `macos` or `other` (for the switch's wording).
+    pub platform: &'static str,
+}
+
+/// The platform tokens `StartupSettingsDto.platform` can carry (shared with the webview).
+pub const STARTUP_PLATFORM_TOKENS: [&str; 3] = ["windows", "macos", "other"];
+
+impl StartupSettingsDto {
+    /// Builds the DTO for this OS.
+    #[must_use]
+    pub const fn new(launch_at_login: bool) -> Self {
+        Self {
+            launch_at_login,
+            platform: if cfg!(windows) {
+                "windows"
+            } else if cfg!(target_os = "macos") {
+                "macos"
+            } else {
+                "other"
+            },
+        }
+    }
+}
+
 /// Safe connected-device summary (never the raw identity).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1673,5 +1703,6 @@ pub fn vocabulary_json() -> serde_json::Value {
         "hostPresence": HOST_PRESENCE_TOKENS,
         "flashFailures": crate::firmware::FlashFailure::ALL.map(crate::firmware::FlashFailure::token),
         "updateAdvice": crate::firmware::UpdateAdvice::ALL.map(crate::firmware::UpdateAdvice::token),
+        "startupPlatform": STARTUP_PLATFORM_TOKENS,
     })
 }
