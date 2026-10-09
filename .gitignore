@@ -30,3 +30,6 @@ Thumbs.db
 # FreeCAD backups and Python bytecode (hardware/enclosure build script)
 *.FCBak
 __pycache__/
+
+# Pinned espflash sidecar fetched by scripts/fetch-espflash.{sh,ps1} (never committed)
+apps/desktop/src-tauri/binaries/

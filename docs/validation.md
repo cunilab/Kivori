@@ -265,6 +265,18 @@ Software is done (tray model table, hidden-start lifecycle, `--autostart` parsin
 - [ ] 9.5 Tray menu: Launch at login, Open Kivori and Quit | each works; the check mark matches the Device page switch after reopening the window
 - [ ] 9.6 Connect, unplug, lock the screen | the tray line reads Connected, Not connected, Paused while locked; the tooltip shows both versions
 
+## Phase 10: Installer and release (M3 S5)
+
+CI builds the NSIS installer, installs it silently, checks the app and the `espflash` sidecar, runs the startup smoke test with `--autostart`, and uninstalls (including the Run entry). Everything below needs a real machine. Rows 8.1 and 9.3 depend on this phase.
+
+- [ ] 10.1 Clean Windows 11 VM with no dev tools: run the installer | SmartScreen "More info, Run anyway" works (unsigned build)
+- [ ] 10.2 Run the installer as a normal user | it installs without an admin prompt
+- [ ] 10.3 Install a newer build over an older one | the config is kept
+- [ ] 10.4 After installing | Windows Defender does not quarantine `espflash.exe`
+- [ ] 10.5 macOS: `scripts/bundle-macos.sh` | the `.app` has `Contents/Resources/mediaremote-adapter` and `Contents/MacOS/espflash`
+- [ ] 10.6 macOS signed build: `codesign -d --entitlements - Kivori.app` | shows `com.apple.security.automation.apple-events` (needs the owner's Developer ID)
+- [ ] 10.7 macOS bundled app | now-playing works, and the Automation prompt shows the usage text
+
 ## Evidence log
 
 | Date | What | Result |
