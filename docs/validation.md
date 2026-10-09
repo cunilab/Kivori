@@ -224,6 +224,23 @@ These rows need a person, the real device and the real OS.
 - [ ] 6.7 Buddy faces: mute the OS, play music, run a CPU stress, join a Zoom call, trigger a failing and a confirmed action | muted, listening, strained, attentive, error and celebrate faces each appear only for their real cause; a shortcut (Unverified) never celebrates; unplugging shows the offline face, distinct from sleeping; note whether the instant face swap looks like a pop
 - [ ] 6.6 Layout at desk distance | profile, clock, knob label and button labels readable; button labels sit over their physical buttons; the buddy is full size
 
+## Phase 7: Host presence (M3 S2)
+
+Software is done (tracker, device-thread and Windows window tests, macOS IOKit registration test); these rows need a real sleep, lock and switch.
+
+- [ ] 7.1 Windows: press Win+L | the buddy sleeps within 1 s; the volume knob still works; button shortcut labels are gone
+- [ ] 7.2 Windows: unlock | back to normal, profile labels restored, the state you had chosen returns
+- [ ] 7.3 Windows: Start, then Sleep (S3) | the device shows Sleeping, not Offline, before the PC goes dark
+- [ ] 7.4 Windows: wake | reconnected and normal within 5 s; no knob turn or press made during sleep runs
+- [ ] 7.5 Windows: Hibernate, then resume | same as 7.4
+- [ ] 7.6 Windows: Modern Standby laptop, close the lid for 2 min, open it | Sleeping, then reconnect. Note whether the goodbye arrived in time (if not, the device shows Offline after about 4 s)
+- [ ] 7.7 Windows: a machine that cuts USB power in sleep | the device boots and reconnects on wake
+- [ ] 7.8 Windows: switch user | user A's Kivori releases the port; user B's Kivori connects
+- [ ] 7.9 macOS: `cargo test -p kivori-desktop` on the Mac | passes, including the IOKit registration test
+- [ ] 7.10 macOS: lock with Ctrl-Cmd-Q, then unlock | the buddy sleeps within about 1 s; unlock restores it
+- [ ] 7.11 macOS: Apple menu, Sleep, then wake | Sleeping before the screen goes dark, then reconnect
+- [ ] 7.12 macOS: close the lid on battery, then open | same as 7.11
+
 ## Evidence log
 
 | Date | What | Result |

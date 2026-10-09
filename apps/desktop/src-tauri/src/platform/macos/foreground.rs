@@ -96,7 +96,7 @@ unsafe fn frontmost() -> (Option<String>, Option<String>) {
 
 /// `CGSSessionScreenIsLocked` in the current session dictionary. A missing dictionary or key is
 /// "not locked"; the frontmost-app rules still catch loginwindow.
-fn screen_locked() -> bool {
+pub(super) fn screen_locked() -> bool {
     // SAFETY: every CF object created or copied here is released before returning; the value
     // read from the dictionary is borrowed (Get rule) and type-checked before use.
     unsafe {

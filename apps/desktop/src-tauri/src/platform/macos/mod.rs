@@ -5,6 +5,7 @@
 mod app_volume;
 mod audio;
 mod foreground;
+pub mod host_events;
 mod media;
 mod system;
 

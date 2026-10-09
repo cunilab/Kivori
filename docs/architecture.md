@@ -69,6 +69,7 @@ Desktop state is in memory only. `desired` defaults to `idle` and is re-sent aft
 - Media keys and shortcuts: `enigo` (Windows `SendInput`, macOS Quartz events; macOS needs Accessibility permission). On macOS every synthesized input runs on the app's main thread via Tauri's `run_on_main_thread`: since macOS 15 the HIToolbox layout lookups it uses assert the main queue and kill the process otherwise.
 - Media playback observation (state, title, artist): Windows Global System Media Transport Controls, polled on a `kivori-media` thread. macOS has no public API, so it is layered (ADR-0009): the vendored MediaRemote adapter, then AppleScript for Spotify and Music, then unknown.
 - CPU/RAM: Windows `GetSystemTimes` / `GlobalMemoryStatusEx`; macOS per-CPU `host_processor_info` (`host_statistics` is rate-limited for third-party apps) and Activity Monitor's "Memory Used". Local time: `GetLocalTime` / `localtime_r`.
+- Sleep, wake, lock and console changes: Windows `PowerRegisterSuspendResumeNotification` (callback) plus `WTSRegisterSessionNotification` on a message-only window thread; macOS IOKit `IORegisterForSystemPower` on a CFRunLoop thread (hand-declared FFI) plus a 4 Hz poll of the session lock flag. See Host presence.
 - Flashing: the installed `espflash` utility, driven by the native core.
 - Not built yet: a Linux backend, desktop self-update, a factory-provisioned device id.
 - Device id (#24): the firmware derives its 16-byte `device_id` from the chip's factory eFuse unique ID, falling back to the base MAC, through a domain-separated SHA-256 (`kivori-device-id-v1`); raw eFuse bytes never go on the wire. The raw id stays in the transport layer; UI and logs only show the short hash (ADR-0005). Simulator and Wokwi images keep fixed ids.
@@ -134,7 +135,7 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 
 ### Host takeovers (protocol 1.5, `HOST_TAKEOVERS_V1`)
 
-- `ByeReason` gains `HostSleeping` (3) and `FirmwareUpdate` (4), appended after the original three. The desktop sends them only when `Session::supports_host_takeovers()`; an older device never sees them. `Session::close(link, reason)` writes the `Bye` and ends the session. Sleep and lock detection (M3 S2) and the flash-time `Bye(FirmwareUpdate)` (M3 S3) use it; today the desktop sends `Bye(Shutdown)` on Quit.
+- `ByeReason` gains `HostSleeping` (3) and `FirmwareUpdate` (4), appended after the original three. The desktop sends them only when `Session::supports_host_takeovers()`; an older device never sees them. `Session::close(link, reason)` writes the `Bye` and ends the session. The desktop sends `Bye(HostSleeping)` on suspend (see Host presence) and `Bye(Shutdown)` on Quit; the flash-time `Bye(FirmwareUpdate)` is M3 S3.
 - `Bye(HostSleeping)`: the device shows Sleeping and keeps showing it across the link loss that follows (`DeviceEvent::HostSleep` latches it). A new `Hello` clears the latch. Without the capability negotiated, the reason acts like any other `Bye` and the device goes Offline.
 - `Bye(FirmwareUpdate)`: the device drops to Offline and the runtime renders the Updating screen (`render_updating`; below recovery, above the pose). It lapses after 120 s (`UPDATING_MAX_MS`) so it cannot stick if the host dies, and a new session ends it at once.
 - Host-silence timeout: with an accepted session and no valid inbound frame for 4 s (`HOST_SILENCE_MS`), the firmware calls `link_lost` and goes Offline. The desktop pings every second (`HEARTBEAT_INTERVAL`), so a killed or crashed desktop never leaves a frozen "connected" frame. This applies to every session, whatever was negotiated.
@@ -191,7 +192,7 @@ The webview may call only these commands and listen to these events. No command 
 | Command | Purpose | Build |
 |---|---|---|
 | `get_app_info` | App version, protocol version, supported majors, Device Studio flag | all |
-| `get_connection_status` | Connection, desired, reported, device info, retry count, connection generation, negotiated mascot flag, last mascot action | all |
+| `get_connection_status` | Connection, desired, reported, device info, retry count, connection generation, negotiated mascot flag, last mascot action, `host` (`active, locked, sleeping`) | all |
 | `list_states` | Companion states | all |
 | `set_desired_state` | Set `desired`; sends `SetState` when connected | all |
 | `get_config` | Saved settings: `version`, `revision`, `notice`, `profiles` (every profile as resolved, each slot with `deviceLabel` and `overridden`), `display`, `buddy` | all |
@@ -344,6 +345,17 @@ The typed session activity log is the only runtime log.
 - The raw device id stays inside the transport layer. Only a short non-reversible hash may appear.
 - Raw payload output exists only behind the `debug-payloads` Cargo feature. It is off by default and must not ship.
 - Tests: native redaction tests, frontend runtime-cast privacy tests, ordering and 256-entry retention tests.
+
+### Host presence (sleep, lock, console; M3 S2)
+
+- `platform/host_events.rs` is pure. A per-OS source turns notifications into `HostEvent`s (`Suspending, Resumed, Locked, Unlocked, ConsoleDisconnected, ConsoleConnected`) on a channel the device thread drains next to its commands (`HostSignal`, with an ack channel on `Suspending`). `HostPresenceTracker::on_event` returns the actions to take; an event that changes nothing returns none, so Windows' two resume notices and repeated lock events are harmless.
+- Sleep: the OS callback sends `Suspending` and waits at most 500 ms (`SUSPEND_ACK_BUDGET`). The device thread writes `Bye(HostSleeping)` (`Bye(Shutdown)` if the device did not negotiate `HOST_TAKEOVERS_V1`) with `Session::close`, drops the link, clears the connection timers, leaves the manager `Disconnected` with no retry count, then acks. macOS answers `IOAllowPowerChange` after the ack or the timeout; `kIOMessageCanSystemSleep` is allowed at once. While asleep, or while another user session has the console, discovery does not run, so the port is never reopened before the machine is really suspended.
+- Wake (`Resumed`): the pending retry is cleared and the candidate rotator is reset, so discovery runs on the next tick with no backoff. A resume with no suspend seen is ignored; the heartbeat covers it.
+- Lock: not a link event. The orchestrator gets a host override (`Sleeping`) and the buddy's reactions pause. `Orchestrator::desired()` is the effective state (what is sent and resent on reconnect); `user_desired()` is the user's, which the UI shows and which returns on unlock. Changes made while locked wait behind the override. The knob and buttons keep working; the Protected rules in `foreground.rs` already suspend shortcuts.
+- Console loss (Windows fast user switching): the link is released without a goodbye so another user's Kivori can claim the port; `ConsoleConnected` rediscovers.
+- Input never runs across a sleep: closing the session discards queued input, and leaving `Connected` ends the session boundary in `synchronize_session` (gesture state, queued actions), so anything made before the sleep is rejected as `NoSession`.
+- `ConnectionStatusDto.host` is `locked` while the override is set and `sleeping` while the link is released for a suspend. Activity records: `hostSuspending`, `hostResumed`, `hostLocked`, `hostUnlocked` (source `connection`, info).
+- If the OS refuses the registration the app logs one warning and runs without it; the device then falls back to its host-silence timeout and shows Offline.
 
 ### Config
 

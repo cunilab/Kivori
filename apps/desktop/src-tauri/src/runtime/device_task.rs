@@ -11,6 +11,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Receiver;
+use std::sync::mpsc::SyncSender;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -30,6 +31,7 @@ use crate::device::fsm::{ConnectionManager, ManagerEvent};
 use crate::device::reconnect::base_delay_ms;
 use crate::device::serial::{enumerate, SerialPortLink};
 use crate::device::session::{Session, SessionConfig, SessionError};
+use crate::device::transport::SerialLink;
 use crate::firmware::{self, FirmwareStatus, FlashWorkflow, ResumeTarget};
 use crate::input::{Freshness, InputIngress, LogicalInput, RejectReason};
 use crate::ipc::dto::{
@@ -38,6 +40,7 @@ use crate::ipc::dto::{
 };
 use crate::ipc::events;
 use crate::orchestrator::Orchestrator;
+use crate::platform::host_events::{HostEvent, HostPresenceTracker, HostSignal, PresenceAction};
 use crate::platform::{self, ActionAvailability, VolumeBackend};
 use crate::presentation::{PresentationResolver, ProductSnapshot};
 use crate::runtime::state::DeviceCommand;
@@ -123,6 +126,7 @@ pub fn spawn(
     firmware_status: Arc<Mutex<FirmwareStatus>>,
     diagnostics: Arc<Mutex<DiagnosticsSnapshot>>,
     commands: Receiver<DeviceCommand>,
+    host_rx: Receiver<HostSignal>,
     cancel: Arc<AtomicBool>,
     config: Arc<ResolvedConfig>,
 ) -> JoinHandle<()> {
@@ -137,6 +141,7 @@ pub fn spawn(
                 firmware_status,
                 diagnostics,
                 commands,
+                host_rx,
                 cancel,
                 config,
             );
@@ -153,6 +158,7 @@ fn device_loop(
     firmware_status: Arc<Mutex<FirmwareStatus>>,
     diagnostics: Arc<Mutex<DiagnosticsSnapshot>>,
     commands: Receiver<DeviceCommand>,
+    host_rx: Receiver<HostSignal>,
     cancel: Arc<AtomicBool>,
     config: Arc<ResolvedConfig>,
 ) {
@@ -186,6 +192,10 @@ fn device_loop(
     let mut retry_at: Option<Instant> = None;
     let mut reconnect_deadline: Option<Instant> = None;
     let mut deadlines = ConnectionDeadlines::default();
+    let mut presence = HostPresenceTracker::new();
+    // The configured reactions setting, and whether a locked screen is holding them off.
+    let mut self_play_wanted = config.buddy.reactions;
+    let mut self_play_paused = false;
     let mut flash = FlashWorkflow::new(
         firmware::bundled_image_available(),
         firmware::BUNDLED_FIRMWARE.len() as u64,
@@ -201,6 +211,7 @@ fn device_loop(
         session.supports_mascot_interaction(),
         session.last_mascot_action_applied(),
         session.connection_generation(),
+        presence.presence(),
     );
     *status.lock().expect("status lock") = last.clone();
     events::emit_status(&app, &last);
@@ -257,11 +268,12 @@ fn device_loop(
                     let now = elapsed_ms(started.elapsed());
                     let (personality, self_play) =
                         (config.buddy.intensity.personality(), config.buddy.reactions);
+                    self_play_wanted = self_play;
+                    let running = self_play && !self_play_paused;
                     // Restarting the cadence on an unrelated save would delay the next reaction.
-                    if (personality, self_play) != (companion.personality(), companion.self_play())
-                    {
+                    if (personality, running) != (companion.personality(), companion.self_play()) {
                         companion.set_personality(personality, now);
-                        companion.set_self_play(self_play, now);
+                        companion.set_self_play(running, now);
                         record_observations(
                             &app,
                             &activity_log,
@@ -380,6 +392,55 @@ fn device_loop(
             drain_firmware_activity(&app, &activity_log, &mut flash);
         }
 
+        // 1b. Apply host presence (sleep/wake, lock, console). The ack goes out after the goodbye
+        // is written, which is what the OS callback is waiting on before it lets the machine sleep.
+        while let Ok(signal) = host_rx.try_recv() {
+            let actions = presence.on_event(signal.event);
+            if let Some(kind) = host_activity(signal.event).filter(|_| !actions.is_empty()) {
+                record_with_metadata(&app, &activity_log, kind, None);
+            }
+            for action in actions {
+                if let PresenceAction::PauseSelfPlay(paused) = action {
+                    self_play_paused = paused;
+                    companion
+                        .set_self_play(self_play_wanted && !paused, elapsed_ms(started.elapsed()));
+                    continue;
+                }
+                let write_failed = apply_presence_action(
+                    action,
+                    &mut PresenceTargets {
+                        session: &mut session,
+                        manager: &mut manager,
+                        orchestrator: &mut orchestrator,
+                        link: &mut link,
+                        connected_port: &mut connected_port,
+                        retry_at: &mut retry_at,
+                        rotator: &mut rotator,
+                        deadlines: &mut deadlines,
+                    },
+                );
+                if write_failed {
+                    recover_link(
+                        &mut activity_planner,
+                        &mut manager,
+                        ManagerEvent::IoError,
+                        LinkRecovery::new(
+                            &mut link,
+                            &mut connected_port,
+                            &mut retry_at,
+                            &mut deadlines,
+                            &flash,
+                        )
+                        .with_rotator(&mut rotator, started.elapsed()),
+                        |observation| {
+                            record_observations(&app, &activity_log, [observation]);
+                        },
+                    );
+                }
+            }
+            acknowledge(signal.ack.as_ref());
+        }
+
         // 2. Drive the link: discover + handshake when down (honoring backoff), pump when up.
         // The deadline applies even if the selected port opened but never sends a valid HelloAck.
         if reconnect_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
@@ -395,7 +456,9 @@ fn device_loop(
         }
         match link.as_mut() {
             None => {
-                let ready = retry_at.is_none_or(|deadline| Instant::now() >= deadline);
+                // Asleep, or another user has the console: the port is not ours to open.
+                let ready = presence.may_use_port()
+                    && retry_at.is_none_or(|deadline| Instant::now() >= deadline);
                 if ready {
                     retry_at = None;
                     if manager.state() == kivori_model::ConnectionState::Error {
@@ -720,6 +783,7 @@ fn device_loop(
             session.supports_mascot_interaction(),
             session.last_mascot_action_applied(),
             session.connection_generation(),
+            presence.presence(),
         );
         if snapshot != last {
             *status.lock().expect("status lock") = snapshot.clone();
@@ -783,6 +847,99 @@ fn device_loop(
     // out its host-silence timeout. Best effort; `AppState::shutdown` is joining this thread.
     if let Some(open_link) = link.as_mut() {
         let _ = session.close(open_link, ByeReason::Shutdown);
+    }
+}
+
+/// Writes the device its goodbye before the host sleeps or hands the port away. A device that
+/// negotiated host takeovers shows Sleeping; an older one gets the plain `Shutdown` and shows
+/// Offline at once. Closing the session also discards queued input, so nothing queued before the
+/// sleep can run after it.
+///
+/// # Errors
+/// The write error, if the link failed. The session is closed either way.
+pub fn send_sleep_notice<L: SerialLink>(
+    session: &mut Session,
+    link: &mut L,
+) -> Result<(), SessionError<L::Error>> {
+    let reason = if session.supports_host_takeovers() {
+        ByeReason::HostSleeping
+    } else {
+        ByeReason::Shutdown
+    };
+    session.close(link, reason)
+}
+
+/// The device-loop state a presence action changes.
+pub struct PresenceTargets<'a, L> {
+    pub session: &'a mut Session,
+    pub manager: &'a mut ConnectionManager,
+    pub orchestrator: &'a mut Orchestrator,
+    pub link: &'a mut Option<L>,
+    pub connected_port: &'a mut Option<String>,
+    pub retry_at: &'a mut Option<Instant>,
+    pub rotator: &'a mut CandidateRotator,
+    pub deadlines: &'a mut ConnectionDeadlines,
+}
+
+/// Applies one [`PresenceAction`] (self-play is the caller's, as it needs the companion).
+/// Returns whether a write to the device failed and the link needs recovering.
+///
+/// Releasing the link is not a failure: it drops the handle, clears the connection timers and
+/// leaves the manager `Disconnected` with no retry count, so a wake starts from a clean slate.
+pub fn apply_presence_action<L: SerialLink>(
+    action: PresenceAction,
+    targets: &mut PresenceTargets<'_, L>,
+) -> bool {
+    match action {
+        PresenceAction::SendSleepNotice => {
+            // Best effort: `ReleaseLink` follows whether or not the write got through.
+            if let Some(open_link) = targets.link.as_mut() {
+                let _ = send_sleep_notice(targets.session, open_link);
+            }
+            false
+        }
+        PresenceAction::ReleaseLink => {
+            *targets.link = None;
+            *targets.connected_port = None;
+            targets.deadlines.on_link_lost();
+            targets.manager.apply(ManagerEvent::PortRemoved);
+            *targets.retry_at = None;
+            false
+        }
+        PresenceAction::RediscoverNow => {
+            *targets.retry_at = None;
+            *targets.rotator = CandidateRotator::new();
+            false
+        }
+        PresenceAction::StateOverride(state) => {
+            targets.orchestrator.set_host_override(state);
+            match targets.link.as_mut() {
+                Some(open_link) => targets
+                    .session
+                    .resend_desired(open_link, targets.manager, targets.orchestrator)
+                    .is_err(),
+                None => false,
+            }
+        }
+        PresenceAction::PauseSelfPlay(_) => false,
+    }
+}
+
+/// Lets the OS callback that is waiting on the goodbye carry on.
+pub fn acknowledge(ack: Option<&SyncSender<()>>) {
+    if let Some(ack) = ack {
+        // Capacity one and a single sender: a full or closed channel means the OS gave up already.
+        let _ = ack.try_send(());
+    }
+}
+
+const fn host_activity(event: HostEvent) -> Option<ActivityEventKind> {
+    match event {
+        HostEvent::Suspending => Some(ActivityEventKind::HostSuspending),
+        HostEvent::Resumed => Some(ActivityEventKind::HostResumed),
+        HostEvent::Locked => Some(ActivityEventKind::HostLocked),
+        HostEvent::Unlocked => Some(ActivityEventKind::HostUnlocked),
+        HostEvent::ConsoleDisconnected | HostEvent::ConsoleConnected => None,
     }
 }
 

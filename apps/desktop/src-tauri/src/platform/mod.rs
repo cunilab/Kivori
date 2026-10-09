@@ -10,6 +10,7 @@
 //! decided by the action catalog (`desk::catalog`), not by a probe.
 
 pub mod foreground;
+pub mod host_events;
 pub mod launch;
 #[cfg(target_os = "macos")]
 pub mod macos;
@@ -561,5 +562,27 @@ pub fn os_services(main: Option<MainThread>) -> OsServices {
             clock: || None,
             foreground: Arc::new(unimplemented::NoForeground),
         }
+    }
+}
+
+/// Starts the sleep/wake and lock/unlock source for this OS. Signals flow to the device thread
+/// over `tx`; dropping the guard stops the source.
+///
+/// # Errors
+/// [`host_events::HostEventsError::Unavailable`] when the OS refuses the registration.
+pub fn start_host_events(
+    tx: std::sync::mpsc::Sender<host_events::HostSignal>,
+) -> Result<host_events::HostEventsGuard, host_events::HostEventsError> {
+    #[cfg(windows)]
+    {
+        windows::host_events::start(tx)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        macos::host_events::start(tx)
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        unimplemented::start_host_events(tx)
     }
 }

@@ -20,6 +20,7 @@ use crate::activity::{
 use crate::device::fsm::ConnectionManager;
 use crate::device::session::SessionDiagnostics;
 use crate::orchestrator::Orchestrator;
+use crate::platform::host_events::{HostPresence, HOST_PRESENCE_TOKENS};
 
 /// Lowercase wire token for a connection state (ipc.md §4).
 #[must_use]
@@ -143,6 +144,8 @@ pub struct ConnectionStatusDto {
     pub mascot_interaction: bool,
     /// Most recent correlated device acknowledgment for a social action in this session.
     pub mascot_action: Option<MascotActionAppliedDto>,
+    /// What the computer is doing: `active`, `locked` or `sleeping`.
+    pub host: &'static str,
 }
 
 /// Acknowledged physical action cue, safe to replay in Device Studio.
@@ -307,6 +310,10 @@ pub enum ActivityEventTypeDto {
     ConfigRecovered,
     ConfigReset,
     ConfigSaveFailed,
+    HostSuspending,
+    HostResumed,
+    HostLocked,
+    HostUnlocked,
 }
 
 /// Closed connection-state token serialized in activity metadata.
@@ -402,6 +409,7 @@ pub fn connection_status(
     mascot_interaction: bool,
     mascot_action: Option<MascotActionApplied>,
     connection_generation: u32,
+    host: HostPresence,
 ) -> ConnectionStatusDto {
     let device = manager.device().map(|d| DeviceInfoDto {
         firmware_version: format!(
@@ -413,7 +421,8 @@ pub fn connection_status(
     });
     ConnectionStatusDto {
         connection: connection_token(manager.state()).to_string(),
-        desired: sendable_token(orchestrator.desired()).to_string(),
+        // The user's choice, not the lock-screen override: the UI should not flip to Sleeping.
+        desired: sendable_token(orchestrator.user_desired()).to_string(),
         reported: reported.map(|r| companion_token(r).to_string()),
         device,
         incompatible_reason: manager.incompatible_reason().map(str::to_string),
@@ -421,6 +430,7 @@ pub fn connection_status(
         connection_generation,
         mascot_interaction: manager.state().can_drive_device() && mascot_interaction,
         mascot_action: mascot_action.map(mascot_action_applied),
+        host: host.token(),
     }
 }
 
@@ -546,6 +556,10 @@ fn activity_kind_token(kind: ActivityEventKind) -> ActivityEventTypeDto {
         ActivityEventKind::ConfigRecovered => ActivityEventTypeDto::ConfigRecovered,
         ActivityEventKind::ConfigReset => ActivityEventTypeDto::ConfigReset,
         ActivityEventKind::ConfigSaveFailed => ActivityEventTypeDto::ConfigSaveFailed,
+        ActivityEventKind::HostSuspending => ActivityEventTypeDto::HostSuspending,
+        ActivityEventKind::HostResumed => ActivityEventTypeDto::HostResumed,
+        ActivityEventKind::HostLocked => ActivityEventTypeDto::HostLocked,
+        ActivityEventKind::HostUnlocked => ActivityEventTypeDto::HostUnlocked,
     }
 }
 
@@ -987,6 +1001,7 @@ pub fn initial_status() -> ConnectionStatusDto {
         false,
         None,
         0,
+        HostPresence::Active,
     )
 }
 
@@ -1655,5 +1670,6 @@ pub fn vocabulary_json() -> serde_json::Value {
         "hostMedia": HOST_MEDIA_TOKENS,
         "hostFocus": HOST_FOCUS_TOKENS,
         "hostInputPermission": HOST_INPUT_PERMISSION_TOKENS,
+        "hostPresence": HOST_PRESENCE_TOKENS,
     })
 }
