@@ -3,6 +3,11 @@
 
 import {
   ACTION_SPEC_KINDS,
+  CAPABILITY_NAMES,
+  HOST_AVAILABILITIES,
+  HOST_FOCUS,
+  HOST_INPUT_PERMISSIONS,
+  HOST_MEDIA,
   STEP_SPEC_KINDS,
   ACTIVITY_EVENT_TYPES,
   CATALOG_AVAILABILITIES,
@@ -27,6 +32,7 @@ import type {
   ActivityEventDto,
   ButtonDto,
   ConfigDto,
+  DiagnosticsDto,
   MacroSpec,
   StepSpec,
   DeskStatusDto,
@@ -88,6 +94,75 @@ function buttonLabels(value: unknown): DeskStatusDto['buttonLabels'] {
     label('buttonLabels', value[1]),
     label('buttonLabels', value[2]),
   ];
+}
+
+const CONNECTION_STATES = [
+  'connecting',
+  'connected',
+  'incompatible',
+  'disconnected',
+  'error',
+] as const;
+
+function count(name: string, value: unknown): number {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return value;
+  throw new Error(`Kivori: invalid ${name}.`);
+}
+
+function countOrNull(name: string, value: unknown): number | null {
+  return value === null ? null : count(name, value);
+}
+
+/** Validates a `DiagnosticsDto`, throwing on any unknown token or malformed value. */
+export function parseDiagnostics(raw: unknown): DiagnosticsDto {
+  const r = record('diagnostics', raw);
+  const versions = record('versions', r.versions);
+  const connection = record('connection health', r.connection);
+  const health = record('device health', r.health);
+  const host = record('host services', r.host);
+  const config = record('config summary', r.config);
+  if (!Array.isArray(versions.capabilities)) throw new Error('Kivori: invalid capabilities.');
+  return {
+    versions: {
+      app: text('app version', versions.app, 64),
+      firmware: versions.firmware === null ? null : text('firmware version', versions.firmware, 64),
+      protocol: text('protocol version', versions.protocol, 16),
+      negotiatedMinor: countOrNull('negotiatedMinor', versions.negotiatedMinor),
+      capabilities: versions.capabilities.map((name) =>
+        oneOf('capability', CAPABILITY_NAMES, name),
+      ),
+      deviceHash:
+        versions.deviceHash === null ? null : text('device hash', versions.deviceHash, 32),
+    },
+    connection: {
+      state: oneOf('connection state', CONNECTION_STATES, connection.state),
+      connectedForSecs: countOrNull('connectedForSecs', connection.connectedForSecs),
+      reconnects: count('reconnects', connection.reconnects),
+      retryCount: count('retryCount', connection.retryCount),
+      lastPongAgeMs: countOrNull('lastPongAgeMs', connection.lastPongAgeMs),
+      rttMs: countOrNull('rttMs', connection.rttMs),
+    },
+    health: {
+      deviceUptimeMs: countOrNull('deviceUptimeMs', health.deviceUptimeMs),
+      freeBytes: countOrNull('freeBytes', health.freeBytes),
+      malformedFrames: count('malformedFrames', health.malformedFrames),
+      sequenceGaps: count('sequenceGaps', health.sequenceGaps),
+      deviceErrors: count('deviceErrors', health.deviceErrors),
+    },
+    host: {
+      systemVolume: oneOf('host availability', HOST_AVAILABILITIES, host.systemVolume),
+      appVolume: oneOf('host availability', HOST_AVAILABILITIES, host.appVolume),
+      media: oneOf('host media', HOST_MEDIA, host.media),
+      focus: oneOf('host focus', HOST_FOCUS, host.focus),
+      inputPermission: oneOf('host input permission', HOST_INPUT_PERMISSIONS, host.inputPermission),
+    },
+    config: {
+      status: oneOf('config status', ['ok', ...CONFIG_NOTICES], config.status),
+      schemaVersion: count('schemaVersion', config.schemaVersion),
+      customBindings: count('customBindings', config.customBindings),
+      macros: count('macros', config.macros),
+    },
+  };
 }
 
 /** Validates a `DeskStatusDto`, throwing on any unknown token or malformed value. */

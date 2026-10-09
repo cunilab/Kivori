@@ -86,6 +86,24 @@ pub enum SessionError<E> {
     NonceUnavailable,
 }
 
+/// What the session has learned about the device's health and the link's quality. A plain copy for
+/// the diagnostics page; none of it ever goes back on the wire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SessionDiagnostics {
+    /// Free heap/SRAM from the latest `Health` (`None` until one arrives on this connection).
+    pub free_bytes: Option<u32>,
+    /// Device uptime from the latest `Pong`, and when that `Pong` arrived.
+    pub last_pong: Option<(std::time::Instant, u32)>,
+    /// Round trip of the latest answered `Ping` (ms).
+    pub rtt_ms: Option<u32>,
+    /// Inbound frames dropped as malformed since the last [`Session::open`].
+    pub malformed_frames: u32,
+    /// Inbound sequence gaps since the last [`Session::open`].
+    pub sequence_gaps: u32,
+    /// `Error` messages the device sent since the last [`Session::open`].
+    pub device_errors: u32,
+}
+
 /// The desktop side of a device session.
 pub struct Session {
     config: SessionConfig,
@@ -115,6 +133,8 @@ pub struct Session {
     /// Device-to-host clock offset learned from `Pong`s. Connection-scoped like
     /// `current_session`: the device clock restarts with the device.
     device_clock: DeviceClock,
+    /// Health and link-quality figures for diagnostics. Connection-scoped.
+    diagnostics: SessionDiagnostics,
 }
 
 impl Session {
@@ -149,6 +169,7 @@ impl Session {
             activity: Vec::new(),
             host_ms: 0,
             device_clock: DeviceClock::default(),
+            diagnostics: SessionDiagnostics::default(),
         }
     }
 
@@ -170,6 +191,7 @@ impl Session {
         self.heartbeat = HeartbeatMonitor::default();
         self.reported = None;
         self.clear_session_identity();
+        self.diagnostics = SessionDiagnostics::default();
         self.pending_inputs.clear();
         self.last_mascot_action_applied = None;
         self.activity.clear();
@@ -256,6 +278,15 @@ impl Session {
     #[must_use]
     pub const fn device_clock(&self) -> DeviceClock {
         self.device_clock
+    }
+
+    /// The device health and link-quality figures gathered on this connection.
+    #[must_use]
+    pub fn diagnostics(&self) -> SessionDiagnostics {
+        SessionDiagnostics {
+            rtt_ms: self.heartbeat.rtt_ms(),
+            ..self.diagnostics
+        }
     }
 
     /// Reads and handles all currently-available inbound frames, driving `manager`/`orchestrator` and
@@ -356,7 +387,7 @@ impl Session {
         link: &mut L,
         t_ms: u32,
     ) -> Result<(), SessionError<L::Error>> {
-        self.heartbeat.on_ping_sent();
+        self.heartbeat.on_ping_sent(t_ms);
         self.send(link, &Message::Ping(Ping { t_ms }))
     }
 
@@ -490,10 +521,14 @@ impl Session {
             Ok((header, message)) => {
                 match self.inbound.classify(header.seq) {
                     SeqClass::Duplicate => return Ok(()),
-                    SeqClass::Gap(skipped) => self.observe(
-                        ActivityEventKind::ProtocolSequenceGap,
-                        Some(ActivityMetadata::ProtocolSequenceGap { skipped }),
-                    ),
+                    SeqClass::Gap(skipped) => {
+                        self.diagnostics.sequence_gaps =
+                            self.diagnostics.sequence_gaps.saturating_add(1);
+                        self.observe(
+                            ActivityEventKind::ProtocolSequenceGap,
+                            Some(ActivityMetadata::ProtocolSequenceGap { skipped }),
+                        );
+                    }
                     SeqClass::First | SeqClass::Ok => {}
                 }
                 self.handle_message(header.version, message, link, manager, orchestrator)?;
@@ -523,6 +558,8 @@ impl Session {
                 let safe_header = decode_frame(packet, &mut header_scratch)
                     .ok()
                     .map(|(header, _)| header);
+                self.diagnostics.malformed_frames =
+                    self.diagnostics.malformed_frames.saturating_add(1);
                 self.observe(
                     ActivityEventKind::ProtocolMalformedFrame,
                     Some(ActivityMetadata::ProtocolMalformed {
@@ -607,7 +644,8 @@ impl Session {
                 }
             }
             Message::Pong(pong) => {
-                self.heartbeat.on_pong();
+                self.heartbeat.on_pong(pong.t_ms_echo, self.host_ms);
+                self.diagnostics.last_pong = Some((std::time::Instant::now(), pong.uptime_ms));
                 self.device_clock
                     .on_pong(pong.t_ms_echo, self.host_ms, pong.uptime_ms);
             }
@@ -639,6 +677,7 @@ impl Session {
                     }),
                 );
             }
+            Message::Health(health) => self.diagnostics.free_bytes = Some(health.free_bytes),
             Message::Diagnostic(diagnostic) => self.observe(
                 device_diagnostic_kind(diagnostic.code),
                 Some(ActivityMetadata::DeviceDiagnostic {
@@ -646,17 +685,22 @@ impl Session {
                     code: diagnostic.code,
                 }),
             ),
-            Message::Error(error) => self.observe(
-                match error.category {
-                    kivori_protocol::ErrorCategory::Busy => ActivityEventKind::DeviceBusy,
-                    kivori_protocol::ErrorCategory::Timeout => ActivityEventKind::DeviceTimedOut,
-                    _ => ActivityEventKind::DeviceError,
-                },
-                Some(ActivityMetadata::DeviceDiagnostic {
-                    category: error.category,
-                    code: error.code,
-                }),
-            ),
+            Message::Error(error) => {
+                self.diagnostics.device_errors = self.diagnostics.device_errors.saturating_add(1);
+                self.observe(
+                    match error.category {
+                        kivori_protocol::ErrorCategory::Busy => ActivityEventKind::DeviceBusy,
+                        kivori_protocol::ErrorCategory::Timeout => {
+                            ActivityEventKind::DeviceTimedOut
+                        }
+                        _ => ActivityEventKind::DeviceError,
+                    },
+                    Some(ActivityMetadata::DeviceDiagnostic {
+                        category: error.category,
+                        code: error.code,
+                    }),
+                );
+            }
             // Unnegotiated input stays inert, mirroring the firmware Presentation gate.
             Message::InputEvent(event)
                 if self
@@ -739,6 +783,9 @@ impl Session {
         self.last_mascot_action_applied = None;
         self.heartbeat = HeartbeatMonitor::default();
         self.device_clock.reset();
+        // The figures describe the ended connection; the counters stay until the next `open`.
+        self.diagnostics.free_bytes = None;
+        self.diagnostics.last_pong = None;
     }
 
     fn observe(&mut self, kind: ActivityEventKind, metadata: Option<ActivityMetadata>) {
@@ -887,6 +934,126 @@ mod tests {
         // Reconnecting restarts the device clock: the old offset must not judge new input.
         session.open(&mut link, &mut manager).expect("open");
         assert_eq!(session.device_clock().age(5_000, 1_100), None);
+    }
+
+    fn fixtures() -> (Session, NullLink, ConnectionManager, Orchestrator) {
+        (
+            Session::with_nonce_source(
+                SessionConfig::default(),
+                Box::new(FixedNonceSource::new(vec![7, 8])),
+            ),
+            NullLink,
+            ConnectionManager::new(),
+            Orchestrator::new(),
+        )
+    }
+
+    fn deliver(
+        session: &mut Session,
+        message: Message,
+        link: &mut NullLink,
+        manager: &mut ConnectionManager,
+        orchestrator: &mut Orchestrator,
+    ) {
+        session
+            .handle_message(
+                ProtocolVersion::new(PROTOCOL_MAJOR, PROTOCOL_MINOR),
+                message,
+                link,
+                manager,
+                orchestrator,
+            )
+            .expect("handle_message");
+    }
+
+    #[test]
+    fn health_is_stored_and_forgotten_with_the_connection() {
+        let (mut session, mut link, mut manager, mut orchestrator) = fixtures();
+        assert_eq!(session.diagnostics().free_bytes, None);
+        deliver(
+            &mut session,
+            Message::Health(kivori_protocol::Health {
+                free_bytes: 123_456,
+            }),
+            &mut link,
+            &mut manager,
+            &mut orchestrator,
+        );
+        assert_eq!(session.diagnostics().free_bytes, Some(123_456));
+        session.open(&mut link, &mut manager).expect("open");
+        assert_eq!(session.diagnostics().free_bytes, None);
+    }
+
+    #[test]
+    fn a_pong_stores_the_device_uptime_and_the_round_trip() {
+        let (mut session, mut link, mut manager, mut orchestrator) = fixtures();
+        session.send_ping(&mut link, 1_000).expect("ping");
+        session.set_host_ms(1_025);
+        deliver(
+            &mut session,
+            Message::Pong(kivori_protocol::Pong {
+                t_ms_echo: 1_000,
+                uptime_ms: 77_000,
+            }),
+            &mut link,
+            &mut manager,
+            &mut orchestrator,
+        );
+        let diagnostics = session.diagnostics();
+        assert_eq!(
+            diagnostics.last_pong.map(|(_, uptime)| uptime),
+            Some(77_000)
+        );
+        assert_eq!(diagnostics.rtt_ms, Some(25));
+    }
+
+    #[test]
+    fn counters_count_errors_malformed_frames_and_gaps_and_reset_on_open() {
+        let (mut session, mut link, mut manager, mut orchestrator) = fixtures();
+        deliver(
+            &mut session,
+            Message::Error(kivori_protocol::ErrorReport {
+                category: kivori_protocol::ErrorCategory::Busy,
+                code: 1,
+            }),
+            &mut link,
+            &mut manager,
+            &mut orchestrator,
+        );
+        session
+            .handle(&[1, 2, 3], &mut link, &mut manager, &mut orchestrator)
+            .expect("handle");
+        for seq in [0u16, 5] {
+            let mut wire: heapless::Vec<u8, MAX_WIRE> = heapless::Vec::new();
+            encode_message(
+                &Message::Ping(Ping { t_ms: 0 }),
+                ProtocolVersion::new(PROTOCOL_MAJOR, PROTOCOL_MINOR),
+                seq,
+                &mut wire,
+            )
+            .expect("encode");
+            let packet = wire.strip_suffix(&[0]).unwrap_or(&wire).to_vec();
+            session
+                .handle(&packet, &mut link, &mut manager, &mut orchestrator)
+                .expect("handle");
+        }
+        let counted = session.diagnostics();
+        assert_eq!(counted.device_errors, 1);
+        assert_eq!(counted.malformed_frames, 1);
+        assert_eq!(counted.sequence_gaps, 1);
+
+        session.open(&mut link, &mut manager).expect("open");
+        let reset = session.diagnostics();
+        assert_eq!(
+            (
+                reset.device_errors,
+                reset.malformed_frames,
+                reset.sequence_gaps
+            ),
+            (0, 0, 0)
+        );
+        assert_eq!(reset.last_pong, None);
+        assert_eq!(reset.rtt_ms, None);
     }
 }
 

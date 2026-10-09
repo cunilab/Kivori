@@ -194,6 +194,7 @@ The webview may call only these commands and listen to these events. No command 
 | `reset_config` | Every setting back to its default; returns the config | all |
 | `play_mascot_action` | `greet, pet, tickle, surprise, comfort` | all |
 | `get_activity_log` | Newest N activity records | all |
+| `get_diagnostics` | None; returns `DiagnosticsDto` (see Diagnostics) | all |
 | `get_firmware_status`, `flash_firmware` | Firmware update status and request (no arguments) | all |
 | `render_preview_frame`, `open_preview_stream`, `update_preview_stream`, `ack_preview_frame`, `close_preview_stream` | Native-rendered RGBA frames for Device Studio | `device-studio` only |
 | `mirror_state` | Dev-labelled `set_desired_state` | `device-studio` only |
@@ -344,6 +345,14 @@ The typed session activity log is the only runtime log.
 - Versioning: `version` is read first. An older file is copied to `config.v<old>.bak`, migrated step by step (`config/migrate.rs`, one function per version) and written back (`notice: migrated`). The schema rejects unknown fields, so during M2 new fields stay in version 1 with `#[serde(default)]`; after the beta ships, any field change bumps `CONFIG_VERSION`.
 - Reset copies the current file to `config.before-reset.json` (one slot) and writes defaults.
 - The file holds `profiles` (sparse overrides by profile id: `rotate`, `press`, `hold` and three `buttons` of `press` and `hold`) and `macros` (at most 32, see Macros), `display` (`defaultView`, `secondaryView`) and `buddy` (`reactions`, `intensity`). Intensity is the mascot personality: low, normal, high are calm, cozy, playful. Reactions turn the companion director's self-play on or off. A double press toggles between the default and the chosen view (from any other view it returns to the default), or steps through every view when `secondaryView` is `cycle`.
+
+### Diagnostics
+
+- `get_diagnostics` returns `DiagnosticsDto`, shown as a card on the Device page (polled every 1 s while visible) and copied as JSON by "Copy diagnostics". Groups: `versions` (app, firmware, protocol, negotiated minor, capability names, short device hash), `connection` (state, connected-for, reconnects, retry count, last pong age, round trip), `health` (device uptime, free SRAM, malformed frames, sequence gaps, device errors), `host` (system volume, app volume, media observation, focus detection, input permission) and `config` (status, schema version, custom bindings, macros). Unknown values are `null`.
+- Privacy: no ports, paths or raw device ids. The device appears only as its short hash. A DTO allowlist test pins the serialised keys.
+- Sources: `Session` keeps `Health.free_bytes`, `Pong.uptime_ms` with its receive instant, and counters for malformed frames, sequence gaps and device `Error`s. All of it is connection-scoped and reset by `Session::open` (the free-memory and uptime figures also clear when the link drops). The round trip comes from `HeartbeatMonitor` (`on_ping_sent(t_ms)`, `on_pong(t_ms_echo, now_ms)`), taken only from the echo of the latest ping.
+- The device thread writes a `DiagnosticsSnapshot` (raw figures and `Instant`s) at most once a second; `get_diagnostics` turns it into ages and adds the config summary from the config store at read time. Host-service tokens come from the live backends (`available`, `unsupported`, `unavailable`; media `observable`; focus `detecting`; input permission `required`, `notNeeded` or `unknown`). Input permission is only `required` after the OS refused synthesized input; on macOS it stays `unknown` until then.
+- Firmware update advice (bundled version, update available) belongs in `FirmwareStatus` (M3); diagnostics will read it from there rather than duplicate it.
 
 ### Firmware flashing from the app
 

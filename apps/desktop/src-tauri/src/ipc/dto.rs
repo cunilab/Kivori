@@ -4,9 +4,11 @@
 //! serial handles, or paths. All enum tokens are the lowercase wire strings the frontend expects; the
 //! projections are pure functions of the internal state, so they are unit-testable without Tauri.
 
+use std::time::Instant;
+
 use kivori_model::{
-    CompanionState, ConnectionState, MascotAction, MascotPersonality, ProtocolVersion,
-    SendableState,
+    Capabilities, CompanionState, ConnectionState, MascotAction, MascotPersonality,
+    ProtocolVersion, SendableState,
 };
 use kivori_protocol::{MascotActionApplied, PROTOCOL_MAJOR, PROTOCOL_MINOR};
 use serde::Serialize;
@@ -16,6 +18,7 @@ use crate::activity::{
     ActivitySource,
 };
 use crate::device::fsm::ConnectionManager;
+use crate::device::session::SessionDiagnostics;
 use crate::orchestrator::Orchestrator;
 
 /// Lowercase wire token for a connection state (ipc.md §4).
@@ -1379,6 +1382,263 @@ fn profile_dtos(store: &crate::config::ConfigStore) -> Vec<ProfileConfigDto> {
         .collect()
 }
 
+/// `available`, `unsupported` or `unavailable` for a host service's availability.
+#[must_use]
+pub const fn availability_token(
+    availability: &crate::platform::ActionAvailability,
+) -> &'static str {
+    use crate::platform::ActionAvailability;
+    match availability {
+        ActionAvailability::Available { .. } => "available",
+        ActionAvailability::Unsupported { .. } | ActionAvailability::NotImplementedYet { .. } => {
+            "unsupported"
+        }
+        ActionAvailability::RuntimeUnavailable { .. } | ActionAvailability::Unknown => {
+            "unavailable"
+        }
+    }
+}
+
+/// Every capability flag with the name the diagnostics page lists it by, in bit order.
+const CAPABILITY_TABLE: [(Capabilities, &str); 10] = [
+    (Capabilities::MASCOT_INTERACTION, "mascotInteraction"),
+    (Capabilities::PHYSICAL_INPUT_V1, "physicalInputV1"),
+    (Capabilities::PRESENTATION_V1, "presentationV1"),
+    (Capabilities::BUTTON_INPUT_V1, "buttonInputV1"),
+    (Capabilities::DESK_STATUS_V1, "deskStatusV1"),
+    (Capabilities::ACTION_FEEDBACK_V1, "actionFeedbackV1"),
+    (Capabilities::DOUBLE_PRESS_V1, "doublePressV1"),
+    (Capabilities::MEDIA_INFO_V1, "mediaInfoV1"),
+    (Capabilities::CONTROL_LABELS_V1, "controlLabelsV1"),
+    (Capabilities::CONTEXT_BUTTONS_V1, "contextButtonsV1"),
+];
+
+/// The capability names the diagnostics page lists, in bit order.
+#[must_use]
+pub fn capability_names(caps: Capabilities) -> Vec<&'static str> {
+    CAPABILITY_TABLE
+        .into_iter()
+        .filter(|(flag, _)| caps.contains(*flag))
+        .map(|(_, name)| name)
+        .collect()
+}
+
+/// Host-service tokens in the diagnostics DTO (closed lists, shared with the webview).
+pub const HOST_AVAILABILITY_TOKENS: [&str; 3] = ["available", "unsupported", "unavailable"];
+pub const HOST_MEDIA_TOKENS: [&str; 2] = ["observable", "notObservable"];
+pub const HOST_FOCUS_TOKENS: [&str; 2] = ["detecting", "unknown"];
+pub const HOST_INPUT_PERMISSION_TOKENS: [&str; 3] = ["required", "notNeeded", "unknown"];
+
+/// What the host services report, as short tokens. Written by the device thread.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HostServicesSnapshot {
+    /// `available`, `unsupported` or `unavailable`.
+    pub system_volume: &'static str,
+    /// `available`, `unsupported` or `unavailable`.
+    pub app_volume: &'static str,
+    /// `observable` or `notObservable`.
+    pub media: &'static str,
+    /// `detecting` (a focused window is seen) or `unknown`.
+    pub focus: &'static str,
+    /// `required` (the OS refused synthesized input), `notNeeded` or `unknown`.
+    pub input_permission: &'static str,
+}
+
+/// The device thread's raw figures for the diagnostics page. Ages are worked out when the page
+/// asks, so the snapshot only has to be refreshed about once a second.
+#[derive(Debug, Clone)]
+pub struct DiagnosticsSnapshot {
+    /// The connection state token.
+    pub connection: &'static str,
+    /// The device's firmware version, while connected.
+    pub firmware_version: Option<String>,
+    /// The short, non-reversible device hash, while connected.
+    pub device_hash: Option<String>,
+    /// The capability set negotiated for this connection.
+    pub negotiated_caps: Capabilities,
+    /// The protocol minor both sides settled on, while connected.
+    pub negotiated_minor: Option<u16>,
+    /// When the current connection came up.
+    pub connected_since: Option<Instant>,
+    /// Times the device came back after the first connection of this run.
+    pub reconnects: u32,
+    /// Consecutive reconnect attempts.
+    pub retry_count: u32,
+    /// Health and link-quality figures from the session.
+    pub session: SessionDiagnostics,
+    /// Host service status.
+    pub host: HostServicesSnapshot,
+}
+
+impl DiagnosticsSnapshot {
+    /// Before the device thread has published anything.
+    #[must_use]
+    pub fn initial() -> Self {
+        Self {
+            connection: connection_token(ConnectionState::Disconnected),
+            firmware_version: None,
+            device_hash: None,
+            negotiated_caps: Capabilities::NONE,
+            negotiated_minor: None,
+            connected_since: None,
+            reconnects: 0,
+            retry_count: 0,
+            session: SessionDiagnostics::default(),
+            host: HostServicesSnapshot {
+                system_volume: "unavailable",
+                app_volume: "unavailable",
+                media: "notObservable",
+                focus: "unknown",
+                input_permission: "unknown",
+            },
+        }
+    }
+}
+
+/// Everything the diagnostics page shows, and what "Copy diagnostics" copies. Unknown values are
+/// `null`, never guessed. Carries no port, path or raw device id: the device appears only as its
+/// short hash.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticsDto {
+    pub versions: VersionsDto,
+    pub connection: ConnectionDiagnosticsDto,
+    pub health: HealthDto,
+    pub host: HostServicesDto,
+    pub config: ConfigDiagnosticsDto,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionsDto {
+    pub app: String,
+    /// The connected device's firmware version.
+    pub firmware: Option<String>,
+    /// This build's protocol version, `major.minor`.
+    pub protocol: String,
+    pub negotiated_minor: Option<u16>,
+    pub capabilities: Vec<&'static str>,
+    pub device_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionDiagnosticsDto {
+    pub state: &'static str,
+    pub connected_for_secs: Option<u64>,
+    pub reconnects: u32,
+    pub retry_count: u32,
+    pub last_pong_age_ms: Option<u64>,
+    pub rtt_ms: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthDto {
+    /// The device's uptime, estimated forward from its last `Pong`.
+    pub device_uptime_ms: Option<u64>,
+    pub free_bytes: Option<u32>,
+    pub malformed_frames: u32,
+    pub sequence_gaps: u32,
+    pub device_errors: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostServicesDto {
+    pub system_volume: &'static str,
+    pub app_volume: &'static str,
+    pub media: &'static str,
+    pub focus: &'static str,
+    pub input_permission: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigDiagnosticsDto {
+    /// `ok`, or the config notice token (`recoveredCorrupt`, `recoveredNewerVersion`, `migrated`).
+    pub status: &'static str,
+    pub schema_version: u32,
+    /// Controls the user rebound (rotate, press, hold and button overrides across profiles).
+    pub custom_bindings: u32,
+    pub macros: u32,
+}
+
+fn custom_bindings(file: &crate::config::ConfigFile) -> u32 {
+    let count = file
+        .profiles
+        .values()
+        .map(|over| {
+            usize::from(over.rotate.is_some())
+                + usize::from(over.press.is_some())
+                + usize::from(over.hold.is_some())
+                + over
+                    .buttons
+                    .iter()
+                    .map(|b| usize::from(b.press.is_some()) + usize::from(b.hold.is_some()))
+                    .sum::<usize>()
+        })
+        .sum::<usize>();
+    u32::try_from(count).unwrap_or(u32::MAX)
+}
+
+/// Projects the diagnostics page at time `now`.
+#[must_use]
+pub fn diagnostics_dto(
+    snapshot: &DiagnosticsSnapshot,
+    store: &crate::config::ConfigStore,
+    now: Instant,
+) -> DiagnosticsDto {
+    let session = snapshot.session;
+    let pong_age = session
+        .last_pong
+        .map(|(at, _)| now.saturating_duration_since(at));
+    let file = store.file();
+    DiagnosticsDto {
+        versions: VersionsDto {
+            app: env!("CARGO_PKG_VERSION").to_string(),
+            firmware: snapshot.firmware_version.clone(),
+            protocol: format!("{PROTOCOL_MAJOR}.{PROTOCOL_MINOR}"),
+            negotiated_minor: snapshot.negotiated_minor,
+            capabilities: capability_names(snapshot.negotiated_caps),
+            device_hash: snapshot.device_hash.clone(),
+        },
+        connection: ConnectionDiagnosticsDto {
+            state: snapshot.connection,
+            connected_for_secs: snapshot
+                .connected_since
+                .map(|since| now.saturating_duration_since(since).as_secs()),
+            reconnects: snapshot.reconnects,
+            retry_count: snapshot.retry_count,
+            last_pong_age_ms: pong_age
+                .map(|age| u64::try_from(age.as_millis()).unwrap_or(u64::MAX)),
+            rtt_ms: session.rtt_ms,
+        },
+        health: HealthDto {
+            device_uptime_ms: session.last_pong.zip(pong_age).map(|((_, uptime), age)| {
+                u64::from(uptime).saturating_add(u64::try_from(age.as_millis()).unwrap_or(0))
+            }),
+            free_bytes: session.free_bytes,
+            malformed_frames: session.malformed_frames,
+            sequence_gaps: session.sequence_gaps,
+            device_errors: session.device_errors,
+        },
+        host: HostServicesDto {
+            system_volume: snapshot.host.system_volume,
+            app_volume: snapshot.host.app_volume,
+            media: snapshot.host.media,
+            focus: snapshot.host.focus,
+            input_permission: snapshot.host.input_permission,
+        },
+        config: ConfigDiagnosticsDto {
+            status: store.notice().map_or("ok", config_notice_token),
+            schema_version: file.version,
+            custom_bindings: custom_bindings(file),
+            macros: u32::try_from(file.macros.len()).unwrap_or(u32::MAX),
+        },
+    }
+}
+
 /// The closed `ProfileId` and `Control` vocabularies, for the Rust/TS drift check.
 #[must_use]
 pub fn vocabulary_json() -> serde_json::Value {
@@ -1389,5 +1649,10 @@ pub fn vocabulary_json() -> serde_json::Value {
         "stepSpecKinds": crate::config::resolve::STEP_SPEC_KINDS,
         "rotateSpecKinds": crate::config::resolve::ROTATE_SPEC_KINDS,
         "deskActions": crate::desk::ActionToken::ALL.map(crate::desk::ActionToken::token),
+        "capabilityNames": CAPABILITY_TABLE.map(|(_, name)| name),
+        "hostAvailability": HOST_AVAILABILITY_TOKENS,
+        "hostMedia": HOST_MEDIA_TOKENS,
+        "hostFocus": HOST_FOCUS_TOKENS,
+        "hostInputPermission": HOST_INPUT_PERMISSION_TOKENS,
     })
 }

@@ -18,6 +18,7 @@ import type {
   FirmwareStatusDto,
   MascotAction,
   ConfigDto,
+  DiagnosticsDto,
   ControlRef,
   ProfileId,
   RotateSpec,
@@ -27,7 +28,13 @@ import type {
   DisplayMode,
   Intensity,
 } from './types';
-import { isActivityEvent, parseCatalog, parseConfig, parseDeskStatus } from './validate';
+import {
+  isActivityEvent,
+  parseCatalog,
+  parseConfig,
+  parseDeskStatus,
+  parseDiagnostics,
+} from './validate';
 
 /// Handle returned by an event subscription; call it to unsubscribe.
 export type Unlisten = () => void;
@@ -104,6 +111,13 @@ export async function listStates(): Promise<CompanionState[]> {
 export async function setDesiredState(state: SendableState): Promise<void> {
   if (isTauri()) return invoke<void>('set_desired_state', { state });
   if (import.meta.env.DEV) return;
+  return unavailable();
+}
+
+/** Versions, connection health, host services and a config summary. Safe to copy and share. */
+export async function getDiagnostics(): Promise<DiagnosticsDto> {
+  if (isTauri()) return parseDiagnostics(await invoke<unknown>('get_diagnostics'));
+  if (import.meta.env.DEV) return (await devMock()).mockGetDiagnostics();
   return unavailable();
 }
 

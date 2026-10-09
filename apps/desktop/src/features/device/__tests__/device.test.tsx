@@ -9,6 +9,7 @@ vi.mock('../../../lib/ipc', () => ({
   getFirmwareStatus: () =>
     Promise.resolve({ available: true, phase: 'idle', message: 'Ready.', imageSize: 1024 }),
   flashFirmware: vi.fn(),
+  getDiagnostics: () => new Promise(() => {}),
 }));
 
 import { DevicePage } from '../DevicePage';

@@ -33,6 +33,69 @@ export interface FirmwareStatusDto {
   imageSize: number;
 }
 
+export const CAPABILITY_NAMES = [
+  'mascotInteraction',
+  'physicalInputV1',
+  'presentationV1',
+  'buttonInputV1',
+  'deskStatusV1',
+  'actionFeedbackV1',
+  'doublePressV1',
+  'mediaInfoV1',
+  'controlLabelsV1',
+  'contextButtonsV1',
+] as const;
+export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
+
+export const HOST_AVAILABILITIES = ['available', 'unsupported', 'unavailable'] as const;
+export const HOST_MEDIA = ['observable', 'notObservable'] as const;
+export const HOST_FOCUS = ['detecting', 'unknown'] as const;
+export const HOST_INPUT_PERMISSIONS = ['required', 'notNeeded', 'unknown'] as const;
+
+/**
+ * Everything the Diagnostics card shows and "Copy diagnostics" copies. Unknown values are `null`.
+ * Carries no port, path or raw device id; the device is only its short hash.
+ */
+export interface DiagnosticsDto {
+  versions: {
+    app: string;
+    firmware: string | null;
+    /** This app's protocol version, `major.minor`. */
+    protocol: string;
+    negotiatedMinor: number | null;
+    capabilities: CapabilityName[];
+    deviceHash: string | null;
+  };
+  connection: {
+    state: ConnectionState;
+    connectedForSecs: number | null;
+    reconnects: number;
+    retryCount: number;
+    lastPongAgeMs: number | null;
+    rttMs: number | null;
+  };
+  health: {
+    deviceUptimeMs: number | null;
+    freeBytes: number | null;
+    malformedFrames: number;
+    sequenceGaps: number;
+    deviceErrors: number;
+  };
+  host: {
+    systemVolume: (typeof HOST_AVAILABILITIES)[number];
+    appVolume: (typeof HOST_AVAILABILITIES)[number];
+    media: (typeof HOST_MEDIA)[number];
+    focus: (typeof HOST_FOCUS)[number];
+    inputPermission: (typeof HOST_INPUT_PERMISSIONS)[number];
+  };
+  config: {
+    status: 'ok' | ConfigNotice;
+    schemaVersion: number;
+    customBindings: number;
+    macros: number;
+  };
+}
+
 export interface ConnectionStatusDto {
   connection: ConnectionState;
   desired: SendableState;

@@ -9,7 +9,9 @@ use tauri::{AppHandle, State};
 
 use crate::activity::ActivityEventKind;
 use crate::firmware::FirmwareStatus;
-use crate::ipc::dto::{self, ActivityEventDto, AppInfoDto, ConfigDto, ConnectionStatusDto};
+use crate::ipc::dto::{
+    self, ActivityEventDto, AppInfoDto, ConfigDto, ConnectionStatusDto, DiagnosticsDto,
+};
 use crate::ipc::events;
 use crate::runtime::state::{AppState, DeviceCommand};
 use kivori_model::CompanionState;
@@ -49,6 +51,12 @@ pub fn set_desired_state(app: State<'_, AppState>, state: String) -> Result<(), 
     let desired =
         dto::sendable_from_token(&state).ok_or_else(|| format!("not a sendable state: {state}"))?;
     app.send_command(DeviceCommand::SetDesired(desired))
+}
+
+/// The diagnostics page's figures (all builds). Safe to copy and share: no ports, paths or raw ids.
+#[tauri::command]
+pub fn get_diagnostics(app: State<'_, AppState>) -> DiagnosticsDto {
+    app.diagnostics_snapshot()
 }
 
 /// The stored settings (initial sync; `config://changed` carries changes).

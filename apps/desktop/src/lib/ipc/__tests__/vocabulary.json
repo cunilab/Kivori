@@ -9,6 +9,18 @@
     "launch",
     "macro"
   ],
+  "capabilityNames": [
+    "mascotInteraction",
+    "physicalInputV1",
+    "presentationV1",
+    "buttonInputV1",
+    "deskStatusV1",
+    "actionFeedbackV1",
+    "doublePressV1",
+    "mediaInfoV1",
+    "controlLabelsV1",
+    "contextButtonsV1"
+  ],
   "controls": [
     "press",
     "hold",
@@ -30,6 +42,10 @@
     "appMute",
     "macro"
   ],
+  "hostAvailability": ["available", "unsupported", "unavailable"],
+  "hostFocus": ["detecting", "unknown"],
+  "hostInputPermission": ["required", "notNeeded", "unknown"],
+  "hostMedia": ["observable", "notObservable"],
   "profileIds": ["general", "browser", "code", "media", "zoom", "teams"],
   "rotateSpecKinds": ["systemVolume", "shortcuts", "appVolume"],
   "stepSpecKinds": ["action", "delay"]

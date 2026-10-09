@@ -222,12 +222,12 @@ fn device_id_hash_is_short_stable_and_distinct() {
 fn heartbeat_times_out_after_threshold_and_resets_on_pong() {
     let mut hb = HeartbeatMonitor::new(3);
     assert!(!hb.timed_out());
-    hb.on_ping_sent();
-    hb.on_ping_sent();
+    hb.on_ping_sent(0);
+    hb.on_ping_sent(0);
     assert!(!hb.timed_out());
-    hb.on_ping_sent();
+    hb.on_ping_sent(0);
     assert!(hb.timed_out());
-    hb.on_pong();
+    hb.on_pong(0, 0);
     assert!(!hb.timed_out());
     assert_eq!(hb.misses(), 0);
 }

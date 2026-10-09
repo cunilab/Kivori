@@ -36,16 +36,21 @@ import {
 import vocabulary from './vocabulary.json';
 import {
   ACTION_SPEC_KINDS,
+  CAPABILITY_NAMES,
   COMPANION_STATES,
   CONTROL_REFS,
   DESK_ACTIONS,
+  HOST_AVAILABILITIES,
+  HOST_FOCUS,
+  HOST_INPUT_PERMISSIONS,
+  HOST_MEDIA,
   PREVIEW_DIM,
   PROFILE_IDS,
   ROTATE_SPEC_KINDS,
   STEP_SPEC_KINDS,
 } from '../types';
 import type { MacroSpec } from '../types';
-import { MAX_MEDIA_TEXT, parseCatalog, parseConfig } from '../validate';
+import { MAX_MEDIA_TEXT, parseCatalog, parseConfig, parseDiagnostics } from '../validate';
 
 afterEach(() => {
   delete (window as Window & { __TAURI_INTERNALS__?: object }).__TAURI_INTERNALS__;
@@ -578,5 +583,29 @@ describe('Rust/TS token vocabulary', () => {
     expect([...ACTION_SPEC_KINDS]).toEqual(vocabulary.actionSpecKinds);
     expect([...STEP_SPEC_KINDS]).toEqual(vocabulary.stepSpecKinds);
     expect([...ROTATE_SPEC_KINDS]).toEqual(vocabulary.rotateSpecKinds);
+    expect([...CAPABILITY_NAMES]).toEqual(vocabulary.capabilityNames);
+    expect([...HOST_AVAILABILITIES]).toEqual(vocabulary.hostAvailability);
+    expect([...HOST_MEDIA]).toEqual(vocabulary.hostMedia);
+    expect([...HOST_FOCUS]).toEqual(vocabulary.hostFocus);
+    expect([...HOST_INPUT_PERMISSIONS]).toEqual(vocabulary.hostInputPermission);
+  });
+});
+
+describe('parseDiagnostics', () => {
+  it('accepts the connected and the disconnected mock payloads', async () => {
+    const mock = await import('../mock');
+    expect(() =>
+      parseDiagnostics(JSON.parse(JSON.stringify(mock.mockGetDiagnostics()))),
+    ).not.toThrow();
+  });
+
+  it('rejects an unknown token and a negative counter', async () => {
+    const mock = await import('../mock');
+    const good = JSON.parse(JSON.stringify(mock.mockGetDiagnostics()));
+    expect(() => parseDiagnostics({ ...good, host: { ...good.host, focus: 'maybe' } })).toThrow();
+    expect(() =>
+      parseDiagnostics({ ...good, health: { ...good.health, sequenceGaps: -1 } }),
+    ).toThrow();
+    expect(() => parseDiagnostics(null)).toThrow();
   });
 });
