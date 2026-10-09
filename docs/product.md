@@ -90,6 +90,12 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
 - Recovery button: release between 500 ms and ~2 s may run a mapped Hold. At ~2 s
   recovery owns the gesture and the Hold is cancelled; at ~10 s from key-down the MCU
   reboots. Rotation during the hold changes nothing. Not configurable in v1.
+- **Input freshness:** a discrete action (switch or contextual-button Press, Hold, Double
+  press) older than **750 ms** when Desktop is about to run it is dropped and logged, never
+  run late, whether it waited on the link, the device task or the action queue. Knob detents
+  and gesture start/end are never dropped for age: a late turn is still a turn, and dropping a
+  gesture end would leave the gesture open. Age needs the device clock offset from the
+  heartbeat; until the first reply there is no age and nothing is dropped.
 - Rapid rotation uses a local preview, no round trip per detent. During a gesture,
   external updates to the same value do not fight the preview; the confirmed value
   wins when the gesture ends.
@@ -226,7 +232,7 @@ Numbers are fixed from the original user-story contract. Gaps are intentional; n
 2. **Observable truth only.** Kivori never invents state it cannot reliably observe.
 3. **Acknowledgement is not confirmation.** Input feedback is never shown as proof of success.
 4. **Confirm only what is knowable.** Known success, known failure and unknown outcome stay distinct.
-5. **No stale replay.** Expired input never runs after a connection or service recovers.
+5. **No stale replay.** Expired input never runs after a connection or service recovers. Within one session a discrete action older than 750 ms is dropped too; detents and gesture boundaries are exempt (see Input and gestures).
 6. **Explicit action scope.** An action's meaning never changes because another profile is active.
 8. **Interaction commits intent.** Deliberate input commits a valid pending foreground app first.
 9. **Security context beats profile fallback.** Protected is classified first; never General.

@@ -185,7 +185,9 @@ pub enum InputKind {
 ///
 /// `session` is the handshake nonce of the session that produced this event; the
 /// desktop rejects any event that does not match its current session.
-/// `device_ms` is carried for the deferred acceleration slice and is unused here.
+/// `device_ms` is the device clock at the edge that produced the event. It is a wrapping `u32`
+/// on the device's own clock, never comparable to host time directly: the desktop relates it to
+/// host time through the `Pong` clock offset to judge how old a discrete action is (issue #26).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InputEvent {
     /// The handshake nonce of the session that produced this event.
@@ -196,7 +198,9 @@ pub struct InputEvent {
     pub control: ControlId,
     /// What kind of input this event represents.
     pub kind: InputKind,
-    /// Device-local elapsed time (ms) at which this event was produced. Unused in this slice.
+    /// Device-local elapsed time (ms, wraps) at which this event was produced. Same clock as
+    /// `Pong::uptime_ms`; the desktop drops a `Press`, `Hold` or `DoublePress` that is too old
+    /// by it, and never a detent or gesture boundary.
     pub device_ms: u32,
 }
 

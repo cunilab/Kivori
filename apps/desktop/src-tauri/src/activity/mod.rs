@@ -88,6 +88,8 @@ pub enum ActivityEventKind {
     InputStaleSessionRejected,
     /// A rotary `InputEvent` referenced a gesture never started in this session and was dropped.
     InputUnstartedGestureRejected,
+    /// A discrete action (press or hold) arrived or waited too long and was dropped unexecuted.
+    InputStale,
     /// A master-volume write was attempted and is known to have failed.
     VolumeWriteFailed,
     /// The default audio render endpoint changed; volume was re-read from the new endpoint.
@@ -344,13 +346,13 @@ impl ActivityEventKind {
                 source: ActivitySource::Connection,
                 outcome: ActivityOutcome::Failed,
             },
-            Self::InputStaleSessionRejected | Self::InputUnstartedGestureRejected => {
-                ActivityClassification {
-                    severity: ActivitySeverity::Warning,
-                    source: ActivitySource::Protocol,
-                    outcome: ActivityOutcome::Rejected,
-                }
-            }
+            Self::InputStaleSessionRejected
+            | Self::InputUnstartedGestureRejected
+            | Self::InputStale => ActivityClassification {
+                severity: ActivitySeverity::Warning,
+                source: ActivitySource::Protocol,
+                outcome: ActivityOutcome::Rejected,
+            },
             Self::VolumeWriteFailed => ActivityClassification {
                 severity: ActivitySeverity::Error,
                 source: ActivitySource::Action,
@@ -869,6 +871,7 @@ fn summary_for(kind: ActivityEventKind, metadata: Option<&ActivityMetadata>) -> 
         (ActivityEventKind::InputUnstartedGestureRejected, _) => {
             "Input for an unstarted gesture rejected.".to_string()
         }
+        (ActivityEventKind::InputStale, _) => "Stale input dropped; action not run.".to_string(),
         (ActivityEventKind::VolumeWriteFailed, _) => "Volume change failed.".to_string(),
         (ActivityEventKind::AudioEndpointChanged, _) => "Audio output device changed.".to_string(),
         (ActivityEventKind::AudioEndpointLost, _) => "Audio output device unavailable.".to_string(),

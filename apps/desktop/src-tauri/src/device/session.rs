@@ -15,6 +15,7 @@ use crate::device::fsm::{ConnectionManager, ManagerEvent};
 use crate::device::heartbeat::HeartbeatMonitor;
 use crate::device::nonce::{NonceSource, OsNonceSource};
 use crate::device::transport::SerialLink;
+use crate::input::DeviceClock;
 use crate::orchestrator::Orchestrator;
 use kivori_model::desk::{ActionFeedback, ControlLabels, DeskStatus, MediaInfo};
 use kivori_model::{
@@ -108,6 +109,12 @@ pub struct Session {
     last_mascot_action_applied: Option<MascotActionApplied>,
     connection_generation: u32,
     activity: Vec<SessionActivity>,
+    /// The caller's host clock (ms) as of the last [`Session::set_host_ms`]; the session has no
+    /// clock of its own.
+    host_ms: u32,
+    /// Device-to-host clock offset learned from `Pong`s. Connection-scoped like
+    /// `current_session`: the device clock restarts with the device.
+    device_clock: DeviceClock,
 }
 
 impl Session {
@@ -140,6 +147,8 @@ impl Session {
             last_mascot_action_applied: None,
             connection_generation: 0,
             activity: Vec::new(),
+            host_ms: 0,
+            device_clock: DeviceClock::default(),
         }
     }
 
@@ -234,6 +243,19 @@ impl Session {
     /// Recording and Tauri emission remain owned by the device task.
     pub fn drain_activity(&mut self) -> Vec<SessionActivity> {
         std::mem::take(&mut self.activity)
+    }
+
+    /// Tells the session the host time (ms, the same clock its `Ping`s carry) for the frames the
+    /// next [`Session::pump`] reads. Used to relate a `Pong` to the device clock.
+    pub fn set_host_ms(&mut self, host_ms: u32) {
+        self.host_ms = host_ms;
+    }
+
+    /// The current device-to-host clock estimate (empty until the first usable `Pong`), for
+    /// judging how old a device-stamped input is.
+    #[must_use]
+    pub const fn device_clock(&self) -> DeviceClock {
+        self.device_clock
     }
 
     /// Reads and handles all currently-available inbound frames, driving `manager`/`orchestrator` and
@@ -584,7 +606,11 @@ impl Session {
                     }
                 }
             }
-            Message::Pong(_) => self.heartbeat.on_pong(),
+            Message::Pong(pong) => {
+                self.heartbeat.on_pong();
+                self.device_clock
+                    .on_pong(pong.t_ms_echo, self.host_ms, pong.uptime_ms);
+            }
             Message::StateReport(report) if self.reported != Some(report.reported) => {
                 self.reported = Some(report.reported);
                 self.observe(
@@ -712,6 +738,7 @@ impl Session {
         self.reported = None;
         self.last_mascot_action_applied = None;
         self.heartbeat = HeartbeatMonitor::default();
+        self.device_clock.reset();
     }
 
     fn observe(&mut self, kind: ActivityEventKind, metadata: Option<ActivityMetadata>) {
@@ -825,6 +852,41 @@ mod tests {
             session.current_session, None,
             "an Incompatible handshake outcome must clear the live session identity"
         );
+    }
+
+    #[test]
+    fn a_pong_teaches_the_device_clock_and_a_new_connection_forgets_it() {
+        let mut session = Session::with_nonce_source(
+            SessionConfig::default(),
+            Box::new(FixedNonceSource::new(vec![7, 8])),
+        );
+        let mut link = NullLink;
+        let mut manager = ConnectionManager::new();
+        let mut orchestrator = Orchestrator::new();
+        assert_eq!(session.device_clock().age(0, 0), None);
+
+        session.set_host_ms(1_040);
+        session
+            .handle_message(
+                ProtocolVersion::new(PROTOCOL_MAJOR, PROTOCOL_MINOR),
+                Message::Pong(kivori_protocol::Pong {
+                    t_ms_echo: 1_000,
+                    uptime_ms: 5_020,
+                }),
+                &mut link,
+                &mut manager,
+                &mut orchestrator,
+            )
+            .expect("handle_message");
+        // Device 5_100 at host 1_100; stamped 5_000, so 100 ms old.
+        assert_eq!(
+            session.device_clock().age(5_000, 1_100),
+            Some(std::time::Duration::from_millis(100))
+        );
+
+        // Reconnecting restarts the device clock: the old offset must not judge new input.
+        session.open(&mut link, &mut manager).expect("open");
+        assert_eq!(session.device_clock().age(5_000, 1_100), None);
     }
 }
 

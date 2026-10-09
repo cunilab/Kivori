@@ -6,10 +6,17 @@
 //!
 //! Rule 1 alone is sufficient against a complete stale pair; rule 2 is retained as
 //! defence in depth against intra-session reordering.
+//!
+//! A third rule is about age, not identity ([`freshness`], issue #26): a discrete action older
+//! than [`MAX_ACTION_AGE`] when the desktop is about to run it is dropped. Detents and gesture
+//! boundaries are always delivered.
 
 use kivori_model::input::Direction;
 use kivori_protocol::message::{ControlId, InputEvent, InputKind, CONTEXT_BUTTONS};
 use std::collections::HashSet;
+
+pub mod freshness;
+pub use freshness::{DeviceClock, Freshness, MAX_ACTION_AGE};
 
 /// A validated, session-fresh input, ready for later tasks to bind to an action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,6 +66,19 @@ pub enum LogicalInput {
         /// The device's identifier for this press.
         gesture_id: u16,
     },
+}
+
+impl LogicalInput {
+    /// Whether this input triggers a one-shot action, so it is dropped when it arrives too old.
+    /// Gesture boundaries and detents are never discrete: dropping them would corrupt a gesture
+    /// or lose a turn the user made.
+    #[must_use]
+    pub const fn is_discrete(&self) -> bool {
+        !matches!(
+            self,
+            Self::GestureStarted { .. } | Self::Detent { .. } | Self::GestureEnded { .. }
+        )
+    }
 }
 
 /// Why an `InputEvent` was rejected by [`InputIngress::accept`].

@@ -290,6 +290,7 @@ pub enum ActivityEventTypeDto {
     SessionNonceUnavailable,
     InputStaleSessionRejected,
     InputUnstartedGestureRejected,
+    InputStale,
     VolumeWriteFailed,
     AudioEndpointChanged,
     AudioEndpointLost,
@@ -521,6 +522,7 @@ fn activity_kind_token(kind: ActivityEventKind) -> ActivityEventTypeDto {
         ActivityEventKind::InputUnstartedGestureRejected => {
             ActivityEventTypeDto::InputUnstartedGestureRejected
         }
+        ActivityEventKind::InputStale => ActivityEventTypeDto::InputStale,
         ActivityEventKind::VolumeWriteFailed => ActivityEventTypeDto::VolumeWriteFailed,
         ActivityEventKind::AudioEndpointChanged => ActivityEventTypeDto::AudioEndpointChanged,
         ActivityEventKind::AudioEndpointLost => ActivityEventTypeDto::AudioEndpointLost,
