@@ -1,10 +1,19 @@
+# Defaults to the debug Device Studio build. The release workflow passes the installed exe and
+# `--autostart` to prove the shipped app starts hidden and stays alive.
+[CmdletBinding()]
+param(
+    [string]$Exe,
+    [Alias('Args')]
+    [string[]]$AppArgs = @()
+)
+
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
-$exe = Join-Path $repoRoot 'target\debug\kivori-desktop.exe'
+$exe = if ($Exe) { $Exe } else { Join-Path $repoRoot 'target\debug\kivori-desktop.exe' }
 
 if (-not (Test-Path $exe)) {
-    throw "Device Studio binary not found at $exe"
+    throw "Binary not found at $exe"
 }
 
 $tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
@@ -13,7 +22,9 @@ $stderr = Join-Path $tempRoot 'kivori-device-studio-stderr.log'
 Remove-Item $stdout, $stderr -ErrorAction SilentlyContinue
 
 Write-Host "Launching $exe"
-$process = Start-Process -FilePath $exe -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+$startArgs = @{ FilePath = $exe; PassThru = $true; RedirectStandardOutput = $stdout; RedirectStandardError = $stderr }
+if ($AppArgs.Count -gt 0) { $startArgs.ArgumentList = $AppArgs }
+$process = Start-Process @startArgs
 
 try {
     Start-Sleep -Seconds 10

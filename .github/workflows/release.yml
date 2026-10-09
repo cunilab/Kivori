@@ -1,0 +1,221 @@
+# Release pipeline (M3 S5; docs/release.md). Builds the product firmware, then the unsigned Windows NSIS
+# installer with the pinned espflash sidecar, installs it silently on the runner and smoke-tests it.
+# A `v*` tag also creates a DRAFT GitHub release; nothing is published automatically.
+# Signing is a placeholder that waits on owner certificates (#36): installers are unsigned until then.
+name: release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      macos:
+        description: 'Also build the macOS .app/.dmg (uses a macOS runner)'
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+      - 'apps/desktop/package.json'
+      - 'apps/desktop/src-tauri/tauri*.json'
+      - 'apps/desktop/src-tauri/Info.plist'
+      - 'apps/desktop/src-tauri/Entitlements.plist'
+      - 'apps/desktop/src-tauri/nsis/**'
+      - 'bun.lock'
+      - 'scripts/fetch-espflash.*'
+      - 'scripts/bundle-macos.sh'
+      - 'scripts/check-release-surface.sh'
+      - 'scripts/test-windows-device-studio-startup.ps1'
+      - 'THIRD_PARTY_NOTICES.md'
+
+permissions:
+  contents: read
+
+env:
+  ESPFLASH_VERSION: '4.5.0' # keep in sync with scripts/fetch-espflash.{sh,ps1}
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: riscv32imc-unknown-none-elf
+      - name: Build the product firmware (physical ST7789 + rotary runtime)
+        working-directory: firmware/esp32-c3
+        run: cargo build --locked --release --target riscv32imc-unknown-none-elf --no-default-features --features physical-st7789
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-elf
+          path: firmware/esp32-c3/target/riscv32imc-unknown-none-elf/release/kivori-firmware
+          if-no-files-found: error
+
+  windows:
+    needs: firmware
+    runs-on: windows-latest
+    permissions:
+      contents: write # only used by the draft-release step, which runs on tags
+    env:
+      # Set the repository variable WINDOWS_SIGNING=true once the signing step below is filled in.
+      WINDOWS_SIGNING: ${{ vars.WINDOWS_SIGNING }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag must equal the workspace version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          version="$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\(.*\)"/\1/p;}' Cargo.toml | head -n1)"
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match the workspace version v${version} (Cargo.toml)." >&2
+            exit 1
+          fi
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Fetch the pinned espflash sidecar
+        shell: pwsh
+        run: ./scripts/fetch-espflash.ps1
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware-elf
+          path: ${{ runner.temp }}/firmware
+      - run: bun install --frozen-lockfile
+      - run: bun --filter kivori-desktop-ui build
+      - name: Build the NSIS installer
+        working-directory: apps/desktop
+        env:
+          KIVORI_FIRMWARE_PATH: ${{ runner.temp }}/firmware/kivori-firmware
+        run: bunx tauri build --config src-tauri/tauri.release.conf.json -- --no-default-features
+      - name: Locate the installer
+        id: installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          installer="$(ls target/release/bundle/nsis/*-setup.exe | head -n1)"
+          echo "path=${installer}" >> "$GITHUB_OUTPUT"
+          echo "Installer: ${installer}"
+      # PLACEHOLDER (#36, runs only when the WINDOWS_SIGNING repository variable is 'true'). Fails closed
+      # so a missing implementation can never ship as "signed". Fill in with one of:
+      #   - Azure Trusted Signing: secrets AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET and the
+      #     account/profile names, via azure/trusted-signing-action;
+      #   - a code-signing certificate: secrets WINDOWS_CERTIFICATE (base64 .pfx) and
+      #     WINDOWS_CERTIFICATE_PASSWORD, via signtool on the installer, the app exe and espflash.exe
+      #     (set bundle.windows.signCommand in a CI-only config so the inner binaries are signed too).
+      - name: Sign the installer (placeholder)
+        if: env.WINDOWS_SIGNING == 'true'
+        shell: pwsh
+        run: |
+          Write-Error 'WINDOWS_SIGNING is true but the signing step is not implemented yet (see #36).'
+          exit 1
+      - name: Release-surface check on the built exe
+        shell: bash
+        run: bash scripts/check-release-surface.sh --desktop-artifact target/release/kivori-desktop.exe
+      - name: Silent install, sidecar check, startup smoke test, silent uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = (Resolve-Path '${{ steps.installer.outputs.path }}').Path
+          Write-Host "Installing $installer"
+          Start-Process -FilePath $installer -ArgumentList '/S' -Wait
+
+          $app = Get-ChildItem -Path $env:LOCALAPPDATA -Filter 'Kivori.exe' -Recurse -Depth 3 -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $app) { throw 'Kivori.exe was not installed under LOCALAPPDATA (per-user install).' }
+          $dir = $app.DirectoryName
+          Write-Host "Installed to $dir"
+          $espflash = Join-Path $dir 'espflash.exe'
+          if (-not (Test-Path $espflash)) { throw "espflash.exe is missing next to Kivori.exe ($dir)." }
+
+          $reported = (& $espflash --version | Out-String).Trim()
+          Write-Host "espflash --version: $reported"
+          if ($reported -notmatch [regex]::Escape($env:ESPFLASH_VERSION)) {
+              throw "espflash reports '$reported', expected $env:ESPFLASH_VERSION."
+          }
+
+          & ./scripts/test-windows-device-studio-startup.ps1 -Exe $app.FullName -Args '--autostart'
+
+          # Stand in for the Launch at login entry the app writes, to prove the uninstall hook removes it.
+          $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+          Set-ItemProperty -Path $run -Name 'Kivori' -Value "`"$($app.FullName)`" --autostart"
+
+          $uninstaller = Join-Path $dir 'uninstall.exe'
+          if (-not (Test-Path $uninstaller)) { throw "uninstall.exe is missing in $dir." }
+          Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait
+          # NSIS uninstallers re-launch from a temp copy, so wait for the files to go.
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Test-Path $app.FullName) -and ((Get-Date) -lt $deadline)) { Start-Sleep -Seconds 1 }
+          if (Test-Path $app.FullName) { throw 'Kivori.exe is still present after the silent uninstall.' }
+          if (Get-ItemProperty -Path $run -Name 'Kivori' -ErrorAction SilentlyContinue) {
+              throw 'The HKCU Run entry survived the uninstall (nsis/hooks.nsh).'
+          }
+          Write-Host 'Install, sidecar, startup smoke and uninstall checks passed.'
+      - name: Checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$(dirname '${{ steps.installer.outputs.path }}')"
+          sha256sum "$(basename '${{ steps.installer.outputs.path }}')" > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            ${{ steps.installer.outputs.path }}
+            target/release/bundle/nsis/SHA256SUMS
+          if-no-files-found: error
+      - name: Create the draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" --draft --verify-tag --title "Kivori ${GITHUB_REF_NAME}" --generate-notes \
+            '${{ steps.installer.outputs.path }}' target/release/bundle/nsis/SHA256SUMS
+
+  macos:
+    # No macOS runner budget by default: only when dispatched with macos=true. The owner's local
+    # scripts/bundle-macos.sh is the main path.
+    if: github.event_name == 'workflow_dispatch' && inputs.macos
+    runs-on: macos-14
+    env:
+      # Placeholders until the owner has an Apple Developer ID (#36). All optional: without
+      # APPLE_SIGNING_IDENTITY the bundle is unsigned.
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }} # base64 .p12
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }} # notarization: not used by the script yet
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: riscv32imc-unknown-none-elf
+      - name: Import the signing certificate (placeholder)
+        if: env.APPLE_CERTIFICATE != '' && env.APPLE_SIGNING_IDENTITY != ''
+        run: |
+          set -euo pipefail
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p ci "$RUNNER_TEMP/build.keychain"
+          security default-keychain -s "$RUNNER_TEMP/build.keychain"
+          security unlock-keychain -p ci "$RUNNER_TEMP/build.keychain"
+          security import "$RUNNER_TEMP/cert.p12" -k "$RUNNER_TEMP/build.keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ci "$RUNNER_TEMP/build.keychain"
+      - name: Build the macOS bundle
+        run: bash scripts/bundle-macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-bundle
+          path: |
+            target/release/bundle/dmg/*.dmg
+            target/release/bundle/macos/Kivori.app
+          if-no-files-found: error

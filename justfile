@@ -98,6 +98,20 @@ golden-bless:
 check-boundaries:
     bash scripts/check-crate-boundaries.sh
 
+# ---- release bundles (M3 S5; docs/release.md) ----
+
+# Build the unsigned Windows NSIS installer (run on Windows; needs PowerShell, bun and Rust).
+bundle-windows:
+    powershell -NoProfile -File scripts/fetch-espflash.ps1
+    cd firmware/esp32-c3 && cargo build --locked --release --target riscv32imc-unknown-none-elf --no-default-features --features physical-st7789
+    bun install --frozen-lockfile
+    bun --filter kivori-desktop-ui build
+    cd apps/desktop && KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/esp32-c3/target/riscv32imc-unknown-none-elf/release/kivori-firmware" bunx tauri build --config src-tauri/tauri.release.conf.json -- --no-default-features
+
+# Build the macOS .app + .dmg (run on a Mac; signs only when APPLE_SIGNING_IDENTITY is set).
+bundle-macos:
+    bash scripts/bundle-macos.sh
+
 # ---- dev ----
 
 # Run the desktop UI dev server.

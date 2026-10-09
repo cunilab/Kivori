@@ -62,6 +62,29 @@ FIRMWARE_DEBUG_SURFACE=(KIVORI-DEBUG-PAYLOAD)
 # The T072 SPI DisplaySink is PRODUCTION surface: it must be in the shipping library, not gated away.
 FIRMWARE_PRODUCTION_SURFACE=(MipidsiSink PanelGeometry)
 
+# Packaging mode (M3 S5): `check-release-surface.sh --desktop-artifact <exe>` inspects an already built
+# installer payload instead of rebuilding. The dev-only desktop surface must be absent, and the bundled
+# firmware's version marker (digits and all, so the parser's own marker constant cannot satisfy it) must
+# be present, which proves the product firmware is embedded.
+if [ "${1:-}" = "--desktop-artifact" ]; then
+  artifact="${2:?usage: check-release-surface.sh --desktop-artifact <exe>}"
+  [ -f "$artifact" ] || { echo "error: $artifact not found" >&2; exit 2; }
+  absent "the release desktop binary" "$artifact" "${DESKTOP_DEV_SURFACE[@]}"
+  marker="$(grep -aoE 'KIVORI-FW-VERSION:[0-9]+\.[0-9]+\.[0-9]+' "$artifact" | head -n1 || true)"
+  if [ -n "$marker" ]; then
+    echo "  ✓ bundled firmware marker present: $marker"
+  else
+    echo "  ✗ no KIVORI-FW-VERSION:<x.y.z> marker in $artifact — the firmware is not bundled"
+    fail=1
+  fi
+  if [ "$fail" -ne 0 ]; then
+    echo "Release artifact check FAILED." >&2
+    exit 1
+  fi
+  echo "Release artifact OK."
+  exit 0
+fi
+
 DESKTOP_BIN="target/debug/kivori-desktop"
 FIRMWARE_LIB="firmware/esp32-c3/target/riscv32imc-unknown-none-elf/debug/libkivori_firmware.rlib"
 
