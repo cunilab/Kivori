@@ -13,26 +13,26 @@ on:
   push:
     branches: [main]
     paths:
-      - "firmware/**"
-      - "crates/**"
-      - "sim/**"
-      - "tools/wokwi-*/**"
-      - "scripts/*wokwi*"
-      - "scripts/lib/**"
-      - "assets/**"
-      - "Cargo.lock"
-      - ".github/workflows/wokwi.yml"
+      - 'firmware/**'
+      - 'crates/**'
+      - 'sim/**'
+      - 'tools/wokwi-*/**'
+      - 'scripts/*wokwi*'
+      - 'scripts/lib/**'
+      - 'assets/**'
+      - 'Cargo.lock'
+      - '.github/workflows/wokwi.yml'
   pull_request:
     paths:
-      - "firmware/**"
-      - "crates/**"
-      - "sim/**"
-      - "tools/wokwi-*/**"
-      - "scripts/*wokwi*"
-      - "scripts/lib/**"
-      - "assets/**"
-      - "Cargo.lock"
-      - ".github/workflows/wokwi.yml"
+      - 'firmware/**'
+      - 'crates/**'
+      - 'sim/**'
+      - 'tools/wokwi-*/**'
+      - 'scripts/*wokwi*'
+      - 'scripts/lib/**'
+      - 'assets/**'
+      - 'Cargo.lock'
+      - '.github/workflows/wokwi.yml'
 
 jobs:
   simulate:
