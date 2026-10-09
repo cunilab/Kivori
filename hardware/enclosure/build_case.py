@@ -57,12 +57,13 @@ EC11_SHAFT_D, EC11_SHAFT_H = 6.0, 19.7  # D shaft, top 21 mm above the HW-040 bo
 EC11_FLAT = 1.5             # D-flat depth
 ENC_HOLE_D = 7.4            # face hole for the bushing
 # HW-040 module, in its own frame: origin at the board centre, +x towards the header end,
-# -y towards the long edge carrying the two mounting holes. From a dimensioned drawing
-# (26 x 18.5 x 1.3, shaft top 21 mm) and a back-side photo, scaled; NOMINAL to about ±0.5 mm.
+# -y towards the long edge carrying the two mounting holes. Board size from a dimensioned drawing
+# (26 x 18.5 x 1.3, shaft top 21 mm); shaft and holes measured on the real module (photo next
+# to a ruler, scaled by the 2.54 mm header pitch), about ±0.3 mm.
 HW040 = (26.0, 18.5, 1.3)   # board length, width, thickness
-HW040_SHAFT = (-3.7, 1.25)  # shaft centre
-HW040_HOLES = [(-8.4, -7.45), (5.8, -7.45)]  # two M3 holes along the long edge, ~14 mm apart
-HW040_HOLE_D = 3.0
+HW040_SHAFT = (-2.3, 1.8)   # shaft centre
+HW040_HOLES = [(-8.55, -6.9), (8.55, -6.9)]  # two M3 holes along the long edge, 17.1 mm apart, centred
+HW040_HOLE_D = 3.2
 HW040_HDR_X = 10.35         # right-angle header pin row (pins point +x, along the board)
 HW040_BACK_KEEPOUT = (-9.0, 9.0, -4.0, 6.0)  # shaft-relative: EC11 legs + 3 pull-up resistors underneath
 
@@ -81,7 +82,7 @@ DISP_HDR_U = 2.2                  # 7-pin header row, from the header end
 DISP_POCKET = 0.6           # glass pocket depth into the back of the faceplate
 DISP_HEADER_SIDE = +1       # +1 header on the right end, -1 on the left end
 DISP_HOLE_D = 2.0          # four corner holes, NOMINAL ("mounting holes: 2 mm")
-DISP_HOLE_INSET = 2.0      # hole centres from both edges at each corner, NOMINAL
+DISP_HOLE_INSET = 2.5      # hole centres from both edges at each corner (measured: 34.2 x 22.8 apart)
 DISP_STANDOFF_D = 4.5
 DISP_PINS = ["GND", "VCC", "SCL", "SDA", "RES", "DC", "BLK"]  # top to bottom as mounted
 
@@ -108,19 +109,18 @@ BTN_GPIO = ["IO0", "IO1", "IO20"]  # left, middle, right
 
 # Printed PCB ("carrier"): same plane as a future real PCB
 C_FRONT = -(FACE_T + EC11_BODY_H)  # -8.5: EC11 body sits on it and touches the face
-C_T = 2.4                   # printed thickness (a real board is 1.6, it grows backwards)
+C_T = 2.0                   # printed thickness (a real board is 1.6, it grows backwards); leaves a 0.6 mm HW-040 pocket floor
 C_BACK = C_FRONT - C_T
 C_INSET = 0.8               # carrier outline inset from the inner walls
 HOLE_D = 1.2                # 2.54 mm header holes
 SW_HOLE_D = 1.8             # switch legs
 POSTS = [(7.0, 7.0), (7.0, 63.0), (104.0, 64.5), (104.5, 26.5)]  # face posts locating the carrier
 POST_D, PIN_D, PIN_HOLE_D, PIN_L = 5.0, 2.4, 2.9, 2.0
-GROOVE_W, GROOVE_D = 1.2, 0.8
 PEG_CLR = 0.1               # peg diameter = hole - 2 * clearance (press fit)
 PEG_PROUD = 1.0             # peg tip past the module board: press fit, or melt it (heat-stake)
 PEG_RELIEF = 0.7            # face-back relief over the display peg tips (room for a staked head)
 
-# ESP32-C3 SuperMini, on the carrier back, components facing the back plate
+# ESP32-C3 SuperMini, behind the carrier, components facing the back plate
 SM = (18.0, 22.52, 1.0)     # outline, NOMINAL thickness
 SM_X = 55.0                 # board centre x (USB-C centred on the far wall)
 SM_USB_END = H - WALL - 0.5  # y of the USB end of the board
@@ -134,7 +134,6 @@ SM_USB = (8.94, 7.35, 3.2)  # receptacle (width, depth, height), NOMINAL
 SM_BTN_FROM_USB = 9.5       # NOMINAL BOOT / RST distance from the USB end
 SM_BTN_DX = 4.5             # NOMINAL offset either side of the board centre line
 SM_BTN = (3.0, 4.0, 1.5)
-SM_RECESS_CLR = 0.15        # SuperMini sits flush in a recess in the carrier back
 USB_CUT = (13.0, 7.0)       # far-wall slot for a moulded USB-C plug
 
 # Back plate
@@ -273,16 +272,6 @@ def fuse_all(shapes):
     return shapes[0].fuse(shapes[1:]).removeSplitter()
 
 
-def seg(p, q, w, z0, z1):
-    """A straight groove from p to q with round ends."""
-    dx, dy = q[0] - p[0], q[1] - p[1]
-    length = math.hypot(dx, dy)
-    b = box(0, -w / 2, z0, length, w / 2, z1)
-    b.rotate(V(0, 0, 0), V(0, 0, 1), math.degrees(math.atan2(dy, dx)))
-    b.translate(V(p[0], p[1], 0))
-    return fuse_all([b, cyl(w, p[0], p[1], z0, z1), cyl(w, q[0], q[1], z0, z1)])
-
-
 def text_solid(s, x, y, size, z0, depth, mirror=False):
     if not os.path.exists(FONT):
         return None
@@ -351,7 +340,7 @@ enc_pins = {n: ((hw_wire_slot[0] + hw_wire_slot[1]) / 2, hw_hdr[1] + (2 - i) * 2
 hw_floor = C_FRONT - HW040[2] - 0.1        # HW-040 pocket floor
 
 sm_c = (SM_X, SM_USB_END - SM[1] / 2)
-sm_z_comp = C_BACK                         # component side, flush with the carrier back
+sm_z_comp = C_BACK - SM[2]                 # component side; the board lies on the flat carrier back
 sm_pins = {}
 for i, n in enumerate(SM_COL_A):
     sm_pins[n] = (SM_X + SM_ROW / 2, SM_USB_END - SM_PIN_MARGIN - i * 2.54)
@@ -372,59 +361,6 @@ def btn_peg(idx, k):
     x, y, a = BTNS[idx]
     dx, dy = rot(SW_PEGS[k], a)
     return (x + dx, y + dy)
-
-
-# Nets: SuperMini pin -> list of component pins (pin map from README / profile.rs)
-NETS = {
-    "SCL": ("IO6", [disp_pins["SCL"]]),
-    "SDA": ("IO7", [disp_pins["SDA"]]),
-    "RES": ("IO3", [disp_pins["RES"]]),
-    "DC": ("IO2", [disp_pins["DC"]]),
-    "BLK": ("IO8", [disp_pins["BLK"]]),
-    "3V3": ("3V3", [disp_pins["VCC"], enc_pins["+"]]),
-    "GND": ("GND", [disp_pins["GND"], enc_pins["GND"], btn_pin(0, 0), btn_pin(1, 0), btn_pin(2, 0)]),
-    "CLK": ("IO4", [enc_pins["CLK"]]),
-    "DT": ("IO5", [enc_pins["DT"]]),
-    "SW": ("IO10", [enc_pins["SW"]]),
-    "B1": (BTN_GPIO[0], [btn_pin(0, 2)]),
-    "B2": (BTN_GPIO[1], [btn_pin(1, 2)]),
-    "B3": (BTN_GPIO[2], [btn_pin(2, 2)]),
-}
-
-
-def groove_routes():
-    """Polylines for the wire grooves: SuperMini pad -> stub out of the recess -> each pin.
-
-    A wire cannot run under the SuperMini, so a route whose straight line would cross the board
-    drops into its own lane below the board first, and crosses over if it still has to.
-    """
-    stub = SM[0] / 2 + SM_RECESS_CLR + 1.5
-    keep_out = (SM_X - stub + 0.5, SM_X + stub - 0.5, sm_c[1] - SM[1] / 2 - SM_RECESS_CLR - 0.8)
-
-    def hits(p, q):
-        for i in range(101):
-            t = i / 100.0
-            x, y = p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t
-            if keep_out[0] < x < keep_out[1] and y > keep_out[2]:
-                return True
-        return False
-
-    routes, lane = [], 0
-    for net, (src, dests) in NETS.items():
-        sx, sy = sm_pins[src]
-        side = 1 if sx > SM_X else -1
-        exit_pt = (SM_X + side * stub, sy)
-        for d in dests:
-            route = [exit_pt]
-            if hits(exit_pt, d):
-                y_lane = keep_out[2] - 1.6 - 1.7 * lane
-                lane += 1
-                route.append((exit_pt[0], y_lane))
-                if hits(route[-1], d):
-                    route.append((SM_X - side * stub, y_lane))
-            route.append(d)
-            routes.append(route)
-    return routes
 
 
 # ---------------------------------------------------------------------------------------------
@@ -617,13 +553,6 @@ def make_carrier():
     # HW-040 pocket: module PCB flush with the carrier front, so the EC11 sits where a bare EC11 on
     # a real board would.
     cuts.append(cbox(hw_c[0], hw_c[1], HW040[0] + 0.6, HW040[1] + 0.6, hw_floor, C_FRONT + 1))
-    # SuperMini recess in the back: its end wall takes the USB plug-in force
-    cuts.append(cbox(sm_c[0], sm_c[1], SM[0] + 2 * SM_RECESS_CLR, SM[1] + 2 * SM_RECESS_CLR,
-                     C_BACK - 1, C_BACK + SM[2]))
-    zg0, zg1 = C_BACK - 1, C_BACK + GROOVE_D
-    for route in groove_routes():
-        for p, q in zip(route, route[1:]):
-            cuts.append(seg(p, q, GROOVE_W, zg0, zg1))
     c = c.cut(cuts)
 
     adds = []
@@ -637,8 +566,7 @@ def make_carrier():
     c = c.cut(cbox(disp_hdr_x, dpcb_c[1], 2.6, 7 * 2.54 + 1.0, C_BACK - 1, C_FRONT + 6))
 
     # labels engraved on the back, mirrored so they read correctly from behind
-    by = SM[1] / 2 + SM_RECESS_CLR
-    labels = [("ESP32-C3", SM_X, sm_c[1] - by - 3.0, 2.2), ("KIVORI PROTO v2", 30.0, 60.0, 2.6)]
+    labels = [("KIVORI PROTO v3", 30.0, 60.0, 2.6)]
     for n, (x, y) in disp_pins.items():
         labels.append((n, x - DISP_HEADER_SIDE * 5.0, y, 1.6))
     for n, (x, y) in enc_pins.items():

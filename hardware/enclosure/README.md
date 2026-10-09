@@ -17,8 +17,8 @@ The look is a big keycap, matching the keycap mascot on screen:
 - **Colours:** light matte shell; black visor, knob and plinth; accent-colour caps.
 
 Inside is a **printed PCB** (`Carrier`): a plate with the outline, mounting holes and part positions
-a real PCB would have. Components sit on it and are hand-wired along engraved grooves on the
-back. Once the prototype works, `export/pcb-outline.dxf` becomes the Edge.Cuts layer in KiCad.
+a real PCB would have. Components sit on it and are hand-wired point to point; the back is
+flat. Once the prototype works, `export/pcb-outline.dxf` becomes the Edge.Cuts layer in KiCad.
 
 No screws. Four hooks on the back plate catch ribs inside the walls. Each hook has 45° ramps
 both ways, so the plate clicks in and pulls back out. The printed PCB is clamped between posts on
@@ -30,7 +30,7 @@ How each part is held on the printed PCB, even with the case open:
 |---|---|
 | HW-040 | A pocket stops it sliding. Two pegs go through its two M3 holes along the long edge. The pocket floor is open under the encoder legs and the three pull-up resistors. |
 | Display | Four standoffs whose pegs go through its four corner holes. |
-| SuperMini | A 1 mm recess in the back whose end wall takes the USB plug-in force. When closed, a pad on the back plate presses up under the USB connector. |
+| SuperMini | Lies against the flat back, over its 16 pin holes. When closed, a pad on the back plate presses up under the USB connector. |
 | 12×12 switches | Legs through the plate, bent over on the back before soldering. |
 
 The pegs are 0.2 mm smaller than the holes (press fit) and stick out 1 mm past the module board.
@@ -83,11 +83,11 @@ different filaments, so no filament change mid-print is needed.
 
 | Part | Notes |
 |---|---|
-| ESP32-C3 SuperMini | Flush in a recess in the back of the printed PCB, components facing the back plate. No header pins: solder wires to the pads. |
+| ESP32-C3 SuperMini | Behind the printed PCB, components facing the back plate. No header pins: solder wires to the pads. |
 | ST7789 1.3" 240×240, 7-pin | On four standoffs with pegs, glass in a 0.6 mm pocket behind the window, header pins through the slot. |
 | HW-040 rotary encoder | In a pocket on the front of the printed PCB, on two pegs. Its right-angle header points towards the middle of the case; wires drop to the back through the slot past the pin tips. The nut is optional. |
 | 3 × 12×12 mm push switch, 10 mm tall | Legs go through the printed PCB. |
-| Thin wire (26–30 AWG) | Laid in the grooves on the back. |
+| Thin wire (26–30 AWG) | Point to point on the back. |
 | 4 × 10 mm stick-on rubber feet | In the recesses under the plinth. |
 
 ## Assembly
@@ -95,9 +95,8 @@ different filaments, so no filament change mid-print is needed.
 1. Press the HW-040 onto its two pegs in the pocket on the front of the printed PCB. Press the
    display onto its four pegs, header through the slot. Optionally heat-stake the six peg tips.
 2. Put the three switches through their holes and bend the legs over on the back.
-3. Press the SuperMini into the recess on the back, components facing out and USB-C towards the
-   open end.
-4. Wire along the grooves (table below) and solder each wire to the pin where its groove ends.
+3. Lay the SuperMini on the back, components facing out and USB-C towards the open end.
+4. Wire point to point (table below).
 5. Drop the three caps into the face openings from inside the shell, flange first.
 6. Lower the printed PCB onto the four posts, encoder shaft through the face hole.
 7. Press the back plate straight in until all four hooks click, then stick the feet on.
@@ -131,20 +130,20 @@ GPIO0/GPIO1.
 
 ## Dimensions to verify (NOMINAL in `build_case.py`)
 
-Nothing here was measured on the real parts. The HW-040 and display layouts are scaled from a
-dimensioned drawing and product photos (about ±0.5 mm). The rest comes from KiCad footprints and
-seller listings. Ranked by risk:
+The HW-040 shaft and holes and the display holes were measured on the real modules from photos
+next to a ruler (about ±0.3 mm). The rest is scaled from a dimensioned drawing and product photos
+(about ±0.5 mm) or comes from KiCad footprints and seller listings. Ranked by risk:
 
 1. **Display module** (`DISP_*`):
-   - 4 corner holes, Ø2, centres 2 mm in from both edges.
+   - 4 corner holes, Ø2, centres 2.5 mm in from both edges (measured).
    - Board 39.22 × 27.78 mm, 3.0 mm thick with the glass.
    - Glass 27.6 mm long including the FPC ledge, centre 1.6 mm from the board centre towards the
      end away from the header. Active area centre 0.5 mm the same way.
    - Header row 2.2 mm in from its end, header on the right as mounted (`DISP_HEADER_SIDE`).
 2. **HW-040** (`HW040_*`, in the module's own frame, origin at the board centre):
    - Board 26 × 18.5 × 1.3 mm.
-   - Shaft at (−3.7, +1.25).
-   - M3 holes at (−8.4, −7.45) and (+5.8, −7.45).
+   - Shaft at (−2.3, +1.8) (measured).
+   - M3 holes, Ø3.2, at (−8.55, −6.9) and (+8.55, −6.9) (measured).
    - Header row at x = +10.35.
    - Shaft top 21 mm above the board underside. EC11 body 6.5 mm and bushing 7 mm are NOMINAL.
 3. **SuperMini**: BOOT/RST positions (`SM_BTN_*`), header pin order (`SM_COL_A/B`), USB-C size.
