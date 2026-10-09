@@ -122,12 +122,16 @@ jobs:
           Write-Host "Installing $installer"
           Start-Process -FilePath $installer -ArgumentList '/S' -Wait
 
-          $app = Get-ChildItem -Path $env:LOCALAPPDATA -Filter 'Kivori.exe' -Recurse -Depth 3 -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $app) { throw 'Kivori.exe was not installed under LOCALAPPDATA (per-user install).' }
+          # Tauri v2 keeps the Cargo bin name for the main executable (no `mainBinaryName` override).
+          $app = Get-ChildItem -Path $env:LOCALAPPDATA -Filter 'kivori-desktop.exe' -Recurse -Depth 3 -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $app) {
+              Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Kivori') -Recurse -Depth 2 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.FullName)" }
+              throw 'kivori-desktop.exe was not installed under LOCALAPPDATA (per-user install).'
+          }
           $dir = $app.DirectoryName
           Write-Host "Installed to $dir"
           $espflash = Join-Path $dir 'espflash.exe'
-          if (-not (Test-Path $espflash)) { throw "espflash.exe is missing next to Kivori.exe ($dir)." }
+          if (-not (Test-Path $espflash)) { throw "espflash.exe is missing next to the app executable ($dir)." }
 
           $reported = (& $espflash --version | Out-String).Trim()
           Write-Host "espflash --version: $reported"
@@ -147,7 +151,7 @@ jobs:
           # NSIS uninstallers re-launch from a temp copy, so wait for the files to go.
           $deadline = (Get-Date).AddSeconds(60)
           while ((Test-Path $app.FullName) -and ((Get-Date) -lt $deadline)) { Start-Sleep -Seconds 1 }
-          if (Test-Path $app.FullName) { throw 'Kivori.exe is still present after the silent uninstall.' }
+          if (Test-Path $app.FullName) { throw 'The app executable is still present after the silent uninstall.' }
           if (Get-ItemProperty -Path $run -Name 'Kivori' -ErrorAction SilentlyContinue) {
               throw 'The HKCU Run entry survived the uninstall (nsis/hooks.nsh).'
           }
