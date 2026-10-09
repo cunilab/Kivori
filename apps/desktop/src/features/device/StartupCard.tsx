@@ -3,7 +3,7 @@ import type { ReactElement } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { getStartupSettings, setLaunchAtLogin } from '@/lib/ipc';
+import { getStartupSettings, onStartupChanged, setLaunchAtLogin } from '@/lib/ipc';
 import type { StartupSettingsDto } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
 
@@ -24,8 +24,13 @@ export function StartupCard(): ReactElement | null {
       .catch(() => {
         if (active) setError(t.failed);
       });
+    // The tray switch changes the same OS entry while this page is open.
+    const unlisten = onStartupChanged((value) => {
+      if (active) setSettings(value);
+    }).catch(() => () => {});
     return () => {
       active = false;
+      void unlisten.then((stop) => stop());
     };
   }, []);
 

@@ -99,9 +99,20 @@ export function mockGrantAccessibility(): void {
   accessibilityGranted = true;
 }
 
+const startupListeners = new Set<(settings: StartupSettingsDto) => void>();
+
 export function mockSetLaunchAtLogin(enabled: boolean): StartupSettingsDto {
   launchAtLogin = enabled;
-  return mockGetStartupSettings();
+  const settings = mockGetStartupSettings();
+  for (const listener of startupListeners) listener(settings);
+  return settings;
+}
+
+export function mockOnStartupChanged(handler: (settings: StartupSettingsDto) => void): () => void {
+  startupListeners.add(handler);
+  return () => {
+    startupListeners.delete(handler);
+  };
 }
 
 export function mockFirmwareStatus(): FirmwareStatusDto {
@@ -360,6 +371,26 @@ export function mockTestAction(action: ActionSpec): void {
   updateDesk({
     muted: action.kind === 'systemMute' ? !deskStatus.muted : deskStatus.muted,
     lastAction: { action: ACTION_TOKENS[action.kind], result, permissionRequired: false },
+  });
+}
+
+/** Mirrors the native rotate test: a volume nudge that ends where it began, or the cw shortcut. */
+export function mockTestRotate(rotate: RotateSpec): void {
+  if (rotate.kind === 'shortcuts' && !rotate.cw.trim()) throw new Error('not a valid shortcut');
+  if (rotate.kind === 'appVolume' && !rotate.app.trim()) throw new Error('an app cannot be empty');
+  // Per-app volume does not exist on macOS: an error, never a fallback to the system volume.
+  const unsupported = rotate.kind === 'appVolume' && scenario() === 'mac';
+  updateDesk({
+    lastAction: {
+      action:
+        rotate.kind === 'shortcuts'
+          ? 'shortcut'
+          : rotate.kind === 'appVolume'
+            ? 'appVolume'
+            : 'volume',
+      result: unsupported ? 'error' : rotate.kind === 'shortcuts' ? 'unverified' : 'stateConfirmed',
+      permissionRequired: false,
+    },
   });
 }
 

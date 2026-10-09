@@ -216,6 +216,19 @@ fn rotate(spec: &RotateSpec) -> Result<RotateBinding, &'static str> {
     })
 }
 
+/// The action a knob's Test button runs: a volume knob nudges one detent and puts it back, a
+/// shortcut pair sends its clockwise shortcut once.
+///
+/// # Errors
+/// Returns a fixed reason for an invalid shortcut or application.
+pub fn resolve_rotate_test(spec: &RotateSpec) -> Result<Action, &'static str> {
+    Ok(match rotate(spec)? {
+        RotateBinding::Volume => Action::VolumeNudge { app: None },
+        RotateBinding::AppVolume { app, .. } => Action::VolumeNudge { app: Some(app) },
+        RotateBinding::Shortcuts { cw, .. } => Action::Shortcut(cw),
+    })
+}
+
 /// The spec of a built-in or resolved action (for the UI). `None` for a knob step, which no slot
 /// binds.
 #[must_use]
@@ -233,7 +246,7 @@ pub fn action_spec(action: &Action) -> Option<ActionSpec> {
             target: target.clone(),
         },
         Action::Macro(m) => ActionSpec::Macro { id: m.id.clone() },
-        Action::AppVolumeStep { .. } => return None,
+        Action::AppVolumeStep { .. } | Action::VolumeNudge { .. } => return None,
     })
 }
 
@@ -437,6 +450,38 @@ mod tests {
             Err(ConfigError::Invalid(reason)) => reason,
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn a_rotate_test_nudges_a_volume_and_sends_a_shortcut_pairs_clockwise_key_once() {
+        assert_eq!(
+            resolve_rotate_test(&RotateSpec::SystemVolume),
+            Ok(Action::VolumeNudge { app: None })
+        );
+        assert_eq!(
+            resolve_rotate_test(&RotateSpec::AppVolume {
+                app: "Spotify.exe".into(),
+                label: None
+            }),
+            Ok(Action::VolumeNudge {
+                app: Some("spotify.exe".into())
+            })
+        );
+        let pair = RotateSpec::Shortcuts {
+            cw: "Ctrl+Tab".into(),
+            ccw: "Ctrl+Shift+Tab".into(),
+            label: "Tabs".into(),
+        };
+        assert_eq!(
+            resolve_rotate_test(&pair),
+            Ok(Action::Shortcut("Ctrl+Tab".parse().unwrap()))
+        );
+        let bad = RotateSpec::Shortcuts {
+            cw: "nonsense".into(),
+            ccw: "Ctrl+Tab".into(),
+            label: "Tabs".into(),
+        };
+        assert!(resolve_rotate_test(&bad).is_err());
     }
 
     #[test]

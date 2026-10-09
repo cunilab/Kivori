@@ -108,9 +108,32 @@ pub struct Services {
     pub app_volume: ActionAvailability,
 }
 
+/// The device thread's latest [`Services`], shared with the IPC command that lists the catalog
+/// (`None` until the thread has published once).
+pub type ServicesCell = std::sync::Arc<std::sync::Mutex<Option<Services>>>;
+
 impl Services {
-    /// What an OS is expected to provide, for callers without a live backend (the IPC command
-    /// cannot reach the device thread's services).
+    /// Publishes `live` into `cell` and returns whether it changed, so the device thread can call
+    /// this every loop and only take the lock's write path when availability moved.
+    pub fn publish(cell: &ServicesCell, live: Self) -> bool {
+        let mut slot = cell.lock().expect("services lock");
+        if slot.as_ref() == Some(&live) {
+            return false;
+        }
+        *slot = Some(live);
+        true
+    }
+
+    /// The published snapshot, or what `os` is expected to provide until the first one exists.
+    #[must_use]
+    pub fn current(cell: &ServicesCell, os: Os) -> Self {
+        cell.lock()
+            .expect("services lock")
+            .clone()
+            .unwrap_or_else(|| Self::expected(os))
+    }
+
+    /// What an OS is expected to provide, for callers without a live snapshot yet.
     #[must_use]
     pub fn expected(os: Os) -> Self {
         let state = |confirmation| ActionAvailability::Available { confirmation };
@@ -543,6 +566,33 @@ mod tests {
                 ActionAvailability::NotImplementedYet { .. }
             ));
         }
+    }
+
+    #[test]
+    fn the_catalog_falls_back_to_expected_until_the_first_snapshot() {
+        let cell = ServicesCell::default();
+        assert_eq!(
+            Services::current(&cell, Os::Windows),
+            Services::expected(Os::Windows)
+        );
+    }
+
+    #[test]
+    fn a_published_snapshot_replaces_the_expectation_and_only_changes_report() {
+        let cell = ServicesCell::default();
+        let lost = Services {
+            volume: ActionAvailability::Unknown,
+            ..Services::expected(Os::Windows)
+        };
+        assert!(Services::publish(&cell, lost.clone()));
+        assert!(!Services::publish(&cell, lost.clone()));
+        let current = Services::current(&cell, Os::Windows);
+        assert_eq!(current, lost);
+        assert_eq!(
+            entry_named("systemMute").availability(Os::Windows, &current),
+            ActionAvailability::Unknown
+        );
+        assert!(Services::publish(&cell, Services::expected(Os::Windows)));
     }
 
     #[test]

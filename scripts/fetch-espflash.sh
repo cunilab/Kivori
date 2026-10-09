@@ -10,15 +10,15 @@
 # values were taken from the official release page and confirmed by downloading the assets.
 set -euo pipefail
 
-ESPFLASH_VERSION="4.5.0"
+ESPFLASH_VERSION="4.6.0"
 BASE_URL="https://github.com/esp-rs/espflash/releases/download/v${ESPFLASH_VERSION}"
 
 # asset name for a target triple, and its pinned SHA-256 (keep in sync with fetch-espflash.ps1).
 asset_for() {
   case "$1" in
-    x86_64-pc-windows-msvc) echo "espflash-x86_64-pc-windows-msvc.zip 854c82c947c20e7f337f120f0398042ed1760f2269cb0f9be3d2beae3b66fbfb" ;;
-    aarch64-apple-darwin) echo "espflash-aarch64-apple-darwin.zip 6614ff70e523a6bce5f4ccc6459b77275f5e7e900429004bb7eec463c95db28a" ;;
-    x86_64-apple-darwin) echo "espflash-x86_64-apple-darwin.zip 3c5cb664742d883e4304d4fc611fc875b27a8f8d7d105d22da2f615eb36888a0" ;;
+    x86_64-pc-windows-msvc) echo "espflash-x86_64-pc-windows-msvc.zip b2cb4656b067716fe2b3794cf0604b461b2476d06dee7f481704cb6c8495b11c" ;;
+    aarch64-apple-darwin) echo "espflash-aarch64-apple-darwin.zip f39bff252a181a6e345991f603d7606cf9762550e557073c1282eada46d8c757" ;;
+    x86_64-apple-darwin) echo "espflash-x86_64-apple-darwin.zip e945685fe62e45a120487b79ccecc5ac3586bbf5f4e7d78f95cc09e2227bf32d" ;;
     *) return 1 ;;
   esac
 }

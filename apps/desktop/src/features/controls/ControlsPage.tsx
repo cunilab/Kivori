@@ -41,6 +41,7 @@ import {
   setBinding,
   setRotate,
   testAction,
+  testRotate,
 } from '@/lib/ipc';
 import { DESK_RESULTS, MACRO_LIMITS, PROFILE_IDS } from '@/lib/ipc/types';
 import type {
@@ -145,11 +146,20 @@ function describe(spec: ActionSpec | RotateSpec | null, macros: MacroSpec[]): st
   }
 }
 
+/** A Test target: a discrete action, or the knob's binding (`kind`s never overlap). */
+type TestSpec = ActionSpec | RotateSpec;
+
+function isRotateSpec(spec: TestSpec): spec is RotateSpec {
+  return spec.kind === 'systemVolume' || spec.kind === 'shortcuts' || spec.kind === 'appVolume';
+}
+
 function isKeyboard(
-  spec: ActionSpec,
+  spec: TestSpec,
   catalog: ActionCatalogEntryDto[] | null,
   macros: MacroSpec[],
 ): boolean {
+  // Only a shortcut pair sends keys; a volume knob injects none.
+  if (isRotateSpec(spec)) return spec.kind === 'shortcuts';
   // A macro with a shortcut step needs the countdown too.
   if (spec.kind === 'macro') {
     return (
@@ -206,13 +216,13 @@ export function ControlsPage({
   const profile = config?.profiles.find((candidate) => candidate.id === selected) ?? null;
   const macros = config?.macros ?? [];
 
-  const runTest = (rowId: string, spec: ActionSpec): void => {
+  const runTest = (rowId: string, spec: TestSpec): void => {
     setTested(rowId);
-    testAction(spec).catch((error: unknown) =>
+    (isRotateSpec(spec) ? testRotate(spec) : testAction(spec)).catch((error: unknown) =>
       toast.error(t.testFailed, { description: errorText(error) }),
     );
   };
-  const startTest = (rowId: string, spec: ActionSpec): void => {
+  const startTest = (rowId: string, spec: TestSpec): void => {
     stopCountdown();
     if (!isKeyboard(spec, catalog, macros)) {
       runTest(rowId, spec);
@@ -304,15 +314,9 @@ export function ControlsPage({
                   {rows(entry).map((row) => {
                     const rowId = `${entry.id}:${row.key}`;
                     const bound = row.spec ?? null;
-                    // Test runs a discrete action; the knob (Rotate) has nothing to run once.
-                    const testable: ActionSpec | null =
-                      row.control !== 'rotate' &&
-                      bound &&
-                      bound.kind !== 'shortcuts' &&
-                      bound.kind !== 'systemVolume' &&
-                      bound.kind !== 'appVolume'
-                        ? bound
-                        : null;
+                    // Test runs the saved binding once: a discrete action, or for the knob one step
+                    // up and back (a shortcut pair sends its clockwise key).
+                    const testable: TestSpec | null = bound;
                     const counting = countdown?.row === rowId;
                     const entryInfo = bound
                       ? catalog?.find((e) => e.id === catalogId(bound))
@@ -361,6 +365,9 @@ export function ControlsPage({
                               <p className="text-xs text-muted-foreground">
                                 {format(t.deviceLabel, { label: row.deviceLabel })}
                               </p>
+                            ) : null}
+                            {testable && row.control === 'rotate' ? (
+                              <p className="text-xs text-muted-foreground">{t.rotateTestNote}</p>
                             ) : null}
                             {counting ? (
                               <p role="status" className="text-sm">

@@ -6,10 +6,10 @@ import { Toaster } from '@/components/ui/sonner';
 import { useConfig, useDeskStatus } from '../../../hooks/use-kivori';
 import type { ConfigDto } from '../../../lib/ipc/types';
 
-// The browser mock behind the real IPC wrappers; only `testAction` is spied on.
+// The browser mock behind the real IPC wrappers; `testAction` and `testRotate` are spied on.
 vi.mock('../../../lib/ipc', async (importOriginal) => {
   const real = await importOriginal<typeof import('../../../lib/ipc')>();
-  return { ...real, testAction: vi.fn(real.testAction) };
+  return { ...real, testAction: vi.fn(real.testAction), testRotate: vi.fn(real.testRotate) };
 });
 
 import * as ipc from '../../../lib/ipc';
@@ -38,6 +38,7 @@ beforeEach(async () => {
   window.history.pushState({}, '', '/');
   await ipc.resetConfig();
   vi.mocked(ipc.testAction).mockClear();
+  vi.mocked(ipc.testRotate).mockClear();
 });
 
 afterEach(() => {
@@ -125,6 +126,38 @@ describe('ControlsPage', () => {
     expect(
       await within(row('hold')).findByText('Confirmed', { selector: '[data-result]' }),
     ).toBeVisible();
+  });
+
+  it('tests a volume knob at once, as a step up and back, and shows the result', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await screen.findByTestId('gesture-rotate');
+    expect(row('rotate')).toHaveTextContent('up and back down');
+    await user.click(within(row('rotate')).getByRole('button', { name: 'Test' }));
+    expect(ipc.testRotate).toHaveBeenCalledWith({ kind: 'systemVolume' });
+    expect(ipc.testAction).not.toHaveBeenCalled();
+    expect(
+      await within(row('rotate')).findByText('Confirmed', { selector: '[data-result]' }),
+    ).toBeVisible();
+  });
+
+  it('counts down before testing a knob shortcut pair, then sends it as one test', async () => {
+    const user = userEvent.setup();
+    const pair = {
+      kind: 'shortcuts',
+      cw: 'Ctrl+Tab',
+      ccw: 'Ctrl+Shift+Tab',
+      label: 'Tabs',
+    } as const;
+    await ipc.setRotate('general', pair);
+    render(<Harness />);
+    await screen.findByTestId('gesture-rotate');
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    await user.click(within(row('rotate')).getByRole('button', { name: 'Test' }));
+    expect(within(row('rotate')).getByRole('status')).toHaveTextContent('Running in 3');
+    expect(ipc.testRotate).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(3000));
+    expect(ipc.testRotate).toHaveBeenCalledWith(pair);
   });
 
   it('counts down 3 seconds before testing a shortcut, and Cancel stops it', async () => {

@@ -134,6 +134,8 @@ export const strings = {
     test: 'Test',
     reset: 'Reset',
     cancelTest: 'Cancel',
+    rotateTestNote:
+      'Test turns the knob one step up and back down, so the volume ends where it started. For two shortcuts it sends the clockwise one once.',
     countdown: 'Running in {seconds}…',
     countdownHint: 'Click the app that should receive the shortcut. Cancel to stop.',
     testFailed: 'Couldn’t run that action',

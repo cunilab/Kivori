@@ -10,9 +10,11 @@ Kivori is a desk buddy you control your computer with: the buddy is why you want
 
 **M1 — Useful desk device.** Software complete on Windows and macOS, host-tested end to end. The push switch does Press (Play/Pause), Hold (mute) and Double press (next view); holding it ~10 s reboots the device with no app needed. The display has Buddy, Clock, Volume, Media and CPU/RAM views, and every action outcome is shown honestly as Confirmed, Started, Unverified or Failed. **Physical validation is outstanding:** the M0 rows and the Phase 4 rows in [`docs/validation.md`](docs/validation.md) need one human session.
 
-**M2 buttons and M2.5 contextual profiles.** Three contextual buttons (Press and Hold each) and foreground-app profiles are software complete and host-tested, awaiting hardware validation (Phase 5 and 6 rows).
+**M2 and M2.5.** Three contextual buttons (Press and Hold each), the bindings config UI and foreground-app profiles are software complete and host-tested, awaiting hardware validation (Phase 5 and 6 rows).
 
-Next: the combined hardware session (macOS daily use, then Windows), then the rest of M2 (the config UI for bindings) on the way to a Windows paid beta; see [`docs/roadmap.md`](docs/roadmap.md). Product behavior is defined in [`docs/product.md`](docs/product.md); durable technical choices are the ADRs in [`docs/architecture.md`](docs/architecture.md).
+**M3 — Paid beta.** Software complete: host takeovers, sleep and lock handling, firmware update and recovery, launch at login with a tray, the installer and an unsigned release pipeline ([`docs/release.md`](docs/release.md)), first-run onboarding, and per-unit provisioning ([`docs/provisioning.md`](docs/provisioning.md)).
+
+Still open, and none of it is code: the hardware validation session (issue #38), signing the installer (needs certificates, #36), and the enclosure print (#33). See [`docs/roadmap.md`](docs/roadmap.md). Product behavior is defined in [`docs/product.md`](docs/product.md); durable technical choices are the ADRs in [`docs/architecture.md`](docs/architecture.md).
 
 ## Hardware
 

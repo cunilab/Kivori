@@ -21,6 +21,8 @@ import {
   getConnectionStatus,
   isTauri,
   onConfigChanged,
+  onStartupChanged,
+  setLaunchAtLogin,
   resetConfig,
   saveMacro,
   deleteMacro,
@@ -35,6 +37,7 @@ import {
   onDeskStatus,
   listActionCatalog,
   testAction,
+  testRotate,
   setDisplayMode,
   renderPreviewFrame,
 } from '../index';
@@ -162,6 +165,8 @@ describe('desk ipc (Tauri)', () => {
     expect(tauri.invoke).toHaveBeenCalledWith('test_action', {
       action: { kind: 'shortcut', keys: 'Ctrl+M' },
     });
+    await testRotate({ kind: 'systemVolume' });
+    expect(tauri.invoke).toHaveBeenCalledWith('test_rotate', { rotate: { kind: 'systemVolume' } });
   });
 
   it.each([
@@ -485,6 +490,32 @@ describe('config ipc', () => {
     expect(handler).not.toHaveBeenCalled();
     emit({ payload: validConfig });
     expect(handler).toHaveBeenCalledWith(validConfig);
+  });
+
+  it('drops an invalid startup://changed payload and forwards a valid one', async () => {
+    enterTauri();
+    let emit: (event: { payload: unknown }) => void = () => {};
+    tauri.listen.mockImplementation((_name: string, cb: typeof emit) => {
+      emit = cb;
+      return Promise.resolve(() => {});
+    });
+    const handler = vi.fn();
+    await onStartupChanged(handler);
+    expect(tauri.listen).toHaveBeenCalledWith('startup://changed', expect.any(Function));
+    emit({ payload: { launchAtLogin: 'yes', platform: 'windows' } });
+    expect(handler).not.toHaveBeenCalled();
+    emit({ payload: { launchAtLogin: true, platform: 'windows' } });
+    expect(handler).toHaveBeenCalledWith({ launchAtLogin: true, platform: 'windows' });
+  });
+
+  it('tells the browser mock listeners when launch at login changes', async () => {
+    const handler = vi.fn();
+    const stop = await onStartupChanged(handler);
+    await setLaunchAtLogin(true);
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ launchAtLogin: true }));
+    stop();
+    await setLaunchAtLogin(false);
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 
   it('mirrors the native display rules in the browser mock', async () => {

@@ -7,7 +7,9 @@
 use tauri::{AppHandle, Emitter};
 
 use crate::activity::ActivityEvent;
-use crate::ipc::dto::{self, ActivityEventDto, ConfigDto, ConnectionStatusDto, DeskStatusDto};
+use crate::ipc::dto::{
+    self, ActivityEventDto, ConfigDto, ConnectionStatusDto, DeskStatusDto, StartupSettingsDto,
+};
 
 /// Event name for connection-snapshot changes.
 pub const CONNECTION_STATUS: &str = "connection://status";
@@ -15,6 +17,8 @@ pub const CONNECTION_STATUS: &str = "connection://status";
 pub const DESK_STATUS: &str = "desk://status";
 /// Event name for a saved or reset config.
 pub const CONFIG_CHANGED: &str = "config://changed";
+/// Event name for a changed launch-at-login entry (from the tray or the Device page).
+pub const STARTUP_CHANGED: &str = "startup://changed";
 /// Event name for typed session activity records.
 pub const ACTIVITY_LOG_EVENT: &str = "activity-log://event";
 
@@ -53,4 +57,19 @@ pub fn emit_desk_status(app: &AppHandle, status: &DeskStatusDto) {
 /// Broadcasts the config after every successful save or reset.
 pub fn emit_config_changed(app: &AppHandle, config: &ConfigDto) {
     let _ = app.emit(CONFIG_CHANGED, config);
+}
+
+/// Broadcasts the launch-at-login state the OS now reports, whoever changed it.
+pub fn emit_startup_changed(app: &AppHandle, settings: &StartupSettingsDto) {
+    let _ = app.emit(STARTUP_CHANGED, settings);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_startup_event_name_is_the_one_the_webview_listens_for() {
+        assert_eq!(STARTUP_CHANGED, "startup://changed");
+    }
 }

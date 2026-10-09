@@ -14,6 +14,7 @@ use kivori_model::{MascotAction, SendableState};
 
 use crate::activity::{ActivityEvent, ActivityEventKind, ActivityLog};
 use crate::config::{ConfigStore, ResolvedConfig};
+use crate::desk::catalog::ServicesCell;
 use crate::firmware::{self, FirmwarePhase, FirmwareStatus};
 use crate::ipc::dto::{
     self, ConfigDto, ConnectionStatusDto, DeskStatusDto, DiagnosticsDto, DiagnosticsSnapshot,
@@ -87,6 +88,8 @@ pub struct AppState {
     pub firmware_status: Arc<Mutex<FirmwareStatus>>,
     /// Latest raw diagnostics figures, written by the device thread about once a second.
     pub diagnostics: Arc<Mutex<DiagnosticsSnapshot>>,
+    /// Latest host-service availability for the action catalog, written by the device thread.
+    pub services: ServicesCell,
     /// Window-lifecycle policy (hide-vs-quit / show-on-reactivate), shared with the window+tray handlers.
     pub lifecycle: Mutex<WindowLifecycle>,
     /// Live Device Studio preview streams (dev-only), cancelled on shutdown/teardown.
@@ -140,6 +143,7 @@ impl AppState {
             config: Arc::new(Mutex::new(ConfigStore::detached())),
             firmware_status,
             diagnostics: Arc::new(Mutex::new(DiagnosticsSnapshot::initial())),
+            services: ServicesCell::default(),
             lifecycle: Mutex::new(WindowLifecycle::new()),
             #[cfg(feature = "device-studio")]
             previews: Arc::new(crate::ipc::channels::PreviewStreams::new()),
@@ -160,6 +164,13 @@ impl AppState {
     #[must_use]
     pub fn with_diagnostics(mut self, diagnostics: Arc<Mutex<DiagnosticsSnapshot>>) -> Self {
         self.diagnostics = diagnostics;
+        self
+    }
+
+    /// Shares the services cell the device thread writes.
+    #[must_use]
+    pub fn with_services(mut self, services: ServicesCell) -> Self {
+        self.services = services;
         self
     }
 

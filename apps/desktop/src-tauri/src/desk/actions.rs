@@ -70,6 +70,10 @@ pub enum Action {
     AppMute { app: String },
     /// One knob detent of an app's volume. Only the knob produces it; no slot binds it.
     AppVolumeStep { app: String, direction: Direction },
+    /// A rotate test: nudge a volume one detent (up, or down when already at the top) and put it
+    /// back exactly. `app` is an app's volume, `None` the system's. Only the Test button produces
+    /// it; no slot binds it.
+    VolumeNudge { app: Option<String> },
     /// Run a user macro's steps in order.
     Macro(Arc<Macro>),
 }
@@ -87,7 +91,7 @@ impl Action {
             Action::Shortcut(_) => ActionKind::Shortcut,
             Action::Launch(_) => ActionKind::Launch,
             Action::AppMute { .. } => ActionKind::Mute,
-            Action::AppVolumeStep { .. } => ActionKind::Volume,
+            Action::AppVolumeStep { .. } | Action::VolumeNudge { .. } => ActionKind::Volume,
             Action::Macro(m) => m
                 .actions()
                 .next()
@@ -108,7 +112,10 @@ impl Action {
             Action::Shortcut(_) => ActionToken::Shortcut,
             Action::Launch(_) => ActionToken::Launch,
             Action::AppMute { .. } => ActionToken::AppMute,
-            Action::AppVolumeStep { .. } => ActionToken::AppVolume,
+            Action::AppVolumeStep { .. } | Action::VolumeNudge { app: Some(_) } => {
+                ActionToken::AppVolume
+            }
+            Action::VolumeNudge { app: None } => ActionToken::Volume,
             Action::Macro(_) => ActionToken::Macro,
         }
     }
@@ -124,7 +131,8 @@ impl Action {
             | Action::NextTrack
             | Action::ToggleMute
             | Action::AppMute { .. }
-            | Action::AppVolumeStep { .. } => true,
+            | Action::AppVolumeStep { .. }
+            | Action::VolumeNudge { .. } => true,
             Action::Shortcut(_) | Action::Launch(_) | Action::Macro(_) => false,
         }
     }
@@ -137,7 +145,7 @@ impl Action {
             Action::PreviousTrack => "Previous".into(),
             Action::NextTrack => "Next".into(),
             Action::ToggleMute | Action::AppMute { .. } => "Mute".into(),
-            Action::AppVolumeStep { .. } => "Volume".into(),
+            Action::AppVolumeStep { .. } | Action::VolumeNudge { .. } => "Volume".into(),
             Action::Macro(m) => m.name.clone(),
             Action::Shortcut(shortcut) => shortcut.to_string(),
             // An app name, not a path.
@@ -336,6 +344,7 @@ pub fn execute_while(action: &Action, platform: &Platform, current: &dyn Fn() ->
                 Err(_) => Outcome::error(),
             }
         }
+        Action::VolumeNudge { app } => nudge_volume(platform, app.as_deref()),
         Action::Shortcut(shortcut) => match platform.synth.send_shortcut(shortcut) {
             Ok(()) => Outcome::of(FeedbackKind::Unverified),
             Err(error) => Outcome::from_error(&error),
@@ -344,6 +353,57 @@ pub fn execute_while(action: &Action, platform: &Platform, current: &dyn Fn() ->
             Ok(()) => Outcome::of(FeedbackKind::ExecutionConfirmed),
             Err(error) => Outcome::from_error(&error),
         },
+    }
+}
+
+/// A rotate test: one detent clockwise, then back to exactly where the volume was, so the net
+/// change is zero. At the top, where a clockwise detent would be absorbed, it goes down first.
+/// `app` is one app's volume, `None` the system volume. The outcome is the restore's read-back.
+fn nudge_volume(platform: &Platform, app: Option<&str>) -> Outcome {
+    let available = match app {
+        Some(_) => platform.app_volume.availability(),
+        None => platform.volume.availability(),
+    };
+    if !matches!(available, ActionAvailability::Available { .. }) {
+        return Outcome::error();
+    }
+    let current = match app {
+        Some(app) => platform.app_volume.read(app).ok(),
+        None => platform.volume.read().ok(),
+    };
+    let Some(current) = current else {
+        return Outcome::error();
+    };
+    // `Err(true)`: the write landed but its read-back could not be observed.
+    let set = |percent: u8| -> Result<u8, bool> {
+        match app {
+            Some(app) => platform
+                .app_volume
+                .set(app, percent)
+                .map_err(|error| error == AppVolumeError::ReadBackUnavailable),
+            None => platform
+                .volume
+                .set(percent)
+                .map_err(|error| matches!(error, BackendError::ReadBackUnavailable)),
+        }
+    };
+    let (up, absorbed) = apply_step(current, Direction::Cw);
+    let first = if absorbed {
+        apply_step(current, Direction::Ccw).0
+    } else {
+        up
+    };
+    let mut known = true;
+    match set(first) {
+        Ok(_) => {}
+        Err(true) => known = false,
+        Err(false) => return Outcome::error(),
+    }
+    match set(current) {
+        Ok(observed) if observed == current && known => Outcome::of(FeedbackKind::StateConfirmed),
+        Ok(observed) if observed == current => Outcome::of(FeedbackKind::Unverified),
+        Ok(_) | Err(false) => Outcome::error(),
+        Err(true) => Outcome::of(FeedbackKind::Unverified),
     }
 }
 
@@ -713,6 +773,47 @@ mod tests {
         let p =
             app_platform(FakeAppVolumeBackend::unreadable_after_write().with_session(SPOTIFY, 50));
         assert_eq!(kind(&step(Direction::Cw), &p), FeedbackKind::Unverified);
+    }
+
+    fn nudge(app: Option<&str>) -> Action {
+        Action::VolumeNudge {
+            app: app.map(Into::into),
+        }
+    }
+
+    #[test]
+    fn a_rotate_test_nudges_the_volume_and_puts_it_back() {
+        let p = app_platform(
+            FakeAppVolumeBackend::new()
+                .with_session(SPOTIFY, 51)
+                .with_session("vlc.exe", 100),
+        );
+        // The system volume (40) and an odd app volume both end where they began.
+        assert_eq!(kind(&nudge(None), &p), FeedbackKind::StateConfirmed);
+        assert_eq!(p.volume.read(), Ok(40));
+        assert_eq!(
+            kind(&nudge(Some(SPOTIFY)), &p),
+            FeedbackKind::StateConfirmed
+        );
+        assert_eq!(p.app_volume.read(SPOTIFY), Ok(51));
+        // At the top a clockwise detent would be absorbed, so it goes down first and still returns.
+        assert_eq!(
+            kind(&nudge(Some("vlc.exe")), &p),
+            FeedbackKind::StateConfirmed
+        );
+        assert_eq!(p.app_volume.read("vlc.exe"), Ok(100));
+        assert!(nudge(None).is_system());
+        assert_eq!(nudge(None).token(), ActionToken::Volume);
+        assert_eq!(nudge(Some(SPOTIFY)).token(), ActionToken::AppVolume);
+    }
+
+    #[test]
+    fn a_rotate_test_never_claims_what_it_could_not_read_back() {
+        let p =
+            app_platform(FakeAppVolumeBackend::unreadable_after_write().with_session(SPOTIFY, 50));
+        assert_eq!(kind(&nudge(Some(SPOTIFY)), &p), FeedbackKind::Unverified);
+        let p = app_platform(FakeAppVolumeBackend::new());
+        assert_eq!(kind(&nudge(Some(SPOTIFY)), &p), FeedbackKind::Error);
     }
 
     #[test]
