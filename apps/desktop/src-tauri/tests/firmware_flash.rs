@@ -102,6 +102,22 @@ fn successful_flash_waits_for_handshake_on_the_same_port() {
 }
 
 #[test]
+fn swapped_board_on_the_same_port_is_not_reported_as_success() {
+    let mut flash = FlashWorkflow::new(true, 512);
+    flash.request(true, Some("COM7"), Some("deadbeef")).unwrap();
+    flash.finish(FakeFlasher { result: Ok(()) }.run());
+
+    // Same port, compatible firmware, but a different unit's device hash.
+    assert!(!flash.handshake("COM7", "cafef00d", true));
+    assert_eq!(flash.status().phase, FirmwarePhase::Reconnecting);
+
+    // The swapped board never turns into a success; the reconnect window ends in failure.
+    flash.reconnect_timed_out();
+    assert_eq!(flash.status().phase, FirmwarePhase::Failed);
+    assert!(!flash.handshake("COM7", "deadbeef", true));
+}
+
+#[test]
 fn reconnect_deadline_fails_even_without_a_handshake() {
     let mut flash = FlashWorkflow::new(true, 512);
     flash.request(true, Some("COM7"), Some("deadbeef")).unwrap();

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds BOTH Wokwi firmware artifacts from the real esp-hal workspace.
+# Builds the four Wokwi firmware artifacts from the real esp-hal workspace.
 #
 #   kivori-selftest.elf  --features wokwi         internal on-target self-test (markers over UART0)
 #   kivori-serial.elf    --features wokwi-serial  external serial test (real USB Serial/JTAG rx/tx loop)

@@ -8,7 +8,7 @@ use kivori_model::{ElapsedMs, FrameRate, Rgb565};
 /// the scene's own animation rate and loop length.
 ///
 /// Implementations MUST be deterministic and integer-only (no floating point, no wall-clock). The
-/// canonical compiled-asset scene (Phase 5) will implement this trait.
+/// canonical compiled-asset scene implements this trait.
 pub trait Scene {
     /// The scene's effective animation frame rate.
     fn frame_rate(&self) -> FrameRate;

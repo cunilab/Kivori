@@ -9,9 +9,9 @@
 //!
 //! This module never names a panel controller. It is generic over `mipidsi`'s [`Model`], so the same
 //! adapter drives an ST7789, a GC9A01, or (in simulation only) an ILI9341, and the choice stays a
-//! [`kivori_model::DeviceProfile`] parameter exactly as R-3 requires. The Kivori panel's real controller
-//! is **not yet confirmed**, so no controller is hard-coded and no initialisation sequence is asserted
-//! anywhere in this crate.
+//! [`kivori_model::DeviceProfile`] parameter exactly as R-3 requires. The Kivori panel is a verified ST7789
+//! (validation.md 1.23), but that choice lives in the board profile, so no controller is hard-coded and
+//! no initialisation sequence is asserted in this module.
 //!
 //! # Deliberately hardware-neutral
 //!

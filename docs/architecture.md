@@ -70,7 +70,8 @@ Desktop state is in memory only. `desired` defaults to `idle` and is re-sent aft
 - Media playback observation (state, title, artist): Windows Global System Media Transport Controls, polled on a `kivori-media` thread. macOS has no public API, so it is layered (ADR-0009): the vendored MediaRemote adapter, then AppleScript for Spotify and Music, then unknown.
 - CPU/RAM: Windows `GetSystemTimes` / `GlobalMemoryStatusEx`; macOS per-CPU `host_processor_info` (`host_statistics` is rate-limited for third-party apps) and Activity Monitor's "Memory Used". Local time: `GetLocalTime` / `localtime_r`.
 - Flashing: the installed `espflash` utility, driven by the native core.
-- Not built yet: a Linux backend, desktop self-update, a per-device stable id (the firmware uses a fixed 16-byte id).
+- Not built yet: a Linux backend, desktop self-update, a factory-provisioned device id.
+- Device id (#24): the firmware derives its 16-byte `device_id` from the chip's factory eFuse unique ID, falling back to the base MAC, through a domain-separated SHA-256 (`kivori-device-id-v1`); raw eFuse bytes never go on the wire. The raw id stays in the transport layer; UI and logs only show the short hash (ADR-0005). Simulator and Wokwi images keep fixed ids.
 
 ## 2. Wire protocol
 
@@ -108,6 +109,8 @@ Desktop                                   Device
 - The desktop gives up on a missing `HelloAck` after 5 s, closes the link, and retries with backoff.
 - After connecting, the desktop pings every 1 s and treats 3 misses as a lost link. `Pong.t_ms_echo` matches a ping.
 - The desktop never sends state commands to an `Incompatible` device.
+- Discovery rotates through every VID:PID match (`CandidateRotator`), because a stock ESP32-C3 shares the ids. Each port has its own backoff; a port that fails to open or answer is passed over for the others, and after 3 handshake timeouts in a row it is only retried when no other candidate exists. A single never-failed candidate is tried immediately.
+- On an `Incompatible` handshake the UI shows the state, then the desktop closes that link and skips the port until it is unplugged, so another candidate can connect (`Incompatible` -> `Connecting`). With only the incompatible board plugged in, the state stays and no attempt is made. Port names are never logged or recorded in the activity log.
 
 ### Nonce is the session identity
 
@@ -255,7 +258,7 @@ HW-040 A/B/SW -> InputSource port -> QuadratureDecoder -> RotaryGesture -> Input
 
 Everything between the two hardware adapters (`PhysicalRotary` in firmware, the Windows backend on the desktop) is a pure function or state machine and is host-testable.
 
-- Input port: `InputSource::sample() -> { a, b, sw }`. `PhysicalRotary` only reads and inverts the pins. All three lines are active-low with internal pull-ups. Pins: CLK GPIO4, DT GPIO5, SW GPIO10 (unread today). GPIO9 is avoided because it is the BOOT strap. Power the HW-040 from 3V3, not 5V. This pin map is a specification until a dated physical check closes it (see validation.md).
+- Input port: `InputSource::sample() -> { a, b, sw }`. `PhysicalRotary` only reads and inverts the pins. All three lines are active-low with internal pull-ups. Pins: CLK GPIO4, DT GPIO5, SW GPIO10 (the push switch, read since M1). GPIO9 is avoided because it is the BOOT strap. Power the HW-040 from 3V3, not 5V. This pin map is a specification until a dated physical check closes it (see validation.md).
 - Decoder: a Gray-code state machine on phase `(a << 1) | b`, resting at `00`. It emits a `Direction` only when the knob returns to rest after four quarter-steps in one sense. The accumulator resets at every rest arrival. Bounce and partial motion emit nothing. An impossible transition (both bits change) is counted as `invalid_transitions`, resets the accumulator, and is a diagnostic only.
 - Gesture: the first detent opens a gesture (`gesture_id`, unique within the session, never 0). 250 ms without a detent (`GESTURE_END_MS`) emits exactly one `GestureEnded`. A direction reversal does not split a gesture.
 - Ingress: `InputIngress` rejects an event with a stale session (`StaleSession`). It also requires an observed `GestureStarted` before a `Detent` or `GestureEnded` (`UnknownGesture`), as defence in depth.
@@ -273,7 +276,7 @@ Everything between the two hardware adapters (`PhysicalRotary` in firmware, the 
 - Presentation: `PresentationResolver` is a pure function from `ProductSnapshot` to `Presentation`. `value` is a transient overlay of 800 ms (`VALUE_TRANSIENT_MS`). Firmware expires it locally, so the overlay clears without a host timer. Firmware stores `primary` but does not render it; a failed volume write is shown through `Feedback { Volume, Error }` instead (section 5b).
 - Overlay: `render_volume_overlay` (`kivori-renderer/src/overlay.rs`) draws a solid-rect bar with no glyphs. `Confirmed` is a solid fill, `Preview` is hollow (top and bottom rows only), and the track outline turns white at a boundary. It is composited over the mascot in the same tile pass.
 - Firmware owns raw input truth (conditioning, detents, gestures). The desktop owns action meaning.
-- Edge capture: every edge on CLK, DT or SW raises the GPIO interrupt, whose handler only stores a timestamped level snapshot in a 64-entry queue (`physical_rotary.rs`). The run loop drains it each tick (`InputSource::drain`), so quarter-steps and switch edges during a frame compose or flush are not lost. On overflow new edges are dropped: the decoder counts one invalid transition, which can lose a detent but never invents one.
+- Edge capture: every edge on CLK, DT or SW raises the GPIO interrupt, whose handler only stores a timestamped level snapshot in a 128-entry queue (`physical_rotary.rs`). The run loop drains it each tick (`InputSource::drain`), so quarter-steps and switch edges during a frame compose or flush are not lost. On overflow new edges are dropped: the decoder counts one invalid transition, which can lose a detent but never invents one.
 - Latency: the firmware renders on the tick a `Presentation` or `Feedback` arrives instead of waiting for the 33 ms frame cadence, and the desktop device thread blocks on serial bytes (bounded by its 50 ms tick) instead of sleeping. Row 3.14 measures the result.
 - Every `SetState` is answered with a `StateReport` of the current state, changed or not, so a reconnecting desktop always learns it.
 

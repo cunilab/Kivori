@@ -4,7 +4,7 @@
 //!
 //! The device's behaviour (lifecycle FSM, protocol dispatcher, heartbeat, change-driven rendering)
 //! is written against hardware-neutral [`ports`] so it runs identically on real esp-hal peripherals
-//! (the `embedded` binary, Phase 8) and on the host [`sim`] adapters (the `host-sim` feature). This
+//! (the `embedded` binary) and on the host [`sim`] adapters (the `host-sim` feature). This
 //! keeps every device decision host-testable against the shared golden frames (constitution
 //! Principle IV, constraint 4).
 
@@ -17,6 +17,8 @@ pub mod clock;
 /// Raw-payload tracing, development-only (T102). Compiled out unless `debug-payloads` is enabled.
 #[cfg(all(feature = "debug-payloads", feature = "embedded"))]
 pub mod debug_payloads;
+/// Per-unit device ID derivation from factory eFuse data (hardware-neutral, issue #24).
+pub mod device_id;
 pub mod display;
 pub mod health;
 pub mod input;

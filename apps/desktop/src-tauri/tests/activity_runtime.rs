@@ -575,3 +575,46 @@ fn busy_and_timeout_have_closed_outcomes() {
         ActivityOutcome::TimedOut
     );
 }
+
+#[test]
+fn recovery_attributes_failures_to_the_port_and_handshake_timeouts_demote_it() {
+    use core::time::Duration;
+    use kivori_desktop::device::{CandidateRotator, PortCandidate, DEFAULT_ALLOWLIST};
+
+    let ports = [
+        PortCandidate::new("silent", Some(0x303A), Some(0x1001)),
+        PortCandidate::new("kivori", Some(0x303A), Some(0x1001)),
+    ];
+    let mut rotator = CandidateRotator::new();
+    let mut now = Duration::ZERO;
+    let flash = FlashWorkflow::new(true, 512);
+    let _ = rotator.next(&ports, DEFAULT_ALLOWLIST, now);
+    for _ in 0..3 {
+        // Pretend the silent port is retried each time it comes up.
+        now += Duration::from_secs(30);
+        let mut planner = RuntimeActivityPlanner::new();
+        let mut manager = ConnectionManager::new();
+        assert!(manager.apply(ManagerEvent::PortOpened));
+        let mut link = None;
+        let mut port = Some("silent".to_string());
+        let mut retry = None;
+        let mut deadlines = ConnectionDeadlines::new();
+        recover_link(
+            &mut planner,
+            &mut manager,
+            ManagerEvent::HandshakeTimeout,
+            LinkRecovery::new(&mut link, &mut port, &mut retry, &mut deadlines, &flash)
+                .with_rotator(&mut rotator, now),
+            |_| {},
+        );
+        assert!(port.is_none());
+    }
+    // Both ports are enumerated; the silent one is demoted and backing off, Kivori is next.
+    let picked = rotator.next(&ports, DEFAULT_ALLOWLIST, now);
+    assert_eq!(picked.as_deref(), Some("kivori"));
+    now += Duration::from_secs(60);
+    assert_eq!(
+        rotator.next(&ports, DEFAULT_ALLOWLIST, now).as_deref(),
+        Some("kivori")
+    );
+}

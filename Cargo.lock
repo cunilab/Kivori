@@ -2306,6 +2306,7 @@ dependencies = [
  "kivori-protocol",
  "kivori-renderer",
  "mipidsi",
+ "sha2",
 ]
 
 [[package]]

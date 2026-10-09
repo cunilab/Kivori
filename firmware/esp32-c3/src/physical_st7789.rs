@@ -15,7 +15,7 @@ use embedded_hal_bus::spi::ExclusiveDevice;
 use esp_hal::{
     delay::Delay,
     dma::{DmaRxBuf, DmaTxBuf},
-    dma_buffers_chunk_size,
+    dma_buffers_chunk_size, efuse,
     gpio::{Input, InputConfig, Io, Level, Output, OutputConfig, Pull},
     peripherals::Peripherals,
     spi::master::{Config, Spi},
@@ -29,6 +29,7 @@ use kivori_protocol::FirmwareVersion;
 use mipidsi::{interface::SpiInterface, Builder};
 
 use crate::{
+    device_id::derive_device_id,
     display::MipidsiSink,
     physical_rotary::PhysicalRotary,
     ports::Clock,
@@ -232,15 +233,20 @@ pub fn run_mode(
     // -------------------------------------------------------------------------
 
     let identity = DeviceIdentity {
-        device_id: [
-            0x4B, 0x49, 0x56, 0x4F, 0x52, 0x49, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x01,
-        ],
+        // Stable per-unit ID: hash of the factory eFuse unique ID (base MAC fallback). The raw
+        // eFuse bytes never go on the wire.
+        device_id: derive_device_id(
+            &efuse::read_field_le::<[u8; 16]>(efuse::OPTIONAL_UNIQUE_ID),
+            &efuse::base_mac_address()
+                .as_bytes()
+                .try_into()
+                .expect("6-byte base MAC"),
+        ),
 
-        // 1.1: M1 (push switch, recovery hold, desk status and feedback; protocol 1.3).
+        // 1.2: M2 buttons on top of M1 (push switch, recovery hold, desk status and feedback); protocol 1.4.
         firmware_version: FirmwareVersion {
             major: 1,
-            minor: 1,
+            minor: 2,
             patch: 0,
         },
 

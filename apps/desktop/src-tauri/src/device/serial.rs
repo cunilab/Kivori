@@ -5,7 +5,7 @@
 //! lines, throughput, reconnect timing) is validated manually — there is no hardware in host CI, so
 //! nothing here is exercised end-to-end by automated tests.
 
-use crate::device::discovery::{is_candidate, PortCandidate, UsbId};
+use crate::device::discovery::PortCandidate;
 use crate::device::transport::SerialLink;
 use std::io::{Read, Write};
 use std::time::Duration;
@@ -27,15 +27,6 @@ pub fn enumerate() -> Vec<PortCandidate> {
             PortCandidate::new(port.port_name, vid, pid)
         })
         .collect()
-}
-
-/// Returns the first port matching `allowlist` from a fresh enumeration (FR-001: no fixed COM port).
-#[must_use]
-pub fn first_candidate(allowlist: &[UsbId]) -> Option<String> {
-    enumerate()
-        .into_iter()
-        .find(|port| is_candidate(port, allowlist))
-        .map(|port| port.port_name)
 }
 
 /// A [`SerialLink`] over a blocking `serialport` handle configured for non-blocking reads.

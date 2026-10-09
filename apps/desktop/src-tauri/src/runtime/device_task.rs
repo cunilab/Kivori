@@ -24,10 +24,10 @@ use crate::activity::{
 };
 use crate::companion::CompanionDirector;
 use crate::desk::DeskRuntime;
-use crate::device::discovery::DEFAULT_ALLOWLIST;
+use crate::device::discovery::{CandidateRotator, DEFAULT_ALLOWLIST};
 use crate::device::fsm::{ConnectionManager, ManagerEvent};
 use crate::device::reconnect::base_delay_ms;
-use crate::device::serial::{first_candidate, SerialPortLink};
+use crate::device::serial::{enumerate, SerialPortLink};
 use crate::device::session::{Session, SessionConfig, SessionError};
 use crate::firmware::{self, FirmwareStatus, FlashWorkflow, ResumeTarget};
 use crate::input::{InputIngress, LogicalInput, RejectReason};
@@ -158,6 +158,7 @@ fn device_loop(
     let mut rotary = RotaryPipeline::new(&*backend);
     let mut link: Option<SerialPortLink> = None;
     let mut connected_port: Option<String> = None;
+    let mut rotator = CandidateRotator::new();
     let mut retry_at: Option<Instant> = None;
     let mut reconnect_deadline: Option<Instant> = None;
     let mut deadlines = ConnectionDeadlines::default();
@@ -220,7 +221,8 @@ fn device_loop(
                                 &mut retry_at,
                                 &mut deadlines,
                                 &flash,
-                            ),
+                            )
+                            .with_rotator(&mut rotator, started.elapsed()),
                             |observation| {
                                 record_observations(&app, &activity_log, [observation]);
                             },
@@ -270,7 +272,8 @@ fn device_loop(
                                 &mut retry_at,
                                 &mut deadlines,
                                 &flash,
-                            ),
+                            )
+                            .with_rotator(&mut rotator, started.elapsed()),
                             |observation| {
                                 record_observations(&app, &activity_log, [observation]);
                             },
@@ -362,8 +365,15 @@ fn device_loop(
                         crate::firmware::FirmwarePhase::Reconnecting => {
                             flash_target(&flash).map(str::to_string)
                         }
-                        _ => first_candidate(DEFAULT_ALLOWLIST),
+                        _ => rotator.next(&enumerate(), DEFAULT_ALLOWLIST, started.elapsed()),
                     };
+                    if candidate.is_none()
+                        && manager.state() == ConnectionState::Incompatible
+                        && !rotator.any_skipped()
+                    {
+                        // The incompatible board was unplugged and nothing else is left to try.
+                        manager.apply(ManagerEvent::PortRemoved);
+                    }
                     if let Some(name) = candidate {
                         let attempt = activity_planner.attempt();
                         record_with_metadata(&app, &activity_log, attempt.kind, attempt.metadata);
@@ -378,6 +388,8 @@ fn device_loop(
                             connected_port = Some(name);
                             deadlines.on_port_opened(started.elapsed());
                         } else {
+                            // Recovery attributes the failure to `connected_port` and clears it.
+                            connected_port = Some(name);
                             recover_discovery_open_failure(
                                 &mut activity_planner,
                                 &mut manager,
@@ -387,7 +399,8 @@ fn device_loop(
                                     &mut retry_at,
                                     &mut deadlines,
                                     &flash,
-                                ),
+                                )
+                                .with_rotator(&mut rotator, started.elapsed()),
                                 |observation| {
                                     record_observations(&app, &activity_log, [observation]);
                                 },
@@ -414,6 +427,9 @@ fn device_loop(
                 } else if manager.state().can_drive_device() {
                     if deadlines.awaiting_handshake() {
                         deadlines.on_handshake_complete(now);
+                        if let Some(port) = connected_port.as_deref() {
+                            rotator.record_success(port);
+                        }
                     }
                     if deadlines.heartbeat_due(now) {
                         if session.send_ping(open_link, elapsed_ms(now)).is_err() {
@@ -431,7 +447,18 @@ fn device_loop(
                     None
                 };
 
-                if let Some(event) = event {
+                if event.is_none()
+                    && manager.state() == ConnectionState::Incompatible
+                    && flash.status().phase != crate::firmware::FirmwarePhase::Reconnecting
+                {
+                    // The UI keeps showing Incompatible; drop this link and skip the port until it
+                    // is unplugged so other candidates (a real Kivori) get their turn.
+                    if let Some(port) = connected_port.take() {
+                        rotator.mark_skipped(&port);
+                    }
+                    link = None;
+                    deadlines.on_link_lost();
+                } else if let Some(event) = event {
                     recover_link(
                         &mut activity_planner,
                         &mut manager,
@@ -442,7 +469,8 @@ fn device_loop(
                             &mut retry_at,
                             &mut deadlines,
                             &flash,
-                        ),
+                        )
+                        .with_rotator(&mut rotator, started.elapsed()),
                         |observation| {
                             record_observations(&app, &activity_log, [observation]);
                         },
@@ -514,7 +542,8 @@ fn device_loop(
                             &mut retry_at,
                             &mut deadlines,
                             &flash,
-                        ),
+                        )
+                        .with_rotator(&mut rotator, started.elapsed()),
                         |observation| {
                             record_observations(&app, &activity_log, [observation]);
                         },
@@ -552,7 +581,8 @@ fn device_loop(
                             &mut retry_at,
                             &mut deadlines,
                             &flash,
-                        ),
+                        )
+                        .with_rotator(&mut rotator, started.elapsed()),
                         |observation| {
                             record_observations(&app, &activity_log, [observation]);
                         },
@@ -618,7 +648,8 @@ fn device_loop(
                         &mut retry_at,
                         &mut deadlines,
                         &flash,
-                    ),
+                    )
+                    .with_rotator(&mut rotator, started.elapsed()),
                     |observation| {
                         record_observations(&app, &activity_log, [observation]);
                     },
@@ -953,6 +984,9 @@ pub struct LinkRecovery<'a> {
     retry_at: &'a mut Option<Instant>,
     deadlines: &'a mut ConnectionDeadlines,
     flash: &'a FlashWorkflow,
+    /// Candidate bookkeeping plus the elapsed time to stamp failures with; absent in pinned or
+    /// host-test recoveries, which then attribute nothing to a port.
+    rotator: Option<(&'a mut CandidateRotator, Duration)>,
 }
 
 impl<'a> LinkRecovery<'a> {
@@ -969,7 +1003,15 @@ impl<'a> LinkRecovery<'a> {
             retry_at,
             deadlines,
             flash,
+            rotator: None,
         }
+    }
+
+    /// Attributes the failure to the port that was being tried, so discovery rotates past it.
+    #[must_use]
+    pub fn with_rotator(mut self, rotator: &'a mut CandidateRotator, now: Duration) -> Self {
+        self.rotator = Some((rotator, now));
+        self
     }
 }
 
@@ -985,9 +1027,17 @@ pub fn recover_link(
     observe: impl FnMut(SessionActivity),
 ) {
     let failure_kind = connection_event_kind(&event);
+    let handshake_timeout = matches!(event, ManagerEvent::HandshakeTimeout);
     manager.apply(event);
     *recovery.link = None;
-    *recovery.connected_port = None;
+    let failed_port = recovery.connected_port.take();
+    if let (Some((rotator, now)), Some(port)) = (recovery.rotator, failed_port) {
+        if handshake_timeout {
+            rotator.record_handshake_timeout(&port, now);
+        } else {
+            rotator.record_failure(&port, now);
+        }
+    }
     recovery.deadlines.on_link_lost();
     if recovery.flash.status().phase == crate::firmware::FirmwarePhase::Reconnecting {
         *recovery.retry_at = None;

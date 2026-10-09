@@ -94,7 +94,18 @@ fn connection_rejects_invalid_transitions() {
     assert_eq!(S::Connected.transition(E::PortOpened), None);
     assert_eq!(S::Connected.transition(E::HandshakeOk), None);
     assert_eq!(S::Incompatible.transition(E::HandshakeOk), None);
+    assert_eq!(S::Incompatible.transition(E::IoError), None);
     assert_eq!(S::Error.transition(E::HandshakeOk), None);
+}
+
+#[test]
+fn incompatible_moves_on_to_another_candidate_port() {
+    use ConnectionEvent as E;
+    use ConnectionState as S;
+    assert_eq!(
+        S::Incompatible.transition(E::PortOpened),
+        Some(S::Connecting)
+    );
 }
 
 #[test]

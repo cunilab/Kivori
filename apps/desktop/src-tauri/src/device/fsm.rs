@@ -105,6 +105,8 @@ impl ConnectionManager {
                      (host supports v{PROTOCOL_MAJOR})"
                 ));
             }
+            // Leaving `Incompatible` for another candidate port.
+            ManagerEvent::PortOpened => self.incompatible_reason = None,
             _ => {}
         }
 

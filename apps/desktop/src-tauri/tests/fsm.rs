@@ -53,6 +53,19 @@ fn incompatible_is_terminal_with_a_reason() {
 }
 
 #[test]
+fn incompatible_is_left_by_opening_another_port_and_clears_the_reason() {
+    let mut m = ConnectionManager::new();
+    m.apply(ManagerEvent::PortOpened);
+    m.apply(ManagerEvent::HandshakeIncompatible { device_major: 2 });
+    assert!(m.incompatible_reason().is_some());
+    assert!(m.apply(ManagerEvent::PortOpened));
+    assert_eq!(m.state(), ConnectionState::Connecting);
+    assert!(m.incompatible_reason().is_none());
+    assert!(m.apply(ManagerEvent::HandshakeOk(device())));
+    assert!(m.state().can_drive_device());
+}
+
+#[test]
 fn errors_accumulate_retry_count_backoff_preserves_it() {
     let mut m = ConnectionManager::new();
     m.apply(ManagerEvent::PortOpened);

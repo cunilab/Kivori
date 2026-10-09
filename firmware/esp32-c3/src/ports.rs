@@ -1,6 +1,6 @@
 //! Hardware-neutral adapter ports.
 //!
-//! The device core depends only on these three traits. The real board (Phase 8) implements them over
+//! The device core depends only on these three traits. The real board implements them over
 //! USB Serial/JTAG, SPI, and a hardware timer; the host [`crate::sim`] adapters implement them in
 //! memory. Nothing above this layer knows which is in use (constraint 4).
 
