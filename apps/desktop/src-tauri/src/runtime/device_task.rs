@@ -314,8 +314,8 @@ fn device_loop(
                         record_observations(&app, &activity_log, [observation]);
                     });
                 }
-                DeviceCommand::RunAction(action) => {
-                    desk.run(action, started.elapsed(), &mut |observation| {
+                DeviceCommand::TestAction(action) => {
+                    desk.test(action, started.elapsed(), &mut |observation| {
                         record_observations(&app, &activity_log, [observation]);
                     });
                 }
@@ -1029,7 +1029,7 @@ pub fn plan_device_request(
         DeviceCommand::FlashFirmware
         | DeviceCommand::Refresh
         | DeviceCommand::SetDisplayMode(_)
-        | DeviceCommand::RunAction(_)
+        | DeviceCommand::TestAction(_)
         | DeviceCommand::ApplyConfig(_) => None,
     };
     request.map_or_else(Vec::new, |request| activity_planner.requests(request))

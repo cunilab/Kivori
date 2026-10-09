@@ -87,7 +87,11 @@ fn shortcut(keys: &str) -> Result<Shortcut, &'static str> {
     keys.parse().map_err(|_| "not a valid shortcut")
 }
 
-fn action(spec: &ActionSpec) -> Result<Action, &'static str> {
+/// The runnable action a spec names, validated (a shortcut parses, a launch target is plain).
+///
+/// # Errors
+/// Returns a fixed reason for an invalid shortcut or application.
+pub fn resolve_action(spec: &ActionSpec) -> Result<Action, &'static str> {
     Ok(match spec {
         ActionSpec::PlayPause => Action::PlayPause,
         ActionSpec::PreviousTrack => Action::PreviousTrack,
@@ -108,7 +112,7 @@ fn slot(spec: &SlotSpec) -> Result<Slot, &'static str> {
         return Ok(Slot::default());
     };
     Ok(Slot {
-        action: Some(action(bound)?),
+        action: Some(resolve_action(bound)?),
         label: spec.label.as_deref().map(label).transpose()?,
     })
 }

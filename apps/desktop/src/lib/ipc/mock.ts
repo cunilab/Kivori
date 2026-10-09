@@ -5,6 +5,7 @@
 // absent from the production build by `scripts/check-mock-excluded.mjs`.
 
 import type {
+  ActionCatalogEntryDto,
   ActionSpec,
   ActivityEventDto,
   AppInfoDto,
@@ -12,6 +13,7 @@ import type {
   ConfigDto,
   ConnectionStatusDto,
   ControlRef,
+  DeskActionToken,
   DeskStatusDto,
   DisplayMode,
   Intensity,
@@ -20,7 +22,6 @@ import type {
   RotateSpec,
   SlotDto,
   SlotSpec,
-  TestActionRequest,
 } from './types';
 import { COMPANION_STATES, PREVIEW_DIM } from './types';
 
@@ -215,19 +216,69 @@ export function mockSetDisplayMode(mode: DisplayMode): void {
   updateDesk({ mode });
 }
 
+const ACTION_TOKENS: Record<ActionSpec['kind'], DeskActionToken> = {
+  playPause: 'playPause',
+  previousTrack: 'previousTrack',
+  nextTrack: 'nextTrack',
+  systemMute: 'mute',
+  shortcut: 'shortcut',
+  launch: 'launch',
+};
+
 /** Mirrors native rules loosely: a shortcut/launch needs its text; the outcome is "unverified". */
-export function mockRunTestAction(request: TestActionRequest): void {
-  if (request.action === 'shortcut' && !request.shortcut?.trim()) {
-    throw new Error('a shortcut action needs a shortcut');
+export function mockTestAction(action: ActionSpec): void {
+  if (action.kind === 'shortcut' && !action.keys.trim()) {
+    throw new Error('not a valid shortcut');
   }
-  if (request.action === 'launch' && !request.target?.trim()) {
-    throw new Error('a launch action needs an application');
+  if (action.kind === 'launch' && !action.target.trim()) {
+    throw new Error('not a valid application');
   }
-  const result = request.action === 'mute' ? 'stateConfirmed' : 'unverified';
+  const result =
+    action.kind === 'systemMute'
+      ? 'stateConfirmed'
+      : action.kind === 'launch'
+        ? 'executionConfirmed'
+        : 'unverified';
   updateDesk({
-    muted: request.action === 'mute' ? !deskStatus.muted : deskStatus.muted,
-    lastAction: { action: request.action, result, permissionRequired: false },
+    muted: action.kind === 'systemMute' ? !deskStatus.muted : deskStatus.muted,
+    lastAction: { action: ACTION_TOKENS[action.kind], result, permissionRequired: false },
   });
+}
+
+const catalogEntry = (
+  id: string,
+  slot: ActionCatalogEntryDto['slot'],
+  scope: ActionCatalogEntryDto['scope'],
+  verification: ActionCatalogEntryDto['verification'],
+  params: ActionCatalogEntryDto['params'],
+  runsWhenProtected: boolean,
+  comingSoon = false,
+): ActionCatalogEntryDto => ({
+  id,
+  slot,
+  scope,
+  verification,
+  params,
+  availability: comingSoon ? 'unsupported' : 'available',
+  reason: comingSoon ? 'Coming soon' : null,
+  runsWhenProtected,
+});
+
+/** The native catalog: App Volume, App Mute and macros are listed but not built yet. */
+export function mockListActionCatalog(): ActionCatalogEntryDto[] {
+  return [
+    catalogEntry('systemVolume', 'rotate', 'system', 'confirmed', 'none', true),
+    catalogEntry('appVolume', 'rotate', 'app', 'confirmed', 'app', true, true),
+    catalogEntry('knobShortcuts', 'rotate', 'keyboard', 'unverified', 'shortcutPair', false),
+    catalogEntry('playPause', 'discrete', 'media', 'unverified', 'none', true),
+    catalogEntry('previousTrack', 'discrete', 'media', 'unverified', 'none', true),
+    catalogEntry('nextTrack', 'discrete', 'media', 'unverified', 'none', true),
+    catalogEntry('systemMute', 'discrete', 'system', 'confirmed', 'none', true),
+    catalogEntry('appMute', 'discrete', 'app', 'confirmed', 'app', true, true),
+    catalogEntry('shortcut', 'discrete', 'keyboard', 'unverified', 'shortcut', false),
+    catalogEntry('launch', 'discrete', 'launch', 'started', 'target', false),
+    catalogEntry('macro', 'discrete', 'macro', 'leastOfSteps', 'macro', false, true),
+  ];
 }
 
 function actionLabel(action: ActionSpec | null): string {

@@ -14,6 +14,7 @@ use std::time::Instant;
 
 use kivori_model::desk::{ActionKind, FeedbackKind};
 
+use super::catalog::ActionToken;
 use crate::platform::{
     ActionError, BackendError, InputSynth, MediaKey, MediaObserver, Shortcut, VolumeBackend,
 };
@@ -36,9 +37,9 @@ pub enum Action {
 }
 
 impl Action {
-    /// The wire kind of this action.
+    /// The wire kind of this action: what the device is told (`Feedback.action`).
     #[must_use]
-    pub const fn kind(&self) -> ActionKind {
+    pub const fn wire_kind(&self) -> ActionKind {
         match self {
             Action::PlayPause => ActionKind::PlayPause,
             Action::PreviousTrack => ActionKind::PreviousTrack,
@@ -51,11 +52,30 @@ impl Action {
 }
 
 impl Action {
+    /// The desktop-only identity of this action (`lastAction`, the activity log).
+    #[must_use]
+    pub const fn token(&self) -> ActionToken {
+        match self {
+            Action::PlayPause => ActionToken::PlayPause,
+            Action::PreviousTrack => ActionToken::PreviousTrack,
+            Action::NextTrack => ActionToken::NextTrack,
+            Action::ToggleMute => ActionToken::Mute,
+            Action::Shortcut(_) => ActionToken::Shortcut,
+            Action::Launch(_) => ActionToken::Launch,
+        }
+    }
+
     /// A system action (volume, media keys, mute) still runs in a protected context; shortcuts
     /// and launches are suspended there (docs/product.md, permissions and protected contexts).
+    /// Spelled out so a new action must choose.
     #[must_use]
     pub const fn is_system(&self) -> bool {
-        !matches!(self, Action::Shortcut(_) | Action::Launch(_))
+        match self {
+            Action::PlayPause | Action::PreviousTrack | Action::NextTrack | Action::ToggleMute => {
+                true
+            }
+            Action::Shortcut(_) | Action::Launch(_) => false,
+        }
     }
 
     /// What the device legend calls this action: short, in the user's terms.
@@ -227,7 +247,7 @@ pub fn execute(action: &Action, platform: &Platform) -> Outcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Finished {
     pub id: u64,
-    pub action: ActionKind,
+    pub action: ActionToken,
     pub outcome: Outcome,
 }
 
@@ -274,7 +294,7 @@ impl ActionWorker {
                     let outcome = execute(&action, &platform);
                     let finished = Finished {
                         id,
-                        action: action.kind(),
+                        action: action.token(),
                         outcome,
                     };
                     if finished_tx.send(finished).is_err() {
@@ -502,7 +522,7 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(5));
         };
         assert_eq!(finished.id, 7);
-        assert_eq!(finished.action, ActionKind::Mute);
+        assert_eq!(finished.action, ActionToken::Mute);
         assert_eq!(finished.outcome.kind, FeedbackKind::StateConfirmed);
     }
 

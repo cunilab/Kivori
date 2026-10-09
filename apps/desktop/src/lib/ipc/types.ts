@@ -241,6 +241,9 @@ export const DESK_ACTIONS = [
   'launch',
   'previousTrack',
   'nextTrack',
+  'appVolume',
+  'appMute',
+  'macro',
 ] as const;
 export type DeskActionToken = (typeof DESK_ACTIONS)[number];
 export const DESK_RESULTS = [
@@ -255,9 +258,6 @@ export type DeskResult = (typeof DESK_RESULTS)[number];
 /** What a double press does. Fixed in M1: show the next display mode. */
 export const DOUBLE_PRESS_ACTIONS = ['nextView'] as const;
 export type DoublePressAction = (typeof DOUBLE_PRESS_ACTIONS)[number];
-
-/** Actions the dev-only Device Studio can trigger (`volume` is device-driven only). */
-export type TestActionKind = 'playPause' | 'mute' | 'shortcut' | 'launch';
 
 export interface DeskActionDto {
   action: DeskActionToken;
@@ -299,10 +299,38 @@ export interface DeskStatusDto {
   lastAction: DeskActionDto | null;
 }
 
-export interface TestActionRequest {
-  action: TestActionKind;
-  shortcut?: string;
-  target?: string;
+export const CATALOG_SLOTS = ['rotate', 'discrete'] as const;
+export const CATALOG_SCOPES = ['system', 'app', 'media', 'keyboard', 'launch', 'macro'] as const;
+export const CATALOG_VERIFICATIONS = [
+  'confirmed',
+  'started',
+  'unverified',
+  'leastOfSteps',
+] as const;
+export const CATALOG_PARAMS = [
+  'none',
+  'app',
+  'shortcut',
+  'shortcutPair',
+  'target',
+  'macro',
+] as const;
+export const CATALOG_AVAILABILITIES = ['available', 'unsupported', 'unavailable'] as const;
+
+/**
+ * One bindable action. `unsupported` = this OS or build cannot (shown disabled, with `reason`);
+ * `unavailable` = not right now.
+ */
+export interface ActionCatalogEntryDto {
+  id: string;
+  slot: (typeof CATALOG_SLOTS)[number];
+  scope: (typeof CATALOG_SCOPES)[number];
+  verification: (typeof CATALOG_VERIFICATIONS)[number];
+  params: (typeof CATALOG_PARAMS)[number];
+  availability: (typeof CATALOG_AVAILABILITIES)[number];
+  reason: string | null;
+  /** Runs while the foreground is a protected surface. */
+  runsWhenProtected: boolean;
 }
 
 export type ActivitySeverity = 'info' | 'warning' | 'error';

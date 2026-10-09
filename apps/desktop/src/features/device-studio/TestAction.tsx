@@ -3,27 +3,27 @@ import type { FormEvent, ReactElement } from 'react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
-import { runTestAction } from '../../lib/ipc';
-import type { TestActionRequest } from '../../lib/ipc/types';
+import { testAction } from '../../lib/ipc';
+import type { ActionSpec } from '../../lib/ipc/types';
 import { strings } from '../../lib/i18n/strings';
 import { errorText } from '../../lib/utils';
 
-/** Dev-only Device Studio panel: fires one desk action; the outcome shows in Overview and the Log. */
+/** Device Studio panel: fires one desk action through the production Test Action; the outcome shows in Overview and the Log. */
 export function TestAction(): ReactElement {
   const [shortcut, setShortcut] = useState('');
   const [target, setTarget] = useState('');
   const [error, setError] = useState<string | null>(null);
   const t = strings.testAction;
 
-  const run = (request: TestActionRequest): void => {
+  const run = (action: ActionSpec): void => {
     setError(null);
-    void runTestAction(request).catch((e: unknown) => setError(errorText(e)));
+    void testAction(action).catch((e: unknown) => setError(errorText(e)));
   };
   const submit =
-    (request: () => TestActionRequest) =>
+    (action: () => ActionSpec) =>
     (event: FormEvent): void => {
       event.preventDefault();
-      run(request());
+      run(action());
     };
 
   return (
@@ -35,16 +35,16 @@ export function TestAction(): ReactElement {
         <p className="mt-1 text-sm text-muted-foreground">{t.description}</p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="outline" onClick={() => run({ action: 'playPause' })}>
+        <Button type="button" variant="outline" onClick={() => run({ kind: 'playPause' })}>
           {t.playPause}
         </Button>
-        <Button type="button" variant="outline" onClick={() => run({ action: 'mute' })}>
+        <Button type="button" variant="outline" onClick={() => run({ kind: 'systemMute' })}>
           {t.mute}
         </Button>
       </div>
       <form
         className="flex flex-wrap items-end gap-2"
-        onSubmit={submit(() => ({ action: 'shortcut', shortcut }))}
+        onSubmit={submit(() => ({ kind: 'shortcut', keys: shortcut }))}
       >
         <div className="flex min-w-48 flex-1 flex-col gap-1.5">
           <Label htmlFor="test-shortcut">{t.shortcut}</Label>
@@ -61,7 +61,7 @@ export function TestAction(): ReactElement {
       </form>
       <form
         className="flex flex-wrap items-end gap-2"
-        onSubmit={submit(() => ({ action: 'launch', target }))}
+        onSubmit={submit(() => ({ kind: 'launch', target }))}
       >
         <div className="flex min-w-48 flex-1 flex-col gap-1.5">
           <Label htmlFor="test-launch">{t.launch}</Label>

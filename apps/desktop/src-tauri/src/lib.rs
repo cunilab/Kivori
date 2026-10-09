@@ -110,7 +110,8 @@ pub fn run() {
         ipc::commands::mirror_state,
         ipc::commands::get_desk_status,
         ipc::commands::set_display_mode,
-        ipc::commands::run_test_action,
+        ipc::commands::list_action_catalog,
+        ipc::commands::test_action,
         ipc::channels::open_preview_stream,
         ipc::channels::close_preview_stream,
         ipc::channels::ack_preview_frame,
@@ -135,6 +136,8 @@ pub fn run() {
         ipc::commands::flash_firmware,
         ipc::commands::get_desk_status,
         ipc::commands::set_display_mode,
+        ipc::commands::list_action_catalog,
+        ipc::commands::test_action,
     ]);
 
     builder

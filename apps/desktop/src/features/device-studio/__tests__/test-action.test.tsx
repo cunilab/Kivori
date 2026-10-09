@@ -7,7 +7,7 @@ const h = vi.hoisted(() => ({
   run: vi.fn<(request: unknown) => Promise<void>>(() => Promise.resolve()),
 }));
 
-vi.mock('../../../lib/ipc', () => ({ runTestAction: h.run }));
+vi.mock('../../../lib/ipc', () => ({ testAction: h.run }));
 
 import { TestAction } from '../TestAction';
 
@@ -23,8 +23,8 @@ describe('TestAction', () => {
     await user.click(screen.getByRole('button', { name: 'Play/Pause' }));
     await user.click(screen.getByRole('button', { name: 'Mute' }));
     expect(h.run.mock.calls.map(([request]) => request)).toEqual([
-      { action: 'playPause' },
-      { action: 'mute' },
+      { kind: 'playPause' },
+      { kind: 'systemMute' },
     ]);
   });
 
@@ -34,7 +34,7 @@ describe('TestAction', () => {
     render(<TestAction />);
     await user.type(screen.getByLabelText('Shortcut'), 'Ctrl+Banana');
     await user.click(screen.getByRole('button', { name: 'Run shortcut' }));
-    expect(h.run).toHaveBeenCalledWith({ action: 'shortcut', shortcut: 'Ctrl+Banana' });
+    expect(h.run).toHaveBeenCalledWith({ kind: 'shortcut', keys: 'Ctrl+Banana' });
     expect(await screen.findByRole('alert')).toHaveTextContent('unknown key: Banana');
   });
 
@@ -42,7 +42,7 @@ describe('TestAction', () => {
     const user = userEvent.setup();
     render(<TestAction />);
     await user.type(screen.getByLabelText('Application'), 'Notes{Enter}');
-    expect(h.run).toHaveBeenCalledWith({ action: 'launch', target: 'Notes' });
+    expect(h.run).toHaveBeenCalledWith({ kind: 'launch', target: 'Notes' });
   });
 
   it('has no axe violations', async () => {

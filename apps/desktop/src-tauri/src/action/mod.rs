@@ -45,7 +45,8 @@ pub fn execute_volume(backend: &dyn VolumeBackend, target_percent: u8) -> Outcom
                 reason: format!("no volume backend implemented for {target}"),
             }
         }
-        ActionAvailability::RuntimeUnavailable { reason } => return Outcome::Failed { reason },
+        ActionAvailability::Unsupported { reason }
+        | ActionAvailability::RuntimeUnavailable { reason } => return Outcome::Failed { reason },
         ActionAvailability::Unknown => {
             return Outcome::Failed {
                 reason: "backend availability unknown".to_string(),

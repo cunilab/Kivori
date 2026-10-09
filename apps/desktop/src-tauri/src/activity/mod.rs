@@ -481,7 +481,7 @@ pub enum ActivityMetadata {
     /// Which desk action an event is about. Only the closed kind: never shortcut keys or an
     /// application path.
     DeskAction {
-        action: kivori_model::desk::ActionKind,
+        action: crate::desk::ActionToken,
     },
 }
 

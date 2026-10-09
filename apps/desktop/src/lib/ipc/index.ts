@@ -7,6 +7,8 @@
 //   • Production, not Tauri → throw. Production NEVER silently falls back to mock behaviour.
 
 import type {
+  ActionCatalogEntryDto,
+  ActionSpec,
   AppInfoDto,
   CompanionState,
   ConnectionStatusDto,
@@ -23,9 +25,8 @@ import type {
   DeskStatusDto,
   DisplayMode,
   Intensity,
-  TestActionRequest,
 } from './types';
-import { isActivityEvent, parseConfig, parseDeskStatus } from './validate';
+import { isActivityEvent, parseCatalog, parseConfig, parseDeskStatus } from './validate';
 
 /// Handle returned by an event subscription; call it to unsubscribe.
 export type Unlisten = () => void;
@@ -279,10 +280,20 @@ export async function setDisplayMode(mode: DisplayMode): Promise<void> {
   return unavailable();
 }
 
-/** Dev-only (Device Studio): runs one desk action now; rejects with the native error string. */
-export async function runTestAction(request: TestActionRequest): Promise<void> {
-  if (isTauri()) return invoke<void>('run_test_action', { ...request });
-  if (import.meta.env.DEV) return (await devMock()).mockRunTestAction(request);
+/** Every bindable action: how each is verified and whether it is available here. */
+export async function listActionCatalog(): Promise<ActionCatalogEntryDto[]> {
+  if (isTauri()) return parseCatalog(await invoke<unknown>('list_action_catalog'));
+  if (import.meta.env.DEV) return (await devMock()).mockListActionCatalog();
+  return unavailable();
+}
+
+/**
+ * Tries one action now, as if its control fired; rejects with the native error string. The outcome
+ * arrives in the desk status `lastAction`. Under a protected foreground only system actions run.
+ */
+export async function testAction(action: ActionSpec): Promise<void> {
+  if (isTauri()) return invoke<void>('test_action', { action });
+  if (import.meta.env.DEV) return (await devMock()).mockTestAction(action);
   return unavailable();
 }
 

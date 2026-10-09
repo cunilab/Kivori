@@ -102,6 +102,9 @@ export const strings = {
     launch: 'Launch app',
     previousTrack: 'Previous track',
     nextTrack: 'Next track',
+    appVolume: 'App volume',
+    appMute: 'App mute',
+    macro: 'Macro',
     nextView: 'Next view',
   },
   results: {
