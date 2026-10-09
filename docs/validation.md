@@ -241,6 +241,19 @@ Software is done (tracker, device-thread and Windows window tests, macOS IOKit r
 - [ ] 7.11 macOS: Apple menu, Sleep, then wake | Sleeping before the screen goes dark, then reconnect
 - [ ] 7.12 macOS: close the lid on battery, then open | same as 7.11
 
+## Phase 8: Firmware update and recovery (M3 S3)
+
+Software is done (workflow, classifier fixtures, recovery rules, sidecar lookup, DTO allowlist, UI tests). The classifier fixtures are conservative guesses at `espflash` 4.x wording; rows 8.7 refreshes them. Rows 8.1 to 8.6 need the bundled sidecar from S5 or a dev build with `espflash` on `PATH`.
+
+- [ ] 8.1 Flash from the installed app on a machine with no Rust toolchain | it succeeds and the device reconnects (needs the S5 installer)
+- [ ] 8.2 Unplug the board mid-flash | the app says it failed and offers Restore with the BOOT button
+- [ ] 8.3 Erase the flash, then Restore with the BOOT steps | the unit recovers and shows its hash
+- [ ] 8.4 Hold the port open in a serial monitor, then flash | the "close other apps" message appears
+- [ ] 8.5 Flash a wrong-major firmware, then use Restore | Restore is offered on the Device page and works
+- [ ] 8.6 Flash from the app | the panel shows Updating (or goes dark cleanly) during the flash, never garbage, then returns to the buddy
+- [ ] 8.7 Capture `espflash` stderr for each failure above | add each as a classifier fixture in `tests/firmware_flash.rs`
+- [ ] 8.8 With an older app-bundled version than the device, and with a newer one | the Device page and Home show "update available" only when the bundled firmware is newer
+
 ## Evidence log
 
 | Date | What | Result |

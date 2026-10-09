@@ -21,6 +21,9 @@ import {
   DESK_RESULTS,
   DISPLAY_MODES,
   DOUBLE_PRESS_ACTIONS,
+  FIRMWARE_PHASES,
+  FLASH_FAILURES,
+  UPDATE_ADVICE,
   INTENSITIES,
   MASCOT_ACTIONS,
   MEDIA_STATUSES,
@@ -35,6 +38,7 @@ import type {
   ButtonDto,
   ConfigDto,
   DiagnosticsDto,
+  FirmwareStatusDto,
   MacroSpec,
   StepSpec,
   DeskStatusDto,
@@ -124,6 +128,20 @@ export function parseConnectionStatus(raw: unknown): ConnectionStatusDto {
   return {
     ...(r as unknown as ConnectionStatusDto),
     host: oneOf('host presence', HOST_PRESENCES, r.host),
+  };
+}
+
+/** Validates a `FirmwareStatusDto`: unknown phase, failure or advice tokens are rejected. */
+export function parseFirmwareStatus(raw: unknown): FirmwareStatusDto {
+  const r = record('firmware status', raw);
+  return {
+    available: r.available === true,
+    phase: oneOf('firmware phase', FIRMWARE_PHASES, r.phase),
+    message: text('firmware message', r.message),
+    imageSize: count('firmware image size', r.imageSize),
+    failure: r.failure === null ? null : oneOf('firmware failure', FLASH_FAILURES, r.failure),
+    bundledVersion: textOrNull('bundled firmware version', r.bundledVersion),
+    advice: oneOf('update advice', UPDATE_ADVICE, r.advice),
   };
 }
 

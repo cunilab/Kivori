@@ -51,10 +51,12 @@ const t = strings.home;
 function Hero({
   connection,
   desk,
+  updateAvailable,
   onNavigate,
 }: {
   connection: ConnectionStatusDto | null;
   desk: DeskStatusDto | null;
+  updateAvailable: boolean;
   onNavigate: NavigateTo;
 }): ReactElement {
   const ui = uiConnection(connection);
@@ -179,6 +181,21 @@ function Hero({
               </Known>
             </Chip>
           </dl>
+          {updateAvailable ? (
+            <p
+              className="flex flex-wrap items-center gap-2 text-sm"
+              role="status"
+              data-testid="update-hint"
+            >
+              <Badge variant="secondary" className="h-6 px-2.5">
+                {t.hero.updateAvailable}
+              </Badge>
+              <span className="text-muted-foreground">{t.hero.updateAvailableBody}</span>
+              <Button variant="link" size="sm" onClick={() => onNavigate('device')}>
+                {t.hero.openDevice}
+              </Button>
+            </p>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             {ui === 'incompatible' ? (
               <Button onClick={() => onNavigate('device')}>
@@ -355,15 +372,22 @@ function LastAction({ desk }: { desk: DeskStatusDto }): ReactElement {
 export function HomePage({
   connection,
   desk,
+  updateAvailable = false,
   onNavigate,
 }: {
   connection: ConnectionStatusDto | null;
   desk: DeskStatusDto | null;
+  updateAvailable?: boolean;
   onNavigate: NavigateTo;
 }): ReactElement {
   return (
     <Page title={t.title} description={t.description}>
-      <Hero connection={connection} desk={desk} onNavigate={onNavigate} />
+      <Hero
+        connection={connection}
+        desk={desk}
+        updateAvailable={updateAvailable}
+        onNavigate={onNavigate}
+      />
 
       <section aria-labelledby="monitoring-heading" className="space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">

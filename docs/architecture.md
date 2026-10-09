@@ -70,7 +70,7 @@ Desktop state is in memory only. `desired` defaults to `idle` and is re-sent aft
 - Media playback observation (state, title, artist): Windows Global System Media Transport Controls, polled on a `kivori-media` thread. macOS has no public API, so it is layered (ADR-0009): the vendored MediaRemote adapter, then AppleScript for Spotify and Music, then unknown.
 - CPU/RAM: Windows `GetSystemTimes` / `GlobalMemoryStatusEx`; macOS per-CPU `host_processor_info` (`host_statistics` is rate-limited for third-party apps) and Activity Monitor's "Memory Used". Local time: `GetLocalTime` / `localtime_r`.
 - Sleep, wake, lock and console changes: Windows `PowerRegisterSuspendResumeNotification` (callback) plus `WTSRegisterSessionNotification` on a message-only window thread; macOS IOKit `IORegisterForSystemPower` on a CFRunLoop thread (hand-declared FFI) plus a 4 Hz poll of the session lock flag. See Host presence.
-- Flashing: the installed `espflash` utility, driven by the native core.
+- Flashing: a pinned `espflash` sidecar, driven by the native core (see Firmware update and recovery).
 - Not built yet: a Linux backend, desktop self-update, a factory-provisioned device id.
 - Device id (#24): the firmware derives its 16-byte `device_id` from the chip's factory eFuse unique ID, falling back to the base MAC, through a domain-separated SHA-256 (`kivori-device-id-v1`); raw eFuse bytes never go on the wire. The raw id stays in the transport layer; UI and logs only show the short hash (ADR-0005). Simulator and Wokwi images keep fixed ids.
 
@@ -133,9 +133,18 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 - Sequence policy: a duplicate `seq` does not re-apply side effects, a gap is counted and the newer frame accepted, wrap `0xFFFF` to `0` is normal. USB CDC is ordered, so there are no retransmits. This is not enough for a firmware-image transfer protocol, which would need its own offsets and acks.
 - Frame and blob format changes (asset format v2) require updating desktop and firmware together.
 
+### Firmware update and recovery
+
+- The webview only ever asks for "flash the bundled image" (`flash_firmware`) or "restore" (`restore_firmware`). Ports, paths and `espflash` output never leave the native process. `FirmwareStatus` carries a phase, a safe message, the image size, a `failure` token, the bundled version and an update `advice` token; the UI owns all wording.
+- Sidecar lookup (`find_espflash`): `espflash[.exe]` beside the application executable first (where the installer puts it). `PATH` and `~/.cargo/bin` are searched only when built with the `device-studio` feature (the dev default). Release builds use `--no-default-features`, so they never run whatever `espflash` sits on `PATH`. A missing tool is `ToolMissing`. Bundling the pinned binary is S5.
+- Flash: on `FlashFirmware` the device task sends `Bye(FirmwareUpdate)` (only when `supports_host_takeovers()`, so the panel shows Updating), drops the serial handle, runs `espflash` and then waits up to 20 s for the same port to handshake. The device identity must match (`FlashTarget::Verified { port, hash }`), so a swapped board is not reported as success.
+- Failures: stderr is captured in-process through a reader thread, bounded to the last 8 KiB, classified by the pure `classify_espflash(exit, stderr)` and dropped; it is never logged or emitted. Classes: `ToolMissing`, `PortBusy`, `NoDownloadMode`, `Timeout`, `Cancelled`, `ImageUnavailable`, `ReconnectTimedOut`, `Unknown`. Matching is conservative (case-insensitive fragments of known `espflash` 4.x and OS messages); anything else is `Unknown`. Refresh the fixtures from real output in the hardware session.
+- Recovery: a unit that cannot handshake (wrong-major firmware, or held in ROM download mode with BOOT) is restored with `FlashTarget::Recovery { port }`. `request_recovery` refuses unless exactly one allowlisted (`DEFAULT_ALLOWLIST`) port is present, so the flasher cannot be pointed at the wrong board. After the flash, any compatible device on that port is accepted and its new short hash recorded. A flash requested while the connection is `incompatible` takes this path too. A verified flash still rejects a different hash.
+- Version advice: `build.rs` scans the embedded firmware image (`KIVORI_FIRMWARE_PATH`) for `KIVORI-FW-VERSION:<x.y.z>\0` with the pure `scan_firmware_version` and sets `KIVORI_BUNDLED_FIRMWARE_VERSION` (empty with no firmware). `update_advice(device, bundled)` returns `UpToDate`, `UpdateAvailable`, `DeviceNewer` or `Unknown`. It is advice only: nothing flashes without an explicit request.
+
 ### Host takeovers (protocol 1.5, `HOST_TAKEOVERS_V1`)
 
-- `ByeReason` gains `HostSleeping` (3) and `FirmwareUpdate` (4), appended after the original three. The desktop sends them only when `Session::supports_host_takeovers()`; an older device never sees them. `Session::close(link, reason)` writes the `Bye` and ends the session. The desktop sends `Bye(HostSleeping)` on suspend (see Host presence) and `Bye(Shutdown)` on Quit; the flash-time `Bye(FirmwareUpdate)` is M3 S3.
+- `ByeReason` gains `HostSleeping` (3) and `FirmwareUpdate` (4), appended after the original three. The desktop sends them only when `Session::supports_host_takeovers()`; an older device never sees them. `Session::close(link, reason)` writes the `Bye` and ends the session. The desktop sends `Bye(HostSleeping)` on suspend (see Host presence) and `Bye(Shutdown)` on Quit; the flash sends `Bye(FirmwareUpdate)` first (see Firmware update and recovery).
 - `Bye(HostSleeping)`: the device shows Sleeping and keeps showing it across the link loss that follows (`DeviceEvent::HostSleep` latches it). A new `Hello` clears the latch. Without the capability negotiated, the reason acts like any other `Bye` and the device goes Offline.
 - `Bye(FirmwareUpdate)`: the device drops to Offline and the runtime renders the Updating screen (`render_updating`; below recovery, above the pose). It lapses after 120 s (`UPDATING_MAX_MS`) so it cannot stick if the host dies, and a new session ends it at once.
 - Host-silence timeout: with an accepted session and no valid inbound frame for 4 s (`HOST_SILENCE_MS`), the firmware calls `link_lost` and goes Offline. The desktop pings every second (`HEARTBEAT_INTERVAL`), so a killed or crashed desktop never leaves a frozen "connected" frame. This applies to every session, whatever was negotiated.
@@ -205,7 +214,7 @@ The webview may call only these commands and listen to these events. No command 
 | `play_mascot_action` | `greet, pet, tickle, surprise, comfort` | all |
 | `get_activity_log` | Newest N activity records | all |
 | `get_diagnostics` | None; returns `DiagnosticsDto` (see Diagnostics) | all |
-| `get_firmware_status`, `flash_firmware` | Firmware update status and request (no arguments) | all |
+| `get_firmware_status`, `flash_firmware`, `restore_firmware` | Firmware update status, update request and recovery request (no arguments, no port or path) | all |
 | `render_preview_frame`, `open_preview_stream`, `update_preview_stream`, `ack_preview_frame`, `close_preview_stream` | Native-rendered RGBA frames for Device Studio | `device-studio` only |
 | `mirror_state` | Dev-labelled `set_desired_state` | `device-studio` only |
 | `get_desk_status` | Display mode, monitored values (`null` = unknown), Press/Hold bindings, last action outcome | all |

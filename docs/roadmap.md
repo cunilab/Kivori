@@ -161,8 +161,8 @@ problems and uses it without developer help. Start charging for beta units here.
 - [ ] Launch at login and tray presence; the window stays optional
 - [ ] Survive sleep/wake and lock/unlock with intentional screens, never a frozen frame (gate 9)
 - [ ] First-run onboarding
-- [ ] User-facing firmware update and recovery flow (flash the bundled build; a failed flash says so)
-- [ ] Device and software version shown to the user
+- [ ] User-facing firmware update and recovery flow (flash the bundled build; a failed flash says so). Software done in M3 S3 (flash, classified failures, BOOT-button restore, incompatible recovery); stays open until the pinned `espflash` sidecar ships in the installer (S5) and the S3 hardware rows in [validation.md](./validation.md) pass
+- [x] Device and software version shown to the user (Device page and Home show the device firmware, app version and the firmware bundled in the app, with an "update available" hint; the bundled version is read from the firmware image, so it appears whenever a build embeds one)
 - [ ] Regulatory check before selling (FCC Part 15 / CE for the finished unit, not just the module)
 - [ ] Basic packaging and a short user guide
 - [ ] Build and ship the first 5–20 beta units

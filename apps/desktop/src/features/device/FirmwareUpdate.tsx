@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { Download, LoaderCircle, Plug, TriangleAlert } from 'lucide-react';
+import { Download, LifeBuoy, LoaderCircle, Plug, TriangleAlert } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   AlertDialog,
@@ -15,18 +15,27 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { flashFirmware, getFirmwareStatus } from '@/lib/ipc';
+import { flashFirmware, getFirmwareStatus, restoreFirmware } from '@/lib/ipc';
 import type { FirmwareStatusDto } from '@/lib/ipc/types';
+import { failureMessage, needsRestore } from './firmware-copy';
+import { RecoveryDialog } from './RecoveryDialog';
 import { strings } from '@/lib/i18n/strings';
 import { cn } from '@/lib/utils';
 
 const PHASES = ['preparing', 'flashing', 'reconnecting', 'succeeded'] as const;
 
 /** Native state keeps an update observable when Overview is left and reopened. */
-export function FirmwareUpdate({ connected }: { connected: boolean }): ReactElement {
+export function FirmwareUpdate({
+  connected,
+  incompatible = false,
+}: {
+  connected: boolean;
+  incompatible?: boolean;
+}): ReactElement {
   const [status, setStatus] = useState<FirmwareStatusDto | null>(null);
   const [requesting, setRequesting] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [recovering, setRecovering] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
   const pending = useRef(false);
@@ -63,7 +72,9 @@ export function FirmwareUpdate({ connected }: { connected: boolean }): ReactElem
     status?.phase === 'preparing' ||
     status?.phase === 'flashing' ||
     status?.phase === 'reconnecting';
-  const canFlash = connected && status?.available && !busy && !pollError;
+  const canFlash = (connected || incompatible) && status?.available && !busy && !pollError;
+  const canRestore = status?.available && !busy && !pollError;
+  const showRestore = incompatible || needsRestore(status);
   const error = requestError ?? pollError;
 
   const start = async (): Promise<void> => {
@@ -73,6 +84,25 @@ export function FirmwareUpdate({ connected }: { connected: boolean }): ReactElem
     setRequestError(null);
     try {
       await flashFirmware();
+      const snapshot = await getFirmwareStatus();
+      if (mounted.current) setStatus(snapshot);
+    } catch (failure) {
+      if (mounted.current) {
+        setRequestError(failure instanceof Error ? failure.message : String(failure || t.failed));
+      }
+    } finally {
+      pending.current = false;
+      if (mounted.current) setRequesting(false);
+    }
+  };
+
+  const restore = async (): Promise<void> => {
+    if (!canRestore || pending.current) return;
+    pending.current = true;
+    setRequesting(true);
+    setRequestError(null);
+    try {
+      await restoreFirmware();
       const snapshot = await getFirmwareStatus();
       if (mounted.current) setStatus(snapshot);
     } catch (failure) {
@@ -133,9 +163,36 @@ export function FirmwareUpdate({ connected }: { connected: boolean }): ReactElem
             phase === 'failed' ? 'text-destructive' : 'text-muted-foreground',
           )}
         >
-          {requesting ? t.preparing : (status?.message ?? t.checking)}
+          {requesting
+            ? t.preparing
+            : phase === 'failed'
+              ? failureMessage(status?.failure ?? null)
+              : (status?.message ?? t.checking)}
         </p>
-        {!connected && !busy ? <p className="text-sm text-muted-foreground">{t.connect}</p> : null}
+        {status ? (
+          <dl className="flex flex-wrap gap-2 text-xs">
+            <div className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1">
+              <dt className="text-muted-foreground">{t.bundled}</dt>
+              <dd className="font-medium" data-testid="bundled-version">
+                {status.bundledVersion ?? t.unknownVersion}
+              </dd>
+            </div>
+          </dl>
+        ) : null}
+        {status?.advice && t.advice[status.advice] ? (
+          <p
+            className={cn(
+              'text-sm',
+              status.advice === 'updateAvailable' ? 'font-medium' : 'text-muted-foreground',
+            )}
+            data-testid="update-advice"
+          >
+            {t.advice[status.advice]}
+          </p>
+        ) : null}
+        {!connected && !incompatible && !busy ? (
+          <p className="text-sm text-muted-foreground">{t.connect}</p>
+        ) : null}
 
         <AlertDialog open={confirming} onOpenChange={setConfirming}>
           <AlertDialogTrigger
@@ -170,6 +227,30 @@ export function FirmwareUpdate({ connected }: { connected: boolean }): ReactElem
           <Plug className="mt-px size-3.5 shrink-0" aria-hidden="true" />
           {t.caution}
         </p>
+        {showRestore ? (
+          <div className="space-y-2">
+            <Button
+              variant="outline"
+              disabled={!canRestore}
+              onClick={() => setRecovering(true)}
+              aria-describedby="firmware-restore-hint"
+            >
+              <LifeBuoy aria-hidden="true" />
+              {t.restore}
+            </Button>
+            <p id="firmware-restore-hint" className="text-xs text-muted-foreground">
+              {t.restoreHint}
+            </p>
+          </div>
+        ) : null}
+        <RecoveryDialog
+          open={recovering}
+          onOpenChange={setRecovering}
+          onRestore={() => {
+            setRecovering(false);
+            void restore();
+          }}
+        />
         {error ? (
           <Alert variant="destructive">
             <TriangleAlert aria-hidden="true" />

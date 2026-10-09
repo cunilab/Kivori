@@ -4,6 +4,7 @@ import {
   getConfig,
   getConnectionStatus,
   getDeskStatus,
+  getFirmwareStatus,
   onConfigChanged,
   onConnectionStatus,
   onDeskStatus,
@@ -46,6 +47,30 @@ function useNative<T>(
 
 export function useConnectionStatus(): ConnectionStatusDto | null {
   return useNative(getConnectionStatus, onConnectionStatus);
+}
+
+/**
+ * Whether the app's bundled firmware is newer than the connected device's. Re-read whenever the
+ * connection changes (a flash ends in a new connection), never polled, never acted on by itself.
+ */
+export function useUpdateAvailable(connection: ConnectionStatusDto | null): boolean {
+  const [available, setAvailable] = useState(false);
+  const generation = connection?.connectionGeneration;
+  const state = connection?.connection;
+  useEffect(() => {
+    let active = true;
+    void getFirmwareStatus()
+      .then((status) => {
+        if (active) setAvailable(status.advice === 'updateAvailable');
+      })
+      .catch(() => {
+        if (active) setAvailable(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [generation, state]);
+  return state === 'connected' && available;
 }
 
 export function useDeskStatus(): DeskStatusDto | null {

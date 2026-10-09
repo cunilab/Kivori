@@ -12,6 +12,7 @@ import type {
   CompanionState,
   ConfigDto,
   DiagnosticsDto,
+  FirmwareStatusDto,
   MacroSpec,
   StepSpec,
   ConnectionStatusDto,
@@ -41,11 +42,53 @@ export function mockAppInfo(): AppInfoDto {
 }
 
 // Browser preview scenarios for design review: `?mock=connected`, `?mock=incompatible`,
-// `?mock=connecting`. Without the parameter the mock is the plain disconnected default.
+// `?mock=connecting`, `?mock=update` (connected, older firmware) and `?mock=flashfail` (connected,
+// last flash failed). Without the parameter the mock is the plain disconnected default.
 function scenario(): string {
   return typeof location === 'undefined'
     ? ''
     : (new URLSearchParams(location.search).get('mock') ?? '');
+}
+
+/** The scenarios that show a connected device. */
+function connectedScenario(): boolean {
+  return ['connected', 'update', 'flashfail'].includes(scenario());
+}
+
+export function mockFirmwareStatus(): FirmwareStatusDto {
+  const base: FirmwareStatusDto = {
+    available: true,
+    phase: 'idle',
+    message: 'Firmware ready to flash.',
+    imageSize: 786432,
+    failure: null,
+    bundledVersion: '1.3.0',
+    advice: 'unknown',
+  };
+  switch (scenario()) {
+    case 'incompatible':
+      return base;
+    case 'update':
+      return { ...base, advice: 'updateAvailable' };
+    case 'flashfail':
+      return {
+        ...base,
+        phase: 'failed',
+        message: 'The device did not enter firmware download mode.',
+        failure: 'noDownloadMode',
+        advice: 'updateAvailable',
+      };
+    case 'connected':
+      return { ...base, bundledVersion: '0.4.0', advice: 'upToDate' };
+    default:
+      return {
+        ...base,
+        available: false,
+        message: 'Open the native Kivori app to flash firmware.',
+        imageSize: 0,
+        bundledVersion: null,
+      };
+  }
 }
 
 export function mockConnectionStatus(): ConnectionStatusDto {
@@ -63,6 +106,8 @@ export function mockConnectionStatus(): ConnectionStatusDto {
   };
   switch (scenario()) {
     case 'connected':
+    case 'update':
+    case 'flashfail':
       return {
         ...base,
         connection: 'connected',
@@ -95,7 +140,7 @@ export function mockListStates(): CompanionState[] {
 }
 
 export function mockActivityLog(): ActivityEventDto[] {
-  if (scenario() !== 'connected') return [];
+  if (!connectedScenario()) return [];
   const at = (s: number): string => new Date(Date.now() - s * 1000).toISOString();
   const meta = { retryCount: 0, elapsedMs: 0 };
   return [
@@ -172,17 +217,16 @@ export function mockActivityLog(): ActivityEventDto[] {
   ];
 }
 
-const connectedDesk: Partial<DeskStatusDto> =
-  scenario() === 'connected'
-    ? {
-        media: 'playing',
-        mediaTitle: 'Weightless',
-        mediaArtist: 'Marconi Union',
-        cpuPercent: 87,
-        highLoad: true,
-        lastAction: { action: 'playPause', result: 'unverified', permissionRequired: false },
-      }
-    : {};
+const connectedDesk: Partial<DeskStatusDto> = connectedScenario()
+  ? {
+      media: 'playing',
+      mediaTitle: 'Weightless',
+      mediaArtist: 'Marconi Union',
+      cpuPercent: 87,
+      highLoad: true,
+      lastAction: { action: 'playPause', result: 'unverified', permissionRequired: false },
+    }
+  : {};
 
 let deskStatus: DeskStatusDto = {
   mode: 'buddy',
@@ -475,7 +519,7 @@ const mockStartedAt = Date.now();
 
 /** Richer under `?mock=connected`; every figure is unknown (null) when disconnected. */
 export function mockGetDiagnostics(): DiagnosticsDto {
-  const connected = scenario() === 'connected';
+  const connected = connectedScenario();
   const seconds = Math.floor((Date.now() - mockStartedAt) / 1000);
   return {
     versions: {

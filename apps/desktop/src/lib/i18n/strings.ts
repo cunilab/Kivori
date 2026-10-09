@@ -49,6 +49,8 @@ export const strings = {
       incompatible: 'Kivori needs a firmware update',
       incompatibleBody: 'This device speaks a protocol this app does not support.',
       openDevice: 'Open Device',
+      updateAvailable: 'Update available',
+      updateAvailableBody: 'Your Kivori can be updated. Open Device to install it.',
       changeView: 'Change view',
       sayHi: 'Say hi',
       showing: 'Showing',
@@ -438,6 +440,32 @@ export const strings = {
     connect: 'Connect your device to enable flashing.',
     caution: 'This replaces the device firmware. Keep USB connected until the update finishes.',
     failed: 'Unable to start the firmware update.',
+    bundled: 'Firmware in this app',
+    unknownVersion: 'Unknown',
+    advice: {
+      upToDate: 'Your Kivori is up to date.',
+      updateAvailable: 'Update available. This app includes newer firmware than your Kivori runs.',
+      deviceNewer: 'Your Kivori has newer firmware than this app includes. No update is needed.',
+      unknown: '',
+    },
+    failures: {
+      toolMissing:
+        'The update tool is missing from this installation. Reinstall Kivori, then try again. If your antivirus removed it, allow it and reinstall.',
+      portBusy:
+        'Another program is using your Kivori. Close other apps that use USB serial devices (such as a serial monitor), then try again.',
+      noDownloadMode:
+        'Your Kivori did not switch to update mode. Use the BOOT button to restore it.',
+      timeout: 'The update took too long and was stopped. Keep USB connected and try again.',
+      cancelled: 'The update was cancelled. Your Kivori may need to be restored.',
+      imageUnavailable:
+        'The firmware could not be prepared. This build of Kivori has no usable firmware.',
+      reconnectTimedOut:
+        'The update finished, but Kivori could not confirm your device afterwards. Unplug it, plug it in again, and check the Device page.',
+      unknown:
+        'The update did not finish. If your Kivori no longer works, restore it with the BOOT button.',
+    },
+    restore: 'Restore with the BOOT button',
+    restoreHint: 'Use this if the update failed or your Kivori shows the wrong firmware.',
     confirmTitle: 'Flash Kivori firmware?',
     confirm: 'Flash now',
     cancel: 'Cancel',
@@ -447,6 +475,18 @@ export const strings = {
       reconnecting: 'Reconnect',
       succeeded: 'Done',
     },
+  },
+  recovery: {
+    title: 'Restore your Kivori',
+    description:
+      'This puts the firmware bundled with this app back on your Kivori. Connect only one Kivori.',
+    steps: [
+      'Unplug your Kivori from the computer.',
+      'Hold down the BOOT button, and keep holding it while you plug the USB cable back in.',
+      'Let go of the BOOT button, then choose Restore now.',
+    ],
+    cancel: 'Cancel',
+    confirm: 'Restore now',
   },
   testAction: {
     heading: 'Test action',

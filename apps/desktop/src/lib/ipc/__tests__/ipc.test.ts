@@ -42,6 +42,7 @@ import {
   DESK_ACTIONS,
   HOST_AVAILABILITIES,
   HOST_FOCUS,
+  FLASH_FAILURES,
   HOST_PRESENCES,
   HOST_INPUT_PERMISSIONS,
   HOST_MEDIA,
@@ -49,6 +50,7 @@ import {
   PROFILE_IDS,
   ROTATE_SPEC_KINDS,
   STEP_SPEC_KINDS,
+  UPDATE_ADVICE,
 } from '../types';
 import type { MacroSpec } from '../types';
 import {
@@ -57,6 +59,7 @@ import {
   parseConfig,
   parseConnectionStatus,
   parseDiagnostics,
+  parseFirmwareStatus,
 } from '../validate';
 
 afterEach(() => {
@@ -600,6 +603,8 @@ describe('Rust/TS token vocabulary', () => {
     expect([...HOST_FOCUS]).toEqual(vocabulary.hostFocus);
     expect([...HOST_PRESENCES]).toEqual(vocabulary.hostPresence);
     expect([...HOST_INPUT_PERMISSIONS]).toEqual(vocabulary.hostInputPermission);
+    expect([...FLASH_FAILURES]).toEqual(vocabulary.flashFailures);
+    expect([...UPDATE_ADVICE]).toEqual(vocabulary.updateAdvice);
   });
 });
 
@@ -619,6 +624,34 @@ describe('parseDiagnostics', () => {
       parseDiagnostics({ ...good, health: { ...good.health, sequenceGaps: -1 } }),
     ).toThrow();
     expect(() => parseDiagnostics(null)).toThrow();
+  });
+});
+
+describe('parseFirmwareStatus', () => {
+  const good = {
+    available: true,
+    phase: 'failed',
+    message: 'x',
+    imageSize: 10,
+    failure: 'portBusy',
+    bundledVersion: '1.3.0',
+    advice: 'updateAvailable',
+  };
+
+  it('accepts every failure token and a null one', () => {
+    for (const failure of FLASH_FAILURES) {
+      expect(parseFirmwareStatus({ ...good, failure }).failure).toBe(failure);
+    }
+    expect(
+      parseFirmwareStatus({ ...good, failure: null, bundledVersion: null }).failure,
+    ).toBeNull();
+  });
+
+  it('rejects unknown tokens and a missing payload', () => {
+    expect(() => parseFirmwareStatus({ ...good, failure: 'meltdown' })).toThrow();
+    expect(() => parseFirmwareStatus({ ...good, advice: 'maybe' })).toThrow();
+    expect(() => parseFirmwareStatus({ ...good, phase: 'exploding' })).toThrow();
+    expect(() => parseFirmwareStatus(null)).toThrow();
   });
 });
 

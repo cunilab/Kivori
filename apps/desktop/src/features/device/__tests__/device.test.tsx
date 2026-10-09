@@ -7,7 +7,15 @@ import type { ConnectionStatusDto } from '../../../lib/ipc/types';
 
 vi.mock('../../../lib/ipc', () => ({
   getFirmwareStatus: () =>
-    Promise.resolve({ available: true, phase: 'idle', message: 'Ready.', imageSize: 1024 }),
+    Promise.resolve({
+      available: true,
+      phase: 'idle',
+      message: 'Ready.',
+      imageSize: 1024,
+      failure: null,
+      bundledVersion: null,
+      advice: 'unknown',
+    }),
   flashFirmware: vi.fn(),
   getDiagnostics: () => new Promise(() => {}),
 }));
