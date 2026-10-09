@@ -4,6 +4,11 @@
 import {
   ACTION_SPEC_KINDS,
   ACTIVITY_EVENT_TYPES,
+  CATALOG_AVAILABILITIES,
+  CATALOG_PARAMS,
+  CATALOG_SCOPES,
+  CATALOG_SLOTS,
+  CATALOG_VERIFICATIONS,
   CONFIG_NOTICES,
   DESK_ACTIONS,
   DESK_RESULTS,
@@ -15,6 +20,7 @@ import {
   PROFILE_IDS,
 } from './types';
 import type {
+  ActionCatalogEntryDto,
   ActionSpec,
   ActivityEventDto,
   ButtonDto,
@@ -196,6 +202,31 @@ function profileDto(raw: unknown): ProfileConfigDto {
     hold: slotDto(r.hold),
     buttons: [buttonDto(r.buttons[0]), buttonDto(r.buttons[1]), buttonDto(r.buttons[2])],
   };
+}
+
+/** Validates the action catalog, throwing on any unknown token or malformed value. */
+export function parseCatalog(raw: unknown): ActionCatalogEntryDto[] {
+  if (!Array.isArray(raw)) throw new Error('Kivori: invalid action catalog.');
+  return raw.map((item: unknown) => {
+    const r = record('catalog entry', item);
+    if (typeof r.id !== 'string' || r.id === '') throw new Error('Kivori: invalid catalog id.');
+    if (typeof r.runsWhenProtected !== 'boolean') {
+      throw new Error('Kivori: invalid runsWhenProtected.');
+    }
+    if (r.reason !== null && typeof r.reason !== 'string') {
+      throw new Error('Kivori: invalid catalog reason.');
+    }
+    return {
+      id: r.id,
+      slot: oneOf('catalog slot', CATALOG_SLOTS, r.slot),
+      scope: oneOf('catalog scope', CATALOG_SCOPES, r.scope),
+      verification: oneOf('catalog verification', CATALOG_VERIFICATIONS, r.verification),
+      params: oneOf('catalog params', CATALOG_PARAMS, r.params),
+      availability: oneOf('catalog availability', CATALOG_AVAILABILITIES, r.availability),
+      reason: r.reason,
+      runsWhenProtected: r.runsWhenProtected,
+    };
+  });
 }
 
 /** Validates a `ConfigDto`, throwing on any unknown token or malformed value. */

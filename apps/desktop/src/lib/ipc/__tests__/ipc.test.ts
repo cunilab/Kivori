@@ -26,13 +26,14 @@ import {
   onActivityLog,
   getDeskStatus,
   onDeskStatus,
-  runTestAction,
+  listActionCatalog,
+  testAction,
   setDisplayMode,
   renderPreviewFrame,
 } from '../index';
 import vocabulary from './vocabulary.json';
 import { COMPANION_STATES, CONTROL_REFS, DESK_ACTIONS, PREVIEW_DIM, PROFILE_IDS } from '../types';
-import { MAX_MEDIA_TEXT, parseConfig } from '../validate';
+import { MAX_MEDIA_TEXT, parseCatalog, parseConfig } from '../validate';
 
 afterEach(() => {
   delete (window as Window & { __TAURI_INTERNALS__?: object }).__TAURI_INTERNALS__;
@@ -121,12 +122,11 @@ describe('desk ipc (Tauri)', () => {
     await expect(getDeskStatus()).resolves.toEqual(validDesk);
     tauri.invoke.mockResolvedValue(undefined);
     await setDisplayMode('media');
-    await runTestAction({ action: 'shortcut', shortcut: 'Ctrl+M' });
+    await testAction({ kind: 'shortcut', keys: 'Ctrl+M' });
     expect(tauri.invoke).toHaveBeenCalledWith('get_desk_status', undefined);
     expect(tauri.invoke).toHaveBeenCalledWith('set_display_mode', { mode: 'media' });
-    expect(tauri.invoke).toHaveBeenCalledWith('run_test_action', {
-      action: 'shortcut',
-      shortcut: 'Ctrl+M',
+    expect(tauri.invoke).toHaveBeenCalledWith('test_action', {
+      action: { kind: 'shortcut', keys: 'Ctrl+M' },
     });
   });
 
@@ -151,6 +151,17 @@ describe('desk ipc (Tauri)', () => {
     enterTauri();
     tauri.invoke.mockResolvedValue({ ...validDesk, ...patch });
     await expect(getDeskStatus()).rejects.toThrow();
+  });
+
+  it.each(['appVolume', 'appMute', 'macro'])('accepts the %s token in a status', async (token) => {
+    enterTauri();
+    const status = {
+      ...validDesk,
+      holdAction: token,
+      lastAction: { action: token, result: 'error', permissionRequired: false },
+    };
+    tauri.invoke.mockResolvedValue(status);
+    await expect(getDeskStatus()).resolves.toEqual(status);
   });
 
   it('accepts unbound Press and Hold', async () => {
@@ -207,12 +218,85 @@ describe('desk ipc (Tauri)', () => {
       outcome: 'observed',
       metadata: { retryCount: 0, elapsedMs: 0, action: 'playPause' },
     }));
+    // The new desktop-only tokens are valid activity metadata; a launch target never is.
+    const tokens = ['appVolume', 'appMute', 'macro'].map((action, i) => ({
+      ...base,
+      id: 100 + i,
+      type: 'deskActionConfirmed',
+      outcome: 'observed',
+      metadata: { retryCount: 0, elapsedMs: 0, action },
+    }));
+    good.push(...tokens);
     const bad = [
       { ...base, type: 'deskActionExploded', outcome: 'observed', metadata: null },
       { ...base, type: 'deskActionFailed', outcome: 'observed', metadata: { action: 'rm -rf' } },
     ];
     tauri.invoke.mockResolvedValue([...good, ...bad]);
     await expect(getActivityLog(10)).resolves.toEqual(good);
+  });
+});
+
+describe('action catalog ipc', () => {
+  const entry = {
+    id: 'launch',
+    slot: 'discrete',
+    scope: 'launch',
+    verification: 'started',
+    params: 'target',
+    availability: 'available',
+    reason: null,
+    runsWhenProtected: false,
+  };
+
+  it('parses the mock catalog: every action once, App Volume and App Mute unsupported', async () => {
+    const catalog = await listActionCatalog();
+    expect(() => parseCatalog(catalog)).not.toThrow();
+    expect(new Set(catalog.map((e) => e.id)).size).toBe(catalog.length);
+    for (const id of ['appVolume', 'appMute']) {
+      expect(catalog.find((e) => e.id === id)).toMatchObject({
+        availability: 'unsupported',
+        reason: 'Coming soon',
+      });
+    }
+    expect(catalog.find((e) => e.id === 'launch')).toMatchObject({ verification: 'started' });
+    expect(catalog.find((e) => e.id === 'shortcut')?.runsWhenProtected).toBe(false);
+    expect(catalog.find((e) => e.id === 'systemMute')?.runsWhenProtected).toBe(true);
+  });
+
+  it('uses the exact command name and validates the payload', async () => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} });
+    tauri.invoke.mockResolvedValue([entry]);
+    await expect(listActionCatalog()).resolves.toEqual([entry]);
+    expect(tauri.invoke).toHaveBeenCalledWith('list_action_catalog', undefined);
+  });
+
+  it.each([
+    ['slot', { slot: 'knob' }],
+    ['scope', { scope: 'galaxy' }],
+    ['verification', { verification: 'certain' }],
+    ['params', { params: 'path' }],
+    ['availability', { availability: 'maybe' }],
+    ['reason type', { reason: 3 }],
+    ['id', { id: '' }],
+    ['runsWhenProtected', { runsWhenProtected: 'no' }],
+  ])('rejects an unknown %s', async (_name, patch) => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} });
+    tauri.invoke.mockResolvedValue([{ ...entry, ...patch }]);
+    await expect(listActionCatalog()).rejects.toThrow();
+  });
+
+  it('rejects a catalog that is not a list', () => {
+    expect(() => parseCatalog({})).toThrow();
+  });
+
+  it('mock testAction updates lastAction and rejects an empty shortcut', async () => {
+    await testAction({ kind: 'systemMute' });
+    expect((await getDeskStatus()).lastAction).toEqual({
+      action: 'mute',
+      result: 'stateConfirmed',
+      permissionRequired: false,
+    });
+    await expect(testAction({ kind: 'shortcut', keys: ' ' })).rejects.toThrow();
   });
 });
 

@@ -777,30 +777,89 @@ fn activity_metadata(metadata: &ActivityMetadata) -> ActivityMetadataDto {
     }
 }
 
-/// Every [`desk_action_token`], in the order of `DESK_ACTIONS` in `lib/ipc/types.ts`.
-pub const DESK_ACTION_TOKENS: [&str; 7] = [
-    "volume",
-    "playPause",
-    "mute",
-    "shortcut",
-    "launch",
-    "previousTrack",
-    "nextTrack",
-];
-
 /// The closed webview token for a desk action.
 #[must_use]
-pub const fn desk_action_token(action: kivori_model::desk::ActionKind) -> &'static str {
-    use kivori_model::desk::ActionKind;
-    match action {
-        ActionKind::Volume => "volume",
-        ActionKind::PlayPause => "playPause",
-        ActionKind::Mute => "mute",
-        ActionKind::Shortcut => "shortcut",
-        ActionKind::Launch => "launch",
-        ActionKind::PreviousTrack => "previousTrack",
-        ActionKind::NextTrack => "nextTrack",
-    }
+pub const fn desk_action_token(action: crate::desk::ActionToken) -> &'static str {
+    action.token()
+}
+
+/// One catalog entry for the config UI.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionCatalogEntryDto {
+    pub id: &'static str,
+    /// `rotate` or `discrete`.
+    pub slot: &'static str,
+    /// `system`, `app`, `media`, `keyboard`, `launch` or `macro`.
+    pub scope: &'static str,
+    /// `confirmed`, `started`, `unverified` or `leastOfSteps`.
+    pub verification: &'static str,
+    /// `none`, `app`, `shortcut`, `shortcutPair`, `target` or `macro`.
+    pub params: &'static str,
+    /// `available`, `unsupported` (this OS or build cannot) or `unavailable` (not right now).
+    pub availability: &'static str,
+    /// Why it is not available; `null` when it is.
+    pub reason: Option<String>,
+    pub runs_when_protected: bool,
+}
+
+/// The action catalog for `os`, with availability from `services`.
+#[must_use]
+pub fn action_catalog(
+    os: crate::desk::catalog::Os,
+    services: &crate::desk::catalog::Services,
+) -> Vec<ActionCatalogEntryDto> {
+    use crate::desk::catalog::{Params, Scope, Slot, Verification};
+    use crate::platform::ActionAvailability;
+    crate::desk::catalog::catalog(os, services)
+        .into_iter()
+        .map(|(entry, availability)| {
+            let (availability, reason) = match availability {
+                ActionAvailability::Available { .. } => ("available", None),
+                ActionAvailability::Unsupported { reason } => ("unsupported", Some(reason)),
+                ActionAvailability::NotImplementedYet { target } => (
+                    "unsupported",
+                    Some(format!("Not available on {target} yet")),
+                ),
+                ActionAvailability::RuntimeUnavailable { reason } => ("unavailable", Some(reason)),
+                ActionAvailability::Unknown => {
+                    ("unavailable", Some("Not available right now".to_string()))
+                }
+            };
+            ActionCatalogEntryDto {
+                id: entry.id,
+                slot: match entry.slot {
+                    Slot::Rotate => "rotate",
+                    Slot::Discrete => "discrete",
+                },
+                scope: match entry.scope {
+                    Scope::System => "system",
+                    Scope::App => "app",
+                    Scope::Media => "media",
+                    Scope::Keyboard => "keyboard",
+                    Scope::Launch => "launch",
+                    Scope::Macro => "macro",
+                },
+                verification: match entry.verification {
+                    Verification::Confirmed => "confirmed",
+                    Verification::Started => "started",
+                    Verification::Unverified => "unverified",
+                    Verification::LeastOfSteps => "leastOfSteps",
+                },
+                params: match entry.params {
+                    Params::None => "none",
+                    Params::App => "app",
+                    Params::Shortcut => "shortcut",
+                    Params::ShortcutPair => "shortcutPair",
+                    Params::Target => "target",
+                    Params::Macro => "macro",
+                },
+                availability,
+                reason,
+                runs_when_protected: entry.runs_when_protected,
+            }
+        })
+        .collect()
 }
 
 fn diagnostic_metadata_empty() -> ActivityMetadataDto {
@@ -1022,7 +1081,7 @@ const fn media_token(media: kivori_model::desk::MediaStatus) -> &'static str {
 }
 
 fn slot_token(slot: &crate::desk::Slot) -> Option<&'static str> {
-    slot.action.as_ref().map(|a| desk_action_token(a.kind()))
+    slot.action.as_ref().map(|a| desk_action_token(a.token()))
 }
 
 fn button_tokens(bindings: &crate::desk::Bindings) -> [Option<&'static str>; 3] {
@@ -1323,6 +1382,6 @@ pub fn vocabulary_json() -> serde_json::Value {
     serde_json::json!({
         "profileIds": crate::config::ProfileId::ALL.map(crate::config::ProfileId::token),
         "controls": crate::config::resolve::CONTROL_TOKENS,
-        "deskActions": DESK_ACTION_TOKENS,
+        "deskActions": crate::desk::ActionToken::ALL.map(crate::desk::ActionToken::token),
     })
 }

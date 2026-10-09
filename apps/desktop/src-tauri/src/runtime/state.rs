@@ -35,8 +35,9 @@ pub enum DeviceCommand {
     Refresh,
     /// Show another full-screen view on the device.
     SetDisplayMode(kivori_model::desk::DisplayMode),
-    /// Run one desk action now, exactly as if its control fired (Device Studio test action).
-    RunAction(crate::desk::Action),
+    /// Try one desk action now, exactly as if its control fired (the Test button). A protected
+    /// foreground still suspends everything but system actions.
+    TestAction(crate::desk::Action),
 }
 
 /// Tauri-managed application state (`Send + Sync`, accessed via `State<'_, AppState>`).

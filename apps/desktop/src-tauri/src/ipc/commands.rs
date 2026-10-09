@@ -322,39 +322,25 @@ pub fn set_display_mode(app: State<'_, AppState>, mode: String) -> Result<(), St
     app.send_command(DeviceCommand::SetDisplayMode(mode))
 }
 
-/// Runs one desk action now (dev-only Device Studio test action). Inputs are validated here, at
-/// the trust boundary: a shortcut must parse, a launch target must be a plain bounded string.
+/// The action catalog: what can be bound, how each is verified, and what is available here.
+#[tauri::command]
+pub fn list_action_catalog() -> Vec<dto::ActionCatalogEntryDto> {
+    use crate::desk::catalog::{Os, Services};
+    let os = Os::current();
+    dto::action_catalog(os, &Services::expected(os))
+}
+
+/// Tries one action now, exactly as if its control fired (all builds). The spec is validated
+/// here, at the trust boundary, with the same rules as saving a binding. The outcome arrives via
+/// `desk://status` `lastAction`. A protected foreground refuses everything but system actions.
 ///
 /// # Errors
-/// Returns an error string for an unknown action, a missing or invalid shortcut or target, or an
-/// unavailable device runtime.
-#[cfg(feature = "device-studio")]
+/// Returns an error string for an invalid spec or an unavailable device runtime.
 #[tauri::command]
-pub fn run_test_action(
+pub fn test_action(
     app: State<'_, AppState>,
-    action: String,
-    shortcut: Option<String>,
-    target: Option<String>,
+    action: crate::config::ActionSpec,
 ) -> Result<(), String> {
-    use crate::desk::Action;
-    let action = match action.as_str() {
-        "playPause" => Action::PlayPause,
-        "mute" => Action::ToggleMute,
-        "shortcut" => Action::Shortcut(
-            shortcut
-                .ok_or("a shortcut action needs a shortcut")?
-                .parse()
-                .map_err(|e: crate::platform::shortcut::ShortcutError| e.to_string())?,
-        ),
-        "launch" => {
-            let target = target.ok_or("a launch action needs an application")?;
-            let valid = crate::platform::launch::validate_target(&target).map_err(|e| match e {
-                crate::platform::ActionError::Failed(reason) => reason,
-                _ => "not a valid application".to_string(),
-            })?;
-            Action::Launch(valid.to_string())
-        }
-        other => return Err(format!("unknown action: {other}")),
-    };
-    app.send_command(DeviceCommand::RunAction(action))
+    let action = crate::config::resolve::resolve_action(&action).map_err(str::to_string)?;
+    app.send_command(DeviceCommand::TestAction(action))
 }

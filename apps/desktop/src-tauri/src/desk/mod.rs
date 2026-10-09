@@ -7,6 +7,7 @@
 //! it shows changes (docs/product.md, actions and confirmation).
 
 pub mod actions;
+pub mod catalog;
 pub mod profile;
 
 use std::sync::Arc;
@@ -26,6 +27,7 @@ use crate::platform::{
     VolumeBackend, VolumeChange,
 };
 pub use actions::{Action, ActionWorker, Bindings, ButtonSlots, Finished, Outcome, Platform, Slot};
+pub use catalog::ActionToken;
 use kivori_model::input::Direction;
 use profile::{Context, Resolved, RotateBinding};
 
@@ -40,7 +42,7 @@ pub const STATUS_REFRESH: Duration = Duration::from_secs(1);
 #[derive(Debug, Clone, Copy)]
 struct Pending {
     id: u64,
-    action: ActionKind,
+    action: ActionToken,
     started: Duration,
     processing_sent: bool,
 }
@@ -54,7 +56,7 @@ pub struct FeedbackLadder {
 
 impl FeedbackLadder {
     /// Starts tracking a new deliberate action, replacing any older one (no queue). Returns its id.
-    pub fn start(&mut self, action: ActionKind, now: Duration) -> u64 {
+    pub fn start(&mut self, action: ActionToken, now: Duration) -> u64 {
         self.next_id += 1;
         self.pending = Some(Pending {
             id: self.next_id,
@@ -70,9 +72,15 @@ impl FeedbackLadder {
         let pending = self.pending.filter(|p| p.id == id)?;
         self.pending = None;
         Some(ActionFeedback {
-            action: pending.action,
+            action: pending.action.wire_kind(),
             kind,
         })
+    }
+
+    /// The action `poll` would report on, if one is in flight.
+    #[must_use]
+    pub fn pending_token(&self) -> Option<ActionToken> {
+        self.pending.map(|p| p.action)
     }
 
     /// Time-driven steps: Processing once at [`PROCESSING_AFTER`], Unverified at
@@ -81,7 +89,7 @@ impl FeedbackLadder {
         let pending = self.pending.as_mut()?;
         let age = now.saturating_sub(pending.started);
         if age >= ACTION_TIMEOUT {
-            let action = pending.action;
+            let action = pending.action.wire_kind();
             self.pending = None;
             return Some(ActionFeedback {
                 action,
@@ -91,7 +99,7 @@ impl FeedbackLadder {
         if age >= PROCESSING_AFTER && !pending.processing_sent {
             pending.processing_sent = true;
             return Some(ActionFeedback {
-                action: pending.action,
+                action: pending.action.wire_kind(),
                 kind: FeedbackKind::Processing,
             });
         }
@@ -222,7 +230,7 @@ pub struct DeskOutput {
 /// The last action outcome, for the desktop UI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LastAction {
-    pub action: ActionKind,
+    pub action: ActionToken,
     pub kind: FeedbackKind,
     pub permission_required: bool,
 }
@@ -411,14 +419,22 @@ impl DeskRuntime {
         }
     }
 
-    /// Runs one deliberate action (the switch or a desktop test action).
-    pub fn run(
+    /// Runs one action the user asked to try from the desktop, exactly as if its control fired.
+    /// It never bypasses a protected context: a non-system action is refused there, no key sent.
+    pub fn test(
         &mut self,
         action: Action,
         now: Duration,
         observe: &mut impl FnMut(SessionActivity),
     ) {
-        self.run_within(action, now, None, observe);
+        // Deliberate, like device input: classify Protected from the live foreground first.
+        self.poll_focus(now);
+        self.context.commit_pending();
+        if self.context.protected() && !action.is_system() {
+            self.refuse(action.token(), now, observe);
+        } else {
+            self.run_within(action, now, None, observe);
+        }
     }
 
     /// [`Self::run`] for an action driven by device input: it must start within `remaining`
@@ -430,13 +446,13 @@ impl DeskRuntime {
         remaining: Option<Duration>,
         observe: &mut impl FnMut(SessionActivity),
     ) {
-        let kind = action.kind();
-        let id = self.ladder.start(kind, now);
-        observe(desk_activity(ActivityEventKind::DeskActionRequested, kind));
+        let token = action.token();
+        let id = self.ladder.start(token, now);
+        observe(desk_activity(ActivityEventKind::DeskActionRequested, token));
         let deadline = remaining.map(|remaining| Instant::now() + remaining);
         if !self.worker.request_by(id, action, deadline) {
             // The worker is gone: say so on the device too, never stay silent (gate 9).
-            self.fail(id, kind, observe);
+            self.fail(id, token, observe);
         }
     }
 
@@ -444,17 +460,17 @@ impl DeskRuntime {
     /// never silently (invariant 19).
     fn refuse(
         &mut self,
-        kind: ActionKind,
+        token: ActionToken,
         now: Duration,
         observe: &mut impl FnMut(SessionActivity),
     ) {
-        let id = self.ladder.start(kind, now);
-        observe(desk_activity(ActivityEventKind::DeskActionRequested, kind));
-        self.fail(id, kind, observe);
+        let id = self.ladder.start(token, now);
+        observe(desk_activity(ActivityEventKind::DeskActionRequested, token));
+        self.fail(id, token, observe);
     }
 
-    fn fail(&mut self, id: u64, kind: ActionKind, observe: &mut impl FnMut(SessionActivity)) {
-        self.finish(kind, Outcome::error(), observe);
+    fn fail(&mut self, id: u64, token: ActionToken, observe: &mut impl FnMut(SessionActivity)) {
+        self.finish(token, Outcome::error(), observe);
         if let Some(feedback) = self.ladder.on_outcome(id, FeedbackKind::Error) {
             self.outbox.push(feedback);
         }
@@ -533,7 +549,7 @@ impl DeskRuntime {
             _ => match self.context.resolve(input) {
                 Resolved::Nothing => {}
                 Resolved::Run(action) => self.run_within(action, now, remaining, observe),
-                Resolved::Suspended(action) => self.refuse(action.kind(), now, observe),
+                Resolved::Suspended(action) => self.refuse(action.token(), now, observe),
                 // Not an action: the new labels are the feedback.
                 // ponytail: not in the activity log, no event kind fits; add one if users ask.
                 Resolved::CyclePin => self.context.cycle_pin(),
@@ -579,7 +595,7 @@ impl DeskRuntime {
             return;
         }
         self.knob_failed = Some(id);
-        self.finish(ActionKind::Shortcut, outcome, observe);
+        self.finish(ActionToken::Shortcut, outcome, observe);
         self.outbox.push(ActionFeedback {
             action: ActionKind::Shortcut,
             kind: FeedbackKind::Error,
@@ -670,11 +686,12 @@ impl DeskRuntime {
                 self.outbox.push(feedback);
             }
         }
+        let in_flight = self.ladder.pending_token();
         if let Some(feedback) = self.ladder.poll(now) {
-            if feedback.kind == FeedbackKind::Unverified {
+            if let (FeedbackKind::Unverified, Some(token)) = (feedback.kind, in_flight) {
                 observe(desk_activity(
                     ActivityEventKind::DeskActionUnverified,
-                    feedback.action,
+                    token,
                 ));
             }
             self.outbox.push(feedback);
@@ -689,7 +706,7 @@ impl DeskRuntime {
 
     fn finish(
         &mut self,
-        action: ActionKind,
+        action: ActionToken,
         outcome: Outcome,
         observe: &mut impl FnMut(SessionActivity),
     ) {
@@ -712,7 +729,7 @@ impl DeskRuntime {
     }
 }
 
-fn desk_activity(kind: ActivityEventKind, action: ActionKind) -> SessionActivity {
+fn desk_activity(kind: ActivityEventKind, action: ActionToken) -> SessionActivity {
     SessionActivity::new(kind, Some(ActivityMetadata::DeskAction { action }))
 }
 
@@ -750,7 +767,7 @@ mod tests {
     #[test]
     fn a_fast_outcome_is_shown_directly() {
         let mut ladder = FeedbackLadder::default();
-        let id = ladder.start(ActionKind::Mute, ms(0));
+        let id = ladder.start(ActionToken::Mute, ms(0));
         assert_eq!(ladder.poll(ms(100)), None);
         assert_eq!(
             ladder.on_outcome(id, FeedbackKind::StateConfirmed),
@@ -765,7 +782,7 @@ mod tests {
     #[test]
     fn a_slow_action_shows_processing_once_then_its_outcome() {
         let mut ladder = FeedbackLadder::default();
-        let id = ladder.start(ActionKind::Launch, ms(1_000));
+        let id = ladder.start(ActionToken::Launch, ms(1_000));
         assert_eq!(ladder.poll(ms(1_499)), None);
         assert_eq!(
             ladder.poll(ms(1_500)).map(|f| f.kind),
@@ -783,7 +800,7 @@ mod tests {
     #[test]
     fn a_timeout_is_unverified_never_error_and_a_late_outcome_is_not_shown() {
         let mut ladder = FeedbackLadder::default();
-        let id = ladder.start(ActionKind::Launch, ms(0));
+        let id = ladder.start(ActionToken::Launch, ms(0));
         let _ = ladder.poll(ms(600));
         assert_eq!(
             ladder.poll(ms(1_500)).map(|f| f.kind),
@@ -795,8 +812,8 @@ mod tests {
     #[test]
     fn newer_input_replaces_older_feedback() {
         let mut ladder = FeedbackLadder::default();
-        let old = ladder.start(ActionKind::Launch, ms(0));
-        let new = ladder.start(ActionKind::PlayPause, ms(100));
+        let old = ladder.start(ActionToken::Launch, ms(0));
+        let new = ladder.start(ActionToken::PlayPause, ms(100));
         assert_eq!(
             ladder.on_outcome(old, FeedbackKind::ExecutionConfirmed),
             None
@@ -812,7 +829,7 @@ mod tests {
     #[test]
     fn a_session_end_drops_the_pending_action() {
         let mut ladder = FeedbackLadder::default();
-        let id = ladder.start(ActionKind::Mute, ms(0));
+        let id = ladder.start(ActionToken::Mute, ms(0));
         ladder.clear();
         assert_eq!(ladder.poll(ms(5_000)), None);
         assert_eq!(ladder.on_outcome(id, FeedbackKind::StateConfirmed), None);
@@ -1043,6 +1060,56 @@ mod tests {
             sent(&synth).is_empty(),
             "no key ever reached the protected surface"
         );
+    }
+
+    #[test]
+    fn a_test_action_never_bypasses_protected() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        *fg.0.lock().unwrap() = Foreground::Protected;
+        let shortcut: Shortcut = "Ctrl+M".parse().unwrap();
+        let mut log = Vec::new();
+        desk.test(Action::Shortcut(shortcut), ms(0), &mut |o| log.push(o.kind));
+        desk.test(Action::Launch("Calculator".into()), ms(1), &mut |o| {
+            log.push(o.kind);
+        });
+        let out = desk.tick(ms(2), &mut |_| {});
+        assert_eq!(
+            out.feedback.last().map(|f| f.kind),
+            Some(FeedbackKind::Error)
+        );
+        assert_eq!(
+            log,
+            [
+                ActivityEventKind::DeskActionRequested,
+                ActivityEventKind::DeskActionFailed,
+                ActivityEventKind::DeskActionRequested,
+                ActivityEventKind::DeskActionFailed
+            ]
+        );
+        assert_eq!(
+            desk.last_action().map(|l| (l.action, l.kind)),
+            Some((ActionToken::Launch, FeedbackKind::Error))
+        );
+        // A system action still runs, and no key ever reached the protected surface.
+        desk.test(Action::ToggleMute, ms(10), &mut |_| {});
+        let feedback = settle(&mut desk, ms(20), |f| !f.is_empty());
+        assert_eq!(feedback[0].kind, FeedbackKind::StateConfirmed);
+        assert!(sent(&synth).is_empty());
+    }
+
+    #[test]
+    fn a_test_action_runs_in_an_ordinary_app() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        focus(&fg, "chrome.exe");
+        let shortcut: Shortcut = "Ctrl+M".parse().unwrap();
+        desk.test(Action::Shortcut(shortcut), ms(0), &mut |_| {});
+        let feedback = settle(&mut desk, ms(10), |f| !f.is_empty());
+        assert_eq!(feedback[0].kind, FeedbackKind::Unverified);
+        assert_eq!(sent(&synth), ["Ctrl+M"]);
     }
 
     #[test]

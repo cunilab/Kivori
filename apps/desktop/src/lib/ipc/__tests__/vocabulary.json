@@ -15,7 +15,10 @@
     "shortcut",
     "launch",
     "previousTrack",
-    "nextTrack"
+    "nextTrack",
+    "appVolume",
+    "appMute",
+    "macro"
   ],
   "profileIds": ["general", "browser", "code", "media", "zoom", "teams"]
 }

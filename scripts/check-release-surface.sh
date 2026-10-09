@@ -49,7 +49,7 @@ present() {
   done
 }
 
-DESKTOP_DEV_SURFACE=(render_preview_frame mirror_state run_test_action open_preview_stream close_preview_stream
+DESKTOP_DEV_SURFACE=(render_preview_frame mirror_state open_preview_stream close_preview_stream
   ack_preview_frame debug_payload_hex)
 # Host-sim adapters AND the Wokwi self-test harness/probes are development-only surface.
 FIRMWARE_SIM_SURFACE=(SimPipe CaptureDisplay VirtualClock LoopbackTransport TileProbe KIVORI-SIM
@@ -69,10 +69,12 @@ echo "[1/8] desktop, production features (Device Studio + debug-payloads OFF)…
 cargo build -q -p kivori-desktop --no-default-features
 [ -f "$DESKTOP_BIN" ] || { echo "error: $DESKTOP_BIN not found" >&2; exit 2; }
 absent "the production desktop binary" "$DESKTOP_BIN" "${DESKTOP_DEV_SURFACE[@]}"
+# Test Action is production surface (the Controls page's Test button), not Device Studio only.
+present "the production desktop binary" "$DESKTOP_BIN" test_action list_action_catalog
 
 echo "[2/8] desktop positive control (Device Studio ON)…"
 cargo build -q -p kivori-desktop
-present "the dev desktop binary" "$DESKTOP_BIN" render_preview_frame mirror_state run_test_action open_preview_stream
+present "the dev desktop binary" "$DESKTOP_BIN" render_preview_frame mirror_state open_preview_stream
 
 echo "[3/8] firmware, production features (host-sim OFF, riscv target)…"
 (cd firmware/esp32-c3 && cargo build -q --lib)

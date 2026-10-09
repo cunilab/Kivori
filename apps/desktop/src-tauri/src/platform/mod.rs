@@ -5,9 +5,9 @@
 //!   * ConfirmationClass   — how well an executed action's outcome can be observed;
 //!   * ActionAvailability  — the derived value the UI consumes.
 //!
-//! A `PlatformCapability` type (a fact about the MACHINE) is intentionally absent:
-//! every action in Slice 002 is one the OS can perform, so such a type would have
-//! no producer. It arrives with the first genuinely OS-restricted action.
+//! A `PlatformCapability` type (a fact about the MACHINE) is intentionally absent: the one
+//! machine fact the UI needs, "this OS cannot do it", is `ActionAvailability::Unsupported`,
+//! decided by the action catalog (`desk::catalog`), not by a probe.
 
 pub mod foreground;
 pub mod launch;
@@ -50,9 +50,19 @@ pub enum ConfirmationClass {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActionAvailability {
-    Available { confirmation: ConfirmationClass },
-    NotImplementedYet { target: &'static str },
-    RuntimeUnavailable { reason: String },
+    Available {
+        confirmation: ConfirmationClass,
+    },
+    NotImplementedYet {
+        target: &'static str,
+    },
+    /// This OS cannot do it (a machine fact, not a gap in Kivori): shown disabled with the reason.
+    Unsupported {
+        reason: String,
+    },
+    RuntimeUnavailable {
+        reason: String,
+    },
     Unknown,
 }
 
