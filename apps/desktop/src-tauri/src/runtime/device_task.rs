@@ -165,7 +165,7 @@ fn device_loop(
         let _ = main_app.run_on_main_thread(run);
     })));
     let backend = Arc::clone(&services.volume);
-    let mut desk = DeskRuntime::new(services).with_display(config.display);
+    let mut desk = DeskRuntime::new(services).with_config(&config);
     let mut last_desk: Option<DeskStatusDto> = None;
     let mut rotary = RotaryPipeline::new(&*backend);
     let mut link: Option<SerialPortLink> = None;
@@ -261,7 +261,7 @@ fn device_loop(
                             ),
                         );
                     }
-                    desk.apply_display(config.display, &mut |observation| {
+                    desk.apply_config(&config, &mut |observation| {
                         record_observations(&app, &activity_log, [observation]);
                     });
                 }

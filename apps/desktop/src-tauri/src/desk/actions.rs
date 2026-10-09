@@ -75,31 +75,71 @@ impl Action {
     }
 }
 
+/// One bindable gesture: what it runs and, optionally, what the device calls it.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Slot {
+    /// `None` = unbound: no label, no action.
+    pub action: Option<Action>,
+    /// What the device calls it when the action's own label says too little ("Reload", not
+    /// `Ctrl+R`). `None` = the action's label.
+    pub label: Option<String>,
+}
+
+impl Slot {
+    #[must_use]
+    pub const fn bound(action: Action) -> Self {
+        Self {
+            action: Some(action),
+            label: None,
+        }
+    }
+
+    #[must_use]
+    pub fn named(action: Action, label: &str) -> Self {
+        Self {
+            action: Some(action),
+            label: Some(label.to_string()),
+        }
+    }
+
+    /// What the device legend shows for this slot (empty = unbound).
+    #[must_use]
+    pub fn device_label(&self) -> String {
+        self.action.as_ref().map_or_else(String::new, |action| {
+            self.label.clone().unwrap_or_else(|| action.label())
+        })
+    }
+}
+
+/// A contextual button's Press and Hold.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ButtonSlots {
+    pub press: Slot,
+    pub hold: Slot,
+}
+
 /// What the push switch and the contextual buttons do in one profile (`profile.rs` owns the knob).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Bindings {
-    pub press: Action,
-    pub hold: Action,
-    /// Press of each contextual button, left to right (`None` = unbound: no label, no action).
-    /// Their Hold is unbound (the middle one pins a profile).
-    pub buttons: [Option<Action>; 3],
-    /// What the device calls each button when the action's own label says too little
-    /// ("Reload", not `Ctrl+R`). `None` = the action's label.
-    pub button_names: [Option<&'static str>; 3],
+    pub press: Slot,
+    pub hold: Slot,
+    /// The three contextual buttons, left to right. The middle one's Hold is reserved for
+    /// pinning a profile and is never bound.
+    pub buttons: [ButtonSlots; 3],
 }
 
 impl Default for Bindings {
     fn default() -> Self {
         Self {
-            press: Action::PlayPause,
-            hold: Action::ToggleMute,
+            press: Slot::bound(Action::PlayPause),
+            hold: Slot::bound(Action::ToggleMute),
             // A media row: the most common use, and every result is honest (Unverified).
-            buttons: [
-                Some(Action::PreviousTrack),
-                Some(Action::PlayPause),
-                Some(Action::NextTrack),
-            ],
-            button_names: [None; 3],
+            buttons: [Action::PreviousTrack, Action::PlayPause, Action::NextTrack].map(|action| {
+                ButtonSlots {
+                    press: Slot::bound(action),
+                    hold: Slot::default(),
+                }
+            }),
         }
     }
 }

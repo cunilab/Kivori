@@ -9,8 +9,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde_json::Value;
 
 use super::migrate::{migrate, LoadError};
+use super::resolve::resolve;
 use super::schema::ConfigFile;
 use super::ResolvedConfig;
+use crate::desk::profile::builtins;
 
 const FILE: &str = "config.json";
 const TMP: &str = "config.json.tmp";
@@ -60,6 +62,8 @@ pub struct ConfigStore {
     /// `None` = nowhere to persist (defaults only; every save fails).
     dir: Option<PathBuf>,
     file: ConfigFile,
+    /// `file` layered over the built-ins; always in step with it.
+    resolved: Arc<ResolvedConfig>,
     /// Counts successful saves and resets in this process.
     revision: u64,
     notice: Option<ConfigNotice>,
@@ -80,6 +84,7 @@ impl ConfigStore {
         let mut store = Self {
             dir: Some(dir.to_path_buf()),
             file: ConfigFile::default(),
+            resolved: Arc::default(),
             revision: 0,
             notice: None,
         };
@@ -90,12 +95,22 @@ impl ConfigStore {
             Read::Bytes(bytes) => serde_json::from_slice::<Value>(&bytes)
                 .map_err(|_| LoadError::Corrupt)
                 .and_then(migrate),
-        };
+        }
+        // A file whose overrides do not resolve is as unusable as one that does not parse.
+        .and_then(|(file, from)| {
+            resolve(builtins(), &file)
+                .map(|resolved| (file, resolved, from))
+                .map_err(|_| LoadError::Corrupt)
+        });
         match loaded {
-            Ok((file, None)) => store.file = file,
-            Ok((file, Some(from))) => {
+            Ok((file, resolved, None)) => {
+                store.file = file;
+                store.resolved = Arc::new(resolved);
+            }
+            Ok((file, resolved, Some(from))) => {
                 let _ = fs::copy(&path, dir.join(format!("config.v{from}.bak")));
                 store.file = file;
+                store.resolved = Arc::new(resolved);
                 // A failed write-back is harmless: the next open migrates again.
                 let _ = write_atomic(dir, &store.file);
                 store.notice = Some(ConfigNotice::Migrated);
@@ -118,6 +133,7 @@ impl ConfigStore {
         Self {
             dir: None,
             file: ConfigFile::default(),
+            resolved: Arc::default(),
             revision: 0,
             notice: None,
         }
@@ -148,7 +164,7 @@ impl ConfigStore {
 
     #[must_use]
     pub fn resolved(&self) -> Arc<ResolvedConfig> {
-        ResolvedConfig::of(&self.file)
+        Arc::clone(&self.resolved)
     }
 
     /// Validates `next`, writes it atomically, and only then makes it current.
@@ -157,9 +173,11 @@ impl ConfigStore {
     /// [`ConfigError`]; on any error the stored config is unchanged.
     pub fn save(&mut self, next: ConfigFile) -> Result<(), ConfigError> {
         next.validate().map_err(ConfigError::Invalid)?;
+        let resolved = resolve(builtins(), &next)?;
         let dir = self.dir.as_deref().ok_or(ConfigError::Unavailable)?;
         write_atomic(dir, &next).map_err(|()| ConfigError::Io)?;
         self.file = next;
+        self.resolved = Arc::new(resolved);
         self.revision += 1;
         Ok(())
     }
@@ -177,6 +195,7 @@ impl ConfigStore {
         let defaults = ConfigFile::default();
         write_atomic(dir, &defaults).map_err(|()| ConfigError::Io)?;
         self.file = defaults;
+        self.resolved = Arc::default();
         self.revision += 1;
         self.notice = None;
         Ok(())

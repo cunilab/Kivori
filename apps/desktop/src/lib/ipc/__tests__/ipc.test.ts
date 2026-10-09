@@ -17,7 +17,10 @@ import {
   isTauri,
   onConfigChanged,
   resetConfig,
+  resetProfile,
+  setBinding,
   setBuddySettings,
+  setRotate,
   setDisplaySettings,
   listStates,
   onActivityLog,
@@ -27,7 +30,8 @@ import {
   setDisplayMode,
   renderPreviewFrame,
 } from '../index';
-import { COMPANION_STATES, PREVIEW_DIM } from '../types';
+import vocabulary from './vocabulary.json';
+import { COMPANION_STATES, CONTROL_REFS, DESK_ACTIONS, PREVIEW_DIM, PROFILE_IDS } from '../types';
 import { MAX_MEDIA_TEXT, parseConfig } from '../validate';
 
 afterEach(() => {
@@ -99,6 +103,8 @@ const validDesk = {
   pinned: false,
   rotateLabel: 'Volume',
   buttonLabels: ['Previous', 'Play/Pause', 'Next'],
+  buttonHoldActions: [null, null, null],
+  profileId: 'general',
   mediaTitle: 'Weightless',
   mediaArtist: '',
   lastAction: { action: 'shortcut', result: 'unverified', permissionRequired: true },
@@ -137,11 +143,21 @@ describe('desk ipc (Tauri)', () => {
     ['pinned type', { pinned: 'yes' }],
     ['missing rotate label', { rotateLabel: undefined }],
     ['button labels length', { buttonLabels: ['Back'] }],
+    ['hold action', { buttonHoldActions: ['format-disk', null, null] }],
+    ['hold actions length', { buttonHoldActions: [null] }],
+    ['profile id', { profileId: 'gaming' }],
     ['profile type', { profile: 7 }],
   ])('rejects an unknown %s token', async (_name, patch) => {
     enterTauri();
     tauri.invoke.mockResolvedValue({ ...validDesk, ...patch });
     await expect(getDeskStatus()).rejects.toThrow();
+  });
+
+  it('accepts unbound Press and Hold', async () => {
+    enterTauri();
+    const unbound = { ...validDesk, pressAction: null, holdAction: null };
+    tauri.invoke.mockResolvedValue(unbound);
+    await expect(getDeskStatus()).resolves.toEqual(unbound);
   });
 
   it('keeps unknown now-playing as null and clamps an overlong title instead of dropping status', async () => {
@@ -205,6 +221,7 @@ describe('config ipc', () => {
     version: 1,
     revision: 3,
     notice: null,
+    profiles: [],
     display: { defaultView: 'buddy', secondaryView: 'cycle' },
     buddy: { reactions: true, intensity: 'normal' },
   };
@@ -223,6 +240,7 @@ describe('config ipc', () => {
       { ...validConfig, display: { defaultView: 'buddy', secondaryView: 'nope' } },
       { ...validConfig, buddy: { reactions: 'yes', intensity: 'normal' } },
       { ...validConfig, buddy: { reactions: true, intensity: 'extreme' } },
+      { ...validConfig, profiles: 'none' },
     ]) {
       expect(() => parseConfig(bad), JSON.stringify(bad)).toThrow();
     }
@@ -278,5 +296,81 @@ describe('config ipc', () => {
     const reset = await resetConfig();
     expect(reset.display).toEqual({ defaultView: 'buddy', secondaryView: 'system' });
     expect(reset.revision).toBeGreaterThan(saved.revision);
+  });
+
+  it('lists the built-in profiles in the mock and they pass parseConfig', async () => {
+    const config = await resetConfig();
+    expect(() => parseConfig(JSON.parse(JSON.stringify(config)))).not.toThrow();
+    expect(config.profiles.map((p) => p.id)).toEqual([...PROFILE_IDS]);
+    const [general, browser] = config.profiles;
+    expect(general.rotate.spec).toEqual({ kind: 'systemVolume' });
+    expect(browser.buttons[1].hold).toBe('pin');
+    expect(browser.buttons[0].press).toMatchObject({ deviceLabel: 'Back', overridden: false });
+  });
+
+  it('rebinds, unbinds and resets a control in the mock', async () => {
+    await resetConfig();
+    const saved = await setBinding('general', 'button1Hold', {
+      action: { kind: 'systemMute' },
+      label: ' Quiet ',
+    });
+    expect(saved.profiles[0].buttons[0].hold).toMatchObject({
+      action: { kind: 'systemMute' },
+      deviceLabel: 'Quiet',
+      overridden: true,
+    });
+    expect(parseConfig(JSON.parse(JSON.stringify(saved)))).toEqual(saved);
+    const unbound = await setBinding('general', 'press', { action: null });
+    expect(unbound.profiles[0].press).toMatchObject({ action: null, overridden: true });
+    expect((await getDeskStatus()).pressAction).toBeNull();
+    const back = await setBinding('general', 'press', null);
+    expect(back.profiles[0].press).toMatchObject({
+      action: { kind: 'playPause' },
+      overridden: false,
+    });
+    await expect(
+      setBinding('general', 'hold', { action: { kind: 'playPause' }, label: 'x'.repeat(33) }),
+    ).rejects.toThrow('32 characters');
+    await expect(
+      setBinding('code', 'press', { action: { kind: 'shortcut', keys: 'Ctrl+' } }),
+    ).rejects.toThrow('shortcut');
+    const reset = await resetProfile('general');
+    expect(reset.profiles[0].buttons[0].hold).toMatchObject({ overridden: false });
+    const knob = await setRotate('media', {
+      kind: 'shortcuts',
+      cw: 'Ctrl+Right',
+      ccw: 'Ctrl+Left',
+      label: 'Seek',
+    });
+    expect(knob.profiles[3].rotate).toMatchObject({ deviceLabel: 'Seek', overridden: true });
+    expect((await setRotate('media', null)).profiles[3].rotate.overridden).toBe(false);
+  });
+
+  it('calls the binding commands with camelCase arguments inside Tauri', async () => {
+    enterTauri();
+    tauri.invoke.mockResolvedValue(validConfig);
+    await setBinding('zoom', 'button3Hold', null);
+    expect(tauri.invoke).toHaveBeenLastCalledWith('set_binding', {
+      profile: 'zoom',
+      control: 'button3Hold',
+      slot: null,
+    });
+    await setRotate('browser', { kind: 'systemVolume' });
+    expect(tauri.invoke).toHaveBeenLastCalledWith('set_rotate', {
+      profile: 'browser',
+      rotate: { kind: 'systemVolume' },
+    });
+    await resetProfile('code');
+    expect(tauri.invoke).toHaveBeenLastCalledWith('reset_profile', { profile: 'code' });
+  });
+});
+
+// The Rust side asserts it matches vocabulary.json; this asserts the TS side does, so a token
+// added on one side only fails a test instead of making parseDeskStatus throw at runtime.
+describe('Rust/TS token vocabulary', () => {
+  it('matches the shared vocabulary file', () => {
+    expect([...DESK_ACTIONS]).toEqual(vocabulary.deskActions);
+    expect([...PROFILE_IDS]).toEqual(vocabulary.profileIds);
+    expect([...CONTROL_REFS]).toEqual(vocabulary.controls);
   });
 });

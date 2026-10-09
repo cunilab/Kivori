@@ -15,6 +15,8 @@ const desk: DeskStatusDto = {
   holdAction: 'mute',
   doublePressAction: 'nextView',
   buttonActions: ['previousTrack', null, 'nextTrack'],
+  buttonHoldActions: [null, null, null],
+  profileId: 'general',
   profile: null,
   pinned: false,
   rotateLabel: 'Volume',
@@ -33,6 +35,18 @@ describe('ControlsPage', () => {
     expect(screen.getByTestId('gesture-rotate')).toHaveTextContent('System volume');
     expect(screen.getByTestId('active-profile')).toHaveTextContent('General');
     expect(screen.getByTestId('active-profile')).not.toHaveTextContent('Pinned');
+  });
+
+  it('shows Hold rows read-only: bound, unbound, and the middle one reserved for the pin', () => {
+    render(
+      <ControlsPage
+        desk={{ ...desk, holdAction: null, buttonHoldActions: ['mute', null, 'launch'] }}
+      />,
+    );
+    expect(screen.getByTestId('gesture-hold')).toHaveTextContent('Not set');
+    expect(screen.getByTestId('gesture-button1Hold')).toHaveTextContent('Mute');
+    expect(screen.getByTestId('gesture-button2Hold')).toHaveTextContent('Pin profile');
+    expect(screen.getByTestId('gesture-button3Hold')).toHaveTextContent('Launch');
   });
 
   it('names the active profile, the pin, the knob and the shortcut buttons', () => {

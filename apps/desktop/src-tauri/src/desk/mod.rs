@@ -18,14 +18,14 @@ use kivori_model::desk::{
 };
 
 use crate::activity::{ActivityEventKind, ActivityMetadata, SessionActivity};
-use crate::config::{DisplaySettings, SecondaryView};
+use crate::config::{DisplaySettings, ResolvedConfig, SecondaryView};
 use crate::input::LogicalInput;
 use crate::platform::system::{SystemMonitor, SystemProbe, SystemSample};
 use crate::platform::{
     Foreground, ForegroundObserver, LocalClock, MediaObserver, NowPlaying, OsServices, Shortcut,
     VolumeBackend, VolumeChange,
 };
-pub use actions::{Action, ActionWorker, Bindings, Finished, Outcome, Platform};
+pub use actions::{Action, ActionWorker, Bindings, ButtonSlots, Finished, Outcome, Platform, Slot};
 use kivori_model::input::Direction;
 use profile::{Context, Resolved, RotateBinding};
 
@@ -303,6 +303,26 @@ impl DeskRuntime {
         self.publisher.set_mode(display.default_view.mode());
         self.display = display;
         self
+    }
+
+    /// Starts on `config`'s profiles and display, quietly (like [`Self::with_display`]).
+    #[must_use]
+    pub fn with_config(mut self, config: &ResolvedConfig) -> Self {
+        self.context.set_profiles(config.profiles.clone());
+        self.with_display(config.display)
+    }
+
+    /// Adopts a saved config live: new profiles (the pin and the committed app's profile stay),
+    /// the display settings, and a forced label re-send so the device never shows stale labels.
+    /// A knob gesture in progress keeps the keys it began with (invariant 12).
+    pub fn apply_config(
+        &mut self,
+        config: &ResolvedConfig,
+        observe: &mut impl FnMut(SessionActivity),
+    ) {
+        self.context.set_profiles(config.profiles.clone());
+        self.apply_display(config.display, observe);
+        self.sent_controls = None;
     }
 
     /// Adopts new display settings. Moving the default view takes the device there now; changing
@@ -700,11 +720,20 @@ fn desk_activity(kind: ActivityEventKind, action: ActionKind) -> SessionActivity
 #[must_use]
 pub fn bound_action<'b>(bindings: &'b Bindings, input: &LogicalInput) -> Option<&'b Action> {
     match input {
-        LogicalInput::Press { .. } => Some(&bindings.press),
-        LogicalInput::Hold { .. } => Some(&bindings.hold),
-        LogicalInput::ButtonPress { button, .. } => {
-            bindings.buttons.get(usize::from(*button))?.as_ref()
-        }
+        LogicalInput::Press { .. } => bindings.press.action.as_ref(),
+        LogicalInput::Hold { .. } => bindings.hold.action.as_ref(),
+        LogicalInput::ButtonPress { button, .. } => bindings
+            .buttons
+            .get(usize::from(*button))?
+            .press
+            .action
+            .as_ref(),
+        LogicalInput::ButtonHold { button, .. } => bindings
+            .buttons
+            .get(usize::from(*button))?
+            .hold
+            .action
+            .as_ref(),
         _ => None,
     }
 }
@@ -1335,7 +1364,169 @@ mod tests {
             button: 0,
             gesture_id: 5,
         };
-        assert_eq!(bound_action(&bindings, &hold), None, "unbound until M2");
+        assert_eq!(bound_action(&bindings, &hold), None, "unbound by default");
+        let mut bound = Bindings::default();
+        bound.buttons[0].hold = Slot::bound(Action::ToggleMute);
+        assert_eq!(bound_action(&bound, &hold), Some(&Action::ToggleMute));
+    }
+
+    /// The built-ins with `edit` applied to their file, as the device thread would receive it.
+    fn config(edit: impl FnOnce(&mut crate::config::ConfigFile)) -> ResolvedConfig {
+        let mut file = crate::config::ConfigFile::default();
+        edit(&mut file);
+        crate::config::resolve::resolve(profile::builtins(), &file).unwrap()
+    }
+
+    fn override_of(
+        file: &mut crate::config::ConfigFile,
+        id: crate::config::ProfileId,
+    ) -> &mut crate::config::ProfileOverride {
+        file.profiles.entry(id).or_default()
+    }
+
+    #[test]
+    fn apply_config_resends_the_labels_even_when_they_are_identical() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        assert!(desk.tick(ms(0), &mut |_| {}).controls.is_some());
+        assert_eq!(
+            desk.tick(ms(10), &mut |_| {}).controls,
+            None,
+            "nothing changed"
+        );
+        // Hold is not on the device legend, so these labels do not change.
+        let hold_only = config(|file| {
+            override_of(file, crate::config::ProfileId::General).hold =
+                Some(crate::config::SlotSpec {
+                    action: Some(crate::config::ActionSpec::PlayPause),
+                    label: None,
+                });
+        });
+        desk.apply_config(&hold_only, &mut |_| {});
+        assert_eq!(desk.bindings().hold.action, Some(Action::PlayPause));
+        let again = desk.tick(ms(20), &mut |_| {}).controls;
+        assert_eq!(again, Some(desk.labels()), "re-sent although identical");
+        assert_eq!(
+            desk.tick(ms(30), &mut |_| {}).controls,
+            None,
+            "and only once"
+        );
+    }
+
+    #[test]
+    fn apply_config_swaps_labels_live_and_keeps_the_pin() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        let _ = desk.tick(ms(0), &mut |_| {});
+        desk.on_input(
+            &LogicalInput::ButtonHold {
+                button: profile::PIN_BUTTON,
+                gesture_id: 1,
+            },
+            ms(10),
+            &mut |_| {},
+        );
+        assert!(desk.context().pinned());
+        let renamed = config(|file| {
+            override_of(file, crate::config::ProfileId::General).buttons[0].press =
+                Some(crate::config::SlotSpec {
+                    action: Some(crate::config::ActionSpec::NextTrack),
+                    label: Some("Skip".into()),
+                });
+        });
+        desk.apply_config(&renamed, &mut |_| {});
+        assert!(desk.context().pinned(), "the pin survives");
+        let labels = desk.tick(ms(20), &mut |_| {}).controls.unwrap();
+        assert_eq!(labels.buttons.map(text), ["Skip", "Play/Pause", "Next"]);
+    }
+
+    #[test]
+    fn a_gesture_in_progress_keeps_its_keys_after_a_rebind() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        focus(&fg, "chrome.exe");
+        let _ = desk.tick(ms(0), &mut |_| {});
+        let _ = desk.tick(ms(400), &mut |_| {});
+        assert!(!desk.on_input(
+            &LogicalInput::GestureStarted { gesture_id: 1 },
+            ms(500),
+            &mut |_| {}
+        ));
+        let rebound = config(|file| {
+            override_of(file, crate::config::ProfileId::Browser).rotate =
+                Some(crate::config::RotateSpec::Shortcuts {
+                    cw: "Ctrl+Right".into(),
+                    ccw: "Ctrl+Left".into(),
+                    label: "Seek".into(),
+                });
+        });
+        desk.apply_config(&rebound, &mut |_| {});
+        assert_eq!(text(desk.labels().rotate), "Seek");
+        let detent = LogicalInput::Detent {
+            gesture_id: 1,
+            direction: Direction::Cw,
+        };
+        assert!(!desk.on_input(&detent, ms(520), &mut |_| {}));
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while sent(&synth).is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(ms(1));
+        }
+        assert_eq!(sent(&synth), ["Ctrl+Tab"], "the keys it began with");
+        let _ = desk.on_input(
+            &LogicalInput::GestureEnded { gesture_id: 1 },
+            ms(600),
+            &mut |_| {},
+        );
+        // The next gesture picks up the new binding.
+        let _ = desk.on_input(
+            &LogicalInput::GestureStarted { gesture_id: 2 },
+            ms(700),
+            &mut |_| {},
+        );
+        let detent = LogicalInput::Detent {
+            gesture_id: 2,
+            direction: Direction::Cw,
+        };
+        let _ = desk.on_input(&detent, ms(720), &mut |_| {});
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while sent(&synth).len() < 2 && std::time::Instant::now() < deadline {
+            std::thread::sleep(ms(1));
+        }
+        assert_eq!(sent(&synth), ["Ctrl+Tab", "Ctrl+Right"]);
+    }
+
+    #[test]
+    fn a_bound_button_hold_runs_and_the_middle_hold_still_pins() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        let bound = config(|file| {
+            override_of(file, crate::config::ProfileId::General).buttons[0].hold =
+                Some(crate::config::SlotSpec {
+                    action: Some(crate::config::ActionSpec::Shortcut {
+                        keys: "Ctrl+Shift+K".into(),
+                    }),
+                    label: None,
+                });
+        });
+        desk.apply_config(&bound, &mut |_| {});
+        let hold = |button| LogicalInput::ButtonHold {
+            button,
+            gesture_id: 1,
+        };
+        desk.on_input(&hold(0), ms(10), &mut |_| {});
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while sent(&synth).is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(ms(1));
+        }
+        assert_eq!(sent(&synth), ["Ctrl+Shift+K"]);
+        assert!(!desk.context().pinned());
+        desk.on_input(&hold(1), ms(20), &mut |_| {});
+        assert!(desk.context().pinned(), "the middle Hold is still CyclePin");
+        assert_eq!(sent(&synth).len(), 1);
     }
 }
 

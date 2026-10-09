@@ -5,29 +5,34 @@
 //! only a [`ConfigNotice`] and a fixed error text (ADR-0005).
 
 pub mod migrate;
+pub mod resolve;
 pub mod schema;
 pub mod store;
 
-use std::sync::Arc;
+use crate::desk::profile::{builtins, Profile};
 
 pub use schema::{
-    BuddySettings, ConfigFile, DisplaySettings, Intensity, SecondaryView, View, CONFIG_VERSION,
+    ActionSpec, BuddySettings, ButtonOverride, ConfigFile, DisplaySettings, Intensity, ProfileId,
+    ProfileOverride, RotateSpec, SecondaryView, SlotSpec, View, CONFIG_VERSION,
 };
 pub use store::{ConfigError, ConfigNotice, ConfigStore};
 
-/// The config as the device thread applies it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// The config as the device thread applies it: the built-in profiles with the user's overrides
+/// layered on, and the display and buddy settings.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedConfig {
+    pub profiles: Vec<Profile>,
     pub display: DisplaySettings,
     pub buddy: BuddySettings,
 }
 
-impl ResolvedConfig {
-    #[must_use]
-    pub fn of(file: &ConfigFile) -> Arc<Self> {
-        Arc::new(Self {
-            display: file.display,
-            buddy: file.buddy,
-        })
+impl Default for ResolvedConfig {
+    /// The built-ins for this OS and default settings.
+    fn default() -> Self {
+        Self {
+            profiles: builtins(),
+            display: DisplaySettings::default(),
+            buddy: BuddySettings::default(),
+        }
     }
 }
