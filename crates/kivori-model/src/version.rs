@@ -1,6 +1,6 @@
 //! Protocol version value type and the major-match compatibility rule (data-model §3, FR-003).
 //!
-//! Wire framing/codec live in `kivori-protocol` (Phase 3); only the value types and the pure
+//! Wire framing/codec live in `kivori-protocol`; only the value types and the pure
 //! compatibility/negotiation helpers belong here.
 
 use serde::{Deserialize, Serialize};

@@ -66,7 +66,7 @@ debug-payloads = []
 latency-probe = []
 
 # Path-linked shared crates (single source of truth, no publishing). Declared here to lock the
-# isolated cross-workspace path-linking per ADR-0001; consumed once the runtime lands (Phase 7/8).
+# isolated cross-workspace path-linking per ADR-0001; consumed by the production runtime.
 [dependencies]
 kivori-model = { path = "../../crates/kivori-model" }
 kivori-protocol = { path = "../../crates/kivori-protocol" }

@@ -1,4 +1,4 @@
-//! The desktop device connection manager (Phase 9; US1/US3).
+//! The desktop device connection manager (US1/US3).
 //!
 //! Discovery filtering, handshake verification, the connection state machine, heartbeat, and reconnect
 //! are all pure, host-testable logic driven by injected events (`cargo test -p kivori-desktop`). The

@@ -59,7 +59,7 @@ pub mod tx_buffer;
 #[cfg(feature = "wokwi-runtime")]
 pub mod wokwi_runtime;
 
-/// Physical HW-040 rotary encoder `InputSource` adapter (Task 13).
+/// Physical HW-040 rotary encoder `InputSource` adapter.
 #[cfg(feature = "physical-st7789")]
 pub mod physical_rotary;
 #[cfg(feature = "physical-st7789")]

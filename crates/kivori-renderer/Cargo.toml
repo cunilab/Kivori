@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Deterministic RGB565 renderer, integer-ms timebase (no_std). Scaffold; impl in T038+."
+description = "Deterministic RGB565 renderer, integer-ms timebase (no_std)."
 
 [dependencies]
 kivori-model = { path = "../kivori-model" }

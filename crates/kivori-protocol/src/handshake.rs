@@ -1,5 +1,5 @@
-//! Handshake evaluation helpers (docs/architecture.md, wire protocol). Pure decisions; the connection actor
-//! (Phase 9) orchestrates timing and I/O.
+//! Handshake evaluation helpers (docs/architecture.md, wire protocol). Pure decisions; the desktop connection
+//! actor (the desktop `device` module) orchestrates timing and I/O.
 
 use crate::message::{Hello, HelloAck, Ready};
 use crate::negotiate::negotiate;

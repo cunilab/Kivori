@@ -1,4 +1,4 @@
-//! Kivori asset compiler (host) — compiles the placeholder scene SVGs into the deterministic RGB565
+//! Kivori asset compiler (host) — compiles the layered mascot SVG into the deterministic RGB565
 //! mascot asset blob and writes it to `assets/compiled/kivori.assets` (ADR-0004, Principle XI).
 
 use std::fs;

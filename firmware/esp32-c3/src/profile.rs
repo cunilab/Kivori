@@ -157,13 +157,13 @@ pub mod physical_st7789 {
     /// HW-040 rotary encoder pin map.
     ///
     /// ISOLATED HERE ON PURPOSE: this is the single place to correct if the wiring changes.
-    /// `sw` is wired and sampled but unused in Slice 002; the push-switch gesture machine is a
-    /// later slice.
+    /// `sw` is sampled by the adapter and consumed by the push-switch gesture machine
+    /// (`input::gesture`).
     ///
     /// **This is a SPECIFICATION, not measured evidence.** Unlike the rest of this module
     /// (`SCK`/`MOSI`/`DC`/`RST`/`BL`, all verified against a real board), nobody has verified
     /// continuity of this rotary wiring on physical hardware yet — the maintainer is wiring the
-    /// HW-040 module to these GPIOs, and Task 14 carries the verification row. Do not read this
+    /// HW-040 module to these GPIOs, and `docs/validation.md` row 3.15 carries the verification. Do not read this
     /// struct as confirmed hardware fact.
     ///
     /// Pin choices, decided deliberately:

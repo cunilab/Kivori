@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Golden-frame / frame-hash determinism harness (host). Phase 4 code scene + Phase 5 assets."
+description = "Golden-frame / frame-hash determinism harness (host). Code-defined scene + compiled asset scenes."
 
 [dependencies]
 kivori-model = { path = "../../crates/kivori-model" }

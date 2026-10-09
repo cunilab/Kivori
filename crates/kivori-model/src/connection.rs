@@ -3,7 +3,7 @@
 //!
 //! This is the transport/link axis, distinct from the companion-state axis. The rules here are a pure
 //! function of `(state, event)`; the runtime actor (discovery, timers, backoff, serial I/O) is built
-//! on top of this in the desktop crate (Phase 9).
+//! on top of this in the desktop crate's `device` module.
 
 /// Desktop-side connection lifecycle status — exactly the five statuses surfaced to the UI (FR-005).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

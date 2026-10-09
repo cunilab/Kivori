@@ -1,6 +1,6 @@
-# Firmware CI (skeleton). Proves no_std/no-alloc feature isolation by compiling the shared crates for
+# Firmware CI. Proves no_std/no-alloc feature isolation by compiling the shared crates for
 # the RISC-V target. NO hardware tests run here (isolation requirement); on-device checks are manual
-# (Phase 15). The esp-hal firmware binary is built per feature set in the adapters step below.
+# (docs/validation.md). The esp-hal firmware binary is built per feature set in the adapters step below.
 name: firmware
 on:
   push:
