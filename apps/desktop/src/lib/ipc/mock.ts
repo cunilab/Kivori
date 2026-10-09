@@ -11,6 +11,7 @@ import type {
   AppInfoDto,
   CompanionState,
   ConfigDto,
+  DiagnosticsDto,
   MacroSpec,
   StepSpec,
   ConnectionStatusDto,
@@ -465,6 +466,54 @@ function syncDesk(): void {
       active.buttons[2].press.deviceLabel,
     ],
   });
+}
+
+const mockStartedAt = Date.now();
+
+/** Richer under `?mock=connected`; every figure is unknown (null) when disconnected. */
+export function mockGetDiagnostics(): DiagnosticsDto {
+  const connected = scenario() === 'connected';
+  const seconds = Math.floor((Date.now() - mockStartedAt) / 1000);
+  return {
+    versions: {
+      app: '0.1.0',
+      firmware: connected ? '0.4.0' : null,
+      protocol: '1.4',
+      negotiatedMinor: connected ? 3 : null,
+      capabilities: connected
+        ? ['mascotInteraction', 'physicalInputV1', 'presentationV1', 'deskStatusV1', 'mediaInfoV1']
+        : [],
+      deviceHash: connected ? '3fa9c1d2' : null,
+    },
+    connection: {
+      state: connected ? 'connected' : 'disconnected',
+      connectedForSecs: connected ? 754 + seconds : null,
+      reconnects: connected ? 1 : 0,
+      retryCount: 0,
+      lastPongAgeMs: connected ? 420 : null,
+      rttMs: connected ? 6 : null,
+    },
+    health: {
+      deviceUptimeMs: connected ? 3_723_000 + seconds * 1000 : null,
+      freeBytes: connected ? 182_400 : null,
+      malformedFrames: connected ? 2 : 0,
+      sequenceGaps: 0,
+      deviceErrors: 0,
+    },
+    host: {
+      systemVolume: 'available',
+      appVolume: scenario() === 'mac' ? 'unsupported' : 'available',
+      media: 'observable',
+      focus: 'detecting',
+      inputPermission: scenario() === 'mac' ? 'unknown' : 'notNeeded',
+    },
+    config: {
+      status: 'ok',
+      schemaVersion: config.version,
+      customBindings: 3,
+      macros: config.macros.length,
+    },
+  };
 }
 
 export function mockGetConfig(): ConfigDto {

@@ -15,7 +15,9 @@ use kivori_model::{MascotAction, SendableState};
 use crate::activity::{ActivityEvent, ActivityEventKind, ActivityLog};
 use crate::config::{ConfigStore, ResolvedConfig};
 use crate::firmware::{self, FirmwarePhase, FirmwareStatus};
-use crate::ipc::dto::{self, ConfigDto, ConnectionStatusDto, DeskStatusDto};
+use crate::ipc::dto::{
+    self, ConfigDto, ConnectionStatusDto, DeskStatusDto, DiagnosticsDto, DiagnosticsSnapshot,
+};
 use crate::window_lifecycle::WindowLifecycle;
 
 /// A message from a Tauri command (UI thread) to the background device thread.
@@ -54,6 +56,8 @@ pub struct AppState {
     pub config: Arc<Mutex<ConfigStore>>,
     /// Latest safe firmware-update status, written only by the device thread.
     pub firmware_status: Arc<Mutex<FirmwareStatus>>,
+    /// Latest raw diagnostics figures, written by the device thread about once a second.
+    pub diagnostics: Arc<Mutex<DiagnosticsSnapshot>>,
     /// Window-lifecycle policy (hide-vs-quit / show-on-reactivate), shared with the window+tray handlers.
     pub lifecycle: Mutex<WindowLifecycle>,
     /// Live Device Studio preview streams (dev-only), cancelled on shutdown/teardown.
@@ -106,6 +110,7 @@ impl AppState {
             activity_log,
             config: Arc::new(Mutex::new(ConfigStore::detached())),
             firmware_status,
+            diagnostics: Arc::new(Mutex::new(DiagnosticsSnapshot::initial())),
             lifecycle: Mutex::new(WindowLifecycle::new()),
             #[cfg(feature = "device-studio")]
             previews: Arc::new(crate::ipc::channels::PreviewStreams::new()),
@@ -119,6 +124,13 @@ impl AppState {
     #[must_use]
     pub fn with_desk_status(mut self, desk_status: Arc<Mutex<DeskStatusDto>>) -> Self {
         self.desk_status = desk_status;
+        self
+    }
+
+    /// Shares the diagnostics cell the device thread writes.
+    #[must_use]
+    pub fn with_diagnostics(mut self, diagnostics: Arc<Mutex<DiagnosticsSnapshot>>) -> Self {
+        self.diagnostics = diagnostics;
         self
     }
 
@@ -159,6 +171,14 @@ impl AppState {
                     .record(ActivityEventKind::ConfigSaveFailed, None),
             ),
         }
+    }
+
+    /// The diagnostics page as of now: the device thread's figures plus the stored config.
+    #[must_use]
+    pub fn diagnostics_snapshot(&self) -> DiagnosticsDto {
+        let snapshot = self.diagnostics.lock().expect("diagnostics lock").clone();
+        let config = self.config.lock().expect("config lock");
+        dto::diagnostics_dto(&snapshot, &config, std::time::Instant::now())
     }
 
     /// The current desk projection.

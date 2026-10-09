@@ -62,12 +62,16 @@ pub fn run() {
             ));
             let firmware_status =
                 std::sync::Arc::new(std::sync::Mutex::new(firmware::initial_status()));
+            let diagnostics = std::sync::Arc::new(std::sync::Mutex::new(
+                ipc::dto::DiagnosticsSnapshot::initial(),
+            ));
             let device_thread = runtime::device_task::spawn(
                 app.handle().clone(),
                 std::sync::Arc::clone(&status),
                 std::sync::Arc::clone(&desk_status),
                 std::sync::Arc::clone(&activity_log),
                 std::sync::Arc::clone(&firmware_status),
+                std::sync::Arc::clone(&diagnostics),
                 commands_rx,
                 std::sync::Arc::clone(&cancel),
                 resolved,
@@ -83,6 +87,7 @@ pub fn run() {
                     device_thread,
                 )
                 .with_desk_status(desk_status)
+                .with_diagnostics(diagnostics)
                 .with_config(std::sync::Arc::new(std::sync::Mutex::new(config_store))),
             );
             runtime::lifecycle::build_tray(app.handle())?;
@@ -107,6 +112,7 @@ pub fn run() {
         ipc::commands::play_mascot_action,
         ipc::commands::get_activity_log,
         ipc::commands::get_firmware_status,
+        ipc::commands::get_diagnostics,
         ipc::commands::flash_firmware,
         ipc::commands::render_preview_frame,
         ipc::commands::mirror_state,
@@ -137,6 +143,7 @@ pub fn run() {
         ipc::commands::play_mascot_action,
         ipc::commands::get_activity_log,
         ipc::commands::get_firmware_status,
+        ipc::commands::get_diagnostics,
         ipc::commands::flash_firmware,
         ipc::commands::get_desk_status,
         ipc::commands::set_display_mode,

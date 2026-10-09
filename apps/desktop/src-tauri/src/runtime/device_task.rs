@@ -32,7 +32,10 @@ use crate::device::serial::{enumerate, SerialPortLink};
 use crate::device::session::{Session, SessionConfig, SessionError};
 use crate::firmware::{self, FirmwareStatus, FlashWorkflow, ResumeTarget};
 use crate::input::{Freshness, InputIngress, LogicalInput, RejectReason};
-use crate::ipc::dto::{connection_status, desk_status_dto, ConnectionStatusDto, DeskStatusDto};
+use crate::ipc::dto::{
+    availability_token, connection_status, desk_status_dto, ConnectionStatusDto, DeskStatusDto,
+    DiagnosticsSnapshot, HostServicesSnapshot,
+};
 use crate::ipc::events;
 use crate::orchestrator::Orchestrator;
 use crate::platform::{self, ActionAvailability, VolumeBackend};
@@ -117,6 +120,7 @@ pub fn spawn(
     desk_status: Arc<Mutex<DeskStatusDto>>,
     activity_log: Arc<ActivityLog>,
     firmware_status: Arc<Mutex<FirmwareStatus>>,
+    diagnostics: Arc<Mutex<DiagnosticsSnapshot>>,
     commands: Receiver<DeviceCommand>,
     cancel: Arc<AtomicBool>,
     config: Arc<ResolvedConfig>,
@@ -130,6 +134,7 @@ pub fn spawn(
                 desk_status,
                 activity_log,
                 firmware_status,
+                diagnostics,
                 commands,
                 cancel,
                 config,
@@ -145,6 +150,7 @@ fn device_loop(
     desk_status: Arc<Mutex<DeskStatusDto>>,
     activity_log: Arc<ActivityLog>,
     firmware_status: Arc<Mutex<FirmwareStatus>>,
+    diagnostics: Arc<Mutex<DiagnosticsSnapshot>>,
     commands: Receiver<DeviceCommand>,
     cancel: Arc<AtomicBool>,
     config: Arc<ResolvedConfig>,
@@ -165,6 +171,11 @@ fn device_loop(
         let _ = main_app.run_on_main_thread(run);
     })));
     let backend = Arc::clone(&services.volume);
+    // The diagnostics page reads these without going through the desk runtime that owns them.
+    let app_volume = Arc::clone(&services.app_volume);
+    let media = Arc::clone(&services.media);
+    let foreground = Arc::clone(&services.foreground);
+    let mut diagnostics_publisher = DiagnosticsPublisher::default();
     let mut desk = DeskRuntime::new(services).with_config(&config);
     let mut last_desk: Option<DeskStatusDto> = None;
     let mut rotary = RotaryPipeline::new(&*backend);
@@ -715,6 +726,36 @@ fn device_loop(
             last = snapshot;
         }
 
+        diagnostics_publisher.publish(
+            &diagnostics,
+            &manager,
+            &session,
+            HostServicesSnapshot {
+                system_volume: availability_token(&backend.availability()),
+                app_volume: availability_token(&app_volume.availability()),
+                media: if media.status().is_some() {
+                    "observable"
+                } else {
+                    "notObservable"
+                },
+                focus: if matches!(foreground.foreground(), platform::Foreground::Unknown) {
+                    "unknown"
+                } else {
+                    "detecting"
+                },
+                input_permission: if desk
+                    .last_action()
+                    .is_some_and(|last| last.permission_required)
+                {
+                    "required"
+                } else if cfg!(target_os = "macos") {
+                    "unknown"
+                } else {
+                    "notNeeded"
+                },
+            },
+        );
+
         // 4. Record typed activity for every lifecycle transition (connect, incompatible,
         //    disconnect, recoverable error, reconnect attempt) — T105.
         let current_state = manager.state();
@@ -1170,6 +1211,66 @@ pub fn observe_connection_transition(
     }
     *previous_state = current_state;
     true
+}
+
+/// Publishes [`DiagnosticsSnapshot`] at most once a second and remembers when each connection
+/// came up.
+#[derive(Default)]
+struct DiagnosticsPublisher {
+    last_published: Option<Instant>,
+    connected_since: Option<Instant>,
+    connections: u32,
+}
+
+impl DiagnosticsPublisher {
+    const INTERVAL: Duration = Duration::from_secs(1);
+
+    fn publish(
+        &mut self,
+        cell: &Mutex<DiagnosticsSnapshot>,
+        manager: &ConnectionManager,
+        session: &Session,
+        host: HostServicesSnapshot,
+    ) {
+        let now = Instant::now();
+        // Track the connection every loop so a short blip is not missed between publishes.
+        let connected = manager.state().can_drive_device();
+        if connected && self.connected_since.is_none() {
+            self.connected_since = Some(now);
+            self.connections = self.connections.saturating_add(1);
+        } else if !connected {
+            self.connected_since = None;
+        }
+        if self
+            .last_published
+            .is_some_and(|at| now.duration_since(at) < Self::INTERVAL)
+        {
+            return;
+        }
+        self.last_published = Some(now);
+        let device = manager.device().filter(|_| connected);
+        *cell.lock().expect("diagnostics lock") = DiagnosticsSnapshot {
+            connection: crate::ipc::dto::connection_token(manager.state()),
+            firmware_version: device.map(|d| {
+                format!(
+                    "{}.{}.{}",
+                    d.firmware_version.major, d.firmware_version.minor, d.firmware_version.patch
+                )
+            }),
+            device_hash: device.map(|d| d.device_id_hash_short.clone()),
+            negotiated_caps: session.negotiated_caps(),
+            negotiated_minor: device.map(|d| {
+                d.protocol_version
+                    .minor
+                    .min(kivori_protocol::PROTOCOL_MINOR)
+            }),
+            connected_since: self.connected_since,
+            reconnects: self.connections.saturating_sub(1),
+            retry_count: manager.retry_count(),
+            session: session.diagnostics(),
+            host,
+        };
+    }
 }
 
 fn publish_firmware_status(status: &Mutex<FirmwareStatus>, workflow: &FlashWorkflow) {

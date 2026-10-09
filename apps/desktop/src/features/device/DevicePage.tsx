@@ -13,6 +13,7 @@ import type { AppInfoDto, ConnectionStatusDto } from '@/lib/ipc/types';
 import { setDevMode, useDevMode } from '@/lib/dev-mode';
 import { strings } from '@/lib/i18n/strings';
 import { cn } from '@/lib/utils';
+import { Diagnostics } from './Diagnostics';
 import { FirmwareUpdate } from './FirmwareUpdate';
 
 const t = strings.device;
@@ -115,6 +116,7 @@ export function DevicePage({
 
         <div className="flex flex-col gap-4">
           <FirmwareUpdate connected={ui === 'connected'} />
+          <Diagnostics />
           <Card size="sm">
             <CardHeader>
               <CardTitle>{t.app}</CardTitle>

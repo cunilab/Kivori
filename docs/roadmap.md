@@ -80,6 +80,8 @@ stays the beta platform and its rows are tracked in a GitHub issue.
 
 **Outcome:** someone who did not build Kivori can configure and use it without editing code.
 
+Software complete and host-tested (S1–S7); the hardware rows and gates below remain.
+
 - [x] Three contextual buttons (#9), software done and host-tested end to end:
   - pins GPIO0, GPIO1, GPIO20 to GND, internal pull-ups, no resistors; GPIO21 stays the UART0 boot
     log, GPIO9 stays unused (download mode)
@@ -100,8 +102,8 @@ stays the beta platform and its rows are tracked in a GitHub issue.
 - [x] Simple ordered macros (a macro reports its least-confirmed step; no rollback)
 - [x] Choose what the display shows (default and secondary modes)
 - [x] Buddy settings: reactions on/off, intensity
-- [ ] Config stored locally per OS user and machine; survives restarts and updates; reset to defaults
-- [ ] Basic device status and diagnostics (versions, connection, health)
+- [x] Config stored locally per OS user and machine; survives restarts and updates; reset to defaults
+- [x] Basic device status and diagnostics (versions, connection, health)
 - [ ] Hardware: rebind → use → restart → binding still there
 - [ ] Gates 3, 4, 5
 
