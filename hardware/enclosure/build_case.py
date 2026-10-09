@@ -122,7 +122,7 @@ PEG_RELIEF = 0.7            # face-back relief over the display peg tips (room f
 
 # ESP32-C3 SuperMini, behind the carrier, components facing the back plate
 SM = (18.0, 22.52, 1.0)     # outline, NOMINAL thickness
-SM_X = 55.0                 # board centre x (USB-C centred on the far wall)
+SM_X = 49.0                 # board centre x: keeps the pin rows clear of the display board
 SM_USB_END = H - WALL - 0.5  # y of the USB end of the board
 SM_ROW = 15.24              # header row spacing
 SM_PIN_MARGIN = (SM[1] - 7 * 2.54) / 2  # NOMINAL first pin from the USB end
