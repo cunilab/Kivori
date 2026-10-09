@@ -29,7 +29,7 @@ pub use negotiate::negotiate;
 /// Current protocol major version.
 pub const PROTOCOL_MAJOR: u16 = 1;
 /// Current protocol minor version.
-pub const PROTOCOL_MINOR: u16 = 4;
+pub const PROTOCOL_MINOR: u16 = 5;
 /// Frame magic (`"KV"`, little-endian `0x4B56`).
 pub const MAGIC: u16 = 0x4B56;
 /// Maximum payload length, in bytes.

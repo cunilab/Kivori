@@ -15,6 +15,9 @@ pub enum DeviceEvent {
     LinkUp,
     /// The host session was lost (unplug, timeout, or `Bye`).
     LinkDown,
+    /// The host said it is going to sleep (`Bye(HostSleeping)`): show `Sleeping` and keep showing it
+    /// across the link loss that follows, until a new host session starts.
+    HostSleep,
     /// The host commanded a sendable state.
     SetState(SendableState),
 }
@@ -23,6 +26,9 @@ pub enum DeviceEvent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DeviceState {
     current: CompanionState,
+    /// Set by `HostSleep`: a link loss keeps `Sleeping` instead of dropping to `Offline`. Cleared
+    /// by `LinkUp` (a new host session).
+    sleep_latched: bool,
 }
 
 impl DeviceState {
@@ -31,6 +37,7 @@ impl DeviceState {
     pub const fn new() -> Self {
         Self {
             current: CompanionState::Booting,
+            sleep_latched: false,
         }
     }
 
@@ -53,10 +60,25 @@ impl DeviceState {
                     self.current
                 }
             }
-            // Losing the link always drops to the device-owned `offline` state.
-            DeviceEvent::LinkDown => CompanionState::Offline,
-            // A new link changes nothing on its own; the host follows with a `SetState`.
-            DeviceEvent::LinkUp => self.current,
+            // Losing the link drops to the device-owned `offline` state, unless the host announced
+            // it is sleeping: then the buddy keeps sleeping until the host is back.
+            DeviceEvent::LinkDown => {
+                if self.sleep_latched {
+                    CompanionState::Sleeping
+                } else {
+                    CompanionState::Offline
+                }
+            }
+            // A new link changes nothing on its own (the host follows with a `SetState`), except
+            // that it ends any sleep announced by the previous session.
+            DeviceEvent::LinkUp => {
+                self.sleep_latched = false;
+                self.current
+            }
+            DeviceEvent::HostSleep => {
+                self.sleep_latched = true;
+                CompanionState::Sleeping
+            }
             DeviceEvent::SetState(desired) => desired.to_companion(),
         };
         if next != self.current {
@@ -71,5 +93,51 @@ impl DeviceState {
 impl Default for DeviceState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn booted() -> DeviceState {
+        let mut d = DeviceState::new();
+        d.apply(DeviceEvent::BootComplete);
+        d
+    }
+
+    #[test]
+    fn link_down_without_a_sleep_announcement_goes_offline() {
+        let mut d = booted();
+        d.apply(DeviceEvent::SetState(SendableState::Idle));
+        assert_eq!(
+            d.apply(DeviceEvent::LinkDown),
+            Some(CompanionState::Offline)
+        );
+    }
+
+    #[test]
+    fn host_sleep_latches_sleeping_across_link_down() {
+        let mut d = booted();
+        d.apply(DeviceEvent::SetState(SendableState::Busy));
+        assert_eq!(
+            d.apply(DeviceEvent::HostSleep),
+            Some(CompanionState::Sleeping)
+        );
+        assert_eq!(d.apply(DeviceEvent::LinkDown), None);
+        assert_eq!(d.current(), CompanionState::Sleeping);
+    }
+
+    #[test]
+    fn link_up_clears_the_latch() {
+        let mut d = booted();
+        d.apply(DeviceEvent::HostSleep);
+        d.apply(DeviceEvent::LinkDown);
+        assert_eq!(d.apply(DeviceEvent::LinkUp), None);
+        assert_eq!(d.current(), CompanionState::Sleeping);
+        assert_eq!(
+            d.apply(DeviceEvent::LinkDown),
+            Some(CompanionState::Offline)
+        );
     }
 }

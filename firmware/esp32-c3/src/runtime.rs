@@ -33,7 +33,7 @@ use crate::input::button::{ButtonEvent, ButtonGesture};
 use crate::input::gesture::{RotaryEvent, RotaryGesture};
 use crate::input::quadrature::QuadratureDecoder;
 use crate::ports::{Clock, DisplaySink, InputSource, Transport};
-use crate::proto::{DeviceIdentity, Dispatcher};
+use crate::proto::{DeviceIdentity, Dispatcher, HostTakeover};
 use crate::render::TileRenderer;
 use crate::state::{DeviceEvent, DeviceState};
 use kivori_assets::AssetBlob;
@@ -53,6 +53,14 @@ use kivori_protocol::{
 /// (docs/product.md, gesture boundary). Firmware-wide: both the production runtime and the host-sim
 /// scenario helper (`sim::drive_rotary`) commit to this same boundary.
 pub const GESTURE_END_MS: u32 = 250;
+
+/// With an accepted session and no inbound frame for this long, the host is gone (a killed or
+/// crashed desktop, a sleeping PC) and the link is dropped. The desktop pings every second, so
+/// four missed pings; without this the panel would keep a frozen "connected" frame.
+pub const HOST_SILENCE_MS: u32 = 4_000;
+
+/// The Updating takeover lapses after this long, so it cannot stick if the host dies mid-flash.
+pub const UPDATING_MAX_MS: u32 = 120_000;
 
 /// Input snapshots processed per tick: the physical edge queue plus the closing current sample.
 const INPUT_SAMPLES: usize = 129;
@@ -350,6 +358,7 @@ impl DeskState {
         now_ms: u32,
         (button_down, switch_down): (bool, bool),
         recovery: Option<u8>,
+        updating: bool,
     ) -> DeskView {
         let mut status = self.status;
         status.clock = status
@@ -366,6 +375,7 @@ impl DeskState {
             button_down,
             switch_down,
             recovery_percent: recovery,
+            updating,
             elapsed_ms: now_ms,
             media_info: self.media_info,
             cpu_history: self.cpu_history,
@@ -406,6 +416,12 @@ pub struct Runtime<'a> {
     /// A switch edge or recovery step wants the panel redrawn on this tick.
     redraw: bool,
     reboot: bool,
+    /// What the host last announced with a `Bye`, and when. Cleared by the next accepted session;
+    /// `Updating` also lapses after [`UPDATING_MAX_MS`].
+    host_takeover: Option<(HostTakeover, ElapsedMs)>,
+    /// [`Dispatcher::inbound_frames`] at the last tick, and the time it last moved.
+    seen_inbound: u32,
+    last_inbound_ms: ElapsedMs,
     #[cfg(feature = "latency-probe")]
     latency: crate::latency_probe::LatencyProbe,
 }
@@ -437,6 +453,9 @@ impl<'a> Runtime<'a> {
             desk: DeskState::default(),
             redraw: false,
             reboot: false,
+            host_takeover: None,
+            seen_inbound: 0,
+            last_inbound_ms: 0,
             #[cfg(feature = "latency-probe")]
             latency: crate::latency_probe::LatencyProbe::new(),
         }
@@ -516,6 +535,29 @@ impl<'a> Runtime<'a> {
             // once the link recovers.
             self.dispatcher.link_lost();
             tick.link_dropped = true;
+        }
+        // A silent host: nothing valid arrived for a while on an accepted session.
+        let inbound = self.dispatcher.inbound_frames();
+        if inbound != self.seen_inbound {
+            self.seen_inbound = inbound;
+            self.last_inbound_ms = now;
+        }
+        if self.dispatcher.accepted_session().is_some()
+            && now.wrapping_sub(self.last_inbound_ms) >= HOST_SILENCE_MS
+        {
+            self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
+            self.dispatcher.link_lost();
+            tick.link_dropped = true;
+        }
+        if let Some(takeover) = self.dispatcher.take_host_takeover() {
+            self.host_takeover = Some((takeover, now));
+            self.redraw = true;
+        }
+        if matches!(self.host_takeover, Some((HostTakeover::Updating, since))
+            if now.wrapping_sub(since) >= UPDATING_MAX_MS)
+        {
+            self.host_takeover = None;
+            self.redraw = true;
         }
         // A `Bye`, a transport failure, or a new `Hello` this poll closed/opened a session: a
         // gesture (or partial motion) from the old session must never complete in a new one
@@ -613,6 +655,7 @@ impl<'a> Runtime<'a> {
                     self.button.is_down(),
                 ),
                 self.button.recovery_percent(now),
+                matches!(self.host_takeover, Some((HostTakeover::Updating, _))),
             );
             let mut pose = self.animator.pose_at(now);
             if view.button_down && view.status.mode == DisplayMode::Buddy {
@@ -758,6 +801,9 @@ impl<'a> Runtime<'a> {
         let session = self.dispatcher.accepted_session();
         match session {
             Some(session) => {
+                // A host is back: whatever it announced before is over.
+                self.host_takeover = None;
+                let _ = self.device.apply(DeviceEvent::LinkUp);
                 self.presentation.begin_session(session);
                 self.desk.begin_session(session);
             }

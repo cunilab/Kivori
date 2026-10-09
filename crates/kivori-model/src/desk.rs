@@ -342,6 +342,8 @@ pub struct DeskView {
     pub switch_down: bool,
     /// Recovery-hold progress, 0..=100, while the recovery takeover owns the screen.
     pub recovery_percent: Option<u8>,
+    /// The host is flashing new firmware: the Updating takeover owns the screen (below recovery).
+    pub updating: bool,
     /// Device time for subtle animation only (never shown as a value).
     pub elapsed_ms: u32,
     /// What is playing, when the desktop could observe it (`None` = unknown).

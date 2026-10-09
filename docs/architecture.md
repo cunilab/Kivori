@@ -90,7 +90,7 @@ One packet is `COBS(frame) || 0x00`. COBS makes the stream self-synchronizing, s
 | `payload` | bytes | postcard-encoded `Message` |
 | `crc32` | u32 | CRC-32/IEEE over header and payload |
 
-Constants: `PROTOCOL_MAJOR` 1, `PROTOCOL_MINOR` 4. COBS and CRC are implemented in-crate.
+Constants: `PROTOCOL_MAJOR` 1, `PROTOCOL_MINOR` 5. COBS and CRC are implemented in-crate.
 
 Every decode failure is a typed `ProtoError` (`BufferOverflow, Cobs, TooShort, BadMagic, UnsupportedVersion, PayloadTooLarge, LengthMismatch, BadCrc, Postcard`). The decoder never panics, always makes forward progress, and never dispatches a frame that failed CRC.
 
@@ -132,6 +132,14 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 - Sequence policy: a duplicate `seq` does not re-apply side effects, a gap is counted and the newer frame accepted, wrap `0xFFFF` to `0` is normal. USB CDC is ordered, so there are no retransmits. This is not enough for a firmware-image transfer protocol, which would need its own offsets and acks.
 - Frame and blob format changes (asset format v2) require updating desktop and firmware together.
 
+### Host takeovers (protocol 1.5, `HOST_TAKEOVERS_V1`)
+
+- `ByeReason` gains `HostSleeping` (3) and `FirmwareUpdate` (4), appended after the original three. The desktop sends them only when `Session::supports_host_takeovers()`; an older device never sees them. `Session::close(link, reason)` writes the `Bye` and ends the session. Sleep and lock detection (M3 S2) and the flash-time `Bye(FirmwareUpdate)` (M3 S3) use it; today the desktop sends `Bye(Shutdown)` on Quit.
+- `Bye(HostSleeping)`: the device shows Sleeping and keeps showing it across the link loss that follows (`DeviceEvent::HostSleep` latches it). A new `Hello` clears the latch. Without the capability negotiated, the reason acts like any other `Bye` and the device goes Offline.
+- `Bye(FirmwareUpdate)`: the device drops to Offline and the runtime renders the Updating screen (`render_updating`; below recovery, above the pose). It lapses after 120 s (`UPDATING_MAX_MS`) so it cannot stick if the host dies, and a new session ends it at once.
+- Host-silence timeout: with an accepted session and no valid inbound frame for 4 s (`HOST_SILENCE_MS`), the firmware calls `link_lost` and goes Offline. The desktop pings every second (`HEARTBEAT_INTERVAL`), so a killed or crashed desktop never leaves a frozen "connected" frame. This applies to every session, whatever was negotiated.
+- The firmware version comes from the firmware crate's own `Cargo.toml` (1.3.0) and is also embedded as `KIVORI-FW-VERSION:<ver>` text in the image.
+
 ### Messages (tag = postcard variant index)
 
 | Tag | Message | Dir | Payload | Capability |
@@ -139,7 +147,7 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 | 0 | `Hello` | D to V | desktop_version, desktop_caps, nonce | |
 | 1 | `HelloAck` | V to D | device_caps, device_id, firmware_version, nonce_echo | |
 | 2 | `Ready` | D to V | negotiated_minor, negotiated_caps | |
-| 3 | `Bye` | both | reason | |
+| 3 | `Bye` | both | reason (`IncompatibleVersion`, `Shutdown`, `ProtocolError`, `HostSleeping`, `FirmwareUpdate`) | `HOST_TAKEOVERS_V1` for the last two |
 | 4 | `SetState` | D to V | desired (`SendableState`), at_ms (optional) | |
 | 5 | `StateReport` | V to D | reported (`CompanionState`), elapsed_ms | |
 | 6 | `Ping` | D to V | t_ms | |
@@ -172,6 +180,7 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 | 7 | `MEDIA_INFO_V1` |
 | 8 | `CONTROL_LABELS_V1` |
 | 9 | `CONTEXT_BUTTONS_V1` |
+| 10 | `HOST_TAKEOVERS_V1` |
 
 `Capabilities` is a `u32` set in `kivori-model`. Bits are allocated centrally and never reused.
 

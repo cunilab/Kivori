@@ -10,7 +10,7 @@ use crate::state::{DeviceEvent, DeviceState};
 use heapless::Vec;
 use kivori_model::{Capabilities, ProtocolVersion};
 use kivori_protocol::{
-    decode_message, encode_message, ControlId, ControlLabelsUpdate, DeviceId, Feedback,
+    decode_message, encode_message, ByeReason, ControlId, ControlLabelsUpdate, DeviceId, Feedback,
     FirmwareVersion, HelloAck, InputEvent, InputKind, MascotActionApplied, MediaInfoUpdate,
     Message, Nonce, PlayMascotAction, Presentation, ProtoError, SeqClass, SequenceTracker,
     StateReport, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
@@ -18,6 +18,15 @@ use kivori_protocol::{
 
 /// Inbound accumulation capacity: room for a partial packet plus one full wire packet.
 pub const RX_CAPACITY: usize = MAX_WIRE * 2;
+
+/// What a `Bye` told the device the host is doing (needs `HOST_TAKEOVERS_V1`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostTakeover {
+    /// `Bye(HostSleeping)`: the host sleeps or locks.
+    Sleeping,
+    /// `Bye(FirmwareUpdate)`: the host is about to flash this device.
+    Updating,
+}
 
 /// The device's advertised identity, versions, and capabilities.
 #[derive(Debug, Clone, Copy)]
@@ -90,6 +99,10 @@ pub struct Dispatcher {
     /// The latest negotiated `MediaInfo`, awaiting [`Self::take_media_info`].
     pending_media_info: Option<MediaInfoUpdate>,
     pending_controls: Option<ControlLabelsUpdate>,
+    /// The latest takeover announced by a negotiated `Bye`, awaiting [`Self::take_host_takeover`].
+    pending_takeover: Option<HostTakeover>,
+    /// Frames decoded since boot (wrapping): the runtime watches it move to notice a silent host.
+    inbound_frames: u32,
 }
 
 impl Dispatcher {
@@ -117,7 +130,21 @@ impl Dispatcher {
             pending_feedback: None,
             pending_media_info: None,
             pending_controls: None,
+            pending_takeover: None,
+            inbound_frames: 0,
         }
+    }
+
+    /// Frames decoded since boot (wrapping). It moves whenever the host sends anything valid, so
+    /// a run loop that sees it stand still knows the host has gone quiet.
+    #[must_use]
+    pub const fn inbound_frames(&self) -> u32 {
+        self.inbound_frames
+    }
+
+    /// Takes the pending host takeover announced by a `Bye`, if any.
+    pub fn take_host_takeover(&mut self) -> Option<HostTakeover> {
+        self.pending_takeover.take()
     }
 
     /// `HelloAck` replies transmitted this session.
@@ -379,6 +406,7 @@ impl Dispatcher {
                 return Ok(());
             }
         };
+        self.inbound_frames = self.inbound_frames.wrapping_add(1);
         // A different nonce is a new session even when a crashed desktop restarts its sequence at
         // zero before the old session sent Bye. Same-nonce retransmits keep duplicate suppression.
         if let Message::Hello(hello) = message {
@@ -498,7 +526,26 @@ impl Dispatcher {
             {
                 self.pending_feedback = Some(feedback);
             }
-            Message::Bye(_) => {
+            Message::Bye(bye) => {
+                // A takeover reason only counts when it was negotiated (an unnegotiated capability
+                // stays inert): the link then drops as for any `Bye`, but the device keeps
+                // sleeping (latched in `DeviceState`) or the runtime shows Updating.
+                let takeover = if self
+                    .negotiated_caps
+                    .contains(Capabilities::HOST_TAKEOVERS_V1)
+                {
+                    match bye.reason {
+                        ByeReason::HostSleeping => Some(HostTakeover::Sleeping),
+                        ByeReason::FirmwareUpdate => Some(HostTakeover::Updating),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                if takeover == Some(HostTakeover::Sleeping) {
+                    let _ = device.apply(DeviceEvent::HostSleep);
+                }
+                self.pending_takeover = takeover;
                 // Session closed: drop the link and reset sequence tracking for the next session.
                 let _ = device.apply(DeviceEvent::LinkDown);
                 self.tracker = SequenceTracker::new();

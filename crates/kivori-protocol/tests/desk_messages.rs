@@ -200,4 +200,5 @@ fn context_buttons_are_control_variant_2_with_their_index() {
         "ContextButton = 2, index, Hold"
     );
     assert_eq!(Capabilities::CONTEXT_BUTTONS_V1.bits(), 1 << 9);
+    assert_eq!(Capabilities::HOST_TAKEOVERS_V1.bits(), 1 << 10);
 }

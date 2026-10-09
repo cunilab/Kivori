@@ -26,6 +26,7 @@ impl Capabilities {
     //   bit 7  MEDIA_INFO_V1       M1.1 `MediaInfo` message (now-playing title / artist)
     //   bit 8  CONTROL_LABELS_V1   `ControlLabels` message (what the knob / press / hold do)
     //   bit 9  CONTEXT_BUTTONS_V1  three contextual buttons (`ControlId::ContextButton` input)
+    //   bit 10 HOST_TAKEOVERS_V1   `Bye(HostSleeping | FirmwareUpdate)` takeovers and the host-silence timeout
 
     /// Bit 0 — device accepts deterministic social mascot actions and returns applied-time
     /// acknowledgments.
@@ -59,6 +60,10 @@ impl Capabilities {
     /// Bit 9 — the device has the three contextual buttons and may emit
     /// `ControlId::ContextButton` Press / Hold input events.
     pub const CONTEXT_BUTTONS_V1: Capabilities = Capabilities(1 << 9);
+
+    /// Bit 10 — the device honours `Bye(HostSleeping)` (keeps showing Sleeping after the link drops)
+    /// and `Bye(FirmwareUpdate)` (shows Updating), and goes offline after 4 s of host silence.
+    pub const HOST_TAKEOVERS_V1: Capabilities = Capabilities(1 << 10);
 
     /// Creates a capability set from a raw bitmask.
     #[must_use]

@@ -112,3 +112,30 @@ fn set_state_with_none_round_trips() {
     });
     assert_eq!(roundtrip(&msg), msg);
 }
+
+#[test]
+fn takeover_bye_reasons_roundtrip_and_keep_their_wire_values() {
+    // Append-only: the three original reasons keep 0..=2, the takeovers follow.
+    let cases = [
+        (ByeReason::IncompatibleVersion, 0u8),
+        (ByeReason::Shutdown, 1),
+        (ByeReason::ProtocolError, 2),
+        (ByeReason::HostSleeping, 3),
+        (ByeReason::FirmwareUpdate, 4),
+    ];
+    for (reason, wire_value) in cases {
+        let msg = Message::Bye(Bye { reason });
+        assert_eq!(roundtrip(&msg), msg);
+        let v = ProtocolVersion::new(1, 5);
+        let mut wire: Vec<u8, MAX_WIRE> = Vec::new();
+        encode_message(&msg, v, 1, &mut wire).unwrap();
+        let mut scratch: Vec<u8, MAX_FRAME> = Vec::new();
+        let (_, payload) =
+            kivori_protocol::decode_frame(&wire[..wire.len() - 1], &mut scratch).unwrap();
+        assert_eq!(
+            payload.last().copied(),
+            Some(wire_value),
+            "{reason:?} wire value"
+        );
+    }
+}
