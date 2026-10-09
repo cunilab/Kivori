@@ -32,6 +32,7 @@
 //! checking and wraps around when handed the wrong pixel count, so this adapter checks both.
 
 use crate::ports::DisplaySink;
+use crate::render::{TILE_H, TILE_PIXELS, TILE_W};
 use embedded_graphics_core::pixelcolor::raw::RawU16;
 use embedded_graphics_core::pixelcolor::Rgb565 as EgRgb565;
 use embedded_hal::delay::DelayNs;
@@ -201,6 +202,46 @@ where
                 ex,
                 ey,
                 pixels.iter().map(|c| EgRgb565::from(RawU16::new(c.raw()))),
+            )
+            .map_err(DisplayError::Interface)
+    }
+
+    /// One window for the whole block. `set_pixels` only needs an iterator, and the interface
+    /// fills its SPI buffer from it and writes whenever that is full, so a large window costs more
+    /// buffer-sized transfers, not more memory or more commands.
+    fn blit_tiles(&mut self, rect: Rect, tiles: &[Rgb565], cols: u16) -> Result<(), Self::Error> {
+        let tile_rows = usize::from(rect.h / TILE_H);
+        let cols = usize::from(cols);
+        if rect.is_empty()
+            || rect.right() > u32::from(self.geometry.width)
+            || rect.bottom() > u32::from(self.geometry.height)
+        {
+            return Err(DisplayError::TileOutOfBounds);
+        }
+        if cols == 0
+            || rect.w != cols as u16 * TILE_W
+            || rect.h != tile_rows as u16 * TILE_H
+            || tiles.len() as u32 != rect.area()
+        {
+            return Err(DisplayError::PixelCountMismatch);
+        }
+        let (ex, ey) = (rect.x + rect.w - 1, rect.y + rect.h - 1);
+        // Window order: for each pixel row, that row of every tile across the block.
+        let pixels = (0..tile_rows).flat_map(move |tr| {
+            (0..usize::from(TILE_H)).flat_map(move |y| {
+                (0..cols).flat_map(move |tc| {
+                    let start = (tr * cols + tc) * TILE_PIXELS + y * usize::from(TILE_W);
+                    tiles[start..start + usize::from(TILE_W)].iter()
+                })
+            })
+        });
+        self.display
+            .set_pixels(
+                rect.x,
+                rect.y,
+                ex,
+                ey,
+                pixels.map(|c| EgRgb565::from(RawU16::new(c.raw()))),
             )
             .map_err(DisplayError::Interface)
     }

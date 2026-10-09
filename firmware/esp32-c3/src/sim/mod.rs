@@ -6,6 +6,7 @@ use crate::input::gesture::{RotaryEvent, RotaryGesture};
 use crate::input::quadrature::QuadratureDecoder;
 use crate::ports::{Clock, DisplaySink, InputSource, Transport};
 use crate::proto::{DeviceIdentity, Dispatcher};
+use crate::render::{TILE_H, TILE_PIXELS, TILE_W};
 use crate::runtime::GESTURE_END_MS;
 use crate::state::DeviceState;
 use core::cell::Cell;
@@ -106,6 +107,8 @@ pub struct CaptureDisplay {
     frame: [Rgb565; FRAME_PIXELS],
     /// Number of tile blits received (change-driven rendering flushes only changed tiles).
     pub blits: u32,
+    /// Number of panel windows written (a merged block of tiles is one window, however many tiles).
+    pub windows: u32,
 }
 
 impl CaptureDisplay {
@@ -115,6 +118,7 @@ impl CaptureDisplay {
         Self {
             frame: [Rgb565::from_raw(0); FRAME_PIXELS],
             blits: 0,
+            windows: 0,
         }
     }
 
@@ -152,8 +156,45 @@ impl DisplaySink for CaptureDisplay {
             }
         }
         self.blits += 1;
+        self.windows += 1;
         Ok(())
     }
+
+    fn blit_tiles(&mut self, rect: Rect, tiles: &[Rgb565], cols: u16) -> Result<(), Self::Error> {
+        // Consume the block in window (row-major) order, as the panel would receive it.
+        let (cols, tile_w, tile_h) = (usize::from(cols), usize::from(TILE_W), usize::from(TILE_H));
+        let mut window = tiles_in_window_order(tiles, cols, tile_w, tile_h);
+        for row in 0..rect.h as usize {
+            for col in 0..rect.w as usize {
+                let (dx, dy) = (rect.x as usize + col, rect.y as usize + row);
+                let pixel = window.next().expect("a block holds rect.area() pixels");
+                if dx < FRAME_W && dy < FRAME_H {
+                    self.frame[dy * FRAME_W + dx] = pixel;
+                }
+            }
+        }
+        self.blits += (tiles.len() / TILE_PIXELS) as u32;
+        self.windows += 1;
+        Ok(())
+    }
+}
+
+/// The pixels of a tile-ordered block, in row-major window order.
+fn tiles_in_window_order(
+    tiles: &[Rgb565],
+    cols: usize,
+    tile_w: usize,
+    tile_h: usize,
+) -> impl Iterator<Item = Rgb565> + '_ {
+    let tile_rows = tiles.len() / (cols * tile_w * tile_h);
+    (0..tile_rows).flat_map(move |tr| {
+        (0..tile_h).flat_map(move |y| {
+            (0..cols).flat_map(move |tc| {
+                let start = (tr * cols + tc) * tile_w * tile_h + y * tile_w;
+                tiles[start..start + tile_w].iter().copied()
+            })
+        })
+    })
 }
 
 /// A settable, monotonic virtual [`Clock`].

@@ -4,6 +4,7 @@
 //! USB Serial/JTAG, SPI, and a hardware timer; the host [`crate::sim`] adapters implement them in
 //! memory. Nothing above this layer knows which is in use (constraint 4).
 
+use crate::render::{TILE_H, TILE_PIXELS, TILE_W};
 use kivori_model::input::InputLevels;
 use kivori_model::{ElapsedMs, Rect, Rgb565};
 
@@ -51,6 +52,30 @@ pub trait DisplaySink {
     /// # Errors
     /// Returns [`Self::Error`] on an unrecoverable display failure.
     fn blit_tile(&mut self, rect: Rect, pixels: &[Rgb565]) -> Result<(), Self::Error>;
+
+    /// Blits a block of whole tiles as ONE panel window. `tiles` holds `cols` tiles per tile row,
+    /// tile rows top to bottom, each tile `TILE_W x TILE_H` row-major and contiguous (exactly how
+    /// the renderer's frame buffer stores them); `rect` covers all of them. The panel receives the
+    /// pixels in window (row-major) order, so the result is identical to one [`Self::blit_tile`]
+    /// per tile, with the per-window command overhead paid once.
+    ///
+    /// The default splits the block back into tiles, so a sink only overrides this to save windows.
+    ///
+    /// # Errors
+    /// Returns [`Self::Error`] on an unrecoverable display failure.
+    fn blit_tiles(&mut self, rect: Rect, tiles: &[Rgb565], cols: u16) -> Result<(), Self::Error> {
+        let cols = usize::from(cols.max(1));
+        for (i, tile) in tiles.chunks_exact(TILE_PIXELS).enumerate() {
+            let at = Rect::new(
+                rect.x + (i % cols) as u16 * TILE_W,
+                rect.y + (i / cols) as u16 * TILE_H,
+                TILE_W,
+                TILE_H,
+            );
+            self.blit_tile(at, tile)?;
+        }
+        Ok(())
+    }
 }
 
 /// A monotonic millisecond clock, measured from device boot.

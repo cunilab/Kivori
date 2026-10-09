@@ -462,3 +462,108 @@ fn an_unchanged_frame_retransmits_nothing_and_a_changed_one_does() {
         "retransmissions are whole tiles"
     );
 }
+
+/// Replays the SPI stream a panel would see into a 240x240 image: CASET/RASET set the window,
+/// RAMWR pixels fill it row-major, wrapping inside the window.
+fn replay_frame(cmds: &[Command]) -> Vec<Rgb565> {
+    let mut frame = vec![Rgb565::from_raw(0); 240 * 240];
+    let (mut x0, mut x1, mut y0, mut y1) = (0usize, 239usize, 0usize, 239usize);
+    for cmd in cmds {
+        let pair = |i: usize| {
+            (
+                usize::from(u16::from_be_bytes([cmd.args[i], cmd.args[i + 1]])),
+                usize::from(u16::from_be_bytes([cmd.args[i + 2], cmd.args[i + 3]])),
+            )
+        };
+        match cmd.code {
+            SET_COLUMN_ADDRESS => (x0, x1) = pair(0),
+            SET_PAGE_ADDRESS => (y0, y1) = pair(0),
+            WRITE_MEMORY_START => {
+                let width = x1 - x0 + 1;
+                for (i, px) in cmd.args.as_chunks::<2>().0.iter().enumerate() {
+                    let (x, y) = (x0 + i % width, y0 + i / width);
+                    assert!(y <= y1, "pixels overran the address window");
+                    frame[y * 240 + x] = Rgb565::from_raw(u16::from_be_bytes(*px));
+                }
+            }
+            _ => {}
+        }
+    }
+    frame
+}
+
+#[test]
+fn a_buffered_full_frame_streams_three_band_windows_in_small_spi_writes() {
+    let bytes = compile_default_blob();
+    let blob = AssetBlob::parse(&bytes).expect("valid blob");
+    let pose = MascotAnimator::new(CompanionState::Happy, 0).pose_at(200);
+
+    // Reference: the per-tile path through the same real driver.
+    let (mut tile_sink, tile_log) = harness(full_panel());
+    tile_log.borrow_mut().clear();
+    TileRenderer::new()
+        .render_animation(&blob, CompanionState::Happy, &pose, &mut tile_sink)
+        .expect("per-tile frame");
+    let tile_cmds = commands(&tile_log.borrow());
+
+    let (mut sink, log) = harness(full_panel());
+    let mut storage: Box<[Rgb565; kivori_firmware::render::FRAME_PIXELS]> =
+        vec![Rgb565::from_raw(0); kivori_firmware::render::FRAME_PIXELS]
+            .into_boxed_slice()
+            .try_into()
+            .unwrap();
+    log.borrow_mut().clear();
+    TileRenderer::with_frame_buffer(&mut storage)
+        .render_animation(&blob, CompanionState::Happy, &pose, &mut sink)
+        .expect("buffered frame");
+    let events = log.borrow();
+    let cmds = commands(&events);
+
+    let windows = |c: &[Command]| c.iter().filter(|c| c.code == SET_COLUMN_ADDRESS).count();
+    assert_eq!(windows(&tile_cmds), TILE_COUNT, "before: a window per tile");
+    assert_eq!(windows(&cmds), 3, "after: three two-row bands");
+    assert_eq!(
+        payload_len(&cmds, WRITE_MEMORY_START),
+        payload_len(&tile_cmds, WRITE_MEMORY_START),
+        "same transfer volume"
+    );
+    assert_eq!(
+        replay_frame(&cmds),
+        replay_frame(&tile_cmds),
+        "the panel ends up with byte-identical pixels"
+    );
+
+    // A window is only an address range: the interface still streams it in buffer-sized writes
+    // (512 bytes in this harness, 4 KiB on the board), never one write per window.
+    let writes: Vec<usize> = events
+        .iter()
+        .filter_map(|e| match e {
+            Event::Write(b) if b.len() > 1 => Some(b.len()),
+            _ => None,
+        })
+        .collect();
+    assert!(writes.iter().all(|&len| len <= 512), "{writes:?}");
+    assert!(
+        writes.iter().filter(|&&len| len == 512).count() >= 3 * 19_200 / 512 - 3,
+        "a 19.2 KB band is streamed as many buffer-sized chunks"
+    );
+}
+
+#[test]
+fn a_tile_block_rejects_inconsistent_geometry_before_the_bus_is_touched() {
+    let (mut sink, log) = harness(full_panel());
+    log.borrow_mut().clear();
+    let tiles = vec![Rgb565::from_raw(0); TILE_PIXELS * 2];
+
+    // Two tiles do not fill a 3-tile-wide window.
+    assert!(matches!(
+        sink.blit_tiles(Rect::new(0, 0, TILE_W * 3, TILE_H), &tiles, 3),
+        Err(DisplayError::PixelCountMismatch)
+    ));
+    // Past the right edge.
+    assert!(matches!(
+        sink.blit_tiles(Rect::new(200, 0, TILE_W * 2, TILE_H), &tiles, 2),
+        Err(DisplayError::TileOutOfBounds)
+    ));
+    assert!(log.borrow().is_empty());
+}
