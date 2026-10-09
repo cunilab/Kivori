@@ -35,6 +35,9 @@ pub enum DeviceCommand {
     PlayMascotAction(MascotAction),
     /// Flash the fixed firmware image embedded in this desktop build.
     FlashFirmware,
+    /// Restore the bundled firmware on the one Kivori device present, even one that cannot
+    /// handshake (wrong-major firmware, or a unit held in ROM download mode).
+    RestoreFirmware,
     /// Re-publish the current status (used by an explicit UI resync).
     Refresh,
     /// Show another full-screen view on the device.
@@ -223,10 +226,19 @@ impl AppState {
     /// The current safe firmware-update projection for the Overview UI.
     #[must_use]
     pub fn firmware_status_snapshot(&self) -> FirmwareStatus {
-        self.firmware_status
+        let mut status = self
+            .firmware_status
             .lock()
             .expect("firmware status lock")
-            .clone()
+            .clone();
+        let device = self.status_snapshot().device;
+        status.advice = firmware::update_advice(
+            device
+                .as_ref()
+                .map(|device| device.firmware_version.as_str()),
+            status.bundled_version.as_deref(),
+        );
+        status
     }
 
     /// Whether a requested update owns the device session. State changes must not be queued behind it.
@@ -243,10 +255,24 @@ impl AppState {
 
     /// Atomically reserves the update workflow before it is queued, preventing concurrent IPC calls
     /// from both accepting an idle device. The device thread revalidates its private port and identity.
+    /// A connected device or an incompatible one (which is recovered) may be flashed.
     pub fn queue_firmware_flash(&self) -> Result<(), String> {
-        if self.status_snapshot().connection != "connected" {
+        if !matches!(
+            self.status_snapshot().connection.as_str(),
+            "connected" | "incompatible"
+        ) {
             return Err("Connect a compatible device before flashing firmware.".to_string());
         }
+        self.reserve_and_queue(DeviceCommand::FlashFirmware)
+    }
+
+    /// Queues recovery of the one Kivori device present, whatever its connection state. The device
+    /// thread refuses unless exactly one allowlisted port exists.
+    pub fn queue_firmware_restore(&self) -> Result<(), String> {
+        self.reserve_and_queue(DeviceCommand::RestoreFirmware)
+    }
+
+    fn reserve_and_queue(&self, command: DeviceCommand) -> Result<(), String> {
         let previous = {
             let mut status = self.firmware_status.lock().expect("firmware status lock");
             if !status.available {
@@ -261,9 +287,10 @@ impl AppState {
             let previous = status.clone();
             status.phase = FirmwarePhase::Preparing;
             status.message = "Preparing firmware update.".to_string();
+            status.failure = None;
             previous
         };
-        if let Err(error) = self.send_command(DeviceCommand::FlashFirmware) {
+        if let Err(error) = self.send_command(command) {
             *self.firmware_status.lock().expect("firmware status lock") = previous;
             return Err(error);
         }

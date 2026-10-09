@@ -297,6 +297,14 @@ pub fn flash_firmware(app: State<'_, AppState>) -> Result<(), String> {
     app.queue_firmware_flash()
 }
 
+/// Queues recovery of this application's fixed bundled firmware on the one Kivori device present,
+/// including one that cannot handshake. Takes no arguments; the device thread finds the port and
+/// refuses unless exactly one allowlisted device is connected.
+#[tauri::command]
+pub fn restore_firmware(app: State<'_, AppState>) -> Result<(), String> {
+    app.queue_firmware_restore()
+}
+
 /// Recent session activity, oldest first, capped at `limit` (all builds).
 #[tauri::command]
 pub fn get_activity_log(app: State<'_, AppState>, limit: u16) -> Vec<ActivityEventDto> {
