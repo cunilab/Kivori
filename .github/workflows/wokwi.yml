@@ -6,10 +6,33 @@
 # A green result from this workflow requires an actual Wokwi simulation run. Offline vector/build checks
 # are useful preflight evidence, but they must never produce a green Wokwi badge by themselves.
 name: wokwi
+#
+# Only changes that can alter the simulated firmware trigger a run: Wokwi CI minutes are a metered quota,
+# and desktop/frontend-only changes cannot affect the simulation.
 on:
   push:
     branches: [main]
+    paths:
+      - "firmware/**"
+      - "crates/**"
+      - "sim/**"
+      - "tools/wokwi-*/**"
+      - "scripts/*wokwi*"
+      - "scripts/lib/**"
+      - "assets/**"
+      - "Cargo.lock"
+      - ".github/workflows/wokwi.yml"
   pull_request:
+    paths:
+      - "firmware/**"
+      - "crates/**"
+      - "sim/**"
+      - "tools/wokwi-*/**"
+      - "scripts/*wokwi*"
+      - "scripts/lib/**"
+      - "assets/**"
+      - "Cargo.lock"
+      - ".github/workflows/wokwi.yml"
 
 jobs:
   simulate:
