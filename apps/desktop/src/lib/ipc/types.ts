@@ -176,7 +176,9 @@ export type ActionSpec =
   /** `app` is the lowercase executable name on Windows (`spotify.exe`), at most 128 characters. */
   | { kind: 'appMute'; app: string }
   | { kind: 'shortcut'; keys: string }
-  | { kind: 'launch'; target: string };
+  | { kind: 'launch'; target: string }
+  /** Runs a saved macro by its id. Never valid as a macro's own step. */
+  | { kind: 'macro'; id: string };
 export const ACTION_SPEC_KINDS = [
   'playPause',
   'previousTrack',
@@ -185,7 +187,22 @@ export const ACTION_SPEC_KINDS = [
   'appMute',
   'shortcut',
   'launch',
+  'macro',
 ] as const;
+
+export const STEP_SPEC_KINDS = ['action', 'delay'] as const;
+/** One step of a macro: run an action (never a macro), or wait. */
+export type StepSpec =
+  | { kind: 'action'; action: Exclude<ActionSpec, { kind: 'macro' }> }
+  | { kind: 'delay'; ms: number };
+/** A user macro: its steps run in order. `id` is stable (a-z, 0-9, - and _); bindings name it. */
+export interface MacroSpec {
+  id: string;
+  name: string;
+  steps: StepSpec[];
+}
+/** The native limits, checked again there. */
+export const MACRO_LIMITS = { macros: 32, steps: 8, delayMin: 50, delayMax: 2000 } as const;
 
 export const ROTATE_SPEC_KINDS = ['systemVolume', 'shortcuts', 'appVolume'] as const;
 export type RotateSpec =
@@ -235,6 +252,8 @@ export interface ConfigDto {
   notice: ConfigNotice | null;
   /** Every built-in profile as resolved (overrides over built-ins), General first. */
   profiles: ProfileConfigDto[];
+  /** The user's macros, in the order they were created. */
+  macros: MacroSpec[];
   display: { defaultView: DisplayMode; secondaryView: DisplayMode | 'cycle' };
   buddy: { reactions: boolean; intensity: Intensity };
 }

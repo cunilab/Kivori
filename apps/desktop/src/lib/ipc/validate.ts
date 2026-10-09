@@ -3,6 +3,7 @@
 
 import {
   ACTION_SPEC_KINDS,
+  STEP_SPEC_KINDS,
   ACTIVITY_EVENT_TYPES,
   CATALOG_AVAILABILITIES,
   CATALOG_PARAMS,
@@ -26,6 +27,8 @@ import type {
   ActivityEventDto,
   ButtonDto,
   ConfigDto,
+  MacroSpec,
+  StepSpec,
   DeskStatusDto,
   ProfileConfigDto,
   RotateSpec,
@@ -142,6 +145,9 @@ function text(name: string, value: unknown, max = 1024): string {
 /** The longest app id the native side accepts. */
 const MAX_APP_ID = 128;
 
+/** The longest macro id the native side accepts. */
+const MAX_MACRO_ID = 64;
+
 function actionSpec(raw: unknown): ActionSpec {
   const r = record('action', raw);
   switch (oneOf('action kind', ACTION_SPEC_KINDS, r.kind)) {
@@ -151,9 +157,36 @@ function actionSpec(raw: unknown): ActionSpec {
       return { kind: 'launch', target: text('launch target', r.target) };
     case 'appMute':
       return { kind: 'appMute', app: text('app', r.app, MAX_APP_ID) };
+    case 'macro':
+      return { kind: 'macro', id: text('macro id', r.id, MAX_MACRO_ID) };
     default:
       return { kind: r.kind } as ActionSpec;
   }
+}
+
+function stepSpec(raw: unknown): StepSpec {
+  const r = record('step', raw);
+  if (oneOf('step kind', STEP_SPEC_KINDS, r.kind) === 'delay') {
+    const { ms } = r;
+    if (typeof ms !== 'number' || !Number.isInteger(ms) || ms < 50 || ms > 2000) {
+      throw new Error('Kivori: invalid delay.');
+    }
+    return { kind: 'delay', ms };
+  }
+  const action = actionSpec(r.action);
+  // A step is never a macro (no nesting).
+  if (action.kind === 'macro') throw new Error('Kivori: invalid step.');
+  return { kind: 'action', action };
+}
+
+function macroSpec(raw: unknown): MacroSpec {
+  const r = record('macro', raw);
+  if (!Array.isArray(r.steps) || r.steps.length > 8) throw new Error('Kivori: invalid steps.');
+  return {
+    id: text('macro id', r.id, MAX_MACRO_ID),
+    name: text('macro name', r.name),
+    steps: r.steps.map(stepSpec),
+  };
 }
 
 function rotateSpec(raw: unknown): RotateSpec {
@@ -254,11 +287,13 @@ export function parseConfig(raw: unknown): ConfigDto {
   }
   if (typeof buddy.reactions !== 'boolean') throw new Error('Kivori: invalid reactions.');
   if (!Array.isArray(r.profiles)) throw new Error('Kivori: invalid profiles.');
+  if (!Array.isArray(r.macros)) throw new Error('Kivori: invalid macros.');
   return {
     version: r.version,
     revision: r.revision,
     notice: r.notice === null ? null : oneOf('config notice', CONFIG_NOTICES, r.notice),
     profiles: r.profiles.map(profileDto),
+    macros: r.macros.map(macroSpec),
     display: {
       defaultView: oneOf('display mode', DISPLAY_MODES, display.defaultView),
       secondaryView: oneOf('display mode', [...DISPLAY_MODES, 'cycle'], display.secondaryView),

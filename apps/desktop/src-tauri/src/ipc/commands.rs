@@ -133,9 +133,16 @@ pub fn set_binding(
 ) -> Result<ConfigDto, String> {
     let profile = profile_id(&profile)?;
     let control = crate::config::resolve::Control::from_token(&control).map_err(str::to_string)?;
+    let macros = app
+        .config
+        .lock()
+        .expect("config lock")
+        .resolved()
+        .macros
+        .clone();
     let slot = slot
         .as_ref()
-        .map(crate::config::resolve::canonical_slot)
+        .map(|slot| crate::config::resolve::canonical_slot(slot, &macros))
         .transpose()
         .map_err(str::to_string)?;
     commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
@@ -176,6 +183,37 @@ pub fn set_rotate(
             }
         });
         store.save(next)
+    })
+}
+
+/// Creates or replaces one macro (by its id). Bindings to it keep working and see the new steps.
+///
+/// # Errors
+/// Returns an error for a bad id or name, more than 8 steps or 32 macros, a step that is a macro
+/// or invalid, a delay outside 50 to 2000 ms, or a failed save.
+#[tauri::command]
+pub fn save_macro(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+    spec: crate::config::MacroSpec,
+) -> Result<ConfigDto, String> {
+    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+        store.save_macro(spec)
+    })
+}
+
+/// Deletes one macro. Refused while a control is bound to it, so nothing becomes unbound silently.
+///
+/// # Errors
+/// Returns an error for an unknown macro, a macro still bound, or a failed save.
+#[tauri::command]
+pub fn delete_macro(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+    id: String,
+) -> Result<ConfigDto, String> {
+    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+        store.delete_macro(&id)
     })
 }
 
@@ -341,6 +379,14 @@ pub fn test_action(
     app: State<'_, AppState>,
     action: crate::config::ActionSpec,
 ) -> Result<(), String> {
-    let action = crate::config::resolve::resolve_action(&action).map_err(str::to_string)?;
+    let macros = app
+        .config
+        .lock()
+        .expect("config lock")
+        .resolved()
+        .macros
+        .clone();
+    let action =
+        crate::config::resolve::resolve_action(&action, &macros).map_err(str::to_string)?;
     app.send_command(DeviceCommand::TestAction(action))
 }

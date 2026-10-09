@@ -22,6 +22,7 @@ import type {
   ProfileId,
   RotateSpec,
   SlotSpec,
+  MacroSpec,
   DeskStatusDto,
   DisplayMode,
   Intensity,
@@ -158,6 +159,20 @@ export async function setBinding(
 export async function setRotate(profile: ProfileId, rotate: RotateSpec | null): Promise<ConfigDto> {
   if (isTauri()) return parseConfig(await invoke<unknown>('set_rotate', { profile, rotate }));
   if (import.meta.env.DEV) return (await devMock()).mockSetRotate(profile, rotate);
+  return unavailable();
+}
+
+/** Creates or replaces a macro by its id; rejects with the native error string. */
+export async function saveMacro(spec: MacroSpec): Promise<ConfigDto> {
+  if (isTauri()) return parseConfig(await invoke<unknown>('save_macro', { spec }));
+  if (import.meta.env.DEV) return (await devMock()).mockSaveMacro(spec);
+  return unavailable();
+}
+
+/** Deletes a macro; refused (rejects) while a control is bound to it. */
+export async function deleteMacro(id: string): Promise<ConfigDto> {
+  if (isTauri()) return parseConfig(await invoke<unknown>('delete_macro', { id }));
+  if (import.meta.env.DEV) return (await devMock()).mockDeleteMacro(id);
   return unavailable();
 }
 

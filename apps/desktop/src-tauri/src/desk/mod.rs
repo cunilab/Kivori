@@ -43,6 +43,8 @@ pub const STATUS_REFRESH: Duration = Duration::from_secs(1);
 struct Pending {
     id: u64,
     action: ActionToken,
+    /// What the device is told about it (a macro shows as its first step).
+    wire: ActionKind,
     started: Duration,
     processing_sent: bool,
 }
@@ -57,10 +59,16 @@ pub struct FeedbackLadder {
 impl FeedbackLadder {
     /// Starts tracking a new deliberate action, replacing any older one (no queue). Returns its id.
     pub fn start(&mut self, action: ActionToken, now: Duration) -> u64 {
+        self.start_as(action, action.wire_kind(), now)
+    }
+
+    /// [`Self::start`] for an action whose wire kind is not its token's (a macro).
+    pub fn start_as(&mut self, action: ActionToken, wire: ActionKind, now: Duration) -> u64 {
         self.next_id += 1;
         self.pending = Some(Pending {
             id: self.next_id,
             action,
+            wire,
             started: now,
             processing_sent: false,
         });
@@ -72,7 +80,7 @@ impl FeedbackLadder {
         let pending = self.pending.filter(|p| p.id == id)?;
         self.pending = None;
         Some(ActionFeedback {
-            action: pending.action.wire_kind(),
+            action: pending.wire,
             kind,
         })
     }
@@ -89,7 +97,7 @@ impl FeedbackLadder {
         let pending = self.pending.as_mut()?;
         let age = now.saturating_sub(pending.started);
         if age >= ACTION_TIMEOUT {
-            let action = pending.action.wire_kind();
+            let action = pending.wire;
             self.pending = None;
             return Some(ActionFeedback {
                 action,
@@ -99,7 +107,7 @@ impl FeedbackLadder {
         if age >= PROCESSING_AFTER && !pending.processing_sent {
             pending.processing_sent = true;
             return Some(ActionFeedback {
-                action: pending.action.wire_kind(),
+                action: pending.wire,
                 kind: FeedbackKind::Processing,
             });
         }
@@ -318,6 +326,7 @@ impl DeskRuntime {
             app_volume,
             synth,
             media: Arc::clone(&media),
+            foreground: Arc::clone(&foreground),
             launch: crate::platform::launch::launch,
         });
         Self {
@@ -471,7 +480,7 @@ impl DeskRuntime {
         self.poll_focus(now);
         self.context.commit_pending();
         if self.context.protected() && !action.is_system() {
-            self.refuse(action.token(), now, observe);
+            self.refuse(&action, now, observe);
         } else {
             self.run_within(action, now, None, observe);
         }
@@ -487,7 +496,7 @@ impl DeskRuntime {
         observe: &mut impl FnMut(SessionActivity),
     ) {
         let token = action.token();
-        let id = self.ladder.start(token, now);
+        let id = self.ladder.start_as(token, action.wire_kind(), now);
         observe(desk_activity(ActivityEventKind::DeskActionRequested, token));
         let deadline = remaining.map(|remaining| Instant::now() + remaining);
         if !self.worker.request_by(id, action, deadline) {
@@ -500,11 +509,12 @@ impl DeskRuntime {
     /// never silently (invariant 19).
     fn refuse(
         &mut self,
-        token: ActionToken,
+        action: &Action,
         now: Duration,
         observe: &mut impl FnMut(SessionActivity),
     ) {
-        let id = self.ladder.start(token, now);
+        let token = action.token();
+        let id = self.ladder.start_as(token, action.wire_kind(), now);
         observe(desk_activity(ActivityEventKind::DeskActionRequested, token));
         self.fail(id, token, observe);
     }
@@ -610,7 +620,7 @@ impl DeskRuntime {
             _ => match self.context.resolve(input) {
                 Resolved::Nothing => {}
                 Resolved::Run(action) => self.run_within(action, now, remaining, observe),
-                Resolved::Suspended(action) => self.refuse(action.token(), now, observe),
+                Resolved::Suspended(action) => self.refuse(&action, now, observe),
                 // Not an action: the new labels are the feedback.
                 // ponytail: not in the activity log, no event kind fits; add one if users ask.
                 Resolved::CyclePin => self.context.cycle_pin(),

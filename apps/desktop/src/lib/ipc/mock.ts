@@ -11,6 +11,8 @@ import type {
   AppInfoDto,
   CompanionState,
   ConfigDto,
+  MacroSpec,
+  StepSpec,
   ConnectionStatusDto,
   ControlRef,
   DeskActionToken,
@@ -23,7 +25,7 @@ import type {
   SlotDto,
   SlotSpec,
 } from './types';
-import { COMPANION_STATES, PREVIEW_DIM } from './types';
+import { COMPANION_STATES, MACRO_LIMITS, PREVIEW_DIM } from './types';
 
 /// A unique marker string; `scripts/check-mock-excluded.mjs` fails if it appears in a prod bundle.
 export const MOCK_BUILD_SENTINEL = 'kivori-ipc-browser-mock-must-not-ship';
@@ -224,6 +226,7 @@ const ACTION_TOKENS: Record<ActionSpec['kind'], DeskActionToken> = {
   appMute: 'appMute',
   shortcut: 'shortcut',
   launch: 'launch',
+  macro: 'macro',
 };
 
 /** Mirrors native rules loosely: a shortcut/launch needs its text; the outcome is "unverified". */
@@ -235,6 +238,9 @@ export function mockTestAction(action: ActionSpec): void {
     throw new Error('not a valid application');
   }
   if (action.kind === 'appMute' && !action.app.trim()) throw new Error('an app cannot be empty');
+  if (action.kind === 'macro' && !config.macros.some((m) => m.id === action.id)) {
+    throw new Error('unknown macro');
+  }
   // Per-app volume does not exist on macOS: an error, never a fallback to the system mute.
   const unsupported = action.kind === 'appMute' && scenario() === 'mac';
   const result = unsupported
@@ -269,8 +275,8 @@ const catalogEntry = (
   runsWhenProtected,
 });
 
-/** The native catalog: macros are listed but not built yet; under `?mock=mac`, App Volume and
- *  App Mute are unsupported (macOS has no per-app volume). */
+/** The native catalog; under `?mock=mac`, App Volume and App Mute are unsupported (macOS has no
+ *  per-app volume). */
 export function mockListActionCatalog(): ActionCatalogEntryDto[] {
   const appUnsupported = scenario() === 'mac' ? "Per-app volume isn't available on macOS" : null;
   return [
@@ -284,7 +290,7 @@ export function mockListActionCatalog(): ActionCatalogEntryDto[] {
     catalogEntry('appMute', 'discrete', 'app', 'confirmed', 'app', true, appUnsupported),
     catalogEntry('shortcut', 'discrete', 'keyboard', 'unverified', 'shortcut', false),
     catalogEntry('launch', 'discrete', 'launch', 'started', 'target', false),
-    catalogEntry('macro', 'discrete', 'macro', 'leastOfSteps', 'macro', false, 'Coming soon'),
+    catalogEntry('macro', 'discrete', 'macro', 'leastOfSteps', 'macro', false),
   ];
 }
 
@@ -305,6 +311,8 @@ function actionLabel(action: ActionSpec | null): string {
       return action.keys;
     case 'launch':
       return action.target;
+    case 'macro':
+      return config.macros.find((m) => m.id === action.id)?.name ?? '';
   }
 }
 
@@ -414,6 +422,7 @@ function defaultConfig(): ConfigDto {
     revision: 0,
     notice: null,
     profiles: builtinProfiles(),
+    macros: [],
     display: { defaultView: 'buddy', secondaryView: 'system' },
     buddy: { reactions: true, intensity: 'normal' },
   };
@@ -422,7 +431,7 @@ let config: ConfigDto = defaultConfig();
 const configListeners = new Set<(config: ConfigDto) => void>();
 
 function saveConfig(
-  next: Pick<ConfigDto, 'display' | 'buddy' | 'profiles'>,
+  next: Pick<ConfigDto, 'display' | 'buddy' | 'profiles'> & Partial<Pick<ConfigDto, 'macros'>>,
   notice: ConfigDto['notice'],
 ): ConfigDto {
   config = { ...config, ...next, notice, revision: config.revision + 1 };
@@ -527,6 +536,9 @@ function mockAppVolume(rotate: Extract<RotateSpec, { kind: 'appVolume' }>): Rota
 }
 
 function mockAction(action: ActionSpec): ActionSpec {
+  if (action.kind === 'macro' && !config.macros.some((m) => m.id === action.id)) {
+    throw new Error('unknown macro');
+  }
   if (action.kind === 'appMute') return { kind: 'appMute', app: mockAppId(action.app) };
   if (action.kind === 'shortcut') return { kind: 'shortcut', keys: mockShortcut(action.keys) };
   if (action.kind === 'launch') {
@@ -633,6 +645,97 @@ export function mockSetRotate(profile: ProfileId, rotate: RotateSpec | null): Co
       overridden: true,
     };
   });
+}
+
+/** Whether any profile binds macro `id`. */
+function macroBound(id: string): boolean {
+  const bound = (s: SlotDto | 'pin'): boolean =>
+    s !== 'pin' && s.action?.kind === 'macro' && s.action.id === id;
+  return config.profiles.some(
+    (p) =>
+      bound(p.press) || bound(p.hold) || p.buttons.some((b) => bound(b.press) || bound(b.hold)),
+  );
+}
+
+/** Re-derives each macro-bound slot's device label (a rename shows on the device). */
+function relabelMacros(profiles: ProfileConfigDto[]): void {
+  const fix = (s: SlotDto | 'pin'): void => {
+    if (s !== 'pin' && s.action?.kind === 'macro' && s.label === null) {
+      s.deviceLabel = actionLabel(s.action);
+    }
+  };
+  for (const p of profiles) {
+    fix(p.press);
+    fix(p.hold);
+    for (const b of p.buttons) {
+      fix(b.press);
+      fix(b.hold);
+    }
+  }
+}
+
+/** Mirrors the native rules: limits, no nesting, delays of 50 to 2000 ms, at least one action. */
+function mockMacro(spec: MacroSpec): MacroSpec {
+  const { macros, steps: maxSteps, delayMin, delayMax } = MACRO_LIMITS;
+  if (!/^[a-z0-9_-]{1,64}$/.test(spec.id)) {
+    throw new Error('a macro id is 1 to 64 of a-z, 0-9, - and _');
+  }
+  if (spec.steps.length > maxSteps) throw new Error(`a macro has at most ${maxSteps} steps`);
+  const steps = spec.steps.map((step): StepSpec => {
+    if (step.kind === 'delay') {
+      if (step.ms < delayMin || step.ms > delayMax) {
+        throw new Error(`a delay is ${delayMin} to ${delayMax} ms`);
+      }
+      return step;
+    }
+    const { action } = step;
+    if ((action as ActionSpec).kind === 'macro') throw new Error('a macro cannot contain a macro');
+    return {
+      kind: 'action',
+      action: mockAction(action) as Extract<StepSpec, { kind: 'action' }>['action'],
+    };
+  });
+  if (!steps.some((step) => step.kind === 'action')) {
+    throw new Error('a macro needs at least one action step');
+  }
+  if (!config.macros.some((m) => m.id === spec.id) && config.macros.length >= macros) {
+    throw new Error(`at most ${macros} macros`);
+  }
+  return { id: spec.id, name: mockLabel(spec.name), steps };
+}
+
+export function mockSaveMacro(spec: MacroSpec): ConfigDto {
+  const saved = mockMacro(spec);
+  const exists = config.macros.some((m) => m.id === saved.id);
+  const list = exists
+    ? config.macros.map((m) => (m.id === saved.id ? saved : m))
+    : [...config.macros, saved];
+  const profiles = structuredClone(config.profiles);
+  config = { ...config, macros: list };
+  relabelMacros(profiles);
+  const result = saveConfig(
+    { display: config.display, buddy: config.buddy, profiles, macros: list },
+    null,
+  );
+  syncDesk();
+  return result;
+}
+
+/** Refused while a control is bound to it, so nothing becomes unbound silently. */
+export function mockDeleteMacro(id: string): ConfigDto {
+  if (macroBound(id)) {
+    throw new Error('This macro is still bound to a control. Unbind it first.');
+  }
+  if (!config.macros.some((m) => m.id === id)) throw new Error('unknown macro');
+  return saveConfig(
+    {
+      display: config.display,
+      buddy: config.buddy,
+      profiles: config.profiles,
+      macros: config.macros.filter((m) => m.id !== id),
+    },
+    null,
+  );
 }
 
 export function mockResetProfile(profile: ProfileId): ConfigDto {

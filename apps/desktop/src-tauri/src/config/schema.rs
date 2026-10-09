@@ -23,7 +23,7 @@ pub struct ConfigFile {
     /// Sparse per-profile overrides of the built-in profiles.
     #[serde(default)]
     pub profiles: BTreeMap<ProfileId, ProfileOverride>,
-    /// User macros. Empty until the macro slice fills it in.
+    /// User macros, at most [`MAX_MACROS`].
     #[serde(default)]
     pub macros: Vec<MacroSpec>,
     #[serde(default)]
@@ -45,6 +45,25 @@ impl Default for ConfigFile {
 }
 
 impl ConfigFile {
+    /// Whether any binding of any profile runs macro `id`.
+    #[must_use]
+    pub fn macro_bound(&self, id: &str) -> bool {
+        let is_it = |slot: &Option<SlotSpec>| {
+            matches!(
+                slot,
+                Some(SlotSpec { action: Some(ActionSpec::Macro { id: bound }), .. }) if bound == id
+            )
+        };
+        self.profiles.values().any(|over| {
+            is_it(&over.press)
+                || is_it(&over.hold)
+                || over
+                    .buttons
+                    .iter()
+                    .any(|b| is_it(&b.press) || is_it(&b.hold))
+        })
+    }
+
     /// Checks the rules serde cannot express.
     ///
     /// # Errors
@@ -146,7 +165,7 @@ pub struct SlotSpec {
     pub label: Option<String>,
 }
 
-/// The discrete actions a slot can be bound to (Macro arrives in a later slice).
+/// The discrete actions a slot can be bound to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 pub enum ActionSpec {
@@ -163,6 +182,10 @@ pub enum ActionSpec {
     },
     Launch {
         target: String,
+    },
+    /// Runs a user macro by id. Never valid as a macro's own step (no nesting).
+    Macro {
+        id: String,
     },
 }
 
@@ -184,10 +207,33 @@ pub enum RotateSpec {
     },
 }
 
-/// One user macro. No field exists yet; the macro slice adds them.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// The most macros a config holds.
+pub const MAX_MACROS: usize = 32;
+/// The most steps a macro holds.
+pub const MAX_STEPS: usize = 8;
+/// The shortest and longest a Delay step may wait, in milliseconds.
+pub const DELAY_MS: std::ops::RangeInclusive<u16> = 50..=2000;
+
+/// One user macro: its steps run in order, and it is bound by `id` like any other action.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct MacroSpec {}
+pub struct MacroSpec {
+    /// Stable identity (1 to 64 of `a-z 0-9 - _`); bindings refer to it, so it never changes.
+    pub id: String,
+    /// What the device calls it unless a binding names it otherwise.
+    pub name: String,
+    pub steps: Vec<StepSpec>,
+}
+
+/// One step of a macro.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
+pub enum StepSpec {
+    /// Runs an action; never a Macro.
+    Action { action: ActionSpec },
+    /// Waits `ms` (see [`DELAY_MS`]).
+    Delay { ms: u16 },
+}
 
 /// A device view, mirrored here so `kivori-model` stays untouched.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

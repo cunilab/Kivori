@@ -1170,6 +1170,8 @@ pub struct ConfigDto {
     pub notice: Option<&'static str>,
     /// Every built-in profile as resolved (built-ins with the user's overrides), General first.
     pub profiles: Vec<ProfileConfigDto>,
+    /// The user's macros, in the order they were created.
+    pub macros: Vec<crate::config::MacroSpec>,
     pub display: DisplaySettingsDto,
     pub buddy: BuddySettingsDto,
 }
@@ -1312,6 +1314,7 @@ pub fn config_dto(store: &crate::config::ConfigStore) -> ConfigDto {
         revision: store.revision(),
         notice: store.notice().map(config_notice_token),
         profiles: profile_dtos(store),
+        macros: file.macros.clone(),
         display: DisplaySettingsDto {
             default_view: display_mode_token(file.display.default_view.mode()),
             secondary_view: match file.display.secondary_view {
@@ -1383,6 +1386,7 @@ pub fn vocabulary_json() -> serde_json::Value {
         "profileIds": crate::config::ProfileId::ALL.map(crate::config::ProfileId::token),
         "controls": crate::config::resolve::CONTROL_TOKENS,
         "actionSpecKinds": crate::config::resolve::ACTION_SPEC_KINDS,
+        "stepSpecKinds": crate::config::resolve::STEP_SPEC_KINDS,
         "rotateSpecKinds": crate::config::resolve::ROTATE_SPEC_KINDS,
         "deskActions": crate::desk::ActionToken::ALL.map(crate::desk::ActionToken::token),
     })

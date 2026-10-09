@@ -6,11 +6,12 @@
 //! dispatched input whose effect cannot be seen is Unverified (never success), and a known failure
 //! is Error. Nothing falls back to another mechanism when an action cannot run (invariant 19).
 
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use kivori_model::desk::{ActionKind, FeedbackKind};
 use kivori_model::input::Direction;
@@ -18,9 +19,37 @@ use kivori_model::input::Direction;
 use super::catalog::ActionToken;
 use crate::action::volume::apply_step;
 use crate::platform::{
-    ActionAvailability, ActionError, AppVolumeBackend, AppVolumeError, BackendError, InputSynth,
-    MediaKey, MediaObserver, Shortcut, VolumeBackend,
+    ActionAvailability, ActionError, AppVolumeBackend, AppVolumeError, BackendError, Foreground,
+    ForegroundObserver, InputSynth, MediaKey, MediaObserver, Shortcut, VolumeBackend,
 };
+
+/// The user's macros by id. A binding holds the same `Arc` the table does.
+pub type Macros = BTreeMap<String, Arc<Macro>>;
+
+/// A user macro, resolved: its steps run in order on the action worker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Macro {
+    pub id: String,
+    pub name: String,
+    pub steps: Vec<Step>,
+}
+
+/// One step of a [`Macro`]. A `Run` step is never itself a macro (no nesting).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Step {
+    Run(Action),
+    Delay(Duration),
+}
+
+impl Macro {
+    /// The action steps, in order.
+    pub fn actions(&self) -> impl Iterator<Item = &Action> {
+        self.steps.iter().filter_map(|step| match step {
+            Step::Run(action) => Some(action),
+            Step::Delay(_) => None,
+        })
+    }
+}
 
 /// One discrete action a control can be bound to.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,12 +70,15 @@ pub enum Action {
     AppMute { app: String },
     /// One knob detent of an app's volume. Only the knob produces it; no slot binds it.
     AppVolumeStep { app: String, direction: Direction },
+    /// Run a user macro's steps in order.
+    Macro(Arc<Macro>),
 }
 
 impl Action {
-    /// The wire kind of this action: what the device is told (`Feedback.action`).
+    /// The wire kind of this action: what the device is told (`Feedback.action`). A macro shows
+    /// as its first action step: the wire has no macro kind (firmware rejects unknown variants).
     #[must_use]
-    pub const fn wire_kind(&self) -> ActionKind {
+    pub fn wire_kind(&self) -> ActionKind {
         match self {
             Action::PlayPause => ActionKind::PlayPause,
             Action::PreviousTrack => ActionKind::PreviousTrack,
@@ -56,6 +88,10 @@ impl Action {
             Action::Launch(_) => ActionKind::Launch,
             Action::AppMute { .. } => ActionKind::Mute,
             Action::AppVolumeStep { .. } => ActionKind::Volume,
+            Action::Macro(m) => m
+                .actions()
+                .next()
+                .map_or(ActionKind::Shortcut, Action::wire_kind),
         }
     }
 }
@@ -73,6 +109,7 @@ impl Action {
             Action::Launch(_) => ActionToken::Launch,
             Action::AppMute { .. } => ActionToken::AppMute,
             Action::AppVolumeStep { .. } => ActionToken::AppVolume,
+            Action::Macro(_) => ActionToken::Macro,
         }
     }
 
@@ -88,7 +125,7 @@ impl Action {
             | Action::ToggleMute
             | Action::AppMute { .. }
             | Action::AppVolumeStep { .. } => true,
-            Action::Shortcut(_) | Action::Launch(_) => false,
+            Action::Shortcut(_) | Action::Launch(_) | Action::Macro(_) => false,
         }
     }
 
@@ -101,6 +138,7 @@ impl Action {
             Action::NextTrack => "Next".into(),
             Action::ToggleMute | Action::AppMute { .. } => "Mute".into(),
             Action::AppVolumeStep { .. } => "Volume".into(),
+            Action::Macro(m) => m.name.clone(),
             Action::Shortcut(shortcut) => shortcut.to_string(),
             // An app name, not a path.
             Action::Launch(target) => std::path::Path::new(target)
@@ -215,13 +253,22 @@ pub struct Platform {
     pub app_volume: Arc<dyn AppVolumeBackend>,
     pub synth: Arc<dyn InputSynth>,
     pub media: Arc<dyn MediaObserver>,
+    /// Where keys would land: a macro checks it before each shortcut or launch step.
+    pub foreground: Arc<dyn ForegroundObserver>,
     pub launch: fn(&str) -> Result<(), ActionError>,
 }
 
 /// Runs `action` and classifies what is known about its outcome. Call it on the action worker,
 /// never the device thread (a launch can take a moment).
 pub fn execute(action: &Action, platform: &Platform) -> Outcome {
+    execute_while(action, platform, &|| true)
+}
+
+/// [`execute`] for an action that may outlive its session: `current` says whether the request is
+/// still wanted (the worker epoch has not moved). Only a macro, which spans several steps, asks.
+pub fn execute_while(action: &Action, platform: &Platform, current: &dyn Fn() -> bool) -> Outcome {
     match action {
+        Action::Macro(m) => execute_macro(m, platform, current),
         // A media key's effect cannot be tied to this press: the observer's state may be stale
         // or changed by something else, so a matching state is never proof. Always Unverified;
         // the media indicator and view show the playback the OS actually reports.
@@ -300,6 +347,85 @@ pub fn execute(action: &Action, platform: &Platform) -> Outcome {
     }
 }
 
+/// How well an outcome is known; a macro is as known as its least-known step.
+const fn rank(kind: FeedbackKind) -> u8 {
+    match kind {
+        FeedbackKind::Error => 0,
+        FeedbackKind::Unverified | FeedbackKind::Processing => 1,
+        FeedbackKind::ExecutionConfirmed => 2,
+        FeedbackKind::StateConfirmed => 3,
+    }
+}
+
+/// How long a Delay waits between looking at `current`, so a cancel is seen promptly.
+const DELAY_SLICE: Duration = Duration::from_millis(10);
+
+/// Waits `total`; `false` if `current` went false while waiting.
+fn pause(total: Duration, current: &dyn Fn() -> bool) -> bool {
+    let end = Instant::now() + total;
+    loop {
+        if !current() {
+            return false;
+        }
+        let left = end.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return true;
+        }
+        std::thread::sleep(left.min(DELAY_SLICE));
+    }
+}
+
+/// Whether `now` is still the app the macro started in (Unknown stays Unknown; Protected or any
+/// other app is a different place).
+fn same_place(start: &Foreground, now: &Foreground) -> bool {
+    match (start, now) {
+        (Foreground::App { id: a, .. }, Foreground::App { id: b, .. }) => a == b,
+        (Foreground::Unknown, Foreground::Unknown) => true,
+        _ => false,
+    }
+}
+
+/// Runs a macro's steps in order and keeps the least-confirmed outcome (Error < Unverified <
+/// Started < Confirmed). The first Error stops it and nothing is rolled back.
+///
+/// It also stops, as an Error, when `current` goes false between steps (the session ended), and
+/// before a shortcut or launch step when the foreground became Protected or is no longer the app
+/// the macro started in (invariants 9 and 12): no key or launch lands somewhere the user did not
+/// press. A system action never needs that check; it injects nothing.
+fn execute_macro(m: &Macro, platform: &Platform, current: &dyn Fn() -> bool) -> Outcome {
+    let start = platform.foreground.foreground();
+    let mut least: Option<Outcome> = None;
+    for (index, step) in m.steps.iter().enumerate() {
+        if index > 0 && !current() {
+            return Outcome::error();
+        }
+        let outcome = match step {
+            Step::Delay(wait) => {
+                if !pause(*wait, current) {
+                    return Outcome::error();
+                }
+                continue;
+            }
+            // Nesting is refused when a macro is resolved; refuse it here too, never recurse.
+            Step::Run(Action::Macro(_)) => Outcome::error(),
+            Step::Run(action) => {
+                let injects = matches!(action, Action::Shortcut(_) | Action::Launch(_));
+                if injects && !same_place(&start, &platform.foreground.foreground()) {
+                    return Outcome::error();
+                }
+                execute_while(action, platform, current)
+            }
+        };
+        if outcome.kind == FeedbackKind::Error {
+            return outcome;
+        }
+        if least.is_none_or(|l| rank(outcome.kind) < rank(l.kind)) {
+            least = Some(outcome);
+        }
+    }
+    least.unwrap_or_else(Outcome::error)
+}
+
 /// A finished action, as reported by the worker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Finished {
@@ -348,7 +474,9 @@ impl ActionWorker {
                         }
                         continue;
                     }
-                    let outcome = execute(&action, &platform);
+                    let outcome = execute_while(&action, &platform, &|| {
+                        stamped == current.load(Ordering::SeqCst)
+                    });
                     let finished = Finished {
                         id,
                         action: action.token(),
@@ -414,8 +542,8 @@ impl Drop for ActionWorker {
 mod tests {
     use super::*;
     use crate::platform::{
-        ActionAvailability, FakeAppVolumeBackend, FakeInputSynth, FakeMediaObserver,
-        FakeVolumeBackend,
+        ActionAvailability, FakeAppVolumeBackend, FakeForeground, FakeInputSynth,
+        FakeMediaObserver, FakeVolumeBackend,
     };
     use kivori_model::desk::MediaStatus;
 
@@ -432,6 +560,7 @@ mod tests {
                 app_volume: Arc::new(FakeAppVolumeBackend::new().with_session("spotify.exe", 50)),
                 synth: Arc::new(FakeInputSynth::new(synth)),
                 media: observer.clone(),
+                foreground: Arc::new(FakeForeground::default()),
                 launch: |target| {
                     if target == "Missing" {
                         Err(ActionError::Failed("application not found".into()))
@@ -713,5 +842,164 @@ mod tests {
         }
         assert_eq!(finished, [1, 3], "the late job never ran");
         assert_eq!(expired, [2]);
+    }
+
+    fn macro_of(steps: Vec<Step>) -> Action {
+        Action::Macro(Arc::new(Macro {
+            id: "m".into(),
+            name: "M".into(),
+            steps,
+        }))
+    }
+
+    fn run(action: Action) -> Step {
+        Step::Run(action)
+    }
+
+    fn chord() -> Action {
+        Action::Shortcut("Ctrl+M".parse().unwrap())
+    }
+
+    fn app(id: &str) -> Foreground {
+        Foreground::App {
+            id: id.into(),
+            name: id.into(),
+        }
+    }
+
+    /// A platform whose synth and foreground the test can inspect and move.
+    fn watched() -> (Platform, Arc<FakeInputSynth>, Arc<FakeForeground>) {
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let foreground = Arc::new(FakeForeground::default());
+        *foreground.0.lock().unwrap() = app("code.exe");
+        let p = Platform {
+            synth: synth.clone(),
+            foreground: foreground.clone(),
+            ..platform(Ok(()), None, FakeVolumeBackend::new(0)).0
+        };
+        (p, synth, foreground)
+    }
+
+    #[test]
+    fn a_macro_keeps_the_least_confirmed_outcome_of_its_steps() {
+        let (p, _, _) = watched();
+        let kind_of = |steps| kind(&macro_of(steps), &p);
+        assert_eq!(
+            kind_of(vec![run(Action::ToggleMute), run(Action::PlayPause)]),
+            FeedbackKind::Unverified,
+            "confirmed + unverified"
+        );
+        assert_eq!(
+            kind_of(vec![run(Action::PlayPause), run(Action::ToggleMute)]),
+            FeedbackKind::Unverified,
+            "order does not matter"
+        );
+        assert_eq!(
+            kind_of(vec![
+                run(Action::ToggleMute),
+                run(Action::Launch("Calculator".into()))
+            ]),
+            FeedbackKind::ExecutionConfirmed,
+            "confirmed + started"
+        );
+        assert_eq!(
+            kind_of(vec![run(Action::ToggleMute)]),
+            FeedbackKind::StateConfirmed
+        );
+    }
+
+    #[test]
+    fn the_first_error_stops_a_macro_and_nothing_after_it_runs() {
+        let (p, synth, _) = watched();
+        let m = macro_of(vec![
+            run(Action::PlayPause),
+            run(Action::Launch("Missing".into())),
+            run(Action::NextTrack),
+        ]);
+        assert_eq!(kind(&m, &p), FeedbackKind::Error);
+        assert_eq!(
+            *synth.sent.lock().unwrap(),
+            ["media-play-pause"],
+            "step 3 never ran, step 1 is not rolled back"
+        );
+    }
+
+    #[test]
+    fn a_macro_shows_as_its_first_step_and_is_not_a_system_action() {
+        let m = macro_of(vec![Step::Delay(Duration::from_millis(50)), run(chord())]);
+        assert_eq!(m.wire_kind(), ActionKind::Shortcut);
+        assert_eq!(m.token(), ActionToken::Macro);
+        assert!(!m.is_system(), "suspended under Protected");
+        let m = macro_of(vec![run(Action::ToggleMute), run(chord())]);
+        assert_eq!(m.wire_kind(), ActionKind::Mute);
+    }
+
+    #[test]
+    fn cancel_pending_mid_macro_stops_the_remaining_steps() {
+        let (p, synth, _) = watched();
+        let worker = ActionWorker::spawn(p);
+        let m = macro_of(vec![
+            run(Action::PlayPause),
+            Step::Delay(Duration::from_millis(1000)),
+            run(Action::NextTrack),
+        ]);
+        assert!(worker.request(1, m));
+        std::thread::sleep(Duration::from_millis(100));
+        worker.cancel_pending();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let finished = loop {
+            if let Some(f) = worker.try_finished() {
+                break f;
+            }
+            assert!(Instant::now() < deadline, "the macro never stopped");
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        assert_eq!(finished.outcome.kind, FeedbackKind::Error);
+        assert_eq!(*synth.sent.lock().unwrap(), ["media-play-pause"]);
+    }
+
+    #[test]
+    fn a_macro_stops_before_a_shortcut_when_the_foreground_became_protected() {
+        let (p, synth, foreground) = watched();
+        let flip = Arc::clone(&foreground);
+        let flipper = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(40));
+            *flip.0.lock().unwrap() = Foreground::Protected;
+        });
+        let m = macro_of(vec![
+            run(Action::ToggleMute),
+            Step::Delay(Duration::from_millis(300)),
+            run(chord()),
+        ]);
+        assert_eq!(kind(&m, &p), FeedbackKind::Error);
+        flipper.join().unwrap();
+        assert!(synth.sent.lock().unwrap().is_empty(), "no key was sent");
+    }
+
+    #[test]
+    fn a_macro_stops_before_a_launch_when_the_user_moved_to_another_app() {
+        let (mut p, _, foreground) = watched();
+        p.launch = |_| panic!("launched somewhere the user did not press");
+        let flip = Arc::clone(&foreground);
+        let flipper = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(40));
+            *flip.0.lock().unwrap() = app("chrome.exe");
+        });
+        let m = macro_of(vec![
+            Step::Delay(Duration::from_millis(300)),
+            run(Action::Launch("Calculator".into())),
+        ]);
+        assert_eq!(kind(&m, &p), FeedbackKind::Error);
+        flipper.join().unwrap();
+    }
+
+    #[test]
+    fn a_system_step_still_runs_after_the_foreground_became_protected() {
+        let (p, _, foreground) = watched();
+        *foreground.0.lock().unwrap() = Foreground::Protected;
+        // The macro started on a protected surface: only steps that inject nothing may run.
+        let m = macro_of(vec![run(Action::ToggleMute), run(chord())]);
+        assert_eq!(kind(&m, &p), FeedbackKind::Error);
+        assert_eq!(p.volume.read_mute(), Ok(true));
     }
 }

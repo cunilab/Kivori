@@ -6,7 +6,8 @@
     "systemMute",
     "appMute",
     "shortcut",
-    "launch"
+    "launch",
+    "macro"
   ],
   "controls": [
     "press",
@@ -30,5 +31,6 @@
     "macro"
   ],
   "profileIds": ["general", "browser", "code", "media", "zoom", "teams"],
-  "rotateSpecKinds": ["systemVolume", "shortcuts", "appVolume"]
+  "rotateSpecKinds": ["systemVolume", "shortcuts", "appVolume"],
+  "stepSpecKinds": ["action", "delay"]
 }

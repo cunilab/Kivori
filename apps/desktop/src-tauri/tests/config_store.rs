@@ -4,8 +4,8 @@ use std::fs;
 use std::path::Path;
 
 use kivori_desktop::config::{
-    ConfigError, ConfigFile, ConfigNotice, ConfigStore, DisplaySettings, Intensity, SecondaryView,
-    View,
+    ActionSpec, ConfigError, ConfigFile, ConfigNotice, ConfigStore, DisplaySettings, Intensity,
+    MacroSpec, ProfileId, ProfileOverride, SecondaryView, SlotSpec, StepSpec, View,
 };
 
 fn names(dir: &Path) -> Vec<String> {
@@ -273,4 +273,145 @@ fn reset_clears_a_recovery_notice() {
     assert_eq!(store.notice(), Some(ConfigNotice::RecoveredCorrupt));
     store.reset().unwrap();
     assert_eq!(store.notice(), None);
+}
+
+fn standup() -> MacroSpec {
+    MacroSpec {
+        id: "standup".into(),
+        name: "Standup".into(),
+        steps: vec![
+            StepSpec::Action {
+                action: ActionSpec::SystemMute,
+            },
+            StepSpec::Delay { ms: 500 },
+            StepSpec::Action {
+                action: ActionSpec::Shortcut {
+                    keys: "ctrl+m".into(),
+                },
+            },
+        ],
+    }
+}
+
+fn bind_to_standup(store: &mut ConfigStore) {
+    let next = store.edited(|file| {
+        file.profiles.insert(
+            ProfileId::Zoom,
+            ProfileOverride {
+                press: Some(SlotSpec {
+                    action: Some(ActionSpec::Macro {
+                        id: "standup".into(),
+                    }),
+                    label: None,
+                }),
+                ..ProfileOverride::default()
+            },
+        );
+    });
+    store.save(next).unwrap();
+}
+
+#[test]
+fn a_macro_is_saved_canonical_replaced_by_id_and_survives_a_reopen() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = ConfigStore::open(dir.path());
+    store.save_macro(standup()).unwrap();
+    assert_eq!(store.file().macros.len(), 1);
+    let mut renamed = standup();
+    renamed.name = "Daily".into();
+    store.save_macro(renamed).unwrap();
+    assert_eq!(store.file().macros.len(), 1, "same id replaces");
+    let reopened = ConfigStore::open(dir.path());
+    assert_eq!(reopened.file().macros[0].name, "Daily");
+    assert_eq!(
+        reopened.file().macros[0].steps[2],
+        StepSpec::Action {
+            action: ActionSpec::Shortcut {
+                keys: "Ctrl+M".into()
+            }
+        },
+        "shortcuts are stored canonical"
+    );
+    assert!(reopened.resolved().macros.contains_key("standup"));
+}
+
+#[test]
+fn delete_macro_is_refused_while_bound_and_allowed_once_unbound() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = ConfigStore::open(dir.path());
+    store.save_macro(standup()).unwrap();
+    bind_to_standup(&mut store);
+    let before = store.file().clone();
+    assert!(matches!(
+        store.delete_macro("standup"),
+        Err(ConfigError::Invalid(_))
+    ));
+    assert_eq!(store.file(), &before, "nothing changed");
+    assert!(ConfigStore::open(dir.path())
+        .resolved()
+        .macros
+        .contains_key("standup"));
+
+    let unbound = store.edited(|file| file.profiles.clear());
+    store.save(unbound).unwrap();
+    store.delete_macro("standup").unwrap();
+    assert!(store.file().macros.is_empty());
+    assert!(matches!(
+        store.delete_macro("standup"),
+        Err(ConfigError::Invalid(_))
+    ));
+}
+
+#[test]
+fn an_invalid_macro_is_rejected_on_save_and_changes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = ConfigStore::open(dir.path());
+    let play = || StepSpec::Action {
+        action: ActionSpec::PlayPause,
+    };
+    let with = |steps: Vec<StepSpec>| MacroSpec { steps, ..standup() };
+    for bad in [
+        with(vec![play(); 9]),
+        with(vec![play(), StepSpec::Delay { ms: 49 }]),
+        with(vec![
+            play(),
+            StepSpec::Action {
+                action: ActionSpec::Macro {
+                    id: "standup".into(),
+                },
+            },
+        ]),
+    ] {
+        assert!(matches!(
+            store.save_macro(bad),
+            Err(ConfigError::Invalid(_))
+        ));
+    }
+    assert_eq!(store.file(), &ConfigFile::default());
+    assert!(names(dir.path()).is_empty());
+}
+
+#[test]
+fn a_binding_to_an_unknown_macro_is_refused_on_save_and_corrupt_on_load() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = ConfigStore::open(dir.path());
+    let next = store.edited(|file| {
+        file.profiles.insert(
+            ProfileId::Zoom,
+            ProfileOverride {
+                press: Some(SlotSpec {
+                    action: Some(ActionSpec::Macro { id: "ghost".into() }),
+                    label: None,
+                }),
+                ..ProfileOverride::default()
+            },
+        );
+    });
+    assert!(matches!(store.save(next), Err(ConfigError::Invalid(_))));
+
+    let bytes =
+        br#"{"version":1,"profiles":{"zoom":{"press":{"action":{"kind":"macro","id":"ghost"}}}}}"#;
+    fs::write(dir.path().join("config.json"), bytes).unwrap();
+    let store = assert_recovered(dir.path(), bytes, "corrupt");
+    assert_eq!(store.notice(), Some(ConfigNotice::RecoveredCorrupt));
 }

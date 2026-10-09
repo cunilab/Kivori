@@ -212,6 +212,7 @@ These rows need a person, the real device and the real OS.
 - [ ] 5.15 Hold on a contextual button bound in the UI | the action runs; the device does not show a label for it yet (known gap)
 - [ ] 5.16 Reset profile and Reset everything | each asks first; afterwards the Custom badges are gone and the device shows the built-in labels
 - [ ] 5.17 macOS: open Edit on the knob | App volume is greyed out with a reason; nothing falls back to system volume
+- [ ] 5.18 Controls page: create a macro (Mute, Wait 500 ms, Play / Pause), bind it to a button and press it; try to delete it while bound | the steps run in order; the badge is the amber "?" (the least certain step); Delete is refused with a message until the button is unbound; focusing another app mid-macro stops it before any shortcut or launch step
 
 ## Phase 6: Profiles and layout (M2.5)
 

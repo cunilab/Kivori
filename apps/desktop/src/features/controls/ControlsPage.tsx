@@ -34,6 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Page } from '@/components/kivori/page';
 import { ResultBadge } from '@/components/kivori/result-badge';
 import {
+  deleteMacro,
   listActionCatalog,
   resetConfig,
   resetProfile,
@@ -41,12 +42,13 @@ import {
   setRotate,
   testAction,
 } from '@/lib/ipc';
-import { DESK_RESULTS, PROFILE_IDS } from '@/lib/ipc/types';
+import { DESK_RESULTS, MACRO_LIMITS, PROFILE_IDS } from '@/lib/ipc/types';
 import type {
   ActionCatalogEntryDto,
   ActionSpec,
   ConfigDto,
   ControlRef,
+  MacroSpec,
   DeskStatusDto,
   ProfileConfigDto,
   ProfileId,
@@ -56,6 +58,7 @@ import type {
 import { format, strings } from '@/lib/i18n/strings';
 import { errorText } from '@/lib/utils';
 import { ActionPicker, catalogId } from './ActionPicker';
+import { MacroEditor, describeStep } from './MacroEditor';
 import type { PickerTarget } from './ActionPicker';
 
 const t = strings.controls;
@@ -122,7 +125,7 @@ function rows(profile: ProfileConfigDto): Row[] {
 }
 
 /** "Keyboard shortcut: Ctrl+R" style summary of one binding. */
-function describe(spec: ActionSpec | RotateSpec | null): string {
+function describe(spec: ActionSpec | RotateSpec | null, macros: MacroSpec[]): string {
   if (!spec) return t.unbound;
   const entry = t.picker.entries[catalogId(spec) as keyof typeof t.picker.entries];
   switch (spec.kind) {
@@ -135,12 +138,26 @@ function describe(spec: ActionSpec | RotateSpec | null): string {
       return `${entry}: ${spec.app}`;
     case 'shortcuts':
       return `${entry}: ${spec.cw} / ${spec.ccw}`;
+    case 'macro':
+      return `${entry}: ${macros.find((m) => m.id === spec.id)?.name ?? spec.id}`;
     default:
       return entry;
   }
 }
 
-function isKeyboard(spec: ActionSpec, catalog: ActionCatalogEntryDto[] | null): boolean {
+function isKeyboard(
+  spec: ActionSpec,
+  catalog: ActionCatalogEntryDto[] | null,
+  macros: MacroSpec[],
+): boolean {
+  // A macro with a shortcut step needs the countdown too.
+  if (spec.kind === 'macro') {
+    return (
+      macros
+        .find((m) => m.id === spec.id)
+        ?.steps.some((s) => s.kind === 'action' && isKeyboard(s.action, catalog, macros)) ?? false
+    );
+  }
   const entry = catalog?.find((e) => e.id === catalogId(spec));
   return entry ? entry.scope === 'keyboard' : spec.kind === 'shortcut';
 }
@@ -161,6 +178,8 @@ export function ControlsPage({
   const [catalog, setCatalog] = useState<ActionCatalogEntryDto[] | null>(null);
   const [editing, setEditing] = useState<PickerTarget | null>(null);
   const [confirm, setConfirm] = useState<'profile' | 'all' | null>(null);
+  // `undefined` = closed, `null` = a new macro, else the macro being edited.
+  const [editingMacro, setEditingMacro] = useState<MacroSpec | null | undefined>(undefined);
   // The row last tested (its result badge shows desk.lastAction) and the one counting down.
   const [tested, setTested] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<{ row: string; left: number } | null>(null);
@@ -185,6 +204,7 @@ export function ControlsPage({
 
   const selected = chosen ?? desk?.profileId ?? 'general';
   const profile = config?.profiles.find((candidate) => candidate.id === selected) ?? null;
+  const macros = config?.macros ?? [];
 
   const runTest = (rowId: string, spec: ActionSpec): void => {
     setTested(rowId);
@@ -194,7 +214,7 @@ export function ControlsPage({
   };
   const startTest = (rowId: string, spec: ActionSpec): void => {
     stopCountdown();
-    if (!isKeyboard(spec, catalog)) {
+    if (!isKeyboard(spec, catalog, macros)) {
       runTest(rowId, spec);
       return;
     }
@@ -215,6 +235,11 @@ export function ControlsPage({
     const saved =
       control === 'rotate' ? setRotate(selected, null) : setBinding(selected, control, null);
     saved.catch((error: unknown) => toast.error(t.resetFailed, { description: errorText(error) }));
+  };
+  const removeMacro = (target: MacroSpec): void => {
+    deleteMacro(target.id).catch((error: unknown) =>
+      toast.error(strings.controls.macros.deleteFailed, { description: errorText(error) }),
+    );
   };
   const doReset = (): void => {
     const scope = confirm;
@@ -308,7 +333,9 @@ export function ControlsPage({
                           </CardHeader>
                           <CardContent className="space-y-3">
                             <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted px-3 py-2.5">
-                              <span className="font-medium">{row.fixed ?? describe(bound)}</span>
+                              <span className="font-medium">
+                                {row.fixed ?? describe(bound, macros)}
+                              </span>
                               {row.control === null && row.key === 'button2Hold' && (
                                 <Lock
                                   className="size-3.5 text-muted-foreground"
@@ -328,7 +355,9 @@ export function ControlsPage({
                                 <ResultBadge result={desk.lastAction.result} />
                               )}
                             </div>
-                            {bound && row.deviceLabel && row.deviceLabel !== describe(bound) ? (
+                            {bound &&
+                            row.deviceLabel &&
+                            row.deviceLabel !== describe(bound, macros) ? (
                               <p className="text-xs text-muted-foreground">
                                 {format(t.deviceLabel, { label: row.deviceLabel })}
                               </p>
@@ -401,6 +430,48 @@ export function ControlsPage({
 
       <p className="text-xs text-muted-foreground">{t.holdNote}</p>
 
+      <Card data-testid="macros">
+        <CardHeader>
+          <CardTitle>{strings.controls.macros.title}</CardTitle>
+          <CardDescription>{strings.controls.macros.description}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {macros.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{strings.controls.macros.empty}</p>
+          ) : (
+            <ul className="space-y-2" aria-label={strings.controls.macros.title}>
+              {macros.map((m) => (
+                <li
+                  key={m.id}
+                  data-testid={`macro-${m.id}`}
+                  className="flex flex-wrap items-center gap-2 rounded-lg bg-muted px-3 py-2.5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">{m.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {m.steps.map(describeStep).join(' → ')}
+                    </p>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => setEditingMacro(m)}>
+                    {strings.controls.macros.edit}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => removeMacro(m)}>
+                    {strings.controls.macros.delete}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Button
+            variant="outline"
+            disabled={!config || macros.length >= MACRO_LIMITS.macros}
+            onClick={() => setEditingMacro(null)}
+          >
+            {strings.controls.macros.create}
+          </Button>
+        </CardContent>
+      </Card>
+
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" disabled={!profile} onClick={() => setConfirm('profile')}>
           {t.resetProfile}
@@ -440,14 +511,22 @@ export function ControlsPage({
       <ActionPicker
         target={editing}
         catalog={catalog}
+        macros={macros}
         onClose={() => setEditing(null)}
         onSaveSlot={async (target, slot) => {
-          if (target.control === 'rotate') return;
+          if (target.control === 'rotate' || target.control === 'step' || !target.profile) return;
           await setBinding(target.profile.id, target.control, slot);
         }}
         onSaveRotate={async (target, rotate) => {
-          await setRotate(target.profile.id, rotate);
+          if (target.profile) await setRotate(target.profile.id, rotate);
         }}
+      />
+
+      <MacroEditor
+        macro={editingMacro}
+        macros={macros}
+        catalog={catalog}
+        onClose={() => setEditingMacro(undefined)}
       />
 
       <AlertDialog open={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>

@@ -12,14 +12,16 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { CATALOG_SCOPES } from '@/lib/ipc/types';
+import { CATALOG_SCOPES, MACRO_LIMITS } from '@/lib/ipc/types';
 import type {
   ActionCatalogEntryDto,
   ActionSpec,
   ControlRef,
+  MacroSpec,
   ProfileConfigDto,
   RotateSpec,
   SlotSpec,
+  StepSpec,
 } from '@/lib/ipc/types';
 import { format, strings } from '@/lib/i18n/strings';
 import { cn, errorText } from '@/lib/utils';
@@ -31,6 +33,7 @@ const p = t.picker;
 export const LABEL_MAX = 32;
 export const LABEL_COMFORTABLE = 10;
 const NOT_SET = 'none';
+const DELAY = 'delay';
 
 /** The catalog id of a saved binding (a knob shortcut pair is `knobShortcuts` in the catalog). */
 export function catalogId(spec: ActionSpec | RotateSpec): string {
@@ -48,8 +51,9 @@ export function labelProblem(label: string): string | null {
 }
 
 export interface PickerTarget {
-  profile: ProfileConfigDto;
-  control: ControlRef | 'rotate';
+  /** `null` when picking a macro step (no profile involved). */
+  profile: ProfileConfigDto | null;
+  control: ControlRef | 'rotate' | 'step';
   /** The control's name, for the sheet title. */
   name: string;
   /** What is bound now (`null` = unbound). */
@@ -61,29 +65,37 @@ export interface ActionPickerProps {
   target: PickerTarget | null;
   catalog: ActionCatalogEntryDto[] | null;
   onClose: () => void;
+  /** The user's macros, for the Macros group's picker. */
+  macros?: MacroSpec[] | undefined;
   onSaveSlot: (target: PickerTarget, slot: SlotSpec) => Promise<void>;
   onSaveRotate: (target: PickerTarget, rotate: RotateSpec) => Promise<void>;
+  /** Called with the chosen step when the target's control is `'step'`. */
+  onPickStep?: ((step: StepSpec) => void) | undefined;
 }
 
 /** Edit one control: pick an action, fill in what it needs, optionally name it for the device. */
 export function ActionPicker({
   target,
   catalog,
+  macros,
   onClose,
   onSaveSlot,
   onSaveRotate,
+  onPickStep,
 }: ActionPickerProps): ReactElement {
   return (
     <Sheet open={target !== null} onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-md">
         {target ? (
           <PickerForm
-            key={`${target.profile.id}:${target.control}`}
+            key={`${target.profile?.id ?? 'step'}:${target.control}`}
             target={target}
             catalog={catalog}
+            macros={macros}
             onClose={onClose}
             onSaveSlot={onSaveSlot}
             onSaveRotate={onSaveRotate}
+            onPickStep={onPickStep}
           />
         ) : null}
       </SheetContent>
@@ -94,14 +106,19 @@ export function ActionPicker({
 function PickerForm({
   target,
   catalog,
+  macros = [],
   onClose,
   onSaveSlot,
   onSaveRotate,
+  onPickStep,
 }: Omit<ActionPickerProps, 'target'> & { target: PickerTarget }): ReactElement {
   const rotate = target.control === 'rotate';
+  const stepMode = target.control === 'step';
   const spec = target.spec;
   const [id, setId] = useState(spec ? catalogId(spec) : NOT_SET);
-  const [app, setApp] = useState(spec && 'app' in spec ? spec.app : (target.profile.apps[0] ?? ''));
+  const [app, setApp] = useState(
+    spec && 'app' in spec ? spec.app : (target.profile?.apps[0] ?? ''),
+  );
   const [keys, setKeys] = useState(spec?.kind === 'shortcut' ? spec.keys : '');
   const [cw, setCw] = useState(spec?.kind === 'shortcuts' ? spec.cw : '');
   const [ccw, setCcw] = useState(spec?.kind === 'shortcuts' ? spec.ccw : '');
@@ -111,13 +128,28 @@ function PickerForm({
       ? spec.label
       : (target.label ?? (spec?.kind === 'appVolume' ? (spec.label ?? '') : '')),
   );
+  const [macroId, setMacroId] = useState(spec?.kind === 'macro' ? spec.id : '');
+  const [delayMs, setDelayMs] = useState('500');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const entries = (catalog ?? []).filter((e) => e.slot === (rotate ? 'rotate' : 'discrete'));
+  // A step is a discrete action that is not a macro (no nesting), or a wait.
+  const entries = (catalog ?? []).filter(
+    (e) => e.slot === (rotate ? 'rotate' : 'discrete') && !(stepMode && e.id === 'macro'),
+  );
   const entry = entries.find((e) => e.id === id) ?? null;
+  const isDelay = stepMode && id === DELAY;
   const params = entry?.params ?? 'none';
+  const delayValue = Number(delayMs);
+  const delayBad =
+    isDelay &&
+    !(
+      Number.isInteger(delayValue) &&
+      delayValue >= MACRO_LIMITS.delayMin &&
+      delayValue <= MACRO_LIMITS.delayMax
+    );
   const showLabel =
+    !stepMode &&
     id !== NOT_SET &&
     id !== 'systemVolume' &&
     (!rotate || params === 'app' || params === 'shortcutPair');
@@ -127,8 +159,12 @@ function PickerForm({
     (params === 'app' && !app.trim()) ||
     (params === 'shortcut' && !keys.trim()) ||
     (params === 'shortcutPair' && (!cw.trim() || !ccw.trim() || !label.trim())) ||
-    (params === 'target' && !launch.trim());
-  const unavailable = id !== NOT_SET && (entry === null || entry.availability !== 'available');
+    (params === 'target' && !launch.trim()) ||
+    (params === 'macro' && !macros.some((m) => m.id === macroId)) ||
+    delayBad ||
+    (stepMode && id === NOT_SET);
+  const unavailable =
+    id !== NOT_SET && !isDelay && (entry === null || entry.availability !== 'available');
   const canSave = !saving && !problem && !missing && !unavailable;
 
   const discrete = (): ActionSpec | null => {
@@ -139,6 +175,8 @@ function PickerForm({
         return { kind: 'shortcut', keys };
       case 'launch':
         return { kind: 'launch', target: launch };
+      case 'macro':
+        return { kind: 'macro', id: macroId };
       case 'playPause':
       case 'previousTrack':
       case 'nextTrack':
@@ -160,6 +198,13 @@ function PickerForm({
   const submit = (event: FormEvent): void => {
     event.preventDefault();
     if (!canSave) return;
+    if (stepMode) {
+      const action = discrete();
+      if (isDelay) onPickStep?.({ kind: 'delay', ms: delayValue });
+      else if (action && action.kind !== 'macro') onPickStep?.({ kind: 'action', action });
+      onClose();
+      return;
+    }
     setSaving(true);
     setError(null);
     const saved = rotate
@@ -179,9 +224,13 @@ function PickerForm({
   return (
     <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
       <SheetHeader>
-        <SheetTitle>{format(p.title, { control: target.name })}</SheetTitle>
+        <SheetTitle>
+          {stepMode ? p.stepTitle : format(p.title, { control: target.name })}
+        </SheetTitle>
         <SheetDescription>
-          {format(p.description, { profile: target.profile.name })}
+          {stepMode
+            ? p.stepDescription
+            : format(p.description, { profile: target.profile?.name ?? '' })}
         </SheetDescription>
       </SheetHeader>
 
@@ -192,7 +241,7 @@ function PickerForm({
           onValueChange={(value) => setId(value as string)}
           className="gap-4"
         >
-          {!rotate && (
+          {!rotate && !stepMode && (
             <Option
               value={NOT_SET}
               name={p.notSet}
@@ -219,7 +268,58 @@ function PickerForm({
               })}
             </div>
           ))}
+          {stepMode && (
+            <div role="group" aria-label={p.groups.delay} className="space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground">{p.groups.delay}</p>
+              <Option
+                value={DELAY}
+                name={p.delay}
+                detail={p.delayHint}
+                disabled={false}
+                checked={id === DELAY}
+              />
+            </div>
+          )}
         </RadioGroup>
+
+        {params === 'macro' && (
+          <Field
+            id="picker-macro"
+            label={p.macro}
+            hint={macros.length === 0 ? p.noMacros : undefined}
+          >
+            <select
+              id="picker-macro"
+              value={macroId}
+              onChange={(e) => setMacroId(e.target.value)}
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">—</option>
+              {macros.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+        {isDelay && (
+          <Field
+            id="picker-delay"
+            label={p.delayMs}
+            hint={delayBad ? p.delayRange : undefined}
+            invalid={delayBad}
+          >
+            <Input
+              id="picker-delay"
+              type="number"
+              inputMode="numeric"
+              value={delayMs}
+              aria-invalid={delayBad}
+              onChange={(e) => setDelayMs(e.target.value)}
+            />
+          </Field>
+        )}
 
         {params === 'app' && (
           <Field id="picker-app" label={p.app} hint={p.appHint}>
@@ -298,7 +398,7 @@ function PickerForm({
           {p.cancel}
         </Button>
         <Button type="submit" disabled={!canSave}>
-          {saving ? p.saving : p.save}
+          {stepMode ? p.add : saving ? p.saving : p.save}
         </Button>
       </SheetFooter>
     </form>
@@ -344,7 +444,7 @@ function Field({
 }: {
   id: string;
   label: string;
-  hint?: string;
+  hint?: string | undefined;
   invalid?: boolean;
   children: ReactElement;
 }): ReactElement {
