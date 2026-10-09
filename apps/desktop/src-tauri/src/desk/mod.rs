@@ -10,7 +10,7 @@ pub mod actions;
 pub mod profile;
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use kivori_model::desk::{
     ActionFeedback, ActionKind, ClockTime, ControlLabels, DeskStatus, DisplayMode, FeedbackKind,
@@ -95,6 +95,13 @@ impl FeedbackLadder {
             });
         }
         None
+    }
+
+    /// Action `id` never ran (it expired in the queue): nothing is shown for it.
+    pub fn cancel(&mut self, id: u64) {
+        if self.pending.is_some_and(|p| p.id == id) {
+            self.pending = None;
+        }
     }
 
     /// The session ended: nothing in flight will be shown (no stale replay).
@@ -350,10 +357,23 @@ impl DeskRuntime {
         now: Duration,
         observe: &mut impl FnMut(SessionActivity),
     ) {
+        self.run_within(action, now, None, observe);
+    }
+
+    /// [`Self::run`] for an action driven by device input: it must start within `remaining`
+    /// (what is left of its freshness budget) or the worker skips it (issue #26).
+    fn run_within(
+        &mut self,
+        action: Action,
+        now: Duration,
+        remaining: Option<Duration>,
+        observe: &mut impl FnMut(SessionActivity),
+    ) {
         let kind = action.kind();
         let id = self.ladder.start(kind, now);
         observe(desk_activity(ActivityEventKind::DeskActionRequested, kind));
-        if !self.worker.request(id, action) {
+        let deadline = remaining.map(|remaining| Instant::now() + remaining);
+        if !self.worker.request_by(id, action, deadline) {
             // The worker is gone: say so on the device too, never stay silent (gate 9).
             self.fail(id, kind, observe);
         }
@@ -386,6 +406,28 @@ impl DeskRuntime {
         &mut self,
         input: &LogicalInput,
         now: Duration,
+        observe: &mut impl FnMut(SessionActivity),
+    ) -> bool {
+        self.handle_input(input, now, None, observe)
+    }
+
+    /// [`Self::on_input`] for input whose age is known: a discrete action it triggers must start
+    /// within `remaining` of its freshness budget, or it is skipped and logged as `InputStale`.
+    pub fn on_input_within(
+        &mut self,
+        input: &LogicalInput,
+        now: Duration,
+        remaining: Duration,
+        observe: &mut impl FnMut(SessionActivity),
+    ) -> bool {
+        self.handle_input(input, now, Some(remaining), observe)
+    }
+
+    fn handle_input(
+        &mut self,
+        input: &LogicalInput,
+        now: Duration,
+        remaining: Option<Duration>,
         observe: &mut impl FnMut(SessionActivity),
     ) -> bool {
         match *input {
@@ -429,7 +471,7 @@ impl DeskRuntime {
             }
             _ => match self.context.resolve(input) {
                 Resolved::Nothing => {}
-                Resolved::Run(action) => self.run(action, now, observe),
+                Resolved::Run(action) => self.run_within(action, now, remaining, observe),
                 Resolved::Suspended(action) => self.refuse(action.kind(), now, observe),
                 // Not an action: the new labels are the feedback.
                 // ponytail: not in the activity log, no event kind fits; add one if users ask.
@@ -550,6 +592,11 @@ impl DeskRuntime {
             self.sent_controls = Some(labels);
             labels
         });
+        while let Some(id) = self.worker.try_expired() {
+            // Skipped, so nothing ran: no outcome, no feedback (it would claim a dispatch).
+            self.ladder.cancel(id);
+            observe(SessionActivity::new(ActivityEventKind::InputStale, None));
+        }
         while let Some(finished) = self.worker.try_finished() {
             if finished.id & KNOB != 0 {
                 if finished.outcome.kind == FeedbackKind::Error {

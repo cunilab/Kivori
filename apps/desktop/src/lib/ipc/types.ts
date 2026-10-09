@@ -114,6 +114,7 @@ export const ACTIVITY_EVENT_TYPES = [
   'sessionNonceUnavailable',
   'inputStaleSessionRejected',
   'inputUnstartedGestureRejected',
+  'inputStale',
   'volumeWriteFailed',
   'audioEndpointChanged',
   'audioEndpointLost',

@@ -632,3 +632,96 @@ fn reboot_without_bye_expires_the_old_session_and_restores_the_unchanged_mode() 
     assert_eq!(received.session, new_nonce);
     assert_eq!(received.status.mode, DisplayMode::Volume);
 }
+
+/// Issue #26 across the real boundary: the clock offset comes from the firmware's own `Pong`, and
+/// a press the device stamped long before the desktop took it is dropped, a fresh one runs.
+#[test]
+fn a_press_stamped_long_before_the_desktop_took_it_is_dropped() {
+    use kivori_desktop::activity::ActivityEventKind;
+    use kivori_desktop::input::{Freshness, LogicalInput};
+    use kivori_desktop::platform::{FakeVolumeBackend, VolumeBackend};
+    use kivori_desktop::runtime::device_task::RotaryPipeline;
+
+    let mut wire = Wire::default();
+    let mut session = Session::new(SessionConfig::default());
+    let mut manager = ConnectionManager::new();
+    let mut orch = Orchestrator::new();
+    let identity = DeviceIdentity {
+        capabilities: Capabilities::PHYSICAL_INPUT_V1.union(Capabilities::BUTTON_INPUT_V1),
+        ..device_identity()
+    };
+    let mut dispatcher = Dispatcher::new(identity);
+    let mut device = DeviceState::new();
+    device.apply(DeviceEvent::BootComplete);
+    session
+        .open(&mut HostEnd(&mut wire), &mut manager)
+        .expect("open");
+    settle(
+        &mut wire,
+        &mut session,
+        &mut manager,
+        &mut orch,
+        &mut dispatcher,
+        &mut device,
+        100,
+    );
+    assert_eq!(manager.state(), ConnectionState::Connected);
+    assert_eq!(session.device_clock().age(0, 0), None, "no Pong yet");
+
+    // Ping at host 1_000; the Pong is read at host 1_040, the device answering at its 5_020.
+    session
+        .send_ping(&mut HostEnd(&mut wire), 1_000)
+        .expect("ping");
+    session.set_host_ms(1_040);
+    settle(
+        &mut wire,
+        &mut session,
+        &mut manager,
+        &mut orch,
+        &mut dispatcher,
+        &mut device,
+        5_020,
+    );
+
+    // Host 2_000 is device ~5_980. One press from 2 s earlier, one from 100 ms earlier.
+    for (id, device_ms) in [(1, 4_000), (2, 5_880)] {
+        assert!(dispatcher.send_button_event(
+            &mut DeviceEnd(&mut wire),
+            ControlId::Button,
+            id,
+            InputKind::Press,
+            device_ms,
+        ));
+    }
+    session
+        .pump(&mut HostEnd(&mut wire), &mut manager, &mut orch)
+        .expect("desktop pump");
+    let inputs = session.take_input_events();
+    assert_eq!(inputs.len(), 2);
+
+    let volume = FakeVolumeBackend::new(30);
+    let mut rotary = RotaryPipeline::new(&volume as &dyn VolumeBackend);
+    rotary.on_connection_state(
+        ConnectionState::Connecting,
+        ConnectionState::Connected,
+        session.current_session(),
+    );
+    let mut delivered = Vec::new();
+    let mut logged = Vec::new();
+    rotary.accept_inputs_fresh(
+        &inputs,
+        Freshness {
+            clock: session.device_clock(),
+            host_now_ms: 2_000,
+        },
+        &volume,
+        &mut Vec::new(),
+        |input, _| {
+            delivered.push(input);
+            false
+        },
+        |observation| logged.push(observation.kind),
+    );
+    assert_eq!(delivered, [LogicalInput::Press { gesture_id: 2 }]);
+    assert_eq!(logged, [ActivityEventKind::InputStale]);
+}

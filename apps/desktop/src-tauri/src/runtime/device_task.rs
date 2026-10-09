@@ -30,7 +30,7 @@ use crate::device::reconnect::base_delay_ms;
 use crate::device::serial::{enumerate, SerialPortLink};
 use crate::device::session::{Session, SessionConfig, SessionError};
 use crate::firmware::{self, FirmwareStatus, FlashWorkflow, ResumeTarget};
-use crate::input::{InputIngress, LogicalInput, RejectReason};
+use crate::input::{Freshness, InputIngress, LogicalInput, RejectReason};
 use crate::ipc::dto::{connection_status, desk_status_dto, ConnectionStatusDto, DeskStatusDto};
 use crate::ipc::events;
 use crate::orchestrator::Orchestrator;
@@ -410,6 +410,7 @@ fn device_loop(
                 }
             }
             Some(open_link) => {
+                session.set_host_ms(elapsed_ms(started.elapsed()));
                 let pump_error = session
                     .pump(open_link, &mut manager, &mut orchestrator)
                     .err();
@@ -493,12 +494,17 @@ fn device_loop(
         let inputs = session.take_input_events();
         if !flash.is_busy() {
             let now = started.elapsed();
-            rotary.accept_inputs(
+            let freshness = Freshness {
+                clock: session.device_clock(),
+                host_now_ms: elapsed_ms(now),
+            };
+            rotary.accept_inputs_fresh(
                 &inputs,
+                freshness,
                 &*backend,
                 &mut presentations,
-                |input| {
-                    desk.on_input(&input, now, &mut |observation| {
+                |input, remaining| {
+                    desk.on_input_within(&input, now, remaining, &mut |observation| {
                         record_observations(&app, &activity_log, [observation]);
                     })
                 },
@@ -798,19 +804,47 @@ impl RotaryPipeline {
     /// Validates decoded input in order and hands each one to `desk` (the desk pipeline, which
     /// owns the active profile). Input `desk` returns `true` for belongs to a Volume gesture and
     /// also drives the volume loop, queueing any resulting presentations. Rejected input is
-    /// dropped unexecuted and recorded by safe category only (never its payload).
+    /// dropped unexecuted and recorded by safe category only (never its payload). Input age is
+    /// not judged here; see [`Self::accept_inputs_fresh`].
     pub fn accept_inputs(
         &mut self,
         events: &[InputEvent],
         backend: &dyn VolumeBackend,
         presentations: &mut Vec<Presentation>,
         mut desk: impl FnMut(LogicalInput) -> bool,
+        observe: impl FnMut(SessionActivity),
+    ) {
+        self.accept_inputs_fresh(
+            events,
+            Freshness::default(),
+            backend,
+            presentations,
+            |input, _remaining| desk(input),
+            observe,
+        );
+    }
+
+    /// [`Self::accept_inputs`] plus the age rule (issue #26): after the session and gesture
+    /// checks, a discrete action older than the freshness limit is dropped and recorded as
+    /// `InputStale`. Detents and gesture boundaries are always delivered. `desk` also receives
+    /// how much longer the action may wait in the action queue.
+    pub fn accept_inputs_fresh(
+        &mut self,
+        events: &[InputEvent],
+        freshness: Freshness,
+        backend: &dyn VolumeBackend,
+        presentations: &mut Vec<Presentation>,
+        mut desk: impl FnMut(LogicalInput, Duration) -> bool,
         mut observe: impl FnMut(SessionActivity),
     ) {
         for event in events {
             match self.ingress.accept(event) {
                 Ok(Some(input)) => {
-                    if !desk(input) {
+                    if input.is_discrete() && freshness.is_stale(event.device_ms) {
+                        observe(SessionActivity::new(ActivityEventKind::InputStale, None));
+                        continue;
+                    }
+                    if !desk(input, freshness.remaining(event.device_ms)) {
                         continue;
                     }
                     if let Some(update) = self.gesture_value.on_input(input, backend) {

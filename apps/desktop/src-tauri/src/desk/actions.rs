@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::thread::JoinHandle;
+use std::time::Instant;
 
 use kivori_model::desk::{ActionKind, FeedbackKind};
 
@@ -190,11 +191,20 @@ pub struct Finished {
     pub outcome: Outcome,
 }
 
+/// One queued action: its id, the epoch it was queued under, the latest moment it may still start
+/// (`None` = never expires), and the action itself.
+type Request = (u64, u64, Option<Instant>, Action);
+
 /// Runs actions one at a time on a `kivori-actions` thread, so a slow action never stalls the
 /// device link. Dropping it stops the thread after the action in progress.
+///
+/// The queue is single, so a slow launch delays everything behind it. A request carrying a
+/// deadline that has passed by the time it is dequeued is skipped, never run late (issue #26).
 pub struct ActionWorker {
-    requests: Option<Sender<(u64, u64, Action)>>,
+    requests: Option<Sender<Request>>,
     finished: Receiver<Finished>,
+    /// Ids of requests skipped because their deadline passed while they waited.
+    expired: Receiver<u64>,
     /// Requests stamped with an older epoch are skipped, not run.
     epoch: Arc<AtomicU64>,
     thread: Option<JoinHandle<()>>,
@@ -203,15 +213,22 @@ pub struct ActionWorker {
 impl ActionWorker {
     #[must_use]
     pub fn spawn(platform: Platform) -> Self {
-        let (request_tx, request_rx) = mpsc::channel::<(u64, u64, Action)>();
+        let (request_tx, request_rx) = mpsc::channel::<Request>();
         let (finished_tx, finished_rx) = mpsc::channel();
+        let (expired_tx, expired_rx) = mpsc::channel();
         let epoch = Arc::new(AtomicU64::new(0));
         let current = Arc::clone(&epoch);
         let thread = std::thread::Builder::new()
             .name("kivori-actions".to_string())
             .spawn(move || {
-                while let Ok((id, stamped, action)) = request_rx.recv() {
+                while let Ok((id, stamped, deadline, action)) = request_rx.recv() {
                     if stamped != current.load(Ordering::SeqCst) {
+                        continue;
+                    }
+                    if deadline.is_some_and(|deadline| Instant::now() > deadline) {
+                        if expired_tx.send(id).is_err() {
+                            break;
+                        }
                         continue;
                     }
                     let outcome = execute(&action, &platform);
@@ -229,6 +246,7 @@ impl ActionWorker {
         Self {
             requests: Some(request_tx),
             finished: finished_rx,
+            expired: expired_rx,
             epoch,
             thread,
         }
@@ -236,15 +254,27 @@ impl ActionWorker {
 
     /// Queues `action` under `id`. Returns `false` if the worker is gone.
     pub fn request(&self, id: u64, action: Action) -> bool {
+        self.request_by(id, action, None)
+    }
+
+    /// Like [`Self::request`], but the action is skipped (see [`Self::try_expired`]) if it has
+    /// not started by `deadline`.
+    pub fn request_by(&self, id: u64, action: Action, deadline: Option<Instant>) -> bool {
         let epoch = self.epoch.load(Ordering::SeqCst);
         self.requests
             .as_ref()
-            .is_some_and(|tx| tx.send((id, epoch, action)).is_ok())
+            .is_some_and(|tx| tx.send((id, epoch, deadline, action)).is_ok())
     }
 
     /// Every request queued so far is skipped instead of run.
     pub fn cancel_pending(&self) {
         self.epoch.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// The id of one request skipped for waiting past its deadline, if any. Never blocks.
+    #[must_use]
+    pub fn try_expired(&self) -> Option<u64> {
+        self.expired.try_recv().ok()
     }
 
     /// One finished action, if any. Never blocks.
@@ -434,5 +464,43 @@ mod tests {
         assert_eq!(finished.id, 7);
         assert_eq!(finished.action, ActionKind::Mute);
         assert_eq!(finished.outcome.kind, FeedbackKind::StateConfirmed);
+    }
+
+    static GATE_OPEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+    #[test]
+    fn a_request_dequeued_past_its_deadline_is_skipped_not_run() {
+        use std::time::Duration;
+        let (mut p, _) = platform(Ok(()), None, FakeVolumeBackend::new(0));
+        // A launch that holds the single queue until the test opens the gate.
+        p.launch = |_| {
+            while !GATE_OPEN.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            Ok(())
+        };
+        let worker = ActionWorker::spawn(p);
+        assert!(worker.request(1, Action::Launch("Slow".into())));
+        let tight = Instant::now() + Duration::from_millis(20);
+        assert!(worker.request_by(2, Action::PlayPause, Some(tight)));
+        assert!(worker.request_by(
+            3,
+            Action::PlayPause,
+            Some(Instant::now() + Duration::from_secs(30))
+        ));
+        std::thread::sleep(Duration::from_millis(60));
+        GATE_OPEN.store(true, Ordering::SeqCst);
+
+        let mut finished = Vec::new();
+        let mut expired = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while finished.len() < 2 || expired.is_empty() {
+            finished.extend(worker.try_finished().map(|f| f.id));
+            expired.extend(worker.try_expired());
+            assert!(Instant::now() < deadline, "worker never settled");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(finished, [1, 3], "the late job never ran");
+        assert_eq!(expired, [2]);
     }
 }
