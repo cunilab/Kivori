@@ -91,7 +91,7 @@ stays the beta platform and its rows are tracked in a GitHub issue.
   - screen: button labels under the keycap with ticks toward the buttons, knob label top left; the
     buddy keeps its full size. Final layout review pending (owner)
 - [ ] Hardware: Phase 5 rows in [validation.md](./validation.md), starting with 5.1 (no 32 kHz crystal)
-- [ ] Config UI for Rotate / Press / Hold and the three buttons
+- [x] Config UI for Rotate / Press / Hold and the three buttons
 - [x] Bindings are profile-shaped from day one: General is a profile with no app rule, so app-aware
   profiles add match rules, not a new model. Every binding change re-sends the device labels
 - [x] Action catalog with explicit scope (System Volume ≠ App Volume)

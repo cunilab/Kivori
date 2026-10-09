@@ -281,7 +281,7 @@ export function App(): ReactElement {
             {current === 'home' ? (
               <HomePage connection={connection} desk={desk} onNavigate={go} />
             ) : current === 'controls' ? (
-              <ControlsPage desk={desk} />
+              <ControlsPage desk={desk} config={config} />
             ) : current === 'display' ? (
               <DisplayPage desk={desk} config={config} connection={connection} />
             ) : current === 'activity' ? (
