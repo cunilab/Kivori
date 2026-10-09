@@ -154,8 +154,8 @@ problems and uses it without developer help. Start charging for beta units here.
   apart, each under its 80 px label column (#14))
 - [ ] BOM and real unit cost
 - [ ] Repeatable assembly process
-- [ ] Device flashing and provisioning process
-- [ ] Hardware QA checklist per unit (built from the remaining Phase 1–3 rows in [validation.md](./validation.md))
+- [ ] Device flashing and provisioning process (tool exists: `just provision`, see [provisioning.md](./provisioning.md); stays open until a person has run it on real units)
+- [ ] Hardware QA checklist per unit (built from the remaining Phase 1–3 rows in [validation.md](./validation.md); the automated part is `just provision`, validation Phase 12, which still needs a human run)
 - [ ] Signed Windows installer, bundling the known-compatible firmware (this is the beta's update authentication, gate 10). The unsigned pipeline exists (M3 S5: `release.yml` builds, install-tests and drafts the NSIS installer with the pinned `espflash` sidecar); this stays open until the installer is signed, which waits on owner certificates (#36). See [release.md](./release.md)
 - [ ] macOS build (if shipped; `scripts/bundle-macos.sh` bundles the adapter, entitlements and Info.plist and signs only when `APPLE_SIGNING_IDENTITY` is set; software done in M3 S5, signing and the hardware rows are open): bundle `target/<profile>/mediaremote-adapter/` as a resource, Developer ID-sign its two Mach-O helpers with hardened runtime, add `NSAppleEventsUsageDescription` and the `com.apple.security.automation.apple-events` entitlement, list the adapter (BSD-3) in third-party notices (ADR-0009)
 - [ ] Launch at login and tray presence; the window stays optional. Software done in M3 S4 (autostart plugin, hidden start, tray status and switch, Device page switch); stays open until the S4 hardware rows in [validation.md](./validation.md) pass

@@ -39,6 +39,8 @@ and `release.yml`, and `THIRD_PARTY_NOTICES.md`. Take the hashes from the offici
 confirm them by downloading. Refresh the classifier fixtures in `tests/firmware_flash.rs` from the new
 version's output.
 
+Per-unit flashing and QA of new units: see [provisioning.md](./provisioning.md).
+
 ## Known limits
 
 - Unsigned: SmartScreen warns, and Defender may block `espflash.exe` (the app then reports the tool

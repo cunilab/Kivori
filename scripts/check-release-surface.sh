@@ -50,7 +50,7 @@ present() {
 }
 
 DESKTOP_DEV_SURFACE=(render_preview_frame mirror_state open_preview_stream close_preview_stream
-  ack_preview_frame debug_payload_hex)
+  ack_preview_frame debug_payload_hex KIVORI-PROVISION)
 # Host-sim adapters AND the Wokwi self-test harness/probes are development-only surface.
 FIRMWARE_SIM_SURFACE=(SimPipe CaptureDisplay VirtualClock LoopbackTransport TileProbe KIVORI-SIM
   KIVORI-SPI WokwiSpiPins BusCounters CountedSpi KIVORI-RUN)
@@ -98,6 +98,9 @@ present "the production desktop binary" "$DESKTOP_BIN" test_action list_action_c
 echo "[2/8] desktop positive control (Device Studio ON)…"
 cargo build -q -p kivori-desktop
 present "the dev desktop binary" "$DESKTOP_BIN" render_preview_frame mirror_state open_preview_stream
+# The per-unit QA helper (M3 S7) is its own example binary: its marker must be observable there.
+cargo build -q -p kivori-desktop --example provision
+present "the provision example" "target/debug/examples/provision" KIVORI-PROVISION
 
 echo "[3/8] firmware, production features (host-sim OFF, riscv target)…"
 (cd firmware/esp32-c3 && cargo build -q --lib)

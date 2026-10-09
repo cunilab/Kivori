@@ -33,3 +33,6 @@ __pycache__/
 
 # Pinned espflash sidecar fetched by scripts/fetch-espflash.{sh,ps1} (never committed)
 apps/desktop/src-tauri/binaries/
+
+# Per-unit QA log written by `just provision` (M3 S7): local only, never committed
+provisioning-log.csv

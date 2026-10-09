@@ -10,6 +10,11 @@ description = "Kivori desktop native core (Tauri v2). Host preview renders the s
 name = "kivori-desktop"
 path = "src/main.rs"
 
+# DEV-ONLY per-unit QA helper (M3 S7): needs the Device Studio feature, so release builds never see it.
+[[example]]
+name = "provision"
+required-features = ["device-studio"]
+
 [features]
 # Device Studio (dev-only preview commands, FR-028) is on by default so `tauri dev` includes it;
 # production/release builds strip it with `--no-default-features`.

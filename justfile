@@ -145,3 +145,11 @@ desktop:
 app:
     just fw-build
     KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/esp32-c3/target/riscv32imc-unknown-none-elf/release/kivori-firmware" cargo run -p kivori-desktop
+
+# DEV ONLY (M3 S7; docs/provisioning.md): flash the freshly built firmware onto the ONE plugged-in
+# unit, check the link and controls, print PASS/FAIL and append to provisioning-log.csv.
+
+# Provision and QA one Kivori unit (builds the firmware first).
+provision:
+    just fw-build
+    KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/esp32-c3/target/riscv32imc-unknown-none-elf/release/kivori-firmware" cargo run -p kivori-desktop --example provision
