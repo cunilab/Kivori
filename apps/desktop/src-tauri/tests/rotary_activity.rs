@@ -131,3 +131,44 @@ fn losing_the_audio_endpoint_is_recorded_once() {
     rotary.observe_backend_availability(&gone, |o| observed.push(o));
     assert_eq!(kinds(&observed), vec![ActivityEventKind::AudioEndpointLost]);
 }
+
+#[test]
+fn recovery_a_new_nonce_rebinds_ingress_even_if_connected_was_not_observed_to_change() {
+    use kivori_desktop::platform::FakeVolumeBackend;
+    use kivori_model::ConnectionState;
+    let backend = FakeVolumeBackend::new(30);
+    let mut rotary = RotaryPipeline::new(&backend);
+    rotary.on_connection_state(
+        ConnectionState::Connecting,
+        ConnectionState::Connected,
+        Some(10),
+    );
+    rotary.on_connection_state(
+        ConnectionState::Connected,
+        ConnectionState::Connected,
+        Some(20),
+    );
+    let mut accepted = Vec::new();
+    let inputs = [10, 20].map(|session| kivori_protocol::InputEvent {
+        session,
+        gesture_id: session as u16,
+        control: kivori_protocol::ControlId::Rotary,
+        kind: kivori_protocol::InputKind::GestureStarted,
+        device_ms: 0,
+    });
+    rotary.accept_inputs(
+        &inputs,
+        &backend,
+        &mut Vec::new(),
+        |input| {
+            accepted.push(input);
+            false
+        },
+        |_| {},
+    );
+    assert_eq!(
+        accepted,
+        [kivori_desktop::input::LogicalInput::GestureStarted { gesture_id: 20 }],
+        "only the new session's input is eligible"
+    );
+}

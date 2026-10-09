@@ -69,12 +69,17 @@ impl Default for SessionConfig {
     }
 }
 
-/// A session failure. Malformed inbound frames are handled internally (dropped), so only transport
-/// and session-nonce failures are surfaced.
+/// A session failure. Malformed inbound frames are dropped internally.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionError<E> {
     /// The serial link read or write failed.
     Transport(E),
+    /// The peer ended this session; the caller must close the serial handle.
+    PeerClosed,
+    /// A frame could not be completely written.
+    WriteZero,
+    /// A message could not be encoded within the framing bound.
+    Encoding,
     /// The OS could not supply a fresh session nonce. This attempt is aborted (never a panic); the
     /// caller's existing backoff retries the connection.
     NonceUnavailable,
@@ -86,6 +91,7 @@ pub struct Session {
     tx_seq: u16,
     inbound: SequenceTracker,
     rx: Vec<u8>,
+    discard_rx: bool,
     sent_hello: Option<Hello>,
     nonce_source: Box<dyn NonceSource>,
     /// The nonce of the currently established session, if any. Connection-scoped: `None` until a
@@ -123,6 +129,7 @@ impl Session {
             tx_seq: 0,
             inbound: SequenceTracker::new(),
             rx: Vec::new(),
+            discard_rx: false,
             sent_hello: None,
             nonce_source: source,
             current_session: None,
@@ -240,12 +247,36 @@ impl Session {
         manager: &mut ConnectionManager,
         orchestrator: &mut Orchestrator,
     ) -> Result<(), SessionError<L::Error>> {
-        self.fill_rx(link)?;
-        while let Some(pos) = self.rx.iter().position(|&b| b == 0) {
-            let packet: Vec<u8> = self.rx[..pos].to_vec();
-            self.rx.drain(..=pos);
-            if !packet.is_empty() && packet.len() <= MAX_WIRE {
-                self.handle(&packet, link, manager, orchestrator)?;
+        let mut chunk = [0u8; 256];
+        // Bound both retained bytes and work so a continuously readable peer cannot starve timers.
+        for _ in 0..16 {
+            let n = match link.read(&mut chunk) {
+                Ok(n) => n,
+                Err(error) => {
+                    self.clear_session_identity();
+                    return Err(SessionError::Transport(error));
+                }
+            };
+            if n == 0 {
+                break;
+            }
+            for &byte in &chunk[..n] {
+                if byte == 0 {
+                    if !self.discard_rx && !self.rx.is_empty() {
+                        let packet = self.rx.clone();
+                        self.rx.clear();
+                        self.handle(&packet, link, manager, orchestrator)?;
+                    }
+                    self.rx.clear();
+                    self.discard_rx = false;
+                } else if !self.discard_rx {
+                    if self.rx.len() == MAX_WIRE {
+                        self.rx.clear();
+                        self.discard_rx = true;
+                    } else {
+                        self.rx.push(byte);
+                    }
+                }
             }
         }
         Ok(())
@@ -600,18 +631,20 @@ impl Session {
                     code: error.code,
                 }),
             ),
-            Message::InputEvent(event) => {
-                // An unnegotiated capability MUST stay completely inert: never queued, never
-                // executed, mirroring the firmware's own receive-side gate on `Presentation`.
+            // Unnegotiated input stays inert, mirroring the firmware Presentation gate.
+            Message::InputEvent(event)
                 if self
                     .negotiated_caps
-                    .contains(Capabilities::PHYSICAL_INPUT_V1)
-                {
-                    self.pending_inputs.push(event);
-                }
+                    .contains(Capabilities::PHYSICAL_INPUT_V1) =>
+            {
+                self.pending_inputs.push(event);
             }
             // The device is ending the session: no connection, no session identity.
-            Message::Bye(_) => self.clear_session_identity(),
+            Message::Bye(_) => {
+                self.clear_session_identity();
+                manager.apply(ManagerEvent::PortRemoved);
+                return Err(SessionError::PeerClosed);
+            }
             // `Ready` and the remaining device→desktop kinds are observed by the UI layer, not here.
             _ => {}
         }
@@ -638,58 +671,47 @@ impl Session {
         message: &Message,
     ) -> Result<(), SessionError<L::Error>> {
         let mut wire: heapless::Vec<u8, MAX_WIRE> = heapless::Vec::new();
-        // Encoding only fails on an over-capacity payload, which our fixed messages never hit.
         if encode_message(
             message,
             self.config.protocol_version,
             self.tx_seq,
             &mut wire,
         )
-        .is_ok()
+        .is_err()
         {
-            self.tx_seq = self.tx_seq.wrapping_add(1);
-            let mut sent = 0;
-            while sent < wire.len() {
-                let n = match link.write(&wire[sent..]) {
-                    Ok(n) => n,
-                    Err(e) => {
-                        // A write failure means this connection is gone: no lingering session
-                        // identity (a subsequent IoError takes the manager out of `Connected`).
-                        self.clear_session_identity();
-                        return Err(SessionError::Transport(e));
-                    }
-                };
-                if n == 0 {
-                    break; // link full; best-effort (the real adapter buffers)
+            self.clear_session_identity();
+            return Err(SessionError::Encoding);
+        }
+        self.tx_seq = self.tx_seq.wrapping_add(1);
+        let mut sent = 0;
+        while sent < wire.len() {
+            let n = match link.write(&wire[sent..]) {
+                Ok(n) => n,
+                Err(error) => {
+                    self.clear_session_identity();
+                    return Err(SessionError::Transport(error));
                 }
-                sent += n;
+            };
+            if n == 0 {
+                self.clear_session_identity();
+                return Err(SessionError::WriteZero);
             }
+            sent += n;
         }
         Ok(())
     }
 
-    fn fill_rx<L: SerialLink>(&mut self, link: &mut L) -> Result<(), SessionError<L::Error>> {
-        let mut chunk = [0u8; 256];
-        loop {
-            let n = match link.read(&mut chunk) {
-                Ok(n) => n,
-                Err(e) => {
-                    // A read failure means this connection is gone: no lingering session identity.
-                    self.clear_session_identity();
-                    return Err(SessionError::Transport(e));
-                }
-            };
-            if n == 0 {
-                return Ok(());
-            }
-            self.rx.extend_from_slice(&chunk[..n]);
-        }
-    }
-
-    /// Drops the connection-scoped session identity and negotiated capabilities.
+    /// Drops every observation and input scoped to the ended connection.
     fn clear_session_identity(&mut self) {
         self.current_session = None;
+        self.sent_hello = None;
         self.negotiated_caps = Capabilities::NONE;
+        self.pending_inputs.clear();
+        self.rx.clear();
+        self.discard_rx = false;
+        self.reported = None;
+        self.last_mascot_action_applied = None;
+        self.heartbeat = HeartbeatMonitor::default();
     }
 
     fn observe(&mut self, kind: ActivityEventKind, metadata: Option<ActivityMetadata>) {
@@ -802,6 +824,51 @@ mod tests {
         assert_eq!(
             session.current_session, None,
             "an Incompatible handshake outcome must clear the live session identity"
+        );
+    }
+}
+
+#[cfg(test)]
+mod recovery_tests {
+    use super::*;
+    #[test]
+    fn recovery_delimiterless_input_bounds_memory_and_read_work() {
+        struct Flood {
+            remaining: usize,
+            reads: usize,
+        }
+        impl SerialLink for Flood {
+            type Error = core::convert::Infallible;
+            fn read(&mut self, bytes: &mut [u8]) -> Result<usize, Self::Error> {
+                self.reads += 1;
+                let n = bytes.len().min(self.remaining);
+                bytes[..n].fill(1);
+                self.remaining -= n;
+                Ok(n)
+            }
+            fn write(&mut self, bytes: &[u8]) -> Result<usize, Self::Error> {
+                Ok(bytes.len())
+            }
+        }
+        let mut session = Session::new(SessionConfig::default());
+        let mut flood = Flood {
+            remaining: 1024 * 1024,
+            reads: 0,
+        };
+        session
+            .pump(
+                &mut flood,
+                &mut ConnectionManager::new(),
+                &mut Orchestrator::new(),
+            )
+            .unwrap();
+        assert!(
+            session.rx.len() <= MAX_WIRE,
+            "retained bytes must respect the framing bound"
+        );
+        assert!(
+            flood.reads <= 64,
+            "one pump must yield while a sender still has bytes"
         );
     }
 }

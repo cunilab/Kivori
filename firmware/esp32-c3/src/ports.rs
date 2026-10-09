@@ -25,6 +25,15 @@ pub trait Transport {
     /// Returns [`Self::Error`] on an unrecoverable transport failure.
     fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error>;
 
+    /// Advances bytes accepted by an outbound buffer without requiring another message.
+    /// Unbuffered transports have no pending work.
+    ///
+    /// # Errors
+    /// Returns the underlying transport error when buffered output cannot be advanced.
+    fn drain_pending(&mut self) -> Result<usize, Self::Error> {
+        Ok(0)
+    }
+
     /// Drops outbound bytes not yet handed to the hardware, and makes sure a frame cut short on
     /// the wire is terminated. Called when a new session starts: frames queued for nobody (while
     /// no host was reading) are stale and must not crowd out the `HelloAck`. Unbuffered

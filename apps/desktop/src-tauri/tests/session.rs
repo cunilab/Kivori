@@ -106,6 +106,13 @@ fn set_state_desired(msgs: &[Message]) -> Option<SendableState> {
 
 /// Drives a full handshake and returns the connected session + peers with the given initial desired.
 fn connect(desired: SendableState) -> (FakeLink, Session, ConnectionManager, Orchestrator) {
+    connect_with_caps(desired, Capabilities::MASCOT_INTERACTION)
+}
+
+fn connect_with_caps(
+    desired: SendableState,
+    caps: Capabilities,
+) -> (FakeLink, Session, ConnectionManager, Orchestrator) {
     let mut link = FakeLink::default();
     let mut session = Session::new(SessionConfig::default());
     let mut manager = ConnectionManager::new();
@@ -114,7 +121,11 @@ fn connect(desired: SendableState) -> (FakeLink, Session, ConnectionManager, Orc
 
     session.open(&mut link, &mut manager).expect("open");
     let nonce = hello_nonce(&desktop_drain(&mut link));
-    device_push(&mut link, &device_ack(nonce), wire_version(), 0);
+    let Message::HelloAck(mut ack) = device_ack(nonce) else {
+        unreachable!()
+    };
+    ack.device_caps = caps;
+    device_push(&mut link, &Message::HelloAck(ack), wire_version(), 0);
     session
         .pump(&mut link, &mut manager, &mut orchestrator)
         .expect("pump");
@@ -430,9 +441,11 @@ fn current_session_is_cleared_on_a_received_bye() {
         wire_version(),
         1,
     );
-    session
-        .pump(&mut link, &mut manager, &mut orch)
-        .expect("pump handles Bye");
+    assert_eq!(
+        session.pump(&mut link, &mut manager, &mut orch),
+        Err(SessionError::PeerClosed)
+    );
+    assert_eq!(manager.state(), ConnectionState::Disconnected);
 
     assert_eq!(
         session.current_session(),
@@ -625,4 +638,95 @@ fn input_events_are_accepted_once_physical_input_v1_is_negotiated() {
         }],
         "a negotiated capability must let the InputEvent reach execution"
     );
+}
+
+#[test]
+fn recovery_bye_disconnects_and_discards_inputs_in_the_same_read() {
+    let (mut link, mut session, mut manager, mut orch) =
+        connect_with_caps(SendableState::Idle, Capabilities::PHYSICAL_INPUT_V1);
+    let nonce = session.current_session().unwrap();
+    device_push(&mut link, &detent_event(nonce), wire_version(), 1);
+    device_push(
+        &mut link,
+        &Message::Bye(Bye {
+            reason: ByeReason::Shutdown,
+        }),
+        wire_version(),
+        2,
+    );
+    device_push(&mut link, &detent_event(nonce), wire_version(), 3);
+    assert!(session.pump(&mut link, &mut manager, &mut orch).is_err());
+    assert_eq!(manager.state(), ConnectionState::Disconnected);
+    assert_eq!(session.current_session(), None);
+    assert!(session.take_input_events().is_empty());
+    device_push(&mut link, &device_ack(nonce), wire_version(), 4);
+    session.pump(&mut link, &mut manager, &mut orch).unwrap();
+    assert_eq!(manager.state(), ConnectionState::Disconnected);
+}
+
+#[test]
+fn recovery_zero_writes_never_report_a_successful_hello() {
+    struct Cutoff(usize);
+    impl SerialLink for Cutoff {
+        type Error = Infallible;
+        fn read(&mut self, _: &mut [u8]) -> Result<usize, Self::Error> {
+            Ok(0)
+        }
+        fn write(&mut self, bytes: &[u8]) -> Result<usize, Self::Error> {
+            let n = bytes.len().min(self.0);
+            self.0 -= n;
+            Ok(n)
+        }
+    }
+    for allowed in [0, 3] {
+        let mut session = Session::new(SessionConfig::default());
+        assert!(
+            session
+                .open(&mut Cutoff(allowed), &mut ConnectionManager::new())
+                .is_err(),
+            "a zero write after {allowed} bytes cannot mean delivery"
+        );
+        assert_eq!(session.current_session(), None);
+    }
+}
+
+#[test]
+fn recovery_oversized_frame_resynchronizes_at_the_delimiter() {
+    let mut link = FakeLink::default();
+    let mut session = Session::new(SessionConfig::default());
+    let mut manager = ConnectionManager::new();
+    let mut orch = Orchestrator::new();
+    session.open(&mut link, &mut manager).unwrap();
+    let nonce = hello_nonce(&desktop_drain(&mut link));
+    link.from_device
+        .extend(std::iter::repeat_n(1, kivori_protocol::MAX_WIRE * 20));
+    link.from_device.push_back(0);
+    device_push(&mut link, &device_ack(nonce), wire_version(), 0);
+    for _ in 0..100 {
+        session.pump(&mut link, &mut manager, &mut orch).unwrap();
+        if manager.state() == ConnectionState::Connected {
+            break;
+        }
+    }
+    assert_eq!(session.current_session(), Some(nonce));
+    assert_eq!(manager.state(), ConnectionState::Connected);
+}
+
+#[test]
+fn recovery_a_burst_of_valid_frames_is_not_dropped_by_the_rx_bound() {
+    let (mut link, mut session, mut manager, mut orch) =
+        connect_with_caps(SendableState::Idle, Capabilities::PHYSICAL_INPUT_V1);
+    let nonce = session.current_session().unwrap();
+    for seq in 1..=300 {
+        device_push(&mut link, &detent_event(nonce), wire_version(), seq);
+    }
+    let mut count = 0;
+    for _ in 0..100 {
+        session.pump(&mut link, &mut manager, &mut orch).unwrap();
+        count += session.take_input_events().len();
+        if link.from_device.is_empty() {
+            break;
+        }
+    }
+    assert_eq!(count, 300);
 }

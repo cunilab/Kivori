@@ -483,3 +483,152 @@ fn a_button_press_round_trips_to_an_honest_feedback_and_a_desk_status() {
     assert_eq!(status.session, nonce);
     assert_eq!(status.status.volume_percent, Some(30));
 }
+
+#[test]
+fn reboot_without_bye_expires_the_old_session_and_restores_the_unchanged_mode() {
+    use kivori_desktop::desk::DeskRuntime;
+    use kivori_desktop::input::LogicalInput;
+    use kivori_desktop::platform::system::NoSystemProbe;
+    use kivori_desktop::platform::{
+        FakeForeground, FakeInputSynth, FakeMediaObserver, FakeVolumeBackend, OsServices,
+    };
+    use kivori_desktop::runtime::device_task::{synchronize_session, RotaryPipeline};
+    use kivori_model::desk::DisplayMode;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    let mut wire = Wire::default();
+    let mut session = Session::new(SessionConfig::default());
+    let mut manager = ConnectionManager::new();
+    let mut orch = Orchestrator::new();
+    let identity = DeviceIdentity {
+        capabilities: device_identity()
+            .capabilities
+            .union(Capabilities::DESK_STATUS_V1),
+        ..device_identity()
+    };
+    let mut dispatcher = Dispatcher::new(identity);
+    let mut device = DeviceState::new();
+    device.apply(DeviceEvent::BootComplete);
+    let volume = Arc::new(FakeVolumeBackend::new(30));
+    let mut rotary = RotaryPipeline::new(volume.as_ref());
+    let mut desk = DeskRuntime::new(OsServices {
+        volume: volume.clone(),
+        synth: Arc::new(FakeInputSynth::new(Ok(()))),
+        media: Arc::new(FakeMediaObserver::default()),
+        system: Box::new(NoSystemProbe),
+        clock: || None,
+        foreground: Arc::new(FakeForeground::default()),
+    });
+    desk.set_mode(DisplayMode::Volume, &mut |_| {});
+    let mut active = None;
+    session.open(&mut HostEnd(&mut wire), &mut manager).unwrap();
+    settle(
+        &mut wire,
+        &mut session,
+        &mut manager,
+        &mut orch,
+        &mut dispatcher,
+        &mut device,
+        100,
+    );
+    synchronize_session(&mut active, &session, &manager, &mut rotary, &mut desk);
+    let old_nonce = session.current_session().unwrap();
+    let initial = desk.tick(Duration::ZERO, &mut |_| {}).status.unwrap();
+    session
+        .send_status(&mut HostEnd(&mut wire), initial)
+        .unwrap();
+    dispatcher
+        .poll(&mut DeviceEnd(&mut wire), &mut device, 100)
+        .unwrap();
+    assert_eq!(
+        dispatcher.take_status().unwrap().status.mode,
+        DisplayMode::Volume
+    );
+
+    // Power loss discards firmware state without delivering Bye or removing the serial port.
+    dispatcher = Dispatcher::new(identity);
+    device = DeviceState::new();
+    device.apply(DeviceEvent::BootComplete);
+    for second in 1..=3 {
+        session
+            .send_ping(&mut HostEnd(&mut wire), second * 1000)
+            .unwrap();
+        settle(
+            &mut wire,
+            &mut session,
+            &mut manager,
+            &mut orch,
+            &mut dispatcher,
+            &mut device,
+            second * 1000,
+        );
+        assert_eq!(session.heartbeat_timed_out(), second == 3);
+    }
+    manager.apply(ManagerEvent::HeartbeatTimeout);
+    synchronize_session(&mut active, &session, &manager, &mut rotary, &mut desk);
+    assert_eq!(active, None);
+    assert!(manager.apply(ManagerEvent::BackoffElapsed));
+    session.open(&mut HostEnd(&mut wire), &mut manager).unwrap();
+    settle(
+        &mut wire,
+        &mut session,
+        &mut manager,
+        &mut orch,
+        &mut dispatcher,
+        &mut device,
+        4000,
+    );
+    assert_eq!(manager.state(), ConnectionState::Connected);
+    let new_nonce = session.current_session().unwrap();
+    assert_ne!(old_nonce, new_nonce);
+
+    // First input may already be queued before the task initializes the newly accepted session.
+    assert!(dispatcher.send_input_event(
+        &mut DeviceEnd(&mut wire),
+        1,
+        InputKind::GestureStarted,
+        4000
+    ));
+    session
+        .pump(&mut HostEnd(&mut wire), &mut manager, &mut orch)
+        .unwrap();
+    synchronize_session(&mut active, &session, &manager, &mut rotary, &mut desk);
+    let mut accepted = Vec::new();
+    rotary.accept_inputs(
+        &session.take_input_events(),
+        volume.as_ref(),
+        &mut Vec::new(),
+        |input| {
+            accepted.push(input);
+            false
+        },
+        |_| {},
+    );
+    assert_eq!(
+        accepted,
+        vec![LogicalInput::GestureStarted { gesture_id: 1 }]
+    );
+
+    let restored = desk
+        .tick(Duration::from_secs(4), &mut |_| {})
+        .status
+        .unwrap();
+    assert_eq!(restored.mode, DisplayMode::Volume);
+    session
+        .send_status(&mut HostEnd(&mut wire), restored)
+        .unwrap();
+    // The first locally accepted Status is lost; unchanged facts must still be refreshed.
+    wire.desktop_to_device.clear();
+    let retry = desk
+        .tick(Duration::from_secs(5), &mut |_| {})
+        .status
+        .unwrap();
+    session.send_status(&mut HostEnd(&mut wire), retry).unwrap();
+    dispatcher
+        .poll(&mut DeviceEnd(&mut wire), &mut device, 5000)
+        .unwrap();
+    let received = dispatcher.take_status().unwrap();
+    assert_eq!(received.session, new_nonce);
+    assert_eq!(received.status.mode, DisplayMode::Volume);
+}
