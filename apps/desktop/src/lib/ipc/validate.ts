@@ -24,6 +24,7 @@ import {
   FIRMWARE_PHASES,
   FLASH_FAILURES,
   UPDATE_ADVICE,
+  ACCESSIBILITY_STATES,
   STARTUP_PLATFORMS,
   INTENSITIES,
   MASCOT_ACTIONS,
@@ -40,6 +41,8 @@ import type {
   ConfigDto,
   DiagnosticsDto,
   FirmwareStatusDto,
+  AccessibilityState,
+  OnboardingDto,
   StartupSettingsDto,
   MacroSpec,
   StepSpec,
@@ -141,6 +144,18 @@ export function parseStartupSettings(raw: unknown): StartupSettingsDto {
     launchAtLogin: r.launchAtLogin,
     platform: oneOf('startup platform', STARTUP_PLATFORMS, r.platform),
   };
+}
+
+/** Validates an `OnboardingDto`. */
+export function parseOnboarding(raw: unknown): OnboardingDto {
+  const r = record('onboarding', raw);
+  if (typeof r.completed !== 'boolean') throw new Error('Kivori: invalid onboarding state.');
+  return { completed: r.completed };
+}
+
+/** Validates an Accessibility token: an unknown one is rejected, never shown as a state. */
+export function parseAccessibility(raw: unknown): AccessibilityState {
+  return oneOf('accessibility', ACCESSIBILITY_STATES, raw);
 }
 
 /** Validates a `FirmwareStatusDto`: unknown phase, failure or advice tokens are rejected. */

@@ -17,6 +17,8 @@ import type {
   AnimationTimeline,
   FirmwareStatusDto,
   StartupSettingsDto,
+  OnboardingDto,
+  AccessibilityState,
   MascotAction,
   ConfigDto,
   DiagnosticsDto,
@@ -38,6 +40,8 @@ import {
   parseDiagnostics,
   parseFirmwareStatus,
   parseStartupSettings,
+  parseOnboarding,
+  parseAccessibility,
 } from './validate';
 
 /// Handle returned by an event subscription; call it to unsubscribe.
@@ -106,6 +110,48 @@ export async function setLaunchAtLogin(enabled: boolean): Promise<StartupSetting
     return parseStartupSettings(await invoke<unknown>('set_launch_at_login', { enabled }));
   }
   if (import.meta.env.DEV) return (await devMock()).mockSetLaunchAtLogin(enabled);
+  return unavailable();
+}
+
+/** Whether first-run setup is finished. */
+export async function getOnboarding(): Promise<OnboardingDto> {
+  if (isTauri()) return parseOnboarding(await invoke<unknown>('get_onboarding'));
+  if (import.meta.env.DEV) return (await devMock()).mockGetOnboarding();
+  return unavailable();
+}
+
+/** Marks first-run setup finished (Finish and Skip setup both end here). */
+export async function completeOnboarding(): Promise<OnboardingDto> {
+  if (isTauri()) return parseOnboarding(await invoke<unknown>('complete_onboarding'));
+  if (import.meta.env.DEV) return (await devMock()).mockSetOnboarding(true);
+  return unavailable();
+}
+
+/** Reopens first-run setup (the Device page's "Run setup again"). */
+export async function restartOnboarding(): Promise<OnboardingDto> {
+  if (isTauri()) return parseOnboarding(await invoke<unknown>('restart_onboarding'));
+  if (import.meta.env.DEV) return (await devMock()).mockSetOnboarding(false);
+  return unavailable();
+}
+
+/** The Accessibility permission now. Never prompts. */
+export async function getAccessibility(): Promise<AccessibilityState> {
+  if (isTauri()) return parseAccessibility(await invoke<unknown>('get_accessibility'));
+  if (import.meta.env.DEV) return (await devMock()).mockGetAccessibility();
+  return unavailable();
+}
+
+/** Asks macOS to show its Accessibility prompt; resolves with the state right after. */
+export async function requestAccessibility(): Promise<AccessibilityState> {
+  if (isTauri()) return parseAccessibility(await invoke<unknown>('request_accessibility'));
+  if (import.meta.env.DEV) return (await devMock()).mockGetAccessibility();
+  return unavailable();
+}
+
+/** Opens System Settings at the Accessibility list. */
+export async function openAccessibilitySettings(): Promise<void> {
+  if (isTauri()) return invoke<void>('open_accessibility_settings');
+  if (import.meta.env.DEV) return;
   return unavailable();
 }
 

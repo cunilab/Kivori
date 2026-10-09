@@ -50,6 +50,8 @@ import { DeviceStudio } from './features/device-studio/DeviceStudio';
 import { DisplayPage } from './features/display/DisplayPage';
 import { migrateLegacyBuddy } from './features/display/legacy-buddy';
 import { HomePage } from './features/home/HomePage';
+import { Onboarding } from './features/onboarding/Onboarding';
+import { useOnboarding } from './features/onboarding/use-onboarding';
 import {
   uiConnection,
   useAppInfo,
@@ -176,6 +178,8 @@ export function App(): ReactElement {
     migrateLegacyBuddy(config);
   }, [config]);
   const appInfo = useAppInfo();
+  // `null` (not answered yet) shows the normal layout: the native answer takes a few milliseconds.
+  const onboarding = useOnboarding();
   const ui = uiConnection(connection);
   useConnectionToasts(ui);
 
@@ -217,6 +221,21 @@ export function App(): ReactElement {
     current === 'studio'
       ? nav.studio
       : (allItems.find((entry) => entry.id === current)?.label ?? '');
+
+  if (onboarding.completed === false) {
+    return (
+      <TooltipProvider>
+        <Onboarding
+          connection={connection}
+          desk={desk}
+          config={config}
+          updateAvailable={updateAvailable}
+          onComplete={onboarding.complete}
+        />
+        <Toaster position="bottom-right" richColors closeButton />
+      </TooltipProvider>
+    );
+  }
 
   return (
     <TooltipProvider>
@@ -294,7 +313,13 @@ export function App(): ReactElement {
             ) : current === 'activity' ? (
               <ActivityPage />
             ) : current === 'device' ? (
-              <DevicePage connection={connection} appInfo={appInfo} />
+              <DevicePage
+                connection={connection}
+                appInfo={appInfo}
+                onRunSetupAgain={() => {
+                  onboarding.restart().catch(() => toast.error(strings.onboarding.runAgain.failed));
+                }}
+              />
             ) : showStudio ? (
               <DeviceStudio />
             ) : null}

@@ -30,6 +30,10 @@ pub struct ConfigFile {
     pub display: DisplaySettings,
     #[serde(default)]
     pub buddy: BuddySettings,
+    /// First-run setup. An absent field loads as not completed; [`super::store::ConfigStore::open`]
+    /// treats a pre-existing valid file without it as an existing user who has already set up.
+    #[serde(default)]
+    pub onboarding: OnboardingState,
 }
 
 impl Default for ConfigFile {
@@ -40,8 +44,17 @@ impl Default for ConfigFile {
             macros: Vec::new(),
             display: DisplaySettings::default(),
             buddy: BuddySettings::default(),
+            onboarding: OnboardingState::default(),
         }
     }
+}
+
+/// Whether the first-run setup has been finished (or skipped).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OnboardingState {
+    #[serde(default)]
+    pub completed: bool,
 }
 
 impl ConfigFile {

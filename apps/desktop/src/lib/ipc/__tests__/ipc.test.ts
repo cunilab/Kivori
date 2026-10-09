@@ -11,6 +11,11 @@ import {
   flashFirmware,
   getFirmwareStatus,
   getAppInfo,
+  getOnboarding,
+  completeOnboarding,
+  restartOnboarding,
+  getAccessibility,
+  requestAccessibility,
   getActivityLog,
   getConfig,
   getConnectionStatus,
@@ -50,6 +55,7 @@ import {
   PROFILE_IDS,
   ROTATE_SPEC_KINDS,
   STEP_SPEC_KINDS,
+  ACCESSIBILITY_STATES,
   STARTUP_PLATFORMS,
   UPDATE_ADVICE,
 } from '../types';
@@ -607,6 +613,29 @@ describe('Rust/TS token vocabulary', () => {
     expect([...FLASH_FAILURES]).toEqual(vocabulary.flashFailures);
     expect([...UPDATE_ADVICE]).toEqual(vocabulary.updateAdvice);
     expect([...STARTUP_PLATFORMS]).toEqual(vocabulary.startupPlatform);
+    expect([...ACCESSIBILITY_STATES]).toEqual(vocabulary.accessibility);
+  });
+});
+
+describe('onboarding commands', () => {
+  afterEach(() => {
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    tauri.invoke.mockReset();
+  });
+
+  it('validate what the native side returns', async () => {
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    tauri.invoke.mockResolvedValueOnce({ completed: true });
+    await expect(getOnboarding()).resolves.toEqual({ completed: true });
+    expect(tauri.invoke).toHaveBeenCalledWith('get_onboarding', undefined);
+    tauri.invoke.mockResolvedValueOnce({ completed: 'yes' });
+    await expect(completeOnboarding()).rejects.toThrow();
+    tauri.invoke.mockResolvedValueOnce({ completed: false });
+    await expect(restartOnboarding()).resolves.toEqual({ completed: false });
+    tauri.invoke.mockResolvedValueOnce('missing');
+    await expect(getAccessibility()).resolves.toBe('missing');
+    tauri.invoke.mockResolvedValueOnce('maybe');
+    await expect(requestAccessibility()).rejects.toThrow();
   });
 });
 

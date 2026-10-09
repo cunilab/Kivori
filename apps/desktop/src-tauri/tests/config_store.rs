@@ -77,7 +77,8 @@ fn the_file_uses_the_documented_shape() {
             "profiles": {},
             "macros": [],
             "display": { "defaultView": "clock", "secondaryView": "cycle" },
-            "buddy": { "reactions": false, "intensity": "high" }
+            "buddy": { "reactions": false, "intensity": "high" },
+            "onboarding": { "completed": false }
         })
     );
 }
@@ -414,4 +415,62 @@ fn a_binding_to_an_unknown_macro_is_refused_on_save_and_corrupt_on_load() {
     fs::write(dir.path().join("config.json"), bytes).unwrap();
     let store = assert_recovered(dir.path(), bytes, "corrupt");
     assert_eq!(store.notice(), Some(ConfigNotice::RecoveredCorrupt));
+}
+
+#[test]
+fn onboarding_round_trips_and_a_fresh_install_has_not_completed_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = ConfigStore::open(dir.path());
+    assert!(!store.file().onboarding.completed);
+    store
+        .save(store.edited(|file| file.onboarding.completed = true))
+        .unwrap();
+    assert!(ConfigStore::open(dir.path()).file().onboarding.completed);
+    store
+        .save(store.edited(|file| file.onboarding.completed = false))
+        .unwrap();
+    let reopened = ConfigStore::open(dir.path());
+    assert!(!reopened.file().onboarding.completed);
+    assert_eq!(reopened.notice(), None);
+}
+
+#[test]
+fn an_existing_file_without_the_field_counts_as_already_set_up() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("config.json"),
+        br#"{"version":1,"buddy":{"reactions":false,"intensity":"low"}}"#,
+    )
+    .unwrap();
+    let store = ConfigStore::open(dir.path());
+    assert_eq!(store.notice(), None);
+    assert!(store.file().onboarding.completed);
+    assert!(!store.file().buddy.reactions);
+}
+
+#[test]
+fn a_file_that_names_the_field_is_taken_at_its_word() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("config.json"),
+        br#"{"version":1,"onboarding":{}}"#,
+    )
+    .unwrap();
+    assert!(!ConfigStore::open(dir.path()).file().onboarding.completed);
+}
+
+#[test]
+fn reset_keeps_onboarding_completed() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = ConfigStore::open(dir.path());
+    store
+        .save(store.edited(|file| {
+            file.onboarding.completed = true;
+            file.buddy.reactions = false;
+        }))
+        .unwrap();
+    store.reset().unwrap();
+    assert!(store.file().onboarding.completed);
+    assert!(store.file().buddy.reactions);
+    assert!(ConfigStore::open(dir.path()).file().onboarding.completed);
 }
