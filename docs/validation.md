@@ -287,6 +287,14 @@ Automated: the stepper only advances on real status or Skip, completes once, and
 - [ ] 11.4 Update from a build that already had a `config.json` | onboarding does not appear
 - [ ] 11.5 Device page, "Run setup again" | setup reopens; Finish with Launch at login on adds the login entry, Skip setup leaves it unchanged
 
+## Phase 12: Per-unit QA (M3 S7)
+
+Run for every assembled beta unit with `just provision` ([provisioning.md](./provisioning.md)). The tool's evaluator is unit tested; the rows need a real unit and a person.
+
+- [ ] 12.1 Plug in one new unit, `just provision` | it flashes, then prints PASS (capabilities incl. HOST_TAKEOVERS_V1, firmware equals bundled, state and health seen, heartbeat held 5 s)
+- [ ] 12.2 Follow the prompts | knob right x3, left x3, press, hold and the three buttons are each seen
+- [ ] 12.3 Open `provisioning-log.csv` | one row for the unit: short hash and versions, no raw device id, no port name
+
 ## Evidence log
 
 | Date | What | Result |
