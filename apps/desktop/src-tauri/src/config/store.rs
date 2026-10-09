@@ -9,8 +9,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde_json::Value;
 
 use super::migrate::{migrate, LoadError};
-use super::resolve::resolve;
-use super::schema::ConfigFile;
+use super::resolve::{canonical_macro, resolve};
+use super::schema::{ConfigFile, MacroSpec};
 use super::ResolvedConfig;
 use crate::desk::profile::builtins;
 
@@ -180,6 +180,39 @@ impl ConfigStore {
         self.resolved = Arc::new(resolved);
         self.revision += 1;
         Ok(())
+    }
+
+    /// Creates `spec`, or replaces the macro with its id. Bindings keep pointing at the id.
+    ///
+    /// # Errors
+    /// [`ConfigError`]; on any error the stored config is unchanged.
+    pub fn save_macro(&mut self, spec: MacroSpec) -> Result<(), ConfigError> {
+        let spec = canonical_macro(&spec).map_err(ConfigError::Invalid)?;
+        let next = self.edited(
+            |file| match file.macros.iter_mut().find(|m| m.id == spec.id) {
+                Some(existing) => *existing = spec,
+                None => file.macros.push(spec),
+            },
+        );
+        self.save(next)
+    }
+
+    /// Deletes macro `id`. Refused while a control is bound to it, so nothing becomes unbound
+    /// silently.
+    ///
+    /// # Errors
+    /// [`ConfigError`]; on any error the stored config is unchanged.
+    pub fn delete_macro(&mut self, id: &str) -> Result<(), ConfigError> {
+        if self.file.macro_bound(id) {
+            return Err(ConfigError::Invalid(
+                "This macro is still bound to a control. Unbind it first.",
+            ));
+        }
+        if !self.file.macros.iter().any(|m| m.id == id) {
+            return Err(ConfigError::Invalid("unknown macro"));
+        }
+        let next = self.edited(|file| file.macros.retain(|m| m.id != id));
+        self.save(next)
     }
 
     /// Restores every setting to its default, keeping the previous file as `config.before-reset.json`.

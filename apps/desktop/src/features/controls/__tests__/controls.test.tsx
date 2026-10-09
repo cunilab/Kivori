@@ -179,6 +179,105 @@ describe('ControlsPage', () => {
   });
 });
 
+describe('ControlsPage macros', () => {
+  const stepTexts = (): string[] =>
+    within(screen.getByRole('list', { name: 'Steps' }))
+      .getAllByRole('listitem')
+      .map((li) => li.textContent ?? '');
+
+  async function addStep(user: ReturnType<typeof userEvent.setup>, choice: RegExp): Promise<void> {
+    await user.click(screen.getByRole('button', { name: 'Add step' }));
+    const picker = await screen.findByRole('dialog', { name: 'Add a step' });
+    await user.click(within(picker).getByRole('radio', { name: choice }));
+    await user.click(within(picker).getByRole('button', { name: 'Add step' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Add a step' })).not.toBeInTheDocument(),
+    );
+  }
+
+  it('creates a macro, reorders its steps, binds it, and refuses to delete it while bound', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await screen.findByTestId('gesture-press');
+
+    await user.click(screen.getByRole('button', { name: 'New macro' }));
+    await user.type(await screen.findByLabelText('Name'), 'Standup');
+    await addStep(user, /^Mute/);
+    await addStep(user, /^Wait/);
+    await addStep(user, /^Play \/ Pause/);
+    expect(stepTexts().map((s) => s.replace(/^\d/, ''))).toEqual([
+      'Mute',
+      'Wait 500 ms',
+      'Play / Pause',
+    ]);
+    // Mute is confirmed, Play / Pause is not: the macro is as certain as the weaker one.
+    expect(screen.getByTestId('macro-least')).toHaveTextContent(
+      'Least certain step: Result unknown',
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Move step 3 up' }));
+    expect(stepTexts().map((s) => s.replace(/^\d/, ''))).toEqual([
+      'Mute',
+      'Play / Pause',
+      'Wait 500 ms',
+    ]);
+    await user.click(screen.getByRole('button', { name: 'Save macro' }));
+
+    const saved = await screen.findByTestId('macro-standup');
+    expect(saved).toHaveTextContent('Standup');
+    expect(saved).toHaveTextContent('Mute → Play / Pause → Wait 500 ms');
+
+    await openPressEditor(user);
+    await user.click(screen.getByRole('radio', { name: /^Macro/ }));
+    await user.selectOptions(screen.getByLabelText('Macro', { selector: 'select' }), 'Standup');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(row('press')).toHaveTextContent('Macro: Standup'));
+    expect(row('press')).toHaveTextContent('Custom');
+
+    await user.click(
+      within(screen.getByTestId('macro-standup')).getByRole('button', { name: 'Delete' }),
+    );
+    const toast = await screen.findByText('Couldn’t delete that macro');
+    expect(toast).toBeVisible();
+    expect(screen.getByText(/still bound to a control/)).toBeVisible();
+    expect(screen.getByTestId('macro-standup')).toBeVisible();
+
+    // Unbound, it can go.
+    await user.click(within(row('press')).getByRole('button', { name: 'Reset' }));
+    await waitFor(() => expect(row('press')).not.toHaveTextContent('Macro: Standup'));
+    await user.click(
+      within(screen.getByTestId('macro-standup')).getByRole('button', { name: 'Delete' }),
+    );
+    await waitFor(() => expect(screen.queryByTestId('macro-standup')).not.toBeInTheDocument());
+  });
+
+  it('limits a macro to 8 steps and never offers a macro as a step', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(await screen.findByRole('button', { name: 'New macro' }));
+    await user.type(await screen.findByLabelText('Name'), 'Many');
+    for (let i = 0; i < 8; i += 1) await addStep(user, /^Next track/);
+    expect(screen.getByRole('button', { name: 'Add step' })).toBeDisabled();
+    expect(screen.getByText('A macro has at most 8 steps.')).toBeVisible();
+  });
+
+  it('keeps Save off until the macro has a name and an action, and checks the wait range', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(await screen.findByRole('button', { name: 'New macro' }));
+    await user.type(await screen.findByLabelText('Name'), 'Pause only');
+    expect(screen.getByRole('button', { name: 'Save macro' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Add step' }));
+    const picker = await screen.findByRole('dialog', { name: 'Add a step' });
+    expect(within(picker).queryByRole('radio', { name: /^Macro/ })).not.toBeInTheDocument();
+    await user.click(within(picker).getByRole('radio', { name: /^Wait/ }));
+    await user.clear(within(picker).getByLabelText('Wait (milliseconds)'));
+    await user.type(within(picker).getByLabelText('Wait (milliseconds)'), '49');
+    expect(within(picker).getByText('Wait between 50 and 2000 milliseconds.')).toBeVisible();
+    expect(within(picker).getByRole('button', { name: 'Add step' })).toBeDisabled();
+  });
+});
+
 describe('ControlsPage notice', () => {
   const withNotice = (notice: ConfigDto['notice']): ConfigDto => ({
     ...ipc_config(),
@@ -191,6 +290,7 @@ describe('ControlsPage notice', () => {
       revision: 1,
       notice: null,
       profiles: [],
+      macros: [],
       display: { defaultView: 'buddy', secondaryView: 'system' },
       buddy: { reactions: true, intensity: 'normal' },
     };

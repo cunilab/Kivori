@@ -97,7 +97,7 @@ stays the beta platform and its rows are tracked in a GitHub issue.
 - [x] Action catalog with explicit scope (System Volume ≠ App Volume)
   - the catalog, `ActionToken` and a production Test Action that respects Protected
   - App Volume and App Mute through WASAPI audio sessions on Windows; on macOS they are listed as unsupported and never fall back to system volume
-- [ ] Simple ordered macros (a macro reports its least-confirmed step; no rollback)
+- [x] Simple ordered macros (a macro reports its least-confirmed step; no rollback)
 - [x] Choose what the display shows (default and secondary modes)
 - [x] Buddy settings: reactions on/off, intensity
 - [ ] Config stored locally per OS user and machine; survives restarts and updates; reset to defaults

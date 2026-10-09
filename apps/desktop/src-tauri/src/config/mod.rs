@@ -9,11 +9,13 @@ pub mod resolve;
 pub mod schema;
 pub mod store;
 
+use crate::desk::actions::Macros;
 use crate::desk::profile::{builtins, Profile};
 
 pub use schema::{
-    ActionSpec, BuddySettings, ButtonOverride, ConfigFile, DisplaySettings, Intensity, ProfileId,
-    ProfileOverride, RotateSpec, SecondaryView, SlotSpec, View, CONFIG_VERSION,
+    ActionSpec, BuddySettings, ButtonOverride, ConfigFile, DisplaySettings, Intensity, MacroSpec,
+    ProfileId, ProfileOverride, RotateSpec, SecondaryView, SlotSpec, StepSpec, View,
+    CONFIG_VERSION,
 };
 pub use store::{ConfigError, ConfigNotice, ConfigStore};
 
@@ -22,6 +24,8 @@ pub use store::{ConfigError, ConfigNotice, ConfigStore};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedConfig {
     pub profiles: Vec<Profile>,
+    /// The user's macros by id; bindings hold the same `Arc`s.
+    pub macros: Macros,
     pub display: DisplaySettings,
     pub buddy: BuddySettings,
 }
@@ -31,6 +35,7 @@ impl Default for ResolvedConfig {
     fn default() -> Self {
         Self {
             profiles: builtins(),
+            macros: Macros::new(),
             display: DisplaySettings::default(),
             buddy: BuddySettings::default(),
         }

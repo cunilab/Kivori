@@ -17,6 +17,8 @@ import {
   isTauri,
   onConfigChanged,
   resetConfig,
+  saveMacro,
+  deleteMacro,
   resetProfile,
   setBinding,
   setBuddySettings,
@@ -40,7 +42,9 @@ import {
   PREVIEW_DIM,
   PROFILE_IDS,
   ROTATE_SPEC_KINDS,
+  STEP_SPEC_KINDS,
 } from '../types';
+import type { MacroSpec } from '../types';
 import { MAX_MEDIA_TEXT, parseCatalog, parseConfig } from '../validate';
 
 afterEach(() => {
@@ -256,7 +260,7 @@ describe('action catalog ipc', () => {
     runsWhenProtected: false,
   };
 
-  it('parses the mock catalog: every action once, only macros unsupported', async () => {
+  it('parses the mock catalog: every action once, all available on Windows', async () => {
     const catalog = await listActionCatalog();
     expect(() => parseCatalog(catalog)).not.toThrow();
     expect(new Set(catalog.map((e) => e.id)).size).toBe(catalog.length);
@@ -269,8 +273,10 @@ describe('action catalog ipc', () => {
       });
     }
     expect(catalog.find((e) => e.id === 'macro')).toMatchObject({
-      availability: 'unsupported',
-      reason: 'Coming soon',
+      availability: 'available',
+      reason: null,
+      verification: 'leastOfSteps',
+      runsWhenProtected: false,
     });
     expect(catalog.find((e) => e.id === 'launch')).toMatchObject({ verification: 'started' });
     expect(catalog.find((e) => e.id === 'shortcut')?.runsWhenProtected).toBe(false);
@@ -377,6 +383,7 @@ describe('config ipc', () => {
     revision: 3,
     notice: null,
     profiles: [],
+    macros: [],
     display: { defaultView: 'buddy', secondaryView: 'cycle' },
     buddy: { reactions: true, intensity: 'normal' },
   };
@@ -396,6 +403,18 @@ describe('config ipc', () => {
       { ...validConfig, buddy: { reactions: 'yes', intensity: 'normal' } },
       { ...validConfig, buddy: { reactions: true, intensity: 'extreme' } },
       { ...validConfig, profiles: 'none' },
+      { ...validConfig, macros: 'none' },
+      { ...validConfig, macros: [{ id: 'm', name: 'M', steps: [{ kind: 'delay', ms: 49 }] }] },
+      {
+        ...validConfig,
+        macros: [
+          {
+            id: 'm',
+            name: 'M',
+            steps: [{ kind: 'action', action: { kind: 'macro', id: 'm' } }],
+          },
+        ],
+      },
     ]) {
       expect(() => parseConfig(bad), JSON.stringify(bad)).toThrow();
     }
@@ -463,6 +482,35 @@ describe('config ipc', () => {
     expect(browser.buttons[0].press).toMatchObject({ deviceLabel: 'Back', overridden: false });
   });
 
+  it('saves, validates and deletes macros in the mock, refusing a bound delete', async () => {
+    await resetConfig();
+    const play = { kind: 'action', action: { kind: 'playPause' } } as const;
+    const spec: MacroSpec = {
+      id: 'standup',
+      name: 'Standup',
+      steps: [play, { kind: 'delay', ms: 50 }],
+    };
+    const saved = await saveMacro(spec);
+    expect(saved.macros).toEqual([spec]);
+    expect(parseConfig(JSON.parse(JSON.stringify(saved)))).toEqual(saved);
+    for (const bad of [
+      { ...spec, steps: Array.from({ length: 9 }, () => play) },
+      { ...spec, steps: [play, { kind: 'delay', ms: 49 }] },
+      { ...spec, steps: [{ kind: 'action', action: { kind: 'macro', id: 'standup' } }] },
+      { ...spec, steps: [{ kind: 'delay', ms: 100 }] },
+    ]) {
+      await expect(saveMacro(bad as MacroSpec), JSON.stringify(bad)).rejects.toThrow();
+    }
+    await expect(
+      setBinding('general', 'press', { action: { kind: 'macro', id: 'ghost' } }),
+    ).rejects.toThrow('unknown macro');
+    await setBinding('general', 'press', { action: { kind: 'macro', id: 'standup' } });
+    expect((await getDeskStatus()).pressAction).toBe('macro');
+    await expect(deleteMacro('standup')).rejects.toThrow('still bound');
+    await setBinding('general', 'press', null);
+    expect((await deleteMacro('standup')).macros).toEqual([]);
+  });
+
   it('rebinds, unbinds and resets a control in the mock', async () => {
     await resetConfig();
     const saved = await setBinding('general', 'button1Hold', {
@@ -528,6 +576,7 @@ describe('Rust/TS token vocabulary', () => {
     expect([...PROFILE_IDS]).toEqual(vocabulary.profileIds);
     expect([...CONTROL_REFS]).toEqual(vocabulary.controls);
     expect([...ACTION_SPEC_KINDS]).toEqual(vocabulary.actionSpecKinds);
+    expect([...STEP_SPEC_KINDS]).toEqual(vocabulary.stepSpecKinds);
     expect([...ROTATE_SPEC_KINDS]).toEqual(vocabulary.rotateSpecKinds);
   });
 });

@@ -21,6 +21,7 @@ const config: ConfigDto = {
   revision: 1,
   notice: null,
   profiles: [],
+  macros: [],
   display: { defaultView: 'buddy', secondaryView: 'system' },
   buddy: { reactions: true, intensity: 'normal' },
 };

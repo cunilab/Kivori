@@ -4,11 +4,18 @@
 //! fixes from app updates. "Reset control" removes the key; "reset profile" removes the entry.
 //! Rejection reasons are fixed texts that never echo the input.
 
+use std::sync::Arc;
+use std::time::Duration;
+
 use kivori_model::desk::MediaText;
 
-use super::schema::{ActionSpec, ConfigFile, ProfileId, ProfileOverride, RotateSpec, SlotSpec};
+use super::schema::{
+    ActionSpec, ConfigFile, MacroSpec, ProfileId, ProfileOverride, RotateSpec, SlotSpec, StepSpec,
+    DELAY_MS, MAX_MACROS, MAX_STEPS,
+};
 use super::store::ConfigError;
 use super::ResolvedConfig;
+use crate::desk::actions::{Macro, Macros, Step};
 use crate::desk::profile::{Profile, RotateBinding};
 use crate::desk::{Action, Slot};
 use crate::platform::launch::validate_target;
@@ -35,7 +42,7 @@ pub const CONTROL_TOKENS: [&str; 7] = [
 ];
 
 /// Every `kind` an [`ActionSpec`] serializes with, for the Rust/TS vocabulary check.
-pub const ACTION_SPEC_KINDS: [&str; 7] = [
+pub const ACTION_SPEC_KINDS: [&str; 8] = [
     "playPause",
     "previousTrack",
     "nextTrack",
@@ -43,7 +50,11 @@ pub const ACTION_SPEC_KINDS: [&str; 7] = [
     "appMute",
     "shortcut",
     "launch",
+    "macro",
 ];
+
+/// Every `kind` a [`StepSpec`] serializes with.
+pub const STEP_SPEC_KINDS: [&str; 2] = ["action", "delay"];
 
 /// Every `kind` a [`RotateSpec`] serializes with.
 pub const ROTATE_SPEC_KINDS: [&str; 3] = ["systemVolume", "shortcuts", "appVolume"];
@@ -136,12 +147,27 @@ fn shortcut(keys: &str) -> Result<Shortcut, &'static str> {
     keys.parse().map_err(|_| "not a valid shortcut")
 }
 
-/// The runnable action a spec names, validated (a shortcut parses, a launch target is plain).
+/// A macro id: 1 to 64 of `a-z 0-9 - _` (it is stored in bindings and never shown).
+fn macro_id(id: &str) -> Result<(), &'static str> {
+    let ok = !id.is_empty()
+        && id.len() <= 64
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_');
+    ok.then_some(())
+        .ok_or("a macro id is 1 to 64 of a-z, 0-9, - and _")
+}
+
+/// The runnable action a spec names, validated (a shortcut parses, a launch target is plain, a
+/// macro exists in `macros`).
 ///
 /// # Errors
-/// Returns a fixed reason for an invalid shortcut or application.
-pub fn resolve_action(spec: &ActionSpec) -> Result<Action, &'static str> {
+/// Returns a fixed reason for an invalid shortcut or application, or an unknown macro.
+pub fn resolve_action(spec: &ActionSpec, macros: &Macros) -> Result<Action, &'static str> {
     Ok(match spec {
+        ActionSpec::Macro { id } => {
+            Action::Macro(Arc::clone(macros.get(id.as_str()).ok_or("unknown macro")?))
+        }
         ActionSpec::PlayPause => Action::PlayPause,
         ActionSpec::PreviousTrack => Action::PreviousTrack,
         ActionSpec::NextTrack => Action::NextTrack,
@@ -156,13 +182,13 @@ pub fn resolve_action(spec: &ActionSpec) -> Result<Action, &'static str> {
     })
 }
 
-fn slot(spec: &SlotSpec) -> Result<Slot, &'static str> {
+fn slot(spec: &SlotSpec, macros: &Macros) -> Result<Slot, &'static str> {
     let Some(bound) = &spec.action else {
         // Unbound: a label would have nothing to name.
         return Ok(Slot::default());
     };
     Ok(Slot {
-        action: Some(resolve_action(bound)?),
+        action: Some(resolve_action(bound, macros)?),
         label: spec.label.as_deref().map(label).transpose()?,
     })
 }
@@ -206,8 +232,88 @@ pub fn action_spec(action: &Action) -> Option<ActionSpec> {
         Action::Launch(target) => ActionSpec::Launch {
             target: target.clone(),
         },
+        Action::Macro(m) => ActionSpec::Macro { id: m.id.clone() },
         Action::AppVolumeStep { .. } => return None,
     })
+}
+
+/// Validates one macro: limits, name, id, and steps that are never macros.
+///
+/// # Errors
+/// A fixed reason naming what is wrong.
+pub fn resolve_macro(spec: &MacroSpec) -> Result<Macro, &'static str> {
+    macro_id(&spec.id)?;
+    if spec.steps.len() > MAX_STEPS {
+        return Err("a macro has at most 8 steps");
+    }
+    let no_macros = Macros::new();
+    let mut steps = Vec::with_capacity(spec.steps.len());
+    for step in &spec.steps {
+        steps.push(match step {
+            StepSpec::Action {
+                action: ActionSpec::Macro { .. },
+            } => return Err("a macro cannot contain a macro"),
+            StepSpec::Action { action } => Step::Run(resolve_action(action, &no_macros)?),
+            StepSpec::Delay { ms } if DELAY_MS.contains(ms) => {
+                Step::Delay(Duration::from_millis(u64::from(*ms)))
+            }
+            StepSpec::Delay { .. } => return Err("a delay is 50 to 2000 ms"),
+        });
+    }
+    if !steps.iter().any(|step| matches!(step, Step::Run(_))) {
+        return Err("a macro needs at least one action step");
+    }
+    Ok(Macro {
+        id: spec.id.clone(),
+        name: label(&spec.name)?,
+        steps,
+    })
+}
+
+/// The spec of a resolved macro (for the UI and for storing it canonically).
+#[must_use]
+pub fn macro_spec(m: &Macro) -> MacroSpec {
+    MacroSpec {
+        id: m.id.clone(),
+        name: m.name.clone(),
+        steps: m
+            .steps
+            .iter()
+            .filter_map(|step| {
+                Some(match step {
+                    Step::Run(action) => StepSpec::Action {
+                        action: action_spec(action)?,
+                    },
+                    Step::Delay(wait) => StepSpec::Delay {
+                        ms: u16::try_from(wait.as_millis()).unwrap_or(u16::MAX),
+                    },
+                })
+            })
+            .collect(),
+    }
+}
+
+/// [`macro_spec`] of the validated `spec`: shortcuts canonical, text trimmed.
+///
+/// # Errors
+/// A fixed reason naming what is wrong.
+pub fn canonical_macro(spec: &MacroSpec) -> Result<MacroSpec, &'static str> {
+    resolve_macro(spec).map(|m| macro_spec(&m))
+}
+
+/// Every macro of `file`, validated, by id.
+fn resolve_macros(file: &ConfigFile) -> Result<Macros, &'static str> {
+    if file.macros.len() > MAX_MACROS {
+        return Err("at most 32 macros");
+    }
+    let mut macros = Macros::new();
+    for spec in &file.macros {
+        let m = resolve_macro(spec)?;
+        if macros.insert(m.id.clone(), Arc::new(m)).is_some() {
+            return Err("two macros share an id");
+        }
+    }
+    Ok(macros)
 }
 
 /// The spec of a resolved knob binding (for the UI).
@@ -231,8 +337,8 @@ pub fn rotate_spec(binding: &RotateBinding) -> RotateSpec {
 ///
 /// # Errors
 /// A fixed reason naming what is wrong.
-pub fn canonical_slot(spec: &SlotSpec) -> Result<SlotSpec, &'static str> {
-    let resolved = slot(spec)?;
+pub fn canonical_slot(spec: &SlotSpec, macros: &Macros) -> Result<SlotSpec, &'static str> {
+    let resolved = slot(spec, macros)?;
     Ok(SlotSpec {
         action: resolved.action.as_ref().and_then(action_spec),
         label: resolved.label,
@@ -247,23 +353,27 @@ pub fn canonical_rotate(spec: &RotateSpec) -> Result<RotateSpec, &'static str> {
     rotate(spec).map(|binding| rotate_spec(&binding))
 }
 
-fn apply(profile: &mut Profile, over: &ProfileOverride) -> Result<(), &'static str> {
+fn apply(
+    profile: &mut Profile,
+    over: &ProfileOverride,
+    macros: &Macros,
+) -> Result<(), &'static str> {
     if let Some(spec) = &over.rotate {
         profile.rotate = rotate(spec)?;
     }
     let bindings = &mut profile.bindings;
     if let Some(spec) = &over.press {
-        bindings.press = slot(spec)?;
+        bindings.press = slot(spec, macros)?;
     }
     if let Some(spec) = &over.hold {
-        bindings.hold = slot(spec)?;
+        bindings.hold = slot(spec, macros)?;
     }
     for (target, over) in bindings.buttons.iter_mut().zip(&over.buttons) {
         if let Some(spec) = &over.press {
-            target.press = slot(spec)?;
+            target.press = slot(spec, macros)?;
         }
         if let Some(spec) = &over.hold {
-            target.hold = slot(spec)?;
+            target.hold = slot(spec, macros)?;
         }
     }
     if over.buttons[1].hold.is_some() {
@@ -280,13 +390,15 @@ pub fn resolve(
     mut builtins: Vec<Profile>,
     file: &ConfigFile,
 ) -> Result<ResolvedConfig, ConfigError> {
+    let macros = resolve_macros(file).map_err(ConfigError::Invalid)?;
     for profile in &mut builtins {
         if let Some(over) = file.profiles.get(&profile.id) {
-            apply(profile, over).map_err(ConfigError::Invalid)?;
+            apply(profile, over, &macros).map_err(ConfigError::Invalid)?;
         }
     }
     Ok(ResolvedConfig {
         profiles: builtins,
+        macros,
         display: file.display,
         buddy: file.buddy,
     })
@@ -441,12 +553,24 @@ mod tests {
             ActionSpec::AppMute { app: "a".into() },
             ActionSpec::Shortcut { keys: "A".into() },
             ActionSpec::Launch { target: "a".into() },
+            ActionSpec::Macro { id: "a".into() },
         ];
         let kinds: Vec<_> = actions
             .iter()
             .map(|a| kind_of(serde_json::to_value(a).unwrap()))
             .collect();
         assert_eq!(kinds, ACTION_SPEC_KINDS);
+        let steps = [
+            StepSpec::Action {
+                action: ActionSpec::PlayPause,
+            },
+            StepSpec::Delay { ms: 50 },
+        ];
+        let kinds: Vec<_> = steps
+            .iter()
+            .map(|s| kind_of(serde_json::to_value(s).unwrap()))
+            .collect();
+        assert_eq!(kinds, STEP_SPEC_KINDS);
         let rotates = [
             RotateSpec::SystemVolume,
             RotateSpec::Shortcuts {
@@ -578,12 +702,15 @@ mod tests {
 
     #[test]
     fn stored_specs_are_canonical() {
-        let canon = canonical_slot(&spec(
-            Some(ActionSpec::Shortcut {
-                keys: "cmd + shift + m".into(),
-            }),
-            Some(" Mic "),
-        ))
+        let canon = canonical_slot(
+            &spec(
+                Some(ActionSpec::Shortcut {
+                    keys: "cmd + shift + m".into(),
+                }),
+                Some(" Mic "),
+            ),
+            &Macros::new(),
+        )
         .unwrap();
         assert_eq!(
             canon,
@@ -607,5 +734,133 @@ mod tests {
             "{json}"
         );
         assert_eq!(serde_json::from_str::<ConfigFile>(&json).unwrap(), file);
+    }
+
+    fn step(action: ActionSpec) -> StepSpec {
+        StepSpec::Action { action }
+    }
+
+    fn macro_of(id: &str, steps: Vec<StepSpec>) -> MacroSpec {
+        MacroSpec {
+            id: id.into(),
+            name: "Standup".into(),
+            steps,
+        }
+    }
+
+    fn with_macro(m: MacroSpec) -> ConfigFile {
+        ConfigFile {
+            macros: vec![m],
+            ..ConfigFile::default()
+        }
+    }
+
+    fn bound_to(file: &mut ConfigFile, id: &str) {
+        file.profiles.insert(
+            ProfileId::Zoom,
+            ProfileOverride {
+                press: Some(spec(Some(ActionSpec::Macro { id: id.into() }), None)),
+                ..ProfileOverride::default()
+            },
+        );
+    }
+
+    #[test]
+    fn a_macro_resolves_by_id_into_a_shared_arc_that_a_binding_runs() {
+        let mut file = with_macro(macro_of(
+            "standup",
+            vec![
+                step(ActionSpec::SystemMute),
+                StepSpec::Delay { ms: 500 },
+                step(ActionSpec::Shortcut {
+                    keys: "ctrl+m".into(),
+                }),
+            ],
+        ));
+        bound_to(&mut file, "standup");
+        let resolved = run(false, &file).unwrap();
+        let m = &resolved.macros["standup"];
+        assert_eq!(m.steps.len(), 3);
+        assert_eq!(m.steps[1], Step::Delay(Duration::from_millis(500)));
+        let Some(Action::Macro(bound)) = &resolved.profiles[4].bindings.press.action else {
+            panic!("press is not a macro");
+        };
+        assert!(Arc::ptr_eq(bound, m), "the binding shares the table's Arc");
+        // The device names it after the macro; the UI gets the canonical spec back.
+        assert_eq!(
+            resolved.profiles[4].bindings.press.device_label(),
+            "Standup"
+        );
+        assert_eq!(
+            macro_spec(m).steps[2],
+            step(ActionSpec::Shortcut {
+                keys: "Ctrl+M".into()
+            })
+        );
+    }
+
+    #[test]
+    fn a_binding_to_an_unknown_macro_is_rejected() {
+        let mut file = ConfigFile::default();
+        bound_to(&mut file, "ghost");
+        assert_eq!(invalid(&file), "unknown macro");
+        let mut file = with_macro(macro_of("a", vec![step(ActionSpec::PlayPause)]));
+        bound_to(&mut file, "b");
+        assert_eq!(invalid(&file), "unknown macro");
+    }
+
+    #[test]
+    fn macro_limits_steps_delays_nesting_and_ids_are_enforced() {
+        let play = || step(ActionSpec::PlayPause);
+        let reason = |m: MacroSpec| invalid(&with_macro(m));
+        assert!(run(false, &with_macro(macro_of("m", vec![play(); 8]))).is_ok());
+        assert_eq!(
+            reason(macro_of("m", vec![play(); 9])),
+            "a macro has at most 8 steps"
+        );
+        let delayed = |ms| macro_of("m", vec![play(), StepSpec::Delay { ms }]);
+        assert!(run(false, &with_macro(delayed(50))).is_ok());
+        assert!(run(false, &with_macro(delayed(2000))).is_ok());
+        assert_eq!(reason(delayed(49)), "a delay is 50 to 2000 ms");
+        assert_eq!(reason(delayed(2001)), "a delay is 50 to 2000 ms");
+        assert_eq!(
+            reason(macro_of(
+                "m",
+                vec![step(ActionSpec::Macro { id: "m".into() })]
+            )),
+            "a macro cannot contain a macro"
+        );
+        assert_eq!(
+            reason(macro_of("m", vec![])),
+            "a macro needs at least one action step"
+        );
+        assert_eq!(
+            reason(macro_of("m", vec![StepSpec::Delay { ms: 100 }])),
+            "a macro needs at least one action step"
+        );
+        for bad in ["", "Has Space", "UPPER", &"a".repeat(65)] {
+            assert_eq!(
+                reason(macro_of(bad, vec![play()])),
+                "a macro id is 1 to 64 of a-z, 0-9, - and _"
+            );
+        }
+        let mut named = macro_of("m", vec![play()]);
+        named.name = "x".repeat(33);
+        assert_eq!(reason(named), "a label is at most 32 characters");
+    }
+
+    #[test]
+    fn at_most_32_macros_with_unique_ids() {
+        let many = |n: usize| ConfigFile {
+            macros: (0..n)
+                .map(|i| macro_of(&format!("m{i}"), vec![step(ActionSpec::PlayPause)]))
+                .collect(),
+            ..ConfigFile::default()
+        };
+        assert!(run(false, &many(32)).is_ok());
+        assert_eq!(invalid(&many(33)), "at most 32 macros");
+        let mut dup = many(2);
+        dup.macros[1].id = "m0".into();
+        assert_eq!(invalid(&dup), "two macros share an id");
     }
 }

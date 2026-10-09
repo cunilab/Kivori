@@ -205,14 +205,6 @@ pub enum Params {
     Macro,
 }
 
-/// What stops an entry from being offered at all, regardless of services.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Support {
-    Everywhere,
-    /// Listed, but its backend has not landed yet.
-    ComingSoon,
-}
-
 /// One bindable action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CatalogEntry {
@@ -225,10 +217,8 @@ pub struct CatalogEntry {
     pub params: Params,
     /// Runs while the foreground is a protected surface (it injects no input into it).
     pub runs_when_protected: bool,
-    support: Support,
 }
 
-#[allow(clippy::too_many_arguments)]
 const fn entry(
     id: &'static str,
     token: ActionToken,
@@ -237,7 +227,6 @@ const fn entry(
     verification: Verification,
     params: Params,
     runs_when_protected: bool,
-    support: Support,
 ) -> CatalogEntry {
     CatalogEntry {
         id,
@@ -247,17 +236,14 @@ const fn entry(
         verification,
         params,
         runs_when_protected,
-        support,
     }
 }
 
 /// Every action, in the order the picker shows them.
 ///
-/// Macros are listed but unsupported until their backend lands, and App Volume and App Mute are
-/// unsupported on macOS: the config UI shows them disabled with a reason rather than hiding them.
+/// App Volume and App Mute are unsupported on macOS: the config UI shows them disabled with a reason rather than hiding them.
 pub const CATALOG: [CatalogEntry; 11] = {
     use ActionToken as T;
-    use Support::{ComingSoon, Everywhere};
     use Verification::{Confirmed, LeastOfSteps, Started, Unverified};
     [
         entry(
@@ -268,7 +254,6 @@ pub const CATALOG: [CatalogEntry; 11] = {
             Confirmed,
             Params::None,
             true,
-            Everywhere,
         ),
         entry(
             "appVolume",
@@ -278,7 +263,6 @@ pub const CATALOG: [CatalogEntry; 11] = {
             Confirmed,
             Params::App,
             true,
-            Everywhere,
         ),
         entry(
             "knobShortcuts",
@@ -288,7 +272,6 @@ pub const CATALOG: [CatalogEntry; 11] = {
             Unverified,
             Params::ShortcutPair,
             false,
-            Everywhere,
         ),
         entry(
             "playPause",
@@ -298,7 +281,6 @@ pub const CATALOG: [CatalogEntry; 11] = {
             Unverified,
             Params::None,
             true,
-            Everywhere,
         ),
         entry(
             "previousTrack",
@@ -308,7 +290,6 @@ pub const CATALOG: [CatalogEntry; 11] = {
             Unverified,
             Params::None,
             true,
-            Everywhere,
         ),
         entry(
             "nextTrack",
@@ -318,7 +299,6 @@ pub const CATALOG: [CatalogEntry; 11] = {
             Unverified,
             Params::None,
             true,
-            Everywhere,
         ),
         entry(
             "systemMute",
@@ -328,7 +308,6 @@ pub const CATALOG: [CatalogEntry; 11] = {
             Confirmed,
             Params::None,
             true,
-            Everywhere,
         ),
         entry(
             "appMute",
@@ -338,7 +317,6 @@ pub const CATALOG: [CatalogEntry; 11] = {
             Confirmed,
             Params::App,
             true,
-            Everywhere,
         ),
         entry(
             "shortcut",
@@ -348,7 +326,6 @@ pub const CATALOG: [CatalogEntry; 11] = {
             Unverified,
             Params::Shortcut,
             false,
-            Everywhere,
         ),
         entry(
             "launch",
@@ -358,7 +335,6 @@ pub const CATALOG: [CatalogEntry; 11] = {
             Started,
             Params::Target,
             false,
-            Everywhere,
         ),
         entry(
             "macro",
@@ -368,7 +344,6 @@ pub const CATALOG: [CatalogEntry; 11] = {
             LeastOfSteps,
             Params::Macro,
             false,
-            ComingSoon,
         ),
     ]
 };
@@ -381,11 +356,6 @@ impl CatalogEntry {
         if self.scope == Scope::App && os == Os::MacOs {
             return ActionAvailability::Unsupported {
                 reason: APP_VOLUME_UNSUPPORTED_ON_MAC.to_string(),
-            };
-        }
-        if self.support == Support::ComingSoon {
-            return ActionAvailability::Unsupported {
-                reason: "Coming soon".to_string(),
             };
         }
         let backend = match self.scope {
@@ -420,10 +390,10 @@ pub fn catalog(os: Os, services: &Services) -> Vec<(CatalogEntry, ActionAvailabi
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::desk::actions::{execute, Action, Platform};
+    use crate::desk::actions::{execute, Action, Macro, Platform, Step};
     use crate::platform::{
-        FakeAppVolumeBackend, FakeInputSynth, FakeMediaObserver, FakeVolumeBackend, Shortcut,
-        VolumeBackend,
+        FakeAppVolumeBackend, FakeForeground, FakeInputSynth, FakeMediaObserver, FakeVolumeBackend,
+        Shortcut, VolumeBackend,
     };
     use kivori_model::desk::FeedbackKind;
     use kivori_model::input::Direction;
@@ -435,6 +405,7 @@ mod tests {
             app_volume: Arc::new(FakeAppVolumeBackend::new().with_session("spotify.exe", 50)),
             synth: Arc::new(FakeInputSynth::new(Ok(()))),
             media: Arc::new(FakeMediaObserver::default()),
+            foreground: Arc::new(FakeForeground::default()),
             launch: |_| Ok(()),
         }
     }
@@ -459,6 +430,11 @@ mod tests {
                 app: "spotify.exe".into(),
                 direction: Direction::Cw,
             },
+            "macro" => Action::Macro(Arc::new(Macro {
+                id: "m".into(),
+                name: "M".into(),
+                steps: vec![Step::Run(Action::PlayPause), Step::Run(Action::ToggleMute)],
+            })),
             _ => return None,
         })
     }
@@ -470,6 +446,10 @@ mod tests {
             let Some(action) = example(entry.id) else {
                 continue;
             };
+            if entry.verification == Verification::LeastOfSteps {
+                // As verified as its weakest step: checked in `a_macro_is_as_verified_as_...`.
+                continue;
+            }
             let class = match execute(&action, &fakes()).kind {
                 FeedbackKind::StateConfirmed => ConfirmationClass::StateConfirmed,
                 FeedbackKind::ExecutionConfirmed => ConfirmationClass::ExecutionConfirmed,
@@ -512,13 +492,23 @@ mod tests {
     }
 
     #[test]
-    fn macros_are_unsupported_on_every_os() {
-        let services = Services::expected(Os::Windows);
+    fn a_macro_is_as_verified_as_its_weakest_step() {
+        let entry = entry_named("macro");
+        assert_eq!(entry.verification, Verification::LeastOfSteps);
+        assert_eq!(entry.token, ActionToken::Macro);
+        // Mute is state-confirmed, play/pause unverified: the macro shows the lesser.
+        let action = example("macro").unwrap();
+        assert_eq!(execute(&action, &fakes()).kind, FeedbackKind::Unverified);
+        assert_eq!(action.token(), entry.token);
+    }
+
+    #[test]
+    fn macros_are_available_on_every_os_that_can_run_a_step() {
         for os in [Os::Windows, Os::MacOs, Os::Other] {
             assert_eq!(
-                entry_named("macro").availability(os, &services),
-                ActionAvailability::Unsupported {
-                    reason: "Coming soon".into()
+                entry_named("macro").availability(os, &Services::expected(os)),
+                ActionAvailability::Available {
+                    confirmation: ConfirmationClass::TriggeredUnverified
                 },
                 "macro on {os:?}"
             );
