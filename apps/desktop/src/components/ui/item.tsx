@@ -6,7 +6,7 @@ import { cn } from 'cn';
 
 import { Separator } from '@/components/ui/separator';
 
-function ItemGroup({ className, ...props }: React.ComponentProps<'div'>) {
+function ItemGroup({ className, ...props }: React.ComponentProps<'div'>): React.ReactElement {
   return (
     <div
       role="list"
@@ -20,7 +20,10 @@ function ItemGroup({ className, ...props }: React.ComponentProps<'div'>) {
   );
 }
 
-function ItemSeparator({ className, ...props }: React.ComponentProps<typeof Separator>) {
+function ItemSeparator({
+  className,
+  ...props
+}: React.ComponentProps<typeof Separator>): React.ReactElement {
   return (
     <Separator
       data-slot="item-separator"
@@ -59,7 +62,7 @@ function Item({
   size = 'default',
   render,
   ...props
-}: useRender.ComponentProps<'div'> & VariantProps<typeof itemVariants>) {
+}: useRender.ComponentProps<'div'> & VariantProps<typeof itemVariants>): React.ReactElement {
   return useRender({
     defaultTagName: 'div',
     props: mergeProps<'div'>(
@@ -98,7 +101,7 @@ function ItemMedia({
   className,
   variant = 'default',
   ...props
-}: React.ComponentProps<'div'> & VariantProps<typeof itemMediaVariants>) {
+}: React.ComponentProps<'div'> & VariantProps<typeof itemMediaVariants>): React.ReactElement {
   return (
     <div
       data-slot="item-media"
@@ -109,7 +112,7 @@ function ItemMedia({
   );
 }
 
-function ItemContent({ className, ...props }: React.ComponentProps<'div'>) {
+function ItemContent({ className, ...props }: React.ComponentProps<'div'>): React.ReactElement {
   return (
     <div
       data-slot="item-content"
@@ -122,7 +125,7 @@ function ItemContent({ className, ...props }: React.ComponentProps<'div'>) {
   );
 }
 
-function ItemTitle({ className, ...props }: React.ComponentProps<'div'>) {
+function ItemTitle({ className, ...props }: React.ComponentProps<'div'>): React.ReactElement {
   return (
     <div
       data-slot="item-title"
@@ -135,7 +138,7 @@ function ItemTitle({ className, ...props }: React.ComponentProps<'div'>) {
   );
 }
 
-function ItemDescription({ className, ...props }: React.ComponentProps<'p'>) {
+function ItemDescription({ className, ...props }: React.ComponentProps<'p'>): React.ReactElement {
   return (
     <p
       data-slot="item-description"
@@ -148,13 +151,13 @@ function ItemDescription({ className, ...props }: React.ComponentProps<'p'>) {
   );
 }
 
-function ItemActions({ className, ...props }: React.ComponentProps<'div'>) {
+function ItemActions({ className, ...props }: React.ComponentProps<'div'>): React.ReactElement {
   return (
     <div data-slot="item-actions" className={cn('flex items-center gap-2', className)} {...props} />
   );
 }
 
-function ItemHeader({ className, ...props }: React.ComponentProps<'div'>) {
+function ItemHeader({ className, ...props }: React.ComponentProps<'div'>): React.ReactElement {
   return (
     <div
       data-slot="item-header"
@@ -164,7 +167,7 @@ function ItemHeader({ className, ...props }: React.ComponentProps<'div'>) {
   );
 }
 
-function ItemFooter({ className, ...props }: React.ComponentProps<'div'>) {
+function ItemFooter({ className, ...props }: React.ComponentProps<'div'>): React.ReactElement {
   return (
     <div
       data-slot="item-footer"

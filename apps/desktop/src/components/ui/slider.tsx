@@ -1,5 +1,6 @@
 import { Slider as SliderPrimitive } from '@base-ui/react/slider';
 import { cn } from 'cn';
+import type { ReactElement } from 'react';
 
 function Slider({
   className,
@@ -9,7 +10,7 @@ function Slider({
   max = 100,
   'aria-label': ariaLabel,
   ...props
-}: SliderPrimitive.Root.Props) {
+}: SliderPrimitive.Root.Props): ReactElement {
   const _values = Array.isArray(value)
     ? value
     : Array.isArray(defaultValue)

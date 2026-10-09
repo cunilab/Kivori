@@ -9,7 +9,7 @@ import {
   Loader2Icon,
 } from 'lucide-react';
 
-const Toaster = ({ ...props }: ToasterProps) => {
+const Toaster = ({ ...props }: ToasterProps): React.ReactElement => {
   const { resolved } = useTheme();
 
   return (
