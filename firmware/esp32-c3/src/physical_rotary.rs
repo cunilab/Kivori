@@ -8,13 +8,13 @@
 //! pull-ups and read ACTIVE-LOW. `sample()` inverts to logical levels. The concrete GPIO
 //! assignments live in [`crate::profile::physical_st7789::RotaryProfile`], not here.
 //!
-//! The run loop only gets back to input between render passes, and composing plus flushing a
-//! frame takes tens of milliseconds — longer than the quarter-steps of one detent. So every edge
+//! The run loop only gets back to input between display windows and render passes, and composing
+//! plus flushing a frame takes tens of milliseconds — longer than the quarter-steps of one detent. So every edge
 //! on any of the three pins raises the GPIO interrupt, whose handler stores one timestamped level
 //! snapshot in a bounded queue that [`InputSource::drain`] empties. The handler still only reads
 //! pins: decoding stays above the port.
 
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
 
 use critical_section::Mutex;
 use esp_hal::gpio::{Event, Input, Io};
@@ -42,6 +42,9 @@ static PINS: Mutex<RefCell<Option<Pins>>> = Mutex::new(RefCell::new(None));
 static EDGES: Mutex<RefCell<Deque<(InputLevels, ElapsedMs), EDGE_QUEUE>>> =
     Mutex::new(RefCell::new(Deque::new()));
 
+/// Edges dropped because `EDGES` was full (cumulative); shown by the `latency-probe` readout.
+static DROPPED: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
+
 fn read(pins: &Pins) -> InputLevels {
     InputLevels {
         a: pins.0.is_low(),
@@ -67,6 +70,8 @@ fn on_edge() {
         let mut edges = EDGES.borrow_ref_mut(cs);
         if edges.is_full() {
             let _ = edges.pop_front();
+            let dropped = DROPPED.borrow(cs);
+            dropped.set(dropped.get().saturating_add(1));
         }
         let _ = edges.push_back((read(pins), EspClock::new().now_ms()));
     });
@@ -113,6 +118,10 @@ impl InputSource for PhysicalRotary {
                 .as_ref()
                 .map_or(InputLevels::default(), read)
         })
+    }
+
+    fn dropped_edges(&self) -> u32 {
+        critical_section::with(|cs| DROPPED.borrow(cs).get())
     }
 
     fn drain(&mut self, now_ms: ElapsedMs, f: &mut dyn FnMut(InputLevels, ElapsedMs)) {

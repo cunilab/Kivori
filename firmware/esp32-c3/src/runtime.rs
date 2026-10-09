@@ -89,8 +89,10 @@ pub struct Tick {
     pub state: Option<CompanionState>,
     /// A frame was composed on this tick, even if every tile matched the previous frame.
     pub frame_rendered: bool,
-    /// Tiles flushed to the display this tick.
+    /// Tiles flushed to the display this tick (a merged window counts every tile it carries).
     pub tiles_flushed: u32,
+    /// Panel windows (address-window + pixel writes) used to flush those tiles this tick.
+    pub windows_flushed: u32,
     /// A safe diagnostic was transmitted.
     pub diagnostic: Option<DeviceDiagnostic>,
     /// A `Health` report was transmitted.
@@ -115,6 +117,7 @@ pub struct Tick {
 struct CountingSink<'s, S> {
     inner: &'s mut S,
     flushes: u32,
+    windows: u32,
     failed: bool,
 }
 
@@ -129,6 +132,26 @@ impl<S: DisplaySink> DisplaySink for CountingSink<'_, S> {
         match self.inner.blit_tile(rect, pixels) {
             Ok(()) => {
                 self.flushes += 1;
+                self.windows += 1;
+                Ok(())
+            }
+            Err(error) => {
+                self.failed = true;
+                Err(error)
+            }
+        }
+    }
+
+    fn blit_tiles(
+        &mut self,
+        rect: kivori_model::Rect,
+        tiles: &[kivori_model::Rgb565],
+        cols: u16,
+    ) -> Result<(), Self::Error> {
+        match self.inner.blit_tiles(rect, tiles, cols) {
+            Ok(()) => {
+                self.flushes += (tiles.len() / crate::render::TILE_PIXELS) as u32;
+                self.windows += 1;
                 Ok(())
             }
             Err(error) => {
@@ -532,21 +555,7 @@ impl<'a> Runtime<'a> {
         // Only wait for a second press when the host understands `DoublePress`.
         self.button
             .set_double_press(self.dispatcher.double_press_enabled());
-        let mut samples = heapless::Vec::<(InputLevels, ElapsedMs), INPUT_SAMPLES>::new();
-        input.drain(now, &mut |levels, at_ms| {
-            // Overflow drops the OLDEST levels, so the latest edges (a switch release) keep their
-            // timing; the decoder counts the gap as one invalid transition, which can lose a
-            // detent but never invents one.
-            if samples.is_full() {
-                samples.remove(0);
-            }
-            let _ = samples.push((levels, at_ms));
-        });
-        for (levels, at_ms) in samples {
-            self.close_idle_gesture(transport, at_ms);
-            self.on_levels(transport, levels, at_ms);
-        }
-        self.close_idle_gesture(transport, now);
+        self.pump_input(now, transport, input);
         if self.apply_session_boundary() {
             self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
             tick.link_dropped = true;
@@ -594,6 +603,7 @@ impl<'a> Runtime<'a> {
             let mut counting = CountingSink {
                 inner: display,
                 flushes: 0,
+                windows: 0,
                 failed: false,
             };
             let view = self.desk.view_at(
@@ -621,11 +631,34 @@ impl<'a> Runtime<'a> {
             // with no host timer or round trip needed.
             let overlay = self.presentation.value_at(now);
             #[cfg(feature = "latency-probe")]
-            self.renderer.set_latency_readout(self.latency.readout());
-            let outcome =
+            {
+                self.latency.on_frame_start(now);
+                self.renderer.set_latency_readout(self.latency.readout());
+                self.renderer.set_probe_stats(
+                    self.latency
+                        .stats(input.dropped_edges(), self.decoder.invalid_transitions()),
+                );
+            }
+            // Compose the whole frame, then transfer it window by window. Between windows the loop
+            // drains input, so a detent waits for at most one window, not the whole frame.
+            let mut outcome =
                 self.renderer
-                    .render_frame(blob, state, &pose, overlay, &view, &mut counting);
+                    .prepare_frame(blob, state, &pose, overlay, &view, &mut counting);
+            while outcome.is_ok() {
+                match self.renderer.flush_next_window(&mut counting) {
+                    Ok(true) => {
+                        self.pump_input(clock.now_ms(), transport, input);
+                        // Push the event toward the host now; a failure resurfaces next tick.
+                        let _ = transport.drain_pending();
+                    }
+                    Ok(false) => break,
+                    Err(error) => outcome = Err(error),
+                }
+            }
             tick.tiles_flushed = counting.flushes;
+            tick.windows_flushed = counting.windows;
+            #[cfg(feature = "latency-probe")]
+            self.latency.on_tiles_flushed(counting.flushes);
             // Tile writes block until the SPI DMA transfer completes, so this clock read is
             // "frame fully flushed", not "presentation received".
             #[cfg(feature = "latency-probe")]
@@ -685,6 +718,34 @@ impl<'a> Runtime<'a> {
         tick.pongs = self.dispatcher.pongs();
         tick.state_reports = self.dispatcher.state_reports();
         tick
+    }
+
+    /// Drains the input source up to `now`: each snapshot first closes the idle gesture boundary at
+    /// its own capture time, then is decoded into semantic `InputEvent`s; the boundary is closed at
+    /// `now` last. Called once per tick and between display windows of a long frame; the events
+    /// themselves are sent by `on_levels`, and anything a transport failure here ends is picked up
+    /// by the next tick's session-boundary check.
+    fn pump_input<T: Transport, I: InputSource>(
+        &mut self,
+        now: ElapsedMs,
+        transport: &mut T,
+        input: &mut I,
+    ) {
+        let mut samples = heapless::Vec::<(InputLevels, ElapsedMs), INPUT_SAMPLES>::new();
+        input.drain(now, &mut |levels, at_ms| {
+            // Overflow drops the OLDEST levels, so the latest edges (a switch release) keep their
+            // timing; the decoder counts the gap as one invalid transition, which can lose a
+            // detent but never invents one.
+            if samples.is_full() {
+                samples.remove(0);
+            }
+            let _ = samples.push((levels, at_ms));
+        });
+        for (levels, at_ms) in samples {
+            self.close_idle_gesture(transport, at_ms);
+            self.on_levels(transport, levels, at_ms);
+        }
+        self.close_idle_gesture(transport, now);
     }
 
     /// Applies one pending session boundary and returns whether it closed the active session.

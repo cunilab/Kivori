@@ -104,7 +104,7 @@ fn rejected_input_and_failed_volume_writes_become_typed_activity() {
             ActivityEventKind::InputStaleSessionRejected,
             ActivityEventKind::InputStaleSessionRejected,
             ActivityEventKind::InputUnstartedGestureRejected,
-            // Two failing detents, one failure-streak entry.
+            // Two failing detents in one pass are written once: one failure-streak entry.
             ActivityEventKind::VolumeWriteFailed,
         ]
     );
@@ -112,7 +112,7 @@ fn rejected_input_and_failed_volume_writes_become_typed_activity() {
         == Some(ActivityMetadata::HostDiagnostic {
             category: ErrorCategory::BadPayload
         })));
-    assert_eq!(presentations.len(), 2);
+    assert_eq!(presentations.len(), 1, "the batch fails once");
     assert!(presentations
         .iter()
         .all(|p| p.session == 7 && p.primary == PrimaryState::Error && p.value.is_none()));

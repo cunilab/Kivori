@@ -20,9 +20,9 @@ fn buffered_frames_clear_old_pixels_and_retry_a_failed_transfer() {
         display: Box<CaptureDisplay>,
         remaining: Option<usize>,
     }
-    impl DisplaySink for FailOnce {
-        type Error = ();
-        fn blit_tile(&mut self, rect: Rect, pixels: &[Rgb565]) -> Result<(), ()> {
+    impl FailOnce {
+        /// A window either transfers whole or fails before any pixel moves.
+        fn fail_or_count(&mut self) -> Result<(), ()> {
             if let Some(remaining) = &mut self.remaining {
                 if *remaining == 0 {
                     self.remaining = None;
@@ -30,7 +30,19 @@ fn buffered_frames_clear_old_pixels_and_retry_a_failed_transfer() {
                 }
                 *remaining -= 1;
             }
+            Ok(())
+        }
+    }
+    impl DisplaySink for FailOnce {
+        type Error = ();
+        fn blit_tile(&mut self, rect: Rect, pixels: &[Rgb565]) -> Result<(), ()> {
+            self.fail_or_count()?;
             self.display.blit_tile(rect, pixels).unwrap();
+            Ok(())
+        }
+        fn blit_tiles(&mut self, rect: Rect, tiles: &[Rgb565], cols: u16) -> Result<(), ()> {
+            self.fail_or_count()?;
+            self.display.blit_tiles(rect, tiles, cols).unwrap();
             Ok(())
         }
     }
@@ -44,7 +56,7 @@ fn buffered_frames_clear_old_pixels_and_retry_a_failed_transfer() {
     let mut renderer = TileRenderer::with_frame_buffer(&mut storage);
     let mut sink = FailOnce {
         display: Box::new(CaptureDisplay::new()),
-        remaining: Some(7),
+        remaining: Some(1), // the first band (two tile rows) lands, the second fails
     };
     let mut animator = MascotAnimator::new(CompanionState::Happy, 0);
     let pose = animator.pose_at(200);
@@ -209,4 +221,173 @@ fn unchanged_frame_flushes_nothing_on_rerender() {
         display.blits, after_first,
         "an identical frame flushes no tiles (FR-013)"
     );
+}
+
+fn boxed_frame_buffer() -> Box<[Rgb565; FRAME_PIXELS]> {
+    vec![Rgb565::from_raw(0); FRAME_PIXELS]
+        .into_boxed_slice()
+        .try_into()
+        .unwrap()
+}
+
+/// Records each window's rectangle while still capturing pixels.
+struct WindowLog {
+    display: Box<CaptureDisplay>,
+    windows: Vec<Rect>,
+}
+
+impl kivori_firmware::ports::DisplaySink for WindowLog {
+    type Error = core::convert::Infallible;
+    fn blit_tile(&mut self, rect: Rect, pixels: &[Rgb565]) -> Result<(), Self::Error> {
+        self.windows.push(rect);
+        self.display.blit_tile(rect, pixels)
+    }
+    fn blit_tiles(&mut self, rect: Rect, tiles: &[Rgb565], cols: u16) -> Result<(), Self::Error> {
+        self.windows.push(rect);
+        self.display.blit_tiles(rect, tiles, cols)
+    }
+}
+
+/// Issue #19: a full-screen change is a handful of band windows, not one window per tile, and the
+/// panel ends up with exactly the pixels the per-tile path produces.
+#[test]
+fn a_full_screen_change_is_three_band_windows_with_identical_pixels() {
+    use kivori_firmware::render::MAX_BAND_ROWS;
+
+    let bytes = compile_default_blob();
+    let blob = AssetBlob::parse(&bytes).unwrap();
+    let pose = kivori_model::MascotAnimator::new(CompanionState::Happy, 0).pose_at(200);
+
+    let mut per_tile = CaptureDisplay::new();
+    TileRenderer::new()
+        .render_animation(&blob, CompanionState::Happy, &pose, &mut per_tile)
+        .unwrap();
+
+    let mut storage = boxed_frame_buffer();
+    let mut banded = WindowLog {
+        display: Box::new(CaptureDisplay::new()),
+        windows: Vec::new(),
+    };
+    TileRenderer::with_frame_buffer(&mut storage)
+        .render_animation(&blob, CompanionState::Happy, &pose, &mut banded)
+        .unwrap();
+
+    assert_eq!(per_tile.blits as usize, TILE_COUNT);
+    assert_eq!(per_tile.windows as usize, TILE_COUNT, "before: 36 windows");
+    assert_eq!(banded.display.blits as usize, TILE_COUNT, "same tiles");
+    assert_eq!(
+        banded.display.windows as usize,
+        TILE_COUNT / 6 / MAX_BAND_ROWS,
+        "after: 3 windows of two tile rows"
+    );
+    assert_eq!(banded.display.frame(), per_tile.frame(), "same pixels");
+    assert!(banded
+        .windows
+        .iter()
+        .all(|w| w.w == 240 && w.h == 40 * MAX_BAND_ROWS as u16));
+}
+
+/// Every window is a run of adjacent changed tiles (or a band of fully changed rows): together they
+/// cover exactly the tiles the per-tile path flushes, once each, and the panel image matches at
+/// every step of an animation.
+#[test]
+fn partial_changes_merge_runs_without_touching_clean_tiles() {
+    use kivori_model::MascotAnimator;
+
+    let bytes = compile_default_blob();
+    let blob = AssetBlob::parse(&bytes).unwrap();
+    let mut animator = MascotAnimator::new(CompanionState::Idle, 0);
+    let mut storage = boxed_frame_buffer();
+    let mut banded = TileRenderer::with_frame_buffer(&mut storage);
+    let mut per_tile = TileRenderer::new();
+    let mut banded_sink = WindowLog {
+        display: Box::new(CaptureDisplay::new()),
+        windows: Vec::new(),
+    };
+    let mut tile_sink = WindowLog {
+        display: Box::new(CaptureDisplay::new()),
+        windows: Vec::new(),
+    };
+    for ms in [0, 40, 700, 2_911, 2_950, 3_100, 5_000] {
+        if ms == 700 {
+            animator.set_state(CompanionState::Happy, ms);
+        }
+        let pose = animator.pose_at(ms);
+        banded_sink.windows.clear();
+        tile_sink.windows.clear();
+        banded
+            .render_animation(&blob, animator.target(), &pose, &mut banded_sink)
+            .unwrap();
+        per_tile
+            .render_animation(&blob, animator.target(), &pose, &mut tile_sink)
+            .unwrap();
+
+        let covered = |windows: &[Rect]| {
+            let mut tiles = Vec::new();
+            for w in windows {
+                for ty in (w.y / 40)..((w.y + w.h) / 40) {
+                    for tx in (w.x / 40)..((w.x + w.w) / 40) {
+                        tiles.push((ty, tx));
+                    }
+                }
+            }
+            tiles.sort_unstable();
+            tiles
+        };
+        // The unbuffered path writes the same changed tiles one by one.
+        assert_eq!(
+            covered(&banded_sink.windows),
+            covered(&tile_sink.windows),
+            "same tiles flushed at {ms} ms"
+        );
+        assert!(banded_sink.windows.len() <= tile_sink.windows.len());
+        assert_eq!(
+            banded_sink.display.frame(),
+            tile_sink.display.frame(),
+            "same pixels at {ms} ms"
+        );
+    }
+}
+
+#[test]
+fn a_failed_band_is_resent_whole_on_the_next_frame() {
+    let bytes = compile_default_blob();
+    let blob = AssetBlob::parse(&bytes).unwrap();
+    let pose = kivori_model::MascotAnimator::new(CompanionState::Happy, 0).pose_at(200);
+    let mut storage = boxed_frame_buffer();
+    let mut renderer = TileRenderer::with_frame_buffer(&mut storage);
+
+    struct FailSecond {
+        display: Box<CaptureDisplay>,
+        calls: u32,
+    }
+    impl kivori_firmware::ports::DisplaySink for FailSecond {
+        type Error = ();
+        fn blit_tile(&mut self, rect: Rect, pixels: &[Rgb565]) -> Result<(), ()> {
+            self.display.blit_tile(rect, pixels).map_err(|_| ())
+        }
+        fn blit_tiles(&mut self, rect: Rect, tiles: &[Rgb565], cols: u16) -> Result<(), ()> {
+            self.calls += 1;
+            if self.calls == 2 {
+                return Err(());
+            }
+            self.display.blit_tiles(rect, tiles, cols).map_err(|_| ())
+        }
+    }
+    let mut sink = FailSecond {
+        display: Box::new(CaptureDisplay::new()),
+        calls: 0,
+    };
+    assert!(renderer
+        .render_animation(&blob, CompanionState::Happy, &pose, &mut sink)
+        .is_err());
+    renderer
+        .render_animation(&blob, CompanionState::Happy, &pose, &mut sink)
+        .unwrap();
+
+    let mut reference = CaptureDisplay::new();
+    TileRenderer::new()
+        .render_animation(&blob, CompanionState::Happy, &pose, &mut reference)
+        .unwrap();
+    assert_eq!(sink.display.frame(), reference.frame());
 }

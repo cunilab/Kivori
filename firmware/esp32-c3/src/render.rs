@@ -5,6 +5,11 @@
 //! discipline the SPI panel needs. Physical mode supplies a static frame buffer: all tiles are
 //! composed and hashed first, then changed tiles are transferred without composition gaps.
 //! The small scratch buffer is used by the unbuffered simulation path.
+//!
+//! Buffered transfers merge dirty tiles: a run of horizontally adjacent tiles goes out as one
+//! window, and fully dirty tile rows go out as a band of up to [`MAX_BAND_ROWS`] rows. Pixels are
+//! identical to per-tile writes; only the per-window command overhead shrinks. The unbuffered path
+//! composes and writes one tile at a time, so it stays per-tile.
 
 use crate::ports::DisplaySink;
 use kivori_assets::AssetBlob;
@@ -33,6 +38,11 @@ pub const TILE_COUNT: usize = TILE_COLS * (PANEL_H / TILE_H) as usize;
 /// Pixels in the optional single-frame staging buffer.
 pub const FRAME_PIXELS: usize = PANEL_W as usize * PANEL_H as usize;
 
+/// Most tile rows merged into one window. A window is one uninterrupted SPI transfer, so this
+/// bounds how long the loop is blind to input between two [`TileRenderer::flush_next_window`]
+/// calls (2 rows = 240x80 px = 38.4 KB, about 15 ms at 20 MHz).
+pub const MAX_BAND_ROWS: usize = 2;
+
 /// Why a render pass failed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RenderError<E> {
@@ -51,11 +61,17 @@ pub struct TileRenderer<'a> {
     buf: [Rgb565; TILE_PIXELS],
     signatures: [Option<u64>; TILE_COUNT],
     frame_buffer: Option<&'a mut [Rgb565; FRAME_PIXELS]>,
+    /// Buffered path: tiles composed but not yet transferred (bit = tile index). Their new
+    /// signatures are already in `signatures`; a failed pass resets them to `None`.
+    pending: u64,
     #[cfg(feature = "latency-probe")]
     latency: crate::latency_probe::Readout,
+    #[cfg(feature = "latency-probe")]
+    probe_stats: crate::latency_probe::Stats,
 }
 
 const _: () = assert!(core::mem::size_of::<TileRenderer>() <= 4_096);
+const _: () = assert!(TILE_COUNT <= 64, "`pending` is a u64 bitmask");
 
 impl<'a> TileRenderer<'a> {
     /// Creates a renderer with an empty (all-black) scratch buffer and no cached signatures.
@@ -65,10 +81,18 @@ impl<'a> TileRenderer<'a> {
             buf: [Rgb565::from_raw(0); TILE_PIXELS],
             signatures: [None; TILE_COUNT],
             frame_buffer: None,
+            pending: 0,
             #[cfg(feature = "latency-probe")]
             latency: crate::latency_probe::Readout {
                 last: None,
                 max: None,
+            },
+            #[cfg(feature = "latency-probe")]
+            probe_stats: crate::latency_probe::Stats {
+                frame_ms: 0,
+                tiles: 0,
+                dropped_edges: 0,
+                invalid_transitions: 0,
             },
         }
     }
@@ -88,9 +112,26 @@ impl<'a> TileRenderer<'a> {
         self.latency = readout;
     }
 
+    /// Sets the frame and input counters shown beside the latency readout.
+    #[cfg(feature = "latency-probe")]
+    pub fn set_probe_stats(&mut self, stats: crate::latency_probe::Stats) {
+        self.probe_stats = stats;
+    }
+
     /// Forces every tile to be re-flushed on the next [`Self::render`] (e.g. after a display re-init).
     pub fn invalidate(&mut self) {
         self.signatures = [None; TILE_COUNT];
+        self.pending = 0;
+    }
+
+    /// Forgets tiles that were composed but never transferred, so the next pass sends them again.
+    fn discard_pending(&mut self) {
+        for tile in 0..TILE_COUNT {
+            if self.pending >> tile & 1 == 1 {
+                self.signatures[tile] = None;
+            }
+        }
+        self.pending = 0;
     }
 
     /// Renders `state` at `elapsed_ms` from `blob`, flushing only changed tiles to `sink`.
@@ -183,8 +224,118 @@ impl<'a> TileRenderer<'a> {
         self.render_inner(blob, state, 0, Some(pose), overlay, view, sink)
     }
 
+    /// Composes one device frame like [`Self::render_frame`] but, on the buffered path, leaves the
+    /// changed tiles pending: the caller drains them with [`Self::flush_next_window`], so it can
+    /// do other work between windows. The unbuffered path writes as it composes, as before.
+    ///
+    /// # Errors
+    /// [`RenderError`] if the scene is missing, a tile can't be built, the compositor fails, or the
+    /// sink errors. Nothing stays pending after an error.
+    pub fn prepare_frame<S: DisplaySink>(
+        &mut self,
+        blob: &AssetBlob,
+        state: CompanionState,
+        pose: &MascotPose,
+        overlay: Option<ValueDisplay>,
+        view: &DeskView,
+        sink: &mut S,
+    ) -> Result<(), RenderError<S::Error>> {
+        self.prepare_inner(blob, state, 0, Some(pose), overlay, view, sink)
+    }
+
+    /// Transfers the next pending window and reports whether more remain. A window is a run of
+    /// horizontally adjacent changed tiles, or, when a tile row is changed end to end, that row
+    /// merged with the fully changed rows directly below it (up to [`MAX_BAND_ROWS`]).
+    ///
+    /// # Errors
+    /// [`RenderError::Sink`] if the transfer fails. Every window still pending is then forgotten,
+    /// so the next pass sends it again.
+    pub fn flush_next_window<S: DisplaySink>(
+        &mut self,
+        sink: &mut S,
+    ) -> Result<bool, RenderError<S::Error>> {
+        if self.pending == 0 {
+            return Ok(false);
+        }
+        let Some(frame) = self.frame_buffer.as_deref() else {
+            self.pending = 0;
+            return Ok(false);
+        };
+        let first = self.pending.trailing_zeros() as usize;
+        let (row, col) = (first / TILE_COLS, first % TILE_COLS);
+        let row_mask = |row: usize| ((1u64 << TILE_COLS) - 1) << (row * TILE_COLS);
+        let (cols, rows) = if self.pending & row_mask(row) == row_mask(row) {
+            let mut rows = 1;
+            while rows < MAX_BAND_ROWS
+                && row + rows < TILE_COUNT / TILE_COLS
+                && self.pending & row_mask(row + rows) == row_mask(row + rows)
+            {
+                rows += 1;
+            }
+            (TILE_COLS, rows)
+        } else {
+            let mut cols = 1;
+            while col + cols < TILE_COLS && self.pending >> (first + cols) & 1 == 1 {
+                cols += 1;
+            }
+            (cols, 1)
+        };
+        let rect = Rect::new(
+            col as u16 * TILE_W,
+            row as u16 * TILE_H,
+            cols as u16 * TILE_W,
+            rows as u16 * TILE_H,
+        );
+        // Tiles of a row run, and of a full-row band, are consecutive in the frame buffer.
+        let tiles = &frame[first * TILE_PIXELS..(first + cols * rows) * TILE_PIXELS];
+        if let Err(error) = sink.blit_tiles(rect, tiles, cols as u16) {
+            self.discard_pending();
+            return Err(RenderError::Sink(error));
+        }
+        for r in 0..rows {
+            self.pending &= !(((1u64 << cols) - 1) << ((row + r) * TILE_COLS + col));
+        }
+        Ok(self.pending != 0)
+    }
+
+    /// Composes, then drains every pending window.
     #[allow(clippy::too_many_arguments)]
     fn render_inner<S: DisplaySink>(
+        &mut self,
+        blob: &AssetBlob,
+        state: CompanionState,
+        elapsed_ms: ElapsedMs,
+        pose: Option<&MascotPose>,
+        overlay: Option<ValueDisplay>,
+        view: &DeskView,
+        sink: &mut S,
+    ) -> Result<(), RenderError<S::Error>> {
+        self.prepare_inner(blob, state, elapsed_ms, pose, overlay, view, sink)?;
+        while self.flush_next_window(sink)? {}
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn prepare_inner<S: DisplaySink>(
+        &mut self,
+        blob: &AssetBlob,
+        state: CompanionState,
+        elapsed_ms: ElapsedMs,
+        pose: Option<&MascotPose>,
+        overlay: Option<ValueDisplay>,
+        view: &DeskView,
+        sink: &mut S,
+    ) -> Result<(), RenderError<S::Error>> {
+        self.discard_pending();
+        let result = self.compose(blob, state, elapsed_ms, pose, overlay, view, sink);
+        if result.is_err() {
+            self.discard_pending();
+        }
+        result
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn compose<S: DisplaySink>(
         &mut self,
         blob: &AssetBlob,
         state: CompanionState,
@@ -207,7 +358,6 @@ impl<'a> TileRenderer<'a> {
             None => pose.copied(),
         };
         let buffered = self.frame_buffer.is_some();
-        let mut prepared_signatures = [0; TILE_COUNT];
         for tile in 0..TILE_COUNT {
             let x = (tile % TILE_COLS) as u16 * TILE_W;
             let y = (tile / TILE_COLS) as u16 * TILE_H;
@@ -248,29 +398,17 @@ impl<'a> TileRenderer<'a> {
                 render_chrome(&mut band, view);
             }
             #[cfg(feature = "latency-probe")]
-            crate::latency_probe::draw(&mut band, self.latency);
+            crate::latency_probe::draw(&mut band, self.latency, self.probe_stats);
             let signature = hash_rgb565(band.pixels());
-            prepared_signatures[tile] = signature;
-            if !buffered && self.signatures[tile] != Some(signature) {
-                sink.blit_tile(rect, band.pixels())
-                    .map_err(RenderError::Sink)?;
-                self.signatures[tile] = Some(signature);
+            if self.signatures[tile] == Some(signature) {
+                continue;
             }
-        }
-        // No composition or hashing between display writes in the buffered path. The old
-        // panel image stays visible while every tile of the next pose is being prepared.
-        if let Some(frame) = self.frame_buffer.as_deref() {
-            for (tile, signature) in prepared_signatures.into_iter().enumerate() {
-                if self.signatures[tile] == Some(signature) {
-                    continue;
-                }
-                let rect = Rect::new(
-                    (tile % TILE_COLS) as u16 * TILE_W,
-                    (tile / TILE_COLS) as u16 * TILE_H,
-                    TILE_W,
-                    TILE_H,
-                );
-                sink.blit_tile(rect, &frame[tile * TILE_PIXELS..(tile + 1) * TILE_PIXELS])
+            if buffered {
+                // Transferred later by `flush_next_window`, once the whole frame is composed.
+                self.pending |= 1 << tile;
+                self.signatures[tile] = Some(signature);
+            } else {
+                sink.blit_tile(rect, band.pixels())
                     .map_err(RenderError::Sink)?;
                 self.signatures[tile] = Some(signature);
             }
