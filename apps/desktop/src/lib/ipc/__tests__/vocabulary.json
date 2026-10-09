@@ -19,7 +19,8 @@
     "doublePressV1",
     "mediaInfoV1",
     "controlLabelsV1",
-    "contextButtonsV1"
+    "contextButtonsV1",
+    "hostTakeoversV1"
   ],
   "controls": [
     "press",

@@ -730,3 +730,53 @@ fn recovery_a_burst_of_valid_frames_is_not_dropped_by_the_rx_bound() {
     }
     assert_eq!(count, 300);
 }
+
+#[test]
+fn close_writes_a_bye_frame_and_ends_the_session() {
+    let (mut link, mut session, _manager, _orch) = connect(SendableState::Idle);
+    let _ = desktop_drain(&mut link);
+    assert!(session.current_session().is_some());
+
+    session
+        .close(&mut link, ByeReason::Shutdown)
+        .expect("close");
+
+    let sent = desktop_drain(&mut link);
+    assert!(
+        sent.iter()
+            .any(|m| matches!(m, Message::Bye(bye) if bye.reason == ByeReason::Shutdown)),
+        "close wrote Bye(Shutdown): {sent:?}"
+    );
+    assert_eq!(session.current_session(), None);
+    // Closing again, with no session, writes nothing.
+    session
+        .close(&mut link, ByeReason::Shutdown)
+        .expect("close again");
+    assert!(desktop_drain(&mut link).is_empty());
+}
+
+#[test]
+fn takeover_byes_are_sent_only_to_a_device_that_negotiated_them() {
+    let (mut link, mut session, _manager, _orch) = connect(SendableState::Idle);
+    assert!(!session.supports_host_takeovers());
+    let _ = desktop_drain(&mut link);
+    session
+        .close(&mut link, ByeReason::HostSleeping)
+        .expect("close");
+    assert!(
+        desktop_drain(&mut link).is_empty(),
+        "an older device never sees a reason it does not know"
+    );
+    assert_eq!(session.current_session(), None);
+
+    let caps = Capabilities::MASCOT_INTERACTION.union(Capabilities::HOST_TAKEOVERS_V1);
+    let (mut link, mut session, _manager, _orch) = connect_with_caps(SendableState::Idle, caps);
+    assert!(session.supports_host_takeovers());
+    let _ = desktop_drain(&mut link);
+    session
+        .close(&mut link, ByeReason::FirmwareUpdate)
+        .expect("close");
+    assert!(desktop_drain(&mut link)
+        .iter()
+        .any(|m| matches!(m, Message::Bye(bye) if bye.reason == ByeReason::FirmwareUpdate)));
+}
