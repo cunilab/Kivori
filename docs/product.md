@@ -113,8 +113,9 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   Ambiguous overlays follow normal focus rules.
 - Generic hosts (`chrome.exe`, `python.exe`) use their host profile unless the user
   targets more precisely. Background apps never own physical mappings.
-- Built-in profiles (until the config UI): General (fallback), Browser, Code, Media, Zoom,
-  Teams. Holding the middle contextual button pins the next profile (Auto, then each profile,
+- Built-in profiles: General (fallback), Browser, Code, Media, Zoom, Teams. Users can override
+  any binding per profile in the config UI, and reset a profile or everything to these defaults.
+  Holding the middle contextual button pins the next profile (Auto, then each profile,
   then back to Auto); a pin ignores focus but never Protected.
 - In a protected context, shortcuts and launches are suspended: their labels disappear and a
   press says it can't run. System volume, media keys and mute keep working.
@@ -153,11 +154,12 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   labels come from the bindings Desktop actually runs; with no label the control shows nothing,
   never a guessed action. A context switch changes labels and bindings together.
 - Takeovers: Sleeping / Locked, Switching User, Protected, Permission Required, Host
-  Starting / Resuming, Firmware Updating, Firmware Recovery, Reconnecting, Disconnected,
-  Waiting, Passive. A takeover cancels an active gesture and shows at once. Sleeping stays
+  Starting / Resuming, Firmware Updating, Firmware Recovery, Reconnecting, Disconnected (shown
+  on the panel as Offline), Waiting, Passive. A takeover cancels an active gesture and shows at once. Sleeping stays
   on the panel when the host says it is going to sleep, even after the link drops. Firmware
   Updating ("Updating", keep plugged in) shows while the host flashes, for at most 2 minutes.
-  A host that goes silent for 4 seconds shows Offline.
+  A host that goes silent for 4 seconds (crashed or killed Desktop, no goodbye) shows Offline,
+  never a frozen "connected" frame.
 - Healthy needs no space. Degraded gets its own cue, not an indicator slot.
 - Primary states (Idle, Active, Busy, Success, Error, Unknown) each have a distinct face.
 - The resting buddy reads observed truth (#13), first match wins: an Error result shows the

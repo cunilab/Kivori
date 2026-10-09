@@ -159,7 +159,7 @@ Simulation is **not** evidence for any of the following. Each remains a physical
 - real USB VID/PID enumeration (`0x303A:0x1001`) — T115
 - Tauri opening a real serial device / desktop↔device end-to-end — T115, T117
 - electrical correctness, signal integrity, pull-ups, level shifting
-- **the identity of the physical panel controller** (GC9A01 vs ST7789 is still open in `research.md`) — T118
+- **the identity of the physical panel controller** (measured on the real board as an ST7789, validation rows 1.9, 1.24, 1.25; simulation says nothing about it) — T118
 - real display offsets, colour order, orientation, or any panel init sequence — T118
 - the Kivori board's real SPI/CS/D/C/RST pin map — the `wokwi-spi` pins are a *simulation-only* profile
 - anything analog: a VCD is a digital event list, so no signal integrity, timing margin, or level checks
@@ -194,12 +194,11 @@ probe run is therefore not evidence that any real panel will light up. The adapt
 The pin numbers in `diagram-spi.json` (`SCK=4, MOSI=5, CS=6, D/C=7, RST=10`) are a **simulation-only**
 profile (`WokwiSpiPins`). They were chosen from the board part's valid pins as reported by
 `wokwi-cli lint` — `0–10, 18, 19, RST, RX, TX` — excluding `18`/`19` (USB Serial/JTAG on this SoC) and
-`2`/`8`/`9` (ESP32-C3 strapping pins). They are **not** the Kivori hardware pin map, which is still
-unassigned.
+`2`/`8`/`9` (ESP32-C3 strapping pins). They are **not** the Kivori hardware pin map (SCK 6, MOSI 7, D/C 2, RST 3, backlight 8, see
+[`profile.rs`](../../firmware/esp32-c3/src/profile.rs)).
 
-**Custom ST7789 chip: deliberately not created.** The physical controller is not yet confirmed
-(GC9A01 vs ST7789 is still open in `research.md`). If it is confirmed as ST7789 and a model is needed,
-implement only the command subset Kivori uses — `SWRESET`, `SLPOUT`, `COLMOD`, `MADCTL`, `CASET`,
+**Custom ST7789 chip: deliberately not created.** The physical controller is confirmed as an ST7789
+(validation rows 1.9, 1.24, 1.25), but no chip model is needed yet. If one is, implement only the command subset Kivori uses — `SWRESET`, `SLPOUT`, `COLMOD`, `MADCTL`, `CASET`,
 `RASET`, `RAMWR`, `DISPON` — with the Wokwi Custom Chips SPI/framebuffer APIs, and treat that chip as a
 development tool, never a production dependency.
 

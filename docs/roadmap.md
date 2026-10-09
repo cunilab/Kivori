@@ -104,7 +104,7 @@ Software complete and host-tested (S1–S7); the hardware rows and gates below r
 - [x] Buddy settings: reactions on/off, intensity
 - [x] Config stored locally per OS user and machine; survives restarts and updates; reset to defaults
 - [x] Basic device status and diagnostics (versions, connection, health)
-- [ ] Hardware: rebind → use → restart → binding still there
+- [ ] Hardware: rebind → use → restart → binding still there (Phase 5b rows in [validation.md](./validation.md))
 - [ ] Gates 3, 4, 5
 
 Example config:
@@ -152,19 +152,19 @@ problems and uses it without developer help. Start charging for beta units here.
 - [ ] Enclosure (keeps the USB port and the ESP32-C3 BOOT path reachable for recovery; the three
   buttons sit in a row directly under the screen, centres one third of the panel's active width
   apart, each under its 80 px label column (#14))
-- [ ] BOM and real unit cost
+- [ ] BOM and real unit cost (draft parts list in [bom.md](./bom.md); prices, suppliers and the real unit cost still need the owner)
 - [ ] Repeatable assembly process
 - [ ] Device flashing and provisioning process (tool exists: `just provision`, see [provisioning.md](./provisioning.md); stays open until a person has run it on real units)
 - [ ] Hardware QA checklist per unit (built from the remaining Phase 1–3 rows in [validation.md](./validation.md); the automated part is `just provision`, validation Phase 12, which still needs a human run)
 - [ ] Signed Windows installer, bundling the known-compatible firmware (this is the beta's update authentication, gate 10). The unsigned pipeline exists (M3 S5: `release.yml` builds, install-tests and drafts the NSIS installer with the pinned `espflash` sidecar); this stays open until the installer is signed, which waits on owner certificates (#36). See [release.md](./release.md)
 - [ ] macOS build (if shipped; `scripts/bundle-macos.sh` bundles the adapter, entitlements and Info.plist and signs only when `APPLE_SIGNING_IDENTITY` is set; software done in M3 S5, signing and the hardware rows are open): bundle `target/<profile>/mediaremote-adapter/` as a resource, Developer ID-sign its two Mach-O helpers with hardened runtime, add `NSAppleEventsUsageDescription` and the `com.apple.security.automation.apple-events` entitlement, list the adapter (BSD-3) in third-party notices (ADR-0009)
 - [ ] Launch at login and tray presence; the window stays optional. Software done in M3 S4 (autostart plugin, hidden start, tray status and switch, Device page switch); stays open until the S4 hardware rows in [validation.md](./validation.md) pass
-- [ ] Survive sleep/wake and lock/unlock with intentional screens, never a frozen frame (gate 9)
+- [ ] Survive sleep/wake and lock/unlock with intentional screens, never a frozen frame (gate 9). Software done in M3 S1+S2 (host takeovers: Sleeping, Updating and a 4 s host-silence Offline; sleep, lock and console-switch handling in Desktop); stays open until the S2 hardware rows (Phase 7) in [validation.md](./validation.md) pass
 - [ ] First-run onboarding. Software done in M3 S6 (stepper for plug in, macOS Accessibility, a live tour, default view, buddy intensity and launch at login, with "Run setup again" on the Device page); stays open until the S6 hardware rows in [validation.md](./validation.md) pass
-- [ ] User-facing firmware update and recovery flow (flash the bundled build; a failed flash says so). Software done in M3 S3 (flash, classified failures, BOOT-button restore, incompatible recovery); stays open until the pinned `espflash` sidecar ships in the installer (S5) and the S3 hardware rows in [validation.md](./validation.md) pass
+- [ ] User-facing firmware update and recovery flow (flash the bundled build; a failed flash says so). Software done in M3 S3 (flash, classified failures, BOOT-button restore, incompatible recovery); the pinned `espflash` 4.6.0 sidecar now ships in the installer (S5); stays open until the S3 hardware rows (Phase 8) in [validation.md](./validation.md) pass
 - [x] Device and software version shown to the user (Device page and Home show the device firmware, app version and the firmware bundled in the app, with an "update available" hint; the bundled version is read from the firmware image, so it appears whenever a build embeds one)
 - [ ] Regulatory check before selling (FCC Part 15 / CE for the finished unit, not just the module)
-- [ ] Basic packaging and a short user guide
+- [ ] Basic packaging and a short user guide (guide written: [user-guide.md](./user-guide.md); stays open until the physical packaging exists)
 - [ ] Build and ship the first 5–20 beta units
 - [ ] All 10 gates for what ships
 

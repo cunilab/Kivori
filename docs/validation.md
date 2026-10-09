@@ -36,7 +36,7 @@ specification until row 3.15 is ticked.
 4. Latency only: `just fw-flash-latency` (dev-only probe build), then `just fw-flash` to restore the product build.
 
 Suggested order: wiring (3.15) and flash, then Phase 1 (Windows, then macOS), Phase 2, Phase 3, latency,
-then Phase 4 (M1). Rows marked macOS run on the Mac; everything else on Windows.
+then Phase 4 (M1), then Phases 5 to 12 in order (5b is the Config UI half of the M2 rows; 7 to 12 are the M3 rows). Rows marked macOS run on the Mac; everything else on Windows.
 
 ## Phase 1: Device connection
 
@@ -185,7 +185,7 @@ Hold = master mute. Shortcut and launch run from Device Studio's Test action pan
 ## Phase 5: Contextual buttons (M2)
 
 Software is done and host-tested (firmware gesture rules, wire, desktop bindings, e2e round trip).
-Wiring: three momentary tactile switches (6x6 mm), each between its GPIO and GND, no resistors or
+Wiring: three momentary tactile switches (12×12 mm, 10 mm tall, seller drawing TS-G005: the size the enclosure in `hardware/enclosure/` is built for; any momentary switch works electrically), each between its GPIO and GND, no resistors or
 capacitors; firmware enables the internal pull-ups and debounces 20 ms. Default bindings, left to
 right: Previous track, Play/Pause, Next track (Press only; Hold unbound by default).
 
@@ -243,7 +243,7 @@ Software is done (tracker, device-thread and Windows window tests, macOS IOKit r
 
 ## Phase 8: Firmware update and recovery (M3 S3)
 
-Software is done (workflow, classifier fixtures, recovery rules, sidecar lookup, DTO allowlist, UI tests). The classifier fixtures are conservative guesses at `espflash` 4.x wording; rows 8.7 refreshes them. Rows 8.1 to 8.6 need the bundled sidecar from S5 or a dev build with `espflash` on `PATH`.
+Software is done (workflow, classifier fixtures, recovery rules, sidecar lookup, DTO allowlist, UI tests). The classifier fixtures are conservative guesses at `espflash` 4.x wording; row 8.7 refreshes them. Rows 8.1 to 8.6 need a real device and the installed app (the S5 installer bundles the `espflash` 4.6.0 sidecar) or a dev build with `espflash` on `PATH`.
 
 - [ ] 8.1 Flash from the installed app on a machine with no Rust toolchain | it succeeds and the device reconnects (needs the S5 installer)
 - [ ] 8.2 Unplug the board mid-flash | the app says it failed and offers Restore with the BOOT button
@@ -256,7 +256,7 @@ Software is done (workflow, classifier fixtures, recovery rules, sidecar lookup,
 
 ## Phase 9: Launch at login and tray (M3 S4)
 
-Software is done (tray model table, hidden-start lifecycle, `--autostart` parsing, Device page switch). Every row needs a real sign-in, so none are checked yet. The Windows uninstall row needs the S5 installer hook.
+Software is done (tray model table, hidden-start lifecycle, `--autostart` parsing, Device page switch). Every row needs a real sign-in, so none are checked yet. The Windows uninstall row needs a real uninstall of the S5 installer (its hook removes the Run entry).
 
 - [ ] 9.1 Windows: turn on Start with Windows, sign out and back in | the tray icon is present, no window opens, the device connects
 - [ ] 9.2 Windows: turn it off, sign in again | Kivori does not start
