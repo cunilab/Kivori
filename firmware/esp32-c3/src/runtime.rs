@@ -631,7 +631,14 @@ impl<'a> Runtime<'a> {
             // with no host timer or round trip needed.
             let overlay = self.presentation.value_at(now);
             #[cfg(feature = "latency-probe")]
-            self.renderer.set_latency_readout(self.latency.readout());
+            {
+                self.latency.on_frame_start(now);
+                self.renderer.set_latency_readout(self.latency.readout());
+                self.renderer.set_probe_stats(
+                    self.latency
+                        .stats(input.dropped_edges(), self.decoder.invalid_transitions()),
+                );
+            }
             // Compose the whole frame, then transfer it window by window. Between windows the loop
             // drains input, so a detent waits for at most one window, not the whole frame.
             let mut outcome =
@@ -650,6 +657,8 @@ impl<'a> Runtime<'a> {
             }
             tick.tiles_flushed = counting.flushes;
             tick.windows_flushed = counting.windows;
+            #[cfg(feature = "latency-probe")]
+            self.latency.on_tiles_flushed(counting.flushes);
             // Tile writes block until the SPI DMA transfer completes, so this clock read is
             // "frame fully flushed", not "presentation received".
             #[cfg(feature = "latency-probe")]

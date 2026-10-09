@@ -66,6 +66,8 @@ pub struct TileRenderer<'a> {
     pending: u64,
     #[cfg(feature = "latency-probe")]
     latency: crate::latency_probe::Readout,
+    #[cfg(feature = "latency-probe")]
+    probe_stats: crate::latency_probe::Stats,
 }
 
 const _: () = assert!(core::mem::size_of::<TileRenderer>() <= 4_096);
@@ -85,6 +87,13 @@ impl<'a> TileRenderer<'a> {
                 last: None,
                 max: None,
             },
+            #[cfg(feature = "latency-probe")]
+            probe_stats: crate::latency_probe::Stats {
+                frame_ms: 0,
+                tiles: 0,
+                dropped_edges: 0,
+                invalid_transitions: 0,
+            },
         }
     }
 
@@ -101,6 +110,12 @@ impl<'a> TileRenderer<'a> {
     #[cfg(feature = "latency-probe")]
     pub fn set_latency_readout(&mut self, readout: crate::latency_probe::Readout) {
         self.latency = readout;
+    }
+
+    /// Sets the frame and input counters shown beside the latency readout.
+    #[cfg(feature = "latency-probe")]
+    pub fn set_probe_stats(&mut self, stats: crate::latency_probe::Stats) {
+        self.probe_stats = stats;
     }
 
     /// Forces every tile to be re-flushed on the next [`Self::render`] (e.g. after a display re-init).
@@ -383,7 +398,7 @@ impl<'a> TileRenderer<'a> {
                 render_chrome(&mut band, view);
             }
             #[cfg(feature = "latency-probe")]
-            crate::latency_probe::draw(&mut band, self.latency);
+            crate::latency_probe::draw(&mut band, self.latency, self.probe_stats);
             let signature = hash_rgb565(band.pixels());
             if self.signatures[tile] == Some(signature) {
                 continue;

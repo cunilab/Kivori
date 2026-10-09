@@ -87,7 +87,8 @@ pub mod physical_st7789 {
     /// This physical panel does not use chip select.
     pub const CS: Option<u8> = None;
 
-    /// Verified SPI clock.
+    /// Verified SPI clock. The next throughput lever once frame time is measured on hardware
+    /// (needs a signal-integrity check; a full frame is 46 ms of wire time at 20 MHz).
     pub const SPI_CLOCK_HZ: u32 = 20_000_000;
 
     /// Visible panel width.

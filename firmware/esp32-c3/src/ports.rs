@@ -65,7 +65,7 @@ pub trait DisplaySink {
     /// Returns [`Self::Error`] on an unrecoverable display failure.
     fn blit_tiles(&mut self, rect: Rect, tiles: &[Rgb565], cols: u16) -> Result<(), Self::Error> {
         let cols = usize::from(cols.max(1));
-        for (i, tile) in tiles.chunks_exact(TILE_PIXELS).enumerate() {
+        for (i, tile) in tiles.as_chunks::<TILE_PIXELS>().0.iter().enumerate() {
             let at = Rect::new(
                 rect.x + (i % cols) as u16 * TILE_W,
                 rect.y + (i / cols) as u16 * TILE_H,
@@ -101,5 +101,11 @@ pub trait InputSource {
     /// switch edges that happen while a frame is composed or flushed are not lost. MUST NOT block.
     fn drain(&mut self, now_ms: ElapsedMs, f: &mut dyn FnMut(InputLevels, ElapsedMs)) {
         f(self.sample(), now_ms);
+    }
+
+    /// Edges the source had to drop because its capture queue was full (cumulative). Polled
+    /// sources capture nothing and drop nothing; only a diagnostic readout reads this.
+    fn dropped_edges(&self) -> u32 {
+        0
     }
 }

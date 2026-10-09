@@ -4,7 +4,7 @@
 use heapless::Vec as HVec;
 use kivori_asset_compiler::compile_default_blob;
 use kivori_assets::AssetBlob;
-use kivori_firmware::latency_probe::{LatencyProbe, Readout, BOX_X, BOX_Y};
+use kivori_firmware::latency_probe::{draw, LatencyProbe, Readout, Stats, BOX_X, BOX_Y};
 use kivori_firmware::ports::{Clock, DisplaySink};
 use kivori_firmware::proto::DeviceIdentity;
 use kivori_firmware::runtime::{Runtime, RuntimeConfig};
@@ -266,5 +266,55 @@ fn a_presentation_applied_before_the_detent_does_not_count() {
         probe.on_frame_flushed(5_000),
         Some(999),
         "clamped to 3 digits"
+    );
+}
+
+#[test]
+fn frame_interval_and_tiles_are_reported_for_the_last_frame() {
+    let mut probe = LatencyProbe::new();
+    probe.on_frame_start(100);
+    probe.on_tiles_flushed(36);
+    assert_eq!(
+        probe.stats(0, 0).frame_ms,
+        0,
+        "no interval before a second frame"
+    );
+    probe.on_frame_start(133);
+    probe.on_tiles_flushed(5);
+    probe.on_frame_start(180);
+    let stats = probe.stats(0, 0);
+    assert_eq!((stats.frame_ms, stats.tiles), (47, 5));
+    probe.on_frame_start(180 + 5_000);
+    assert_eq!(probe.stats(0, 0).frame_ms, 999, "clamped to 3 digits");
+    assert_eq!(probe.stats(4_000, 7).dropped_edges, 999);
+    assert_eq!(probe.stats(4_000, 7).invalid_transitions, 7);
+}
+
+#[test]
+fn the_readout_stays_hidden_until_a_reading_or_a_fault() {
+    use kivori_framebuffer::TileBand;
+    let clean = Stats {
+        frame_ms: 33,
+        tiles: 4,
+        ..Stats::default()
+    };
+    let mut pixels = vec![Rgb565::BLACK; 40 * 40];
+    let mut band = TileBand::new(Rect::new(0, 0, 40, 40), &mut pixels).unwrap();
+    draw(&mut band, Readout::default(), clean);
+    assert!(pixels.iter().all(|p| *p == Rgb565::BLACK), "pristine");
+
+    // A dropped edge is worth showing before any latency reading: the `o` label's left stroke.
+    let faulty = Stats {
+        dropped_edges: 3,
+        ..clean
+    };
+    let mut big = vec![Rgb565::BLACK; 120 * 80];
+    let mut band = TileBand::new(Rect::new(0, 0, 120, 80), &mut big).unwrap();
+    draw(&mut band, Readout::default(), faulty);
+    let right_column = usize::from(BOX_X) + 50 + 2;
+    assert_eq!(
+        band.pixels()[(usize::from(BOX_Y) + 2 + 20 + 14) * 120 + right_column],
+        Rgb565::WHITE,
+        "the second column's `o` row is drawn"
     );
 }
