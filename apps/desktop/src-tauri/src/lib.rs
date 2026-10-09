@@ -73,6 +73,7 @@ pub fn run() {
             let diagnostics = std::sync::Arc::new(std::sync::Mutex::new(
                 ipc::dto::DiagnosticsSnapshot::initial(),
             ));
+            let services = desk::catalog::ServicesCell::default();
             let device_thread = runtime::device_task::spawn(
                 app.handle().clone(),
                 std::sync::Arc::clone(&status),
@@ -80,6 +81,7 @@ pub fn run() {
                 std::sync::Arc::clone(&activity_log),
                 std::sync::Arc::clone(&firmware_status),
                 std::sync::Arc::clone(&diagnostics),
+                std::sync::Arc::clone(&services),
                 commands_rx,
                 host_rx,
                 std::sync::Arc::clone(&cancel),
@@ -97,6 +99,7 @@ pub fn run() {
                 )
                 .with_desk_status(desk_status)
                 .with_diagnostics(diagnostics)
+                .with_services(services)
                 .with_config(std::sync::Arc::new(std::sync::Mutex::new(config_store))),
             );
             // After the device thread exists, so the first lock or sleep notice has a reader.
@@ -150,6 +153,7 @@ pub fn run() {
         ipc::commands::set_display_mode,
         ipc::commands::list_action_catalog,
         ipc::commands::test_action,
+        ipc::commands::test_rotate,
         ipc::channels::open_preview_stream,
         ipc::channels::close_preview_stream,
         ipc::channels::ack_preview_frame,
@@ -188,6 +192,7 @@ pub fn run() {
         ipc::commands::set_display_mode,
         ipc::commands::list_action_catalog,
         ipc::commands::test_action,
+        ipc::commands::test_rotate,
     ]);
 
     builder

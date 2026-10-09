@@ -74,6 +74,10 @@ pub fn set_launch_at_login(app: &AppHandle, enabled: bool) -> Result<StartupSett
     if let (Some(handles), Ok(current)) = (app.try_state::<TrayHandles>(), &settings) {
         let _ = handles.launch.set_checked(current.launch_at_login);
     }
+    // Tell open pages what the OS now says, even after a refusal: it is the source of truth.
+    if let Ok(current) = &settings {
+        crate::ipc::events::emit_startup_changed(app, current);
+    }
     result.map_err(|error| error.to_string())?;
     settings
 }

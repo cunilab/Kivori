@@ -104,6 +104,24 @@ export async function getStartupSettings(): Promise<StartupSettingsDto> {
   return unavailable();
 }
 
+/** Subscribes to launch-at-login changes (the tray item or this app); an invalid payload is dropped. */
+export async function onStartupChanged(
+  handler: (settings: StartupSettingsDto) => void,
+): Promise<Unlisten> {
+  if (isTauri()) {
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen<unknown>('startup://changed', (event) => {
+      try {
+        handler(parseStartupSettings(event.payload));
+      } catch {
+        // Invalid payloads never reach the UI.
+      }
+    });
+  }
+  if (import.meta.env.DEV) return (await devMock()).mockOnStartupChanged(handler);
+  return unavailable();
+}
+
 /** Adds or removes the OS login entry; rejects with the native error string. */
 export async function setLaunchAtLogin(enabled: boolean): Promise<StartupSettingsDto> {
   if (isTauri()) {
@@ -366,6 +384,17 @@ export async function onActivityLog(
     });
   }
   if (import.meta.env.DEV) return () => {};
+  return unavailable();
+}
+
+/**
+ * Tries the knob's binding once. A volume knob steps one detent up and back, so the volume ends
+ * where it started; two shortcuts send the clockwise one once. The outcome arrives in the desk
+ * status; rejects with the native error string.
+ */
+export async function testRotate(rotate: RotateSpec): Promise<void> {
+  if (isTauri()) return invoke<void>('test_rotate', { rotate });
+  if (import.meta.env.DEV) return (await devMock()).mockTestRotate(rotate);
   return unavailable();
 }
 

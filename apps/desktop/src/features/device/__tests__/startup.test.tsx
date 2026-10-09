@@ -1,12 +1,13 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StartupSettingsDto } from '../../../lib/ipc/types';
 
-const bridge = vi.hoisted(() => ({ get: vi.fn(), set: vi.fn() }));
+const bridge = vi.hoisted(() => ({ get: vi.fn(), set: vi.fn(), on: vi.fn() }));
 vi.mock('../../../lib/ipc', () => ({
   getStartupSettings: bridge.get,
   setLaunchAtLogin: bridge.set,
+  onStartupChanged: bridge.on,
 }));
 
 import { StartupCard } from '../StartupCard';
@@ -14,6 +15,7 @@ import { StartupCard } from '../StartupCard';
 const off: StartupSettingsDto = { launchAtLogin: false, platform: 'windows' };
 
 beforeEach(() => {
+  bridge.on.mockReset().mockResolvedValue(() => {});
   bridge.get.mockReset().mockResolvedValue(off);
   bridge.set
     .mockReset()
@@ -46,6 +48,21 @@ describe('start at login switch', () => {
     await userEvent.click(await screen.findByRole('switch'));
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not change');
     expect(screen.getByRole('switch')).not.toBeChecked();
+  });
+
+  it('follows a change made elsewhere, like the tray switch, and stops listening', async () => {
+    const stop = vi.fn();
+    let emit: (settings: StartupSettingsDto) => void = () => {};
+    bridge.on.mockImplementation((handler: typeof emit) => {
+      emit = handler;
+      return Promise.resolve(stop);
+    });
+    const { unmount } = render(<StartupCard />);
+    expect(await screen.findByRole('switch')).not.toBeChecked();
+    act(() => emit({ ...off, launchAtLogin: true }));
+    expect(screen.getByRole('switch')).toBeChecked();
+    unmount();
+    await waitFor(() => expect(stop).toHaveBeenCalled());
   });
 
   it('renders nothing until the setting is known', () => {

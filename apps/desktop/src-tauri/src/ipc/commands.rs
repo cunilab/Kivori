@@ -460,12 +460,13 @@ pub fn set_display_mode(app: State<'_, AppState>, mode: String) -> Result<(), St
     app.send_command(DeviceCommand::SetDisplayMode(mode))
 }
 
-/// The action catalog: what can be bound, how each is verified, and what is available here.
+/// The action catalog: what can be bound, how each is verified, and what is available here. The
+/// availability is the device thread's latest snapshot, or the OS expectation before its first.
 #[tauri::command]
-pub fn list_action_catalog() -> Vec<dto::ActionCatalogEntryDto> {
+pub fn list_action_catalog(app: State<'_, AppState>) -> Vec<dto::ActionCatalogEntryDto> {
     use crate::desk::catalog::{Os, Services};
     let os = Os::current();
-    dto::action_catalog(os, &Services::expected(os))
+    dto::action_catalog(os, &Services::current(&app.services, os))
 }
 
 /// Tries one action now, exactly as if its control fired (all builds). The spec is validated
@@ -488,5 +489,21 @@ pub fn test_action(
         .clone();
     let action =
         crate::config::resolve::resolve_action(&action, &macros).map_err(str::to_string)?;
+    app.send_command(DeviceCommand::TestAction(action))
+}
+
+/// Tries the knob's binding once (all builds). A volume knob (system or one app) goes one detent
+/// clockwise and back to exactly where it was, so the net change is zero; a shortcut pair sends
+/// its clockwise shortcut once. Validated and refused like [`test_action`]: a protected foreground
+/// refuses the shortcut. The outcome arrives via `desk://status` `lastAction`.
+///
+/// # Errors
+/// Returns an error string for an invalid spec or an unavailable device runtime.
+#[tauri::command]
+pub fn test_rotate(
+    app: State<'_, AppState>,
+    rotate: crate::config::RotateSpec,
+) -> Result<(), String> {
+    let action = crate::config::resolve::resolve_rotate_test(&rotate).map_err(str::to_string)?;
     app.send_command(DeviceCommand::TestAction(action))
 }

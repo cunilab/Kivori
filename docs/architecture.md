@@ -219,8 +219,9 @@ The webview may call only these commands and listen to these events. No command 
 | `mirror_state` | Dev-labelled `set_desired_state` | `device-studio` only |
 | `get_desk_status` | Display mode, monitored values (`null` = unknown), Press/Hold bindings, last action outcome | all |
 | `set_display_mode` | `buddy, clock, volume, media, system` | all |
-| `list_action_catalog` | Every bindable action with `slot`, `scope`, `verification`, `params`, `availability`, `reason`, `runsWhenProtected` | all |
+| `list_action_catalog` | Every bindable action with `slot`, `scope`, `verification`, `params`, `availability`, `reason`, `runsWhenProtected`. Availability is the device thread's latest backend snapshot (system volume and per-app volume); until its first publish, and for key input, it is what the OS is expected to provide | all |
 | `test_action` | `action` (an `ActionSpec`, validated natively like a saved binding); runs it now through the device thread, exactly as if its control fired. Returns nothing: the outcome arrives in `desk://status` `lastAction`. A protected foreground refuses everything but system actions | all |
+| `test_rotate` | `rotate` (a `RotateSpec`, validated natively). Tests the knob once: a volume knob (system or one app) steps one detent up and back to exactly where it was (down first when already at the top), so the net change is zero; a shortcut pair sends its clockwise shortcut once. Same outcome path and Protected rule as `test_action` (the shortcut is refused, a volume nudge injects no keys and runs). The UI counts down 3 seconds first for a shortcut pair | all |
 
 | Event | Payload | When |
 |---|---|---|
@@ -228,6 +229,7 @@ The webview may call only these commands and listen to these events. No command 
 | `activity-log://event` | `ActivityEventDto` | A new activity record |
 | `desk://status` | `DeskStatusDto` | Any change to the desk projection |
 | `config://changed` | `ConfigDto` | After every successful save or reset |
+| `startup://changed` | `StartupSettingsDto` | After launch at login changes, from the tray item or `set_launch_at_login` (the OS entry's state) |
 
 - Events are small JSON. Frame bytes travel as raw RGBA8888 (240x240, no JSON or base64) through a `tauri::ipc::Response` or a `Channel<ArrayBuffer>`. The canvas only blits. RGB565 to RGBA happens in Rust.
 - Dev-only commands are compiled out of release builds, and so is the Device Studio route.

@@ -25,6 +25,7 @@ use crate::activity::{
 };
 use crate::companion::CompanionDirector;
 use crate::config::ResolvedConfig;
+use crate::desk::catalog::{Os, Services, ServicesCell};
 use crate::desk::DeskRuntime;
 use crate::device::discovery::{filter_candidates, CandidateRotator, DEFAULT_ALLOWLIST};
 use crate::device::fsm::{ConnectionManager, ManagerEvent};
@@ -126,6 +127,7 @@ pub fn spawn(
     activity_log: Arc<ActivityLog>,
     firmware_status: Arc<Mutex<FirmwareStatus>>,
     diagnostics: Arc<Mutex<DiagnosticsSnapshot>>,
+    services_cell: ServicesCell,
     commands: Receiver<DeviceCommand>,
     host_rx: Receiver<HostSignal>,
     cancel: Arc<AtomicBool>,
@@ -141,6 +143,7 @@ pub fn spawn(
                 activity_log,
                 firmware_status,
                 diagnostics,
+                services_cell,
                 commands,
                 host_rx,
                 cancel,
@@ -158,6 +161,7 @@ fn device_loop(
     activity_log: Arc<ActivityLog>,
     firmware_status: Arc<Mutex<FirmwareStatus>>,
     diagnostics: Arc<Mutex<DiagnosticsSnapshot>>,
+    services_cell: ServicesCell,
     commands: Receiver<DeviceCommand>,
     host_rx: Receiver<HostSignal>,
     cancel: Arc<AtomicBool>,
@@ -815,13 +819,25 @@ fn device_loop(
             last = snapshot;
         }
 
+        let system_volume = backend.availability();
+        let app_volume_availability = app_volume.availability();
+        // The action catalog reads this instead of guessing from the OS. Input synthesis reports no
+        // availability of its own, so it keeps the OS expectation.
+        Services::publish(
+            &services_cell,
+            Services {
+                volume: system_volume.clone(),
+                input: Services::expected(Os::current()).input,
+                app_volume: app_volume_availability.clone(),
+            },
+        );
         diagnostics_publisher.publish(
             &diagnostics,
             &manager,
             &session,
             HostServicesSnapshot {
-                system_volume: availability_token(&backend.availability()),
-                app_volume: availability_token(&app_volume.availability()),
+                system_volume: availability_token(&system_volume),
+                app_volume: availability_token(&app_volume_availability),
                 media: if media.status().is_some() {
                     "observable"
                 } else {

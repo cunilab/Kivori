@@ -1260,6 +1260,27 @@ mod tests {
     }
 
     #[test]
+    fn a_rotate_test_follows_the_protected_rules_of_its_action() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        *fg.0.lock().unwrap() = Foreground::Protected;
+        // The shortcut pair is refused, no key sent; the volume nudge is a system action and runs.
+        let shortcut: Shortcut = "Ctrl+M".parse().unwrap();
+        desk.test(Action::Shortcut(shortcut), ms(0), &mut |_| {});
+        assert_eq!(
+            desk.last_action().map(|l| l.kind),
+            Some(FeedbackKind::Error)
+        );
+        let _ = desk.tick(ms(5), &mut |_| {});
+        desk.test(Action::VolumeNudge { app: None }, ms(10), &mut |_| {});
+        let feedback = settle(&mut desk, ms(20), |f| !f.is_empty());
+        assert_eq!(feedback[0].action, ActionKind::Volume);
+        assert_eq!(feedback[0].kind, FeedbackKind::StateConfirmed);
+        assert!(sent(&synth).is_empty());
+    }
+
+    #[test]
     fn a_test_action_runs_in_an_ordinary_app() {
         let fg = Arc::new(FakeForeground::default());
         let synth = Arc::new(FakeInputSynth::new(Ok(())));
