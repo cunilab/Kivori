@@ -16,6 +16,10 @@ import type {
   FirmwareStatusDto,
   MascotAction,
   ConfigDto,
+  ControlRef,
+  ProfileId,
+  RotateSpec,
+  SlotSpec,
   DeskStatusDto,
   DisplayMode,
   Intensity,
@@ -133,6 +137,33 @@ export async function setBuddySettings(
     return parseConfig(await invoke<unknown>('set_buddy_settings', { reactions, intensity }));
   }
   if (import.meta.env.DEV) return (await devMock()).mockSetBuddySettings(reactions, intensity);
+  return unavailable();
+}
+
+/** Rebinds one control of a profile; `slot: null` resets it to the built-in. Rejects with the native error string. */
+export async function setBinding(
+  profile: ProfileId,
+  control: ControlRef,
+  slot: SlotSpec | null,
+): Promise<ConfigDto> {
+  if (isTauri()) {
+    return parseConfig(await invoke<unknown>('set_binding', { profile, control, slot }));
+  }
+  if (import.meta.env.DEV) return (await devMock()).mockSetBinding(profile, control, slot);
+  return unavailable();
+}
+
+/** Changes what the knob does in a profile; `rotate: null` resets it. */
+export async function setRotate(profile: ProfileId, rotate: RotateSpec | null): Promise<ConfigDto> {
+  if (isTauri()) return parseConfig(await invoke<unknown>('set_rotate', { profile, rotate }));
+  if (import.meta.env.DEV) return (await devMock()).mockSetRotate(profile, rotate);
+  return unavailable();
+}
+
+/** Drops every override of one profile. */
+export async function resetProfile(profile: ProfileId): Promise<ConfigDto> {
+  if (isTauri()) return parseConfig(await invoke<unknown>('reset_profile', { profile }));
+  if (import.meta.env.DEV) return (await devMock()).mockResetProfile(profile);
   return unavailable();
 }
 

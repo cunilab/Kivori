@@ -27,6 +27,8 @@ function desk(overrides: Partial<DeskStatusDto> = {}): DeskStatusDto {
     pinned: false,
     rotateLabel: 'Volume',
     buttonLabels: ['Previous', 'Play/Pause', 'Next'],
+    buttonHoldActions: [null, null, null],
+    profileId: 'general',
     mediaTitle: null,
     mediaArtist: null,
     lastAction: null,

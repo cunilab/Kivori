@@ -114,6 +114,90 @@ pub fn set_buddy_settings(
     })
 }
 
+fn profile_id(token: &str) -> Result<crate::config::ProfileId, String> {
+    crate::config::ProfileId::from_token(token).ok_or_else(|| "unknown profile".to_string())
+}
+
+/// Rebinds one control of a built-in profile, or (`slot` = `null`) resets it to the built-in.
+///
+/// # Errors
+/// Returns an error for an unknown profile or control, the middle button's Hold (reserved for
+/// profile pin), an invalid label, shortcut or launch target, or a failed save.
+#[tauri::command]
+pub fn set_binding(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+    profile: String,
+    control: String,
+    slot: Option<crate::config::SlotSpec>,
+) -> Result<ConfigDto, String> {
+    let profile = profile_id(&profile)?;
+    let control = crate::config::resolve::Control::from_token(&control).map_err(str::to_string)?;
+    let slot = slot
+        .as_ref()
+        .map(crate::config::resolve::canonical_slot)
+        .transpose()
+        .map_err(str::to_string)?;
+    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+        let next = store.edited(|file| {
+            let over = file.profiles.entry(profile).or_default();
+            control.set(over, slot);
+            if over.is_empty() {
+                file.profiles.remove(&profile);
+            }
+        });
+        store.save(next)
+    })
+}
+
+/// Changes what the knob does in a built-in profile, or (`rotate` = `null`) resets it.
+///
+/// # Errors
+/// Returns an error for an unknown profile, an invalid shortcut or label, or a failed save.
+#[tauri::command]
+pub fn set_rotate(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+    profile: String,
+    rotate: Option<crate::config::RotateSpec>,
+) -> Result<ConfigDto, String> {
+    let profile = profile_id(&profile)?;
+    let rotate = rotate
+        .as_ref()
+        .map(crate::config::resolve::canonical_rotate)
+        .transpose()
+        .map_err(str::to_string)?;
+    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+        let next = store.edited(|file| {
+            let over = file.profiles.entry(profile).or_default();
+            over.rotate = rotate;
+            if over.is_empty() {
+                file.profiles.remove(&profile);
+            }
+        });
+        store.save(next)
+    })
+}
+
+/// Drops every override of one built-in profile.
+///
+/// # Errors
+/// Returns an error for an unknown profile or a failed save.
+#[tauri::command]
+pub fn reset_profile(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+    profile: String,
+) -> Result<ConfigDto, String> {
+    let profile = profile_id(&profile)?;
+    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+        let next = store.edited(|file| {
+            file.profiles.remove(&profile);
+        });
+        store.save(next)
+    })
+}
+
 /// Restores every setting to its default; the previous file is kept as one backup.
 ///
 /// # Errors

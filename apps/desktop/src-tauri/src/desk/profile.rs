@@ -9,7 +9,8 @@ use std::time::Duration;
 
 use kivori_model::desk::{ContextMood, ControlLabels, MediaText};
 
-use super::actions::{Action, Bindings};
+use super::actions::{Action, Bindings, ButtonSlots, Slot};
+use crate::config::ProfileId;
 use crate::input::LogicalInput;
 use crate::platform::{Foreground, Shortcut};
 
@@ -23,7 +24,7 @@ pub enum RotateBinding {
     Volume,
     /// One shortcut per detent, one per direction (invariant 54: the binding owns both).
     Shortcuts {
-        label: &'static str,
+        label: String,
         cw: Shortcut,
         ccw: Shortcut,
     },
@@ -31,7 +32,7 @@ pub enum RotateBinding {
 
 impl RotateBinding {
     #[must_use]
-    pub const fn label(&self) -> &'static str {
+    pub fn label(&self) -> &str {
         match self {
             RotateBinding::Volume => "Volume",
             RotateBinding::Shortcuts { label, .. } => label,
@@ -42,9 +43,10 @@ impl RotateBinding {
 /// One profile: which apps it matches and what every control does there.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Profile {
-    pub name: &'static str,
+    pub id: ProfileId,
+    pub name: String,
     /// Lowercase foreground ids, Windows executables and macOS bundle ids in one list.
-    pub ids: &'static [&'static str],
+    pub ids: Vec<String>,
     pub mood: ContextMood,
     pub rotate: RotateBinding,
     pub bindings: Bindings,
@@ -59,18 +61,19 @@ fn shortcut(text: &str) -> Shortcut {
 #[must_use]
 pub fn builtins_for(mac: bool) -> Vec<Profile> {
     let os = |windows: &str, macos: &str| shortcut(if mac { macos } else { windows });
-    let named = |name: &'static str, s: Shortcut| (Some(Action::Shortcut(s)), Some(name));
-    let with_buttons = |buttons: [(Option<Action>, Option<&'static str>); 3]| {
-        let [a, b, c] = buttons;
-        Bindings {
-            buttons: [a.0, b.0, c.0],
-            button_names: [a.1, b.1, c.1],
-            ..Bindings::default()
-        }
+    let named = |name: &str, s: Shortcut| ButtonSlots {
+        press: Slot::named(Action::Shortcut(s), name),
+        hold: Slot::default(),
     };
+    let with_buttons = |buttons: [ButtonSlots; 3]| Bindings {
+        buttons,
+        ..Bindings::default()
+    };
+    let ids = |ids: &[&str]| ids.iter().map(ToString::to_string).collect::<Vec<_>>();
     let general = Profile {
-        name: "General",
-        ids: &[],
+        id: ProfileId::General,
+        name: "General".into(),
+        ids: Vec::new(),
         mood: ContextMood::Neutral,
         rotate: RotateBinding::Volume,
         bindings: Bindings::default(),
@@ -78,8 +81,9 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
     vec![
         general.clone(),
         Profile {
-            name: "Browser",
-            ids: &[
+            id: ProfileId::Browser,
+            name: "Browser".into(),
+            ids: ids(&[
                 "chrome.exe",
                 "msedge.exe",
                 "firefox.exe",
@@ -89,9 +93,9 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
                 "org.mozilla.firefox",
                 "com.microsoft.edgemac",
                 "com.brave.browser",
-            ],
+            ]),
             rotate: RotateBinding::Shortcuts {
-                label: "Tabs",
+                label: "Tabs".into(),
                 cw: shortcut("Ctrl+Tab"),
                 ccw: shortcut("Ctrl+Shift+Tab"),
             },
@@ -103,8 +107,9 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
             ..general.clone()
         },
         Profile {
-            name: "Code",
-            ids: &["code.exe", "com.microsoft.vscode"],
+            id: ProfileId::Code,
+            name: "Code".into(),
+            ids: ids(&["code.exe", "com.microsoft.vscode"]),
             bindings: with_buttons([
                 named("Terminal", shortcut("Ctrl+`")),
                 named("Run", shortcut("F5")),
@@ -113,13 +118,15 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
             ..general.clone()
         },
         Profile {
-            name: "Media",
-            ids: &["spotify.exe", "com.spotify.client", "com.apple.music"],
+            id: ProfileId::Media,
+            name: "Media".into(),
+            ids: ids(&["spotify.exe", "com.spotify.client", "com.apple.music"]),
             ..general.clone()
         },
         Profile {
-            name: "Zoom",
-            ids: &["zoom.exe", "us.zoom.xos"],
+            id: ProfileId::Zoom,
+            name: "Zoom".into(),
+            ids: ids(&["zoom.exe", "us.zoom.xos"]),
             mood: ContextMood::Meeting,
             bindings: with_buttons([
                 named("Mic", os("Alt+A", "Meta+Shift+A")),
@@ -129,8 +136,9 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
             ..general.clone()
         },
         Profile {
-            name: "Teams",
-            ids: &["ms-teams.exe", "teams.exe", "com.microsoft.teams2"],
+            id: ProfileId::Teams,
+            name: "Teams".into(),
+            ids: ids(&["ms-teams.exe", "teams.exe", "com.microsoft.teams2"]),
             mood: ContextMood::Meeting,
             bindings: with_buttons([
                 named("Mic", os("Ctrl+Shift+M", "Meta+Shift+M")),
@@ -236,6 +244,21 @@ impl Context {
         self.pending = None;
     }
 
+    /// Swaps in re-resolved profiles (same count and order: the config only overrides bindings).
+    /// The pin and the committed app's profile are kept; `pending` is left alone.
+    pub fn set_profiles(&mut self, profiles: Vec<Profile>) {
+        assert!(!profiles.is_empty(), "General is always there");
+        self.profiles = profiles;
+        let last = self.profiles.len() - 1;
+        self.pinned = self.pinned.map(|i| i.min(last));
+        self.app_profile = match &self.committed {
+            Foreground::App { id, .. } => match_profile(&self.profiles, id),
+            Foreground::Unknown => 0,
+            // Protected keeps the last app's profile.
+            Foreground::Protected => self.app_profile.min(last),
+        };
+    }
+
     /// Auto -> each profile in order -> Auto.
     pub fn cycle_pin(&mut self) {
         self.pinned = match self.pinned {
@@ -303,11 +326,12 @@ impl Context {
         let profile = self.profile();
         let protected = self.protected();
         let bindings = &profile.bindings;
-        let label = |action: &Action, name: Option<&str>| {
-            if protected && !action.is_system() {
-                MediaText::default()
-            } else {
-                MediaText::from_text(&name.map_or_else(|| action.label(), str::to_string))
+        let label = |slot: &Slot| {
+            match &slot.action {
+                // Unbound, or suspended in a protected context: nothing to show.
+                None => MediaText::default(),
+                Some(action) if protected && !action.is_system() => MediaText::default(),
+                Some(_) => MediaText::from_text(&slot.device_label()),
             }
         };
         let name = if protected {
@@ -316,17 +340,13 @@ impl Context {
             // The Auto/General fallback keeps the screen calm.
             ""
         } else {
-            profile.name
+            profile.name.as_str()
         };
         ControlLabels {
             rotate: MediaText::from_text(self.rotate().map_or("", RotateBinding::label)),
-            press: label(&bindings.press, None),
-            hold: label(&bindings.hold, None),
-            buttons: std::array::from_fn(|i| {
-                bindings.buttons[i]
-                    .as_ref()
-                    .map_or_else(MediaText::default, |a| label(a, bindings.button_names[i]))
-            }),
+            press: label(&bindings.press),
+            hold: label(&bindings.hold),
+            buttons: std::array::from_fn(|i| label(&bindings.buttons[i].press)),
             profile: MediaText::from_text(name),
             pinned: self.pinned(),
             mood: if protected {
@@ -357,8 +377,8 @@ mod tests {
         t.as_latin1().iter().map(|&b| char::from(b)).collect()
     }
 
-    fn name(ctx: &Context) -> &'static str {
-        ctx.profile().name
+    fn name(ctx: &Context) -> &str {
+        &ctx.profile().name
     }
 
     #[test]
@@ -396,7 +416,7 @@ mod tests {
 
     #[test]
     fn built_in_shortcuts_follow_the_os() {
-        let button = |p: &Profile, i: usize| match &p.bindings.buttons[i] {
+        let button = |p: &Profile, i: usize| match &p.bindings.buttons[i].press.action {
             Some(Action::Shortcut(s)) => s.to_string(),
             other => panic!("{other:?}"),
         };
@@ -417,7 +437,7 @@ mod tests {
         assert_eq!(
             mac[1].rotate,
             RotateBinding::Shortcuts {
-                label: "Tabs",
+                label: "Tabs".into(),
                 cw: shortcut("Ctrl+Tab"),
                 ccw: shortcut("Ctrl+Shift+Tab"),
             }
@@ -514,11 +534,11 @@ mod tests {
         let mut ctx = Context::new(builtins());
         ctx.observe(app("spotify.exe"), ms(0));
         ctx.commit_pending();
-        let mut seen = Vec::new();
+        let mut seen: Vec<(String, String, bool)> = Vec::new();
         for _ in 0..7 {
             ctx.cycle_pin();
             let labels = ctx.labels();
-            seen.push((name(&ctx), text(labels.profile), labels.pinned));
+            seen.push((name(&ctx).to_string(), text(labels.profile), labels.pinned));
         }
         let expect = [
             ("General", "General", true),
@@ -529,7 +549,10 @@ mod tests {
             ("Teams", "Teams", true),
             ("Media", "Media", false),
         ];
-        let seen: Vec<_> = seen.iter().map(|(n, t, p)| (*n, t.as_str(), *p)).collect();
+        let seen: Vec<_> = seen
+            .iter()
+            .map(|(n, t, p)| (n.as_str(), t.as_str(), *p))
+            .collect();
         assert_eq!(seen, expect, "Auto follows the foreground app again");
     }
 
@@ -569,5 +592,52 @@ mod tests {
         let labels = ctx.labels();
         assert_eq!(labels.buttons.map(text), ["Terminal", "Run", "Git"]);
         assert_eq!(text(labels.rotate), "Volume");
+    }
+
+    #[test]
+    fn set_profiles_keeps_the_pin_and_the_committed_apps_profile() {
+        let mut ctx = Context::new(builtins());
+        ctx.observe(app("zoom.exe"), ms(0));
+        ctx.commit_pending();
+        assert_eq!(name(&ctx), "Zoom");
+        let mut next = builtins();
+        next[4].bindings.press = Slot::bound(Action::NextTrack);
+        ctx.set_profiles(next.clone());
+        assert_eq!(name(&ctx), "Zoom", "the committed app keeps its profile");
+        assert_eq!(ctx.profile().bindings.press.action, Some(Action::NextTrack));
+
+        ctx.cycle_pin();
+        ctx.cycle_pin(); // Browser
+        ctx.set_profiles(next);
+        assert!(ctx.pinned());
+        assert_eq!(name(&ctx), "Browser", "the pin survives the swap");
+
+        // Under Protected the last app's profile is kept for when it ends.
+        ctx.cycle_pin();
+        ctx.cycle_pin();
+        ctx.cycle_pin();
+        ctx.cycle_pin();
+        ctx.cycle_pin(); // back to Auto
+        assert!(!ctx.pinned());
+        ctx.observe(Foreground::Protected, ms(10));
+        ctx.set_profiles(builtins());
+        ctx.observe(app("zoom.exe"), ms(20));
+        ctx.observe(app("zoom.exe"), ms(500));
+        assert_eq!(name(&ctx), "Zoom");
+    }
+
+    #[test]
+    fn a_button_hold_runs_its_bound_action_and_the_middle_one_still_pins() {
+        let mut profiles = builtins();
+        profiles[0].bindings.buttons[0].hold = Slot::bound(Action::ToggleMute);
+        profiles[0].bindings.buttons[1].hold = Slot::bound(Action::ToggleMute);
+        let ctx = Context::new(profiles);
+        let hold = |button| LogicalInput::ButtonHold {
+            button,
+            gesture_id: 1,
+        };
+        assert_eq!(ctx.resolve(&hold(0)), Resolved::Run(Action::ToggleMute));
+        assert_eq!(ctx.resolve(&hold(1)), Resolved::CyclePin);
+        assert_eq!(ctx.resolve(&hold(2)), Resolved::Nothing);
     }
 }

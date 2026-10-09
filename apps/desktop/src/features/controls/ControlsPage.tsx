@@ -37,23 +37,36 @@ function bound(token: DeskActionToken | null | undefined, label: string): string
   return strings.actions[token];
 }
 
+// A Hold has no device label, so a shortcut or launch is named by its kind.
+function held(token: DeskActionToken | null | undefined): string {
+  return token ? strings.actions[token] : t.unbound;
+}
+
 /** Controls: what each control does under the active profile. Read-only; bindings come from the desk status. */
 export function ControlsPage({ desk }: { desk: DeskStatusDto | null }): ReactElement {
   const rotate = desk && (desk.rotateLabel === 'Volume' ? t.systemVolume : desk.rotateLabel);
   const gestures: Gesture[] = [
     { key: 'rotate', Icon: RotateCw, action: desk && (rotate || t.suspended) },
-    { key: 'press', Icon: MousePointerClick, action: desk && strings.actions[desk.pressAction] },
+    { key: 'press', Icon: MousePointerClick, action: desk && held(desk.pressAction) },
     {
       key: 'doublePress',
       Icon: RefreshCw,
       action: desk && strings.actions[desk.doublePressAction],
     },
-    { key: 'hold', Icon: Hand, action: desk && strings.actions[desk.holdAction] },
+    { key: 'hold', Icon: Hand, action: desk && held(desk.holdAction) },
     ...(['button1', 'button2', 'button3'] as const).map((key, i) => {
       return {
         key,
         Icon: CircleDot,
         action: desk && bound(desk.buttonActions[i], desk.buttonLabels[i]),
+      };
+    }),
+    ...(['button1Hold', 'button2Hold', 'button3Hold'] as const).map((key, i) => {
+      return {
+        key,
+        Icon: Hand,
+        // The middle button's Hold pins a profile; it can never be rebound.
+        action: desk && (i === 1 ? t.pinProfile : held(desk.buttonHoldActions[i])),
       };
     }),
   ];

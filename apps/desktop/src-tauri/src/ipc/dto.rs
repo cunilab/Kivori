@@ -777,6 +777,17 @@ fn activity_metadata(metadata: &ActivityMetadata) -> ActivityMetadataDto {
     }
 }
 
+/// Every [`desk_action_token`], in the order of `DESK_ACTIONS` in `lib/ipc/types.ts`.
+pub const DESK_ACTION_TOKENS: [&str; 7] = [
+    "volume",
+    "playPause",
+    "mute",
+    "shortcut",
+    "launch",
+    "previousTrack",
+    "nextTrack",
+];
+
 /// The closed webview token for a desk action.
 #[must_use]
 pub const fn desk_action_token(action: kivori_model::desk::ActionKind) -> &'static str {
@@ -931,13 +942,18 @@ pub struct DeskStatusDto {
     pub cpu_percent: Option<u8>,
     pub ram_percent: Option<u8>,
     pub high_load: bool,
-    /// Desk action tokens bound to Press and Hold.
-    pub press_action: &'static str,
-    pub hold_action: &'static str,
+    /// Desk action tokens bound to Press and Hold (`null` = unbound).
+    pub press_action: Option<&'static str>,
+    pub hold_action: Option<&'static str>,
     /// Always `nextView` in M1: a double press shows the next display mode.
     pub double_press_action: &'static str,
     /// Desk action tokens bound to the three contextual buttons' Press (`null` = unbound).
     pub button_actions: [Option<&'static str>; 3],
+    /// Desk action tokens bound to the three contextual buttons' Hold (`null` = unbound; the
+    /// middle one is always `null`, it pins the profile).
+    pub button_hold_actions: [Option<&'static str>; 3],
+    /// The active profile's id token (what the config UI keys its tabs by).
+    pub profile_id: &'static str,
     /// The active profile's name, exactly as the device shows it (`null` = the General fallback).
     pub profile: Option<String>,
     /// The profile was pinned from the device instead of following the focused app.
@@ -1005,11 +1021,16 @@ const fn media_token(media: kivori_model::desk::MediaStatus) -> &'static str {
     }
 }
 
+fn slot_token(slot: &crate::desk::Slot) -> Option<&'static str> {
+    slot.action.as_ref().map(|a| desk_action_token(a.kind()))
+}
+
 fn button_tokens(bindings: &crate::desk::Bindings) -> [Option<&'static str>; 3] {
-    bindings
-        .buttons
-        .each_ref()
-        .map(|b| b.as_ref().map(|a| desk_action_token(a.kind())))
+    bindings.buttons.each_ref().map(|b| slot_token(&b.press))
+}
+
+fn button_hold_tokens(bindings: &crate::desk::Bindings) -> [Option<&'static str>; 3] {
+    bindings.buttons.each_ref().map(|b| slot_token(&b.hold))
 }
 
 fn text(text: kivori_model::desk::MediaText) -> String {
@@ -1019,7 +1040,7 @@ fn text(text: kivori_model::desk::MediaText) -> String {
 /// The desk projection before the device thread has observed anything.
 #[must_use]
 pub fn initial_desk_status(config: &crate::config::ResolvedConfig) -> DeskStatusDto {
-    let context = crate::desk::profile::Context::new(crate::desk::profile::builtins());
+    let context = crate::desk::profile::Context::new(config.profiles.clone());
     let bindings = &context.profile().bindings;
     let labels = context.labels();
     DeskStatusDto {
@@ -1030,10 +1051,12 @@ pub fn initial_desk_status(config: &crate::config::ResolvedConfig) -> DeskStatus
         cpu_percent: None,
         ram_percent: None,
         high_load: false,
-        press_action: desk_action_token(bindings.press.kind()),
-        hold_action: desk_action_token(bindings.hold.kind()),
+        press_action: slot_token(&bindings.press),
+        hold_action: slot_token(&bindings.hold),
         double_press_action: "nextView",
         button_actions: button_tokens(bindings),
+        button_hold_actions: button_hold_tokens(bindings),
+        profile_id: context.profile().id.token(),
         profile: None,
         pinned: false,
         rotate_label: text(labels.rotate),
@@ -1057,10 +1080,12 @@ pub fn desk_status_dto(desk: &crate::desk::DeskRuntime) -> DeskStatusDto {
         cpu_percent: observed.system.cpu_percent,
         ram_percent: observed.system.ram_percent,
         high_load: observed.system.high_load,
-        press_action: desk_action_token(desk.bindings().press.kind()),
-        hold_action: desk_action_token(desk.bindings().hold.kind()),
+        press_action: slot_token(&desk.bindings().press),
+        hold_action: slot_token(&desk.bindings().hold),
         double_press_action: "nextView",
         button_actions: button_tokens(desk.bindings()),
+        button_hold_actions: button_hold_tokens(desk.bindings()),
+        profile_id: desk.context().profile().id.token(),
         profile: Some(text(labels.profile)).filter(|name| !name.is_empty()),
         pinned: labels.pinned,
         rotate_label: text(labels.rotate),
@@ -1084,8 +1109,63 @@ pub struct ConfigDto {
     pub revision: u64,
     /// `recoveredCorrupt`, `recoveredNewerVersion` or `migrated`; `null` = nothing to report.
     pub notice: Option<&'static str>,
+    /// Every built-in profile as resolved (built-ins with the user's overrides), General first.
+    pub profiles: Vec<ProfileConfigDto>,
     pub display: DisplaySettingsDto,
     pub buddy: BuddySettingsDto,
+}
+
+/// One profile as the config UI shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileConfigDto {
+    /// `general`, `browser`, `code`, `media`, `zoom` or `teams`.
+    pub id: &'static str,
+    pub name: String,
+    /// The foreground app ids that select this profile (empty for General).
+    pub apps: Vec<String>,
+    pub rotate: RotateDto,
+    pub press: SlotDto,
+    pub hold: SlotDto,
+    pub buttons: [ButtonDto; 3],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RotateDto {
+    pub spec: crate::config::RotateSpec,
+    /// What the device shows for the knob.
+    pub device_label: String,
+    /// The user changed it from the built-in.
+    pub overridden: bool,
+}
+
+/// One bindable gesture.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SlotDto {
+    /// `null` = unbound.
+    pub action: Option<crate::config::ActionSpec>,
+    /// The custom label, `null` = the action's own.
+    pub label: Option<String>,
+    /// What the device shows (empty = unbound).
+    pub device_label: String,
+    pub overridden: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ButtonDto {
+    pub press: SlotDto,
+    pub hold: HoldDto,
+}
+
+/// A button's Hold: a slot, or `"pin"` for the middle button (reserved for profile pin).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum HoldDto {
+    Pin(&'static str),
+    Slot(SlotDto),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1172,6 +1252,7 @@ pub fn config_dto(store: &crate::config::ConfigStore) -> ConfigDto {
         version: file.version,
         revision: store.revision(),
         notice: store.notice().map(config_notice_token),
+        profiles: profile_dtos(store),
         display: DisplaySettingsDto {
             default_view: display_mode_token(file.display.default_view.mode()),
             secondary_view: match file.display.secondary_view {
@@ -1184,4 +1265,64 @@ pub fn config_dto(store: &crate::config::ConfigStore) -> ConfigDto {
             intensity: intensity_token(file.buddy.intensity),
         },
     }
+}
+
+fn slot_dto(slot: &crate::desk::Slot, overridden: bool) -> SlotDto {
+    SlotDto {
+        action: slot
+            .action
+            .as_ref()
+            .map(crate::config::resolve::action_spec),
+        label: slot.label.clone(),
+        device_label: slot.device_label(),
+        overridden,
+    }
+}
+
+fn profile_dtos(store: &crate::config::ConfigStore) -> Vec<ProfileConfigDto> {
+    let resolved = store.resolved();
+    resolved
+        .profiles
+        .iter()
+        .map(|profile| {
+            let over = store
+                .file()
+                .profiles
+                .get(&profile.id)
+                .cloned()
+                .unwrap_or_default();
+            let b = &profile.bindings;
+            let button = |i: usize| ButtonDto {
+                press: slot_dto(&b.buttons[i].press, over.buttons[i].press.is_some()),
+                hold: if i == usize::from(crate::desk::profile::PIN_BUTTON) {
+                    HoldDto::Pin("pin")
+                } else {
+                    HoldDto::Slot(slot_dto(&b.buttons[i].hold, over.buttons[i].hold.is_some()))
+                },
+            };
+            ProfileConfigDto {
+                id: profile.id.token(),
+                name: profile.name.clone(),
+                apps: profile.ids.clone(),
+                rotate: RotateDto {
+                    spec: crate::config::resolve::rotate_spec(&profile.rotate),
+                    device_label: profile.rotate.label().to_string(),
+                    overridden: over.rotate.is_some(),
+                },
+                press: slot_dto(&b.press, over.press.is_some()),
+                hold: slot_dto(&b.hold, over.hold.is_some()),
+                buttons: [button(0), button(1), button(2)],
+            }
+        })
+        .collect()
+}
+
+/// The closed `ProfileId` and `Control` vocabularies, for the Rust/TS drift check.
+#[must_use]
+pub fn vocabulary_json() -> serde_json::Value {
+    serde_json::json!({
+        "profileIds": crate::config::ProfileId::ALL.map(crate::config::ProfileId::token),
+        "controls": crate::config::resolve::CONTROL_TOKENS,
+        "deskActions": DESK_ACTION_TOKENS,
+    })
 }

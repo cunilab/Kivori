@@ -5,14 +5,21 @@
 // absent from the production build by `scripts/check-mock-excluded.mjs`.
 
 import type {
+  ActionSpec,
   ActivityEventDto,
   AppInfoDto,
   CompanionState,
   ConfigDto,
   ConnectionStatusDto,
+  ControlRef,
   DeskStatusDto,
   DisplayMode,
   Intensity,
+  ProfileConfigDto,
+  ProfileId,
+  RotateSpec,
+  SlotDto,
+  SlotSpec,
   TestActionRequest,
 } from './types';
 import { COMPANION_STATES, PREVIEW_DIM } from './types';
@@ -182,6 +189,8 @@ let deskStatus: DeskStatusDto = {
   holdAction: 'mute',
   doublePressAction: 'nextView',
   buttonActions: ['previousTrack', 'playPause', 'nextTrack'],
+  buttonHoldActions: [null, null, null],
+  profileId: 'general',
   profile: null,
   pinned: false,
   rotateLabel: 'Volume',
@@ -221,23 +230,161 @@ export function mockRunTestAction(request: TestActionRequest): void {
   });
 }
 
-const DEFAULT_CONFIG: ConfigDto = {
-  version: 1,
-  revision: 0,
-  notice: null,
-  display: { defaultView: 'buddy', secondaryView: 'system' },
-  buddy: { reactions: true, intensity: 'normal' },
-};
-let config: ConfigDto = DEFAULT_CONFIG;
+function actionLabel(action: ActionSpec | null): string {
+  switch (action?.kind) {
+    case undefined:
+      return '';
+    case 'playPause':
+      return 'Play/Pause';
+    case 'previousTrack':
+      return 'Previous';
+    case 'nextTrack':
+      return 'Next';
+    case 'systemMute':
+      return 'Mute';
+    case 'shortcut':
+      return action.keys;
+    case 'launch':
+      return action.target;
+  }
+}
+
+function slot(action: ActionSpec | null, label: string | null = null): SlotDto {
+  return { action, label, deviceLabel: label ?? actionLabel(action), overridden: false };
+}
+const key = (keys: string): ActionSpec => ({ kind: 'shortcut', keys });
+const media = { kind: 'playPause' } as const;
+const mediaButtons: ProfileConfigDto['buttons'] = [
+  { press: slot({ kind: 'previousTrack' }), hold: slot(null) },
+  { press: slot(media), hold: 'pin' },
+  { press: slot({ kind: 'nextTrack' }), hold: slot(null) },
+];
+const shortcutButtons = (
+  buttons: [[string, string], [string, string], [string, string]],
+): ProfileConfigDto['buttons'] => [
+  { press: slot(key(buttons[0][1]), buttons[0][0]), hold: slot(null) },
+  { press: slot(key(buttons[1][1]), buttons[1][0]), hold: 'pin' },
+  { press: slot(key(buttons[2][1]), buttons[2][0]), hold: slot(null) },
+];
+function builtin(
+  id: ProfileId,
+  name: string,
+  apps: string[],
+  buttons: ProfileConfigDto['buttons'] = mediaButtons,
+  rotate: ProfileConfigDto['rotate']['spec'] = { kind: 'systemVolume' },
+): ProfileConfigDto {
+  return {
+    id,
+    name,
+    apps,
+    rotate: {
+      spec: rotate,
+      deviceLabel: rotate.kind === 'shortcuts' ? rotate.label : 'Volume',
+      overridden: false,
+    },
+    press: slot(media),
+    hold: slot({ kind: 'systemMute' }),
+    buttons,
+  };
+}
+
+/** The built-in profiles as Windows resolves them (what `?mock` shows before any override). */
+function builtinProfiles(): ProfileConfigDto[] {
+  return [
+    builtin('general', 'General', []),
+    builtin(
+      'browser',
+      'Browser',
+      ['chrome.exe', 'msedge.exe', 'firefox.exe', 'brave.exe'],
+      shortcutButtons([
+        ['Back', 'Alt+Left'],
+        ['Reload', 'Ctrl+R'],
+        ['New tab', 'Ctrl+T'],
+      ]),
+      { kind: 'shortcuts', cw: 'Ctrl+Tab', ccw: 'Ctrl+Shift+Tab', label: 'Tabs' },
+    ),
+    builtin(
+      'code',
+      'Code',
+      ['code.exe'],
+      shortcutButtons([
+        ['Terminal', 'Ctrl+`'],
+        ['Run', 'F5'],
+        ['Git', 'Ctrl+Shift+G'],
+      ]),
+    ),
+    builtin('media', 'Media', ['spotify.exe']),
+    builtin(
+      'zoom',
+      'Zoom',
+      ['zoom.exe'],
+      shortcutButtons([
+        ['Mic', 'Alt+A'],
+        ['Video', 'Alt+V'],
+        ['Leave', 'Alt+Q'],
+      ]),
+    ),
+    builtin(
+      'teams',
+      'Teams',
+      ['ms-teams.exe', 'teams.exe'],
+      shortcutButtons([
+        ['Mic', 'Ctrl+Shift+M'],
+        ['Video', 'Ctrl+Shift+O'],
+        ['Leave', 'Ctrl+Shift+H'],
+      ]),
+    ),
+  ];
+}
+
+function defaultConfig(): ConfigDto {
+  return {
+    version: 1,
+    revision: 0,
+    notice: null,
+    profiles: builtinProfiles(),
+    display: { defaultView: 'buddy', secondaryView: 'system' },
+    buddy: { reactions: true, intensity: 'normal' },
+  };
+}
+let config: ConfigDto = defaultConfig();
 const configListeners = new Set<(config: ConfigDto) => void>();
 
 function saveConfig(
-  next: Pick<ConfigDto, 'display' | 'buddy'>,
+  next: Pick<ConfigDto, 'display' | 'buddy' | 'profiles'>,
   notice: ConfigDto['notice'],
 ): ConfigDto {
   config = { ...config, ...next, notice, revision: config.revision + 1 };
   for (const listener of configListeners) listener(config);
   return config;
+}
+
+/** Keeps the desk status in step with the active profile's bindings. */
+function syncDesk(): void {
+  const active = config.profiles.find((p) => p.id === deskStatus.profileId);
+  if (!active) return;
+  const action = (s: SlotDto | 'pin'): DeskStatusDto['holdAction'] =>
+    s === 'pin' || !s.action ? null : s.action.kind === 'systemMute' ? 'mute' : s.action.kind;
+  updateDesk({
+    pressAction: action(active.press),
+    holdAction: action(active.hold),
+    buttonActions: [
+      action(active.buttons[0].press),
+      action(active.buttons[1].press),
+      action(active.buttons[2].press),
+    ],
+    buttonHoldActions: [
+      action(active.buttons[0].hold),
+      action(active.buttons[1].hold),
+      action(active.buttons[2].hold),
+    ],
+    rotateLabel: active.rotate.deviceLabel,
+    buttonLabels: [
+      active.buttons[0].press.deviceLabel,
+      active.buttons[1].press.deviceLabel,
+      active.buttons[2].press.deviceLabel,
+    ],
+  });
 }
 
 export function mockGetConfig(): ConfigDto {
@@ -254,19 +401,154 @@ export function mockSetDisplaySettings(
     throw new Error('the double-press view must differ from the default view');
   }
   const moved = defaultView !== config.display.defaultView;
-  const saved = saveConfig({ display: { defaultView, secondaryView }, buddy: config.buddy }, null);
+  const saved = saveConfig(
+    { display: { defaultView, secondaryView }, buddy: config.buddy, profiles: config.profiles },
+    null,
+  );
   if (moved) updateDesk({ mode: defaultView });
   return saved;
 }
 
 export function mockSetBuddySettings(reactions: boolean, intensity: Intensity): ConfigDto {
-  return saveConfig({ display: config.display, buddy: { reactions, intensity } }, null);
+  return saveConfig(
+    { display: config.display, buddy: { reactions, intensity }, profiles: config.profiles },
+    null,
+  );
 }
 
 export function mockResetConfig(): ConfigDto {
-  const saved = saveConfig(DEFAULT_CONFIG, null);
-  updateDesk({ mode: DEFAULT_CONFIG.display.defaultView });
+  const fresh = defaultConfig();
+  const saved = saveConfig(fresh, null);
+  updateDesk({ mode: fresh.display.defaultView });
+  syncDesk();
   return saved;
+}
+
+function mockLabel(label: string): string {
+  const text = label.trim();
+  if (!text) throw new Error('a label cannot be empty');
+  if ([...text].length > 32) throw new Error('a label is at most 32 characters');
+  if (/[^\u0020-\u007e\u00a0-\u00ff]/.test(text)) {
+    throw new Error('a label can only use Latin-1 characters');
+  }
+  return text;
+}
+
+function mockShortcut(keys: string): string {
+  if (!keys.trim() || keys.trim().endsWith('+')) throw new Error('not a valid shortcut');
+  return keys.trim();
+}
+
+function mockAction(action: ActionSpec): ActionSpec {
+  if (action.kind === 'shortcut') return { kind: 'shortcut', keys: mockShortcut(action.keys) };
+  if (action.kind === 'launch') {
+    if (!action.target.trim()) throw new Error('not a valid application');
+    return { kind: 'launch', target: action.target.trim() };
+  }
+  return action;
+}
+
+function editProfile(
+  id: ProfileId,
+  edit: (profile: ProfileConfigDto, builtin: ProfileConfigDto) => void,
+): ConfigDto {
+  const original = builtinProfiles().find((p) => p.id === id);
+  if (!original) throw new Error('unknown profile');
+  const profiles = structuredClone(config.profiles);
+  const profile = profiles.find((p) => p.id === id);
+  if (!profile) throw new Error('unknown profile');
+  edit(profile, original);
+  const saved = saveConfig({ display: config.display, buddy: config.buddy, profiles }, null);
+  syncDesk();
+  return saved;
+}
+
+/** Mirrors native rules loosely: a reset (`null`) restores the built-in slot, an unbound slot
+ *  drops its label, and labels and shortcuts are validated. */
+export function mockSetBinding(
+  profile: ProfileId,
+  control: ControlRef,
+  slot: SlotSpec | null,
+): ConfigDto {
+  const next = slot && {
+    action: slot.action && mockAction(slot.action),
+    label: slot.action && slot.label ? mockLabel(slot.label) : null,
+  };
+  return editProfile(profile, (target, builtin) => {
+    const place = (get: (p: ProfileConfigDto) => SlotDto, put: (d: SlotDto) => void) => {
+      put(
+        next
+          ? { ...slotOf(next.action, next.label), overridden: true }
+          : structuredClone(get(builtin)),
+      );
+    };
+    const button = (i: 0 | 1 | 2, which: 'press' | 'hold') =>
+      place(
+        (p) => p.buttons[i][which] as SlotDto,
+        (d) => {
+          target.buttons[i][which] = d;
+        },
+      );
+    switch (control) {
+      case 'press':
+        return place(
+          (p) => p.press,
+          (d) => {
+            target.press = d;
+          },
+        );
+      case 'hold':
+        return place(
+          (p) => p.hold,
+          (d) => {
+            target.hold = d;
+          },
+        );
+      case 'button1Press':
+        return button(0, 'press');
+      case 'button1Hold':
+        return button(0, 'hold');
+      case 'button2Press':
+        return button(1, 'press');
+      case 'button3Press':
+        return button(2, 'press');
+      case 'button3Hold':
+        return button(2, 'hold');
+    }
+  });
+}
+
+function slotOf(action: ActionSpec | null, label: string | null): SlotDto {
+  return slot(action, label);
+}
+
+export function mockSetRotate(profile: ProfileId, rotate: RotateSpec | null): ConfigDto {
+  return editProfile(profile, (target, builtin) => {
+    if (!rotate) {
+      target.rotate = structuredClone(builtin.rotate);
+      return;
+    }
+    const spec: RotateSpec =
+      rotate.kind === 'shortcuts'
+        ? {
+            kind: 'shortcuts',
+            cw: mockShortcut(rotate.cw),
+            ccw: mockShortcut(rotate.ccw),
+            label: mockLabel(rotate.label),
+          }
+        : rotate;
+    target.rotate = {
+      spec,
+      deviceLabel: spec.kind === 'shortcuts' ? spec.label : 'Volume',
+      overridden: true,
+    };
+  });
+}
+
+export function mockResetProfile(profile: ProfileId): ConfigDto {
+  return editProfile(profile, (target, builtin) => {
+    Object.assign(target, structuredClone(builtin));
+  });
 }
 
 export function mockOnConfigChanged(handler: (config: ConfigDto) => void): () => void {

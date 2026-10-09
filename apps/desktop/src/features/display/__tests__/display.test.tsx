@@ -36,6 +36,8 @@ const desk: DeskStatusDto = {
   pinned: false,
   rotateLabel: 'Volume',
   buttonLabels: ['Previous', 'Play/Pause', 'Next'],
+  buttonHoldActions: [null, null, null],
+  profileId: 'general',
   mediaTitle: null,
   mediaArtist: null,
   lastAction: null,
@@ -45,6 +47,7 @@ const config: ConfigDto = {
   version: 1,
   revision: 1,
   notice: null,
+  profiles: [],
   display: { defaultView: 'buddy', secondaryView: 'system' },
   buddy: { reactions: true, intensity: 'normal' },
 };

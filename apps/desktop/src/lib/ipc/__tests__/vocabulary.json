@@ -1,0 +1,21 @@
+{
+  "controls": [
+    "press",
+    "hold",
+    "button1Press",
+    "button1Hold",
+    "button2Press",
+    "button3Press",
+    "button3Hold"
+  ],
+  "deskActions": [
+    "volume",
+    "playPause",
+    "mute",
+    "shortcut",
+    "launch",
+    "previousTrack",
+    "nextTrack"
+  ],
+  "profileIds": ["general", "browser", "code", "media", "zoom", "teams"]
+}

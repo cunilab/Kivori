@@ -153,12 +153,81 @@ export const INTENSITY_PERSONALITY: Record<Intensity, MascotPersonality> = {
 export const CONFIG_NOTICES = ['recoveredCorrupt', 'recoveredNewerVersion', 'migrated'] as const;
 export type ConfigNotice = (typeof CONFIG_NOTICES)[number];
 
+export const PROFILE_IDS = ['general', 'browser', 'code', 'media', 'zoom', 'teams'] as const;
+export type ProfileId = (typeof PROFILE_IDS)[number];
+
+/** Controls `setBinding` targets. The middle button's Hold is reserved for the profile pin. */
+export const CONTROL_REFS = [
+  'press',
+  'hold',
+  'button1Press',
+  'button1Hold',
+  'button2Press',
+  'button3Press',
+  'button3Hold',
+] as const;
+export type ControlRef = (typeof CONTROL_REFS)[number];
+
+export type ActionSpec =
+  | { kind: 'playPause' }
+  | { kind: 'previousTrack' }
+  | { kind: 'nextTrack' }
+  | { kind: 'systemMute' }
+  | { kind: 'shortcut'; keys: string }
+  | { kind: 'launch'; target: string };
+export const ACTION_SPEC_KINDS = [
+  'playPause',
+  'previousTrack',
+  'nextTrack',
+  'systemMute',
+  'shortcut',
+  'launch',
+] as const;
+
+export type RotateSpec =
+  { kind: 'systemVolume' } | { kind: 'shortcuts'; cw: string; ccw: string; label: string };
+
+/** A replacement for one slot: `action: null` = explicitly unbound. */
+export interface SlotSpec {
+  action: ActionSpec | null;
+  label?: string | null;
+}
+
+export interface SlotDto {
+  /** `null` = unbound. */
+  action: ActionSpec | null;
+  /** The custom label; `null` = the action's own. */
+  label: string | null;
+  /** What the device shows (`''` = unbound). */
+  deviceLabel: string;
+  /** Changed from the built-in. */
+  overridden: boolean;
+}
+
+export interface ProfileConfigDto {
+  id: ProfileId;
+  name: string;
+  /** Foreground app ids that select this profile (empty for General). */
+  apps: string[];
+  rotate: { spec: RotateSpec; deviceLabel: string; overridden: boolean };
+  press: SlotDto;
+  hold: SlotDto;
+  /** A button's Hold is `'pin'` for the middle one (reserved for profile pin). */
+  buttons: [ButtonDto, ButtonDto, ButtonDto];
+}
+export interface ButtonDto {
+  press: SlotDto;
+  hold: SlotDto | 'pin';
+}
+
 /** The saved settings. `secondaryView: 'cycle'` = a double press steps through every view. */
 export interface ConfigDto {
   version: number;
   /** Counts saves and resets in this run: a lower revision is a stale copy. */
   revision: number;
   notice: ConfigNotice | null;
+  /** Every built-in profile as resolved (overrides over built-ins), General first. */
+  profiles: ProfileConfigDto[];
   display: { defaultView: DisplayMode; secondaryView: DisplayMode | 'cycle' };
   buddy: { reactions: boolean; intensity: Intensity };
 }
@@ -206,11 +275,16 @@ export interface DeskStatusDto {
   cpuPercent: number | null;
   ramPercent: number | null;
   highLoad: boolean;
-  pressAction: DeskActionToken;
-  holdAction: DeskActionToken;
+  /** Press and Hold; `null` = unbound. */
+  pressAction: DeskActionToken | null;
+  holdAction: DeskActionToken | null;
   doublePressAction: DoublePressAction;
   /** The three contextual buttons' Press, left to right; `null` = unbound. */
   buttonActions: [DeskActionToken | null, DeskActionToken | null, DeskActionToken | null];
+  /** The three contextual buttons' Hold; `null` = unbound (the middle one always is: it pins). */
+  buttonHoldActions: [DeskActionToken | null, DeskActionToken | null, DeskActionToken | null];
+  /** The active profile (the config UI keys its tabs by it). */
+  profileId: ProfileId;
   /** The active profile's name as the device shows it; `null` = the General fallback. */
   profile: string | null;
   /** The profile was pinned on the device instead of following the app in front. */

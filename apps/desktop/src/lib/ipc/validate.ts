@@ -2,6 +2,7 @@
 // runtime, so tokens are checked here: an unknown token is rejected, never passed through to the UI.
 
 import {
+  ACTION_SPEC_KINDS,
   ACTIVITY_EVENT_TYPES,
   CONFIG_NOTICES,
   DESK_ACTIONS,
@@ -11,8 +12,18 @@ import {
   INTENSITIES,
   MASCOT_ACTIONS,
   MEDIA_STATUSES,
+  PROFILE_IDS,
 } from './types';
-import type { ActivityEventDto, ConfigDto, DeskStatusDto } from './types';
+import type {
+  ActionSpec,
+  ActivityEventDto,
+  ButtonDto,
+  ConfigDto,
+  DeskStatusDto,
+  ProfileConfigDto,
+  RotateSpec,
+  SlotDto,
+} from './types';
 
 function oneOf<T extends string>(name: string, allowed: readonly T[], value: unknown): T {
   if (typeof value === 'string' && (allowed as readonly string[]).includes(value))
@@ -43,11 +54,14 @@ function textOrNull(name: string, value: unknown): string | null {
   throw new Error(`Kivori: invalid ${name}.`);
 }
 
-function buttonActions(value: unknown): DeskStatusDto['buttonActions'] {
-  if (!Array.isArray(value) || value.length !== 3)
-    throw new Error('Kivori: invalid buttonActions.');
+function buttonActions(name: string, value: unknown): DeskStatusDto['buttonActions'] {
+  if (!Array.isArray(value) || value.length !== 3) throw new Error(`Kivori: invalid ${name}.`);
   const one = (v: unknown) => (v === null ? null : oneOf('desk action', DESK_ACTIONS, v));
   return [one(value[0]), one(value[1]), one(value[2])];
+}
+
+function actionOrNull(value: unknown): DeskStatusDto['holdAction'] {
+  return value === null ? null : oneOf('desk action', DESK_ACTIONS, value);
 }
 
 // Labels Desktop derives from its own profiles; clamped like media text, never trusted to be short.
@@ -92,10 +106,12 @@ export function parseDeskStatus(raw: unknown): DeskStatusDto {
     cpuPercent: percentOrNull('cpuPercent', r.cpuPercent),
     ramPercent: percentOrNull('ramPercent', r.ramPercent),
     highLoad: r.highLoad,
-    pressAction: oneOf('desk action', DESK_ACTIONS, r.pressAction),
-    holdAction: oneOf('desk action', DESK_ACTIONS, r.holdAction),
+    pressAction: actionOrNull(r.pressAction),
+    holdAction: actionOrNull(r.holdAction),
     doublePressAction: oneOf('double-press action', DOUBLE_PRESS_ACTIONS, r.doublePressAction),
-    buttonActions: buttonActions(r.buttonActions),
+    buttonActions: buttonActions('buttonActions', r.buttonActions),
+    buttonHoldActions: buttonActions('buttonHoldActions', r.buttonHoldActions),
+    profileId: oneOf('profile', PROFILE_IDS, r.profileId),
     profile: textOrNull('profile', r.profile),
     pinned: r.pinned,
     rotateLabel: label('rotateLabel', r.rotateLabel),
@@ -111,6 +127,77 @@ function record(name: string, value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function text(name: string, value: unknown, max = 1024): string {
+  if (typeof value === 'string' && value.length <= max) return value;
+  throw new Error(`Kivori: invalid ${name}.`);
+}
+
+function actionSpec(raw: unknown): ActionSpec {
+  const r = record('action', raw);
+  switch (oneOf('action kind', ACTION_SPEC_KINDS, r.kind)) {
+    case 'shortcut':
+      return { kind: 'shortcut', keys: text('shortcut', r.keys) };
+    case 'launch':
+      return { kind: 'launch', target: text('launch target', r.target) };
+    default:
+      return { kind: r.kind } as ActionSpec;
+  }
+}
+
+function rotateSpec(raw: unknown): RotateSpec {
+  const r = record('rotate', raw);
+  switch (oneOf('rotate kind', ['systemVolume', 'shortcuts'] as const, r.kind)) {
+    case 'shortcuts':
+      return {
+        kind: 'shortcuts',
+        cw: text('shortcut', r.cw),
+        ccw: text('shortcut', r.ccw),
+        label: text('label', r.label),
+      };
+    default:
+      return { kind: 'systemVolume' };
+  }
+}
+
+function slotDto(raw: unknown): SlotDto {
+  const r = record('slot', raw);
+  if (typeof r.overridden !== 'boolean') throw new Error('Kivori: invalid overridden.');
+  return {
+    action: r.action === null ? null : actionSpec(r.action),
+    label: r.label === null ? null : text('label', r.label),
+    deviceLabel: text('device label', r.deviceLabel),
+    overridden: r.overridden,
+  };
+}
+
+function buttonDto(raw: unknown): ButtonDto {
+  const r = record('button', raw);
+  return { press: slotDto(r.press), hold: r.hold === 'pin' ? 'pin' : slotDto(r.hold) };
+}
+
+function profileDto(raw: unknown): ProfileConfigDto {
+  const r = record('profile', raw);
+  const rotate = record('rotate', r.rotate);
+  if (typeof rotate.overridden !== 'boolean') throw new Error('Kivori: invalid overridden.');
+  if (!Array.isArray(r.apps)) throw new Error('Kivori: invalid apps.');
+  if (!Array.isArray(r.buttons) || r.buttons.length !== 3) {
+    throw new Error('Kivori: invalid buttons.');
+  }
+  return {
+    id: oneOf('profile', PROFILE_IDS, r.id),
+    name: text('profile name', r.name),
+    apps: r.apps.map((app) => text('app id', app)),
+    rotate: {
+      spec: rotateSpec(rotate.spec),
+      deviceLabel: text('device label', rotate.deviceLabel),
+      overridden: rotate.overridden,
+    },
+    press: slotDto(r.press),
+    hold: slotDto(r.hold),
+    buttons: [buttonDto(r.buttons[0]), buttonDto(r.buttons[1]), buttonDto(r.buttons[2])],
+  };
+}
+
 /** Validates a `ConfigDto`, throwing on any unknown token or malformed value. */
 export function parseConfig(raw: unknown): ConfigDto {
   const r = record('config', raw);
@@ -123,10 +210,12 @@ export function parseConfig(raw: unknown): ConfigDto {
     throw new Error('Kivori: invalid config revision.');
   }
   if (typeof buddy.reactions !== 'boolean') throw new Error('Kivori: invalid reactions.');
+  if (!Array.isArray(r.profiles)) throw new Error('Kivori: invalid profiles.');
   return {
     version: r.version,
     revision: r.revision,
     notice: r.notice === null ? null : oneOf('config notice', CONFIG_NOTICES, r.notice),
+    profiles: r.profiles.map(profileDto),
     display: {
       defaultView: oneOf('display mode', DISPLAY_MODES, display.defaultView),
       secondaryView: oneOf('display mode', [...DISPLAY_MODES, 'cycle'], display.secondaryView),

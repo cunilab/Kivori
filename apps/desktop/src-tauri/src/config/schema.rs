@@ -20,7 +20,7 @@ pub const CONFIG_VERSION: u32 = 1;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConfigFile {
     pub version: u32,
-    /// Sparse per-profile overrides. Empty until the profile-bindings slice fills it in.
+    /// Sparse per-profile overrides of the built-in profiles.
     #[serde(default)]
     pub profiles: BTreeMap<ProfileId, ProfileOverride>,
     /// User macros. Empty until the macro slice fills it in.
@@ -69,10 +69,106 @@ pub enum ProfileId {
     Teams,
 }
 
-/// One profile's overrides. No field exists yet; the profile-bindings slice adds them.
+impl ProfileId {
+    pub const ALL: [Self; 6] = [
+        Self::General,
+        Self::Browser,
+        Self::Code,
+        Self::Media,
+        Self::Zoom,
+        Self::Teams,
+    ];
+
+    /// The lowercase token used in the file and over IPC.
+    #[must_use]
+    pub const fn token(self) -> &'static str {
+        match self {
+            Self::General => "general",
+            Self::Browser => "browser",
+            Self::Code => "code",
+            Self::Media => "media",
+            Self::Zoom => "zoom",
+            Self::Teams => "teams",
+        }
+    }
+
+    #[must_use]
+    pub fn from_token(token: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|id| id.token() == token)
+    }
+}
+
+/// One profile's overrides. Every field is sparse: `None` inherits the built-in.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ProfileOverride {}
+pub struct ProfileOverride {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rotate: Option<RotateSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub press: Option<SlotSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hold: Option<SlotSpec>,
+    #[serde(default, skip_serializing_if = "buttons_untouched")]
+    pub buttons: [ButtonOverride; 3],
+}
+
+fn buttons_untouched(buttons: &[ButtonOverride; 3]) -> bool {
+    buttons.iter().all(|b| *b == ButtonOverride::default())
+}
+
+impl ProfileOverride {
+    /// Nothing overridden: the entry can be dropped from the file.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// A contextual button's overrides. The middle button's Hold is reserved for the profile pin.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ButtonOverride {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub press: Option<SlotSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hold: Option<SlotSpec>,
+}
+
+/// A replacement for one slot: the whole slot, not a patch of the built-in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SlotSpec {
+    /// `null` = explicitly unbound.
+    #[serde(default)]
+    pub action: Option<ActionSpec>,
+    /// What the device calls it; `None` = the action's own label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+/// The discrete actions a slot can be bound to (App Mute and Macro arrive in later slices).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
+pub enum ActionSpec {
+    PlayPause,
+    PreviousTrack,
+    NextTrack,
+    SystemMute,
+    Shortcut { keys: String },
+    Launch { target: String },
+}
+
+/// What the knob does (App Volume arrives in a later slice).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
+pub enum RotateSpec {
+    SystemVolume,
+    Shortcuts {
+        cw: String,
+        ccw: String,
+        label: String,
+    },
+}
 
 /// One user macro. No field exists yet; the macro slice adds them.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

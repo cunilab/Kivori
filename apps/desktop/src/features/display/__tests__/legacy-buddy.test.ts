@@ -12,6 +12,7 @@ const config: ConfigDto = {
   version: 1,
   revision: 0,
   notice: null,
+  profiles: [],
   display: { defaultView: 'buddy', secondaryView: 'system' },
   buddy: { reactions: true, intensity: 'normal' },
 };

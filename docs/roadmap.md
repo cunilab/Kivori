@@ -86,12 +86,13 @@ stays the beta platform and its rows are tracked in a GitHub issue.
   - same edge interrupt as the encoder (ADR-0007); each button gives Press and Hold, never recovery;
     one gesture owns all input, so no chords and nothing during a recovery hold
   - wire: `ControlId::ContextButton(0..3)`, `CONTEXT_BUTTONS_V1`; labels in `ControlLabels.buttons`
-  - defaults Previous / Play-Pause / Next (Unverified media keys); Hold unbound until the config UI
+  - defaults Previous / Play-Pause / Next (Unverified media keys); Hold unbound by default, and
+    bindable (the middle button's Hold stays reserved for the profile pin)
   - screen: button labels under the keycap with ticks toward the buttons, knob label top left; the
     buddy keeps its full size. Final layout review pending (owner)
 - [ ] Hardware: Phase 5 rows in [validation.md](./validation.md), starting with 5.1 (no 32 kHz crystal)
 - [ ] Config UI for Rotate / Press / Hold and the three buttons
-- [ ] Bindings are profile-shaped from day one: General is a profile with no app rule, so app-aware
+- [x] Bindings are profile-shaped from day one: General is a profile with no app rule, so app-aware
   profiles add match rules, not a new model. Every binding change re-sends the device labels
 - [ ] Action catalog with explicit scope (System Volume ≠ App Volume)
 - [ ] Simple ordered macros (a macro reports its least-confirmed step; no rollback)
