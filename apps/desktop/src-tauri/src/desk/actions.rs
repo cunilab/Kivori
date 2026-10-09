@@ -164,7 +164,7 @@ pub fn execute(action: &Action, platform: &Platform) -> Outcome {
                 return Outcome::of(FeedbackKind::Error);
             };
             match platform.volume.set_mute(!muted) {
-                Ok(observed) if observed == !muted => Outcome::of(FeedbackKind::StateConfirmed),
+                Ok(observed) if observed != muted => Outcome::of(FeedbackKind::StateConfirmed),
                 // The OS reports the old state after the write: known not to have happened.
                 Ok(_) => Outcome::of(FeedbackKind::Error),
                 Err(BackendError::ReadBackUnavailable) => Outcome::of(FeedbackKind::Unverified),

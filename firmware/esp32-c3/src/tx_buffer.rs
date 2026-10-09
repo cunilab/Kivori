@@ -93,6 +93,10 @@ impl<T: Transport> Transport for TxBuffered<T> {
         Ok(buf.len())
     }
 
+    fn drain_pending(&mut self) -> Result<usize, Self::Error> {
+        self.pump()
+    }
+
     fn discard_unsent(&mut self) {
         if !self.queue.is_empty() {
             // The head of the queue may be the rest of a frame already partly in the hardware

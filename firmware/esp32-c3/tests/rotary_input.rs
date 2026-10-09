@@ -556,6 +556,31 @@ fn send_input_event_emits_on_the_wire_once_negotiated_and_accepted() {
 }
 
 #[test]
+fn a_failed_input_write_invalidates_the_session_for_runtime_recovery() {
+    struct ZeroWrite;
+
+    impl Transport for ZeroWrite {
+        type Error = ();
+
+        fn read(&mut self, _buf: &mut [u8]) -> Result<usize, Self::Error> {
+            Ok(0)
+        }
+
+        fn write(&mut self, _buf: &[u8]) -> Result<usize, Self::Error> {
+            Ok(0)
+        }
+    }
+
+    let mut dispatcher = handshaken(0x1111_2222);
+    assert!(!dispatcher.send_input_event(&mut ZeroWrite, 7, InputKind::Detent(Direction::Cw), 42,));
+    assert_eq!(dispatcher.accepted_session(), None);
+    assert!(
+        dispatcher.take_session_ended(),
+        "the runtime must be told to reset its gesture state"
+    );
+}
+
+#[test]
 fn send_input_event_is_inert_when_the_desktop_over_claims_a_capability_the_device_never_advertised()
 {
     // The device itself never advertises PHYSICAL_INPUT_V1 (capabilities: NONE), but a buggy or
@@ -660,6 +685,22 @@ struct FlakyTransport<'p> {
     fail_next_read: &'p Cell<bool>,
 }
 
+struct WriteFailTransport<'p> {
+    inner: &'p mut SimPipe,
+}
+
+impl Transport for WriteFailTransport<'_> {
+    type Error = ();
+
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        self.inner.read(buf).map_err(|_| ())
+    }
+
+    fn write(&mut self, _buf: &[u8]) -> Result<usize, Self::Error> {
+        Ok(0)
+    }
+}
+
 impl Transport for FlakyTransport<'_> {
     type Error = ();
 
@@ -684,6 +725,105 @@ fn cw_cycle_levels() -> FixedVec<InputLevels, SCRIPT_CAPACITY> {
         lv(true, false),
         lv(false, false),
     ])
+}
+
+#[test]
+fn an_input_write_failure_drops_the_link_before_the_tick_returns() {
+    let mut runtime = Runtime::new(gating_identity(), RuntimeConfig::default());
+    let clock = VirtualClock::new();
+    let mut pipe = SimPipe::new();
+    let mut display = CaptureDisplay::new();
+    let blob_bytes = compile_default_blob();
+    let blob = AssetBlob::parse(&blob_bytes).expect("valid blob");
+    let mut idle = ScriptedInput::new(script([lv(false, false)]));
+
+    gating_host_write(
+        &mut pipe,
+        &Message::Hello(Hello {
+            desktop_version: FirmwareVersion {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            desktop_caps: Capabilities::PHYSICAL_INPUT_V1,
+            nonce: 0xA000_0007,
+        }),
+        0,
+    );
+    runtime.step(&clock, &mut pipe, &mut idle, &mut display, &blob);
+    gating_host_write(
+        &mut pipe,
+        &Message::Ready(Ready {
+            negotiated_minor: PROTOCOL_MINOR,
+            negotiated_caps: Capabilities::PHYSICAL_INPUT_V1,
+        }),
+        1,
+    );
+    runtime.step(&clock, &mut pipe, &mut idle, &mut display, &blob);
+    gating_host_write(
+        &mut pipe,
+        &Message::SetState(kivori_protocol::SetState {
+            desired: kivori_model::SendableState::Happy,
+            at_ms: None,
+        }),
+        2,
+    );
+    runtime.step(&clock, &mut pipe, &mut idle, &mut display, &blob);
+    let _ = pipe.host_recv();
+    assert_eq!(runtime.state(), CompanionState::Happy);
+
+    let mut cw = ScriptedInput::new(cw_cycle_levels());
+    let mut dropped = false;
+    for _ in 0..5 {
+        clock.advance(1);
+        let tick = runtime.step(
+            &clock,
+            &mut WriteFailTransport { inner: &mut pipe },
+            &mut cw,
+            &mut display,
+            &blob,
+        );
+        dropped |= tick.link_dropped;
+    }
+    assert!(dropped, "the failed GestureStarted must drop this tick");
+    assert_eq!(runtime.state(), CompanionState::Offline);
+
+    gating_host_write(
+        &mut pipe,
+        &Message::Hello(Hello {
+            desktop_version: FirmwareVersion {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            desktop_caps: Capabilities::PHYSICAL_INPUT_V1,
+            nonce: 0xB000_0008,
+        }),
+        0,
+    );
+    runtime.step(&clock, &mut pipe, &mut idle, &mut display, &blob);
+    gating_host_write(
+        &mut pipe,
+        &Message::Ready(Ready {
+            negotiated_minor: PROTOCOL_MINOR,
+            negotiated_caps: Capabilities::PHYSICAL_INPUT_V1,
+        }),
+        1,
+    );
+    runtime.step(&clock, &mut pipe, &mut idle, &mut display, &blob);
+    let _ = pipe.host_recv();
+
+    let mut fresh_cw = ScriptedInput::new(cw_cycle_levels());
+    for _ in 0..5 {
+        clock.advance(1);
+        runtime.step(&clock, &mut pipe, &mut fresh_cw, &mut display, &blob);
+    }
+    let events = gating_host_drain(&mut pipe);
+    assert_clean_input_stream(&events, 0xB000_0008);
+    assert!(events.iter().any(|message| matches!(
+        message,
+        Message::InputEvent(event) if matches!(event.kind, InputKind::GestureStarted)
+    )));
 }
 
 #[test]

@@ -479,11 +479,13 @@ impl<'a> Runtime<'a> {
 
         // 2. Inbound: real framing, CRC, sequence policy, and dispatch. Malformed frames are dropped
         //    inside the dispatcher and surface below as a diagnostic.
-        if self
-            .dispatcher
-            .poll(transport, &mut self.device, now)
-            .is_err()
+        if transport.drain_pending().is_err()
+            || self
+                .dispatcher
+                .poll(transport, &mut self.device, now)
+                .is_err()
         {
+            transport.discard_unsent();
             let _ = self.device.apply(DeviceEvent::LinkDown);
             self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
             // A transport failure is a session boundary too, even with no `Bye`: clear the
@@ -495,33 +497,7 @@ impl<'a> Runtime<'a> {
         // A `Bye`, a transport failure, or a new `Hello` this poll closed/opened a session: a
         // gesture (or partial motion) from the old session must never complete in a new one
         // (no-stale-replay invariant).
-        if self.dispatcher.take_session_ended() {
-            self.decoder.reset();
-            self.gesture.reset();
-            // A session boundary is also a presentation-scoping boundary: `revision` is strictly
-            // increasing WITHIN a session and resets with it, so a restarted desktop starting
-            // again at revision 1 is never rejected as stale traffic from the old, higher-revision
-            // session. `accepted_session()` tells us whether this boundary opened a new session
-            // (`Some`) or closed one (`None`).
-            match self.dispatcher.accepted_session() {
-                Some(session) => {
-                    self.presentation.begin_session(session);
-                    self.desk.begin_session(session);
-                }
-                None => {
-                    self.presentation.end_session();
-                    self.desk.end_session();
-                }
-            }
-            // A half-done press must not fire into the next session; a running recovery hold is
-            // not session-scoped and keeps going (invariant 24).
-            self.button.reset();
-            for key in &mut self.keys {
-                key.reset();
-            }
-            self.button_id = 0;
-            self.redraw = true;
-        }
+        self.apply_session_boundary();
         if let Some(status) = self.dispatcher.take_status() {
             self.redraw |= self.desk.apply_status(&status, now);
         }
@@ -571,6 +547,10 @@ impl<'a> Runtime<'a> {
             self.on_levels(transport, levels, at_ms);
         }
         self.close_idle_gesture(transport, now);
+        if self.apply_session_boundary() {
+            self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
+            tick.link_dropped = true;
+        }
 
         // Resolve changes immediately after protocol handling. Reporting remains semantic and does
         // not wait for the visual transition. Pixel hashes still detect which bands changed.
@@ -594,6 +574,11 @@ impl<'a> Runtime<'a> {
             if let Some(event) = self.keys[index].poll(now) {
                 self.on_key(transport, index, event, now);
             }
+        }
+        if self.apply_session_boundary() {
+            self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
+            tick.link_dropped = true;
+            self.animator.set_state(self.device.current(), now);
         }
         let redraw = core::mem::take(&mut self.redraw);
         if reached(now, self.next_frame_ms) || presentation_applied || redraw {
@@ -659,20 +644,36 @@ impl<'a> Runtime<'a> {
         }
 
         // 5. At most one safe diagnostic per tick, category + code only (ADR-0005).
+        let mut outbound_failed = false;
         if let Some(diagnostic) = self.dispatcher.take_diagnostic() {
             let message = Message::Diagnostic(build_diagnostic(diagnostic));
             if self.dispatcher.emit(transport, &message).is_ok() {
                 tick.diagnostic = Some(diagnostic);
+            } else {
+                outbound_failed = true;
             }
         }
 
         // 6. Heartbeat health on a fixed cadence.
-        if reached(now, self.next_health_ms) {
+        if !outbound_failed && reached(now, self.next_health_ms) {
             self.next_health_ms = now.wrapping_add(self.config.health_interval_ms);
             let message = Message::Health(build_health(free_bytes()));
             if self.dispatcher.emit(transport, &message).is_ok() {
                 tick.health_sent = true;
+            } else {
+                outbound_failed = true;
             }
+        }
+        if outbound_failed {
+            self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
+            self.dispatcher.link_lost();
+            self.apply_session_boundary();
+            let state = self.device.current();
+            if self.animator.target() != state {
+                self.animator.set_state(state, now);
+            }
+            tick.state = Some(state);
+            tick.link_dropped = true;
         }
 
         if tick.state.is_none() {
@@ -684,6 +685,36 @@ impl<'a> Runtime<'a> {
         tick.pongs = self.dispatcher.pongs();
         tick.state_reports = self.dispatcher.state_reports();
         tick
+    }
+
+    /// Applies one pending session boundary and returns whether it closed the active session.
+    fn apply_session_boundary(&mut self) -> bool {
+        if !self.dispatcher.take_session_ended() {
+            return false;
+        }
+        self.decoder.reset();
+        self.gesture.reset();
+        let session = self.dispatcher.accepted_session();
+        match session {
+            Some(session) => {
+                self.presentation.begin_session(session);
+                self.desk.begin_session(session);
+            }
+            None => {
+                let _ = self.device.apply(DeviceEvent::LinkDown);
+                self.presentation.end_session();
+                self.desk.end_session();
+            }
+        }
+        // A half-done press must not fire into the next session; a running recovery hold is
+        // not session-scoped and keeps going (invariant 24).
+        self.button.reset();
+        for key in &mut self.keys {
+            key.reset();
+        }
+        self.button_id = 0;
+        self.redraw = true;
+        session.is_none()
     }
 
     /// Ends the open rotary gesture if its inactivity window has passed by `at_ms`.

@@ -12,8 +12,8 @@ use kivori_model::{Capabilities, ProtocolVersion};
 use kivori_protocol::{
     decode_message, encode_message, ControlId, ControlLabelsUpdate, DeviceId, Feedback,
     FirmwareVersion, HelloAck, InputEvent, InputKind, MascotActionApplied, MediaInfoUpdate,
-    Message, Nonce, PlayMascotAction, Presentation, SeqClass, SequenceTracker, StateReport, Status,
-    MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
+    Message, Nonce, PlayMascotAction, Presentation, ProtoError, SeqClass, SequenceTracker,
+    StateReport, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 /// Inbound accumulation capacity: room for a partial packet plus one full wire packet.
@@ -36,6 +36,15 @@ pub struct DeviceIdentity {
 pub enum DispatchError<E> {
     /// The transport read or write failed.
     Transport(E),
+    /// The outbound message could not be encoded.
+    Encode(ProtoError),
+    /// The transport did not accept the complete wire frame.
+    IncompleteWrite {
+        /// Bytes accepted before the transport stopped.
+        written: usize,
+        /// Bytes required for the complete frame.
+        expected: usize,
+    },
 }
 
 /// The device protocol dispatcher.
@@ -167,7 +176,13 @@ impl Dispatcher {
             kind,
             device_ms,
         });
-        self.send(transport, &msg).is_ok()
+        match self.send(transport, &msg) {
+            Ok(()) => true,
+            Err(_) => {
+                self.link_lost();
+                false
+            }
+        }
     }
 
     /// Emits one push-switch `InputEvent` (`Press` or `Hold`) for the accepted session.
@@ -201,7 +216,13 @@ impl Dispatcher {
             kind,
             device_ms,
         });
-        self.send(transport, &msg).is_ok()
+        match self.send(transport, &msg) {
+            Ok(()) => true,
+            Err(_) => {
+                self.link_lost();
+                false
+            }
+        }
     }
 
     /// Takes the pending accepted `Status`, if any.
@@ -275,7 +296,7 @@ impl Dispatcher {
     /// Encodes and writes a device-originated message (`Health`, `Diagnostic`) on the session's sequence.
     ///
     /// # Errors
-    /// [`DispatchError::Transport`] if the transport write fails.
+    /// Returns a [`DispatchError`] if encoding or complete frame delivery fails.
     pub fn emit<T: Transport>(
         &mut self,
         transport: &mut T,
@@ -288,7 +309,7 @@ impl Dispatcher {
     /// responses. `now_ms` is the device uptime (used for `Pong` / `StateReport`).
     ///
     /// # Errors
-    /// [`DispatchError::Transport`] if the transport read/write fails.
+    /// Returns a [`DispatchError`] if reading, encoding a reply, or complete reply delivery fails.
     pub fn poll<T: Transport>(
         &mut self,
         transport: &mut T,
@@ -358,6 +379,13 @@ impl Dispatcher {
                 return Ok(());
             }
         };
+        // A different nonce is a new session even when a crashed desktop restarts its sequence at
+        // zero before the old session sent Bye. Same-nonce retransmits keep duplicate suppression.
+        if let Message::Hello(hello) = message {
+            if self.accepted_session != Some(hello.nonce) {
+                self.tracker = SequenceTracker::new();
+            }
+        }
         // Sequence policy (§6): a duplicate must not re-apply side effects.
         let class = self.tracker.classify(header.seq);
         if let Some(diagnostic) = diagnostic_for_sequence(class) {
@@ -414,7 +442,7 @@ impl Dispatcher {
                 self.send(transport, &Message::StateReport(report))?;
                 self.state_reports = self.state_reports.saturating_add(1);
             }
-            Message::Ping(ping) => {
+            Message::Ping(ping) if self.accepted_session.is_some() => {
                 self.send(transport, &Message::Pong(build_pong(ping.t_ms, now_ms)))?;
                 self.pongs = self.pongs.saturating_add(1);
             }
@@ -437,40 +465,38 @@ impl Dispatcher {
                     }),
                 )?;
             }
-            Message::Presentation(presentation) => {
-                // An unnegotiated capability MUST stay completely inert: drop it exactly like any
-                // message kind this device does not act on (the `_` arm below) — no diagnostic,
-                // no render.
-                if self.negotiated_caps.contains(Capabilities::PRESENTATION_V1) {
-                    self.pending_presentation = Some(presentation);
-                }
+            // An unnegotiated capability MUST stay completely inert: drop it exactly like any
+            // message kind this device does not act on (the `_` arm below) — no diagnostic,
+            // no render.
+            Message::Presentation(presentation)
+                if self.negotiated_caps.contains(Capabilities::PRESENTATION_V1) =>
+            {
+                self.pending_presentation = Some(presentation);
             }
             // Same inertness rule as `Presentation`: unnegotiated means dropped, unseen.
-            Message::Status(status) => {
-                if self.negotiated_caps.contains(Capabilities::DESK_STATUS_V1) {
-                    self.pending_status = Some(status);
-                }
+            Message::Status(status)
+                if self.negotiated_caps.contains(Capabilities::DESK_STATUS_V1) =>
+            {
+                self.pending_status = Some(status);
             }
-            Message::MediaInfo(update) => {
-                if self.negotiated_caps.contains(Capabilities::MEDIA_INFO_V1) {
-                    self.pending_media_info = Some(update);
-                }
+            Message::MediaInfo(update)
+                if self.negotiated_caps.contains(Capabilities::MEDIA_INFO_V1) =>
+            {
+                self.pending_media_info = Some(update);
             }
-            Message::ControlLabels(update) => {
+            Message::ControlLabels(update)
                 if self
                     .negotiated_caps
-                    .contains(Capabilities::CONTROL_LABELS_V1)
-                {
-                    self.pending_controls = Some(update);
-                }
+                    .contains(Capabilities::CONTROL_LABELS_V1) =>
+            {
+                self.pending_controls = Some(update);
             }
-            Message::Feedback(feedback) => {
+            Message::Feedback(feedback)
                 if self
                     .negotiated_caps
-                    .contains(Capabilities::ACTION_FEEDBACK_V1)
-                {
-                    self.pending_feedback = Some(feedback);
-                }
+                    .contains(Capabilities::ACTION_FEEDBACK_V1) =>
+            {
+                self.pending_feedback = Some(feedback);
             }
             Message::Bye(_) => {
                 // Session closed: drop the link and reset sequence tracking for the next session.
@@ -498,20 +524,28 @@ impl Dispatcher {
         message: &Message,
     ) -> Result<(), DispatchError<T::Error>> {
         let mut wire: Vec<u8, MAX_WIRE> = Vec::new();
-        // Encoding only fails on an over-capacity payload, which our fixed messages never hit.
-        if encode_message(message, self.version, self.tx_seq, &mut wire).is_ok() {
-            self.tx_seq = self.tx_seq.wrapping_add(1);
-            let mut sent = 0;
-            while sent < wire.len() {
-                let n = transport
-                    .write(&wire[sent..])
-                    .map_err(DispatchError::Transport)?;
-                if n == 0 {
-                    break; // transport full; best-effort (the real adapter buffers; sim never fills)
+        encode_message(message, self.version, self.tx_seq, &mut wire)
+            .map_err(DispatchError::Encode)?;
+        let mut written = 0;
+        while written < wire.len() {
+            let remaining = wire.len() - written;
+            let n = match transport.write(&wire[written..]) {
+                Ok(n) => n,
+                Err(error) => {
+                    transport.discard_unsent();
+                    return Err(DispatchError::Transport(error));
                 }
-                sent += n;
+            };
+            if n == 0 || n > remaining {
+                transport.discard_unsent();
+                return Err(DispatchError::IncompleteWrite {
+                    written: written.saturating_add(n),
+                    expected: wire.len(),
+                });
             }
+            written += n;
         }
+        self.tx_seq = self.tx_seq.wrapping_add(1);
         Ok(())
     }
 }

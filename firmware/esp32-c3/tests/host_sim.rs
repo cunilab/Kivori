@@ -2,7 +2,8 @@
 #![cfg(feature = "host-sim")]
 
 use heapless::Vec as HVec;
-use kivori_firmware::proto::{DeviceIdentity, Dispatcher};
+use kivori_firmware::ports::Transport;
+use kivori_firmware::proto::{DeviceIdentity, DispatchError, Dispatcher};
 use kivori_firmware::sim::SimPipe;
 use kivori_firmware::state::{DeviceEvent, DeviceState};
 use kivori_model::{Capabilities, CompanionState, ProtocolVersion, SendableState};
@@ -117,7 +118,23 @@ fn ping_is_answered_with_pong_echo() {
     let mut device = DeviceState::new();
     let mut dispatcher = Dispatcher::new(identity());
 
-    host_write(&mut pipe, &Message::Ping(Ping { t_ms: 4242 }), 0);
+    host_write(
+        &mut pipe,
+        &Message::Hello(Hello {
+            desktop_version: FirmwareVersion {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            desktop_caps: Capabilities::NONE,
+            nonce: 7,
+        }),
+        0,
+    );
+    dispatcher.poll(&mut pipe, &mut device, 10).expect("poll");
+    let _ = host_drain(&mut pipe);
+
+    host_write(&mut pipe, &Message::Ping(Ping { t_ms: 4242 }), 1);
     dispatcher.poll(&mut pipe, &mut device, 900).expect("poll");
 
     match host_drain(&mut pipe).as_slice() {
@@ -127,6 +144,199 @@ fn ping_is_answered_with_pong_echo() {
         }
         other => panic!("expected a single Pong, got {other:?}"),
     }
+}
+
+#[test]
+fn ping_is_silent_without_an_accepted_session() {
+    let mut pipe = SimPipe::new();
+    let mut device = DeviceState::new();
+    let mut dispatcher = Dispatcher::new(identity());
+
+    host_write(&mut pipe, &Message::Ping(Ping { t_ms: 1 }), 0);
+    dispatcher.poll(&mut pipe, &mut device, 10).expect("poll");
+    assert!(host_drain(&mut pipe).is_empty(), "pre-Hello Ping");
+
+    host_write(
+        &mut pipe,
+        &Message::Hello(Hello {
+            desktop_version: FirmwareVersion {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            desktop_caps: Capabilities::NONE,
+            nonce: 7,
+        }),
+        1,
+    );
+    dispatcher.poll(&mut pipe, &mut device, 20).expect("poll");
+    let _ = host_drain(&mut pipe);
+    host_write(
+        &mut pipe,
+        &Message::Bye(Bye {
+            reason: ByeReason::Shutdown,
+        }),
+        2,
+    );
+    dispatcher.poll(&mut pipe, &mut device, 30).expect("poll");
+    host_write(&mut pipe, &Message::Ping(Ping { t_ms: 2 }), 0);
+    dispatcher.poll(&mut pipe, &mut device, 40).expect("poll");
+    assert!(host_drain(&mut pipe).is_empty(), "post-Bye Ping");
+}
+
+#[test]
+fn a_new_hello_nonce_starts_a_fresh_sequence_baseline() {
+    let mut pipe = SimPipe::new();
+    let mut device = DeviceState::new();
+    let mut dispatcher = Dispatcher::new(identity());
+    let hello = |nonce| {
+        Message::Hello(Hello {
+            desktop_version: FirmwareVersion {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            desktop_caps: Capabilities::NONE,
+            nonce,
+        })
+    };
+
+    host_write(&mut pipe, &hello(11), 0);
+    dispatcher.poll(&mut pipe, &mut device, 10).expect("poll");
+    let _ = host_drain(&mut pipe);
+
+    host_write(&mut pipe, &hello(22), 0);
+    dispatcher.poll(&mut pipe, &mut device, 20).expect("poll");
+    assert!(matches!(
+        host_drain(&mut pipe).as_slice(),
+        [Message::HelloAck(ack)] if ack.nonce_echo == 22
+    ));
+
+    host_write(&mut pipe, &hello(22), 0);
+    dispatcher.poll(&mut pipe, &mut device, 30).expect("poll");
+    assert!(
+        host_drain(&mut pipe).is_empty(),
+        "a same-session duplicate must remain suppressed"
+    );
+}
+
+#[test]
+fn incomplete_writes_are_reported_and_repaired() {
+    struct ShortWrite {
+        accepted: usize,
+        wrote_once: bool,
+        discarded: bool,
+    }
+
+    impl Transport for ShortWrite {
+        type Error = ();
+
+        fn read(&mut self, _buf: &mut [u8]) -> Result<usize, Self::Error> {
+            Ok(0)
+        }
+
+        fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+            if core::mem::replace(&mut self.wrote_once, true) {
+                Ok(0)
+            } else {
+                Ok(self.accepted.min(buf.len()))
+            }
+        }
+
+        fn discard_unsent(&mut self) {
+            self.discarded = true;
+        }
+    }
+
+    for accepted in [0, 1] {
+        let mut transport = ShortWrite {
+            accepted,
+            wrote_once: false,
+            discarded: false,
+        };
+        let result =
+            Dispatcher::new(identity()).emit(&mut transport, &Message::Ping(Ping { t_ms: 1 }));
+        assert!(matches!(
+            result,
+            Err(DispatchError::IncompleteWrite {
+                written,
+                expected,
+            }) if written == accepted && expected > written
+        ));
+        assert!(transport.discarded, "accepted {accepted} bytes");
+    }
+}
+
+#[test]
+fn progressing_short_writes_complete_the_frame() {
+    struct ProgressWrite {
+        writes: usize,
+        discarded: bool,
+    }
+
+    impl Transport for ProgressWrite {
+        type Error = ();
+
+        fn read(&mut self, _buf: &mut [u8]) -> Result<usize, Self::Error> {
+            Ok(0)
+        }
+
+        fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+            self.writes += 1;
+            Ok(buf.len().min(3))
+        }
+
+        fn discard_unsent(&mut self) {
+            self.discarded = true;
+        }
+    }
+
+    let mut transport = ProgressWrite {
+        writes: 0,
+        discarded: false,
+    };
+    Dispatcher::new(identity())
+        .emit(&mut transport, &Message::Ping(Ping { t_ms: 1 }))
+        .expect("positive short writes make bounded progress");
+    assert!(transport.writes > 1);
+    assert!(!transport.discarded);
+}
+
+#[test]
+fn a_transport_error_repairs_a_partially_written_frame() {
+    struct FailingWrite {
+        first: bool,
+        discarded: bool,
+    }
+
+    impl Transport for FailingWrite {
+        type Error = ();
+
+        fn read(&mut self, _buf: &mut [u8]) -> Result<usize, Self::Error> {
+            Ok(0)
+        }
+
+        fn write(&mut self, _buf: &[u8]) -> Result<usize, Self::Error> {
+            if core::mem::replace(&mut self.first, false) {
+                Ok(1)
+            } else {
+                Err(())
+            }
+        }
+
+        fn discard_unsent(&mut self) {
+            self.discarded = true;
+        }
+    }
+
+    let mut transport = FailingWrite {
+        first: true,
+        discarded: false,
+    };
+    assert!(Dispatcher::new(identity())
+        .emit(&mut transport, &Message::Ping(Ping { t_ms: 1 }))
+        .is_err());
+    assert!(transport.discarded);
 }
 
 #[test]

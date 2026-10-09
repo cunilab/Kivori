@@ -33,7 +33,8 @@ pub const PROCESSING_AFTER: Duration = Duration::from_millis(500);
 /// Give up waiting and show Unverified after this long.
 pub const ACTION_TIMEOUT: Duration = Duration::from_millis(1_500);
 /// Re-send an unchanged status this often, so the device clock never drifts far.
-pub const STATUS_REFRESH: Duration = Duration::from_secs(30);
+// A lost initial status must recover within the ten-second reconnect/restore budget.
+pub const STATUS_REFRESH: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone, Copy)]
 struct Pending {
@@ -712,7 +713,7 @@ mod tests {
         let mut publisher = StatusPublisher::default();
         assert!(publisher.due(clock(0, 5), ms(0)).is_some(), "first status");
         assert!(
-            publisher.due(clock(0, 6), ms(1_000)).is_none(),
+            publisher.due(clock(0, 6), ms(500)).is_none(),
             "seconds only"
         );
         assert!(
@@ -728,9 +729,9 @@ mod tests {
         assert_eq!(sent.muted, Some(true));
         assert_eq!(sent.clock, clock(1, 1), "the real seconds go out");
 
-        assert!(publisher.due(clock(1, 2), ms(57_000)).is_none());
+        assert!(publisher.due(clock(1, 2), ms(56_500)).is_none());
         assert!(
-            publisher.due(clock(1, 3), ms(56_000 + 30_000)).is_some(),
+            publisher.due(clock(1, 3), ms(57_000)).is_some(),
             "periodic refresh"
         );
 
@@ -944,6 +945,12 @@ mod tests {
             direction,
         };
         assert!(!desk.on_input(&detent(Direction::Cw), ms(520), &mut |_| {}));
+        // Simulated tick time does not advance the action worker's OS thread.
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while sent(&synth).is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(ms(1));
+        }
+        assert_eq!(sent(&synth), ["Ctrl+Tab"]);
         // Focus moves to the editor (a Volume knob) and commits mid-gesture. The gesture is not
         // retargeted to Volume, and its keys must not land in the editor: Context Lost, shown
         // once, remaining detents ignored (invariant 12).
@@ -1175,5 +1182,18 @@ mod tests {
             gesture_id: 5,
         };
         assert_eq!(bound_action(&bindings, &hold), None, "unbound until M2");
+    }
+}
+
+#[cfg(test)]
+mod recovery_tests {
+    use super::*;
+    #[test]
+    fn recovery_lost_status_refreshes_within_the_restore_budget() {
+        let mut publisher = StatusPublisher::default();
+        publisher.set_mode(DisplayMode::Volume);
+        let _lost = publisher.due(None, Duration::ZERO).unwrap();
+        let retried = (1..10).find_map(|second| publisher.due(None, Duration::from_secs(second)));
+        assert_eq!(retried.map(|status| status.mode), Some(DisplayMode::Volume));
     }
 }

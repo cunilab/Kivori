@@ -28,7 +28,7 @@ use crate::device::discovery::DEFAULT_ALLOWLIST;
 use crate::device::fsm::{ConnectionManager, ManagerEvent};
 use crate::device::reconnect::base_delay_ms;
 use crate::device::serial::{first_candidate, SerialPortLink};
-use crate::device::session::{Session, SessionConfig};
+use crate::device::session::{Session, SessionConfig, SessionError};
 use crate::firmware::{self, FirmwareStatus, FlashWorkflow, ResumeTarget};
 use crate::input::{InputIngress, LogicalInput, RejectReason};
 use crate::ipc::dto::{connection_status, desk_status_dto, ConnectionStatusDto, DeskStatusDto};
@@ -180,6 +180,7 @@ fn device_loop(
     *status.lock().expect("status lock") = last.clone();
     events::emit_status(&app, &last);
     let mut previous_state = manager.state();
+    let mut active_session = None;
     let mut activity_planner = RuntimeActivityPlanner::new();
     record(&app, &activity_log, &manager, started);
 
@@ -396,12 +397,16 @@ fn device_loop(
                 }
             }
             Some(open_link) => {
-                let pump_failed = session
+                let pump_error = session
                     .pump(open_link, &mut manager, &mut orchestrator)
-                    .is_err();
+                    .err();
                 let now = started.elapsed();
-                let event = if pump_failed {
-                    Some(ManagerEvent::IoError)
+                let event = if let Some(error) = pump_error {
+                    Some(if matches!(error, SessionError::PeerClosed) {
+                        ManagerEvent::PortRemoved
+                    } else {
+                        ManagerEvent::IoError
+                    })
                 } else if manager.state() == kivori_model::ConnectionState::Connecting
                     && deadlines.handshake_timed_out(now)
                 {
@@ -445,6 +450,14 @@ fn device_loop(
                 }
             }
         }
+
+        synchronize_session(
+            &mut active_session,
+            &session,
+            &manager,
+            &mut rotary,
+            &mut desk,
+        );
 
         // Slice 002: rotary input -> volume -> transient `Presentation` overlay. Paused while a
         // firmware flash owns the serial session: queued input is discarded unexecuted.
@@ -613,6 +626,15 @@ fn device_loop(
             }
         }
 
+        // A later write failure must also cancel queued actions before the loop waits.
+        synchronize_session(
+            &mut active_session,
+            &session,
+            &manager,
+            &mut rotary,
+            &mut desk,
+        );
+
         // 3. Publish + emit the snapshot on change.
         let snapshot = connection_status(
             &manager,
@@ -631,14 +653,6 @@ fn device_loop(
         // 4. Record typed activity for every lifecycle transition (connect, incompatible,
         //    disconnect, recoverable error, reconnect attempt) — T105.
         let current_state = manager.state();
-        rotary.on_connection_state(previous_state, current_state, session.current_session());
-        if previous_state != current_state {
-            if current_state == ConnectionState::Connected {
-                desk.on_session_begin();
-            } else if previous_state == ConnectionState::Connected {
-                desk.on_session_end();
-            }
-        }
         if observe_connection_transition(
             &mut activity_planner,
             &mut previous_state,
@@ -659,6 +673,44 @@ fn device_loop(
     }
 }
 
+/// Synchronizes session-owned actions and input before execution, and after any link failure.
+pub fn synchronize_session(
+    active: &mut Option<(u32, u32)>,
+    session: &Session,
+    manager: &ConnectionManager,
+    rotary: &mut RotaryPipeline,
+    desk: &mut DeskRuntime,
+) {
+    let current = session
+        .current_session()
+        .filter(|_| manager.state().can_drive_device())
+        .map(|nonce| (session.connection_generation(), nonce));
+    if *active == current {
+        return;
+    }
+    if active.is_some() {
+        desk.on_session_end();
+        rotary.on_connection_state(
+            ConnectionState::Connected,
+            ConnectionState::Disconnected,
+            None,
+        );
+    }
+    rotary.on_connection_state(
+        if active.is_some() {
+            ConnectionState::Connected
+        } else {
+            ConnectionState::Disconnected
+        },
+        manager.state(),
+        current.map(|(_, nonce)| nonce),
+    );
+    if current.is_some() {
+        desk.on_session_begin();
+    }
+    *active = current;
+}
+
 /// The Slice 002 rotary pipeline owned by the device task: input ingress -> gesture value ->
 /// presentation resolver, plus the typed activity for its failures.
 ///
@@ -666,6 +718,7 @@ fn device_loop(
 /// channel (`Idle` unless a volume write is known to have failed); the companion director and the
 /// device's mascot state still own the screen.
 pub struct RotaryPipeline {
+    session: Option<u32>,
     ingress: InputIngress,
     gesture_value: GestureValue,
     resolver: PresentationResolver,
@@ -681,6 +734,7 @@ impl RotaryPipeline {
     #[must_use]
     pub fn new(backend: &dyn VolumeBackend) -> Self {
         Self {
+            session: None,
             ingress: InputIngress::new(),
             gesture_value: GestureValue::new(),
             resolver: PresentationResolver::new(0),
@@ -690,27 +744,24 @@ impl RotaryPipeline {
         }
     }
 
-    /// (Re)scopes session state on a connection-state transition. Keyed off the manager state,
-    /// not `Session::current_session()`, because heartbeat timeouts and port removal are applied
-    /// outside `Session` — the connection state is the only place that sees every exit.
+    /// Scopes input to the accepted nonce, including reconnects between observed state changes.
     pub fn on_connection_state(
         &mut self,
-        previous: ConnectionState,
+        _previous: ConnectionState,
         current: ConnectionState,
         session: Option<u32>,
     ) {
-        if previous == current {
+        let session = session.filter(|_| current.can_drive_device());
+        if self.session == session {
             return;
         }
-        if current == ConnectionState::Connected {
-            if let Some(nonce) = session {
-                self.ingress.begin_session(nonce);
-                self.resolver.begin_session(nonce);
-            }
-        } else if previous == ConnectionState::Connected {
-            self.ingress.end_session();
-            self.gesture_value.end_session();
+        self.ingress.end_session();
+        self.gesture_value.end_session();
+        if let Some(nonce) = session {
+            self.ingress.begin_session(nonce);
+            self.resolver.begin_session(nonce);
         }
+        self.session = session;
     }
 
     /// Validates decoded input in order and hands each one to `desk` (the desk pipeline, which

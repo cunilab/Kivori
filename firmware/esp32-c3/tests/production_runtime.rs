@@ -200,7 +200,23 @@ fn the_handshake_is_answered_with_identity_and_nonce_echo() {
 fn ping_is_answered_with_pong_echoing_the_timestamp() {
     let mut h = Harness::new();
     h.step();
-    host_write(&mut h.pipe, &Message::Ping(Ping { t_ms: 4242 }), 0);
+    host_write(
+        &mut h.pipe,
+        &Message::Hello(Hello {
+            desktop_version: FirmwareVersion {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            desktop_caps: Capabilities::NONE,
+            nonce: 7,
+        }),
+        0,
+    );
+    h.tick_next_frame();
+    let _ = host_drain(&mut h.pipe);
+
+    host_write(&mut h.pipe, &Message::Ping(Ping { t_ms: 4242 }), 1);
     h.tick_next_frame();
 
     let pong = host_drain(&mut h.pipe)
@@ -417,12 +433,24 @@ fn a_malformed_frame_is_dropped_reported_safely_and_survived() {
     assert!(diagnostic.code > 0);
 
     // And the very next valid frame still works: no resync deadlock (SC-008).
-    host_write(&mut h.pipe, &Message::Ping(Ping { t_ms: 7 }), 0);
+    host_write(
+        &mut h.pipe,
+        &Message::Hello(Hello {
+            desktop_version: FirmwareVersion {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            desktop_caps: Capabilities::NONE,
+            nonce: 7,
+        }),
+        0,
+    );
     h.tick_next_frame();
     assert!(
         host_drain(&mut h.pipe)
             .iter()
-            .any(|m| matches!(m, Message::Pong(_))),
+            .any(|m| matches!(m, Message::HelloAck(_))),
         "the loop recovered and answered the next valid frame"
     );
 }
@@ -754,4 +782,129 @@ fn a_hello_after_an_unread_backlog_still_gets_a_whole_hello_ack() {
         acked,
         "the HelloAck must arrive whole after a stale backlog"
     );
+}
+
+#[test]
+fn normal_ticks_drain_queued_output_without_another_message() {
+    use kivori_firmware::ports::Transport;
+    use kivori_firmware::tx_buffer::TxBuffered;
+
+    struct Gate {
+        blocked: bool,
+        output: Vec<u8>,
+    }
+
+    impl Transport for Gate {
+        type Error = core::convert::Infallible;
+
+        fn read(&mut self, _buf: &mut [u8]) -> Result<usize, Self::Error> {
+            Ok(0)
+        }
+
+        fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+            if self.blocked {
+                Ok(0)
+            } else {
+                self.output.extend_from_slice(buf);
+                Ok(buf.len())
+            }
+        }
+    }
+
+    let mut runtime = Runtime::new(identity(), RuntimeConfig::default());
+    let clock = VirtualClock::new();
+    let mut transport = TxBuffered::new(Gate {
+        blocked: true,
+        output: Vec::new(),
+    });
+    let mut input = NoInput;
+    let mut display = Box::new(CaptureDisplay::new());
+    let blob_bytes = compile_default_blob();
+    let blob = AssetBlob::parse(&blob_bytes).expect("blob");
+
+    assert!(
+        runtime
+            .step(&clock, &mut transport, &mut input, display.as_mut(), &blob)
+            .health_sent
+    );
+    assert!(transport.pending() > 0, "Health is queued while blocked");
+
+    transport.inner_mut().blocked = false;
+    let quiet = runtime.step(&clock, &mut transport, &mut input, display.as_mut(), &blob);
+    assert!(!quiet.health_sent, "the drain tick emitted no new Health");
+    assert_eq!(transport.pending(), 0, "the old frame drained");
+    assert!(!transport.inner_mut().output.is_empty());
+}
+
+#[test]
+fn a_failed_periodic_write_drops_the_accepted_session() {
+    use kivori_firmware::ports::Transport;
+
+    struct GatePipe {
+        pipe: SimPipe,
+        blocked: bool,
+    }
+
+    impl Transport for GatePipe {
+        type Error = core::convert::Infallible;
+
+        fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+            self.pipe.read(buf)
+        }
+
+        fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+            if self.blocked {
+                Ok(0)
+            } else {
+                self.pipe.write(buf)
+            }
+        }
+    }
+
+    let mut runtime = Runtime::new(identity(), RuntimeConfig::default());
+    let clock = VirtualClock::new();
+    let mut transport = GatePipe {
+        pipe: SimPipe::new(),
+        blocked: false,
+    };
+    let mut input = NoInput;
+    let mut display = Box::new(CaptureDisplay::new());
+    let blob_bytes = compile_default_blob();
+    let blob = AssetBlob::parse(&blob_bytes).expect("blob");
+    runtime.step(&clock, &mut transport, &mut input, display.as_mut(), &blob);
+    let _ = transport.pipe.host_recv();
+
+    host_write(
+        &mut transport.pipe,
+        &Message::Hello(Hello {
+            desktop_version: FirmwareVersion {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            desktop_caps: Capabilities::NONE,
+            nonce: 7,
+        }),
+        0,
+    );
+    runtime.step(&clock, &mut transport, &mut input, display.as_mut(), &blob);
+    let _ = transport.pipe.host_recv();
+    host_write(
+        &mut transport.pipe,
+        &Message::SetState(SetState {
+            desired: SendableState::Happy,
+            at_ms: None,
+        }),
+        1,
+    );
+    runtime.step(&clock, &mut transport, &mut input, display.as_mut(), &blob);
+    let _ = transport.pipe.host_recv();
+    assert_eq!(runtime.state(), CompanionState::Happy);
+
+    transport.blocked = true;
+    clock.advance(RuntimeConfig::default().health_interval_ms);
+    let failed = runtime.step(&clock, &mut transport, &mut input, display.as_mut(), &blob);
+    assert!(failed.link_dropped);
+    assert_eq!(failed.state, Some(CompanionState::Offline));
+    assert_eq!(runtime.state(), CompanionState::Offline);
 }
