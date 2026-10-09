@@ -41,7 +41,7 @@ use mipidsi::models::ILI9341Rgb565;
 
 /// A constant-level stub: always reports no motion on any channel.
 ///
-/// Physical GPIO sampling for the rotary encoder is not implemented until Task 13; until then this
+/// The Wokwi simulation has no rotary encoder part, so this
 /// keeps the run loop's `InputSource` port wired with a placeholder that never produces a detent.
 struct NoInput;
 
@@ -77,10 +77,10 @@ const SPI_BATCH_BYTES: usize = 512;
 fn identity() -> DeviceIdentity {
     DeviceIdentity {
         device_id: [0x5A; 16],
-        // 1.1: M1 (push switch, recovery hold, desk status and feedback; protocol 1.3).
+        // 1.2: M2 buttons on top of M1 (push switch, recovery hold, desk status and feedback); protocol 1.4.
         firmware_version: FirmwareVersion {
             major: 1,
-            minor: 1,
+            minor: 2,
             patch: 0,
         },
         capabilities: Capabilities::MASCOT_INTERACTION

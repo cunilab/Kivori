@@ -19,8 +19,8 @@ pub use connection::{
     build_hello, hash_device_id_short, summarize, verify_handshake, ConnectedDevice,
 };
 pub use discovery::{
-    filter_candidates, is_candidate, PortCandidate, UsbId, DEFAULT_ALLOWLIST, KIVORI_PID,
-    KIVORI_VID,
+    filter_candidates, is_candidate, CandidateRotator, PortCandidate, UsbId, DEFAULT_ALLOWLIST,
+    KIVORI_PID, KIVORI_VID,
 };
 pub use fsm::{ConnectionManager, ManagerEvent};
 pub use heartbeat::{HeartbeatMonitor, DEFAULT_MISS_THRESHOLD};

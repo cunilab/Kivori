@@ -1,6 +1,6 @@
 # Firmware CI (skeleton). Proves no_std/no-alloc feature isolation by compiling the shared crates for
 # the RISC-V target. NO hardware tests run here (isolation requirement); on-device checks are manual
-# (Phase 15). The full firmware binary build (esp-hal runtime) is added in Phase 8 (T070+).
+# (Phase 15). The esp-hal firmware binary is built per feature set in the adapters step below.
 name: firmware
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
       - name: Compile the firmware library for RISC-V (no_std / no-alloc isolation proof)
         working-directory: firmware/esp32-c3
         # Building the library pulls in all five shared crates + the device core; the bin target is
-        # skipped (its `embedded` feature is off) until the esp-hal runtime lands in Phase 8.
+        # skipped here (its `embedded` feature is off) and built in the adapters step below.
         run: cargo build --lib
       # T076: the hardware adapters are built COMPILE-ONLY. No hardware test runs here, and none can —
       # this job has no board and no simulator. Every feature configuration that ships or is gated is
@@ -34,6 +34,8 @@ jobs:
           cargo build --release --features embedded,debug-payloads
           cargo build --release --features physical-st7789
           cargo build --release --features physical-st7789,debug-payloads
+          cargo build --release --features physical-st7789,latency-probe
+          cargo build --release --features wokwi
       - name: Firmware format + clippy (RISC-V, every feature configuration)
         working-directory: firmware/esp32-c3
         run: |
@@ -44,6 +46,8 @@ jobs:
           cargo clippy --lib --features wokwi-spi -- -D warnings
           cargo clippy --lib --features wokwi-serial -- -D warnings
           cargo clippy --lib --features physical-st7789 -- -D warnings
+          cargo clippy --lib --features physical-st7789,latency-probe -- -D warnings
+          cargo clippy --lib --features wokwi -- -D warnings
 
   host-sim-tests:
     # The hardware-neutral device core is validated on the host (FR-035). The forced RISC-V build

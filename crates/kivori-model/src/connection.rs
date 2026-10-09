@@ -15,8 +15,8 @@ pub enum ConnectionState {
     Connecting,
     /// Handshake succeeded with a compatible device.
     Connected,
-    /// A device was identified but its protocol major version is unsupported. Terminal for that
-    /// device until it is removed or changed.
+    /// A device was identified but its protocol major version is unsupported. Left when that device
+    /// is removed, or when the runtime closes its link and tries another candidate port.
     Incompatible,
     /// A recoverable error (I/O failure, handshake timeout, port busy, heartbeat timeout).
     Error,
@@ -25,7 +25,8 @@ pub enum ConnectionState {
 /// Events that drive [`ConnectionState`] transitions (data-model §2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ConnectionEvent {
-    /// A candidate port was opened and the handshake started.
+    /// A candidate port was opened and the handshake started (also from `Incompatible`, once the
+    /// runtime has moved on to a different candidate).
     PortOpened,
     /// The handshake completed successfully with a compatible device.
     HandshakeOk,
@@ -60,6 +61,8 @@ impl ConnectionState {
             (S::Connected, E::PortRemoved) => Some(S::Disconnected),
             (S::Error, E::BackoffElapsed | E::PortRemoved) => Some(S::Disconnected),
             (S::Incompatible, E::PortRemoved) => Some(S::Disconnected),
+            // The runtime closed the incompatible device's link and opened another candidate port.
+            (S::Incompatible, E::PortOpened) => Some(S::Connecting),
             _ => None,
         }
     }

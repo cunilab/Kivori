@@ -9,7 +9,7 @@ version = "0.0.0"
 edition = "2021"
 rust-version = "1.90"
 license = "UNLICENSED"
-description = "Kivori ESP32-C3 firmware (no_std). Scaffold; board bring-up + runtime land in Phase 8 (T070+)."
+description = "Kivori ESP32-C3 firmware (no_std). Device core, board runtime and hardware adapters."
 
 # Hardware-neutral device core lives in the library so it is testable on the host (constraint 4).
 [lib]
@@ -19,14 +19,14 @@ path = "src/lib.rs"
 [[bin]]
 name = "kivori-firmware"
 path = "src/main.rs"
-# The flashable binary needs the esp-hal entry point (Phase 8); gate it behind `embedded` so host
+# The flashable binary needs the esp-hal entry point; gate it behind `embedded` so host
 # `cargo test` skips it and builds only the hardware-neutral library + host-sim tests.
 required-features = ["embedded"]
 
 [features]
 default = []
-# esp-hal runtime + flashable entry point. Board peripherals (USB Serial/JTAG transport, SPI display)
-# are still Phase 8; this feature provides boot, the monotonic clock, and serial output.
+# esp-hal runtime + flashable entry point: boot, the monotonic clock and serial output. The board
+# peripherals (USB Serial/JTAG transport, SPI display, rotary and buttons) come from `physical-st7789`.
 embedded = [
   "dep:esp-hal",
   "dep:esp-println",
@@ -74,11 +74,13 @@ kivori-framebuffer = { path = "../../crates/kivori-framebuffer" }
 kivori-renderer = { path = "../../crates/kivori-renderer" }
 kivori-assets = { path = "../../crates/kivori-assets" }
 heapless = "0.8"
+# Domain-separated hash of the factory eFuse ID (`device_id`); no_std, no alloc, pure software.
+sha2 = { version = "0.10", default-features = false }
 static_cell = { version = "2.1", optional = true }
 # Shares the edge-capture queue between the GPIO interrupt and the run loop (`physical_rotary`).
 critical-section = { version = "1", optional = true }
 # `rt` provides the runtime entry point (`#[esp_hal::main]`) and `init()`; `unstable` is required by
-# the peripheral drivers the Phase 8 adapters will use.
+# the peripheral drivers the hardware adapters use.
 esp-hal = { version = "1.1.1", default-features = false, features = ["esp32c3", "rt", "unstable"], optional = true }
 esp-println = { version = "0.17", default-features = false, features = ["esp32c3", "uart"], optional = true }
 esp-backtrace = { version = "0.19", default-features = false, features = ["esp32c3", "panic-handler", "println"], optional = true }

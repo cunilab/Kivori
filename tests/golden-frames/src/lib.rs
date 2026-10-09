@@ -1,6 +1,7 @@
-//! Golden-frame / frame-hash determinism harness (host, std). Phase 4 uses a **code-defined**
-//! [`TestScene`] to exercise the renderer's determinism, tiling, per-scene frame selection, and
-//! hashing (FR-033, SC-005, SC-009) without the compiled-asset pipeline (that arrives in Phase 5).
+//! Golden-frame / frame-hash determinism harness (host, std). A **code-defined** [`TestScene`]
+//! exercises the renderer's determinism, tiling, per-scene frame selection, and hashing (FR-033,
+//! SC-005, SC-009) without the compiled-asset pipeline (compiled assets are covered by
+//! `tests/asset_golden.rs`).
 
 use kivori_framebuffer::TileBand;
 use kivori_model::{FrameRate, Rect, Rgb565};

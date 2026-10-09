@@ -6,15 +6,13 @@ Kivori is a desk buddy you control your computer with: the buddy is why you want
 
 ## Project status
 
-**Feature 001 — Device Connection Foundation.** Established the connection, protocol, deterministic rendering, Device Studio, firmware simulation, and ESP32-C3/ST7789 runtime foundation. Software complete; remaining physical acceptance items live in its validation ledger.
+**M0 — Working foundation.** Connection, protocol, deterministic rendering, Device Studio, the ESP32-C3/ST7789 runtime, the rotary volume loop and the mascot with its activity log are built. Remaining physical acceptance rows live in [`docs/validation.md`](docs/validation.md).
 
-**Slice 002 — Rotary Volume Control Loop.** Implementation complete and green on CI. Turning the HW-040 knob changes Windows master volume, and the device displays the volume Windows actually reports — the first slice that delivers the product thesis rather than only the link beneath it. **Physical validation is outstanding:** all 15 rows of its checklist are blank, including the measured detent→feedback latency gate, so the slice is *not* closed.
+**M1 — Useful desk device.** Software complete on Windows and macOS, host-tested end to end. The push switch does Press (Play/Pause), Hold (mute) and Double press (next view); holding it ~10 s reboots the device with no app needed. The display has Buddy, Clock, Volume, Media and CPU/RAM views, and every action outcome is shown honestly as Confirmed, Started, Unverified or Failed. **Physical validation is outstanding:** the M0 rows and the Phase 4 rows in [`docs/validation.md`](docs/validation.md) need one human session.
 
-**Feature 003 — Mascot animation and activity log** ([PR #3](https://github.com/Vellixia/Kivori/pull/3), merged). Expressive, interactive mascot shared by Device Studio and the device, social reactions over the wire (`MASCOT_INTERACTION`), bundled firmware flashing from Device Studio, and a typed session-only activity log. Manual on-device check outstanding.
+**M2 buttons and M2.5 contextual profiles.** Three contextual buttons (Press and Hold each) and foreground-app profiles are software complete and host-tested, awaiting hardware validation (Phase 5 and 6 rows).
 
-**M1 — Useful desk device.** Software complete on Windows and macOS, host-tested end to end. The push switch does Press (Play/Pause), Hold (mute) and Double press (next view); holding it ~10 s reboots the device with no app needed. The display has Buddy, Clock, Volume, Media and CPU/RAM views, and every action outcome is shown honestly as Confirmed, Started, Unverified or Failed. **Physical validation is outstanding:** the M0 rows and the new Phase 4 rows in [`docs/validation.md`](docs/validation.md) need one human session.
-
-Next: the combined M0 + M1 hardware session (macOS daily use, then Windows), then M2 (configurable bindings) on the way to a Windows paid beta; see [`docs/roadmap.md`](docs/roadmap.md). Product behavior is defined in [`docs/product.md`](docs/product.md); durable technical choices are the ADRs in [`docs/architecture.md`](docs/architecture.md).
+Next: the combined hardware session (macOS daily use, then Windows), then the rest of M2 (the config UI for bindings) on the way to a Windows paid beta; see [`docs/roadmap.md`](docs/roadmap.md). Product behavior is defined in [`docs/product.md`](docs/product.md); durable technical choices are the ADRs in [`docs/architecture.md`](docs/architecture.md).
 
 ## Hardware
 
