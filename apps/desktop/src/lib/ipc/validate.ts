@@ -18,6 +18,7 @@ import {
   MASCOT_ACTIONS,
   MEDIA_STATUSES,
   PROFILE_IDS,
+  ROTATE_SPEC_KINDS,
 } from './types';
 import type {
   ActionCatalogEntryDto,
@@ -138,6 +139,9 @@ function text(name: string, value: unknown, max = 1024): string {
   throw new Error(`Kivori: invalid ${name}.`);
 }
 
+/** The longest app id the native side accepts. */
+const MAX_APP_ID = 128;
+
 function actionSpec(raw: unknown): ActionSpec {
   const r = record('action', raw);
   switch (oneOf('action kind', ACTION_SPEC_KINDS, r.kind)) {
@@ -145,6 +149,8 @@ function actionSpec(raw: unknown): ActionSpec {
       return { kind: 'shortcut', keys: text('shortcut', r.keys) };
     case 'launch':
       return { kind: 'launch', target: text('launch target', r.target) };
+    case 'appMute':
+      return { kind: 'appMute', app: text('app', r.app, MAX_APP_ID) };
     default:
       return { kind: r.kind } as ActionSpec;
   }
@@ -152,7 +158,13 @@ function actionSpec(raw: unknown): ActionSpec {
 
 function rotateSpec(raw: unknown): RotateSpec {
   const r = record('rotate', raw);
-  switch (oneOf('rotate kind', ['systemVolume', 'shortcuts'] as const, r.kind)) {
+  switch (oneOf('rotate kind', ROTATE_SPEC_KINDS, r.kind)) {
+    case 'appVolume':
+      return {
+        kind: 'appVolume',
+        app: text('app', r.app, MAX_APP_ID),
+        ...(typeof r.label === 'string' ? { label: text('label', r.label) } : {}),
+      };
     case 'shortcuts':
       return {
         kind: 'shortcuts',

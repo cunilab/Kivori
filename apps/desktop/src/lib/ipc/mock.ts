@@ -221,6 +221,7 @@ const ACTION_TOKENS: Record<ActionSpec['kind'], DeskActionToken> = {
   previousTrack: 'previousTrack',
   nextTrack: 'nextTrack',
   systemMute: 'mute',
+  appMute: 'appMute',
   shortcut: 'shortcut',
   launch: 'launch',
 };
@@ -233,8 +234,12 @@ export function mockTestAction(action: ActionSpec): void {
   if (action.kind === 'launch' && !action.target.trim()) {
     throw new Error('not a valid application');
   }
-  const result =
-    action.kind === 'systemMute'
+  if (action.kind === 'appMute' && !action.app.trim()) throw new Error('an app cannot be empty');
+  // Per-app volume does not exist on macOS: an error, never a fallback to the system mute.
+  const unsupported = action.kind === 'appMute' && scenario() === 'mac';
+  const result = unsupported
+    ? 'error'
+    : action.kind === 'systemMute' || action.kind === 'appMute'
       ? 'stateConfirmed'
       : action.kind === 'launch'
         ? 'executionConfirmed'
@@ -252,32 +257,34 @@ const catalogEntry = (
   verification: ActionCatalogEntryDto['verification'],
   params: ActionCatalogEntryDto['params'],
   runsWhenProtected: boolean,
-  comingSoon = false,
+  unsupportedReason: string | null = null,
 ): ActionCatalogEntryDto => ({
   id,
   slot,
   scope,
   verification,
   params,
-  availability: comingSoon ? 'unsupported' : 'available',
-  reason: comingSoon ? 'Coming soon' : null,
+  availability: unsupportedReason ? 'unsupported' : 'available',
+  reason: unsupportedReason,
   runsWhenProtected,
 });
 
-/** The native catalog: App Volume, App Mute and macros are listed but not built yet. */
+/** The native catalog: macros are listed but not built yet; under `?mock=mac`, App Volume and
+ *  App Mute are unsupported (macOS has no per-app volume). */
 export function mockListActionCatalog(): ActionCatalogEntryDto[] {
+  const appUnsupported = scenario() === 'mac' ? "Per-app volume isn't available on macOS" : null;
   return [
     catalogEntry('systemVolume', 'rotate', 'system', 'confirmed', 'none', true),
-    catalogEntry('appVolume', 'rotate', 'app', 'confirmed', 'app', true, true),
+    catalogEntry('appVolume', 'rotate', 'app', 'confirmed', 'app', true, appUnsupported),
     catalogEntry('knobShortcuts', 'rotate', 'keyboard', 'unverified', 'shortcutPair', false),
     catalogEntry('playPause', 'discrete', 'media', 'unverified', 'none', true),
     catalogEntry('previousTrack', 'discrete', 'media', 'unverified', 'none', true),
     catalogEntry('nextTrack', 'discrete', 'media', 'unverified', 'none', true),
     catalogEntry('systemMute', 'discrete', 'system', 'confirmed', 'none', true),
-    catalogEntry('appMute', 'discrete', 'app', 'confirmed', 'app', true, true),
+    catalogEntry('appMute', 'discrete', 'app', 'confirmed', 'app', true, appUnsupported),
     catalogEntry('shortcut', 'discrete', 'keyboard', 'unverified', 'shortcut', false),
     catalogEntry('launch', 'discrete', 'launch', 'started', 'target', false),
-    catalogEntry('macro', 'discrete', 'macro', 'leastOfSteps', 'macro', false, true),
+    catalogEntry('macro', 'discrete', 'macro', 'leastOfSteps', 'macro', false, 'Coming soon'),
   ];
 }
 
@@ -292,11 +299,24 @@ function actionLabel(action: ActionSpec | null): string {
     case 'nextTrack':
       return 'Next';
     case 'systemMute':
+    case 'appMute':
       return 'Mute';
     case 'shortcut':
       return action.keys;
     case 'launch':
       return action.target;
+  }
+}
+
+/** What the device calls a knob binding: an app's own name unless it was labelled. */
+function rotateLabel(rotate: RotateSpec): string {
+  switch (rotate.kind) {
+    case 'systemVolume':
+      return 'Volume';
+    case 'shortcuts':
+      return rotate.label;
+    case 'appVolume':
+      return rotate.label ?? rotate.app.replace(/\.exe$/, '');
   }
 }
 
@@ -330,7 +350,7 @@ function builtin(
     apps,
     rotate: {
       spec: rotate,
-      deviceLabel: rotate.kind === 'shortcuts' ? rotate.label : 'Volume',
+      deviceLabel: rotateLabel(rotate),
       overridden: false,
     },
     press: slot(media),
@@ -490,7 +510,24 @@ function mockShortcut(keys: string): string {
   return keys.trim();
 }
 
+/** Native rule: an app id is lowercased, 1 to 128 characters, a name and not a path. */
+function mockAppId(app: string): string {
+  const id = app.trim().toLowerCase();
+  if (!id) throw new Error('an app cannot be empty');
+  if (id.length > 128) throw new Error('an app is at most 128 characters');
+  if (/[\\/]/.test(id)) throw new Error('an app is a name, not a path');
+  return id;
+}
+
+function mockAppVolume(rotate: Extract<RotateSpec, { kind: 'appVolume' }>): RotateSpec {
+  const app = mockAppId(rotate.app);
+  return rotate.label
+    ? { kind: 'appVolume', app, label: mockLabel(rotate.label) }
+    : { kind: 'appVolume', app };
+}
+
 function mockAction(action: ActionSpec): ActionSpec {
+  if (action.kind === 'appMute') return { kind: 'appMute', app: mockAppId(action.app) };
   if (action.kind === 'shortcut') return { kind: 'shortcut', keys: mockShortcut(action.keys) };
   if (action.kind === 'launch') {
     if (!action.target.trim()) throw new Error('not a valid application');
@@ -587,10 +624,12 @@ export function mockSetRotate(profile: ProfileId, rotate: RotateSpec | null): Co
             ccw: mockShortcut(rotate.ccw),
             label: mockLabel(rotate.label),
           }
-        : rotate;
+        : rotate.kind === 'appVolume'
+          ? mockAppVolume(rotate)
+          : rotate;
     target.rotate = {
       spec,
-      deviceLabel: spec.kind === 'shortcuts' ? spec.label : 'Volume',
+      deviceLabel: rotateLabel(spec),
       overridden: true,
     };
   });

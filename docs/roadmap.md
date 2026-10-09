@@ -94,9 +94,9 @@ stays the beta platform and its rows are tracked in a GitHub issue.
 - [ ] Config UI for Rotate / Press / Hold and the three buttons
 - [x] Bindings are profile-shaped from day one: General is a profile with no app rule, so app-aware
   profiles add match rules, not a new model. Every binding change re-sends the device labels
-- [ ] Action catalog with explicit scope (System Volume ≠ App Volume)
-  - done: the catalog, `ActionToken` and a production Test Action that respects Protected
-  - open: App Volume and App Mute backends (listed now as unsupported, "Coming soon")
+- [x] Action catalog with explicit scope (System Volume ≠ App Volume)
+  - the catalog, `ActionToken` and a production Test Action that respects Protected
+  - App Volume and App Mute through WASAPI audio sessions on Windows; on macOS they are listed as unsupported and never fall back to system volume
 - [ ] Simple ordered macros (a macro reports its least-confirmed step; no rollback)
 - [x] Choose what the display shows (default and secondary modes)
 - [x] Buddy settings: reactions on/off, intensity

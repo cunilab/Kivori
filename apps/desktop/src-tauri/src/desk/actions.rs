@@ -13,10 +13,13 @@ use std::thread::JoinHandle;
 use std::time::Instant;
 
 use kivori_model::desk::{ActionKind, FeedbackKind};
+use kivori_model::input::Direction;
 
 use super::catalog::ActionToken;
+use crate::action::volume::apply_step;
 use crate::platform::{
-    ActionError, BackendError, InputSynth, MediaKey, MediaObserver, Shortcut, VolumeBackend,
+    ActionAvailability, ActionError, AppVolumeBackend, AppVolumeError, BackendError, InputSynth,
+    MediaKey, MediaObserver, Shortcut, VolumeBackend,
 };
 
 /// One discrete action a control can be bound to.
@@ -34,6 +37,10 @@ pub enum Action {
     Shortcut(Shortcut),
     /// Launch an application (validated target).
     Launch(String),
+    /// Toggle mute on one app's audio sessions (`app` is a lowercase foreground-style id).
+    AppMute { app: String },
+    /// One knob detent of an app's volume. Only the knob produces it; no slot binds it.
+    AppVolumeStep { app: String, direction: Direction },
 }
 
 impl Action {
@@ -47,6 +54,8 @@ impl Action {
             Action::ToggleMute => ActionKind::Mute,
             Action::Shortcut(_) => ActionKind::Shortcut,
             Action::Launch(_) => ActionKind::Launch,
+            Action::AppMute { .. } => ActionKind::Mute,
+            Action::AppVolumeStep { .. } => ActionKind::Volume,
         }
     }
 }
@@ -62,6 +71,8 @@ impl Action {
             Action::ToggleMute => ActionToken::Mute,
             Action::Shortcut(_) => ActionToken::Shortcut,
             Action::Launch(_) => ActionToken::Launch,
+            Action::AppMute { .. } => ActionToken::AppMute,
+            Action::AppVolumeStep { .. } => ActionToken::AppVolume,
         }
     }
 
@@ -71,9 +82,12 @@ impl Action {
     #[must_use]
     pub const fn is_system(&self) -> bool {
         match self {
-            Action::PlayPause | Action::PreviousTrack | Action::NextTrack | Action::ToggleMute => {
-                true
-            }
+            Action::PlayPause
+            | Action::PreviousTrack
+            | Action::NextTrack
+            | Action::ToggleMute
+            | Action::AppMute { .. }
+            | Action::AppVolumeStep { .. } => true,
             Action::Shortcut(_) | Action::Launch(_) => false,
         }
     }
@@ -85,7 +99,8 @@ impl Action {
             Action::PlayPause => "Play/Pause".into(),
             Action::PreviousTrack => "Previous".into(),
             Action::NextTrack => "Next".into(),
-            Action::ToggleMute => "Mute".into(),
+            Action::ToggleMute | Action::AppMute { .. } => "Mute".into(),
+            Action::AppVolumeStep { .. } => "Volume".into(),
             Action::Shortcut(shortcut) => shortcut.to_string(),
             // An app name, not a path.
             Action::Launch(target) => std::path::Path::new(target)
@@ -197,6 +212,7 @@ impl Outcome {
 /// The OS services actions run against.
 pub struct Platform {
     pub volume: Arc<dyn VolumeBackend>,
+    pub app_volume: Arc<dyn AppVolumeBackend>,
     pub synth: Arc<dyn InputSynth>,
     pub media: Arc<dyn MediaObserver>,
     pub launch: fn(&str) -> Result<(), ActionError>,
@@ -230,6 +246,47 @@ pub fn execute(action: &Action, platform: &Platform) -> Outcome {
                 Ok(_) => Outcome::of(FeedbackKind::Error),
                 Err(BackendError::ReadBackUnavailable) => Outcome::of(FeedbackKind::Unverified),
                 Err(_) => Outcome::of(FeedbackKind::Error),
+            }
+        }
+        Action::AppMute { app } => {
+            // Never falls back to the system mute (invariant 19).
+            if !matches!(
+                platform.app_volume.availability(),
+                ActionAvailability::Available { .. }
+            ) {
+                return Outcome::error();
+            }
+            let Ok(muted) = platform.app_volume.read_mute(app) else {
+                return Outcome::error();
+            };
+            match platform.app_volume.set_mute(app, !muted) {
+                Ok(observed) if observed != muted => Outcome::of(FeedbackKind::StateConfirmed),
+                Ok(_) => Outcome::error(),
+                Err(AppVolumeError::ReadBackUnavailable) => Outcome::of(FeedbackKind::Unverified),
+                Err(_) => Outcome::error(),
+            }
+        }
+        Action::AppVolumeStep { app, direction } => {
+            if !matches!(
+                platform.app_volume.availability(),
+                ActionAvailability::Available { .. }
+            ) {
+                return Outcome::error();
+            }
+            let Ok(current) = platform.app_volume.read(app) else {
+                return Outcome::error();
+            };
+            let (next, at_boundary) = apply_step(current, *direction);
+            if at_boundary {
+                // Nothing to write; the read just observed the state the detent asked for.
+                return Outcome::of(FeedbackKind::StateConfirmed);
+            }
+            match platform.app_volume.set(app, next) {
+                Ok(observed) if observed == next => Outcome::of(FeedbackKind::StateConfirmed),
+                // The OS reports another value than the one written: not the state asked for.
+                Ok(_) => Outcome::error(),
+                Err(AppVolumeError::ReadBackUnavailable) => Outcome::of(FeedbackKind::Unverified),
+                Err(_) => Outcome::error(),
             }
         }
         Action::Shortcut(shortcut) => match platform.synth.send_shortcut(shortcut) {
@@ -357,7 +414,8 @@ impl Drop for ActionWorker {
 mod tests {
     use super::*;
     use crate::platform::{
-        ActionAvailability, FakeInputSynth, FakeMediaObserver, FakeVolumeBackend,
+        ActionAvailability, FakeAppVolumeBackend, FakeInputSynth, FakeMediaObserver,
+        FakeVolumeBackend,
     };
     use kivori_model::desk::MediaStatus;
 
@@ -371,6 +429,7 @@ mod tests {
         (
             Platform {
                 volume: Arc::new(volume),
+                app_volume: Arc::new(FakeAppVolumeBackend::new().with_session("spotify.exe", 50)),
                 synth: Arc::new(FakeInputSynth::new(synth)),
                 media: observer.clone(),
                 launch: |target| {
@@ -462,6 +521,98 @@ mod tests {
             "the in-flight launch finishes; the stale mute never runs"
         );
         assert_eq!(volume.read_mute(), Ok(false));
+    }
+
+    fn app_platform(app_volume: FakeAppVolumeBackend) -> Platform {
+        Platform {
+            app_volume: Arc::new(app_volume),
+            ..platform(Ok(()), None, FakeVolumeBackend::new(40)).0
+        }
+    }
+
+    const SPOTIFY: &str = "spotify.exe";
+
+    fn app_mute() -> Action {
+        Action::AppMute {
+            app: SPOTIFY.into(),
+        }
+    }
+
+    fn step(direction: Direction) -> Action {
+        Action::AppVolumeStep {
+            app: SPOTIFY.into(),
+            direction,
+        }
+    }
+
+    #[test]
+    fn app_mute_is_state_confirmed_by_the_read_back_and_never_touches_the_system_mute() {
+        let p = app_platform(FakeAppVolumeBackend::new().with_session(SPOTIFY, 50));
+        assert_eq!(kind(&app_mute(), &p), FeedbackKind::StateConfirmed);
+        assert_eq!(p.app_volume.read_mute(SPOTIFY), Ok(true));
+        assert_eq!(kind(&app_mute(), &p), FeedbackKind::StateConfirmed);
+        assert_eq!(p.app_volume.read_mute(SPOTIFY), Ok(false));
+        assert_eq!(p.volume.read_mute(), Ok(false));
+
+        let p =
+            app_platform(FakeAppVolumeBackend::unreadable_after_write().with_session(SPOTIFY, 50));
+        assert_eq!(kind(&app_mute(), &p), FeedbackKind::Unverified);
+    }
+
+    #[test]
+    fn app_volume_steps_are_confirmed_by_the_read_back_and_clamp_at_the_ends() {
+        let p = app_platform(
+            FakeAppVolumeBackend::new()
+                .with_session(SPOTIFY, 50)
+                .with_session("vlc.exe", 100),
+        );
+        assert_eq!(kind(&step(Direction::Cw), &p), FeedbackKind::StateConfirmed);
+        assert_eq!(p.app_volume.read(SPOTIFY), Ok(52));
+        assert_eq!(
+            kind(&step(Direction::Ccw), &p),
+            FeedbackKind::StateConfirmed
+        );
+        assert_eq!(p.app_volume.read(SPOTIFY), Ok(50));
+        let vlc = Action::AppVolumeStep {
+            app: "vlc.exe".into(),
+            direction: Direction::Cw,
+        };
+        assert_eq!(kind(&vlc, &p), FeedbackKind::StateConfirmed);
+        assert_eq!(p.app_volume.read("vlc.exe"), Ok(100));
+        assert_eq!(p.volume.read(), Ok(40), "the system volume is not touched");
+
+        let p =
+            app_platform(FakeAppVolumeBackend::unreadable_after_write().with_session(SPOTIFY, 50));
+        assert_eq!(kind(&step(Direction::Cw), &p), FeedbackKind::Unverified);
+    }
+
+    #[test]
+    fn an_app_without_a_session_is_an_error() {
+        let p = app_platform(FakeAppVolumeBackend::new());
+        assert_eq!(kind(&app_mute(), &p), FeedbackKind::Error);
+        assert_eq!(kind(&step(Direction::Cw), &p), FeedbackKind::Error);
+    }
+
+    #[test]
+    fn unsupported_app_volume_is_an_error_and_never_falls_back_to_the_system() {
+        let unsupported = ActionAvailability::Unsupported {
+            reason: "Per-app volume isn't available on macOS".into(),
+        };
+        let p = app_platform(FakeAppVolumeBackend::with_availability(unsupported));
+        assert_eq!(kind(&app_mute(), &p), FeedbackKind::Error);
+        assert_eq!(kind(&step(Direction::Cw), &p), FeedbackKind::Error);
+        assert_eq!(p.volume.read(), Ok(40));
+        assert_eq!(p.volume.read_mute(), Ok(false));
+    }
+
+    #[test]
+    fn app_actions_are_system_actions_that_show_as_volume_and_mute() {
+        assert!(app_mute().is_system());
+        assert!(step(Direction::Cw).is_system());
+        assert_eq!(app_mute().token(), ActionToken::AppMute);
+        assert_eq!(app_mute().wire_kind(), ActionKind::Mute);
+        assert_eq!(step(Direction::Cw).token(), ActionToken::AppVolume);
+        assert_eq!(step(Direction::Cw).wire_kind(), ActionKind::Volume);
     }
 
     #[test]

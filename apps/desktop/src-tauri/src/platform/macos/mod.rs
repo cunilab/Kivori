@@ -2,11 +2,13 @@
 //! now-playing observation (layered, see `media` and ADR-0009). Key synthesis lives in
 //! `platform::synth`.
 
+mod app_volume;
 mod audio;
 mod foreground;
 mod media;
 mod system;
 
+pub use app_volume::MacAppVolumeBackend;
 pub use audio::MacVolumeBackend;
 pub use foreground::MacForeground;
 pub use media::MacMediaObserver;

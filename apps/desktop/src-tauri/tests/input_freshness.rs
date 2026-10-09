@@ -10,7 +10,8 @@ use kivori_desktop::desk::DeskRuntime;
 use kivori_desktop::input::{DeviceClock, Freshness, LogicalInput};
 use kivori_desktop::platform::system::NoSystemProbe;
 use kivori_desktop::platform::{
-    FakeForeground, FakeInputSynth, FakeMediaObserver, FakeVolumeBackend, Foreground, OsServices,
+    FakeAppVolumeBackend, FakeForeground, FakeInputSynth, FakeMediaObserver, FakeVolumeBackend,
+    Foreground, OsServices,
 };
 use kivori_desktop::runtime::device_task::RotaryPipeline;
 use kivori_model::input::Direction;
@@ -220,6 +221,7 @@ fn session_and_gesture_checks_still_come_first() {
 fn desk(foreground: &Arc<FakeForeground>, synth: &Arc<FakeInputSynth>) -> DeskRuntime {
     let mut desk = DeskRuntime::new(OsServices {
         volume: Arc::new(FakeVolumeBackend::new(20)),
+        app_volume: Arc::new(FakeAppVolumeBackend::new()),
         synth: synth.clone(),
         media: Arc::new(FakeMediaObserver::default()),
         system: Box::new(NoSystemProbe),

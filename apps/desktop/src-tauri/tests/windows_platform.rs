@@ -4,8 +4,9 @@
 use std::time::{Duration, Instant};
 
 use kivori_desktop::platform::system::{SystemMonitor, SystemProbe};
+use kivori_desktop::platform::windows::WindowsVolumeBackend;
 use kivori_desktop::platform::windows::{local_time, WindowsMediaObserver, WindowsSystemProbe};
-use kivori_desktop::platform::MediaObserver;
+use kivori_desktop::platform::{AppVolumeBackend, AppVolumeError, MediaObserver};
 
 #[test]
 fn ram_percent_is_a_real_percentage() {
@@ -37,4 +38,15 @@ fn media_observer_constructs_reads_and_drops_promptly() {
     let _ = observer.status(); // None or Some: both honest; it must just not panic.
     drop(observer);
     assert!(started.elapsed() < Duration::from_secs(2));
+}
+
+#[test]
+fn a_session_for_an_app_that_is_not_running_is_no_session() {
+    let backend = WindowsVolumeBackend::new();
+    let app = "kivori-test-not-running.exe";
+    // Enumerating the real sessions must not panic, with or without an audio device.
+    assert_eq!(backend.read(app), Err(AppVolumeError::NoSession));
+    assert_eq!(backend.set(app, 50), Err(AppVolumeError::NoSession));
+    assert_eq!(backend.read_mute(app), Err(AppVolumeError::NoSession));
+    assert_eq!(backend.set_mute(app, true), Err(AppVolumeError::NoSession));
 }

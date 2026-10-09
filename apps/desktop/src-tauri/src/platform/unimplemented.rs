@@ -5,8 +5,8 @@
 //! user their machine cannot do something it can.
 
 use super::{
-    ActionAvailability, ActionError, BackendError, InputSynth, MediaObserver, Shortcut,
-    VolumeBackend,
+    ActionAvailability, ActionError, AppVolumeBackend, AppVolumeError, BackendError, InputSynth,
+    MediaObserver, Shortcut, VolumeBackend,
 };
 use kivori_model::desk::MediaStatus;
 
@@ -42,6 +42,42 @@ impl VolumeBackend for UnimplementedVolumeBackend {
 
     fn set_mute(&self, _muted: bool) -> Result<bool, BackendError> {
         Err(BackendError::NoEndpoint)
+    }
+}
+
+/// Per-app volume for a target with no implementation.
+#[derive(Debug, Clone, Copy)]
+pub struct UnimplementedAppVolumeBackend {
+    target: &'static str,
+}
+
+impl UnimplementedAppVolumeBackend {
+    pub const fn new(target: &'static str) -> Self {
+        Self { target }
+    }
+}
+
+impl AppVolumeBackend for UnimplementedAppVolumeBackend {
+    fn availability(&self) -> ActionAvailability {
+        ActionAvailability::NotImplementedYet {
+            target: self.target,
+        }
+    }
+
+    fn read(&self, _app: &str) -> Result<u8, AppVolumeError> {
+        Err(AppVolumeError::NoSession)
+    }
+
+    fn set(&self, _app: &str, _percent: u8) -> Result<u8, AppVolumeError> {
+        Err(AppVolumeError::NoSession)
+    }
+
+    fn read_mute(&self, _app: &str) -> Result<bool, AppVolumeError> {
+        Err(AppVolumeError::NoSession)
+    }
+
+    fn set_mute(&self, _app: &str, _muted: bool) -> Result<bool, AppVolumeError> {
+        Err(AppVolumeError::NoSession)
     }
 }
 

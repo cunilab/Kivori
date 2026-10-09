@@ -394,6 +394,7 @@ fn a_button_press_round_trips_to_an_honest_feedback_and_a_desk_status() {
     );
     let mut desk = DeskRuntime::new(OsServices {
         volume: volume.clone(),
+        app_volume: Arc::new(kivori_desktop::platform::FakeAppVolumeBackend::new()),
         synth: Arc::new(FakeInputSynth::new(Ok(()))),
         media: Arc::new(FakeMediaObserver::default()),
         system: Box::new(NoSystemProbe),
@@ -514,6 +515,7 @@ fn reboot_without_bye_expires_the_old_session_and_restores_the_unchanged_mode() 
     let mut rotary = RotaryPipeline::new(volume.as_ref());
     let mut desk = DeskRuntime::new(OsServices {
         volume: volume.clone(),
+        app_volume: Arc::new(kivori_desktop::platform::FakeAppVolumeBackend::new()),
         synth: Arc::new(FakeInputSynth::new(Ok(()))),
         media: Arc::new(FakeMediaObserver::default()),
         system: Box::new(NoSystemProbe),

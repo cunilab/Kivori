@@ -34,6 +34,20 @@ pub const CONTROL_TOKENS: [&str; 7] = [
     "button3Hold",
 ];
 
+/// Every `kind` an [`ActionSpec`] serializes with, for the Rust/TS vocabulary check.
+pub const ACTION_SPEC_KINDS: [&str; 7] = [
+    "playPause",
+    "previousTrack",
+    "nextTrack",
+    "systemMute",
+    "appMute",
+    "shortcut",
+    "launch",
+];
+
+/// Every `kind` a [`RotateSpec`] serializes with.
+pub const ROTATE_SPEC_KINDS: [&str; 3] = ["systemVolume", "shortcuts", "appVolume"];
+
 impl Control {
     /// Parses a webview control token.
     ///
@@ -83,6 +97,41 @@ fn label(text: &str) -> Result<String, &'static str> {
         .collect())
 }
 
+/// The longest app id accepted (a Windows executable file name is far shorter).
+const APP_ID_MAX: usize = 128;
+
+/// An app id as stored: trimmed and lowercased, 1 to 128 characters, a bare name (no path).
+fn app_id(app: &str) -> Result<String, &'static str> {
+    let app = app.trim().to_lowercase();
+    if app.is_empty() {
+        return Err("an app cannot be empty");
+    }
+    if app.chars().count() > APP_ID_MAX {
+        return Err("an app is at most 128 characters");
+    }
+    if app.chars().any(|c| c.is_control() || c == '/' || c == '\\') {
+        return Err("an app is a name, not a path");
+    }
+    Ok(app)
+}
+
+/// The device label for an app with no name of its own: `spotify.exe` -> `spotify`, cut to what
+/// the device can draw (an app id may be any text).
+fn default_app_label(app: &str) -> String {
+    let name: String = app
+        .strip_suffix(".exe")
+        .unwrap_or(app)
+        .chars()
+        .filter(|c| !c.is_control() && u32::from(*c) <= 0xFF)
+        .take(MediaText::CAPACITY)
+        .collect();
+    if name.trim().is_empty() {
+        "App volume".to_string()
+    } else {
+        name
+    }
+}
+
 fn shortcut(keys: &str) -> Result<Shortcut, &'static str> {
     keys.parse().map_err(|_| "not a valid shortcut")
 }
@@ -97,6 +146,7 @@ pub fn resolve_action(spec: &ActionSpec) -> Result<Action, &'static str> {
         ActionSpec::PreviousTrack => Action::PreviousTrack,
         ActionSpec::NextTrack => Action::NextTrack,
         ActionSpec::SystemMute => Action::ToggleMute,
+        ActionSpec::AppMute { app } => Action::AppMute { app: app_id(app)? },
         ActionSpec::Shortcut { keys } => Action::Shortcut(shortcut(keys)?),
         ActionSpec::Launch { target } => Action::Launch(
             validate_target(target)
@@ -129,24 +179,35 @@ fn rotate(spec: &RotateSpec) -> Result<RotateBinding, &'static str> {
             cw: shortcut(cw)?,
             ccw: shortcut(ccw)?,
         },
+        RotateSpec::AppVolume { app, label: name } => {
+            let app = app_id(app)?;
+            let named = match name {
+                Some(name) => label(name)?,
+                None => default_app_label(&app),
+            };
+            RotateBinding::AppVolume { app, label: named }
+        }
     })
 }
 
-/// The spec of a built-in or resolved action (for the UI).
+/// The spec of a built-in or resolved action (for the UI). `None` for a knob step, which no slot
+/// binds.
 #[must_use]
-pub fn action_spec(action: &Action) -> ActionSpec {
-    match action {
+pub fn action_spec(action: &Action) -> Option<ActionSpec> {
+    Some(match action {
         Action::PlayPause => ActionSpec::PlayPause,
         Action::PreviousTrack => ActionSpec::PreviousTrack,
         Action::NextTrack => ActionSpec::NextTrack,
         Action::ToggleMute => ActionSpec::SystemMute,
+        Action::AppMute { app } => ActionSpec::AppMute { app: app.clone() },
         Action::Shortcut(s) => ActionSpec::Shortcut {
             keys: s.to_string(),
         },
         Action::Launch(target) => ActionSpec::Launch {
             target: target.clone(),
         },
-    }
+        Action::AppVolumeStep { .. } => return None,
+    })
 }
 
 /// The spec of a resolved knob binding (for the UI).
@@ -159,6 +220,10 @@ pub fn rotate_spec(binding: &RotateBinding) -> RotateSpec {
             ccw: ccw.to_string(),
             label: label.clone(),
         },
+        RotateBinding::AppVolume { app, label } => RotateSpec::AppVolume {
+            app: app.clone(),
+            label: Some(label.clone()),
+        },
     }
 }
 
@@ -169,7 +234,7 @@ pub fn rotate_spec(binding: &RotateBinding) -> RotateSpec {
 pub fn canonical_slot(spec: &SlotSpec) -> Result<SlotSpec, &'static str> {
     let resolved = slot(spec)?;
     Ok(SlotSpec {
-        action: resolved.action.as_ref().map(action_spec),
+        action: resolved.action.as_ref().and_then(action_spec),
         label: resolved.label,
     })
 }
@@ -328,6 +393,103 @@ mod tests {
             Slot::named(Action::Launch("Spotify".into()), "My music")
         );
         assert_eq!(media.rotate.label(), "Seek");
+    }
+
+    #[test]
+    fn app_volume_and_app_mute_resolve_with_a_lowercase_app_id_and_a_default_label() {
+        let over = ProfileOverride {
+            rotate: Some(RotateSpec::AppVolume {
+                app: "  Spotify.EXE ".into(),
+                label: None,
+            }),
+            press: Some(spec(
+                Some(ActionSpec::AppMute {
+                    app: "Spotify.exe".into(),
+                }),
+                None,
+            )),
+            ..ProfileOverride::default()
+        };
+        let resolved = run(false, &file_with(ProfileId::Media, over)).unwrap();
+        let media = &resolved.profiles[3];
+        assert_eq!(
+            media.rotate,
+            RotateBinding::AppVolume {
+                app: "spotify.exe".into(),
+                label: "spotify".into()
+            }
+        );
+        assert_eq!(
+            media.bindings.press,
+            Slot::bound(Action::AppMute {
+                app: "spotify.exe".into()
+            })
+        );
+        // The UI gets the canonical spec back, and it resolves to the same binding.
+        let spec = rotate_spec(&media.rotate);
+        assert_eq!(canonical_rotate(&spec).unwrap(), spec);
+    }
+
+    #[test]
+    fn the_spec_kind_vocabulary_lists_every_variant() {
+        let kind_of = |value: serde_json::Value| value["kind"].as_str().unwrap().to_string();
+        let actions = [
+            ActionSpec::PlayPause,
+            ActionSpec::PreviousTrack,
+            ActionSpec::NextTrack,
+            ActionSpec::SystemMute,
+            ActionSpec::AppMute { app: "a".into() },
+            ActionSpec::Shortcut { keys: "A".into() },
+            ActionSpec::Launch { target: "a".into() },
+        ];
+        let kinds: Vec<_> = actions
+            .iter()
+            .map(|a| kind_of(serde_json::to_value(a).unwrap()))
+            .collect();
+        assert_eq!(kinds, ACTION_SPEC_KINDS);
+        let rotates = [
+            RotateSpec::SystemVolume,
+            RotateSpec::Shortcuts {
+                cw: "A".into(),
+                ccw: "B".into(),
+                label: "L".into(),
+            },
+            RotateSpec::AppVolume {
+                app: "a".into(),
+                label: None,
+            },
+        ];
+        let kinds: Vec<_> = rotates
+            .iter()
+            .map(|r| kind_of(serde_json::to_value(r).unwrap()))
+            .collect();
+        assert_eq!(kinds, ROTATE_SPEC_KINDS);
+    }
+
+    #[test]
+    fn a_bad_app_id_is_rejected() {
+        let rotate = |app: &str| {
+            file_with(
+                ProfileId::Media,
+                ProfileOverride {
+                    rotate: Some(RotateSpec::AppVolume {
+                        app: app.into(),
+                        label: None,
+                    }),
+                    ..ProfileOverride::default()
+                },
+            )
+        };
+        assert_eq!(invalid(&rotate("  ")), "an app cannot be empty");
+        assert_eq!(
+            invalid(&rotate(&"a".repeat(129))),
+            "an app is at most 128 characters"
+        );
+        assert_eq!(
+            invalid(&rotate(r"C:\Apps\spotify.exe")),
+            "an app is a name, not a path"
+        );
+        assert!(run(false, &rotate(&"a".repeat(128))).is_ok());
     }
 
     #[test]
