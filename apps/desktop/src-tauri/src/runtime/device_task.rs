@@ -847,6 +847,17 @@ impl RotaryPipeline {
                     if !desk(input, freshness.remaining(event.device_ms)) {
                         continue;
                     }
+                    // Value detents of one gesture are staged and written once per pass, so a fast
+                    // spin costs one OS round trip and one `Presentation`, not one per detent.
+                    if let LogicalInput::Detent {
+                        gesture_id,
+                        direction,
+                    } = input
+                    {
+                        self.gesture_value.stage_detent(gesture_id, direction);
+                        continue;
+                    }
+                    self.flush_staged(backend, presentations, &mut observe);
                     if let Some(update) = self.gesture_value.on_input(input, backend) {
                         self.push_update(update, presentations, &mut observe);
                     }
@@ -867,6 +878,18 @@ impl RotaryPipeline {
                     }),
                 )),
             }
+        }
+        self.flush_staged(backend, presentations, &mut observe);
+    }
+
+    fn flush_staged(
+        &mut self,
+        backend: &dyn VolumeBackend,
+        presentations: &mut Vec<Presentation>,
+        observe: &mut impl FnMut(SessionActivity),
+    ) {
+        if let Some(update) = self.gesture_value.flush(backend) {
+            self.push_update(update, presentations, observe);
         }
     }
 
