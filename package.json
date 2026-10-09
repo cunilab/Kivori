@@ -7,8 +7,7 @@
     "node": ">=20"
   },
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "apps/*"
   ],
   "scripts": {
     "lint": "eslint . --max-warnings 0",
