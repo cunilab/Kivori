@@ -5,6 +5,7 @@
 // absent from the production build by `scripts/check-mock-excluded.mjs`.
 
 import type {
+  AccessibilityState,
   ActionCatalogEntryDto,
   ActionSpec,
   ActivityEventDto,
@@ -13,6 +14,7 @@ import type {
   ConfigDto,
   DiagnosticsDto,
   FirmwareStatusDto,
+  OnboardingDto,
   StartupSettingsDto,
   MacroSpec,
   StepSpec,
@@ -59,7 +61,42 @@ function connectedScenario(): boolean {
 let launchAtLogin = false;
 
 export function mockGetStartupSettings(): StartupSettingsDto {
-  return { launchAtLogin, platform: 'windows' };
+  return { launchAtLogin, platform: scenario() === 'mac' ? 'macos' : 'windows' };
+}
+
+// First-run setup. The browser preview starts finished so ordinary pages stay reachable; open
+// `?onboarding` to see setup (and `?mock=mac` for the macOS permission step).
+let onboardingCompleted: boolean | null = null;
+
+export function mockGetOnboarding(): OnboardingDto {
+  onboardingCompleted ??=
+    typeof location === 'undefined' || !new URLSearchParams(location.search).has('onboarding');
+  return { completed: onboardingCompleted };
+}
+
+export function mockSetOnboarding(completed: boolean): OnboardingDto {
+  onboardingCompleted = completed;
+  return { completed };
+}
+
+/** Tests only: set the stored state, and the accessibility permission back to its start. */
+export function mockResetOnboarding(completed: boolean): void {
+  onboardingCompleted = completed;
+  accessibilityGranted = false;
+  launchAtLogin = false;
+}
+
+let accessibilityGranted = false;
+
+/** The permission exists on macOS only; the mock grants it when `mockGrantAccessibility` is called. */
+export function mockGetAccessibility(): AccessibilityState {
+  if (scenario() !== 'mac') return 'notApplicable';
+  return accessibilityGranted ? 'granted' : 'missing';
+}
+
+/** Stands in for the user ticking Kivori in System Settings. */
+export function mockGrantAccessibility(): void {
+  accessibilityGranted = true;
 }
 
 export function mockSetLaunchAtLogin(enabled: boolean): StartupSettingsDto {
@@ -272,6 +309,16 @@ function updateDesk(next: Partial<DeskStatusDto>): void {
 
 export function mockDeskStatus(): DeskStatusDto {
   return deskStatus;
+}
+
+/** Stands in for the person using the device: a knob turn, or a press that runs an action. */
+export function mockSimulateInput(kind: 'knob' | 'press'): void {
+  if (kind === 'knob') {
+    updateDesk({ volumePercent: ((deskStatus.volumePercent ?? 0) + 5) % 101 });
+    return;
+  }
+  const last = deskStatus.lastAction?.action === 'playPause' ? 'nextTrack' : 'playPause';
+  updateDesk({ lastAction: { action: last, result: 'unverified', permissionRequired: false } });
 }
 
 export function mockSetDisplayMode(mode: DisplayMode): void {
@@ -564,7 +611,8 @@ export function mockGetDiagnostics(): DiagnosticsDto {
       appVolume: scenario() === 'mac' ? 'unsupported' : 'available',
       media: 'observable',
       focus: 'detecting',
-      inputPermission: scenario() === 'mac' ? 'unknown' : 'notNeeded',
+      inputPermission:
+        scenario() === 'mac' ? (accessibilityGranted ? 'granted' : 'required') : 'notNeeded',
     },
     config: {
       status: 'ok',

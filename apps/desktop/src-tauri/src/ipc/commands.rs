@@ -11,7 +11,7 @@ use crate::activity::ActivityEventKind;
 use crate::firmware::FirmwareStatus;
 use crate::ipc::dto::{
     self, ActivityEventDto, AppInfoDto, ConfigDto, ConnectionStatusDto, DiagnosticsDto,
-    StartupSettingsDto,
+    OnboardingDto, StartupSettingsDto,
 };
 use crate::ipc::events;
 use crate::runtime::state::{AppState, DeviceCommand};
@@ -82,6 +82,71 @@ pub fn set_launch_at_login(app: AppHandle, enabled: bool) -> Result<StartupSetti
 #[tauri::command]
 pub fn get_config(app: State<'_, AppState>) -> ConfigDto {
     app.config_snapshot()
+}
+
+/// Whether first-run setup is finished (all builds).
+#[tauri::command]
+pub fn get_onboarding(app: State<'_, AppState>) -> OnboardingDto {
+    app.onboarding_snapshot()
+}
+
+/// Marks first-run setup finished (also used by "Skip setup").
+///
+/// # Errors
+/// Returns an error when the setting cannot be saved.
+#[tauri::command]
+pub fn complete_onboarding(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+) -> Result<OnboardingDto, String> {
+    set_onboarding(&handle, &app, true)
+}
+
+/// Marks first-run setup not finished, so the Device page's "Run setup again" can reopen it.
+///
+/// # Errors
+/// Returns an error when the setting cannot be saved.
+#[tauri::command]
+pub fn restart_onboarding(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+) -> Result<OnboardingDto, String> {
+    set_onboarding(&handle, &app, false)
+}
+
+fn set_onboarding(
+    handle: &AppHandle,
+    app: &AppState,
+    completed: bool,
+) -> Result<OnboardingDto, String> {
+    commit_config(handle, app, ActivityEventKind::ConfigSaved, |store| {
+        let next = store.edited(|file| file.onboarding.completed = completed);
+        store.save(next)
+    })
+    .map(|_| OnboardingDto { completed })
+}
+
+/// The Accessibility permission as `granted`, `missing` or `notApplicable` (all builds). Never
+/// prompts.
+#[tauri::command]
+pub fn get_accessibility() -> &'static str {
+    crate::platform::permissions::accessibility().token()
+}
+
+/// Asks macOS to show its Accessibility prompt, and returns the state right after.
+#[tauri::command]
+pub fn request_accessibility() -> &'static str {
+    crate::platform::permissions::request_accessibility().token()
+}
+
+/// Opens System Settings at the Accessibility list.
+///
+/// # Errors
+/// Returns a fixed message when System Settings could not be opened.
+#[tauri::command]
+pub fn open_accessibility_settings() -> Result<(), String> {
+    crate::platform::permissions::open_accessibility_settings()
+        .map_err(|()| "System Settings could not be opened.".to_string())
 }
 
 /// Runs one config change and publishes its outcome to the activity log and `config://changed`.

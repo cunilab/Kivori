@@ -55,12 +55,13 @@
   ],
   "hostAvailability": ["available", "unsupported", "unavailable"],
   "hostFocus": ["detecting", "unknown"],
-  "hostInputPermission": ["required", "notNeeded", "unknown"],
+  "hostInputPermission": ["required", "granted", "notNeeded", "unknown"],
   "hostMedia": ["observable", "notObservable"],
   "hostPresence": ["active", "locked", "sleeping"],
   "profileIds": ["general", "browser", "code", "media", "zoom", "teams"],
   "rotateSpecKinds": ["systemVolume", "shortcuts", "appVolume"],
   "stepSpecKinds": ["action", "delay"],
   "updateAdvice": ["upToDate", "updateAvailable", "deviceNewer", "unknown"],
-  "startupPlatform": ["windows", "macos", "other"]
+  "startupPlatform": ["windows", "macos", "other"],
+  "accessibility": ["granted", "missing", "notApplicable"]
 }

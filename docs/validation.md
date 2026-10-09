@@ -277,6 +277,16 @@ CI builds the NSIS installer, installs it silently, checks the app and the `espf
 - [ ] 10.6 macOS signed build: `codesign -d --entitlements - Kivori.app` | shows `com.apple.security.automation.apple-events` (needs the owner's Developer ID)
 - [ ] 10.7 macOS bundled app | now-playing works, and the Automation prompt shows the usage text
 
+## Phase 11: First-run onboarding (M3 S6)
+
+Automated: the stepper only advances on real status or Skip, completes once, and skips the permission step on Windows (vitest against the browser mock). These rows need a real machine and a Kivori.
+
+- [ ] 11.1 Fresh Windows user (no `config.json`), start Kivori | onboarding appears once; the tour detects the knob turn, the knob press and a side button press
+- [ ] 11.2 Finish setup, quit and relaunch | onboarding does not appear again
+- [ ] 11.3 macOS without Accessibility: choose "Allow access" | the macOS prompt appears; after ticking Kivori in System Settings the step turns green without restarting setup
+- [ ] 11.4 Update from a build that already had a `config.json` | onboarding does not appear
+- [ ] 11.5 Device page, "Run setup again" | setup reopens; Finish with Launch at login on adds the login entry, Skip setup leaves it unchanged
+
 ## Evidence log
 
 | Date | What | Result |

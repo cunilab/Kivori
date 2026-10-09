@@ -184,6 +184,7 @@ fn device_loop(
     let media = Arc::clone(&services.media);
     let foreground = Arc::clone(&services.foreground);
     let mut diagnostics_publisher = DiagnosticsPublisher::default();
+    let mut input_permission = InputPermissionProbe::default();
     let mut desk = DeskRuntime::new(services).with_config(&config);
     let mut last_desk: Option<DeskStatusDto> = None;
     let mut rotary = RotaryPipeline::new(&*backend);
@@ -836,10 +837,8 @@ fn device_loop(
                     .is_some_and(|last| last.permission_required)
                 {
                     "required"
-                } else if cfg!(target_os = "macos") {
-                    "unknown"
                 } else {
-                    "notNeeded"
+                    input_permission.get()
                 },
             },
         );
@@ -1528,5 +1527,31 @@ fn connection_event_kind(event: &ManagerEvent) -> ActivityEventKind {
             ActivityEventKind::ConnectionOpened
         }
         ManagerEvent::HandshakeIncompatible { .. } => ActivityEventKind::IncompatibleFirmware,
+    }
+}
+
+/// The Accessibility check behind the diagnostics "input permission" row, re-read at most once a
+/// second (the loop ticks far faster than anyone can toggle the setting).
+#[derive(Default)]
+struct InputPermissionProbe {
+    last: Option<(Instant, &'static str)>,
+}
+
+impl InputPermissionProbe {
+    const INTERVAL: Duration = Duration::from_secs(1);
+
+    fn get(&mut self) -> &'static str {
+        if let Some((at, token)) = self.last {
+            if at.elapsed() < Self::INTERVAL {
+                return token;
+            }
+        }
+        let token = match platform::permissions::accessibility() {
+            platform::permissions::Accessibility::Granted => "granted",
+            platform::permissions::Accessibility::Missing => "required",
+            platform::permissions::Accessibility::NotApplicable => "notNeeded",
+        };
+        self.last = Some((Instant::now(), token));
+        token
     }
 }

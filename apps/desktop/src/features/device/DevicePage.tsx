@@ -1,6 +1,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import { CircleCheck, LoaderCircle, TriangleAlert, Unplug } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -52,9 +53,12 @@ const version = (v: { major: number; minor: number }): string => `${v.major}.${v
 export function DevicePage({
   connection,
   appInfo,
+  onRunSetupAgain,
 }: {
   connection: ConnectionStatusDto | null;
   appInfo: AppInfoDto | null;
+  /** Reopens first-run setup; the "Run setup again" card is shown only when this is given. */
+  onRunSetupAgain?: () => void;
 }): ReactElement {
   const ui = uiConnection(connection);
   const device = connection?.device ?? null;
@@ -118,6 +122,19 @@ export function DevicePage({
         <div className="flex flex-col gap-4">
           <FirmwareUpdate connected={ui === 'connected'} incompatible={ui === 'incompatible'} />
           <StartupCard />
+          {onRunSetupAgain ? (
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle>{strings.onboarding.runAgain.title}</CardTitle>
+                <CardDescription>{strings.onboarding.runAgain.body}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button variant="outline" onClick={onRunSetupAgain}>
+                  {strings.onboarding.runAgain.action}
+                </Button>
+              </CardContent>
+            </Card>
+          ) : null}
           <Diagnostics />
           <Card size="sm">
             <CardHeader>

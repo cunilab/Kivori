@@ -110,6 +110,13 @@ pub struct AppInfoDto {
     pub device_studio_enabled: bool,
 }
 
+/// Whether first-run setup is finished (or was skipped).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnboardingDto {
+    pub completed: bool,
+}
+
 /// Whether Kivori starts when the user signs in (read from the OS entry, never stored in config).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1473,7 +1480,7 @@ pub fn capability_names(caps: Capabilities) -> Vec<&'static str> {
 pub const HOST_AVAILABILITY_TOKENS: [&str; 3] = ["available", "unsupported", "unavailable"];
 pub const HOST_MEDIA_TOKENS: [&str; 2] = ["observable", "notObservable"];
 pub const HOST_FOCUS_TOKENS: [&str; 2] = ["detecting", "unknown"];
-pub const HOST_INPUT_PERMISSION_TOKENS: [&str; 3] = ["required", "notNeeded", "unknown"];
+pub const HOST_INPUT_PERMISSION_TOKENS: [&str; 4] = ["required", "granted", "notNeeded", "unknown"];
 
 /// What the host services report, as short tokens. Written by the device thread.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1486,7 +1493,8 @@ pub struct HostServicesSnapshot {
     pub media: &'static str,
     /// `detecting` (a focused window is seen) or `unknown`.
     pub focus: &'static str,
-    /// `required` (the OS refused synthesized input), `notNeeded` or `unknown`.
+    /// `required` (the OS refused synthesized input, or macOS Accessibility is missing),
+    /// `granted`, `notNeeded` (this OS has no such permission) or `unknown`.
     pub input_permission: &'static str,
 }
 
@@ -1704,5 +1712,6 @@ pub fn vocabulary_json() -> serde_json::Value {
         "flashFailures": crate::firmware::FlashFailure::ALL.map(crate::firmware::FlashFailure::token),
         "updateAdvice": crate::firmware::UpdateAdvice::ALL.map(crate::firmware::UpdateAdvice::token),
         "startupPlatform": STARTUP_PLATFORM_TOKENS,
+        "accessibility": crate::platform::permissions::ACCESSIBILITY_TOKENS,
     })
 }

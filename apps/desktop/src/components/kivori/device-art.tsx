@@ -190,12 +190,15 @@ export function DeviceArt({
   mode,
   values,
   busy,
+  highlight,
   label,
   className,
 }: {
   mode: DisplayMode;
   values?: Values | undefined;
   busy?: boolean | undefined;
+  /** Rings the knob (onboarding's tour): turning it, or pressing it. */
+  highlight?: 'knob' | 'press' | undefined;
   label: string;
   className?: string;
 }): ReactElement {
@@ -209,7 +212,14 @@ export function DeviceArt({
       )}
     >
       <DeviceScreen mode={mode} values={values} busy={busy} className="h-full" />
-      <div className="relative aspect-square flex-1 rounded-full bg-gradient-to-b from-[#3a4257] to-[#151a28] shadow-[0_6px_14px_rgb(0_0_0/0.4),inset_0_1px_0_rgb(255_255_255/0.15)]">
+      <div
+        data-highlight={highlight}
+        className={cn(
+          'relative aspect-square flex-1 rounded-full bg-gradient-to-b from-[#3a4257] to-[#151a28] shadow-[0_6px_14px_rgb(0_0_0/0.4),inset_0_1px_0_rgb(255_255_255/0.15)]',
+          highlight && 'ring-4 ring-panel-amber/80 ring-offset-2 ring-offset-[#0c101c]',
+          highlight === 'press' && 'motion-safe:animate-pulse',
+        )}
+      >
         <div className="absolute inset-[16%] rounded-full bg-[repeating-conic-gradient(rgb(255_255_255/0.07)_0deg_4deg,transparent_4deg_12deg)]" />
         <span className="absolute top-[12%] left-1/2 h-[16%] w-[5%] -translate-x-1/2 rounded-full bg-panel-amber" />
       </div>

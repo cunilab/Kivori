@@ -202,6 +202,20 @@ impl AppState {
         }
     }
 
+    /// Whether first-run setup is finished.
+    #[must_use]
+    pub fn onboarding_snapshot(&self) -> dto::OnboardingDto {
+        dto::OnboardingDto {
+            completed: self
+                .config
+                .lock()
+                .expect("config lock")
+                .file()
+                .onboarding
+                .completed,
+        }
+    }
+
     /// The diagnostics page as of now: the device thread's figures plus the stored config.
     #[must_use]
     pub fn diagnostics_snapshot(&self) -> DiagnosticsDto {

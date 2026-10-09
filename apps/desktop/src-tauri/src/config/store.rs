@@ -89,15 +89,25 @@ impl ConfigStore {
             notice: None,
         };
         let path = dir.join(FILE);
+        // A valid file written before the `onboarding` field existed belongs to someone who has
+        // already been using Kivori: they are not sent through first-run setup. (A file that is
+        // recovered as corrupt, or from a newer build, falls back to defaults and shows it once.)
+        let mut predates_onboarding = false;
         let loaded = match read(&path) {
             Read::Missing => return store,
             Read::Unreadable => Err(LoadError::Corrupt),
             Read::Bytes(bytes) => serde_json::from_slice::<Value>(&bytes)
                 .map_err(|_| LoadError::Corrupt)
-                .and_then(migrate),
+                .and_then(|raw| {
+                    predates_onboarding = raw.get("onboarding").is_none();
+                    migrate(raw)
+                }),
         }
         // A file whose overrides do not resolve is as unusable as one that does not parse.
-        .and_then(|(file, from)| {
+        .and_then(|(mut file, from)| {
+            if predates_onboarding {
+                file.onboarding.completed = true;
+            }
             resolve(builtins(), &file)
                 .map(|resolved| (file, resolved, from))
                 .map_err(|_| LoadError::Corrupt)
@@ -225,7 +235,11 @@ impl ConfigStore {
         if path.exists() {
             fs::copy(&path, dir.join(BEFORE_RESET)).map_err(|_| ConfigError::Io)?;
         }
-        let defaults = ConfigFile::default();
+        // Resetting settings does not send a set-up user back through first-run setup.
+        let defaults = ConfigFile {
+            onboarding: self.file.onboarding,
+            ..ConfigFile::default()
+        };
         write_atomic(dir, &defaults).map_err(|()| ConfigError::Io)?;
         self.file = defaults;
         self.resolved = Arc::default();

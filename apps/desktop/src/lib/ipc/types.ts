@@ -51,6 +51,15 @@ export const UPDATE_ADVICE = ['upToDate', 'updateAvailable', 'deviceNewer', 'unk
 export type UpdateAdvice = (typeof UPDATE_ADVICE)[number];
 
 /** Which OS this build runs on, for the wording of the start-at-login switch. */
+/** Whether first-run setup is finished (or was skipped). */
+export interface OnboardingDto {
+  completed: boolean;
+}
+
+/** The macOS Accessibility permission; `notApplicable` on every other OS. */
+export const ACCESSIBILITY_STATES = ['granted', 'missing', 'notApplicable'] as const;
+export type AccessibilityState = (typeof ACCESSIBILITY_STATES)[number];
+
 export const STARTUP_PLATFORMS = ['windows', 'macos', 'other'] as const;
 export type StartupPlatform = (typeof STARTUP_PLATFORMS)[number];
 
@@ -94,7 +103,7 @@ export const HOST_FOCUS = ['detecting', 'unknown'] as const;
 export const HOST_PRESENCES = ['active', 'locked', 'sleeping'] as const;
 export type HostPresence = (typeof HOST_PRESENCES)[number];
 
-export const HOST_INPUT_PERMISSIONS = ['required', 'notNeeded', 'unknown'] as const;
+export const HOST_INPUT_PERMISSIONS = ['required', 'granted', 'notNeeded', 'unknown'] as const;
 
 /**
  * Everything the Diagnostics card shows and "Copy diagnostics" copies. Unknown values are `null`.

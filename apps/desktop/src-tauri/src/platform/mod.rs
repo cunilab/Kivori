@@ -14,6 +14,7 @@ pub mod host_events;
 pub mod launch;
 #[cfg(target_os = "macos")]
 pub mod macos;
+pub mod permissions;
 pub mod shortcut;
 #[cfg(any(windows, target_os = "macos"))]
 pub mod synth;
