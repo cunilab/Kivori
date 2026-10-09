@@ -351,10 +351,12 @@ pub fn serial_smoke() -> String {
     header(
         &mut s,
         "kivori-serial-smoke",
-        "Smallest external check: the firmware announces readiness, receives one known real frame over\n\
-         USB Serial/JTAG, and the response path produces a marker.",
+        "Smallest external check: the firmware announces readiness, opens a session over USB Serial/JTAG,\n\
+         and answers a heartbeat with a response marker.",
     );
     wait(&mut s, "KIVORI-EXT READY iface=usb-serial-jtag");
+    write_serial(&mut s, "hello");
+    wait(&mut s, "KIVORI-EXT TX kind=HelloAck nonce=ok");
     write_serial(&mut s, "ping");
     wait(&mut s, "KIVORI-EXT RX kind=Ping");
     let _ = writeln!(

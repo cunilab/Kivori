@@ -170,10 +170,6 @@ fn multi_step_scenarios_end_on_an_explicit_completion_marker() {
     // its post-conditions — otherwise simulator exit alone could look like success.
     for (name, yaml) in kivori_wokwi_vectors::generated_scenarios() {
         let all = steps(&yaml);
-        let injections = all.iter().filter(|(k, _)| *k == "write").count();
-        if injections < 2 {
-            continue; // the smoke test is a single-injection liveness check
-        }
         let last_wait = all
             .iter()
             .rev()
@@ -181,7 +177,9 @@ fn multi_step_scenarios_end_on_an_explicit_completion_marker() {
             .map(|(_, p)| p.clone())
             .unwrap_or_default();
         assert!(
-            last_wait.contains("ALL PASS") || last_wait.contains("SEQ seq="),
+            last_wait.contains("ALL PASS")
+                || last_wait.contains("SEQ seq=")
+                || last_wait.contains("TX kind=Pong echo="),
             "scenario `{name}` must end on an explicit verified-outcome marker, got `{last_wait}`"
         );
     }
@@ -267,4 +265,17 @@ steps:
         caught,
         "the detector must reject a boot-only marker awaited after injection"
     );
+}
+
+#[test]
+fn serial_smoke_establishes_a_session_before_requesting_a_pong() {
+    let yaml = kivori_wokwi_vectors::serial_smoke();
+    let hello = format!("- write-serial: {}", yaml_bytes(&vector("hello").bytes));
+    let ping = format!("- write-serial: {}", yaml_bytes(&vector("ping").bytes));
+    let hello_at = yaml.find(&hello).expect("Hello opens the session");
+    let ack_at = yaml
+        .find("KIVORI-EXT TX kind=HelloAck nonce=ok")
+        .expect("await accepted session");
+    let ping_at = yaml.find(&ping).expect("Ping probes the accepted session");
+    assert!(hello_at < ack_at && ack_at < ping_at);
 }
