@@ -16,8 +16,8 @@ use kivori_model::input::InputLevels;
 use kivori_model::{Capabilities, CompanionState, ProtocolVersion, SendableState};
 use kivori_protocol::{
     decode_message, encode_message, ByeReason, ControlId, ControlLabelsUpdate, FirmwareVersion,
-    Hello, InputEvent, InputKind, Message, Nonce, Ready, SetState, Status, MAX_FRAME, MAX_WIRE,
-    PROTOCOL_MAJOR, PROTOCOL_MINOR,
+    Hello, InputEvent, InputKind, Message, Nonce, Ping, Ready, SetState, Status, MAX_FRAME,
+    MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 const M1: Capabilities = Capabilities::PHYSICAL_INPUT_V1
@@ -137,6 +137,20 @@ impl Rig {
         reboot
     }
 
+    /// Like [`Self::run`], with the desktop's one-second heartbeat, so the firmware's 4 s
+    /// host-silence timeout does not end the session during a long hold.
+    fn run_with_heartbeat(&mut self, ms: u32) -> bool {
+        let mut reboot = false;
+        for i in 0..ms / 10 {
+            if i % 100 == 99 {
+                self.send(&Message::Ping(Ping { t_ms: i }));
+            }
+            self.clock.advance(10);
+            reboot |= self.step().reboot;
+        }
+        reboot
+    }
+
     fn switch(&mut self, down: bool) {
         let (a, b, _) = self.levels.0.get();
         self.levels.0.set((a, b, down));
@@ -244,7 +258,7 @@ fn the_recovery_hold_reboots_after_ten_seconds_and_sends_no_action() {
     let mut rig = Rig::new();
     rig.connect(M1);
     rig.switch(true);
-    assert!(!rig.run(9_900), "not before ten seconds");
+    assert!(!rig.run_with_heartbeat(9_900), "not before ten seconds");
     // Rotation during the hold changes nothing (invariant 33): spin a full detent.
     for (a, b) in [(false, true), (true, true), (true, false), (false, false)] {
         rig.levels.0.set((a, b, true));

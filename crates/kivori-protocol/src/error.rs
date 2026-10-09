@@ -33,6 +33,12 @@ pub enum ByeReason {
     Shutdown,
     /// A protocol error occurred.
     ProtocolError,
+    /// The host is going to sleep or locking; the device shows Sleeping until a new `Hello`
+    /// (needs `HOST_TAKEOVERS_V1`).
+    HostSleeping,
+    /// The host is about to flash the device; it shows Updating for at most 120 s
+    /// (needs `HOST_TAKEOVERS_V1`).
+    FirmwareUpdate,
 }
 
 /// A local framing/codec error. Returned by decode/encode; never sent on the wire and never panics.

@@ -40,6 +40,37 @@ use crate::{
     transport::{TxBuffered, UsbJtagTransport},
 };
 
+/// Parses one decimal component of the crate version at compile time. A malformed version fails
+/// the build (a const panic) instead of shipping a wrong number.
+const fn version_part(text: &str) -> u16 {
+    let bytes = text.as_bytes();
+    assert!(!bytes.is_empty(), "empty version component");
+    let mut value: u16 = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        let digit = bytes[i];
+        assert!(digit.is_ascii_digit(), "non-numeric version component");
+        value = value * 10 + (digit - b'0') as u16;
+        i += 1;
+    }
+    value
+}
+
+/// The firmware version advertised in `HelloAck`: the firmware crate's own version, so there is
+/// one place to bump it.
+const FIRMWARE_VERSION: FirmwareVersion = FirmwareVersion {
+    major: version_part(env!("CARGO_PKG_VERSION_MAJOR")),
+    minor: version_part(env!("CARGO_PKG_VERSION_MINOR")),
+    patch: version_part(env!("CARGO_PKG_VERSION_PATCH")),
+};
+
+/// The same version as searchable text inside the image, so tooling can read which firmware a
+/// built `.elf` or `.bin` holds without running it. `main` reads it once at boot: `#[used]` alone
+/// does not stop the linker from discarding an unreferenced section.
+#[used]
+static FW_VERSION_MARKER: &[u8] =
+    concat!("KIVORI-FW-VERSION:", env!("CARGO_PKG_VERSION"), "\0").as_bytes();
+
 /// Bytes held by each DMA transfer. This fits a complete 40x40 RGB565 tile
 /// (3,200 bytes) and is also the maximum mipidsi SPI batch size.
 const SPI_DMA_BUFFER_BYTES: usize = 4_096;
@@ -243,12 +274,8 @@ pub fn run_mode(
                 .expect("6-byte base MAC"),
         ),
 
-        // 1.2: M2 buttons on top of M1 (push switch, recovery hold, desk status and feedback); protocol 1.4.
-        firmware_version: FirmwareVersion {
-            major: 1,
-            minor: 2,
-            patch: 0,
-        },
+        // 1.3: host takeovers (Sleeping, Updating, silence timeout) on top of M2; protocol 1.5.
+        firmware_version: FIRMWARE_VERSION,
 
         capabilities: Capabilities::MASCOT_INTERACTION
             .union(Capabilities::PHYSICAL_INPUT_V1)
@@ -259,8 +286,13 @@ pub fn run_mode(
             .union(Capabilities::DOUBLE_PRESS_V1)
             .union(Capabilities::MEDIA_INFO_V1)
             .union(Capabilities::CONTROL_LABELS_V1)
-            .union(Capabilities::CONTEXT_BUTTONS_V1),
+            .union(Capabilities::CONTEXT_BUTTONS_V1)
+            .union(Capabilities::HOST_TAKEOVERS_V1),
     };
+
+    // Keeps `FW_VERSION_MARKER` (and so the version text) in the linked image.
+    // SAFETY: a valid, aligned read of the first byte of a live static.
+    let _ = unsafe { core::ptr::read_volatile(FW_VERSION_MARKER.as_ptr()) };
 
     esp_println::println!("KIVORI runtime starting");
 

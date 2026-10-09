@@ -43,6 +43,7 @@ use crate::presentation::{PresentationResolver, ProductSnapshot};
 use crate::runtime::state::DeviceCommand;
 use kivori_model::desk::{ActionFeedback, ActionKind, FeedbackKind};
 use kivori_model::{Capabilities, CompanionState, ConnectionState};
+use kivori_protocol::ByeReason;
 use kivori_protocol::{ErrorCategory, InputEvent, PlayMascotAction, Presentation};
 
 const TICK: Duration = Duration::from_millis(50);
@@ -776,6 +777,12 @@ fn device_loop(
         {
             std::thread::sleep(TICK);
         }
+    }
+
+    // Quit: tell the device this is on purpose, so it shows Offline at once instead of waiting
+    // out its host-silence timeout. Best effort; `AppState::shutdown` is joining this thread.
+    if let Some(open_link) = link.as_mut() {
+        let _ = session.close(open_link, ByeReason::Shutdown);
     }
 }
 

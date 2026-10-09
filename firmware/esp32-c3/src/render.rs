@@ -17,7 +17,9 @@ use kivori_framebuffer::{hash_rgb565, TileBand};
 use kivori_model::desk::{DeskView, DisplayMode};
 use kivori_model::presentation::ValueDisplay;
 use kivori_model::{CompanionState, ElapsedMs, MascotAnimator, MascotPose, Rect, Rgb565};
-use kivori_renderer::desk::{render_chrome, render_recovery, render_view, render_views};
+use kivori_renderer::desk::{
+    render_chrome, render_recovery, render_updating, render_view, render_views,
+};
 use kivori_renderer::overlay::render_volume_overlay;
 use kivori_renderer::render_scene;
 
@@ -370,6 +372,9 @@ impl<'a> TileRenderer<'a> {
             if let Some(percent) = view.recovery_percent {
                 // The recovery takeover owns the whole screen (highest layer).
                 render_recovery(&mut band, percent);
+            } else if view.updating {
+                // Then the update takeover: the host is flashing this device.
+                render_updating(&mut band);
             } else {
                 let mode = view.status.mode;
                 // The view layer, including the switch slide: `render_views` hands each mode a

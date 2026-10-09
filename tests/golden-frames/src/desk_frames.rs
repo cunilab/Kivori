@@ -18,6 +18,8 @@ use kivori_renderer::desk;
 pub enum DeskFrame {
     /// `render_recovery` at this percent.
     Recovery(u8),
+    /// `render_updating`.
+    Updating,
     /// `render_views` (with an optional live volume overlay) then `render_chrome`.
     View(DeskView, Option<ValueDisplay>),
 }
@@ -36,6 +38,7 @@ pub fn render_desk_with(frame: &DeskFrame, mut buddy: impl FnMut(&mut TileBand))
     let mut band = TileBand::new(Rect::new(0, 0, DIM, DIM), &mut buf).expect("full-frame band");
     match frame {
         DeskFrame::Recovery(percent) => desk::render_recovery(&mut band, *percent),
+        DeskFrame::Updating => desk::render_updating(&mut band),
         DeskFrame::View(view, overlay) => {
             let _ = desk::render_views(&mut band, view, |b, mode| {
                 desk::render_view(b, mode, view, *overlay);
@@ -195,6 +198,7 @@ pub fn desk_frames() -> Vec<(&'static str, DeskFrame)> {
         ("recovery_0", DeskFrame::Recovery(0)),
         ("recovery_50", DeskFrame::Recovery(50)),
         ("recovery_100", DeskFrame::Recovery(100)),
+        ("updating", DeskFrame::Updating),
         (
             "buddy_load_pressed",
             view(DisplayMode::Buddy, |v| {

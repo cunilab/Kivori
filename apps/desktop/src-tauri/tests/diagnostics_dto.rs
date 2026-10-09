@@ -131,4 +131,8 @@ fn capability_names_follow_bit_order_and_skip_unset_bits() {
         capability_names(Capabilities::CONTEXT_BUTTONS_V1.union(Capabilities::PHYSICAL_INPUT_V1)),
         vec!["physicalInputV1", "contextButtonsV1"]
     );
+    assert_eq!(
+        capability_names(Capabilities::HOST_TAKEOVERS_V1),
+        vec!["hostTakeoversV1"]
+    );
 }

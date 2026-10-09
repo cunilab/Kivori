@@ -154,7 +154,10 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   never a guessed action. A context switch changes labels and bindings together.
 - Takeovers: Sleeping / Locked, Switching User, Protected, Permission Required, Host
   Starting / Resuming, Firmware Updating, Firmware Recovery, Reconnecting, Disconnected,
-  Waiting, Passive. A takeover cancels an active gesture and shows at once.
+  Waiting, Passive. A takeover cancels an active gesture and shows at once. Sleeping stays
+  on the panel when the host says it is going to sleep, even after the link drops. Firmware
+  Updating ("Updating", keep plugged in) shows while the host flashes, for at most 2 minutes.
+  A host that goes silent for 4 seconds shows Offline.
 - Healthy needs no space. Degraded gets its own cue, not an indicator slot.
 - Primary states (Idle, Active, Busy, Success, Error, Unknown) each have a distinct face.
 - The resting buddy reads observed truth (#13), first match wins: an Error result shows the

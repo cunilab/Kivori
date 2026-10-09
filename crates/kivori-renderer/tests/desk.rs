@@ -9,7 +9,8 @@ use kivori_model::desk::{
 use kivori_model::presentation::{ValueConfidence, ValueDisplay, ValueKind};
 use kivori_model::{Rect, Rgb565};
 use kivori_renderer::desk::{
-    render_chrome, render_mode, render_recovery, render_view, render_views, view_switch,
+    render_chrome, render_mode, render_recovery, render_updating, render_view, render_views,
+    view_switch,
 };
 
 const DIM: u16 = 240;
@@ -210,6 +211,11 @@ fn tiles_stitch_to_the_full_frame_for_recovery() {
         let f = |b: &mut TileBand| render_recovery(b, percent);
         assert_eq!(tiled(f), full(f), "{percent}");
     }
+}
+
+#[test]
+fn tiles_stitch_to_the_full_frame_for_updating() {
+    assert_eq!(tiled(render_updating), full(render_updating));
 }
 
 #[test]
@@ -631,6 +637,11 @@ fn render_mode_writes_every_pixel() {
             assert_no_sentinel(&full(|b| render_mode(b, &v, o)), &format!("{v:?} overlay"));
         }
     }
+}
+
+#[test]
+fn render_updating_writes_every_pixel() {
+    assert_no_sentinel(&full(render_updating), "updating");
 }
 
 #[test]

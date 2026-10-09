@@ -35,3 +35,15 @@ fn full_overlap_is_preserved() {
     let (_minor, caps) = negotiate(2, 2, both, both);
     assert_eq!(caps, both);
 }
+
+#[test]
+fn host_takeovers_needs_both_peers() {
+    let both = Capabilities::HOST_TAKEOVERS_V1.union(Capabilities::MASCOT_INTERACTION);
+    let (_, caps) = negotiate(5, 5, both, both);
+    assert!(caps.contains(Capabilities::HOST_TAKEOVERS_V1));
+    // An older device (1.4, no bit 10) never negotiates it, so the desktop must not send the new
+    // `Bye` reasons to it.
+    let (minor, caps) = negotiate(5, 4, both, Capabilities::MASCOT_INTERACTION);
+    assert_eq!(minor, 4);
+    assert!(!caps.contains(Capabilities::HOST_TAKEOVERS_V1));
+}

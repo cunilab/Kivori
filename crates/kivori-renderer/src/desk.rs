@@ -828,6 +828,22 @@ pub fn render_recovery(band: &mut TileBand, percent: u8) {
     }
 }
 
+/// The firmware-update takeover, owning the whole screen while the host flashes the device: a
+/// half-lit ring around the restart glyph, so it reads as "working", not as a hold the user can
+/// finish. Static on purpose (nothing here may need the host). Draws every pixel of the band.
+pub fn render_updating(band: &mut TileBand) {
+    band.fill(BG);
+    let a = &RECOVERY_RING;
+    arc(band, a, 0, a.sweep, 0, TRACK);
+    let end = a.sweep / 2;
+    arc(band, a, 0, end, 0, ACCENT);
+    cap(band, a, 0, 0, ACCENT);
+    cap(band, a, end, 0, ACCENT);
+    restart_glyph(band, a.cx, a.cy, 24, TEXT);
+    text_c(band, F_TITLE, b"Updating", CENTER, 176, TEXT);
+    text_c(band, F_LABEL, b"Keep Kivori plugged in", CENTER, 202, MUTED);
+}
+
 /// A clockwise circular arrow of outer radius `r` centred on `(cx, cy)`: the recovery restart
 /// glyph at 24, the knob icon when small.
 fn restart_glyph(band: &mut TileBand, cx: i32, cy: i32, r: i32, col: Rgb565) {

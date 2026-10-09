@@ -1400,7 +1400,7 @@ pub const fn availability_token(
 }
 
 /// Every capability flag with the name the diagnostics page lists it by, in bit order.
-const CAPABILITY_TABLE: [(Capabilities, &str); 10] = [
+const CAPABILITY_TABLE: [(Capabilities, &str); 11] = [
     (Capabilities::MASCOT_INTERACTION, "mascotInteraction"),
     (Capabilities::PHYSICAL_INPUT_V1, "physicalInputV1"),
     (Capabilities::PRESENTATION_V1, "presentationV1"),
@@ -1411,6 +1411,7 @@ const CAPABILITY_TABLE: [(Capabilities, &str); 10] = [
     (Capabilities::MEDIA_INFO_V1, "mediaInfoV1"),
     (Capabilities::CONTROL_LABELS_V1, "controlLabelsV1"),
     (Capabilities::CONTEXT_BUTTONS_V1, "contextButtonsV1"),
+    (Capabilities::HOST_TAKEOVERS_V1, "hostTakeoversV1"),
 ];
 
 /// The capability names the diagnostics page lists, in bit order.

@@ -64,7 +64,8 @@ impl Default for SessionConfig {
                 .union(Capabilities::DOUBLE_PRESS_V1)
                 .union(Capabilities::MEDIA_INFO_V1)
                 .union(Capabilities::CONTROL_LABELS_V1)
-                .union(Capabilities::CONTEXT_BUTTONS_V1),
+                .union(Capabilities::CONTEXT_BUTTONS_V1)
+                .union(Capabilities::HOST_TAKEOVERS_V1),
             supported_majors: vec![PROTOCOL_MAJOR],
         }
     }
@@ -248,6 +249,14 @@ impl Session {
             .contains(Capabilities::MASCOT_INTERACTION)
     }
 
+    /// Whether both peers negotiated host takeovers (`Bye(HostSleeping)` / `Bye(FirmwareUpdate)`)
+    /// for this connection.
+    #[must_use]
+    pub fn supports_host_takeovers(&self) -> bool {
+        self.negotiated_caps
+            .contains(Capabilities::HOST_TAKEOVERS_V1)
+    }
+
     /// Most recent device acknowledgment for a social action in this connection.
     #[must_use]
     pub const fn last_mascot_action_applied(&self) -> Option<MascotActionApplied> {
@@ -376,6 +385,34 @@ impl Session {
             }),
         )?;
         Ok(true)
+    }
+
+    /// Ends the session on purpose: sends `Bye(reason)` and forgets the session identity, so the
+    /// device does not have to wait out its host-silence timeout.
+    ///
+    /// Does nothing when no session is established. The takeover reasons (`HostSleeping`,
+    /// `FirmwareUpdate`) are only sent when [`Session::supports_host_takeovers`]; an older device
+    /// would not know them, so for it the session just ends without a `Bye`.
+    ///
+    /// # Errors
+    /// [`SessionError::Transport`] / [`SessionError::WriteZero`] if the write fails. The session is
+    /// closed either way.
+    pub fn close<L: SerialLink>(
+        &mut self,
+        link: &mut L,
+        reason: ByeReason,
+    ) -> Result<(), SessionError<L::Error>> {
+        if self.current_session.is_none() {
+            return Ok(());
+        }
+        let takeover = matches!(reason, ByeReason::HostSleeping | ByeReason::FirmwareUpdate);
+        let result = if takeover && !self.supports_host_takeovers() {
+            Ok(())
+        } else {
+            self.send(link, &Message::Bye(Bye { reason }))
+        };
+        self.clear_session_identity();
+        result
     }
 
     /// Sends a heartbeat `Ping` and records it as pending (see [`Session::heartbeat_timed_out`]).
