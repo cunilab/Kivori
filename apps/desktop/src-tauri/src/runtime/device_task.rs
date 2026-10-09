@@ -23,6 +23,7 @@ use crate::activity::{
     RuntimeActivityRequest, SessionActivity,
 };
 use crate::companion::CompanionDirector;
+use crate::config::ResolvedConfig;
 use crate::desk::DeskRuntime;
 use crate::device::discovery::{CandidateRotator, DEFAULT_ALLOWLIST};
 use crate::device::fsm::{ConnectionManager, ManagerEvent};
@@ -38,7 +39,7 @@ use crate::platform::{self, ActionAvailability, VolumeBackend};
 use crate::presentation::{PresentationResolver, ProductSnapshot};
 use crate::runtime::state::DeviceCommand;
 use kivori_model::desk::{ActionFeedback, ActionKind, FeedbackKind};
-use kivori_model::{Capabilities, CompanionState, ConnectionState, MascotPersonality};
+use kivori_model::{Capabilities, CompanionState, ConnectionState};
 use kivori_protocol::{ErrorCategory, InputEvent, PlayMascotAction, Presentation};
 
 const TICK: Duration = Duration::from_millis(50);
@@ -107,6 +108,8 @@ impl ConnectionDeadlines {
 }
 
 /// Spawns the background device thread and returns its join handle.
+// Each argument is a distinct shared cell or channel owned by `setup`; bundling them would only move the list.
+#[allow(clippy::too_many_arguments)]
 #[must_use]
 pub fn spawn(
     app: AppHandle,
@@ -116,6 +119,7 @@ pub fn spawn(
     firmware_status: Arc<Mutex<FirmwareStatus>>,
     commands: Receiver<DeviceCommand>,
     cancel: Arc<AtomicBool>,
+    config: Arc<ResolvedConfig>,
 ) -> JoinHandle<()> {
     std::thread::Builder::new()
         .name("kivori-device".to_string())
@@ -128,11 +132,13 @@ pub fn spawn(
                 firmware_status,
                 commands,
                 cancel,
+                config,
             );
         })
         .expect("spawn kivori-device thread")
 }
 
+#[allow(clippy::too_many_arguments)]
 fn device_loop(
     app: AppHandle,
     status: Arc<Mutex<ConnectionStatusDto>>,
@@ -141,11 +147,17 @@ fn device_loop(
     firmware_status: Arc<Mutex<FirmwareStatus>>,
     commands: Receiver<DeviceCommand>,
     cancel: Arc<AtomicBool>,
+    config: Arc<ResolvedConfig>,
 ) {
     let mut manager = ConnectionManager::new();
     let mut orchestrator = Orchestrator::new();
     let mut session = Session::new(SessionConfig::default());
-    let mut companion = CompanionDirector::new(MascotPersonality::Cozy, true, 0x4B49_564F, 0);
+    let mut companion = CompanionDirector::new(
+        config.buddy.intensity.personality(),
+        config.buddy.reactions,
+        0x4B49_564F,
+        0,
+    );
     // Windows and macOS have real backends; every other target gets the honest "not implemented
     // yet" services so this crate always compiles (`platform::os_services`).
     let main_app = app.clone();
@@ -153,7 +165,7 @@ fn device_loop(
         let _ = main_app.run_on_main_thread(run);
     })));
     let backend = Arc::clone(&services.volume);
-    let mut desk = DeskRuntime::new(services);
+    let mut desk = DeskRuntime::new(services).with_display(config.display);
     let mut last_desk: Option<DeskStatusDto> = None;
     let mut rotary = RotaryPipeline::new(&*backend);
     let mut link: Option<SerialPortLink> = None;
@@ -229,13 +241,29 @@ fn device_loop(
                         );
                     }
                 }
-                DeviceCommand::ConfigureCompanion {
-                    personality,
-                    self_play,
-                } => {
+                DeviceCommand::ApplyConfig(config) => {
                     let now = elapsed_ms(started.elapsed());
-                    companion.set_personality(personality, now);
-                    companion.set_self_play(self_play, now);
+                    let (personality, self_play) =
+                        (config.buddy.intensity.personality(), config.buddy.reactions);
+                    // Restarting the cadence on an unrelated save would delay the next reaction.
+                    if (personality, self_play) != (companion.personality(), companion.self_play())
+                    {
+                        companion.set_personality(personality, now);
+                        companion.set_self_play(self_play, now);
+                        record_observations(
+                            &app,
+                            &activity_log,
+                            activity_planner.requests(
+                                RuntimeActivityRequest::CompanionConfiguration {
+                                    personality,
+                                    self_play,
+                                },
+                            ),
+                        );
+                    }
+                    desk.apply_display(config.display, &mut |observation| {
+                        record_observations(&app, &activity_log, [observation]);
+                    });
                 }
                 DeviceCommand::PlayMascotAction(_) if flash.is_busy() => {}
                 DeviceCommand::PlayMascotAction(action) => {
@@ -990,13 +1018,6 @@ pub fn plan_device_request(
             state: *state,
             mirrored: true,
         }),
-        DeviceCommand::ConfigureCompanion {
-            personality,
-            self_play,
-        } => Some(RuntimeActivityRequest::CompanionConfiguration {
-            personality: *personality,
-            self_play: *self_play,
-        }),
         DeviceCommand::PlayMascotAction(_) => {
             social_cue.map(|cue| RuntimeActivityRequest::SocialAction {
                 action: cue.action,
@@ -1008,7 +1029,8 @@ pub fn plan_device_request(
         DeviceCommand::FlashFirmware
         | DeviceCommand::Refresh
         | DeviceCommand::SetDisplayMode(_)
-        | DeviceCommand::RunAction(_) => None,
+        | DeviceCommand::RunAction(_)
+        | DeviceCommand::ApplyConfig(_) => None,
     };
     request.map_or_else(Vec::new, |request| activity_planner.requests(request))
 }

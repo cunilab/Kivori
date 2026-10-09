@@ -5,10 +5,12 @@
 //! `SendableState` only — `booting`/`offline` can never be transmitted (FR-014/015). The dev-only
 //! commands are compiled out of release builds via the `device-studio` feature (FR-028).
 
-use tauri::State;
+use tauri::{AppHandle, State};
 
+use crate::activity::ActivityEventKind;
 use crate::firmware::FirmwareStatus;
-use crate::ipc::dto::{self, ActivityEventDto, AppInfoDto, ConnectionStatusDto};
+use crate::ipc::dto::{self, ActivityEventDto, AppInfoDto, ConfigDto, ConnectionStatusDto};
+use crate::ipc::events;
 use crate::runtime::state::{AppState, DeviceCommand};
 use kivori_model::CompanionState;
 
@@ -49,22 +51,81 @@ pub fn set_desired_state(app: State<'_, AppState>, state: String) -> Result<(), 
     app.send_command(DeviceCommand::SetDesired(desired))
 }
 
-/// Updates desktop-owned companion personality and autonomous-play preference.
+/// The stored settings (initial sync; `config://changed` carries changes).
+#[tauri::command]
+pub fn get_config(app: State<'_, AppState>) -> ConfigDto {
+    app.config_snapshot()
+}
+
+/// Runs one config change and publishes its outcome to the activity log and `config://changed`.
+fn commit_config(
+    handle: &AppHandle,
+    app: &AppState,
+    saved: ActivityEventKind,
+    change: impl FnOnce(&mut crate::config::ConfigStore) -> Result<(), crate::config::ConfigError>,
+) -> Result<ConfigDto, String> {
+    let (outcome, activity) = app.update_config(saved, change);
+    events::emit_activity_log(handle, &activity);
+    let config = outcome?;
+    events::emit_config_changed(handle, &config);
+    Ok(config)
+}
+
+/// Sets the home view and what a double press shows (`cycle` = every view in turn).
 ///
 /// # Errors
-/// Returns an error for an unknown personality token or stopped device runtime.
+/// Returns an error for an unknown view, a double-press view equal to the default, or a failed save.
 #[tauri::command]
-pub fn configure_companion(
+pub fn set_display_settings(
+    handle: AppHandle,
     app: State<'_, AppState>,
-    personality: String,
-    self_play: bool,
-) -> Result<(), String> {
-    let personality = dto::mascot_personality_from_token(&personality)
-        .ok_or_else(|| format!("unknown mascot personality: {personality}"))?;
-    app.send_command(DeviceCommand::ConfigureCompanion {
-        personality,
-        self_play,
+    default_view: String,
+    secondary_view: String,
+) -> Result<ConfigDto, String> {
+    let display = dto::display_settings_from_tokens(&default_view, &secondary_view)
+        .map_err(str::to_string)?;
+    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+        let next = store.edited(|file| file.display = display);
+        store.save(next)
     })
+}
+
+/// Sets whether the buddy plays reactions on its own, and how lively it is.
+///
+/// # Errors
+/// Returns an error for an unknown intensity or a failed save.
+#[tauri::command]
+pub fn set_buddy_settings(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+    reactions: bool,
+    intensity: String,
+) -> Result<ConfigDto, String> {
+    let intensity = dto::intensity_from_token(&intensity)
+        .ok_or_else(|| "unknown buddy intensity".to_string())?;
+    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+        let next = store.edited(|file| {
+            file.buddy = crate::config::BuddySettings {
+                reactions,
+                intensity,
+            };
+        });
+        store.save(next)
+    })
+}
+
+/// Restores every setting to its default; the previous file is kept as one backup.
+///
+/// # Errors
+/// Returns an error if the defaults could not be saved.
+#[tauri::command]
+pub fn reset_config(handle: AppHandle, app: State<'_, AppState>) -> Result<ConfigDto, String> {
+    commit_config(
+        &handle,
+        &app,
+        ActivityEventKind::ConfigReset,
+        crate::config::ConfigStore::reset,
+    )
 }
 
 /// Requests one immediate social reaction from a compatible connected device.

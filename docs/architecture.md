@@ -185,7 +185,10 @@ The webview may call only these commands and listen to these events. No command 
 | `get_connection_status` | Connection, desired, reported, device info, retry count, connection generation, negotiated mascot flag, last mascot action | all |
 | `list_states` | Companion states | all |
 | `set_desired_state` | Set `desired`; sends `SetState` when connected | all |
-| `configure_companion` | Personality and self-play | all |
+| `get_config` | Saved settings (display and buddy): `version`, `revision`, `notice`, `display`, `buddy` | all |
+| `set_display_settings` | `defaultView`, `secondaryView` (a view, or `cycle`); returns the config | all |
+| `set_buddy_settings` | `reactions`, `intensity` (`low, normal, high`); returns the config | all |
+| `reset_config` | Every setting back to its default; returns the config | all |
 | `play_mascot_action` | `greet, pet, tickle, surprise, comfort` | all |
 | `get_activity_log` | Newest N activity records | all |
 | `get_firmware_status`, `flash_firmware` | Firmware update status and request (no arguments) | all |
@@ -200,6 +203,7 @@ The webview may call only these commands and listen to these events. No command 
 | `connection://status` | `ConnectionStatusDto` | Any change to connection, desired or reported |
 | `activity-log://event` | `ActivityEventDto` | A new activity record |
 | `desk://status` | `DeskStatusDto` | Any change to the desk projection |
+| `config://changed` | `ConfigDto` | After every successful save or reset |
 
 - Events are small JSON. Frame bytes travel as raw RGBA8888 (240x240, no JSON or base64) through a `tauri::ipc::Response` or a `Channel<ArrayBuffer>`. The canvas only blits. RGB565 to RGBA happens in Rust.
 - Dev-only commands are compiled out of release builds, and so is the Device Studio route.
@@ -317,6 +321,16 @@ The typed session activity log is the only runtime log.
 - The raw device id stays inside the transport layer. Only a short non-reversible hash may appear.
 - Raw payload output exists only behind the `debug-payloads` Cargo feature. It is off by default and must not ship.
 - Tests: native redaction tests, frontend runtime-cast privacy tests, ordering and 256-entry retention tests.
+
+### Config
+
+- One JSON file, `config.json`, in the per-user app data directory (`app_local_data_dir`: `%LOCALAPPDATA%\id.immer.kivori` on Windows, `~/Library/Application Support/id.immer.kivori` on macOS). It is Local, not Roaming, so settings stay per user and per machine. Installers never touch it. A missing file means defaults, and nothing is written until the first change.
+- Atomic write: write `config.json.tmp` in the same directory, flush it to disk, then rename it over `config.json` (retried 3 times, 50 ms apart, for antivirus locks). There is no non-atomic fallback. A stale `.tmp` is deleted at load.
+- Save first, then apply: a command validates and saves, and only then sends the new config to the device thread. A failed save changes nothing and returns a fixed, path-free error.
+- Recovery (`ConfigStore::open` never fails): a file over 256 KiB, not JSON, without a numeric `version`, with an unknown field or an invalid value is renamed to `config.corrupt-<unix_secs>.json` and defaults are used (`notice: recoveredCorrupt`). A `version` above this build's is renamed to `config.v<N>-<unix_secs>.json` with its bytes intact (`recoveredNewerVersion`). The newest 5 of these backups are kept. Each recovery is a `configRecovered` activity record and a `notice` on `ConfigDto`. Paths never cross IPC.
+- Versioning: `version` is read first. An older file is copied to `config.v<old>.bak`, migrated step by step (`config/migrate.rs`, one function per version) and written back (`notice: migrated`). The schema rejects unknown fields, so during M2 new fields stay in version 1 with `#[serde(default)]`; after the beta ships, any field change bumps `CONFIG_VERSION`.
+- Reset copies the current file to `config.before-reset.json` (one slot) and writes defaults.
+- The file holds `profiles` and `macros` (empty for now), `display` (`defaultView`, `secondaryView`) and `buddy` (`reactions`, `intensity`). Intensity is the mascot personality: low, normal, high are calm, cozy, playful. Reactions turn the companion director's self-play on or off. A double press toggles between the default and the chosen view (from any other view it returns to the default), or steps through every view when `secondaryView` is `cycle`.
 
 ### Firmware flashing from the app
 

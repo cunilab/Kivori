@@ -148,8 +148,19 @@ export const strings = {
   },
   display: {
     title: 'Display',
-    description: 'Choose what Kivori’s screen shows. Double-press the knob to cycle on the device.',
-    view: 'Screen view',
+    description: 'Choose what Kivori’s screen shows and what a double press does.',
+    defaultView: {
+      heading: 'Default view',
+      body: 'What the screen shows when Kivori starts, and what a double press returns to.',
+    },
+    doublePress: {
+      heading: 'Double press shows',
+      body: 'Double-press the knob to switch between the default view and this one.',
+      cycle: 'Every view in turn',
+    },
+    view: 'Show now',
+    viewBody: 'Switch the screen right now. This is not saved.',
+    settingsFailed: 'Couldn’t save the display settings',
     applying: 'Applying…',
     current: 'On device',
     failed: 'Couldn’t change the view',
@@ -162,18 +173,16 @@ export const strings = {
     },
   },
   companion: {
-    heading: 'Buddy personality',
+    heading: 'Buddy',
     description: 'Choose how your buddy behaves when nothing else is happening.',
-    personality: 'Personality',
-    personalities: {
-      cozy: 'Cozy',
-      playful: 'Playful',
-      calm: 'Calm',
+    intensity: 'Intensity',
+    intensities: {
+      low: 'Low',
+      normal: 'Normal',
+      high: 'High',
     },
-    selfPlay: 'Self-play',
-    selfPlayHint: 'Let your buddy play on its own when Kivori is idle.',
-    on: 'On',
-    off: 'Off',
+    reactions: 'Reactions',
+    reactionsHint: 'Let your buddy react on its own when Kivori is idle.',
     actions: 'Social reactions',
     actionLabels: {
       greet: 'Greet',
@@ -267,6 +276,7 @@ export const strings = {
       device: 'Device',
       protocol: 'Protocol',
       firmware: 'Firmware',
+      config: 'Settings',
     },
     count: '{shown} of {total}',
     columns: {

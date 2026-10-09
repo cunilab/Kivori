@@ -95,8 +95,8 @@ stays the beta platform and its rows are tracked in a GitHub issue.
   profiles add match rules, not a new model. Every binding change re-sends the device labels
 - [ ] Action catalog with explicit scope (System Volume ≠ App Volume)
 - [ ] Simple ordered macros (a macro reports its least-confirmed step; no rollback)
-- [ ] Choose what the display shows (default and secondary modes)
-- [ ] Buddy settings: reactions on/off, intensity
+- [x] Choose what the display shows (default and secondary modes)
+- [x] Buddy settings: reactions on/off, intensity
 - [ ] Config stored locally per OS user and machine; survives restarts and updates; reset to defaults
 - [ ] Basic device status and diagnostics (versions, connection, health)
 - [ ] Hardware: rebind → use → restart → binding still there

@@ -7,6 +7,7 @@
 pub mod action;
 pub mod activity;
 pub mod companion;
+pub mod config;
 pub mod desk;
 pub mod device;
 pub mod firmware;
@@ -36,9 +37,29 @@ pub fn run() {
             let (commands_tx, commands_rx) = std::sync::mpsc::channel();
             let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
             let status = std::sync::Arc::new(std::sync::Mutex::new(ipc::dto::initial_status()));
-            let desk_status =
-                std::sync::Arc::new(std::sync::Mutex::new(ipc::dto::initial_desk_status()));
             let activity_log = std::sync::Arc::new(activity::ActivityLog::new(256));
+            // Per-user, per-machine: `app_local_data_dir` is Local (not Roaming) AppData on Windows.
+            // Without it the app still runs on defaults; saving settings then reports an error.
+            let config_store = app.path().app_local_data_dir().map_or_else(
+                |_| config::ConfigStore::detached(),
+                |dir| config::ConfigStore::open(&dir),
+            );
+            match config_store.notice() {
+                Some(
+                    config::ConfigNotice::RecoveredCorrupt
+                    | config::ConfigNotice::RecoveredNewerVersion,
+                ) => {
+                    activity_log.record(activity::ActivityEventKind::ConfigRecovered, None);
+                }
+                Some(config::ConfigNotice::Migrated) => {
+                    activity_log.record(activity::ActivityEventKind::ConfigSaved, None);
+                }
+                None => {}
+            }
+            let resolved = config_store.resolved();
+            let desk_status = std::sync::Arc::new(std::sync::Mutex::new(
+                ipc::dto::initial_desk_status(&resolved),
+            ));
             let firmware_status =
                 std::sync::Arc::new(std::sync::Mutex::new(firmware::initial_status()));
             let device_thread = runtime::device_task::spawn(
@@ -49,6 +70,7 @@ pub fn run() {
                 std::sync::Arc::clone(&firmware_status),
                 commands_rx,
                 std::sync::Arc::clone(&cancel),
+                resolved,
             );
             app.manage(
                 runtime::state::AppState::new_with_firmware(
@@ -60,7 +82,8 @@ pub fn run() {
                     cancel,
                     device_thread,
                 )
-                .with_desk_status(desk_status),
+                .with_desk_status(desk_status)
+                .with_config(std::sync::Arc::new(std::sync::Mutex::new(config_store))),
             );
             runtime::lifecycle::build_tray(app.handle())?;
             Ok(())
@@ -72,7 +95,10 @@ pub fn run() {
         ipc::commands::get_connection_status,
         ipc::commands::list_states,
         ipc::commands::set_desired_state,
-        ipc::commands::configure_companion,
+        ipc::commands::get_config,
+        ipc::commands::set_display_settings,
+        ipc::commands::set_buddy_settings,
+        ipc::commands::reset_config,
         ipc::commands::play_mascot_action,
         ipc::commands::get_activity_log,
         ipc::commands::get_firmware_status,
@@ -93,7 +119,10 @@ pub fn run() {
         ipc::commands::get_connection_status,
         ipc::commands::list_states,
         ipc::commands::set_desired_state,
-        ipc::commands::configure_companion,
+        ipc::commands::get_config,
+        ipc::commands::set_display_settings,
+        ipc::commands::set_buddy_settings,
+        ipc::commands::reset_config,
         ipc::commands::play_mascot_action,
         ipc::commands::get_activity_log,
         ipc::commands::get_firmware_status,

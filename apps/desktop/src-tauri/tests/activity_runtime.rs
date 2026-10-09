@@ -510,14 +510,16 @@ fn planner_builds_distinct_closed_request_metadata_in_order() {
             &DeviceCommand::MirrorDesired(kivori_model::SendableState::Busy),
             None,
         ),
+        // A saved config is announced by the device thread, and only if the buddy changed.
         plan_device_request(
             &planner,
-            &DeviceCommand::ConfigureCompanion {
-                personality: kivori_model::MascotPersonality::Playful,
-                self_play: false,
-            },
+            &DeviceCommand::ApplyConfig(Default::default()),
             None,
         ),
+        planner.requests(RuntimeActivityRequest::CompanionConfiguration {
+            personality: kivori_model::MascotPersonality::Playful,
+            self_play: false,
+        }),
         plan_device_request(
             &planner,
             &DeviceCommand::PlayMascotAction(kivori_model::MascotAction::Pet),

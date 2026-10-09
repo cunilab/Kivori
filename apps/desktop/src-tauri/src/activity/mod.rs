@@ -109,6 +109,14 @@ pub enum ActivityEventKind {
     DeskActionFailed,
     /// A desk action needs an OS permission Kivori does not have (macOS Accessibility).
     DeskActionPermissionRequired,
+    /// A settings change was saved.
+    ConfigSaved,
+    /// A settings file could not be used and was set aside; defaults are in use.
+    ConfigRecovered,
+    /// Every setting was restored to its default.
+    ConfigReset,
+    /// A settings change could not be saved; nothing changed.
+    ConfigSaveFailed,
 }
 
 /// Closed severity vocabulary for native activity.
@@ -127,6 +135,7 @@ pub enum ActivitySource {
     Device,
     Protocol,
     Firmware,
+    Config,
 }
 
 /// Closed outcome vocabulary for native activity.
@@ -397,6 +406,21 @@ impl ActivityEventKind {
                 severity: ActivitySeverity::Warning,
                 source: ActivitySource::Action,
                 outcome: ActivityOutcome::Unavailable,
+            },
+            Self::ConfigSaved | Self::ConfigReset => ActivityClassification {
+                severity: ActivitySeverity::Info,
+                source: ActivitySource::Config,
+                outcome: ActivityOutcome::Applied,
+            },
+            Self::ConfigRecovered => ActivityClassification {
+                severity: ActivitySeverity::Warning,
+                source: ActivitySource::Config,
+                outcome: ActivityOutcome::Observed,
+            },
+            Self::ConfigSaveFailed => ActivityClassification {
+                severity: ActivitySeverity::Error,
+                source: ActivitySource::Config,
+                outcome: ActivityOutcome::Failed,
             },
         }
     }
@@ -882,6 +906,14 @@ fn summary_for(kind: ActivityEventKind, metadata: Option<&ActivityMetadata>) -> 
         (ActivityEventKind::DeskActionFailed, _) => "Action failed.".to_string(),
         (ActivityEventKind::DeskActionPermissionRequired, _) => {
             "Action needs a system permission.".to_string()
+        }
+        (ActivityEventKind::ConfigSaved, _) => "Settings saved.".to_string(),
+        (ActivityEventKind::ConfigRecovered, _) => {
+            "Settings file could not be used; a backup was kept and defaults restored.".to_string()
+        }
+        (ActivityEventKind::ConfigReset, _) => "Settings reset to defaults.".to_string(),
+        (ActivityEventKind::ConfigSaveFailed, _) => {
+            "Settings could not be saved; nothing changed.".to_string()
         }
     }
 }

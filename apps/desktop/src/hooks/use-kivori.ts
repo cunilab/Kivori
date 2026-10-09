@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import {
   getAppInfo,
+  getConfig,
   getConnectionStatus,
   getDeskStatus,
+  onConfigChanged,
   onConnectionStatus,
   onDeskStatus,
   type Unlisten,
 } from '@/lib/ipc';
-import type { AppInfoDto, ConnectionStatusDto, DeskStatusDto } from '@/lib/ipc/types';
+import type { AppInfoDto, ConfigDto, ConnectionStatusDto, DeskStatusDto } from '@/lib/ipc/types';
 
 /**
  * Seeds from a snapshot, then follows the native event. A pushed event always wins over a late
@@ -48,6 +50,33 @@ export function useConnectionStatus(): ConnectionStatusDto | null {
 
 export function useDeskStatus(): DeskStatusDto | null {
   return useNative(getDeskStatus, onDeskStatus);
+}
+
+/** The saved settings; a stale (lower-revision) copy never replaces a newer one. */
+export function useConfig(): ConfigDto | null {
+  const [config, setConfig] = useState<ConfigDto | null>(null);
+  useEffect(() => {
+    let active = true;
+    let unlisten: Unlisten = () => {};
+    const adopt = (next: ConfigDto): void => {
+      if (active)
+        setConfig((current) => (current && current.revision > next.revision ? current : next));
+    };
+    void getConfig()
+      .then(adopt)
+      .catch(() => {});
+    void onConfigChanged(adopt)
+      .then((handle) => {
+        if (active) unlisten = handle;
+        else handle();
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+      unlisten();
+    };
+  }, []);
+  return config;
 }
 
 export function useAppInfo(): AppInfoDto | null {

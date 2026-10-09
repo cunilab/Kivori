@@ -61,9 +61,10 @@ describe('Developer mode', () => {
     expect(navLabels()).toEqual(['Home', 'Controls', 'Display', 'Device']);
 
     await user.click(screen.getByRole('button', { name: 'Display' }));
-    expect(screen.getByRole('button', { name: 'Playful' })).toBeInTheDocument();
+    // The saved buddy settings are for everyone; the direct reactions are a developer tool.
+    expect(screen.getByRole('button', { name: 'High' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Reactions' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Greet' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('switch', { name: 'Self-play' })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Device' }));
     expect(screen.getByTestId('device-firmware')).toBeInTheDocument();
@@ -96,7 +97,6 @@ describe('Developer mode', () => {
 
     await user.click(screen.getByRole('button', { name: 'Display' }));
     expect(screen.getByRole('button', { name: 'Greet' })).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'Self-play' })).toBeInTheDocument();
 
     first.unmount();
     render(<App />);

@@ -3,11 +3,16 @@ import { Pause, Play, Send, StepForward } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Slider } from '../../components/ui/slider';
 import { ToggleGroup, ToggleGroupItem } from '../../components/ui/toggle-group';
+import { useConfig } from '../../hooks/use-kivori';
 import { mirrorState, playMascotAction } from '../../lib/ipc';
 import type { CompanionState, MascotAction, SendableState } from '../../lib/ipc/types';
-import { COMPANION_STATES, SENDABLE_STATES, MAX_ANIMATION_EVENTS } from '../../lib/ipc/types';
+import {
+  COMPANION_STATES,
+  INTENSITY_PERSONALITY,
+  SENDABLE_STATES,
+  MAX_ANIMATION_EVENTS,
+} from '../../lib/ipc/types';
 import { strings } from '../../lib/i18n/strings';
-import { currentMascotPersonality } from '../display/CompanionControls';
 import { SCENE_DURATION_MS, STEP_MS, useStudioStore } from './store';
 
 const SENDABLE = new Set<CompanionState>(SENDABLE_STATES);
@@ -15,6 +20,7 @@ const ACTIONS: readonly MascotAction[] = ['greet', 'pet', 'tickle', 'surprise', 
 
 /** Device Studio control surface: state selection, timeline scrub, transport, and mirror-to-device. */
 export function Controls(): ReactElement {
+  const personality = INTENSITY_PERSONALITY[useConfig()?.buddy.intensity ?? 'normal'];
   const state = useStudioStore((s) => s.state);
   const elapsedMs = useStudioStore((s) => s.elapsedMs);
   const playing = useStudioStore((s) => s.playing);
@@ -65,7 +71,7 @@ export function Controls(): ReactElement {
               variant="outline"
               disabled={eventLimit}
               onClick={() => {
-                playAction(action, currentMascotPersonality());
+                playAction(action, personality);
                 void playMascotAction(action).catch(() => {});
               }}
             >

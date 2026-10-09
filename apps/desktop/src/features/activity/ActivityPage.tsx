@@ -49,6 +49,7 @@ const SOURCES: readonly ActivitySource[] = [
   'device',
   'protocol',
   'firmware',
+  'config',
 ];
 const SEVERITY_STYLE = {
   info: { Icon: Info, className: 'text-primary' },

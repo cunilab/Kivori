@@ -15,12 +15,13 @@ import type {
   AnimationTimeline,
   FirmwareStatusDto,
   MascotAction,
-  MascotPersonality,
+  ConfigDto,
   DeskStatusDto,
   DisplayMode,
+  Intensity,
   TestActionRequest,
 } from './types';
-import { isActivityEvent, parseDeskStatus } from './validate';
+import { isActivityEvent, parseConfig, parseDeskStatus } from './validate';
 
 /// Handle returned by an event subscription; call it to unsubscribe.
 export type Unlisten = () => void;
@@ -100,13 +101,61 @@ export async function setDesiredState(state: SendableState): Promise<void> {
   return unavailable();
 }
 
-/** Saves current desktop-owned companion behavior settings in the native runtime. */
-export async function configureCompanion(
-  personality: MascotPersonality,
-  selfPlay: boolean,
-): Promise<void> {
-  if (isTauri()) return invoke<void>('configure_companion', { personality, selfPlay });
-  if (import.meta.env.DEV) return;
+/** The saved settings (display and buddy). */
+export async function getConfig(): Promise<ConfigDto> {
+  if (isTauri()) return parseConfig(await invoke<unknown>('get_config'));
+  if (import.meta.env.DEV) return (await devMock()).mockGetConfig();
+  return unavailable();
+}
+
+/** Saves the home view and what a double press shows; rejects with the native error string. */
+export async function setDisplaySettings(
+  defaultView: DisplayMode,
+  secondaryView: DisplayMode | 'cycle',
+): Promise<ConfigDto> {
+  if (isTauri()) {
+    return parseConfig(
+      await invoke<unknown>('set_display_settings', { defaultView, secondaryView }),
+    );
+  }
+  if (import.meta.env.DEV) {
+    return (await devMock()).mockSetDisplaySettings(defaultView, secondaryView);
+  }
+  return unavailable();
+}
+
+/** Saves the buddy's reactions and intensity; rejects with the native error string. */
+export async function setBuddySettings(
+  reactions: boolean,
+  intensity: Intensity,
+): Promise<ConfigDto> {
+  if (isTauri()) {
+    return parseConfig(await invoke<unknown>('set_buddy_settings', { reactions, intensity }));
+  }
+  if (import.meta.env.DEV) return (await devMock()).mockSetBuddySettings(reactions, intensity);
+  return unavailable();
+}
+
+/** Restores every setting to its default (the previous file is kept as one backup). */
+export async function resetConfig(): Promise<ConfigDto> {
+  if (isTauri()) return parseConfig(await invoke<unknown>('reset_config'));
+  if (import.meta.env.DEV) return (await devMock()).mockResetConfig();
+  return unavailable();
+}
+
+/** Subscribes to saved or reset settings; a payload with an unknown token is dropped. */
+export async function onConfigChanged(handler: (config: ConfigDto) => void): Promise<Unlisten> {
+  if (isTauri()) {
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen<unknown>('config://changed', (event) => {
+      try {
+        handler(parseConfig(event.payload));
+      } catch {
+        // Invalid payloads never reach the UI.
+      }
+    });
+  }
+  if (import.meta.env.DEV) return (await devMock()).mockOnConfigChanged(handler);
   return unavailable();
 }
 

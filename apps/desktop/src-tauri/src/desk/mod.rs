@@ -18,6 +18,7 @@ use kivori_model::desk::{
 };
 
 use crate::activity::{ActivityEventKind, ActivityMetadata, SessionActivity};
+use crate::config::{DisplaySettings, SecondaryView};
 use crate::input::LogicalInput;
 use crate::platform::system::{SystemMonitor, SystemProbe, SystemSample};
 use crate::platform::{
@@ -229,6 +230,8 @@ pub struct LastAction {
 /// The desk pipeline the device task drives once per loop iteration.
 pub struct DeskRuntime {
     context: Context,
+    /// Which view is the home view and what a double press shows.
+    display: DisplaySettings,
     foreground: Arc<dyn ForegroundObserver>,
     next_focus_poll: Duration,
     knob: Option<KnobGesture>,
@@ -272,6 +275,7 @@ impl DeskRuntime {
         });
         Self {
             context: Context::new(profile::builtins()),
+            display: DisplaySettings::default(),
             foreground,
             next_focus_poll: Duration::ZERO,
             knob: None,
@@ -290,6 +294,28 @@ impl DeskRuntime {
             now_playing: None,
             sent_media: None,
             sent_controls: None,
+        }
+    }
+
+    /// Starts on `display`'s default view, quietly: nothing changed yet that anyone could log.
+    #[must_use]
+    pub fn with_display(mut self, display: DisplaySettings) -> Self {
+        self.publisher.set_mode(display.default_view.mode());
+        self.display = display;
+        self
+    }
+
+    /// Adopts new display settings. Moving the default view takes the device there now; changing
+    /// only the double-press view leaves what is showing alone.
+    pub fn apply_display(
+        &mut self,
+        display: DisplaySettings,
+        observe: &mut impl FnMut(SessionActivity),
+    ) {
+        let moved = display.default_view != self.display.default_view;
+        self.display = display;
+        if moved {
+            self.set_mode(display.default_view.mode(), observe);
         }
     }
 
@@ -332,11 +358,26 @@ impl DeskRuntime {
         self.now_playing.as_ref()
     }
 
-    /// Shows the next display view (double press on the device).
+    /// Handles a double press on the device. With a chosen double-press view it toggles between
+    /// that and the default view (from any other view it returns to the default); `Cycle` steps
+    /// through every view in turn.
     pub fn next_mode(&mut self, observe: &mut impl FnMut(SessionActivity)) {
-        let all = DisplayMode::ALL;
-        let at = all.iter().position(|m| *m == self.mode()).unwrap_or(0);
-        self.set_mode(all[(at + 1) % all.len()], observe);
+        let next = match self.display.secondary_view {
+            SecondaryView::View(secondary) => {
+                let home = self.display.default_view.mode();
+                if self.mode() == home {
+                    secondary.mode()
+                } else {
+                    home
+                }
+            }
+            SecondaryView::Cycle => {
+                let all = DisplayMode::ALL;
+                let at = all.iter().position(|m| *m == self.mode()).unwrap_or(0);
+                all[(at + 1) % all.len()]
+            }
+        };
+        self.set_mode(next, observe);
     }
 
     /// The user picked a display mode.
@@ -671,6 +712,7 @@ pub fn bound_action<'b>(bindings: &'b Bindings, input: &LogicalInput) -> Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::View;
 
     const fn ms(n: u64) -> Duration {
         Duration::from_millis(n)
@@ -1122,7 +1164,10 @@ mod tests {
 
     #[test]
     fn a_double_press_cycles_through_every_view_and_wraps() {
-        let mut desk = runtime(Arc::default());
+        let mut desk = runtime(Arc::default()).with_display(DisplaySettings {
+            secondary_view: SecondaryView::Cycle,
+            ..DisplaySettings::default()
+        });
         let mut seen = vec![desk.mode()];
         for id in 1..=DisplayMode::ALL.len() as u16 {
             desk.on_input(
@@ -1137,6 +1182,68 @@ mod tests {
         assert!(
             desk.tick(ms(0), &mut |_| {}).feedback.is_empty(),
             "not an action"
+        );
+    }
+
+    fn double_press(desk: &mut DeskRuntime, id: u16) {
+        desk.on_input(
+            &LogicalInput::DoublePress { gesture_id: id },
+            ms(0),
+            &mut |_| {},
+        );
+    }
+
+    #[test]
+    fn a_double_press_toggles_between_the_default_and_the_chosen_view() {
+        let mut desk = runtime(Arc::default());
+        assert_eq!(
+            desk.mode(),
+            DisplayMode::Buddy,
+            "default config starts on the buddy"
+        );
+        double_press(&mut desk, 1);
+        assert_eq!(desk.mode(), DisplayMode::System);
+        double_press(&mut desk, 2);
+        assert_eq!(desk.mode(), DisplayMode::Buddy);
+    }
+
+    #[test]
+    fn a_double_press_from_any_other_view_returns_to_the_default() {
+        let mut desk = runtime(Arc::default()).with_display(DisplaySettings {
+            default_view: View::Clock,
+            secondary_view: SecondaryView::View(View::Media),
+        });
+        assert_eq!(
+            desk.mode(),
+            DisplayMode::Clock,
+            "starts on the configured default"
+        );
+        desk.set_mode(DisplayMode::Volume, &mut |_| {});
+        double_press(&mut desk, 1);
+        assert_eq!(desk.mode(), DisplayMode::Clock);
+        double_press(&mut desk, 2);
+        assert_eq!(desk.mode(), DisplayMode::Media);
+    }
+
+    #[test]
+    fn moving_the_default_view_takes_the_device_there_but_other_changes_do_not() {
+        let mut desk = runtime(Arc::default());
+        let mut log = Vec::new();
+        let mut moved = DisplaySettings {
+            default_view: View::Clock,
+            ..DisplaySettings::default()
+        };
+        desk.apply_display(moved, &mut |o| log.push(o.kind));
+        assert_eq!(desk.mode(), DisplayMode::Clock);
+        assert_eq!(log, [ActivityEventKind::DisplayModeChanged]);
+
+        desk.set_mode(DisplayMode::Volume, &mut |_| {});
+        moved.secondary_view = SecondaryView::Cycle;
+        desk.apply_display(moved, &mut |o| log.push(o.kind));
+        assert_eq!(
+            desk.mode(),
+            DisplayMode::Volume,
+            "only the double-press view changed"
         );
     }
 

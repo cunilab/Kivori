@@ -12,8 +12,13 @@ import {
   getFirmwareStatus,
   getAppInfo,
   getActivityLog,
+  getConfig,
   getConnectionStatus,
   isTauri,
+  onConfigChanged,
+  resetConfig,
+  setBuddySettings,
+  setDisplaySettings,
   listStates,
   onActivityLog,
   getDeskStatus,
@@ -23,7 +28,7 @@ import {
   renderPreviewFrame,
 } from '../index';
 import { COMPANION_STATES, PREVIEW_DIM } from '../types';
-import { MAX_MEDIA_TEXT } from '../validate';
+import { MAX_MEDIA_TEXT, parseConfig } from '../validate';
 
 afterEach(() => {
   delete (window as Window & { __TAURI_INTERNALS__?: object }).__TAURI_INTERNALS__;
@@ -175,6 +180,10 @@ describe('desk ipc (Tauri)', () => {
       'deskActionUnverified',
       'deskActionFailed',
       'deskActionPermissionRequired',
+      'configSaved',
+      'configRecovered',
+      'configReset',
+      'configSaveFailed',
     ].map((type, i) => ({
       ...base,
       id: i,
@@ -188,5 +197,86 @@ describe('desk ipc (Tauri)', () => {
     ];
     tauri.invoke.mockResolvedValue([...good, ...bad]);
     await expect(getActivityLog(10)).resolves.toEqual(good);
+  });
+});
+
+describe('config ipc', () => {
+  const validConfig = {
+    version: 1,
+    revision: 3,
+    notice: null,
+    display: { defaultView: 'buddy', secondaryView: 'cycle' },
+    buddy: { reactions: true, intensity: 'normal' },
+  };
+
+  it('accepts the mock defaults and every notice, and rejects unknown tokens', async () => {
+    const config = await resetConfig();
+    expect(() => parseConfig(config)).not.toThrow();
+    for (const notice of ['recoveredCorrupt', 'recoveredNewerVersion', 'migrated']) {
+      expect(parseConfig({ ...validConfig, notice }).notice).toBe(notice);
+    }
+    for (const bad of [
+      null,
+      { ...validConfig, notice: 'oops' },
+      { ...validConfig, revision: -1 },
+      { ...validConfig, display: { defaultView: 'cycle', secondaryView: 'buddy' } },
+      { ...validConfig, display: { defaultView: 'buddy', secondaryView: 'nope' } },
+      { ...validConfig, buddy: { reactions: 'yes', intensity: 'normal' } },
+      { ...validConfig, buddy: { reactions: true, intensity: 'extreme' } },
+    ]) {
+      expect(() => parseConfig(bad), JSON.stringify(bad)).toThrow();
+    }
+  });
+
+  const enterTauri = (): void => {
+    (window as Window & { __TAURI_INTERNALS__?: object }).__TAURI_INTERNALS__ = {};
+  };
+
+  it('calls the native commands with camelCase arguments inside Tauri', async () => {
+    enterTauri();
+    tauri.invoke.mockResolvedValue(validConfig);
+    await expect(getConfig()).resolves.toEqual(validConfig);
+    expect(tauri.invoke).toHaveBeenLastCalledWith('get_config', undefined);
+    await setDisplaySettings('clock', 'cycle');
+    expect(tauri.invoke).toHaveBeenLastCalledWith('set_display_settings', {
+      defaultView: 'clock',
+      secondaryView: 'cycle',
+    });
+    await setBuddySettings(false, 'high');
+    expect(tauri.invoke).toHaveBeenLastCalledWith('set_buddy_settings', {
+      reactions: false,
+      intensity: 'high',
+    });
+    await resetConfig();
+    expect(tauri.invoke).toHaveBeenLastCalledWith('reset_config', undefined);
+    tauri.invoke.mockResolvedValue({ ...validConfig, notice: 'bogus' });
+    await expect(getConfig()).rejects.toThrow('unexpected config notice');
+  });
+
+  it('drops an invalid config://changed payload and forwards a valid one', async () => {
+    enterTauri();
+    let emit: (event: { payload: unknown }) => void = () => {};
+    tauri.listen.mockImplementation((_name: string, cb: typeof emit) => {
+      emit = cb;
+      return Promise.resolve(() => {});
+    });
+    const handler = vi.fn();
+    await onConfigChanged(handler);
+    expect(tauri.listen).toHaveBeenCalledWith('config://changed', expect.any(Function));
+    emit({ payload: { ...validConfig, notice: 'bogus' } });
+    expect(handler).not.toHaveBeenCalled();
+    emit({ payload: validConfig });
+    expect(handler).toHaveBeenCalledWith(validConfig);
+  });
+
+  it('mirrors the native display rules in the browser mock', async () => {
+    await resetConfig();
+    await expect(setDisplaySettings('clock', 'clock')).rejects.toThrow('must differ');
+    const saved = await setDisplaySettings('clock', 'media');
+    expect(saved.display).toEqual({ defaultView: 'clock', secondaryView: 'media' });
+    expect((await getDeskStatus()).mode).toBe('clock');
+    const reset = await resetConfig();
+    expect(reset.display).toEqual({ defaultView: 'buddy', secondaryView: 'system' });
+    expect(reset.revision).toBeGreaterThan(saved.revision);
   });
 });
