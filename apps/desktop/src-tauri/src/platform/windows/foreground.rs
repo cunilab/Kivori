@@ -66,7 +66,7 @@ impl ForegroundObserver for WindowsForeground {
 }
 
 /// Closes a kernel handle on drop.
-struct Owned(HANDLE);
+pub(super) struct Owned(pub(super) HANDLE);
 
 impl Drop for Owned {
     fn drop(&mut self) {
@@ -75,7 +75,7 @@ impl Drop for Owned {
     }
 }
 
-unsafe fn image_path(process: HANDLE) -> Option<String> {
+pub(super) unsafe fn image_path(process: HANDLE) -> Option<String> {
     let mut buf = [0u16; 1024];
     let mut len = buf.len() as u32;
     QueryFullProcessImageNameW(

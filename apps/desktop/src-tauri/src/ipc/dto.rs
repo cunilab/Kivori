@@ -1331,7 +1331,7 @@ fn slot_dto(slot: &crate::desk::Slot, overridden: bool) -> SlotDto {
         action: slot
             .action
             .as_ref()
-            .map(crate::config::resolve::action_spec),
+            .and_then(crate::config::resolve::action_spec),
         label: slot.label.clone(),
         device_label: slot.device_label(),
         overridden,
@@ -1382,6 +1382,8 @@ pub fn vocabulary_json() -> serde_json::Value {
     serde_json::json!({
         "profileIds": crate::config::ProfileId::ALL.map(crate::config::ProfileId::token),
         "controls": crate::config::resolve::CONTROL_TOKENS,
+        "actionSpecKinds": crate::config::resolve::ACTION_SPEC_KINDS,
+        "rotateSpecKinds": crate::config::resolve::ROTATE_SPEC_KINDS,
         "deskActions": crate::desk::ActionToken::ALL.map(crate::desk::ActionToken::token),
     })
 }

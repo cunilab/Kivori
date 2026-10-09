@@ -146,7 +146,7 @@ pub struct SlotSpec {
     pub label: Option<String>,
 }
 
-/// The discrete actions a slot can be bound to (App Mute and Macro arrive in later slices).
+/// The discrete actions a slot can be bound to (Macro arrives in a later slice).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 pub enum ActionSpec {
@@ -154,11 +154,19 @@ pub enum ActionSpec {
     PreviousTrack,
     NextTrack,
     SystemMute,
-    Shortcut { keys: String },
-    Launch { target: String },
+    /// Toggles mute on one app's audio (`app` is its lowercase executable name on Windows).
+    AppMute {
+        app: String,
+    },
+    Shortcut {
+        keys: String,
+    },
+    Launch {
+        target: String,
+    },
 }
 
-/// What the knob does (App Volume arrives in a later slice).
+/// What the knob does.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 pub enum RotateSpec {
@@ -167,6 +175,12 @@ pub enum RotateSpec {
         cw: String,
         ccw: String,
         label: String,
+    },
+    /// One app's volume. `label` = the app id without its extension.
+    AppVolume {
+        app: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label: Option<String>,
     },
 }
 

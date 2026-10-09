@@ -32,7 +32,15 @@ import {
   renderPreviewFrame,
 } from '../index';
 import vocabulary from './vocabulary.json';
-import { COMPANION_STATES, CONTROL_REFS, DESK_ACTIONS, PREVIEW_DIM, PROFILE_IDS } from '../types';
+import {
+  ACTION_SPEC_KINDS,
+  COMPANION_STATES,
+  CONTROL_REFS,
+  DESK_ACTIONS,
+  PREVIEW_DIM,
+  PROFILE_IDS,
+  ROTATE_SPEC_KINDS,
+} from '../types';
 import { MAX_MEDIA_TEXT, parseCatalog, parseConfig } from '../validate';
 
 afterEach(() => {
@@ -248,19 +256,82 @@ describe('action catalog ipc', () => {
     runsWhenProtected: false,
   };
 
-  it('parses the mock catalog: every action once, App Volume and App Mute unsupported', async () => {
+  it('parses the mock catalog: every action once, only macros unsupported', async () => {
     const catalog = await listActionCatalog();
     expect(() => parseCatalog(catalog)).not.toThrow();
     expect(new Set(catalog.map((e) => e.id)).size).toBe(catalog.length);
     for (const id of ['appVolume', 'appMute']) {
       expect(catalog.find((e) => e.id === id)).toMatchObject({
-        availability: 'unsupported',
-        reason: 'Coming soon',
+        availability: 'available',
+        reason: null,
+        verification: 'confirmed',
+        runsWhenProtected: true,
       });
     }
+    expect(catalog.find((e) => e.id === 'macro')).toMatchObject({
+      availability: 'unsupported',
+      reason: 'Coming soon',
+    });
     expect(catalog.find((e) => e.id === 'launch')).toMatchObject({ verification: 'started' });
     expect(catalog.find((e) => e.id === 'shortcut')?.runsWhenProtected).toBe(false);
     expect(catalog.find((e) => e.id === 'systemMute')?.runsWhenProtected).toBe(true);
+  });
+
+  it('marks App Volume and App Mute unsupported under ?mock=mac', async () => {
+    window.history.pushState({}, '', '/?mock=mac');
+    try {
+      const catalog = await listActionCatalog();
+      expect(() => parseCatalog(catalog)).not.toThrow();
+      for (const id of ['appVolume', 'appMute']) {
+        expect(catalog.find((e) => e.id === id)).toMatchObject({
+          availability: 'unsupported',
+          reason: "Per-app volume isn't available on macOS",
+        });
+      }
+      expect(catalog.find((e) => e.id === 'systemVolume')?.availability).toBe('available');
+      // Never a fallback to the system mute.
+      await testAction({ kind: 'appMute', app: 'spotify.exe' });
+      expect((await getDeskStatus()).lastAction).toMatchObject({
+        action: 'appMute',
+        result: 'error',
+      });
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  it('binds App Volume to the knob and App Mute to a button in the mock', async () => {
+    await resetConfig();
+    const knob = await setRotate('media', { kind: 'appVolume', app: ' Spotify.EXE ' });
+    expect(knob.profiles[3].rotate).toMatchObject({
+      spec: { kind: 'appVolume', app: 'spotify.exe' },
+      deviceLabel: 'spotify',
+      overridden: true,
+    });
+    expect(parseConfig(JSON.parse(JSON.stringify(knob)))).toEqual(knob);
+    const labelled = await setRotate('media', { kind: 'appVolume', app: 'vlc.exe', label: 'VLC' });
+    expect(labelled.profiles[3].rotate.deviceLabel).toBe('VLC');
+    await expect(setRotate('media', { kind: 'appVolume', app: ' ' })).rejects.toThrow('empty');
+    await expect(setRotate('media', { kind: 'appVolume', app: 'a'.repeat(129) })).rejects.toThrow(
+      '128',
+    );
+    const mute = await setBinding('media', 'hold', {
+      action: { kind: 'appMute', app: 'Spotify.exe' },
+    });
+    expect(mute.profiles[3].hold).toMatchObject({
+      action: { kind: 'appMute', app: 'spotify.exe' },
+      deviceLabel: 'Mute',
+    });
+    expect((await getDeskStatus()).holdAction).toBeDefined();
+    await resetConfig();
+  });
+
+  it('rejects an app id the native side would refuse', async () => {
+    const base = JSON.parse(JSON.stringify(await getConfig()));
+    base.profiles[0].rotate.spec = { kind: 'appVolume', app: 'x'.repeat(129) };
+    expect(() => parseConfig(base)).toThrow();
+    base.profiles[0].rotate.spec = { kind: 'appVolume', app: 'spotify.exe' };
+    expect(() => parseConfig(base)).not.toThrow();
   });
 
   it('uses the exact command name and validates the payload', async () => {
@@ -456,5 +527,7 @@ describe('Rust/TS token vocabulary', () => {
     expect([...DESK_ACTIONS]).toEqual(vocabulary.deskActions);
     expect([...PROFILE_IDS]).toEqual(vocabulary.profileIds);
     expect([...CONTROL_REFS]).toEqual(vocabulary.controls);
+    expect([...ACTION_SPEC_KINDS]).toEqual(vocabulary.actionSpecKinds);
+    expect([...ROTATE_SPEC_KINDS]).toEqual(vocabulary.rotateSpecKinds);
   });
 });

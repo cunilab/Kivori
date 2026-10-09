@@ -203,17 +203,52 @@ pub const FOCUS_POLL: Duration = Duration::from_millis(100);
 /// Worker ids of knob-shortcut detents carry this bit; the feedback ladder never tracks them.
 const KNOB: u64 = 1 << 63;
 
-/// A rotary gesture that owns a shortcut binding (a Volume gesture belongs to the volume loop).
+/// What a knob gesture drives, fixed when it begins (invariant 12).
+#[derive(Debug, Clone)]
+enum KnobTarget {
+    /// `(cw, ccw)`; `None` = suspended (a protected context), every detent is refused.
+    Shortcuts(Option<(Shortcut, Shortcut)>),
+    /// One app's volume: a lowercase foreground-style id.
+    AppVolume(String),
+}
+
+/// A rotary gesture that owns a knob binding other than system Volume (a Volume gesture belongs to
+/// the volume loop).
 #[derive(Debug, Clone)]
 struct KnobGesture {
     gesture_id: u16,
-    /// The focused app when the gesture began. Its keys go to whatever has focus, so once focus
-    /// moves the gesture is Context Lost, never retargeted (invariant 12).
+    /// The focused app when the gesture began. Shortcut keys go to whatever has focus, so once
+    /// focus moves the gesture is Context Lost, never retargeted (invariant 12).
     target: Foreground,
     /// Worker id for its detents: `KNOB` plus a per-gesture counter.
     id: u64,
-    /// `(cw, ccw)`; `None` = suspended (a protected context), every detent is refused.
-    keys: Option<(Shortcut, Shortcut)>,
+    binding: KnobTarget,
+}
+
+/// What an app-volume gesture's detents have reported so far. Its detents show nothing one by
+/// one; when it has ended and every detent has finished, the device gets one feedback.
+#[derive(Debug)]
+struct AppVolumeGesture {
+    /// The gesture's worker id.
+    id: u64,
+    /// Detents handed to the worker, and how many of them have finished.
+    sent: u32,
+    done: u32,
+    ended: bool,
+    /// An Error was already shown for this gesture.
+    failed: bool,
+    /// The least-confirmed outcome among the finished detents.
+    least: Option<FeedbackKind>,
+}
+
+/// How far `kind` is from known failure: the least-confirmed outcome has the lowest rank.
+const fn confirmation_rank(kind: FeedbackKind) -> u8 {
+    match kind {
+        FeedbackKind::Error => 0,
+        FeedbackKind::Processing | FeedbackKind::Unverified => 1,
+        FeedbackKind::ExecutionConfirmed => 2,
+        FeedbackKind::StateConfirmed => 3,
+    }
 }
 
 /// What one [`DeskRuntime::tick`] wants sent to the device (if the session negotiated it).
@@ -246,6 +281,8 @@ pub struct DeskRuntime {
     knob_count: u64,
     /// The knob gesture whose failure was already shown (once per gesture).
     knob_failed: Option<u64>,
+    /// App-volume gestures whose feedback is still owed (normally zero or one).
+    app_gestures: Vec<AppVolumeGesture>,
     worker: ActionWorker,
     ladder: FeedbackLadder,
     publisher: StatusPublisher,
@@ -269,6 +306,7 @@ impl DeskRuntime {
     pub fn new(services: OsServices) -> Self {
         let OsServices {
             volume,
+            app_volume,
             synth,
             media,
             system,
@@ -277,6 +315,7 @@ impl DeskRuntime {
         } = services;
         let worker = ActionWorker::spawn(Platform {
             volume: Arc::clone(&volume),
+            app_volume,
             synth,
             media: Arc::clone(&media),
             launch: crate::platform::launch::launch,
@@ -289,6 +328,7 @@ impl DeskRuntime {
             knob: None,
             knob_count: 0,
             knob_failed: None,
+            app_gestures: Vec::new(),
             worker,
             ladder: FeedbackLadder::default(),
             publisher: StatusPublisher::default(),
@@ -518,7 +558,9 @@ impl DeskRuntime {
                     .as_ref()
                     .is_some_and(|k| k.gesture_id == gesture_id);
                 if ours {
-                    self.knob = None;
+                    if let Some(knob) = self.knob.take() {
+                        self.end_app_gesture(knob.id, observe);
+                    }
                 }
                 return !ours;
             }
@@ -532,18 +574,37 @@ impl DeskRuntime {
             LogicalInput::DoublePress { .. } => self.next_mode(observe),
             // A gesture keeps the binding it began with until it ends (invariant 12).
             LogicalInput::GestureStarted { gesture_id } => {
-                self.knob = None;
-                let keys = match self.context.rotate() {
+                // A new gesture means the device dropped the old one without ending it.
+                if let Some(old) = self.knob.take() {
+                    self.end_app_gesture(old.id, observe);
+                }
+                let binding = match self.context.rotate() {
                     Some(RotateBinding::Volume) => return true,
-                    Some(RotateBinding::Shortcuts { cw, ccw, .. }) => Some((*cw, *ccw)),
-                    None => None,
+                    Some(RotateBinding::Shortcuts { cw, ccw, .. }) => {
+                        KnobTarget::Shortcuts(Some((*cw, *ccw)))
+                    }
+                    Some(RotateBinding::AppVolume { app, .. }) => {
+                        KnobTarget::AppVolume(app.clone())
+                    }
+                    None => KnobTarget::Shortcuts(None),
                 };
                 self.knob_count += 1;
+                let id = KNOB | self.knob_count;
+                if matches!(binding, KnobTarget::AppVolume(_)) {
+                    self.app_gestures.push(AppVolumeGesture {
+                        id,
+                        sent: 0,
+                        done: 0,
+                        ended: false,
+                        failed: false,
+                        least: None,
+                    });
+                }
                 self.knob = Some(KnobGesture {
                     gesture_id,
                     target: self.context.latest().clone(),
-                    id: KNOB | self.knob_count,
-                    keys,
+                    id,
+                    binding,
                 });
             }
             _ => match self.context.resolve(input) {
@@ -558,8 +619,9 @@ impl DeskRuntime {
         false
     }
 
-    /// One detent of a knob-shortcut gesture: its key goes through the action worker with no
-    /// feedback of its own (the label is the feedback). Returns `true` for a Volume gesture.
+    /// One detent of a knob gesture: its key press or volume step goes through the action worker
+    /// with no feedback of its own (the label is the feedback). Returns `true` for a Volume
+    /// gesture.
     fn on_detent(
         &mut self,
         gesture_id: u16,
@@ -569,35 +631,117 @@ impl DeskRuntime {
         let Some(knob) = self.knob.clone().filter(|k| k.gesture_id == gesture_id) else {
             return true;
         };
-        // Protected beats even the binding a gesture began with: no keys into a secure surface.
-        // Focus moved since the gesture began: Context Lost, its remaining detents are ignored.
-        let keys = knob
-            .keys
-            .filter(|_| !self.context.protected() && *self.context.latest() == knob.target);
-        let sent = keys.is_some_and(|(cw, ccw)| {
-            let key = if direction == Direction::Cw { cw } else { ccw };
-            self.worker.request(knob.id, Action::Shortcut(key))
-        });
+        let (token, sent) = match &knob.binding {
+            KnobTarget::Shortcuts(keys) => {
+                // Protected beats even the binding a gesture began with: no keys into a secure
+                // surface. Focus moved since the gesture began: Context Lost, its remaining
+                // detents are ignored.
+                let keys = keys
+                    .filter(|_| !self.context.protected() && *self.context.latest() == knob.target);
+                let sent = keys.is_some_and(|(cw, ccw)| {
+                    let key = if direction == Direction::Cw { cw } else { ccw };
+                    self.worker.request(knob.id, Action::Shortcut(key))
+                });
+                (ActionToken::Shortcut, sent)
+            }
+            // Injects no input, so it runs under Protected and does not follow focus.
+            KnobTarget::AppVolume(app) => {
+                let step = Action::AppVolumeStep {
+                    app: app.clone(),
+                    direction,
+                };
+                let sent = self.worker.request(knob.id, step);
+                if sent {
+                    if let Some(gesture) = self.app_gesture(knob.id) {
+                        gesture.sent += 1;
+                    }
+                }
+                (ActionToken::AppVolume, sent)
+            }
+        };
         if !sent {
-            self.knob_failure(knob.id, Outcome::error(), observe);
+            self.knob_failure(knob.id, token, Outcome::error(), observe);
         }
         false
+    }
+
+    fn app_gesture(&mut self, id: u64) -> Option<&mut AppVolumeGesture> {
+        self.app_gestures.iter_mut().find(|g| g.id == id)
+    }
+
+    /// An app-volume gesture's input is over: once its detents have all finished it reports.
+    fn end_app_gesture(&mut self, id: u64, observe: &mut impl FnMut(SessionActivity)) {
+        if let Some(gesture) = self.app_gesture(id) {
+            gesture.ended = true;
+            self.settle_app_gesture(id, observe);
+        }
+    }
+
+    /// One detent of an app-volume gesture finished: fold it in and report if that was the last.
+    fn app_detent_finished(
+        &mut self,
+        id: u64,
+        outcome: Outcome,
+        observe: &mut impl FnMut(SessionActivity),
+    ) {
+        if let Some(gesture) = self.app_gesture(id) {
+            gesture.done += 1;
+            gesture.least = Some(match gesture.least {
+                Some(least) if confirmation_rank(least) <= confirmation_rank(outcome.kind) => least,
+                _ => outcome.kind,
+            });
+        }
+        if outcome.kind == FeedbackKind::Error {
+            self.knob_failure(id, ActionToken::AppVolume, outcome, observe);
+        }
+        self.settle_app_gesture(id, observe);
+    }
+
+    /// Reports an ended app-volume gesture once, at the least-confirmed outcome of its detents. A
+    /// gesture that failed already showed its one Error.
+    fn settle_app_gesture(&mut self, id: u64, observe: &mut impl FnMut(SessionActivity)) {
+        let Some(at) = self.app_gestures.iter().position(|g| g.id == id) else {
+            return;
+        };
+        let gesture = &self.app_gestures[at];
+        if !gesture.ended || gesture.done < gesture.sent {
+            return;
+        }
+        let gesture = self.app_gestures.remove(at);
+        if let (Some(kind), false) = (gesture.least, gesture.failed) {
+            self.finish(
+                ActionToken::AppVolume,
+                Outcome {
+                    kind,
+                    permission_required: false,
+                },
+                observe,
+            );
+            self.outbox.push(ActionFeedback {
+                action: ActionKind::Volume,
+                kind,
+            });
+        }
     }
 
     /// A knob gesture failed: shown once per gesture, never per detent.
     fn knob_failure(
         &mut self,
         id: u64,
+        token: ActionToken,
         outcome: Outcome,
         observe: &mut impl FnMut(SessionActivity),
     ) {
+        if let Some(gesture) = self.app_gesture(id) {
+            gesture.failed = true;
+        }
         if self.knob_failed == Some(id) {
             return;
         }
         self.knob_failed = Some(id);
-        self.finish(ActionToken::Shortcut, outcome, observe);
+        self.finish(token, outcome, observe);
         self.outbox.push(ActionFeedback {
-            action: ActionKind::Shortcut,
+            action: token.wire_kind(),
             kind: FeedbackKind::Error,
         });
     }
@@ -634,6 +778,8 @@ impl DeskRuntime {
         self.outbox.clear();
         // The device drops an open gesture with the session.
         self.knob = None;
+        // Its detents are cancelled below, so an owed app-volume feedback would never settle.
+        self.app_gestures.clear();
         // Presses still queued for the worker belong to the old session: they must not run
         // (gate 2). One already executing cannot be recalled.
         self.worker.cancel_pending();
@@ -676,8 +822,10 @@ impl DeskRuntime {
         }
         while let Some(finished) = self.worker.try_finished() {
             if finished.id & KNOB != 0 {
-                if finished.outcome.kind == FeedbackKind::Error {
-                    self.knob_failure(finished.id, finished.outcome, observe);
+                if finished.action == ActionToken::AppVolume {
+                    self.app_detent_finished(finished.id, finished.outcome, observe);
+                } else if finished.outcome.kind == FeedbackKind::Error {
+                    self.knob_failure(finished.id, finished.action, finished.outcome, observe);
                 }
                 continue;
             }
@@ -887,6 +1035,7 @@ mod tests {
         use crate::platform::{FakeInputSynth, FakeVolumeBackend};
         DeskRuntime::new(OsServices {
             volume: Arc::new(FakeVolumeBackend::new(20)),
+            app_volume: Arc::new(crate::platform::FakeAppVolumeBackend::new()),
             synth: Arc::new(FakeInputSynth::new(Ok(()))),
             media,
             system: Box::new(NoSystemProbe),
@@ -902,6 +1051,7 @@ mod tests {
         use crate::platform::FakeVolumeBackend;
         let mut desk = DeskRuntime::new(OsServices {
             volume: Arc::new(FakeVolumeBackend::new(20)),
+            app_volume: Arc::new(crate::platform::FakeAppVolumeBackend::new()),
             synth: synth.clone(),
             media: Arc::new(crate::platform::FakeMediaObserver::default()),
             system: Box::new(NoSystemProbe),
@@ -1563,6 +1713,194 @@ mod tests {
             std::thread::sleep(ms(1));
         }
         assert_eq!(sent(&synth), ["Ctrl+Tab", "Ctrl+Right"]);
+    }
+
+    /// A desk whose General knob drives `spotify.exe`'s volume, over the given app backend.
+    fn app_volume_desk(
+        fg: &Arc<FakeForeground>,
+        app_volume: crate::platform::FakeAppVolumeBackend,
+    ) -> (DeskRuntime, Arc<crate::platform::FakeVolumeBackend>) {
+        use crate::platform::system::NoSystemProbe;
+        let system = Arc::new(crate::platform::FakeVolumeBackend::new(20));
+        let mut desk = DeskRuntime::new(OsServices {
+            volume: system.clone(),
+            app_volume: Arc::new(app_volume),
+            synth: Arc::new(FakeInputSynth::new(Ok(()))),
+            media: Arc::new(crate::platform::FakeMediaObserver::default()),
+            system: Box::new(NoSystemProbe),
+            clock: || None,
+            foreground: fg.clone(),
+        });
+        desk.on_session_begin();
+        let bound = config(|file| {
+            override_of(file, crate::config::ProfileId::General).rotate =
+                Some(crate::config::RotateSpec::AppVolume {
+                    app: "Spotify.exe".into(),
+                    label: Some("Spotify".into()),
+                });
+        });
+        desk.apply_config(&bound, &mut |_| {});
+        (desk, system)
+    }
+
+    /// One app-volume gesture of `detents` clockwise detents; returns every feedback it caused.
+    fn spin_app_volume(desk: &mut DeskRuntime, detents: usize) -> Vec<ActionFeedback> {
+        assert!(!desk.on_input(
+            &LogicalInput::GestureStarted { gesture_id: 1 },
+            ms(0),
+            &mut |_| {}
+        ));
+        for _ in 0..detents {
+            let detent = LogicalInput::Detent {
+                gesture_id: 1,
+                direction: Direction::Cw,
+            };
+            assert!(
+                !desk.on_input(&detent, ms(10), &mut |_| {}),
+                "never the system volume loop"
+            );
+        }
+        assert!(!desk.on_input(
+            &LogicalInput::GestureEnded { gesture_id: 1 },
+            ms(20),
+            &mut |_| {}
+        ));
+        let feedback = settle(desk, ms(30), |f| !f.is_empty());
+        // Nothing more arrives later: one feedback per gesture.
+        std::thread::sleep(ms(30));
+        let late = desk.tick(ms(60), &mut |_| {}).feedback;
+        assert!(late.is_empty(), "{late:?}");
+        feedback
+    }
+
+    const VOLUME: fn(FeedbackKind) -> ActionFeedback = |kind| ActionFeedback {
+        action: ActionKind::Volume,
+        kind,
+    };
+
+    #[test]
+    fn an_app_volume_gesture_steps_the_app_and_reports_once_confirmed() {
+        let fg = Arc::new(FakeForeground::default());
+        let (mut desk, system) = app_volume_desk(
+            &fg,
+            crate::platform::FakeAppVolumeBackend::new().with_session("spotify.exe", 50),
+        );
+        assert_eq!(text(desk.labels().rotate), "Spotify");
+        let mut log = Vec::new();
+        assert!(!desk.on_input(
+            &LogicalInput::GestureStarted { gesture_id: 1 },
+            ms(0),
+            &mut |o| log.push(o.kind)
+        ));
+        for _ in 0..3 {
+            let detent = LogicalInput::Detent {
+                gesture_id: 1,
+                direction: Direction::Cw,
+            };
+            desk.on_input(&detent, ms(10), &mut |o| log.push(o.kind));
+        }
+        desk.on_input(
+            &LogicalInput::GestureEnded { gesture_id: 1 },
+            ms(20),
+            &mut |o| log.push(o.kind),
+        );
+        let mut feedback = Vec::new();
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while feedback.is_empty() && std::time::Instant::now() < deadline {
+            feedback.extend(desk.tick(ms(30), &mut |o| log.push(o.kind)).feedback);
+            std::thread::sleep(ms(5));
+        }
+        assert_eq!(feedback, [VOLUME(FeedbackKind::StateConfirmed)]);
+        assert_eq!(log, [ActivityEventKind::DeskActionConfirmed]);
+        assert_eq!(system.read(), Ok(20), "the system volume is untouched");
+        assert_eq!(
+            desk.last_action().map(|l| (l.action, l.kind)),
+            Some((ActionToken::AppVolume, FeedbackKind::StateConfirmed))
+        );
+    }
+
+    #[test]
+    fn an_app_volume_gesture_lands_on_the_app() {
+        let fg = Arc::new(FakeForeground::default());
+        let backend =
+            Arc::new(crate::platform::FakeAppVolumeBackend::new().with_session("spotify.exe", 50));
+        let mut desk = DeskRuntime::new(OsServices {
+            volume: Arc::new(crate::platform::FakeVolumeBackend::new(20)),
+            app_volume: backend.clone(),
+            synth: Arc::new(FakeInputSynth::new(Ok(()))),
+            media: Arc::new(crate::platform::FakeMediaObserver::default()),
+            system: Box::new(crate::platform::system::NoSystemProbe),
+            clock: || None,
+            foreground: fg.clone(),
+        });
+        desk.on_session_begin();
+        let bound = config(|file| {
+            override_of(file, crate::config::ProfileId::General).rotate =
+                Some(crate::config::RotateSpec::AppVolume {
+                    app: "spotify.exe".into(),
+                    label: None,
+                });
+        });
+        desk.apply_config(&bound, &mut |_| {});
+        assert_eq!(
+            spin_app_volume(&mut desk, 3),
+            [VOLUME(FeedbackKind::StateConfirmed)]
+        );
+        use crate::platform::AppVolumeBackend;
+        assert_eq!(backend.read("spotify.exe"), Ok(56));
+    }
+
+    #[test]
+    fn an_app_volume_gesture_reports_the_least_confirmed_detent() {
+        let fg = Arc::new(FakeForeground::default());
+        let (mut desk, _) = app_volume_desk(
+            &fg,
+            crate::platform::FakeAppVolumeBackend::unreadable_after_write()
+                .with_session("spotify.exe", 50),
+        );
+        assert_eq!(
+            spin_app_volume(&mut desk, 2),
+            [VOLUME(FeedbackKind::Unverified)]
+        );
+    }
+
+    #[test]
+    fn an_app_without_a_session_shows_one_error_per_gesture_and_no_second_feedback() {
+        let fg = Arc::new(FakeForeground::default());
+        let (mut desk, system) = app_volume_desk(&fg, crate::platform::FakeAppVolumeBackend::new());
+        assert_eq!(spin_app_volume(&mut desk, 4), [VOLUME(FeedbackKind::Error)]);
+        assert_eq!(system.read(), Ok(20));
+    }
+
+    #[test]
+    fn unsupported_app_volume_is_one_error_and_the_system_volume_is_unchanged() {
+        let fg = Arc::new(FakeForeground::default());
+        let unsupported = crate::platform::ActionAvailability::Unsupported {
+            reason: "Per-app volume isn't available on macOS".into(),
+        };
+        let (mut desk, system) = app_volume_desk(
+            &fg,
+            crate::platform::FakeAppVolumeBackend::with_availability(unsupported),
+        );
+        assert_eq!(spin_app_volume(&mut desk, 3), [VOLUME(FeedbackKind::Error)]);
+        assert_eq!(system.read(), Ok(20), "never falls back to system volume");
+        assert_eq!(system.read_mute(), Ok(false));
+    }
+
+    #[test]
+    fn app_volume_still_runs_under_protected() {
+        let fg = Arc::new(FakeForeground::default());
+        let (mut desk, _) = app_volume_desk(
+            &fg,
+            crate::platform::FakeAppVolumeBackend::new().with_session("spotify.exe", 50),
+        );
+        *fg.0.lock().unwrap() = Foreground::Protected;
+        let _ = desk.tick(ms(0), &mut |_| {});
+        assert_eq!(text(desk.labels().rotate), "Spotify", "not suspended");
+        assert_eq!(
+            spin_app_volume(&mut desk, 2),
+            [VOLUME(FeedbackKind::StateConfirmed)]
+        );
     }
 
     #[test]

@@ -117,6 +117,32 @@ pub trait VolumeBackend: Send + Sync {
     }
 }
 
+/// Why App Volume and App Mute are disabled on macOS (shown by the catalog and the macOS stub).
+pub const APP_VOLUME_UNSUPPORTED_ON_MAC: &str = "Per-app volume isn't available on macOS";
+
+/// Why a per-app volume request could not be applied.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AppVolumeError {
+    /// The app has no audio session on the default output right now (not running, or silent
+    /// and never opened one). Not the same as unsupported.
+    NoSession,
+    /// The write landed but not every session's read-back could be observed or agreed.
+    ReadBackUnavailable,
+    Os(String),
+}
+
+/// Per-app volume (0..=100) and mute, on the sessions an app has on the default output device.
+/// `app` is the lowercase foreground-style id (Windows: the executable file name, `spotify.exe`).
+pub trait AppVolumeBackend: Send + Sync {
+    fn availability(&self) -> ActionAvailability;
+    fn read(&self, app: &str) -> Result<u8, AppVolumeError>;
+    /// Apply to every session of the app and return the value observed afterwards. Same honesty
+    /// rule as [`VolumeBackend::set`]: the sessions must agree, or it is `ReadBackUnavailable`.
+    fn set(&self, app: &str, percent: u8) -> Result<u8, AppVolumeError>;
+    fn read_mute(&self, app: &str) -> Result<bool, AppVolumeError>;
+    fn set_mute(&self, app: &str, muted: bool) -> Result<bool, AppVolumeError>;
+}
+
 /// Why a desktop action could not run. Never silently replaced by another mechanism
 /// (invariant 19).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -279,6 +305,110 @@ impl VolumeBackend for FakeVolumeBackend {
     }
 }
 
+/// A scripted [`AppVolumeBackend`]: apps with a session are registered up front.
+#[derive(Debug)]
+pub struct FakeAppVolumeBackend {
+    sessions: Mutex<std::collections::HashMap<String, (u8, bool)>>,
+    availability: ActionAvailability,
+    readable_after_write: bool,
+}
+
+impl FakeAppVolumeBackend {
+    pub fn new() -> Self {
+        Self {
+            sessions: Mutex::new(std::collections::HashMap::new()),
+            availability: ActionAvailability::Available {
+                confirmation: ConfirmationClass::StateConfirmed,
+            },
+            readable_after_write: true,
+        }
+    }
+
+    pub fn with_availability(availability: ActionAvailability) -> Self {
+        Self {
+            availability,
+            ..Self::new()
+        }
+    }
+
+    pub fn unreadable_after_write() -> Self {
+        Self {
+            readable_after_write: false,
+            ..Self::new()
+        }
+    }
+
+    /// An app that has a session at `percent`, unmuted.
+    #[must_use]
+    pub fn with_session(self, app: &str, percent: u8) -> Self {
+        self.sessions
+            .lock()
+            .expect("fake app volume mutex")
+            .insert(app.to_string(), (percent, false));
+        self
+    }
+
+    fn available(&self) -> Result<(), AppVolumeError> {
+        if matches!(self.availability, ActionAvailability::Available { .. }) {
+            Ok(())
+        } else {
+            Err(AppVolumeError::Os("app volume unavailable".to_string()))
+        }
+    }
+}
+
+impl Default for FakeAppVolumeBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AppVolumeBackend for FakeAppVolumeBackend {
+    fn availability(&self) -> ActionAvailability {
+        self.availability.clone()
+    }
+
+    fn read(&self, app: &str) -> Result<u8, AppVolumeError> {
+        self.available()?;
+        let sessions = self.sessions.lock().expect("fake app volume mutex");
+        sessions
+            .get(app)
+            .map(|(percent, _)| *percent)
+            .ok_or(AppVolumeError::NoSession)
+    }
+
+    fn set(&self, app: &str, percent: u8) -> Result<u8, AppVolumeError> {
+        self.available()?;
+        let mut sessions = self.sessions.lock().expect("fake app volume mutex");
+        let session = sessions.get_mut(app).ok_or(AppVolumeError::NoSession)?;
+        session.0 = percent;
+        if !self.readable_after_write {
+            return Err(AppVolumeError::ReadBackUnavailable);
+        }
+        Ok(percent)
+    }
+
+    fn read_mute(&self, app: &str) -> Result<bool, AppVolumeError> {
+        self.available()?;
+        let sessions = self.sessions.lock().expect("fake app volume mutex");
+        sessions
+            .get(app)
+            .map(|(_, muted)| *muted)
+            .ok_or(AppVolumeError::NoSession)
+    }
+
+    fn set_mute(&self, app: &str, muted: bool) -> Result<bool, AppVolumeError> {
+        self.available()?;
+        let mut sessions = self.sessions.lock().expect("fake app volume mutex");
+        let session = sessions.get_mut(app).ok_or(AppVolumeError::NoSession)?;
+        session.1 = muted;
+        if !self.readable_after_write {
+            return Err(AppVolumeError::ReadBackUnavailable);
+        }
+        Ok(muted)
+    }
+}
+
 /// A scripted [`InputSynth`]: records what it was asked to send and returns a fixed result.
 #[derive(Debug)]
 pub struct FakeInputSynth {
@@ -373,6 +503,7 @@ impl ForegroundObserver for FakeForeground {
 /// implementation get the honest "not implemented" / "not observable" variants.
 pub struct OsServices {
     pub volume: std::sync::Arc<dyn VolumeBackend>,
+    pub app_volume: std::sync::Arc<dyn AppVolumeBackend>,
     pub synth: std::sync::Arc<dyn InputSynth>,
     pub media: std::sync::Arc<dyn MediaObserver>,
     pub system: Box<dyn system::SystemProbe>,
@@ -393,8 +524,11 @@ pub fn os_services(main: Option<MainThread>) -> OsServices {
     use std::sync::Arc;
     #[cfg(windows)]
     {
+        // One backend: app sessions are read and written on the same COM-owning audio thread.
+        let audio = Arc::new(windows::WindowsVolumeBackend::new());
         OsServices {
-            volume: Arc::new(windows::WindowsVolumeBackend::new()),
+            volume: audio.clone(),
+            app_volume: audio,
             synth: Arc::new(synth::EnigoInputSynth::new(main)),
             media: Arc::new(windows::WindowsMediaObserver::new()),
             system: Box::new(windows::WindowsSystemProbe),
@@ -406,6 +540,7 @@ pub fn os_services(main: Option<MainThread>) -> OsServices {
     {
         OsServices {
             volume: Arc::new(macos::MacVolumeBackend::new()),
+            app_volume: Arc::new(macos::MacAppVolumeBackend),
             synth: Arc::new(synth::EnigoInputSynth::new(main)),
             media: Arc::new(macos::MacMediaObserver::new()),
             system: Box::new(macos::MacSystemProbe),
@@ -419,6 +554,7 @@ pub fn os_services(main: Option<MainThread>) -> OsServices {
         let _ = main;
         OsServices {
             volume: Arc::new(unimplemented::UnimplementedVolumeBackend::new(target)),
+            app_volume: Arc::new(unimplemented::UnimplementedAppVolumeBackend::new(target)),
             synth: Arc::new(unimplemented::UnimplementedInputSynth { target }),
             media: Arc::new(unimplemented::NoMediaObserver),
             system: Box::new(system::NoSystemProbe),

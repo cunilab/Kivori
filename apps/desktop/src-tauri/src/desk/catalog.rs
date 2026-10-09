@@ -7,7 +7,7 @@
 //! postcard decoding rejects an unknown variant, so App Volume and macros reuse an existing
 //! wire kind and are told apart only here).
 
-use crate::platform::{ActionAvailability, ConfirmationClass};
+use crate::platform::{ActionAvailability, ConfirmationClass, APP_VOLUME_UNSUPPORTED_ON_MAC};
 
 /// Which action an outcome, a status or an activity event is about. Never carries parameters:
 /// no shortcut keys, no application path, no app id.
@@ -104,6 +104,8 @@ pub struct Services {
     pub volume: ActionAvailability,
     /// Whether key input can be synthesized (media keys and shortcuts).
     pub input: ActionAvailability,
+    /// The per-app volume backend's availability (App Volume and App Mute).
+    pub app_volume: ActionAvailability,
 }
 
 impl Services {
@@ -113,15 +115,24 @@ impl Services {
     pub fn expected(os: Os) -> Self {
         let state = |confirmation| ActionAvailability::Available { confirmation };
         match os {
-            Os::Windows | Os::MacOs => Self {
+            Os::Windows => Self {
                 volume: state(ConfirmationClass::StateConfirmed),
                 input: state(ConfirmationClass::TriggeredUnverified),
+                app_volume: state(ConfirmationClass::StateConfirmed),
+            },
+            Os::MacOs => Self {
+                volume: state(ConfirmationClass::StateConfirmed),
+                input: state(ConfirmationClass::TriggeredUnverified),
+                app_volume: ActionAvailability::Unsupported {
+                    reason: APP_VOLUME_UNSUPPORTED_ON_MAC.to_string(),
+                },
             },
             Os::Other => {
                 let target = std::env::consts::OS;
                 Self {
                     volume: ActionAvailability::NotImplementedYet { target },
                     input: ActionAvailability::NotImplementedYet { target },
+                    app_volume: ActionAvailability::NotImplementedYet { target },
                 }
             }
         }
@@ -242,8 +253,8 @@ const fn entry(
 
 /// Every action, in the order the picker shows them.
 ///
-/// App Volume, App Mute and macros are listed but unsupported until their backends land: the
-/// config UI shows them disabled with a reason rather than hiding them.
+/// Macros are listed but unsupported until their backend lands, and App Volume and App Mute are
+/// unsupported on macOS: the config UI shows them disabled with a reason rather than hiding them.
 pub const CATALOG: [CatalogEntry; 11] = {
     use ActionToken as T;
     use Support::{ComingSoon, Everywhere};
@@ -267,7 +278,7 @@ pub const CATALOG: [CatalogEntry; 11] = {
             Confirmed,
             Params::App,
             true,
-            ComingSoon,
+            Everywhere,
         ),
         entry(
             "knobShortcuts",
@@ -327,7 +338,7 @@ pub const CATALOG: [CatalogEntry; 11] = {
             Confirmed,
             Params::App,
             true,
-            ComingSoon,
+            Everywhere,
         ),
         entry(
             "shortcut",
@@ -366,9 +377,12 @@ impl CatalogEntry {
     /// Whether this action can run here and now, for `os` with `services` as reported.
     #[must_use]
     pub fn availability(&self, os: Os, services: &Services) -> ActionAvailability {
-        // No OS needs per-OS exclusion yet; `os` is kept so the first OS-restricted entry
-        // (App Volume on macOS) is a data change here, not a signature change.
-        let _ = os;
+        // The one OS-restricted scope: macOS has no per-app volume, however the services report.
+        if self.scope == Scope::App && os == Os::MacOs {
+            return ActionAvailability::Unsupported {
+                reason: APP_VOLUME_UNSUPPORTED_ON_MAC.to_string(),
+            };
+        }
         if self.support == Support::ComingSoon {
             return ActionAvailability::Unsupported {
                 reason: "Coming soon".to_string(),
@@ -377,8 +391,9 @@ impl CatalogEntry {
         let backend = match self.scope {
             Scope::System => &services.volume,
             Scope::Media | Scope::Keyboard => &services.input,
+            Scope::App => &services.app_volume,
             // A launch needs no synthesized input.
-            Scope::App | Scope::Launch | Scope::Macro => {
+            Scope::Launch | Scope::Macro => {
                 return ActionAvailability::Available {
                     confirmation: self.verification.class(),
                 }
@@ -407,14 +422,17 @@ mod tests {
     use super::*;
     use crate::desk::actions::{execute, Action, Platform};
     use crate::platform::{
-        FakeInputSynth, FakeMediaObserver, FakeVolumeBackend, Shortcut, VolumeBackend,
+        FakeAppVolumeBackend, FakeInputSynth, FakeMediaObserver, FakeVolumeBackend, Shortcut,
+        VolumeBackend,
     };
     use kivori_model::desk::FeedbackKind;
+    use kivori_model::input::Direction;
     use std::sync::Arc;
 
     fn fakes() -> Platform {
         Platform {
             volume: Arc::new(FakeVolumeBackend::new(50)),
+            app_volume: Arc::new(FakeAppVolumeBackend::new().with_session("spotify.exe", 50)),
             synth: Arc::new(FakeInputSynth::new(Ok(()))),
             media: Arc::new(FakeMediaObserver::default()),
             launch: |_| Ok(()),
@@ -434,6 +452,13 @@ mod tests {
             "systemMute" => Action::ToggleMute,
             "shortcut" | "knobShortcuts" => Action::Shortcut("Ctrl+M".parse::<Shortcut>().unwrap()),
             "launch" => Action::Launch("Calculator".into()),
+            "appMute" => Action::AppMute {
+                app: "spotify.exe".into(),
+            },
+            "appVolume" => Action::AppVolumeStep {
+                app: "spotify.exe".into(),
+                direction: Direction::Cw,
+            },
             _ => return None,
         })
     }
@@ -455,7 +480,7 @@ mod tests {
             assert_eq!(entry.token, action.token(), "{}", entry.id);
             checked += 1;
         }
-        assert_eq!(checked, 7, "every entry with a backend is checked");
+        assert_eq!(checked, 9, "every entry with a backend is checked");
     }
 
     #[test]
@@ -487,18 +512,46 @@ mod tests {
     }
 
     #[test]
-    fn entries_without_a_backend_are_unsupported_on_every_os() {
+    fn macros_are_unsupported_on_every_os() {
         let services = Services::expected(Os::Windows);
         for os in [Os::Windows, Os::MacOs, Os::Other] {
-            for id in ["appVolume", "appMute", "macro"] {
+            assert_eq!(
+                entry_named("macro").availability(os, &services),
+                ActionAvailability::Unsupported {
+                    reason: "Coming soon".into()
+                },
+                "macro on {os:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn app_volume_and_mute_are_available_on_windows_and_unsupported_on_macos() {
+        for id in ["appVolume", "appMute"] {
+            assert_eq!(
+                entry_named(id).availability(Os::Windows, &Services::expected(Os::Windows)),
+                ActionAvailability::Available {
+                    confirmation: ConfirmationClass::StateConfirmed
+                },
+                "{id}"
+            );
+            // Whatever the services claim, macOS never offers it.
+            for services in [
+                Services::expected(Os::MacOs),
+                Services::expected(Os::Windows),
+            ] {
                 assert_eq!(
-                    entry_named(id).availability(os, &services),
+                    entry_named(id).availability(Os::MacOs, &services),
                     ActionAvailability::Unsupported {
-                        reason: "Coming soon".into()
+                        reason: APP_VOLUME_UNSUPPORTED_ON_MAC.into()
                     },
-                    "{id} on {os:?}"
+                    "{id}"
                 );
             }
+            assert!(matches!(
+                entry_named(id).availability(Os::Other, &Services::expected(Os::Other)),
+                ActionAvailability::NotImplementedYet { .. }
+            ));
         }
     }
 

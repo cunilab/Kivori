@@ -28,6 +28,8 @@ pub enum RotateBinding {
         cw: Shortcut,
         ccw: Shortcut,
     },
+    /// One app's volume (`app` is a lowercase foreground-style id), through the knob gesture path.
+    AppVolume { app: String, label: String },
 }
 
 impl RotateBinding {
@@ -35,7 +37,9 @@ impl RotateBinding {
     pub fn label(&self) -> &str {
         match self {
             RotateBinding::Volume => "Volume",
-            RotateBinding::Shortcuts { label, .. } => label,
+            RotateBinding::Shortcuts { label, .. } | RotateBinding::AppVolume { label, .. } => {
+                label
+            }
         }
     }
 }
@@ -296,7 +300,12 @@ impl Context {
     #[must_use]
     pub fn rotate(&self) -> Option<&RotateBinding> {
         let rotate = &self.profile().rotate;
-        (!self.protected() || *rotate == RotateBinding::Volume).then_some(rotate)
+        // Volume (system or one app's) changes no input, so it runs in a protected context.
+        let runs = matches!(
+            rotate,
+            RotateBinding::Volume | RotateBinding::AppVolume { .. }
+        );
+        (!self.protected() || runs).then_some(rotate)
     }
 
     /// What a discrete input does now.

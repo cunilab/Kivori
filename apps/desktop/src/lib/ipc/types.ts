@@ -173,6 +173,8 @@ export type ActionSpec =
   | { kind: 'previousTrack' }
   | { kind: 'nextTrack' }
   | { kind: 'systemMute' }
+  /** `app` is the lowercase executable name on Windows (`spotify.exe`), at most 128 characters. */
+  | { kind: 'appMute'; app: string }
   | { kind: 'shortcut'; keys: string }
   | { kind: 'launch'; target: string };
 export const ACTION_SPEC_KINDS = [
@@ -180,12 +182,17 @@ export const ACTION_SPEC_KINDS = [
   'previousTrack',
   'nextTrack',
   'systemMute',
+  'appMute',
   'shortcut',
   'launch',
 ] as const;
 
+export const ROTATE_SPEC_KINDS = ['systemVolume', 'shortcuts', 'appVolume'] as const;
 export type RotateSpec =
-  { kind: 'systemVolume' } | { kind: 'shortcuts'; cw: string; ccw: string; label: string };
+  | { kind: 'systemVolume' }
+  | { kind: 'shortcuts'; cw: string; ccw: string; label: string }
+  /** One app's volume. `label` defaults to the app's name without `.exe`. */
+  | { kind: 'appVolume'; app: string; label?: string };
 
 /** A replacement for one slot: `action: null` = explicitly unbound. */
 export interface SlotSpec {

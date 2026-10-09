@@ -14,6 +14,7 @@
 //! identically to `eConsole` is a physical-validation item (Task 14), not an assumption baked in
 //! here.
 
+mod app_volume;
 pub mod foreground;
 pub mod media;
 pub mod system;
@@ -41,7 +42,8 @@ use windows::Win32::System::Com::{
 use windows::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 
 use crate::platform::{
-    ActionAvailability, BackendError, ChangeOrigin, ConfirmationClass, VolumeBackend, VolumeChange,
+    ActionAvailability, AppVolumeBackend, AppVolumeError, BackendError, ChangeOrigin,
+    ConfirmationClass, VolumeBackend, VolumeChange,
 };
 
 /// Identifies volume changes Kivori itself originated. `SetMasterVolumeLevelScalar` takes this
@@ -64,6 +66,12 @@ enum Command {
     Set(u8, Sender<Result<u8, BackendError>>),
     ReadMute(Sender<Result<bool, BackendError>>),
     SetMute(bool, Sender<Result<bool, BackendError>>),
+    /// Per-app volume and mute: the sessions are enumerated and written on this thread, which
+    /// owns the COM apartment.
+    AppRead(String, Sender<Result<u8, AppVolumeError>>),
+    AppSet(String, u8, Sender<Result<u8, AppVolumeError>>),
+    AppReadMute(String, Sender<Result<bool, AppVolumeError>>),
+    AppSetMute(String, bool, Sender<Result<bool, AppVolumeError>>),
     /// Raised by the `IMMNotificationClient` callback when the default render endpoint changes.
     /// All COM work for the rebind happens here, on the owning thread — never in the callback.
     Rebind,
@@ -200,6 +208,41 @@ impl VolumeBackend for WindowsVolumeBackend {
     }
 }
 
+impl WindowsVolumeBackend {
+    /// Sends `command` to the owning thread and waits for its reply.
+    fn app_call<T>(
+        &self,
+        command: impl FnOnce(Sender<Result<T, AppVolumeError>>) -> Command,
+    ) -> Result<T, AppVolumeError> {
+        let gone = || AppVolumeError::Os("kivori-audio thread is gone".to_string());
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.commands.send(command(reply_tx)).map_err(|_| gone())?;
+        reply_rx.recv().map_err(|_| gone())?
+    }
+}
+
+impl AppVolumeBackend for WindowsVolumeBackend {
+    fn availability(&self) -> ActionAvailability {
+        VolumeBackend::availability(self)
+    }
+
+    fn read(&self, app: &str) -> Result<u8, AppVolumeError> {
+        self.app_call(|reply| Command::AppRead(app.to_string(), reply))
+    }
+
+    fn set(&self, app: &str, percent: u8) -> Result<u8, AppVolumeError> {
+        self.app_call(|reply| Command::AppSet(app.to_string(), percent, reply))
+    }
+
+    fn read_mute(&self, app: &str) -> Result<bool, AppVolumeError> {
+        self.app_call(|reply| Command::AppReadMute(app.to_string(), reply))
+    }
+
+    fn set_mute(&self, app: &str, muted: bool) -> Result<bool, AppVolumeError> {
+        self.app_call(|reply| Command::AppSetMute(app.to_string(), muted, reply))
+    }
+}
+
 /// State the owning thread holds for the currently-bound endpoint. `None` when there is no
 /// default render endpoint right now.
 #[derive(Default)]
@@ -275,6 +318,18 @@ fn audio_thread(
                     None => Err(BackendError::NoEndpoint),
                 };
                 let _ = reply.send(result);
+            }
+            Ok(Command::AppRead(app, reply)) => {
+                let _ = reply.send(app_volume::read(enumerator.as_ref(), &app));
+            }
+            Ok(Command::AppSet(app, percent, reply)) => {
+                let _ = reply.send(app_volume::set(enumerator.as_ref(), &app, percent));
+            }
+            Ok(Command::AppReadMute(app, reply)) => {
+                let _ = reply.send(app_volume::read_mute(enumerator.as_ref(), &app));
+            }
+            Ok(Command::AppSetMute(app, muted, reply)) => {
+                let _ = reply.send(app_volume::set_mute(enumerator.as_ref(), &app, muted));
             }
             Ok(Command::Rebind) => {
                 if let Some(enumerator) = &enumerator {

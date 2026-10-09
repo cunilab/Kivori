@@ -11,8 +11,8 @@ use kivori_desktop::desk::DeskRuntime;
 use kivori_desktop::input::Freshness;
 use kivori_desktop::platform::system::NoSystemProbe;
 use kivori_desktop::platform::{
-    ActionAvailability, BackendError, FakeForeground, FakeInputSynth, FakeMediaObserver,
-    FakeVolumeBackend, Foreground, OsServices, VolumeBackend,
+    ActionAvailability, BackendError, FakeAppVolumeBackend, FakeForeground, FakeInputSynth,
+    FakeMediaObserver, FakeVolumeBackend, Foreground, OsServices, VolumeBackend,
 };
 use kivori_desktop::runtime::device_task::RotaryPipeline;
 use kivori_model::input::Direction;
@@ -234,6 +234,7 @@ fn shortcut_detents_are_never_batched() {
     let backend = SlowBackend::new(50);
     let mut desk = DeskRuntime::new(OsServices {
         volume: Arc::new(FakeVolumeBackend::new(20)),
+        app_volume: Arc::new(FakeAppVolumeBackend::new()),
         synth: synth.clone(),
         media: Arc::new(FakeMediaObserver::default()),
         system: Box::new(NoSystemProbe),

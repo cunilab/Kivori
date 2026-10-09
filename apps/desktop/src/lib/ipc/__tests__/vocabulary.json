@@ -1,4 +1,13 @@
 {
+  "actionSpecKinds": [
+    "playPause",
+    "previousTrack",
+    "nextTrack",
+    "systemMute",
+    "appMute",
+    "shortcut",
+    "launch"
+  ],
   "controls": [
     "press",
     "hold",
@@ -20,5 +29,6 @@
     "appMute",
     "macro"
   ],
-  "profileIds": ["general", "browser", "code", "media", "zoom", "teams"]
+  "profileIds": ["general", "browser", "code", "media", "zoom", "teams"],
+  "rotateSpecKinds": ["systemVolume", "shortcuts", "appVolume"]
 }
