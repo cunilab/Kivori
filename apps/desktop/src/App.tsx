@@ -56,6 +56,7 @@ import {
   useConnectionStatus,
   useConfig,
   useDeskStatus,
+  useUpdateAvailable,
   type UiConnection,
 } from './hooks/use-kivori';
 import { brandIconUrl } from './lib/brand';
@@ -165,6 +166,7 @@ export function App(): ReactElement {
   const [page, setPage] = useState<PageId>('home');
   const connection = useConnectionStatus();
   const desk = useDeskStatus();
+  const updateAvailable = useUpdateAvailable(connection);
   const config = useConfig();
   // Buddy settings used to live in localStorage; carry them over once the config is known.
   const legacyChecked = useRef(false);
@@ -279,7 +281,12 @@ export function App(): ReactElement {
           </header>
           <div className="flex-1">
             {current === 'home' ? (
-              <HomePage connection={connection} desk={desk} onNavigate={go} />
+              <HomePage
+                connection={connection}
+                desk={desk}
+                updateAvailable={updateAvailable}
+                onNavigate={go}
+              />
             ) : current === 'controls' ? (
               <ControlsPage desk={desk} config={config} />
             ) : current === 'display' ? (

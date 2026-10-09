@@ -1,6 +1,9 @@
 use std::path::Path;
 use std::process::Command;
 
+#[path = "src/firmware_marker.rs"]
+mod firmware_marker;
+
 fn main() {
     println!("cargo:rerun-if-changed=../../../assets/mascot.svg");
     // Compile the canonical asset blob into OUT_DIR at build time so the binary bundles it. The runtime
@@ -26,6 +29,10 @@ fn main() {
         }
         None => Vec::new(),
     };
+    // The bundled firmware's own version, read from its image so it can never drift from what gets
+    // flashed. Empty when no firmware is embedded (ordinary host/CI builds).
+    let bundled_version = firmware_marker::scan_firmware_version(&firmware).unwrap_or_default();
+    println!("cargo:rustc-env=KIVORI_BUNDLED_FIRMWARE_VERSION={bundled_version}");
     std::fs::write(Path::new(&out_dir).join("kivori-firmware.elf"), firmware)
         .expect("write bundled firmware");
 

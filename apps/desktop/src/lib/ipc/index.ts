@@ -35,6 +35,7 @@ import {
   parseConnectionStatus,
   parseDeskStatus,
   parseDiagnostics,
+  parseFirmwareStatus,
 } from './validate';
 
 /// Handle returned by an event subscription; call it to unsubscribe.
@@ -85,21 +86,23 @@ export async function getConnectionStatus(): Promise<ConnectionStatusDto> {
 
 /** Firmware status belongs to the native runtime and survives Overview navigation. */
 export async function getFirmwareStatus(): Promise<FirmwareStatusDto> {
-  if (isTauri()) return invoke<FirmwareStatusDto>('get_firmware_status');
-  if (import.meta.env.DEV) {
-    return {
-      available: false,
-      phase: 'idle',
-      message: 'Open the native Kivori app to flash firmware.',
-      imageSize: 0,
-    };
-  }
+  if (isTauri()) return parseFirmwareStatus(await invoke<unknown>('get_firmware_status'));
+  if (import.meta.env.DEV) return (await devMock()).mockFirmwareStatus();
   return unavailable();
 }
 
 /** Installs only the bundled firmware on the already-connected device. */
 export async function flashFirmware(): Promise<void> {
   if (isTauri()) return invoke<void>('flash_firmware');
+  return unavailable();
+}
+
+/**
+ * Restores the bundled firmware on the one Kivori device present, even one that cannot connect
+ * (wrong firmware, or held in download mode with the BOOT button). Takes no port.
+ */
+export async function restoreFirmware(): Promise<void> {
+  if (isTauri()) return invoke<void>('restore_firmware');
   return unavailable();
 }
 

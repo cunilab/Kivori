@@ -115,7 +115,7 @@ export function DevicePage({
         </Card>
 
         <div className="flex flex-col gap-4">
-          <FirmwareUpdate connected={ui === 'connected'} />
+          <FirmwareUpdate connected={ui === 'connected'} incompatible={ui === 'incompatible'} />
           <Diagnostics />
           <Card size="sm">
             <CardHeader>

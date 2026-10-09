@@ -1671,5 +1671,7 @@ pub fn vocabulary_json() -> serde_json::Value {
         "hostFocus": HOST_FOCUS_TOKENS,
         "hostInputPermission": HOST_INPUT_PERMISSION_TOKENS,
         "hostPresence": HOST_PRESENCE_TOKENS,
+        "flashFailures": crate::firmware::FlashFailure::ALL.map(crate::firmware::FlashFailure::token),
+        "updateAdvice": crate::firmware::UpdateAdvice::ALL.map(crate::firmware::UpdateAdvice::token),
     })
 }

@@ -26,13 +26,13 @@ use crate::activity::{
 use crate::companion::CompanionDirector;
 use crate::config::ResolvedConfig;
 use crate::desk::DeskRuntime;
-use crate::device::discovery::{CandidateRotator, DEFAULT_ALLOWLIST};
+use crate::device::discovery::{filter_candidates, CandidateRotator, DEFAULT_ALLOWLIST};
 use crate::device::fsm::{ConnectionManager, ManagerEvent};
 use crate::device::reconnect::base_delay_ms;
 use crate::device::serial::{enumerate, SerialPortLink};
 use crate::device::session::{Session, SessionConfig, SessionError};
 use crate::device::transport::SerialLink;
-use crate::firmware::{self, FirmwareStatus, FlashWorkflow, ResumeTarget};
+use crate::firmware::{self, FirmwareStatus, FlashFailure, FlashWorkflow, ResumeTarget};
 use crate::input::{Freshness, InputIngress, LogicalInput, RejectReason};
 use crate::ipc::dto::{
     availability_token, connection_status, desk_status_dto, ConnectionStatusDto, DeskStatusDto,
@@ -343,17 +343,30 @@ fn device_loop(
                         record_observations(&app, &activity_log, [observation]);
                     });
                 }
-                DeviceCommand::FlashFirmware => {
-                    let requested = flash.request(
-                        manager.state().can_drive_device(),
-                        connected_port.as_deref(),
-                        manager
-                            .device()
-                            .map(|device| device.device_id_hash_short.as_str()),
-                    );
+                flash_command @ (DeviceCommand::FlashFirmware | DeviceCommand::RestoreFirmware) => {
+                    // A device that cannot be verified (wrong-major firmware, a unit in ROM download
+                    // mode) is recovered by identity-free port rules instead of a verified handshake.
+                    let recovery = flash_command == DeviceCommand::RestoreFirmware
+                        || manager.state() == ConnectionState::Incompatible;
+                    let mut refusal = firmware::FlashFailure::Unknown;
+                    let requested = if recovery {
+                        let candidates = enumerate();
+                        if filter_candidates(&candidates, DEFAULT_ALLOWLIST).is_empty() {
+                            refusal = firmware::FlashFailure::NoDownloadMode;
+                        }
+                        flash.request_recovery(&candidates)
+                    } else {
+                        flash.request(
+                            manager.state().can_drive_device(),
+                            connected_port.as_deref(),
+                            manager
+                                .device()
+                                .map(|device| device.device_id_hash_short.as_str()),
+                        )
+                    };
                     let Ok(port) = requested else {
                         if !flash.is_busy() {
-                            flash.fail_preparation();
+                            flash.fail_preparation_with(refusal);
                         }
                         drain_firmware_activity(&app, &activity_log, &mut flash);
                         publish_firmware_status(&firmware_status, &flash);
@@ -362,6 +375,13 @@ fn device_loop(
                     drain_firmware_activity(&app, &activity_log, &mut flash);
                     publish_firmware_status(&firmware_status, &flash);
 
+                    // Put the device on its Updating screen before the port goes away. Older firmware
+                    // has no such screen, so it simply sees the link drop.
+                    if let Some(open_link) = link.as_mut() {
+                        if session.supports_host_takeovers() {
+                            let _ = session.close(open_link, ByeReason::FirmwareUpdate);
+                        }
+                    }
                     // This drop closes the serial handle before `espflash` opens the same port.
                     link = None;
                     connected_port = None;
@@ -1232,6 +1252,7 @@ pub fn plan_device_request(
             })
         }
         DeviceCommand::FlashFirmware
+        | DeviceCommand::RestoreFirmware
         | DeviceCommand::Refresh
         | DeviceCommand::SetDisplayMode(_)
         | DeviceCommand::TestAction(_)
@@ -1242,14 +1263,11 @@ pub fn plan_device_request(
 
 /// Runs the accepted synchronous flash path and delivers queued observations after each workflow
 /// transition, including before the potentially blocking flasher callback.
-pub fn run_accepted_firmware_flash<E>(
+pub fn run_accepted_firmware_flash(
     flash: &mut FlashWorkflow,
-    run_flash: impl FnOnce(&FirmwareStatus) -> Result<(), E>,
+    run_flash: impl FnOnce(&FirmwareStatus) -> Result<(), FlashFailure>,
     mut observe: impl FnMut(SessionActivity),
-) -> ResumeTarget
-where
-    E: AsRef<str>,
-{
+) -> ResumeTarget {
     flash.drain_activity().into_iter().for_each(&mut observe);
     flash.mark_serial_released();
     flash.drain_activity().into_iter().for_each(&mut observe);

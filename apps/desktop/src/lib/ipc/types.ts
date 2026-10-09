@@ -26,11 +26,40 @@ export interface DeviceInfoDto {
   deviceIdHashShort: string;
 }
 
+export const FIRMWARE_PHASES = [
+  'idle',
+  'preparing',
+  'flashing',
+  'reconnecting',
+  'succeeded',
+  'failed',
+] as const;
+/** Why the last firmware attempt failed; the UI owns the wording. */
+export const FLASH_FAILURES = [
+  'toolMissing',
+  'portBusy',
+  'noDownloadMode',
+  'timeout',
+  'cancelled',
+  'imageUnavailable',
+  'reconnectTimedOut',
+  'unknown',
+] as const;
+export type FlashFailure = (typeof FLASH_FAILURES)[number];
+/** Whether the connected device should be updated to the firmware bundled with this app. */
+export const UPDATE_ADVICE = ['upToDate', 'updateAvailable', 'deviceNewer', 'unknown'] as const;
+export type UpdateAdvice = (typeof UPDATE_ADVICE)[number];
+
 export interface FirmwareStatusDto {
   available: boolean;
-  phase: 'idle' | 'preparing' | 'flashing' | 'reconnecting' | 'succeeded' | 'failed';
+  phase: (typeof FIRMWARE_PHASES)[number];
   message: string;
   imageSize: number;
+  /** Set only while `phase` is `failed`. */
+  failure: FlashFailure | null;
+  /** Firmware version bundled in this app, when known. */
+  bundledVersion: string | null;
+  advice: UpdateAdvice;
 }
 
 export const CAPABILITY_NAMES = [

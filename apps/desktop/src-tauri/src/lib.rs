@@ -11,6 +11,7 @@ pub mod config;
 pub mod desk;
 pub mod device;
 pub mod firmware;
+pub mod firmware_marker;
 pub mod input;
 pub mod ipc;
 pub mod orchestrator;
@@ -118,6 +119,7 @@ pub fn run() {
         ipc::commands::get_firmware_status,
         ipc::commands::get_diagnostics,
         ipc::commands::flash_firmware,
+        ipc::commands::restore_firmware,
         ipc::commands::render_preview_frame,
         ipc::commands::mirror_state,
         ipc::commands::get_desk_status,
@@ -149,6 +151,7 @@ pub fn run() {
         ipc::commands::get_firmware_status,
         ipc::commands::get_diagnostics,
         ipc::commands::flash_firmware,
+        ipc::commands::restore_firmware,
         ipc::commands::get_desk_status,
         ipc::commands::set_display_mode,
         ipc::commands::list_action_catalog,

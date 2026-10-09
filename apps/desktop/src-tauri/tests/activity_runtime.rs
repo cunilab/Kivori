@@ -430,7 +430,7 @@ fn production_recovery_emits_retry_only_when_it_sets_a_retry_deadline() {
     reconnect_flash
         .request(true, Some("COM7"), Some("deadbeef"))
         .unwrap();
-    reconnect_flash.finish(Ok::<(), &str>(()));
+    reconnect_flash.finish(Ok(()));
     let mut reconnect_activity = Vec::new();
 
     recover_link(
