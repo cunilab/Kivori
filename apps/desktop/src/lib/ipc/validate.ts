@@ -24,6 +24,7 @@ import {
   FIRMWARE_PHASES,
   FLASH_FAILURES,
   UPDATE_ADVICE,
+  STARTUP_PLATFORMS,
   INTENSITIES,
   MASCOT_ACTIONS,
   MEDIA_STATUSES,
@@ -39,6 +40,7 @@ import type {
   ConfigDto,
   DiagnosticsDto,
   FirmwareStatusDto,
+  StartupSettingsDto,
   MacroSpec,
   StepSpec,
   DeskStatusDto,
@@ -128,6 +130,16 @@ export function parseConnectionStatus(raw: unknown): ConnectionStatusDto {
   return {
     ...(r as unknown as ConnectionStatusDto),
     host: oneOf('host presence', HOST_PRESENCES, r.host),
+  };
+}
+
+/** Validates a `StartupSettingsDto`: an unknown platform token is rejected. */
+export function parseStartupSettings(raw: unknown): StartupSettingsDto {
+  const r = record('startup settings', raw);
+  if (typeof r.launchAtLogin !== 'boolean') throw new Error('Kivori: invalid launchAtLogin.');
+  return {
+    launchAtLogin: r.launchAtLogin,
+    platform: oneOf('startup platform', STARTUP_PLATFORMS, r.platform),
   };
 }
 

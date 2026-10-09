@@ -43,6 +43,7 @@ use crate::orchestrator::Orchestrator;
 use crate::platform::host_events::{HostEvent, HostPresenceTracker, HostSignal, PresenceAction};
 use crate::platform::{self, ActionAvailability, VolumeBackend};
 use crate::presentation::{PresentationResolver, ProductSnapshot};
+use crate::runtime::lifecycle;
 use crate::runtime::state::DeviceCommand;
 use kivori_model::desk::{ActionFeedback, ActionKind, FeedbackKind};
 use kivori_model::{Capabilities, CompanionState, ConnectionState};
@@ -215,6 +216,7 @@ fn device_loop(
     );
     *status.lock().expect("status lock") = last.clone();
     events::emit_status(&app, &last);
+    lifecycle::refresh_tray(&app, &last);
     let mut previous_state = manager.state();
     let mut active_session = None;
     let mut activity_planner = RuntimeActivityPlanner::new();
@@ -808,6 +810,7 @@ fn device_loop(
         if snapshot != last {
             *status.lock().expect("status lock") = snapshot.clone();
             events::emit_status(&app, &snapshot);
+            lifecycle::refresh_tray(&app, &snapshot);
             last = snapshot;
         }
 

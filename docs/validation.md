@@ -254,6 +254,17 @@ Software is done (workflow, classifier fixtures, recovery rules, sidecar lookup,
 - [ ] 8.7 Capture `espflash` stderr for each failure above | add each as a classifier fixture in `tests/firmware_flash.rs`
 - [ ] 8.8 With an older app-bundled version than the device, and with a newer one | the Device page and Home show "update available" only when the bundled firmware is newer
 
+## Phase 9: Launch at login and tray (M3 S4)
+
+Software is done (tray model table, hidden-start lifecycle, `--autostart` parsing, Device page switch). Every row needs a real sign-in, so none are checked yet. The Windows uninstall row needs the S5 installer hook.
+
+- [ ] 9.1 Windows: turn on Start with Windows, sign out and back in | the tray icon is present, no window opens, the device connects
+- [ ] 9.2 Windows: turn it off, sign in again | Kivori does not start
+- [ ] 9.3 Windows: uninstall | the `HKCU\...\Run\Kivori` entry is gone (needs the S5 installer)
+- [ ] 9.4 macOS: same as 9.1 and 9.2 through the LaunchAgent | and the "Background item" notice appears once
+- [ ] 9.5 Tray menu: Launch at login, Open Kivori and Quit | each works; the check mark matches the Device page switch after reopening the window
+- [ ] 9.6 Connect, unplug, lock the screen | the tray line reads Connected, Not connected, Paused while locked; the tooltip shows both versions
+
 ## Evidence log
 
 | Date | What | Result |

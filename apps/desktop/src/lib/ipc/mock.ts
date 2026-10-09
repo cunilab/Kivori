@@ -13,6 +13,7 @@ import type {
   ConfigDto,
   DiagnosticsDto,
   FirmwareStatusDto,
+  StartupSettingsDto,
   MacroSpec,
   StepSpec,
   ConnectionStatusDto,
@@ -53,6 +54,17 @@ function scenario(): string {
 /** The scenarios that show a connected device. */
 function connectedScenario(): boolean {
   return ['connected', 'update', 'flashfail'].includes(scenario());
+}
+
+let launchAtLogin = false;
+
+export function mockGetStartupSettings(): StartupSettingsDto {
+  return { launchAtLogin, platform: 'windows' };
+}
+
+export function mockSetLaunchAtLogin(enabled: boolean): StartupSettingsDto {
+  launchAtLogin = enabled;
+  return mockGetStartupSettings();
 }
 
 export function mockFirmwareStatus(): FirmwareStatusDto {

@@ -17,6 +17,7 @@ vi.mock('../../../lib/ipc', () => ({
       advice: 'unknown',
     }),
   flashFirmware: vi.fn(),
+  getStartupSettings: () => new Promise(() => {}),
   getDiagnostics: () => new Promise(() => {}),
 }));
 

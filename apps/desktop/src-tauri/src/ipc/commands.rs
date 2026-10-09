@@ -11,6 +11,7 @@ use crate::activity::ActivityEventKind;
 use crate::firmware::FirmwareStatus;
 use crate::ipc::dto::{
     self, ActivityEventDto, AppInfoDto, ConfigDto, ConnectionStatusDto, DiagnosticsDto,
+    StartupSettingsDto,
 };
 use crate::ipc::events;
 use crate::runtime::state::{AppState, DeviceCommand};
@@ -57,6 +58,24 @@ pub fn set_desired_state(app: State<'_, AppState>, state: String) -> Result<(), 
 #[tauri::command]
 pub fn get_diagnostics(app: State<'_, AppState>) -> DiagnosticsDto {
     app.diagnostics_snapshot()
+}
+
+/// Whether Kivori starts at login, read from the OS entry (all builds).
+///
+/// # Errors
+/// Returns the OS error text when the login entry cannot be read.
+#[tauri::command]
+pub fn get_startup_settings(app: AppHandle) -> Result<StartupSettingsDto, String> {
+    crate::runtime::lifecycle::startup_settings(&app)
+}
+
+/// Adds or removes the OS login entry and returns what the OS now says.
+///
+/// # Errors
+/// Returns the OS error text when the entry cannot be changed.
+#[tauri::command]
+pub fn set_launch_at_login(app: AppHandle, enabled: bool) -> Result<StartupSettingsDto, String> {
+    crate::runtime::lifecycle::set_launch_at_login(&app, enabled)
 }
 
 /// The stored settings (initial sync; `config://changed` carries changes).

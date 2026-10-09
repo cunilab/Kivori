@@ -366,6 +366,13 @@ The typed session activity log is the only runtime log.
 - `ConnectionStatusDto.host` is `locked` while the override is set and `sleeping` while the link is released for a suspend. Activity records: `hostSuspending`, `hostResumed`, `hostLocked`, `hostUnlocked` (source `connection`, info).
 - If the OS refuses the registration the app logs one warning and runs without it; the device then falls back to its host-silence timeout and shows Offline.
 
+### Launch at login and tray (M3 S4)
+
+- `tauri-plugin-autostart` is used from Rust only: `init(MacosLauncher::LaunchAgent, Some(["--autostart"]))` and `app.autolaunch()`. There is no JS package and no permission in `capabilities/default.json`, so the webview reaches it only through `get_startup_settings` and `set_launch_at_login(enabled)`. The OS entry (Windows `Run` key, macOS LaunchAgent) is the source of truth: nothing is stored in `config.json`, and each command returns what the OS reports after the change. Its own dependencies (`auto-launch`, `dirs`, `os_info`, registry and `smappservice` bindings) have no network crate.
+- Hidden start: `tauri.conf.json` creates the window with `visible: false`. `setup` shows it unless `std::env::args()` contains `--autostart` (`window_lifecycle::launched_at_login`); a login launch starts `WindowLifecycle::hidden()` (tray only, a close request is a no-op, `Reactivated` shows the window). The device task runs either way.
+- Tray (`runtime/lifecycle.rs`, id `kivori`): a disabled status line (`Connected`, `Not connected`, `Paused while locked`), `Open Kivori`, a `Launch at login` check item and `Quit`. The tooltip reads `Kivori · Desktop x.y.z · Firmware a.b.c` (firmware only while a device is connected, plus `Update available` when the advice says so). `tray_model(&ConnectionStatusDto, UpdateAdvice)` is pure; `refresh_tray` applies it from the device thread next to `emit_status`, so the tray follows the same snapshot as the UI. The check item is re-read from the OS after each toggle.
+- A second launch while Kivori runs still goes to single-instance and surfaces the window.
+
 ### Config
 
 - One JSON file, `config.json`, in the per-user app data directory (`app_local_data_dir`: `%LOCALAPPDATA%\id.immer.kivori` on Windows, `~/Library/Application Support/id.immer.kivori` on macOS). It is Local, not Roaming, so settings stay per user and per machine. Installers never touch it. A missing file means defaults, and nothing is written until the first change.

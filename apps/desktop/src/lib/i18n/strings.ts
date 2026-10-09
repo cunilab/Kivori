@@ -361,6 +361,12 @@ export const strings = {
     appProtocol: 'App protocol',
     retries: 'Reconnect attempts',
     notConnected: 'Connect Kivori to see its details.',
+    startup: {
+      title: 'Startup',
+      label: { windows: 'Start with Windows', macos: 'Start with macOS', other: 'Start at login' },
+      hint: 'Kivori starts quietly in the tray and reconnects your device. The window stays closed until you open it.',
+      failed: 'Could not change the startup setting.',
+    },
     advanced: 'Advanced',
     developerMode: 'Developer mode',
     developerModeHint: 'Show developer tools and diagnostics on this computer.',

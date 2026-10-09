@@ -6,6 +6,18 @@
 //! `main.rs` binds it to Tauri window/tray/single-instance events. Device-task survival is a property
 //! of this policy, not of the webview — the runtime owns the task (window ≠ device).
 
+/// The argument the OS launcher passes when it starts Kivori at login (see `lib.rs`).
+pub const AUTOSTART_ARG: &str = "--autostart";
+
+/// Whether the process was started by the login launcher, so the window stays hidden.
+pub fn launched_at_login<I>(args: I) -> bool
+where
+    I: IntoIterator,
+    I::Item: AsRef<str>,
+{
+    args.into_iter().any(|arg| arg.as_ref() == AUTOSTART_ARG)
+}
+
 /// A lifecycle input from the OS / Tauri layer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LifecycleEvent {
@@ -47,6 +59,15 @@ impl WindowLifecycle {
     pub const fn new() -> Self {
         Self {
             window_visible: true,
+            running: true,
+        }
+    }
+
+    /// A login launch: the process runs (tray only) and the window is hidden until re-activated.
+    #[must_use]
+    pub const fn hidden() -> Self {
+        Self {
+            window_visible: false,
             running: true,
         }
     }
