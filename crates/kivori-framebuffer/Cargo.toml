@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "RGB565 tile/scanline framebuffer + dirty-region primitives (no_std). Scaffold; impl in T036+."
+description = "RGB565 tile/scanline framebuffer + dirty-region primitives (no_std)."
 
 [dependencies]
 kivori-model = { path = "../kivori-model" }

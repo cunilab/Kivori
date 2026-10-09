@@ -1,7 +1,13 @@
 import { Progress as ProgressPrimitive } from '@base-ui/react/progress';
 import { cn } from 'cn';
+import type { ReactElement } from 'react';
 
-function Progress({ className, children, value, ...props }: ProgressPrimitive.Root.Props) {
+function Progress({
+  className,
+  children,
+  value,
+  ...props
+}: ProgressPrimitive.Root.Props): ReactElement {
   return (
     <ProgressPrimitive.Root
       value={value}
@@ -17,7 +23,7 @@ function Progress({ className, children, value, ...props }: ProgressPrimitive.Ro
   );
 }
 
-function ProgressTrack({ className, ...props }: ProgressPrimitive.Track.Props) {
+function ProgressTrack({ className, ...props }: ProgressPrimitive.Track.Props): ReactElement {
   return (
     <ProgressPrimitive.Track
       className={cn(
@@ -30,7 +36,10 @@ function ProgressTrack({ className, ...props }: ProgressPrimitive.Track.Props) {
   );
 }
 
-function ProgressIndicator({ className, ...props }: ProgressPrimitive.Indicator.Props) {
+function ProgressIndicator({
+  className,
+  ...props
+}: ProgressPrimitive.Indicator.Props): ReactElement {
   return (
     <ProgressPrimitive.Indicator
       data-slot="progress-indicator"
@@ -40,7 +49,7 @@ function ProgressIndicator({ className, ...props }: ProgressPrimitive.Indicator.
   );
 }
 
-function ProgressLabel({ className, ...props }: ProgressPrimitive.Label.Props) {
+function ProgressLabel({ className, ...props }: ProgressPrimitive.Label.Props): ReactElement {
   return (
     <ProgressPrimitive.Label
       className={cn('text-sm font-medium', className)}
@@ -50,7 +59,7 @@ function ProgressLabel({ className, ...props }: ProgressPrimitive.Label.Props) {
   );
 }
 
-function ProgressValue({ className, ...props }: ProgressPrimitive.Value.Props) {
+function ProgressValue({ className, ...props }: ProgressPrimitive.Value.Props): ReactElement {
   return (
     <ProgressPrimitive.Value
       className={cn('ml-auto text-sm text-muted-foreground tabular-nums', className)}

@@ -65,7 +65,7 @@ fn host_drain(pipe: &mut SimPipe) -> Vec<Message> {
 }
 
 /// A stub input source: this suite exercises the protocol/lifecycle/render loop, not physical
-/// input, so it always reports no motion (Task 4 wires the port; Task 13 replaces it on device).
+/// input, so it always reports no motion (the physical adapter is `physical_rotary::PhysicalRotary`).
 struct NoInput;
 
 impl InputSource for NoInput {

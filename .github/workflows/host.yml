@@ -1,4 +1,4 @@
-# Host CI (skeleton — expanded in Phase 14 / T110). Hardware-free and window-automation-free.
+# Host CI. Hardware-free and window-automation-free.
 name: host
 on:
   push:

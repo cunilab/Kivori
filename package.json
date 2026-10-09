@@ -7,11 +7,10 @@
     "node": ">=20"
   },
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "apps/*"
   ],
   "scripts": {
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
     "typecheck": "bun run --parallel --workspaces --if-present typecheck",
     "test": "bun run --parallel --workspaces --if-present test",
     "build": "bun run --parallel --workspaces --if-present build",

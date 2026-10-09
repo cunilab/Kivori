@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Shared canonical domain types for Kivori (no_std, no alloc). Scaffold; types land in T013+."
+description = "Shared canonical domain types for Kivori (no_std, no alloc)."
 
 [dependencies]
 # no_std serde for wire-serializable domain types (used by kivori-protocol via postcard).

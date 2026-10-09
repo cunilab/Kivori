@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Kivori device wire protocol codec (no_std + optional std). Scaffold; impl in T021+."
+description = "Kivori device wire protocol codec (no_std + optional std)."
 
 [features]
 default = []

@@ -1,4 +1,4 @@
-//! The desktop protocol session driver (Phase 11 host-testable core).
+//! The desktop protocol session driver (host-testable core).
 //!
 //! `Session` is the synchronous, [`SerialLink`]-driven heart of the eventual async run loop: it opens
 //! a session (`Hello`), verifies the device's `HelloAck`, drives the [`ConnectionManager`] from wire

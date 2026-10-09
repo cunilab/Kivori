@@ -4,7 +4,7 @@
 hash = "fnv1a-rgb565-le"
 dimension = 240
 
-# Phase 4 code-defined test scene.
+# Code-defined test scene.
 [test_scene]
 [[test_scene.frame]]
 elapsed_ms = 0
