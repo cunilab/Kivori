@@ -42,6 +42,7 @@ import {
   DESK_ACTIONS,
   HOST_AVAILABILITIES,
   HOST_FOCUS,
+  HOST_PRESENCES,
   HOST_INPUT_PERMISSIONS,
   HOST_MEDIA,
   PREVIEW_DIM,
@@ -50,7 +51,13 @@ import {
   STEP_SPEC_KINDS,
 } from '../types';
 import type { MacroSpec } from '../types';
-import { MAX_MEDIA_TEXT, parseCatalog, parseConfig, parseDiagnostics } from '../validate';
+import {
+  MAX_MEDIA_TEXT,
+  parseCatalog,
+  parseConfig,
+  parseConnectionStatus,
+  parseDiagnostics,
+} from '../validate';
 
 afterEach(() => {
   delete (window as Window & { __TAURI_INTERNALS__?: object }).__TAURI_INTERNALS__;
@@ -228,6 +235,10 @@ describe('desk ipc (Tauri)', () => {
       'configRecovered',
       'configReset',
       'configSaveFailed',
+      'hostSuspending',
+      'hostResumed',
+      'hostLocked',
+      'hostUnlocked',
     ].map((type, i) => ({
       ...base,
       id: i,
@@ -587,6 +598,7 @@ describe('Rust/TS token vocabulary', () => {
     expect([...HOST_AVAILABILITIES]).toEqual(vocabulary.hostAvailability);
     expect([...HOST_MEDIA]).toEqual(vocabulary.hostMedia);
     expect([...HOST_FOCUS]).toEqual(vocabulary.hostFocus);
+    expect([...HOST_PRESENCES]).toEqual(vocabulary.hostPresence);
     expect([...HOST_INPUT_PERMISSIONS]).toEqual(vocabulary.hostInputPermission);
   });
 });
@@ -607,5 +619,18 @@ describe('parseDiagnostics', () => {
       parseDiagnostics({ ...good, health: { ...good.health, sequenceGaps: -1 } }),
     ).toThrow();
     expect(() => parseDiagnostics(null)).toThrow();
+  });
+});
+
+describe('parseConnectionStatus', () => {
+  it('accepts every host presence and rejects an unknown one', async () => {
+    const mock = await import('../mock');
+    const good = JSON.parse(JSON.stringify(mock.mockConnectionStatus()));
+    for (const host of HOST_PRESENCES) {
+      expect(parseConnectionStatus({ ...good, host }).host).toBe(host);
+    }
+    expect(() => parseConnectionStatus({ ...good, host: 'hibernating' })).toThrow();
+    expect(() => parseConnectionStatus({ ...good, host: undefined })).toThrow();
+    expect(() => parseConnectionStatus(null)).toThrow();
   });
 });

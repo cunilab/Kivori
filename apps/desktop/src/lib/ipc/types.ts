@@ -51,6 +51,10 @@ export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
 export const HOST_AVAILABILITIES = ['available', 'unsupported', 'unavailable'] as const;
 export const HOST_MEDIA = ['observable', 'notObservable'] as const;
 export const HOST_FOCUS = ['detecting', 'unknown'] as const;
+/** What the computer is doing, as `ConnectionStatusDto.host` reports it. */
+export const HOST_PRESENCES = ['active', 'locked', 'sleeping'] as const;
+export type HostPresence = (typeof HOST_PRESENCES)[number];
+
 export const HOST_INPUT_PERMISSIONS = ['required', 'notNeeded', 'unknown'] as const;
 
 /**
@@ -108,6 +112,8 @@ export interface ConnectionStatusDto {
   connectionGeneration: number;
   mascotInteraction: boolean;
   mascotAction: MascotActionAppliedDto | null;
+  /** `locked` shows the sleeping buddy; `sleeping` means the port was released for a suspend. */
+  host: HostPresence;
 }
 
 export interface MascotActionAppliedDto {
@@ -192,6 +198,10 @@ export const ACTIVITY_EVENT_TYPES = [
   'configRecovered',
   'configReset',
   'configSaveFailed',
+  'hostSuspending',
+  'hostResumed',
+  'hostLocked',
+  'hostUnlocked',
 ] as const;
 export type ActivityEventType = (typeof ACTIVITY_EVENT_TYPES)[number];
 

@@ -11,6 +11,7 @@ use kivori_desktop::device::connection::ConnectedDevice;
 use kivori_desktop::device::fsm::{ConnectionManager, ManagerEvent};
 use kivori_desktop::ipc::dto;
 use kivori_desktop::orchestrator::Orchestrator;
+use kivori_desktop::platform::host_events::HostPresence;
 use kivori_desktop::runtime::state::{AppState, DeviceCommand};
 use kivori_model::{
     CompanionState, ConnectionState, MascotAction, MascotPersonality, ProtocolVersion,
@@ -56,6 +57,7 @@ fn connected_status_projects_all_three_axes() {
         true,
         None,
         7,
+        HostPresence::Active,
     );
     assert_eq!(dto.connection, "connected");
     assert_eq!(dto.desired, "busy");
@@ -69,11 +71,38 @@ fn connected_status_projects_all_three_axes() {
 }
 
 #[test]
+fn host_presence_projects_and_the_override_does_not_change_the_users_choice() {
+    let mut orchestrator = Orchestrator::new();
+    orchestrator.set_desired(SendableState::Busy);
+    orchestrator.set_host_override(Some(SendableState::Sleeping));
+    let dto = dto::connection_status(
+        &ConnectionManager::new(),
+        &orchestrator,
+        None,
+        false,
+        None,
+        0,
+        HostPresence::Locked,
+    );
+    assert_eq!(dto.host, "locked");
+    assert_eq!(dto.desired, "busy");
+    assert_eq!(dto::initial_status().host, "active");
+}
+
+#[test]
 fn incompatible_status_carries_reason() {
     let mut manager = ConnectionManager::new();
     manager.apply(ManagerEvent::PortOpened);
     manager.apply(ManagerEvent::HandshakeIncompatible { device_major: 2 });
-    let dto = dto::connection_status(&manager, &Orchestrator::new(), None, false, None, 1);
+    let dto = dto::connection_status(
+        &manager,
+        &Orchestrator::new(),
+        None,
+        false,
+        None,
+        1,
+        HostPresence::Active,
+    );
     assert_eq!(dto.connection, "incompatible");
     assert!(dto.incompatible_reason.unwrap().contains("v2"));
     assert!(dto.device.is_none());

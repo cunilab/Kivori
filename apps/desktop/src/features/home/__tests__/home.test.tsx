@@ -51,6 +51,7 @@ function connection(overrides: Partial<ConnectionStatusDto> = {}): ConnectionSta
     connectionGeneration: 1,
     mascotInteraction: true,
     mascotAction: null,
+    host: 'active',
     ...overrides,
   };
 }

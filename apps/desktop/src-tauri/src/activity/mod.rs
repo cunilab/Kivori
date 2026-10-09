@@ -117,6 +117,14 @@ pub enum ActivityEventKind {
     ConfigReset,
     /// A settings change could not be saved; nothing changed.
     ConfigSaveFailed,
+    /// The computer is going to sleep; the device was told and the port released.
+    HostSuspending,
+    /// The computer woke up; Kivori is looking for the device again.
+    HostResumed,
+    /// The screen locked; the buddy shows Sleeping.
+    HostLocked,
+    /// The screen unlocked; the buddy is back to what the user chose.
+    HostUnlocked,
 }
 
 /// Closed severity vocabulary for native activity.
@@ -422,6 +430,13 @@ impl ActivityEventKind {
                 source: ActivitySource::Config,
                 outcome: ActivityOutcome::Failed,
             },
+            Self::HostSuspending | Self::HostResumed | Self::HostLocked | Self::HostUnlocked => {
+                ActivityClassification {
+                    severity: ActivitySeverity::Info,
+                    source: ActivitySource::Connection,
+                    outcome: ActivityOutcome::Observed,
+                }
+            }
         }
     }
 }
@@ -915,6 +930,10 @@ fn summary_for(kind: ActivityEventKind, metadata: Option<&ActivityMetadata>) -> 
         (ActivityEventKind::ConfigSaveFailed, _) => {
             "Settings could not be saved; nothing changed.".to_string()
         }
+        (ActivityEventKind::HostSuspending, _) => "Computer is going to sleep.".to_string(),
+        (ActivityEventKind::HostResumed, _) => "Computer woke up.".to_string(),
+        (ActivityEventKind::HostLocked, _) => "Screen locked.".to_string(),
+        (ActivityEventKind::HostUnlocked, _) => "Screen unlocked.".to_string(),
     }
 }
 

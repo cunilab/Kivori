@@ -47,6 +47,7 @@
   "hostFocus": ["detecting", "unknown"],
   "hostInputPermission": ["required", "notNeeded", "unknown"],
   "hostMedia": ["observable", "notObservable"],
+  "hostPresence": ["active", "locked", "sleeping"],
   "profileIds": ["general", "browser", "code", "media", "zoom", "teams"],
   "rotateSpecKinds": ["systemVolume", "shortcuts", "appVolume"],
   "stepSpecKinds": ["action", "delay"]

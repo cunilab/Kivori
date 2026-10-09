@@ -18,6 +18,8 @@ use crate::firmware::{self, FirmwarePhase, FirmwareStatus};
 use crate::ipc::dto::{
     self, ConfigDto, ConnectionStatusDto, DeskStatusDto, DiagnosticsDto, DiagnosticsSnapshot,
 };
+use crate::platform;
+use crate::platform::host_events::{HostEventsGuard, HostSignal};
 use crate::window_lifecycle::WindowLifecycle;
 
 /// A message from a Tauri command (UI thread) to the background device thread.
@@ -40,6 +42,30 @@ pub enum DeviceCommand {
     /// Try one desk action now, exactly as if its control fired (the Test button). A protected
     /// foreground still suspends everything but system actions.
     TestAction(crate::desk::Action),
+}
+
+/// Keeps the OS sleep/wake and lock source running for the life of the app (managed by Tauri, never
+/// read). If the OS refuses the registration the app still works; the device just never hears
+/// "goodnight" and falls back to its host-silence timeout.
+pub struct HostEventsHandle {
+    _guard: Mutex<Option<HostEventsGuard>>,
+}
+
+impl HostEventsHandle {
+    /// Starts the source for this OS, sending signals to the device thread over `tx`.
+    #[must_use]
+    pub fn start(tx: Sender<HostSignal>) -> Self {
+        let guard = match platform::start_host_events(tx) {
+            Ok(guard) => Some(guard),
+            Err(error) => {
+                tracing::warn!(%error, "host presence events are off");
+                None
+            }
+        };
+        Self {
+            _guard: Mutex::new(guard),
+        }
+    }
 }
 
 /// Tauri-managed application state (`Send + Sync`, accessed via `State<'_, AppState>`).

@@ -8,6 +8,7 @@ import {
   HOST_FOCUS,
   HOST_INPUT_PERMISSIONS,
   HOST_MEDIA,
+  HOST_PRESENCES,
   STEP_SPEC_KINDS,
   ACTIVITY_EVENT_TYPES,
   CATALOG_AVAILABILITIES,
@@ -28,6 +29,7 @@ import {
 } from './types';
 import type {
   ActionCatalogEntryDto,
+  ConnectionStatusDto,
   ActionSpec,
   ActivityEventDto,
   ButtonDto,
@@ -111,6 +113,18 @@ function count(name: string, value: unknown): number {
 
 function countOrNull(name: string, value: unknown): number | null {
   return value === null ? null : count(name, value);
+}
+
+/**
+ * The connection snapshot. Only `host` is a token this layer owns the vocabulary of; an older or
+ * newer native side that sends another value is rejected rather than shown as a wrong state.
+ */
+export function parseConnectionStatus(raw: unknown): ConnectionStatusDto {
+  const r = record('connection status', raw);
+  return {
+    ...(r as unknown as ConnectionStatusDto),
+    host: oneOf('host presence', HOST_PRESENCES, r.host),
+  };
 }
 
 /** Validates a `DiagnosticsDto`, throwing on any unknown token or malformed value. */

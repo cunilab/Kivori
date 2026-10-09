@@ -181,6 +181,12 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   not the controller); Host Starting (15-30 s grace); Switching User; Reconnecting
   (intentional restart); Degraded (health cue); Disconnected (healthy link lost); Sleeping
   / Locked. Known sleep, lock, switch or update state outranks link-loss symptoms.
+- Sleep and lock (Desktop): when the computer is about to sleep, Desktop tells the unit
+  first, so the buddy shows Sleeping rather than Offline, then lets go of the port. On
+  wake it looks for the unit again at once. Nothing turned or pressed before the sleep runs
+  afterwards. Locking the screen puts the buddy to sleep and unlocking restores what you
+  had chosen; the knob keeps working under the lock screen. When another user takes over
+  the console, Desktop releases the unit so that user's Kivori can use it.
 - Nothing is buffered during Reconnecting or Disconnected. Reconnect restores current
   truth and never replays old input or old transients.
 - Display idle: Normal -> Dim -> Low Motion -> Display Sleep, staying Connected. Each step

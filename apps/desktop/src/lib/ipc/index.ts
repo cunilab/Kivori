@@ -32,6 +32,7 @@ import {
   isActivityEvent,
   parseCatalog,
   parseConfig,
+  parseConnectionStatus,
   parseDeskStatus,
   parseDiagnostics,
 } from './validate';
@@ -77,7 +78,7 @@ export async function getAppInfo(): Promise<AppInfoDto> {
 }
 
 export async function getConnectionStatus(): Promise<ConnectionStatusDto> {
-  if (isTauri()) return invoke<ConnectionStatusDto>('get_connection_status');
+  if (isTauri()) return parseConnectionStatus(await invoke<unknown>('get_connection_status'));
   if (import.meta.env.DEV) return (await devMock()).mockConnectionStatus();
   return unavailable();
 }
@@ -272,7 +273,13 @@ export async function onConnectionStatus(
 ): Promise<Unlisten> {
   if (isTauri()) {
     const { listen } = await import('@tauri-apps/api/event');
-    return listen<ConnectionStatusDto>('connection://status', (event) => handler(event.payload));
+    return listen<unknown>('connection://status', (event) => {
+      try {
+        handler(parseConnectionStatus(event.payload));
+      } catch {
+        // Invalid payloads never reach the UI.
+      }
+    });
   }
   if (import.meta.env.DEV) {
     handler((await devMock()).mockConnectionStatus());

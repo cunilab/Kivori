@@ -59,6 +59,7 @@ export function mockConnectionStatus(): ConnectionStatusDto {
     connectionGeneration: 0,
     mascotInteraction: false,
     mascotAction: null,
+    host: 'active',
   };
   switch (scenario()) {
     case 'connected':
@@ -82,6 +83,8 @@ export function mockConnectionStatus(): ConnectionStatusDto {
       };
     case 'connecting':
       return { ...base, connection: 'connecting', retryCount: 2 };
+    case 'locked':
+      return { ...base, host: 'locked' };
     default:
       return base;
   }

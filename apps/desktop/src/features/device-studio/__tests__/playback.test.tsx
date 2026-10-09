@@ -63,6 +63,7 @@ function status(overrides: Partial<ConnectionStatusDto> = {}): ConnectionStatusD
     connectionGeneration: 1,
     mascotInteraction: true,
     mascotAction: null,
+    host: 'active',
     ...overrides,
   };
 }

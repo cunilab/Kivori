@@ -25,6 +25,7 @@ function status(overrides: Partial<ConnectionStatusDto> = {}): ConnectionStatusD
     connectionGeneration: 0,
     mascotInteraction: false,
     mascotAction: null,
+    host: 'active',
     ...overrides,
   };
 }

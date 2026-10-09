@@ -50,3 +50,58 @@ fn a_session_for_an_app_that_is_not_running_is_no_session() {
     assert_eq!(backend.read_mute(app), Err(AppVolumeError::NoSession));
     assert_eq!(backend.set_mute(app, true), Err(AppVolumeError::NoSession));
 }
+
+mod host_events {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    use kivori_desktop::platform::host_events::{HostEvent, HostEventsError};
+    use kivori_desktop::platform::windows::host_events::WindowsHostEvents;
+    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        PostMessageW, WM_WTSSESSION_CHANGE, WTS_CONSOLE_DISCONNECT, WTS_SESSION_LOCK,
+        WTS_SESSION_UNLOCK,
+    };
+
+    fn post(watcher: &WindowsHostEvents, code: u32) {
+        // SAFETY: the handle is the watcher's live message-only window.
+        unsafe {
+            PostMessageW(
+                HWND(watcher.window_handle() as *mut _),
+                WM_WTSSESSION_CHANGE,
+                WPARAM(code as usize),
+                LPARAM(1),
+            )
+            .expect("post");
+        }
+    }
+
+    #[test]
+    fn the_watcher_starts_or_reports_unavailable_and_never_panics() {
+        let (tx, _rx) = mpsc::channel();
+        match WindowsHostEvents::start(tx) {
+            Ok(watcher) => drop(watcher),
+            Err(HostEventsError::Unavailable(reason)) => assert!(!reason.is_empty()),
+        }
+    }
+
+    #[test]
+    fn a_session_change_posted_to_its_window_arrives_as_a_host_event() {
+        let (tx, rx) = mpsc::channel();
+        let Ok(watcher) = WindowsHostEvents::start(tx) else {
+            return; // Registration refused on this runner: covered by the test above.
+        };
+        for (code, expected) in [
+            (WTS_SESSION_LOCK, HostEvent::Locked),
+            (WTS_SESSION_UNLOCK, HostEvent::Unlocked),
+            (WTS_CONSOLE_DISCONNECT, HostEvent::ConsoleDisconnected),
+        ] {
+            post(&watcher, code);
+            let signal = rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("the window thread forwards it");
+            assert_eq!(signal.event, expected);
+            assert!(signal.ack.is_none());
+        }
+    }
+}

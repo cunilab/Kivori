@@ -355,9 +355,27 @@ impl Session {
         orchestrator: &mut Orchestrator,
         state: SendableState,
     ) -> Result<(), SessionError<L::Error>> {
-        orchestrator.set_desired(state);
+        // A host override (locked screen) still wins on the wire; the user's state waits behind it.
+        let shown = orchestrator.set_desired(state);
         if manager.state().can_drive_device() {
-            self.transmit_set_state(link, state)?;
+            self.transmit_set_state(link, shown)?;
+        }
+        Ok(())
+    }
+
+    /// Transmits the orchestrator's effective desired state if the link is `Connected`. Used after
+    /// a host override changes (lock or unlock) so the device follows at once.
+    ///
+    /// # Errors
+    /// [`SessionError::Transport`] if the write fails.
+    pub fn resend_desired<L: SerialLink>(
+        &mut self,
+        link: &mut L,
+        manager: &ConnectionManager,
+        orchestrator: &Orchestrator,
+    ) -> Result<(), SessionError<L::Error>> {
+        if manager.state().can_drive_device() {
+            self.transmit_set_state(link, orchestrator.desired())?;
         }
         Ok(())
     }

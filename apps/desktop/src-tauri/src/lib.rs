@@ -35,6 +35,7 @@ pub fn run() {
         .setup(|app| {
             use tauri::Manager;
             let (commands_tx, commands_rx) = std::sync::mpsc::channel();
+            let (host_tx, host_rx) = std::sync::mpsc::channel();
             let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
             let status = std::sync::Arc::new(std::sync::Mutex::new(ipc::dto::initial_status()));
             let activity_log = std::sync::Arc::new(activity::ActivityLog::new(256));
@@ -73,6 +74,7 @@ pub fn run() {
                 std::sync::Arc::clone(&firmware_status),
                 std::sync::Arc::clone(&diagnostics),
                 commands_rx,
+                host_rx,
                 std::sync::Arc::clone(&cancel),
                 resolved,
             );
@@ -90,6 +92,8 @@ pub fn run() {
                 .with_diagnostics(diagnostics)
                 .with_config(std::sync::Arc::new(std::sync::Mutex::new(config_store))),
             );
+            // After the device thread exists, so the first lock or sleep notice has a reader.
+            app.manage(runtime::state::HostEventsHandle::start(host_tx));
             runtime::lifecycle::build_tray(app.handle())?;
             Ok(())
         });

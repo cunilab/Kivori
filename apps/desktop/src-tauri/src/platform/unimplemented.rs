@@ -120,3 +120,12 @@ impl super::ForegroundObserver for NoForeground {
         super::Foreground::Unknown
     }
 }
+
+/// Targets without a sleep/lock source never emit a host event: the device simply never hears
+/// "goodnight", and its host-silence timeout still shows Offline.
+#[cfg_attr(any(windows, target_os = "macos"), allow(dead_code))]
+pub fn start_host_events(
+    _tx: std::sync::mpsc::Sender<super::host_events::HostSignal>,
+) -> Result<super::host_events::HostEventsGuard, super::host_events::HostEventsError> {
+    Ok(super::host_events::HostEventsGuard::inert())
+}
