@@ -26,3 +26,7 @@ Thumbs.db
 
 # Superpowers SDD scratch workspace (ledger, briefs, review packages)
 .superpowers/
+
+# FreeCAD backups and Python bytecode (hardware/enclosure build script)
+*.FCBak
+__pycache__/

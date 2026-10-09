@@ -110,6 +110,7 @@ Kivori/
 ├── apps/        Tauri desktop app (native core + Device Studio webview)
 ├── crates/      shared no_std crates: model, protocol, renderer, assets, framebuffer
 ├── firmware/    ESP32-C3 firmware
+├── hardware/    3D-printable enclosure and printed prototype PCB (FreeCAD, parametric)
 ├── sim/         Wokwi simulation
 ├── tests/       golden frames and cross-crate tests
 └── tools/       asset compiler and generators
