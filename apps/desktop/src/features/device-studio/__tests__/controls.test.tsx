@@ -7,6 +7,8 @@ import { strings } from '../../../lib/i18n/strings';
 const ipc = vi.hoisted(() => ({
   mirrorState: vi.fn(() => Promise.resolve()),
   playMascotAction: vi.fn(() => Promise.resolve()),
+  getConfig: vi.fn(() => new Promise(() => {})),
+  onConfigChanged: vi.fn(() => Promise.resolve(() => {})),
 }));
 
 vi.mock('../../../lib/ipc', () => ipc);

@@ -124,6 +124,10 @@ export const ACTIVITY_EVENT_TYPES = [
   'deskActionUnverified',
   'deskActionFailed',
   'deskActionPermissionRequired',
+  'configSaved',
+  'configRecovered',
+  'configReset',
+  'configSaveFailed',
 ] as const;
 export type ActivityEventType = (typeof ACTIVITY_EVENT_TYPES)[number];
 
@@ -137,6 +141,27 @@ export const MASCOT_ACTIONS: readonly MascotAction[] = [
 
 export const DISPLAY_MODES = ['buddy', 'clock', 'volume', 'media', 'system'] as const;
 export type DisplayMode = (typeof DISPLAY_MODES)[number];
+
+export const INTENSITIES = ['low', 'normal', 'high'] as const;
+export type Intensity = (typeof INTENSITIES)[number];
+/** Low, Normal and High are the calm, cozy and playful personalities. */
+export const INTENSITY_PERSONALITY: Record<Intensity, MascotPersonality> = {
+  low: 'calm',
+  normal: 'cozy',
+  high: 'playful',
+};
+export const CONFIG_NOTICES = ['recoveredCorrupt', 'recoveredNewerVersion', 'migrated'] as const;
+export type ConfigNotice = (typeof CONFIG_NOTICES)[number];
+
+/** The saved settings. `secondaryView: 'cycle'` = a double press steps through every view. */
+export interface ConfigDto {
+  version: number;
+  /** Counts saves and resets in this run: a lower revision is a stale copy. */
+  revision: number;
+  notice: ConfigNotice | null;
+  display: { defaultView: DisplayMode; secondaryView: DisplayMode | 'cycle' };
+  buddy: { reactions: boolean; intensity: Intensity };
+}
 export const MEDIA_STATUSES = ['playing', 'paused', 'stopped'] as const;
 export type MediaStatus = (typeof MEDIA_STATUSES)[number];
 export const DESK_ACTIONS = [
@@ -207,7 +232,8 @@ export interface TestActionRequest {
 }
 
 export type ActivitySeverity = 'info' | 'warning' | 'error';
-export type ActivitySource = 'connection' | 'action' | 'device' | 'protocol' | 'firmware';
+export type ActivitySource =
+  'connection' | 'action' | 'device' | 'protocol' | 'firmware' | 'config';
 export type ActivityOutcome =
   | 'observed'
   | 'started'

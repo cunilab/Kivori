@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { toast } from 'sonner';
 import { TriangleAlert } from 'lucide-react';
@@ -9,57 +9,51 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useDevMode } from '@/lib/dev-mode';
-import { configureCompanion, playMascotAction } from '@/lib/ipc';
-import type { MascotAction, MascotPersonality } from '@/lib/ipc/types';
+import { playMascotAction, setBuddySettings } from '@/lib/ipc';
+import { INTENSITIES } from '@/lib/ipc/types';
+import type { ConfigDto, Intensity, MascotAction } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
 import { errorText } from '@/lib/utils';
 
-const PERSONALITY_KEY = 'kivori.mascot.personality';
-const SELF_PLAY_KEY = 'kivori.mascot.selfPlay';
-const PERSONALITIES: readonly MascotPersonality[] = ['cozy', 'playful', 'calm'];
 const ACTIONS: readonly MascotAction[] = ['greet', 'pet', 'tickle', 'surprise', 'comfort'];
 
-export function currentMascotPersonality(): MascotPersonality {
-  if (typeof localStorage === 'undefined') return 'cozy';
-  const saved = localStorage.getItem(PERSONALITY_KEY);
-  return PERSONALITIES.includes(saved as MascotPersonality) ? (saved as MascotPersonality) : 'cozy';
-}
-
-function initialSelfPlay(): boolean {
-  return localStorage.getItem(SELF_PLAY_KEY) !== 'false';
-}
+type BuddySettings = ConfigDto['buddy'];
 
 interface CompanionControlsProps {
+  config: ConfigDto | null;
   connected: boolean;
   supported: boolean;
 }
 
-/** Production companion controls for personality, ambient self-play, and direct social reactions. */
-export function CompanionControls({ connected, supported }: CompanionControlsProps): ReactElement {
-  const [personality, setPersonality] = useState<MascotPersonality>(currentMascotPersonality);
-  const [selfPlay, setSelfPlay] = useState(initialSelfPlay);
-  const [configurationError, setConfigurationError] = useState(false);
-  const configurationAttempt = useRef(0);
+/**
+ * The Buddy card: reactions and intensity are saved settings for everyone; the direct social
+ * reactions are a developer tool. A change shows at once (UI only) and is dropped as soon as the
+ * saved config arrives, or when the save fails.
+ */
+export function CompanionControls({
+  config,
+  connected,
+  supported,
+}: CompanionControlsProps): ReactElement {
+  const [pending, setPending] = useState<BuddySettings | null>(null);
+  const [failed, setFailed] = useState<BuddySettings | null>(null);
   const t = strings.companion;
   const devMode = useDevMode();
 
-  const applyConfiguration = useCallback(
-    (nextPersonality: MascotPersonality, nextSelfPlay: boolean): void => {
-      const attempt = ++configurationAttempt.current;
-      setConfigurationError(false);
-      void configureCompanion(nextPersonality, nextSelfPlay).catch(() => {
-        if (configurationAttempt.current === attempt) setConfigurationError(true);
-      });
-    },
-    [],
-  );
+  // The saved config arrived: it is the truth again.
+  const revision = config?.revision;
+  useEffect(() => setPending(null), [revision]);
 
-  useEffect(() => {
-    localStorage.setItem(PERSONALITY_KEY, personality);
-    localStorage.setItem(SELF_PLAY_KEY, String(selfPlay));
-    applyConfiguration(personality, selfPlay);
-  }, [personality, selfPlay, applyConfiguration]);
+  const save = (next: BuddySettings): void => {
+    setPending(next);
+    setFailed(null);
+    void setBuddySettings(next.reactions, next.intensity).catch(() => {
+      setPending(null);
+      setFailed(next);
+    });
+  };
 
+  const shown = pending ?? config?.buddy ?? null;
   const available = connected && supported;
 
   return (
@@ -71,75 +65,74 @@ export function CompanionControls({ connected, supported }: CompanionControlsPro
         <CardDescription>{t.description}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+          <div className="space-y-0.5">
+            <Label htmlFor="buddy-reactions">{t.reactions}</Label>
+            <p className="text-xs text-muted-foreground">{t.reactionsHint}</p>
+          </div>
+          <Switch
+            id="buddy-reactions"
+            checked={shown?.reactions ?? false}
+            disabled={shown === null}
+            onCheckedChange={(reactions) => shown && save({ ...shown, reactions })}
+          />
+        </div>
+
         <fieldset className="space-y-2">
-          <legend className="mb-2 text-sm font-medium">{t.personality}</legend>
+          <legend className="mb-2 text-sm font-medium">{t.intensity}</legend>
           <ToggleGroup
-            aria-label={t.personality}
-            value={[personality]}
+            aria-label={t.intensity}
+            value={shown ? [shown.intensity] : []}
+            disabled={shown === null}
             onValueChange={(value) => {
-              const selected = value[0] as MascotPersonality | undefined;
-              if (selected) setPersonality(selected);
+              const selected = value[0] as Intensity | undefined;
+              if (selected && shown) save({ ...shown, intensity: selected });
             }}
             variant="outline"
             className="flex-wrap"
           >
-            {PERSONALITIES.map((candidate) => (
+            {INTENSITIES.map((candidate) => (
               <ToggleGroupItem key={candidate} value={candidate} className="px-4">
-                {t.personalities[candidate]}
+                {t.intensities[candidate]}
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
         </fieldset>
 
-        {/* Self-play and the direct reactions are developer tools; personality is for everyone. */}
+        {/* Direct reactions are a developer tool. */}
         {devMode ? (
-          <>
-            <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
-              <div className="space-y-0.5">
-                <Label htmlFor="self-play">{t.selfPlay}</Label>
-                <p className="text-xs text-muted-foreground">{t.selfPlayHint}</p>
-              </div>
-              <Switch id="self-play" checked={selfPlay} onCheckedChange={setSelfPlay} />
+          <fieldset className="space-y-2">
+            <legend className="mb-2 text-sm font-medium">{t.actions}</legend>
+            <div className="flex flex-wrap gap-2">
+              {ACTIONS.map((action) => (
+                <Button
+                  key={action}
+                  type="button"
+                  variant="secondary"
+                  disabled={!available}
+                  onClick={() => {
+                    void playMascotAction(action).catch((error: unknown) =>
+                      toast.error(t.failed, { description: errorText(error) }),
+                    );
+                  }}
+                >
+                  {t.actionLabels[action]}
+                </Button>
+              ))}
             </div>
-
-            <fieldset className="space-y-2">
-              <legend className="mb-2 text-sm font-medium">{t.actions}</legend>
-              <div className="flex flex-wrap gap-2">
-                {ACTIONS.map((action) => (
-                  <Button
-                    key={action}
-                    type="button"
-                    variant="secondary"
-                    disabled={!available}
-                    onClick={() => {
-                      void playMascotAction(action).catch((error: unknown) =>
-                        toast.error(t.failed, { description: errorText(error) }),
-                      );
-                    }}
-                  >
-                    {t.actionLabels[action]}
-                  </Button>
-                ))}
-              </div>
-              {!connected ? <p className="text-xs text-muted-foreground">{t.connect}</p> : null}
-              {connected && !supported ? (
-                <p className="text-xs text-muted-foreground">{t.update}</p>
-              ) : null}
-            </fieldset>
-          </>
+            {!connected ? <p className="text-xs text-muted-foreground">{t.connect}</p> : null}
+            {connected && !supported ? (
+              <p className="text-xs text-muted-foreground">{t.update}</p>
+            ) : null}
+          </fieldset>
         ) : null}
 
-        {configurationError ? (
+        {failed ? (
           <Alert variant="destructive">
             <TriangleAlert aria-hidden="true" />
             <AlertTitle>{t.configureFailed}</AlertTitle>
             <AlertAction>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => applyConfiguration(personality, selfPlay)}
-              >
+              <Button type="button" size="sm" variant="outline" onClick={() => save(failed)}>
                 {t.retry}
               </Button>
             </AlertAction>

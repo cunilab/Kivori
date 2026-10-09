@@ -2275,6 +2275,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-single-instance",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
  "windows 0.58.0",

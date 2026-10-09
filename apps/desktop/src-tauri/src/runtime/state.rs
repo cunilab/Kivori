@@ -10,11 +10,12 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
-use kivori_model::{MascotAction, MascotPersonality, SendableState};
+use kivori_model::{MascotAction, SendableState};
 
-use crate::activity::ActivityLog;
+use crate::activity::{ActivityEvent, ActivityEventKind, ActivityLog};
+use crate::config::{ConfigStore, ResolvedConfig};
 use crate::firmware::{self, FirmwarePhase, FirmwareStatus};
-use crate::ipc::dto::{ConnectionStatusDto, DeskStatusDto};
+use crate::ipc::dto::{self, ConfigDto, ConnectionStatusDto, DeskStatusDto};
 use crate::window_lifecycle::WindowLifecycle;
 
 /// A message from a Tauri command (UI thread) to the background device thread.
@@ -24,13 +25,8 @@ pub enum DeviceCommand {
     SetDesired(SendableState),
     /// Dev-only state request, kept distinct in native activity even though its wire state is identical.
     MirrorDesired(SendableState),
-    /// Change desktop-owned mascot personality and autonomous-play preference.
-    ConfigureCompanion {
-        /// Selected movement temperament.
-        personality: MascotPersonality,
-        /// Whether desktop may schedule ambient social actions.
-        self_play: bool,
-    },
+    /// Adopt a saved config: the buddy's intensity and reactions, and the display views.
+    ApplyConfig(Arc<ResolvedConfig>),
     /// Play one immediate social reaction using current companion settings.
     PlayMascotAction(MascotAction),
     /// Flash the fixed firmware image embedded in this desktop build.
@@ -53,6 +49,8 @@ pub struct AppState {
     pub desk_status: Arc<Mutex<DeskStatusDto>>,
     /// Session-only typed activity ring.
     pub activity_log: Arc<ActivityLog>,
+    /// The persisted user config. Commands save through it, then tell the device thread.
+    pub config: Arc<Mutex<ConfigStore>>,
     /// Latest safe firmware-update status, written only by the device thread.
     pub firmware_status: Arc<Mutex<FirmwareStatus>>,
     /// Window-lifecycle policy (hide-vs-quit / show-on-reactivate), shared with the window+tray handlers.
@@ -101,8 +99,11 @@ impl AppState {
         Self {
             device_studio_enabled,
             status,
-            desk_status: Arc::new(Mutex::new(crate::ipc::dto::initial_desk_status())),
+            desk_status: Arc::new(Mutex::new(crate::ipc::dto::initial_desk_status(
+                &ResolvedConfig::default(),
+            ))),
             activity_log,
+            config: Arc::new(Mutex::new(ConfigStore::detached())),
             firmware_status,
             lifecycle: Mutex::new(WindowLifecycle::new()),
             #[cfg(feature = "device-studio")]
@@ -118,6 +119,45 @@ impl AppState {
     pub fn with_desk_status(mut self, desk_status: Arc<Mutex<DeskStatusDto>>) -> Self {
         self.desk_status = desk_status;
         self
+    }
+
+    /// Shares the config store the setup code opened.
+    #[must_use]
+    pub fn with_config(mut self, config: Arc<Mutex<ConfigStore>>) -> Self {
+        self.config = config;
+        self
+    }
+
+    /// The stored config as the UI shows it.
+    #[must_use]
+    pub fn config_snapshot(&self) -> ConfigDto {
+        dto::config_dto(&self.config.lock().expect("config lock"))
+    }
+
+    /// Saves a config change and, only if that worked, tells the device thread to apply it.
+    ///
+    /// `change` edits a copy of the file and stores it (or resets it). A failure leaves both the
+    /// stored config and the running device untouched. Returns the outcome and the activity record
+    /// of it (`saved` on success, `ConfigSaveFailed` otherwise) for the caller to emit.
+    pub fn update_config(
+        &self,
+        saved: ActivityEventKind,
+        change: impl FnOnce(&mut ConfigStore) -> Result<(), crate::config::ConfigError>,
+    ) -> (Result<ConfigDto, String>, ActivityEvent) {
+        let mut store = self.config.lock().expect("config lock");
+        match change(&mut store) {
+            Ok(()) => {
+                let config = dto::config_dto(&store);
+                // The device thread stops only at shutdown, when there is nothing left to apply to.
+                let _ = self.send_command(DeviceCommand::ApplyConfig(store.resolved()));
+                (Ok(config), self.activity_log.record(saved, None))
+            }
+            Err(error) => (
+                Err(error.to_string()),
+                self.activity_log
+                    .record(ActivityEventKind::ConfigSaveFailed, None),
+            ),
+        }
     }
 
     /// The current desk projection.

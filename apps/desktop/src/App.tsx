@@ -48,11 +48,13 @@ import { ControlsPage } from './features/controls/ControlsPage';
 import { DevicePage } from './features/device/DevicePage';
 import { DeviceStudio } from './features/device-studio/DeviceStudio';
 import { DisplayPage } from './features/display/DisplayPage';
+import { migrateLegacyBuddy } from './features/display/legacy-buddy';
 import { HomePage } from './features/home/HomePage';
 import {
   uiConnection,
   useAppInfo,
   useConnectionStatus,
+  useConfig,
   useDeskStatus,
   type UiConnection,
 } from './hooks/use-kivori';
@@ -163,6 +165,14 @@ export function App(): ReactElement {
   const [page, setPage] = useState<PageId>('home');
   const connection = useConnectionStatus();
   const desk = useDeskStatus();
+  const config = useConfig();
+  // Buddy settings used to live in localStorage; carry them over once the config is known.
+  const legacyChecked = useRef(false);
+  useEffect(() => {
+    if (!config || legacyChecked.current) return;
+    legacyChecked.current = true;
+    migrateLegacyBuddy(config);
+  }, [config]);
   const appInfo = useAppInfo();
   const ui = uiConnection(connection);
   useConnectionToasts(ui);
@@ -273,7 +283,7 @@ export function App(): ReactElement {
             ) : current === 'controls' ? (
               <ControlsPage desk={desk} />
             ) : current === 'display' ? (
-              <DisplayPage desk={desk} connection={connection} />
+              <DisplayPage desk={desk} config={config} connection={connection} />
             ) : current === 'activity' ? (
               <ActivityPage />
             ) : current === 'device' ? (

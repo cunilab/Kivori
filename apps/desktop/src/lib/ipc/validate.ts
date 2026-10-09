@@ -3,14 +3,16 @@
 
 import {
   ACTIVITY_EVENT_TYPES,
+  CONFIG_NOTICES,
   DESK_ACTIONS,
   DESK_RESULTS,
   DISPLAY_MODES,
   DOUBLE_PRESS_ACTIONS,
+  INTENSITIES,
   MASCOT_ACTIONS,
   MEDIA_STATUSES,
 } from './types';
-import type { ActivityEventDto, DeskStatusDto } from './types';
+import type { ActivityEventDto, ConfigDto, DeskStatusDto } from './types';
 
 function oneOf<T extends string>(name: string, allowed: readonly T[], value: unknown): T {
   if (typeof value === 'string' && (allowed as readonly string[]).includes(value))
@@ -101,6 +103,38 @@ export function parseDeskStatus(raw: unknown): DeskStatusDto {
     mediaTitle: textOrNull('mediaTitle', r.mediaTitle),
     mediaArtist: textOrNull('mediaArtist', r.mediaArtist),
     lastAction,
+  };
+}
+
+function record(name: string, value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null) throw new Error(`Kivori: invalid ${name}.`);
+  return value as Record<string, unknown>;
+}
+
+/** Validates a `ConfigDto`, throwing on any unknown token or malformed value. */
+export function parseConfig(raw: unknown): ConfigDto {
+  const r = record('config', raw);
+  const display = record('display settings', r.display);
+  const buddy = record('buddy settings', r.buddy);
+  if (typeof r.version !== 'number' || !Number.isInteger(r.version)) {
+    throw new Error('Kivori: invalid config version.');
+  }
+  if (typeof r.revision !== 'number' || !Number.isInteger(r.revision) || r.revision < 0) {
+    throw new Error('Kivori: invalid config revision.');
+  }
+  if (typeof buddy.reactions !== 'boolean') throw new Error('Kivori: invalid reactions.');
+  return {
+    version: r.version,
+    revision: r.revision,
+    notice: r.notice === null ? null : oneOf('config notice', CONFIG_NOTICES, r.notice),
+    display: {
+      defaultView: oneOf('display mode', DISPLAY_MODES, display.defaultView),
+      secondaryView: oneOf('display mode', [...DISPLAY_MODES, 'cycle'], display.secondaryView),
+    },
+    buddy: {
+      reactions: buddy.reactions,
+      intensity: oneOf('intensity', INTENSITIES, buddy.intensity),
+    },
   };
 }
 

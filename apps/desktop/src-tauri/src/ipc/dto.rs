@@ -300,6 +300,10 @@ pub enum ActivityEventTypeDto {
     DeskActionUnverified,
     DeskActionFailed,
     DeskActionPermissionRequired,
+    ConfigSaved,
+    ConfigRecovered,
+    ConfigReset,
+    ConfigSaveFailed,
 }
 
 /// Closed connection-state token serialized in activity metadata.
@@ -331,6 +335,7 @@ pub enum ActivitySourceDto {
     Device,
     Protocol,
     Firmware,
+    Config,
 }
 
 /// Closed outcome token serialized to the webview.
@@ -534,6 +539,10 @@ fn activity_kind_token(kind: ActivityEventKind) -> ActivityEventTypeDto {
         ActivityEventKind::DeskActionPermissionRequired => {
             ActivityEventTypeDto::DeskActionPermissionRequired
         }
+        ActivityEventKind::ConfigSaved => ActivityEventTypeDto::ConfigSaved,
+        ActivityEventKind::ConfigRecovered => ActivityEventTypeDto::ConfigRecovered,
+        ActivityEventKind::ConfigReset => ActivityEventTypeDto::ConfigReset,
+        ActivityEventKind::ConfigSaveFailed => ActivityEventTypeDto::ConfigSaveFailed,
     }
 }
 
@@ -552,6 +561,7 @@ fn activity_source(source: ActivitySource) -> ActivitySourceDto {
         ActivitySource::Device => ActivitySourceDto::Device,
         ActivitySource::Protocol => ActivitySourceDto::Protocol,
         ActivitySource::Firmware => ActivitySourceDto::Firmware,
+        ActivitySource::Config => ActivitySourceDto::Config,
     }
 }
 
@@ -1008,12 +1018,12 @@ fn text(text: kivori_model::desk::MediaText) -> String {
 
 /// The desk projection before the device thread has observed anything.
 #[must_use]
-pub fn initial_desk_status() -> DeskStatusDto {
+pub fn initial_desk_status(config: &crate::config::ResolvedConfig) -> DeskStatusDto {
     let context = crate::desk::profile::Context::new(crate::desk::profile::builtins());
     let bindings = &context.profile().bindings;
     let labels = context.labels();
     DeskStatusDto {
-        mode: display_mode_token(kivori_model::desk::DisplayMode::Buddy),
+        mode: display_mode_token(config.display.default_view.mode()),
         volume_percent: None,
         muted: None,
         media: None,
@@ -1062,5 +1072,116 @@ pub fn desk_status_dto(desk: &crate::desk::DeskRuntime) -> DeskStatusDto {
             result: feedback_token(last.kind),
             permission_required: last.permission_required,
         }),
+    }
+}
+
+/// The user's settings as the UI shows them. Never carries a file path.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigDto {
+    pub version: u32,
+    /// Counts saves and resets in this run, so the UI can tell a stale copy from a fresh one.
+    pub revision: u64,
+    /// `recoveredCorrupt`, `recoveredNewerVersion` or `migrated`; `null` = nothing to report.
+    pub notice: Option<&'static str>,
+    pub display: DisplaySettingsDto,
+    pub buddy: BuddySettingsDto,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisplaySettingsDto {
+    /// A display-mode token.
+    pub default_view: &'static str,
+    /// A display-mode token, or `cycle` for the M1 behaviour (every view in turn).
+    pub secondary_view: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuddySettingsDto {
+    pub reactions: bool,
+    /// `low`, `normal` or `high`.
+    pub intensity: &'static str,
+}
+
+fn config_notice_token(notice: crate::config::ConfigNotice) -> &'static str {
+    use crate::config::ConfigNotice;
+    match notice {
+        ConfigNotice::RecoveredCorrupt => "recoveredCorrupt",
+        ConfigNotice::RecoveredNewerVersion => "recoveredNewerVersion",
+        ConfigNotice::Migrated => "migrated",
+    }
+}
+
+/// The Rust-side vocabulary for [`crate::config::Intensity`].
+#[must_use]
+pub const fn intensity_token(intensity: crate::config::Intensity) -> &'static str {
+    use crate::config::Intensity;
+    match intensity {
+        Intensity::Low => "low",
+        Intensity::Normal => "normal",
+        Intensity::High => "high",
+    }
+}
+
+/// Parses an intensity token from the webview.
+#[must_use]
+pub fn intensity_from_token(token: &str) -> Option<crate::config::Intensity> {
+    use crate::config::Intensity;
+    [Intensity::Low, Intensity::Normal, Intensity::High]
+        .into_iter()
+        .find(|intensity| intensity_token(*intensity) == token)
+}
+
+/// Parses a `defaultView`/`secondaryView` pair from the webview. `secondary` may be `cycle`.
+///
+/// # Errors
+/// A short reason naming the bad field or rule; never echoes the input.
+pub fn display_settings_from_tokens(
+    default_view: &str,
+    secondary_view: &str,
+) -> Result<crate::config::DisplaySettings, &'static str> {
+    use crate::config::{DisplaySettings, SecondaryView, View};
+    let default_view = display_mode_from_token(default_view)
+        .map(View::from_mode)
+        .ok_or("unknown default view")?;
+    let secondary_view = if secondary_view == "cycle" {
+        SecondaryView::Cycle
+    } else {
+        SecondaryView::View(
+            display_mode_from_token(secondary_view)
+                .map(View::from_mode)
+                .ok_or("unknown double-press view")?,
+        )
+    };
+    let settings = DisplaySettings {
+        default_view,
+        secondary_view,
+    };
+    settings.validate()?;
+    Ok(settings)
+}
+
+/// Projects the stored config for the UI.
+#[must_use]
+pub fn config_dto(store: &crate::config::ConfigStore) -> ConfigDto {
+    use crate::config::SecondaryView;
+    let file = store.file();
+    ConfigDto {
+        version: file.version,
+        revision: store.revision(),
+        notice: store.notice().map(config_notice_token),
+        display: DisplaySettingsDto {
+            default_view: display_mode_token(file.display.default_view.mode()),
+            secondary_view: match file.display.secondary_view {
+                SecondaryView::Cycle => "cycle",
+                SecondaryView::View(view) => display_mode_token(view.mode()),
+            },
+        },
+        buddy: BuddySettingsDto {
+            reactions: file.buddy.reactions,
+            intensity: intensity_token(file.buddy.intensity),
+        },
     }
 }

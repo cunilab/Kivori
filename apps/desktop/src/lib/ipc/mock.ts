@@ -8,9 +8,11 @@ import type {
   ActivityEventDto,
   AppInfoDto,
   CompanionState,
+  ConfigDto,
   ConnectionStatusDto,
   DeskStatusDto,
   DisplayMode,
+  Intensity,
   TestActionRequest,
 } from './types';
 import { COMPANION_STATES, PREVIEW_DIM } from './types';
@@ -217,6 +219,61 @@ export function mockRunTestAction(request: TestActionRequest): void {
     muted: request.action === 'mute' ? !deskStatus.muted : deskStatus.muted,
     lastAction: { action: request.action, result, permissionRequired: false },
   });
+}
+
+const DEFAULT_CONFIG: ConfigDto = {
+  version: 1,
+  revision: 0,
+  notice: null,
+  display: { defaultView: 'buddy', secondaryView: 'system' },
+  buddy: { reactions: true, intensity: 'normal' },
+};
+let config: ConfigDto = DEFAULT_CONFIG;
+const configListeners = new Set<(config: ConfigDto) => void>();
+
+function saveConfig(
+  next: Pick<ConfigDto, 'display' | 'buddy'>,
+  notice: ConfigDto['notice'],
+): ConfigDto {
+  config = { ...config, ...next, notice, revision: config.revision + 1 };
+  for (const listener of configListeners) listener(config);
+  return config;
+}
+
+export function mockGetConfig(): ConfigDto {
+  return config;
+}
+
+/** Mirrors native rules: a double-press view equal to the default is refused; moving the default
+ *  view takes the device there. */
+export function mockSetDisplaySettings(
+  defaultView: DisplayMode,
+  secondaryView: DisplayMode | 'cycle',
+): ConfigDto {
+  if (secondaryView === defaultView) {
+    throw new Error('the double-press view must differ from the default view');
+  }
+  const moved = defaultView !== config.display.defaultView;
+  const saved = saveConfig({ display: { defaultView, secondaryView }, buddy: config.buddy }, null);
+  if (moved) updateDesk({ mode: defaultView });
+  return saved;
+}
+
+export function mockSetBuddySettings(reactions: boolean, intensity: Intensity): ConfigDto {
+  return saveConfig({ display: config.display, buddy: { reactions, intensity } }, null);
+}
+
+export function mockResetConfig(): ConfigDto {
+  const saved = saveConfig(DEFAULT_CONFIG, null);
+  updateDesk({ mode: DEFAULT_CONFIG.display.defaultView });
+  return saved;
+}
+
+export function mockOnConfigChanged(handler: (config: ConfigDto) => void): () => void {
+  configListeners.add(handler);
+  return () => {
+    configListeners.delete(handler);
+  };
 }
 
 export function mockOnDeskStatus(handler: (status: DeskStatusDto) => void): () => void {
