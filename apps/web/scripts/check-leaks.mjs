@@ -26,7 +26,7 @@ const SCANS = [
   { dir: '.next/static', ext: ['.js'] },
   { dir: 'public', ext: null },
   // Most pages render per request, so the product copy (rendered verbatim) is checked at its source too.
-  { dir: 'content', ext: ['.ts'], skip: /\.test\.ts$/ },
+  { dir: 'content', ext: ['.ts', '.md'], skip: /\.test\.ts$/ },
 ];
 
 const TEXT_EXT = new Set([

@@ -3,8 +3,23 @@
 /* Tailwind scans the shared components for utility classes. */
 @source '../../../packages/ui/src';
 
+/* Apple-like light surfaces for the site (the shared tokens stay untouched for the desktop app). */
+:root:not(.dark) {
+  --background: #fbfbfd;
+  --surface: #f5f5f7;
+  --muted-foreground: #5f6472;
+  --border: #e5e7ee;
+}
+
+.dark {
+  --surface: #0f1424;
+}
+
 @theme inline {
-  --font-display: var(--font-display-face), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, 'Segoe UI Variable',
+    'Segoe UI', sans-serif;
+  --font-display: var(--font-sans);
+  --color-surface: var(--surface);
 }
 
 @layer base {
@@ -18,9 +33,100 @@
     scroll-behavior: smooth;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    html {
-      scroll-behavior: auto;
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+}
+
+@layer components {
+  /* Huge confident headlines, tight tracking. */
+  .display-1 {
+    font-size: clamp(3rem, 8vw, 6rem);
+    line-height: 1;
+    letter-spacing: -0.04em;
+    font-weight: 600;
+  }
+  .display-2 {
+    font-size: clamp(2.25rem, 5.5vw, 4.25rem);
+    line-height: 1.04;
+    letter-spacing: -0.035em;
+    font-weight: 600;
+  }
+  .display-3 {
+    font-size: clamp(1.75rem, 3.4vw, 2.75rem);
+    line-height: 1.08;
+    letter-spacing: -0.03em;
+    font-weight: 600;
+  }
+  .lead {
+    font-size: clamp(1.125rem, 1.6vw, 1.5rem);
+    line-height: 1.35;
+    letter-spacing: -0.012em;
+    color: var(--muted-foreground);
+  }
+  /* Renders are shot on white: multiply lets the shadow sit on any light surface. */
+  .shot {
+    mix-blend-mode: multiply;
+  }
+  .dark .shot-stage {
+    background: #fff;
+    border-radius: 2rem;
+  }
+  .dark .shot {
+    mix-blend-mode: normal;
+  }
+}
+
+/* Scroll-driven motion. Without support (or with reduced motion) everything is simply static. */
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(36px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes hero-grow {
+  from {
+    transform: scale(0.94) translateY(0);
+  }
+  to {
+    transform: scale(1.06) translateY(-2%);
+  }
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal {
+      animation: reveal-up linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 45%;
     }
+    .hero-shot {
+      animation: hero-grow linear both;
+      animation-timeline: scroll(root block);
+      animation-range: 0 90vh;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .glow {
+    animation: glow-pulse 5s ease-in-out infinite;
   }
 }

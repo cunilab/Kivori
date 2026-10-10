@@ -1,10 +1,12 @@
 'use client';
 
+import { MoonIcon, SunIcon } from 'lucide-react';
 import type { ReactElement } from 'react';
+import { Button } from '@kivori/ui/components/button';
 import { THEME_STORAGE_KEY } from '@/app/theme-script';
 
 /** Flips the `dark` class set by the inline init script and remembers the choice. */
-export function ThemeToggle(): ReactElement {
+export function ThemeToggle({ className }: { className?: string }): ReactElement {
   function toggle(): void {
     const root = document.documentElement;
     const next = root.classList.contains('dark') ? 'light' : 'dark';
@@ -18,26 +20,15 @@ export function ThemeToggle(): ReactElement {
   }
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="icon"
       onClick={toggle}
       aria-label="Toggle light and dark theme"
-      className="inline-flex size-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+      className={`rounded-full text-muted-foreground ${className ?? ''}`}
     >
-      <svg
-        viewBox="0 0 24 24"
-        width="18"
-        height="18"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <circle cx="12" cy="12" r="4" />
-        <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-      </svg>
-    </button>
+      <SunIcon className="hidden dark:block" />
+      <MoonIcon className="dark:hidden" />
+    </Button>
   );
 }

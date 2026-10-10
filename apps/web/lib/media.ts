@@ -112,3 +112,13 @@ export const moods = {
   busy: screen('mood-busy', 'Buddy concentrating while it works.'),
   sleeping: screen('mood-sleeping', 'Buddy dozing off when you are away.'),
 } as const satisfies Record<string, MediaImage>;
+
+/** The 1200 px twin of a render (written by the asset step next to each 2400 px file). */
+export function smallRender(image: MediaImage): MediaImage {
+  return {
+    ...image,
+    src: image.src.replace(/\.webp$/, '-1200.webp'),
+    width: image.width / 2,
+    height: image.height / 2,
+  };
+}

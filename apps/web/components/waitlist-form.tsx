@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactElement } from 'react';
+import { CheckCircle2Icon } from 'lucide-react';
 import { Button } from '@kivori/ui/components/button';
+import { Card } from '@kivori/ui/components/card';
 import { Input } from '@kivori/ui/components/input';
 import { Label } from '@kivori/ui/components/label';
 import {
@@ -194,27 +196,22 @@ export function WaitlistForm({
 
   if (status === 'success') {
     return (
-      <div
-        role="status"
-        className="rounded-2xl border border-border bg-card p-6 text-left sm:text-center"
-      >
-        <p className="font-display text-2xl font-semibold">You&apos;re on the list</p>
+      <Card role="status" className="rounded-3xl p-8 text-center shadow-sm">
+        <CheckCircle2Icon className="mx-auto size-10 text-primary" aria-hidden="true" />
+        <p className="mt-3 text-2xl font-semibold tracking-tight">You&apos;re on the list</p>
         <p className="mt-2 text-muted-foreground">
           We will email you when there is news about Kivori. No spam, and you can ask us to delete
           your details any time.
         </p>
-      </div>
+      </Card>
     );
   }
 
   const submitting = status === 'submitting';
 
   return (
-    <form
-      ref={formRef}
-      onSubmit={onSubmit}
-      className="w-full rounded-2xl border border-border bg-card p-6 text-left"
-    >
+    <Card className="w-full rounded-3xl p-6 text-left shadow-sm sm:p-8">
+    <form ref={formRef} onSubmit={onSubmit} className="w-full">
       <div>
         <Label htmlFor={id('email')}>Email</Label>
         <Input
@@ -224,13 +221,13 @@ export function WaitlistForm({
           required
           autoComplete="email"
           maxLength={LIMITS.email}
-          className="mt-1.5 h-10"
+          className="mt-1.5 h-11 rounded-xl px-3.5 text-base"
         />
       </div>
       <div className="mt-4">
-        <Label htmlFor={id('product')}>Which product?</Label>
+        <Label htmlFor={id('product')}>Edition</Label>
         <Select name="product" defaultValue={selected} key={selected} items={productItems}>
-          <SelectTrigger id={id('product')} className="mt-1.5 h-10 w-full">
+          <SelectTrigger id={id('product')} className="mt-1.5 h-11 w-full rounded-xl px-3.5 text-base">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -252,7 +249,7 @@ export function WaitlistForm({
           name="use_case"
           rows={3}
           maxLength={LIMITS.useCase}
-          className="mt-1.5"
+          className="mt-1.5 rounded-xl px-3.5 text-base"
         />
       </div>
 
@@ -286,7 +283,7 @@ export function WaitlistForm({
         size="lg"
         disabled={submitting}
         aria-busy={submitting}
-        className="mt-2 h-10 w-full disabled:cursor-wait"
+        className="mt-2 h-12 w-full rounded-full text-base disabled:cursor-wait"
       >
         {submitting ? 'Sending...' : 'Join the waitlist'}
       </Button>
@@ -298,5 +295,6 @@ export function WaitlistForm({
         .
       </p>
     </form>
+    </Card>
   );
 }

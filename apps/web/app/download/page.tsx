@@ -1,13 +1,28 @@
+import { CheckIcon, InfoIcon, MonitorIcon, AppleIcon } from 'lucide-react';
 import type { Metadata } from 'next';
-import type { ReactElement } from 'react';
+import { Fragment, type ReactElement } from 'react';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@kivori/ui/components/accordion';
 import { Badge } from '@kivori/ui/components/badge';
 import { Button } from '@kivori/ui/components/button';
-import { Card, CardContent } from '@kivori/ui/components/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@kivori/ui/components/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@kivori/ui/components/table';
 import { JsonLd } from '@/components/json-ld';
+import { OsDownloadButton } from '@/components/os-download-button';
+import { ReleaseNotes } from '@/components/release-notes';
+import { Eyebrow, Section } from '@/components/section';
+import { downloadState } from '@/lib/download-page';
 import { formatBytes, formatDate } from '@/lib/format';
 import { softwareApplicationJsonLd } from '@/lib/jsonld';
 import { pageMetadata } from '@/lib/metadata';
-import { loadReleases, type Release } from '@/lib/releases';
+import { notifyHref } from '@/lib/product-labels';
+import { loadReleases } from '@/lib/releases';
 
 // Rendered per request; release data is cached for 600 s by lib/github-cache.ts.
 export const dynamic = 'force-dynamic';
@@ -18,162 +33,218 @@ export const metadata: Metadata = pageMetadata({
   path: '/download',
 });
 
-function DownloadCard({ children }: { children: React.ReactNode }): ReactElement {
-  return (
-    <Card>
-      <CardContent className="p-2 sm:p-4">{children}</CardContent>
-    </Card>
-  );
-}
+const REQUIREMENTS = ['Windows 10 or 11, 64-bit', 'A free USB-C port', 'Your Kivori'] as const;
 
-function LatestCard({ release }: { release: Release }): ReactElement {
-  const { installer } = release;
-  return (
-    <DownloadCard>
-      <div className="flex flex-wrap items-center gap-3">
-        <h2 className="font-display text-2xl font-semibold">Kivori {release.version}</h2>
-        {release.prerelease ? <Badge variant="secondary">Beta</Badge> : null}
-        {release.date ? (
-          <span className="text-sm text-muted-foreground">{formatDate(release.date)}</span>
-        ) : null}
-      </div>
-
-      {installer ? (
-        <div className="mt-6 space-y-5">
-          <div className="flex flex-wrap items-center gap-4">
-            <Button
-              size="lg"
-              nativeButton={false}
-              render={<a href={`/download/windows/${release.version}`} />}
-            >
-              Download for Windows
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              Windows 10 and 11 · {formatBytes(installer.size)}
-            </span>
-          </div>
-        </div>
-      ) : (
-        <div className="mt-6">
-          <p className="font-display text-xl font-semibold">First build coming soon</p>
-          <p className="mt-2 text-muted-foreground">
-            This release has no installer yet. Join the waitlist and we will tell you when the first
-            build is ready.
-          </p>
-          <Button size="lg" className="mt-5" nativeButton={false} render={<a href="/#waitlist" />}>
-            Join the waitlist
-          </Button>
-        </div>
-      )}
-      <p className="mt-6 text-sm">
-        See what is new in the{' '}
-        <a href="/changelog" className="text-primary underline">
-          changelog
-        </a>
-        .
-      </p>
-    </DownloadCard>
-  );
-}
-
-function Fallback(): ReactElement {
-  return (
-    <DownloadCard>
-      <p className="font-display text-xl font-semibold">
-        Downloads are temporarily unavailable, please try again shortly
-      </p>
-    </DownloadCard>
-  );
-}
+const pill = 'h-11 rounded-full px-6 text-base';
 
 export default async function DownloadPage(): Promise<ReactElement> {
   const result = await loadReleases();
+  const state = downloadState(result);
   const releases = result.status === 'ok' ? result.releases : [];
-  const latest = releases[0];
-  const older = releases.slice(1);
+  const ready = state.kind === 'ready' ? state : null;
 
   return (
-    <div className="px-5 py-14 sm:py-20">
-      <JsonLd data={softwareApplicationJsonLd(latest?.version)} />
-      <div className="mx-auto max-w-3xl">
-        <h1 className="font-display text-4xl font-semibold sm:text-5xl">Download Kivori</h1>
-        <p className="mt-4 text-lg text-muted-foreground">
-          The desktop app pairs with your Kivori and runs offline.
-        </p>
-
-        <div className="mt-10">
-          {result.status === 'error' ? (
-            <Fallback />
-          ) : latest ? (
-            <LatestCard release={latest} />
-          ) : (
-            <DownloadCard>
-              <p className="font-display text-xl font-semibold">First build coming soon</p>
-              <Button
-                size="lg"
-                className="mt-5"
-                nativeButton={false}
-                render={<a href="/#waitlist" />}
-              >
-                Join the waitlist
-              </Button>
-            </DownloadCard>
-          )}
-        </div>
-
-        <h2 className="mt-12 font-display text-2xl font-semibold">System requirements</h2>
-        <ul className="mt-4 list-disc space-y-1 pl-5 text-muted-foreground">
-          <li>Windows 10 or 11, 64-bit (x64)</li>
-          <li>A Kivori device and a USB-C data cable</li>
-          <li>macOS: coming later</li>
-        </ul>
-
-        <h2 className="mt-12 font-display text-2xl font-semibold">Installing</h2>
-        <p className="mt-4 text-muted-foreground">
-          The installer runs for your user only and does not ask for administrator rights. This beta
-          installer is not signed yet, so Windows SmartScreen may show &quot;Windows protected your
-          PC&quot;. This is expected for an unsigned app. If you got the installer from us, choose{' '}
-          <strong className="text-foreground">More info</strong>, then{' '}
-          <strong className="text-foreground">Run anyway</strong>. A signed installer is coming, and
-          the SmartScreen step will go away with it.
-        </p>
-        <p className="mt-4 text-muted-foreground">
-          Kivori keeps your device up to date from the app, so there is nothing else to download.
-        </p>
-        {older.length > 0 ? (
-          <>
-            <h2 className="mt-12 font-display text-2xl font-semibold">Older versions</h2>
-            <ul className="mt-4 divide-y divide-border rounded-xl border border-border">
-              {older.map((release) => (
-                <li
-                  key={release.tag}
-                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm"
+    <>
+      <JsonLd data={softwareApplicationJsonLd(ready?.release.version)} />
+      <section
+        aria-labelledby="download-title"
+        className="px-5 pt-20 pb-24 text-center sm:px-8 sm:pt-28 sm:pb-32"
+      >
+        <div className="mx-auto max-w-3xl">
+          <Eyebrow>Kivori Desktop</Eyebrow>
+          <h1 id="download-title" className="display-1 mt-3">
+            Download Kivori.
+          </h1>
+          <p className="lead mx-auto mt-6 max-w-xl">
+            The app that pairs with your Kivori. It runs offline and keeps your device up to date.
+          </p>
+          <div className="mt-12">
+            {ready ? (
+              <OsDownloadButton version={ready.release.version} beta={ready.release.prerelease} />
+            ) : state.kind === 'empty' ? (
+              <div className="flex flex-col items-center gap-4">
+                <p className="text-2xl font-semibold tracking-tight">First release coming soon</p>
+                <Button
+                  size="lg"
+                  className="h-14 rounded-full px-9 text-lg"
+                  nativeButton={false}
+                  render={<a href={notifyHref('kivori')} />}
                 >
-                  <span className="flex items-center gap-2">
-                    <a href={`/changelog#v${release.version}`} className="font-medium underline">
-                      {release.version}
-                    </a>
-                    {release.prerelease ? <Badge variant="secondary">Beta</Badge> : null}
-                  </span>
-                  <span className="flex items-center gap-4 text-muted-foreground">
-                    {formatDate(release.date)}
-                    {release.installer ? (
-                      <a
-                        href={`/download/windows/${release.version}`}
-                        className="text-primary underline"
-                      >
-                        Download
-                      </a>
-                    ) : (
-                      <span>No installer</span>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : null}
-      </div>
-    </div>
+                  Notify me
+                </Button>
+                <a href="#platforms" className="text-sm font-medium text-primary hover:underline">
+                  Other platforms &rsaquo;
+                </a>
+              </div>
+            ) : (
+              <p className="text-lg text-muted-foreground">
+                Downloads are temporarily unavailable. Please try again shortly.
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <Section
+        id="platforms"
+        tone="surface"
+        eyebrow="Platforms"
+        title="Pick your computer."
+        className="scroll-mt-14"
+      >
+        <div className="grid gap-6 md:grid-cols-2">
+          <Card className="rounded-3xl p-2 shadow-sm">
+            <CardHeader className="p-6 sm:p-8">
+              <span className="flex size-12 items-center justify-center rounded-2xl bg-accent text-accent-foreground">
+                <MonitorIcon className="size-6" aria-hidden="true" />
+              </span>
+              <CardTitle className="mt-4 text-3xl font-semibold tracking-tight">Windows</CardTitle>
+              <CardDescription className="text-base">
+                {ready
+                  ? [
+                      `Version ${ready.release.version}`,
+                      ready.release.date ? formatDate(ready.release.date) : null,
+                      `about ${formatBytes(ready.installer.size)}`,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')
+                  : 'First release coming soon'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6 px-6 pb-6 sm:px-8 sm:pb-8">
+              <ul className="space-y-2.5">
+                {REQUIREMENTS.map((item) => (
+                  <li key={item} className="flex items-center gap-2.5 text-base">
+                    <CheckIcon className="size-4 text-primary" aria-hidden="true" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <p className="flex gap-2.5 text-sm text-muted-foreground">
+                <InfoIcon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                If Windows shows a protection notice, choose More info, then Run anyway.
+              </p>
+              {ready ? (
+                <Button
+                  size="lg"
+                  className={pill}
+                  nativeButton={false}
+                  render={<a href="/download/windows/latest" />}
+                >
+                  Download for Windows
+                </Button>
+              ) : (
+                <Button
+                  size="lg"
+                  className={pill}
+                  nativeButton={false}
+                  render={<a href={notifyHref('kivori')} />}
+                >
+                  Notify me
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-3xl p-2 shadow-sm">
+            <CardHeader className="p-6 sm:p-8">
+              <span className="flex size-12 items-center justify-center rounded-2xl bg-secondary text-muted-foreground">
+                <AppleIcon className="size-6" aria-hidden="true" />
+              </span>
+              <CardTitle className="mt-4 text-3xl font-semibold tracking-tight">macOS</CardTitle>
+              <CardDescription className="text-base">Coming later</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6 px-6 pb-6 sm:px-8 sm:pb-8">
+              <p className="text-base text-muted-foreground">
+                A Mac version comes after the Windows beta. Leave your email and we will tell you
+                the day it is ready.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Button size="lg" className={pill} disabled>
+                  Download for macOS
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className={pill}
+                  nativeButton={false}
+                  render={<a href={notifyHref('kivori')} />}
+                >
+                  Notify me
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </Section>
+
+      <Section id="history" eyebrow="Version history" title="Every release.">
+        {releases.length === 0 ? (
+          <p className="text-lg text-muted-foreground">
+            {state.kind === 'unavailable'
+              ? 'The version history could not be loaded right now.'
+              : 'No releases yet. The first one is coming soon.'}
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-3xl bg-card ring-1 ring-foreground/10">
+            <Table className="min-w-[34rem]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="h-12 px-6">Version</TableHead>
+                  <TableHead className="h-12">Date</TableHead>
+                  <TableHead className="h-12">Status</TableHead>
+                  <TableHead className="h-12 pr-6 text-right">Windows</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {releases.map((release) => (
+                  <Fragment key={release.tag}>
+                    <TableRow className="border-b-0 hover:bg-transparent">
+                      <TableCell className="px-6 py-4 text-base font-semibold">
+                        {release.version}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {formatDate(release.date)}
+                      </TableCell>
+                      <TableCell>
+                        {release.prerelease ? <Badge variant="secondary">Beta</Badge> : null}
+                      </TableCell>
+                      <TableCell className="pr-6 text-right">
+                        {release.installer ? (
+                          <a
+                            href={`/download/windows/${release.version}`}
+                            className="font-medium text-primary hover:underline"
+                          >
+                            Download
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground">Not available</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell colSpan={4} className="px-6 pt-0 pb-2 whitespace-normal">
+                        <Accordion>
+                          <AccordionItem value="notes" className="border-0">
+                            <AccordionTrigger className="w-fit flex-none gap-2 py-1 text-sm font-medium text-muted-foreground hover:text-foreground hover:no-underline">
+                              What&apos;s new in {release.version}
+                            </AccordionTrigger>
+                            <AccordionContent>
+                              <div className="pt-2">
+                                <ReleaseNotes version={release.version} />
+                              </div>
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
+                      </TableCell>
+                    </TableRow>
+                  </Fragment>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </Section>
+    </>
   );
 }
