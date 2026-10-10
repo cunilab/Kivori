@@ -3,8 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import type { ReactElement } from 'react';
-import mascot from '@brand/mascot.svg';
-import { DeviceIllustration } from '@/components/device-illustration';
+import { renders } from '@/lib/media';
 import { FaqList } from '@/components/faq-list';
 import { FeatureIcon } from '@/components/feature-icon';
 import { JsonLd } from '@/components/json-ld';
@@ -97,14 +96,14 @@ export default async function ProductPage({ params }: ProductPageProps): Promise
               <WaitlistSection initialProduct={product.slug} idPrefix="product" />
             </div>
           </div>
-          <div className="relative mx-auto w-full max-w-md">
-            <DeviceIllustration label={product.hero.alt} className="w-full drop-shadow-xl" />
+          <div className="mx-auto w-full max-w-xl">
             <Image
-              src={mascot}
-              alt=""
-              width={96}
-              height={96}
-              className="animate-float absolute -top-6 right-2 sm:-top-8 sm:right-0"
+              src={renders.heroTransparent.src}
+              alt={product.hero.alt}
+              width={renders.heroTransparent.width}
+              height={renders.heroTransparent.height}
+              priority
+              className="h-auto w-full"
             />
           </div>
         </div>
