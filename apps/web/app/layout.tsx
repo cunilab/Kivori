@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import localFont from 'next/font/local';
+import { Bricolage_Grotesque, Instrument_Sans, Silkscreen } from 'next/font/google';
 import type { ReactElement, ReactNode } from 'react';
 import brandIcon from '@brand/icon/kivori-icon.svg';
 import { SiteFooter } from '@/components/site-footer';
@@ -7,16 +7,7 @@ import { JsonLd } from '@/components/json-ld';
 import { SiteHeader } from '@/components/site-header';
 import { organizationJsonLd } from '@/lib/jsonld';
 import { DESCRIPTION, ogImagePath, resolveSiteUrl, SITE_NAME } from '@/lib/site';
-import { THEME_INIT_SCRIPT } from './theme-script';
 import './globals.css';
-
-// Self-hosted at build time (Space Grotesk, SIL OFL; see app/fonts/OFL.txt). No runtime font requests.
-const display = localFont({
-  src: './fonts/space-grotesk-latin-wght-normal.woff2',
-  variable: '--font-display-face',
-  weight: '300 700',
-  display: 'swap',
-});
 
 export const metadata: Metadata = {
   metadataBase: resolveSiteUrl(process.env.SITE_URL),
@@ -35,25 +26,49 @@ export const metadata: Metadata = {
   twitter: { card: 'summary_large_image', images: [ogImagePath()] },
 };
 
+// Fonts are fetched at build time and self-hosted; the browser makes no Google requests.
+const display = Bricolage_Grotesque({
+  subsets: ['latin'],
+  weight: ['700', '800'],
+  variable: '--font-bricolage',
+  display: 'swap',
+});
+const body = Instrument_Sans({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  variable: '--font-instrument',
+  display: 'swap',
+});
+const pixel = Silkscreen({
+  subsets: ['latin'],
+  weight: ['400', '700'],
+  variable: '--font-silkscreen',
+  display: 'swap',
+});
+
 export const viewport: Viewport = {
-  themeColor: '#0c101c',
+  themeColor: '#0b0f1a',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }): ReactElement {
   return (
-    // Server default is dark; the inline script switches to light for stored/OS-light before paint.
+    // The web is one committed dark look (see globals.css); the `dark` class keeps shared primitives' dark variants on.
     <html
       lang="en"
-      className={`${display.variable} dark`}
+      className={`dark ${display.variable} ${body.variable} ${pixel.variable}`}
       style={{ colorScheme: 'dark' }}
-      suppressHydrationWarning
     >
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
-      </head>
       <body className="flex min-h-screen flex-col">
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60] focus:rounded-full focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
+        >
+          Skip to content
+        </a>
         <SiteHeader />
-        <main className="flex-1">{children}</main>
+        <main id="main" className="flex-1">
+          {children}
+        </main>
         <SiteFooter />
         <JsonLd data={organizationJsonLd()} />
       </body>

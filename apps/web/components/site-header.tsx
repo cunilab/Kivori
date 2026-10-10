@@ -1,42 +1,21 @@
-import Image from 'next/image';
 import Link from 'next/link';
 import type { ReactElement } from 'react';
-import icon from '@brand/icon/kivori-icon.svg';
-import { ThemeToggle } from '@/components/theme-toggle';
+import { BrandMark } from '@/components/brand-mark';
+import { SiteNav } from '@/components/site-nav';
 
-const NAV = [
-  { href: '/products', label: 'Products' },
-  { href: '/download', label: 'Download' },
-  { href: '/changelog', label: 'Changelog' },
-  { href: '/support', label: 'Support' },
-  { href: '/blog', label: 'Blog' },
-] as const;
-
+/** Slim dark sticky bar: buddy mark and wordmark left, links centre, the waitlist button right. */
 export function SiteHeader(): ReactElement {
   return (
-    <header className="border-b border-border">
-      <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-5">
-        <Link href="/" className="flex items-center gap-2.5 font-display text-lg font-semibold">
-          <Image src={icon} alt="" width={32} height={32} className="rounded-lg" />
+    <header className="sticky top-0 z-50 border-b border-border/70 bg-background/80 backdrop-blur-xl">
+      <div className="mx-auto grid h-14 max-w-[calc(1180px+4rem)] grid-cols-[1fr_auto] items-center gap-4 px-5 sm:px-8 md:grid-cols-[1fr_auto_1fr]">
+        <Link
+          href="/"
+          className="flex w-fit items-center gap-2.5 font-display text-xl font-bold tracking-tight"
+        >
+          <BrandMark />
           Kivori
         </Link>
-        <div className="flex items-center gap-1 sm:gap-4">
-          <nav
-            aria-label="Main"
-            className="flex items-center gap-3 text-sm text-muted-foreground sm:gap-5"
-          >
-            {NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="transition-colors hover:text-foreground"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-          <ThemeToggle />
-        </div>
+        <SiteNav />
       </div>
     </header>
   );

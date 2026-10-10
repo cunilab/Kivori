@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactElement } from 'react';
+import { CheckCircle2Icon } from 'lucide-react';
 import { Button } from '@kivori/ui/components/button';
+import { Card } from '@kivori/ui/components/card';
 import { Input } from '@kivori/ui/components/input';
 import { Label } from '@kivori/ui/components/label';
 import {
@@ -13,6 +15,7 @@ import {
   SelectValue,
 } from '@kivori/ui/components/select';
 import { Textarea } from '@kivori/ui/components/textarea';
+import { JOINED_EVENT } from '@/lib/demo';
 import { HONEYPOT_FIELD, LIMITS } from '@/lib/waitlist';
 
 export interface ProductOption {
@@ -28,6 +31,11 @@ interface WaitlistFormProps {
   initialProduct?: string | undefined;
   /** Prefix for element ids, so two forms on one page never clash. */
   idPrefix?: string | undefined;
+  /**
+   * `card` is the full form (email, edition, use case) for sheets and the waitlist page.
+   * `inline` is the one-field pill used in the hero and the closing band.
+   */
+  variant?: 'card' | 'inline' | undefined;
 }
 
 interface TurnstileApi {
@@ -38,6 +46,8 @@ interface TurnstileApi {
       callback: (token: string) => void;
       'expired-callback': () => void;
       'error-callback': () => void;
+      appearance?: 'always' | 'execute' | 'interaction-only';
+      theme?: 'auto' | 'light' | 'dark';
     },
   ): string;
   reset(widgetId?: string): void;
@@ -75,6 +85,7 @@ export function WaitlistForm({
   products,
   initialProduct,
   idPrefix = 'waitlist',
+  variant = 'card',
 }: WaitlistFormProps): ReactElement {
   const uid = useId();
   const id = (name: string): string => `${idPrefix}${uid}-${name}`;
@@ -124,6 +135,9 @@ export function WaitlistForm({
             callback: setToken,
             'expired-callback': () => setToken(''),
             'error-callback': () => setToken(''),
+            // Stay invisible unless Cloudflare actually needs the visitor to click something.
+            appearance: 'interaction-only',
+            theme: 'dark',
           });
         })
         .catch(() => {
@@ -179,6 +193,8 @@ export function WaitlistForm({
       const data = (await response.json().catch(() => null)) as { message?: string } | null;
       if (response.ok) {
         setStatus('success');
+        // Lets the demo buddy on the page celebrate.
+        window.dispatchEvent(new Event(JOINED_EVENT));
         return;
       }
       setStatus('error');
@@ -192,70 +208,37 @@ export function WaitlistForm({
     if (widgetId.current !== undefined) window.turnstile?.reset(widgetId.current);
   }
 
+  const submitting = status === 'submitting';
+  const inline = variant === 'inline';
+
   if (status === 'success') {
-    return (
-      <div
-        role="status"
-        className="rounded-2xl border border-border bg-card p-6 text-left sm:text-center"
-      >
-        <p className="font-display text-2xl font-semibold">You&apos;re on the list</p>
+    return inline ? (
+      <div role="status" className="max-w-[440px]">
+        <p className="flex items-center gap-2 font-display text-xl font-bold tracking-tight text-mint">
+          <CheckCircle2Icon className="size-5" aria-hidden="true" />
+          You&apos;re on the list.
+        </p>
+        <p className="mt-1.5 text-muted-foreground">
+          The buddy is thrilled. We will email you when there is news. No spam, and you can ask us
+          to delete your details any time.
+        </p>
+      </div>
+    ) : (
+      <Card role="status" className="rounded-3xl p-8 text-center shadow-sm">
+        <CheckCircle2Icon className="mx-auto size-10 text-primary" aria-hidden="true" />
+        <p className="mt-3 font-display text-2xl font-bold tracking-tight">
+          You&apos;re on the list
+        </p>
         <p className="mt-2 text-muted-foreground">
           We will email you when there is news about Kivori. No spam, and you can ask us to delete
           your details any time.
         </p>
-      </div>
+      </Card>
     );
   }
 
-  const submitting = status === 'submitting';
-
-  return (
-    <form
-      ref={formRef}
-      onSubmit={onSubmit}
-      className="w-full rounded-2xl border border-border bg-card p-6 text-left"
-    >
-      <div>
-        <Label htmlFor={id('email')}>Email</Label>
-        <Input
-          id={id('email')}
-          name="email"
-          type="email"
-          required
-          autoComplete="email"
-          maxLength={LIMITS.email}
-          className="mt-1.5 h-10"
-        />
-      </div>
-      <div className="mt-4">
-        <Label htmlFor={id('product')}>Which product?</Label>
-        <Select name="product" defaultValue={selected} key={selected} items={productItems}>
-          <SelectTrigger id={id('product')} className="mt-1.5 h-10 w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {productItems.map((item) => (
-              <SelectItem key={item.value} value={item.value}>
-                {item.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="mt-4">
-        <Label htmlFor={id('use-case')}>
-          What would you use Kivori for?{' '}
-          <span className="font-normal text-muted-foreground">(optional)</span>
-        </Label>
-        <Textarea
-          id={id('use-case')}
-          name="use_case"
-          rows={3}
-          maxLength={LIMITS.useCase}
-          className="mt-1.5"
-        />
-      </div>
-
+  const hidden = (
+    <>
       {/* Honeypot: hidden from people and from assistive tech; bots fill it in. */}
       <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
         <label htmlFor={id('website')}>Leave this field empty</label>
@@ -271,32 +254,130 @@ export function WaitlistForm({
       <input type="hidden" name="utm_medium" value={attribution.utm_medium} />
       <input type="hidden" name="utm_campaign" value={attribution.utm_campaign} />
       <input type="hidden" name="referrer" value={attribution.referrer} />
+    </>
+  );
 
-      <div ref={widgetRef} className="mt-4 min-h-[65px]" />
+  const errorLine = (
+    <p
+      role={status === 'error' ? 'alert' : undefined}
+      className={`mt-2 min-h-5 text-sm ${status === 'error' ? 'font-medium text-destructive' : ''}`}
+    >
+      {status === 'error' ? message : ''}
+    </p>
+  );
 
-      <p
-        role={status === 'error' ? 'alert' : undefined}
-        className={`mt-2 min-h-5 text-sm ${status === 'error' ? 'font-medium text-destructive' : ''}`}
-      >
-        {status === 'error' ? message : ''}
-      </p>
+  if (inline) {
+    return (
+      <form ref={formRef} onSubmit={onSubmit} className="w-full max-w-[440px]">
+        <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-1.5 transition-colors focus-within:border-mint-deep sm:flex-row sm:rounded-full">
+          <Label htmlFor={id('email')} className="sr-only">
+            Email
+          </Label>
+          <Input
+            id={id('email')}
+            name="email"
+            type="email"
+            required
+            autoComplete="email"
+            placeholder="you@example.com"
+            maxLength={LIMITS.email}
+            className="h-11 min-w-0 flex-1 rounded-full border-0 bg-transparent px-3.5 text-base shadow-none ring-0 focus-visible:ring-0 dark:bg-transparent"
+          />
+          <input type="hidden" name="product" value={selected} />
+          <Button
+            type="submit"
+            size="lg"
+            disabled={submitting}
+            aria-busy={submitting}
+            className="keycap h-11 px-5 text-[0.95rem] disabled:cursor-wait"
+          >
+            {submitting ? 'Sending...' : 'Join the waitlist'}
+          </Button>
+        </div>
+        {hidden}
+        <div ref={widgetRef} className="mt-3 min-h-[65px]" />
+        {errorLine}
+        <p className="mt-1 text-xs text-muted-foreground">
+          We keep your email only to tell you about Kivori. See the{' '}
+          <Link href="/privacy" className="underline">
+            privacy page
+          </Link>
+          .
+        </p>
+      </form>
+    );
+  }
 
-      <Button
-        type="submit"
-        size="lg"
-        disabled={submitting}
-        aria-busy={submitting}
-        className="mt-2 h-10 w-full disabled:cursor-wait"
-      >
-        {submitting ? 'Sending...' : 'Join the waitlist'}
-      </Button>
-      <p className="mt-3 text-xs text-muted-foreground">
-        We store your email, choice and answers only to tell you about Kivori. See the{' '}
-        <Link href="/privacy" className="underline">
-          privacy page
-        </Link>
-        .
-      </p>
-    </form>
+  return (
+    <Card className="w-full rounded-3xl p-6 text-left shadow-sm sm:p-8">
+      <form ref={formRef} onSubmit={onSubmit} className="w-full">
+        <div>
+          <Label htmlFor={id('email')}>Email</Label>
+          <Input
+            id={id('email')}
+            name="email"
+            type="email"
+            required
+            autoComplete="email"
+            maxLength={LIMITS.email}
+            className="mt-1.5 h-11 rounded-xl px-3.5 text-base"
+          />
+        </div>
+        <div className="mt-4">
+          <Label htmlFor={id('product')}>Edition</Label>
+          <Select name="product" defaultValue={selected} key={selected} items={productItems}>
+            <SelectTrigger
+              id={id('product')}
+              className="mt-1.5 h-11 w-full rounded-xl px-3.5 text-base"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {productItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="mt-4">
+          <Label htmlFor={id('use-case')}>
+            What would you use Kivori for?{' '}
+            <span className="font-normal text-muted-foreground">(optional)</span>
+          </Label>
+          <Textarea
+            id={id('use-case')}
+            name="use_case"
+            rows={3}
+            maxLength={LIMITS.useCase}
+            className="mt-1.5 rounded-xl px-3.5 text-base"
+          />
+        </div>
+
+        {hidden}
+
+        <div ref={widgetRef} className="mt-4 min-h-[65px]" />
+
+        {errorLine}
+
+        <Button
+          type="submit"
+          size="lg"
+          disabled={submitting}
+          aria-busy={submitting}
+          className="keycap mt-2 h-12 w-full text-base disabled:cursor-wait"
+        >
+          {submitting ? 'Sending...' : 'Join the waitlist'}
+        </Button>
+        <p className="mt-3 text-xs text-muted-foreground">
+          We store your email, choice and answers only to tell you about Kivori. See the{' '}
+          <Link href="/privacy" className="underline">
+            privacy page
+          </Link>
+          .
+        </p>
+      </form>
+    </Card>
   );
 }

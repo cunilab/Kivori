@@ -3,24 +3,154 @@
 /* Tailwind scans the shared components for utility classes. */
 @source '../../../packages/ui/src';
 
+/*
+ * "Desk Buddy" dark: the one committed look of the website. The shared tokens (and the desktop app's
+ * theme) stay untouched; the web overrides them here, in both :root and .dark, so every shared
+ * primitive (Button, Input, Tabs, Sheet, ...) renders in this style without being forked.
+ * Raw palette: stage #0b0f1a, stage-2 #131a2b, line #222c42, ink #edf3f0, muted #8f9bb0, mint #7df2c4.
+ */
+:root,
+.dark {
+  --stage: #0b0f1a;
+  --stage-2: #131a2b;
+  --line: #222c42;
+  --ink: #edf3f0;
+  --muted-ink: #8f9bb0;
+  --mint: #7df2c4;
+  --mint-deep: #35a87c;
+  --sky: #4fb7ff;
+  --amber: #f5a524;
+  --ok: #3cc47c;
+  --shell: #ecebe6;
+
+  --background: var(--stage);
+  --foreground: var(--ink);
+  --surface: var(--stage-2);
+  --card: var(--stage-2);
+  --card-foreground: var(--ink);
+  --popover: #172036;
+  --popover-foreground: var(--ink);
+  --primary: var(--mint);
+  --primary-foreground: #062118;
+  --secondary: #1e2740;
+  --secondary-foreground: var(--ink);
+  --muted: #182037;
+  --muted-foreground: var(--muted-ink);
+  --accent: #173a33;
+  --accent-foreground: #b8f7dd;
+  --destructive: #ff6b70;
+  --destructive-foreground: #0b0f1a;
+  --success: var(--ok);
+  --warning: var(--amber);
+  --border: var(--line);
+  --input: #2a3550;
+  --ring: var(--mint);
+  --radius: 0.9rem;
+  color-scheme: dark;
+}
+
 @theme inline {
-  --font-display: var(--font-display-face), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-instrument), 'Helvetica Neue', 'Segoe UI', sans-serif;
+  --font-display: var(--font-bricolage), 'Avenir Next', 'Segoe UI', sans-serif;
+  --font-pixel: var(--font-silkscreen), ui-monospace, 'SF Mono', Menlo, monospace;
+  --color-surface: var(--surface);
+  --color-stage: var(--stage);
+  --color-mint: var(--mint);
+  --color-mint-deep: var(--mint-deep);
+  --color-sky: var(--sky);
+  --color-amber: var(--amber);
 }
 
 @layer base {
-  /* Visible keyboard focus in both themes (primary is the darker green in light mode). */
   :focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 2px;
+    outline: 2px solid var(--mint);
+    outline-offset: 3px;
   }
 
   html {
     scroll-behavior: smooth;
+    background: var(--stage);
+    /* Reserve the scrollbar's space so the header doesn't shift between short and long pages. */
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
   }
 
   @media (prefers-reduced-motion: reduce) {
     html {
       scroll-behavior: auto;
     }
+  }
+}
+
+@layer components {
+  .display-1 {
+    font-family: var(--font-display);
+    font-size: clamp(2.6rem, 5.6vw, 4.6rem);
+    line-height: 0.98;
+    letter-spacing: -0.035em;
+    font-weight: 800;
+  }
+  .display-2 {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 4.2vw, 3.2rem);
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+    font-weight: 800;
+  }
+  .display-3 {
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 2.8vw, 2.2rem);
+    line-height: 1.08;
+    letter-spacing: -0.025em;
+    font-weight: 700;
+  }
+  .lead {
+    font-size: clamp(1.05rem, 1.4vw, 1.2rem);
+    line-height: 1.55;
+    color: var(--muted-foreground);
+  }
+  /* Pixel labels: eyebrows, tags and device text only, never paragraphs. */
+  .pixel {
+    font-family: var(--font-pixel);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  /* The mint keycap look for primary buttons. */
+  .keycap {
+    border-radius: 999px;
+    font-weight: 600;
+    box-shadow: inset 0 -3px 0 var(--mint-deep);
+  }
+  .keycap:active {
+    box-shadow: inset 0 -1px 0 var(--mint-deep);
+  }
+  /* The desk-at-night glow under a product render or device. */
+  .stage-glow {
+    background: radial-gradient(60% 55% at 50% 62%, rgb(125 242 196 / 0.18), transparent 70%);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes glow-pulse {
+    0%,
+    100% {
+      opacity: 0.6;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  .glow {
+    animation: glow-pulse 6s ease-in-out infinite;
   }
 }
