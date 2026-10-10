@@ -25,7 +25,7 @@ export default function PrivacyPage(): ReactElement {
           sends no telemetry.
         </p>
 
-        <h2 className="mt-14 text-2xl font-semibold tracking-tight sm:text-3xl">
+        <h2 className="mt-14 font-display text-2xl font-bold tracking-tight sm:text-3xl">
           Visiting the site
         </h2>
         <p className="mt-3 text-base text-muted-foreground sm:text-lg">
@@ -35,7 +35,9 @@ export default function PrivacyPage(): ReactElement {
           Engine as totals by operating system and version, with no personal data.
         </p>
 
-        <h2 className="mt-14 text-2xl font-semibold tracking-tight sm:text-3xl">The waitlist</h2>
+        <h2 className="mt-14 font-display text-2xl font-bold tracking-tight sm:text-3xl">
+          The waitlist
+        </h2>
         <p className="mt-3 text-base text-muted-foreground sm:text-lg">
           If you join the waitlist we store:
         </p>
@@ -54,14 +56,16 @@ export default function PrivacyPage(): ReactElement {
           for advertising. It is stored in Cloudflare D1.
         </p>
 
-        <h2 className="mt-14 text-2xl font-semibold tracking-tight sm:text-3xl">Your IP address</h2>
+        <h2 className="mt-14 font-display text-2xl font-bold tracking-tight sm:text-3xl">
+          Your IP address
+        </h2>
         <p className="mt-3 text-base text-muted-foreground sm:text-lg">
           Your IP address is not stored. It is used only for a moment, to limit how many sign-ups
           one network can send per minute, and is passed to Cloudflare Turnstile, the bot check on
           the form.
         </p>
 
-        <h2 className="mt-14 text-2xl font-semibold tracking-tight sm:text-3xl">
+        <h2 className="mt-14 font-display text-2xl font-bold tracking-tight sm:text-3xl">
           Deleting your data
         </h2>
         <p className="mt-3 text-base text-muted-foreground sm:text-lg">

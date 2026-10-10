@@ -16,7 +16,7 @@ export function ComparisonTable({ comparison }: { comparison: Comparison }): Rea
   const { columns, groups } = comparison;
   return (
     <div
-      className="overflow-x-auto rounded-3xl bg-card ring-1 ring-foreground/10"
+      className="overflow-x-auto rounded-2xl bg-card ring-1 ring-border"
       role="region"
       aria-label="Product comparison"
       tabIndex={0}
@@ -32,7 +32,7 @@ export function ComparisonTable({ comparison }: { comparison: Comparison }): Rea
               <TableHead key={column.slug} scope="col" className="h-auto p-6 align-bottom">
                 <Link
                   href={`/products/${column.slug}`}
-                  className="text-xl font-semibold tracking-tight hover:underline"
+                  className="font-display text-xl font-bold tracking-tight hover:underline"
                 >
                   {column.name}
                 </Link>
@@ -49,7 +49,7 @@ export function ComparisonTable({ comparison }: { comparison: Comparison }): Rea
               <TableHead
                 scope="colgroup"
                 colSpan={columns.length + 1}
-                className="h-auto bg-surface px-6 py-2.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+                className="h-auto bg-surface px-6 py-2.5 pixel text-[0.7rem] font-normal tracking-wider text-mint"
               >
                 {group.group}
               </TableHead>

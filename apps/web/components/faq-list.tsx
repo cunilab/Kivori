@@ -13,7 +13,7 @@ export function FaqList({ items }: { items: readonly FaqItem[] }): ReactElement 
     <Accordion className="border-t border-border">
       {items.map((item) => (
         <AccordionItem key={item.question} value={item.question} className="border-b">
-          <AccordionTrigger className="py-5 text-lg font-medium tracking-tight hover:no-underline sm:text-xl">
+          <AccordionTrigger className="py-5 font-display text-lg font-bold tracking-tight hover:no-underline sm:text-xl">
             {item.question}
           </AccordionTrigger>
           <AccordionContent className="text-base text-muted-foreground sm:text-lg">

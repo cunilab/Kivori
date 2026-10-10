@@ -214,7 +214,7 @@ export default function SupportPage(): ReactElement {
           <Accordion defaultValue={['getting-started']}>
             {sections.map((section) => (
               <AccordionItem key={section.id} value={section.id}>
-                <AccordionTrigger className="py-5 text-xl font-semibold tracking-tight sm:text-2xl">
+                <AccordionTrigger className="py-5 font-display text-xl font-bold tracking-tight sm:text-2xl">
                   {section.title}
                 </AccordionTrigger>
                 <AccordionContent className="text-base text-muted-foreground">

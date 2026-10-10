@@ -6,7 +6,7 @@ import { renders } from '@/lib/media';
 import { FaqList } from '@/components/faq-list';
 import { BuyBar } from '@/components/buy-bar';
 import { FeatureIcon } from '@/components/feature-icon';
-import { ProductShot } from '@/components/product-shot';
+import { ProductStage } from '@/components/product-shot';
 import { SpecsTable } from '@/components/specs-table';
 import { JsonLd } from '@/components/json-ld';
 import { Eyebrow, Section } from '@/components/section';
@@ -65,14 +65,13 @@ export default async function ProductPage({ params }: ProductPageProps): Promise
             {product.name}
           </h1>
           <p className="lead mx-auto mt-5 max-w-2xl text-balance">{product.tagline}</p>
-          <div className="shot-stage mx-auto mt-10 max-w-[1000px] sm:mt-14">
-            <ProductShot
-              image={renders.hero}
-              large
-              priority
-              sizes="(min-width: 1000px) 1000px, 100vw"
-            />
-          </div>
+          <ProductStage
+            image={renders.heroTransparent}
+            large
+            priority
+            sizes="(min-width: 1000px) 1000px, 100vw"
+            className="mt-10 max-w-[1000px] sm:mt-14"
+          />
         </div>
       </section>
 
@@ -91,12 +90,14 @@ export default async function ProductPage({ params }: ProductPageProps): Promise
       >
         <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {product.features.map((feature) => (
-            <li key={feature.title} className="reveal flex">
-              <Card className="w-full gap-0 rounded-3xl p-7 shadow-sm ring-1 ring-foreground/8">
+            <li key={feature.title} className="flex">
+              <Card className="w-full gap-0 rounded-2xl p-7 shadow-none ring-1 ring-border">
                 <span className="flex size-11 items-center justify-center rounded-2xl bg-accent text-accent-foreground">
                   <FeatureIcon name={feature.icon} />
                 </span>
-                <h3 className="mt-5 text-xl font-semibold tracking-tight">{feature.title}</h3>
+                <h3 className="mt-5 font-display text-xl font-bold tracking-tight">
+                  {feature.title}
+                </h3>
                 <p className="mt-2 text-base text-muted-foreground">{feature.body}</p>
               </Card>
             </li>
@@ -114,8 +115,8 @@ export default async function ProductPage({ params }: ProductPageProps): Promise
         <ul className="grid gap-4 sm:grid-cols-3">
           {product.compatibility.map((item) => (
             <li key={item.os}>
-              <Card className="gap-1 rounded-3xl p-7 shadow-sm ring-1 ring-foreground/8">
-                <p className="text-2xl font-semibold tracking-tight">{item.os}</p>
+              <Card className="gap-1 rounded-2xl p-7 shadow-none ring-1 ring-border">
+                <p className="font-display text-2xl font-bold tracking-tight">{item.os}</p>
                 <p
                   className={`text-sm ${item.status === 'supported' || item.status === 'supported-beta' ? 'font-medium text-success' : 'text-muted-foreground'}`}
                 >
@@ -129,7 +130,7 @@ export default async function ProductPage({ params }: ProductPageProps): Promise
 
       {product.inTheBox && product.inTheBox.length > 0 ? (
         <Section id="in-the-box" tone="surface" eyebrow="In the box" title="What you get.">
-          <ul className="max-w-xl divide-y divide-border overflow-hidden rounded-3xl bg-card ring-1 ring-foreground/10">
+          <ul className="max-w-xl divide-y divide-border overflow-hidden rounded-2xl bg-card ring-1 ring-border">
             {product.inTheBox.map((item) => (
               <li key={item} className="px-6 py-4 text-base">
                 {item}

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { GeistSans } from 'geist/font/sans';
+import { Bricolage_Grotesque, Instrument_Sans, Silkscreen } from 'next/font/google';
 import type { ReactElement, ReactNode } from 'react';
 import brandIcon from '@brand/icon/kivori-icon.svg';
 import { SiteFooter } from '@/components/site-footer';
@@ -7,7 +7,6 @@ import { JsonLd } from '@/components/json-ld';
 import { SiteHeader } from '@/components/site-header';
 import { organizationJsonLd } from '@/lib/jsonld';
 import { DESCRIPTION, ogImagePath, resolveSiteUrl, SITE_NAME } from '@/lib/site';
-import { THEME_INIT_SCRIPT } from './theme-script';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -27,23 +26,38 @@ export const metadata: Metadata = {
   twitter: { card: 'summary_large_image', images: [ogImagePath()] },
 };
 
+// Fonts are fetched at build time and self-hosted; the browser makes no Google requests.
+const display = Bricolage_Grotesque({
+  subsets: ['latin'],
+  weight: ['700', '800'],
+  variable: '--font-bricolage',
+  display: 'swap',
+});
+const body = Instrument_Sans({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  variable: '--font-instrument',
+  display: 'swap',
+});
+const pixel = Silkscreen({
+  subsets: ['latin'],
+  weight: ['400', '700'],
+  variable: '--font-silkscreen',
+  display: 'swap',
+});
+
 export const viewport: Viewport = {
-  themeColor: '#fbfbfd',
+  themeColor: '#0b0f1a',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }): ReactElement {
   return (
-    // Server default is light; the inline script switches to dark for stored/OS-dark before paint.
-    // Geist Sans is self-hosted by the `geist` package (SIL OFL), so there are no runtime font requests.
+    // The web is one committed dark look (see globals.css); the `dark` class keeps shared primitives' dark variants on.
     <html
       lang="en"
-      className={GeistSans.variable}
-      style={{ colorScheme: 'light' }}
-      suppressHydrationWarning
+      className={`dark ${display.variable} ${body.variable} ${pixel.variable}`}
+      style={{ colorScheme: 'dark' }}
     >
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
-      </head>
       <body className="flex min-h-screen flex-col">
         <a
           href="#main"

@@ -12,7 +12,7 @@ import type { SpecGroup } from '@/content/products/types';
 /** One product's selling-level spec sheet, grouped. */
 export function SpecsTable({ groups, name }: { groups: SpecGroup[]; name: string }): ReactElement {
   return (
-    <div className="overflow-x-auto rounded-3xl bg-card ring-1 ring-foreground/10">
+    <div className="overflow-x-auto rounded-2xl bg-card ring-1 ring-border">
       <Table>
         <TableCaption className="sr-only">{name} tech specs</TableCaption>
         {groups.map((group) => (
@@ -21,7 +21,7 @@ export function SpecsTable({ groups, name }: { groups: SpecGroup[]; name: string
               <TableHead
                 colSpan={2}
                 scope="colgroup"
-                className="h-auto bg-surface px-6 py-2.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+                className="h-auto bg-surface px-6 py-2.5 pixel text-[0.7rem] font-normal tracking-wider text-mint"
               >
                 {group.group}
               </TableHead>

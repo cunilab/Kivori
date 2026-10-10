@@ -10,7 +10,6 @@ import sharp from 'sharp';
 import satori from 'satori';
 import { getProducts } from '../content/products/index.ts';
 import { PRODUCT_STATUS_LABEL } from '../lib/product-labels.ts';
-import { TAGLINE } from '../lib/site.ts';
 
 const WEB_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
@@ -44,12 +43,16 @@ function card({ title, line, status, mascotUri }) {
           el(
             'div',
             { alignItems: 'center', fontSize: 28, color: GREEN, fontWeight: 700 },
-            'Desk buddy and controller',
+            'A desk buddy with a knob',
           ),
           el('div', { flexDirection: 'column' }, [
             el(
               'div',
-              { fontSize: title.length > 12 ? 84 : 112, fontWeight: 700, lineHeight: 1.05 },
+              {
+                fontSize: title.length > 20 ? 68 : title.length > 12 ? 84 : 112,
+                fontWeight: 700,
+                lineHeight: 1.05,
+              },
               title,
             ),
             el('div', { fontSize: 34, color: '#a9b3c9', marginTop: 24, lineHeight: 1.25 }, line),
@@ -106,7 +109,11 @@ async function buildShareImages() {
   const mascotUri = `data:image/png;base64,${mascotPng.toString('base64')}`;
 
   const cards = [
-    { slug: 'default', title: 'Kivori', line: TAGLINE },
+    {
+      slug: 'default',
+      title: "Say hi to your desk's new roommate.",
+      line: 'A big knob, three keys and a tiny friend. No account, no cloud.',
+    },
     ...getProducts().map((p) => ({
       slug: p.slug,
       title: p.name,

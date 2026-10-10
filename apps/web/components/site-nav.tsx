@@ -19,10 +19,9 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@kivori/ui/components/sheet';
-import { ThemeToggle } from '@/components/theme-toggle';
 import { MAIN_NAV } from '@/lib/nav';
 
-/** Centre links (NavigationMenu) on desktop, a Sheet menu on mobile, plus Notify me on the right. */
+/** Centre links (NavigationMenu) on desktop, a Sheet menu on mobile, plus the waitlist button on the right. */
 export function SiteNav(): ReactElement {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -50,14 +49,13 @@ export function SiteNav(): ReactElement {
       </NavigationMenu>
 
       <div className="flex items-center justify-end gap-1.5">
-        <ThemeToggle />
         <Button
           size="sm"
-          className="h-8 rounded-full px-4 text-[0.8125rem]"
+          className="keycap h-8 px-4 text-[0.8125rem]"
           nativeButton={false}
           render={<Link href="/#waitlist" />}
         >
-          Notify me
+          Join the waitlist
         </Button>
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger
@@ -74,7 +72,7 @@ export function SiteNav(): ReactElement {
           </SheetTrigger>
           <SheetContent side="right" className="md:hidden">
             <SheetHeader>
-              <SheetTitle>Kivori</SheetTitle>
+              <SheetTitle className="font-display text-xl">Kivori</SheetTitle>
               <SheetDescription className="sr-only">Site navigation</SheetDescription>
             </SheetHeader>
             <nav aria-label="Mobile" className="flex flex-col px-4">
@@ -83,7 +81,7 @@ export function SiteNav(): ReactElement {
                   key={item.href}
                   href={item.href}
                   onClick={() => setOpen(false)}
-                  className="border-b border-border py-4 text-2xl font-semibold tracking-tight"
+                  className="border-b border-border py-4 font-display text-2xl font-bold tracking-tight"
                 >
                   {item.label}
                 </Link>

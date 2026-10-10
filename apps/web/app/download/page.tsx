@@ -46,7 +46,7 @@ export const metadata: Metadata = pageMetadata({
 
 const REQUIREMENTS = ['Windows 10 or 11, 64-bit', 'A free USB-C port', 'Your Kivori'] as const;
 
-const pill = 'h-11 rounded-full px-6 text-base';
+const pill = 'keycap h-11 px-6 text-base';
 
 export default async function DownloadPage(): Promise<ReactElement> {
   const result = await loadReleases();
@@ -74,14 +74,16 @@ export default async function DownloadPage(): Promise<ReactElement> {
               <OsDownloadButton version={ready.release.version} beta={ready.release.prerelease} />
             ) : state.kind === 'empty' ? (
               <div className="flex flex-col items-center gap-4">
-                <p className="text-2xl font-semibold tracking-tight">First release coming soon</p>
+                <p className="font-display text-2xl font-bold tracking-tight">
+                  First release coming soon
+                </p>
                 <Button
                   size="lg"
-                  className="h-14 rounded-full px-9 text-lg"
+                  className="keycap h-14 px-9 text-lg"
                   nativeButton={false}
                   render={<a href={notifyHref('kivori')} />}
                 >
-                  Notify me
+                  Join the waitlist
                 </Button>
                 <a href="#platforms" className="text-sm font-medium text-primary hover:underline">
                   Other platforms &rsaquo;
@@ -104,12 +106,14 @@ export default async function DownloadPage(): Promise<ReactElement> {
         className="scroll-mt-14"
       >
         <div className="grid gap-6 md:grid-cols-2">
-          <Card className="rounded-3xl p-2 shadow-sm">
+          <Card className="rounded-2xl p-2 shadow-none ring-1 ring-border">
             <CardHeader className="p-6 sm:p-8">
               <span className="flex size-12 items-center justify-center rounded-2xl bg-accent text-accent-foreground">
                 <MonitorIcon className="size-6" aria-hidden="true" />
               </span>
-              <CardTitle className="mt-4 text-3xl font-semibold tracking-tight">Windows</CardTitle>
+              <CardTitle className="mt-4 font-display text-3xl font-bold tracking-tight">
+                Windows
+              </CardTitle>
               <CardDescription className="text-base">
                 {ready
                   ? [
@@ -151,18 +155,20 @@ export default async function DownloadPage(): Promise<ReactElement> {
                   nativeButton={false}
                   render={<a href={notifyHref('kivori')} />}
                 >
-                  Notify me
+                  Join the waitlist
                 </Button>
               )}
             </CardContent>
           </Card>
 
-          <Card className="rounded-3xl p-2 shadow-sm">
+          <Card className="rounded-2xl p-2 shadow-none ring-1 ring-border">
             <CardHeader className="p-6 sm:p-8">
               <span className="flex size-12 items-center justify-center rounded-2xl bg-secondary text-muted-foreground">
                 <AppleIcon className="size-6" aria-hidden="true" />
               </span>
-              <CardTitle className="mt-4 text-3xl font-semibold tracking-tight">macOS</CardTitle>
+              <CardTitle className="mt-4 font-display text-3xl font-bold tracking-tight">
+                macOS
+              </CardTitle>
               <CardDescription className="text-base">Coming later</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6 px-6 pb-6 sm:px-8 sm:pb-8">
@@ -181,7 +187,7 @@ export default async function DownloadPage(): Promise<ReactElement> {
                   nativeButton={false}
                   render={<a href={notifyHref('kivori')} />}
                 >
-                  Notify me
+                  Join the waitlist
                 </Button>
               </div>
             </CardContent>
@@ -197,7 +203,7 @@ export default async function DownloadPage(): Promise<ReactElement> {
               : 'No releases yet. The first one is coming soon.'}
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-3xl bg-card ring-1 ring-foreground/10">
+          <div className="overflow-x-auto rounded-2xl bg-card ring-1 ring-border">
             <Table className="min-w-[34rem]">
               <TableHeader>
                 <TableRow>

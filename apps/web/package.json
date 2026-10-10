@@ -18,7 +18,6 @@
   },
   "dependencies": {
     "@kivori/ui": "workspace:*",
-    "geist": "^1.7.2",
     "lucide-react": "^1.41.0",
     "next": "16.3.8",
     "react": "^19.3.0",

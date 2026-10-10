@@ -46,7 +46,7 @@ export default function ProductsPage(): ReactElement {
           }
         >
           {products.map((product) => (
-            <li key={product.slug} className="reveal flex">
+            <li key={product.slug} className="flex">
               <ProductCard product={product} layout={single ? 'wide' : 'card'} />
             </li>
           ))}

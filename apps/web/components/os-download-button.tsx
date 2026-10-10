@@ -30,7 +30,7 @@ export function OsDownloadButton({ version, beta }: OsDownloadButtonProps): Reac
     <div className="flex flex-col items-center gap-4">
       <Button
         size="lg"
-        className="h-14 rounded-full px-9 text-lg font-medium"
+        className="keycap h-14 px-9 text-lg"
         nativeButton={false}
         render={<a href="/download/windows/latest" />}
       >

@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from '@kivori/ui/components/select';
 import { Textarea } from '@kivori/ui/components/textarea';
+import { JOINED_EVENT } from '@/lib/demo';
 import { HONEYPOT_FIELD, LIMITS } from '@/lib/waitlist';
 
 export interface ProductOption {
@@ -30,6 +31,11 @@ interface WaitlistFormProps {
   initialProduct?: string | undefined;
   /** Prefix for element ids, so two forms on one page never clash. */
   idPrefix?: string | undefined;
+  /**
+   * `card` is the full form (email, edition, use case) for sheets and the waitlist page.
+   * `inline` is the one-field pill used in the hero and the closing band.
+   */
+  variant?: 'card' | 'inline' | undefined;
 }
 
 interface TurnstileApi {
@@ -77,6 +83,7 @@ export function WaitlistForm({
   products,
   initialProduct,
   idPrefix = 'waitlist',
+  variant = 'card',
 }: WaitlistFormProps): ReactElement {
   const uid = useId();
   const id = (name: string): string => `${idPrefix}${uid}-${name}`;
@@ -181,6 +188,8 @@ export function WaitlistForm({
       const data = (await response.json().catch(() => null)) as { message?: string } | null;
       if (response.ok) {
         setStatus('success');
+        // Lets the demo buddy on the page celebrate.
+        window.dispatchEvent(new Event(JOINED_EVENT));
         return;
       }
       setStatus('error');
@@ -194,11 +203,27 @@ export function WaitlistForm({
     if (widgetId.current !== undefined) window.turnstile?.reset(widgetId.current);
   }
 
+  const submitting = status === 'submitting';
+  const inline = variant === 'inline';
+
   if (status === 'success') {
-    return (
+    return inline ? (
+      <div role="status" className="max-w-[440px]">
+        <p className="flex items-center gap-2 font-display text-xl font-bold tracking-tight text-mint">
+          <CheckCircle2Icon className="size-5" aria-hidden="true" />
+          You&apos;re on the list.
+        </p>
+        <p className="mt-1.5 text-muted-foreground">
+          The buddy is thrilled. We will email you when there is news. No spam, and you can ask us
+          to delete your details any time.
+        </p>
+      </div>
+    ) : (
       <Card role="status" className="rounded-3xl p-8 text-center shadow-sm">
         <CheckCircle2Icon className="mx-auto size-10 text-primary" aria-hidden="true" />
-        <p className="mt-3 text-2xl font-semibold tracking-tight">You&apos;re on the list</p>
+        <p className="mt-3 font-display text-2xl font-bold tracking-tight">
+          You&apos;re on the list
+        </p>
         <p className="mt-2 text-muted-foreground">
           We will email you when there is news about Kivori. No spam, and you can ask us to delete
           your details any time.
@@ -207,7 +232,76 @@ export function WaitlistForm({
     );
   }
 
-  const submitting = status === 'submitting';
+  const hidden = (
+    <>
+      {/* Honeypot: hidden from people and from assistive tech; bots fill it in. */}
+      <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
+        <label htmlFor={id('website')}>Leave this field empty</label>
+        <Input
+          id={id('website')}
+          name={HONEYPOT_FIELD}
+          type="text"
+          tabIndex={-1}
+          autoComplete="off"
+        />
+      </div>
+      <input type="hidden" name="utm_source" value={attribution.utm_source} />
+      <input type="hidden" name="utm_medium" value={attribution.utm_medium} />
+      <input type="hidden" name="utm_campaign" value={attribution.utm_campaign} />
+      <input type="hidden" name="referrer" value={attribution.referrer} />
+    </>
+  );
+
+  const errorLine = (
+    <p
+      role={status === 'error' ? 'alert' : undefined}
+      className={`mt-2 min-h-5 text-sm ${status === 'error' ? 'font-medium text-destructive' : ''}`}
+    >
+      {status === 'error' ? message : ''}
+    </p>
+  );
+
+  if (inline) {
+    return (
+      <form ref={formRef} onSubmit={onSubmit} className="w-full max-w-[440px]">
+        <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-1.5 transition-colors focus-within:border-mint-deep sm:flex-row sm:rounded-full">
+          <Label htmlFor={id('email')} className="sr-only">
+            Email
+          </Label>
+          <Input
+            id={id('email')}
+            name="email"
+            type="email"
+            required
+            autoComplete="email"
+            placeholder="you@example.com"
+            maxLength={LIMITS.email}
+            className="h-11 min-w-0 flex-1 rounded-full border-0 bg-transparent px-3.5 text-base shadow-none ring-0 focus-visible:ring-0 dark:bg-transparent"
+          />
+          <input type="hidden" name="product" value={selected} />
+          <Button
+            type="submit"
+            size="lg"
+            disabled={submitting}
+            aria-busy={submitting}
+            className="keycap h-11 px-5 text-[0.95rem] disabled:cursor-wait"
+          >
+            {submitting ? 'Sending...' : 'Join the waitlist'}
+          </Button>
+        </div>
+        {hidden}
+        <div ref={widgetRef} className="mt-3 min-h-[65px]" />
+        {errorLine}
+        <p className="mt-1 text-xs text-muted-foreground">
+          We keep your email only to tell you about Kivori. See the{' '}
+          <Link href="/privacy" className="underline">
+            privacy page
+          </Link>
+          .
+        </p>
+      </form>
+    );
+  }
 
   return (
     <Card className="w-full rounded-3xl p-6 text-left shadow-sm sm:p-8">
@@ -256,37 +350,18 @@ export function WaitlistForm({
           />
         </div>
 
-        {/* Honeypot: hidden from people and from assistive tech; bots fill it in. */}
-        <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
-          <label htmlFor={id('website')}>Leave this field empty</label>
-          <Input
-            id={id('website')}
-            name={HONEYPOT_FIELD}
-            type="text"
-            tabIndex={-1}
-            autoComplete="off"
-          />
-        </div>
-        <input type="hidden" name="utm_source" value={attribution.utm_source} />
-        <input type="hidden" name="utm_medium" value={attribution.utm_medium} />
-        <input type="hidden" name="utm_campaign" value={attribution.utm_campaign} />
-        <input type="hidden" name="referrer" value={attribution.referrer} />
+        {hidden}
 
         <div ref={widgetRef} className="mt-4 min-h-[65px]" />
 
-        <p
-          role={status === 'error' ? 'alert' : undefined}
-          className={`mt-2 min-h-5 text-sm ${status === 'error' ? 'font-medium text-destructive' : ''}`}
-        >
-          {status === 'error' ? message : ''}
-        </p>
+        {errorLine}
 
         <Button
           type="submit"
           size="lg"
           disabled={submitting}
           aria-busy={submitting}
-          className="mt-2 h-12 w-full rounded-full text-base disabled:cursor-wait"
+          className="keycap mt-2 h-12 w-full text-base disabled:cursor-wait"
         >
           {submitting ? 'Sending...' : 'Join the waitlist'}
         </Button>

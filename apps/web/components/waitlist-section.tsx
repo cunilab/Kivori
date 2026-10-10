@@ -7,6 +7,7 @@ import { TURNSTILE_TEST_SITE_KEY } from '@/lib/waitlist';
 interface WaitlistSectionProps {
   initialProduct?: string | undefined;
   idPrefix?: string | undefined;
+  variant?: 'card' | 'inline' | undefined;
 }
 
 /** The site key is read per request from the Worker `vars`, never inlined at build time. */
@@ -20,7 +21,11 @@ function siteKey(): string {
 }
 
 /** Server wrapper: hands the runtime site key and the product list to the client form. */
-export function WaitlistSection({ initialProduct, idPrefix }: WaitlistSectionProps): ReactElement {
+export function WaitlistSection({
+  initialProduct,
+  idPrefix,
+  variant,
+}: WaitlistSectionProps): ReactElement {
   const products = getProducts().map(({ slug, name }) => ({ slug, name }));
   return (
     <WaitlistForm
@@ -28,6 +33,7 @@ export function WaitlistSection({ initialProduct, idPrefix }: WaitlistSectionPro
       products={products}
       initialProduct={initialProduct}
       idPrefix={idPrefix}
+      variant={variant}
     />
   );
 }

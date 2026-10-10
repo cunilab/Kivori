@@ -3,7 +3,7 @@ import type { ReactElement } from 'react';
 import { Badge } from '@kivori/ui/components/badge';
 import { Card } from '@kivori/ui/components/card';
 import { cn } from '@kivori/ui/lib/utils';
-import { ProductShot } from '@/components/product-shot';
+import { ProductStage } from '@/components/product-shot';
 import type { Product } from '@/content/products/types';
 import { renders } from '@/lib/media';
 import { notifyHref, PRODUCT_STATUS_LABEL } from '@/lib/product-labels';
@@ -20,17 +20,16 @@ export function ProductCard({ product, layout = 'card' }: ProductCardProps): Rea
   return (
     <Card
       className={cn(
-        'relative h-full gap-0 rounded-3xl p-0 shadow-sm ring-1 ring-foreground/8',
+        'relative h-full gap-0 rounded-3xl p-0 shadow-none ring-1 ring-border',
         wide && 'lg:flex-row lg:items-stretch',
       )}
     >
-      <div
-        className={cn(
-          'shot-stage flex items-center justify-center bg-white p-4',
-          wide && 'lg:w-3/5',
-        )}
-      >
-        <ProductShot image={renders.front} sizes="(min-width: 1024px) 700px, 100vw" />
+      <div className={cn('flex items-center justify-center p-6 sm:p-10', wide && 'lg:w-3/5')}>
+        <ProductStage
+          image={renders.heroTransparent}
+          large
+          sizes="(min-width: 1024px) 700px, 100vw"
+        />
       </div>
       <div className={cn('flex flex-1 flex-col gap-3 p-8 sm:p-10', wide && 'lg:justify-center')}>
         <div className="flex items-center gap-3">
@@ -46,7 +45,7 @@ export function ProductCard({ product, layout = 'card' }: ProductCardProps): Rea
           </Link>
         </h2>
         <p className="text-base text-muted-foreground sm:text-lg">{product.summary}</p>
-        <p className="mt-3 flex items-center gap-6 text-base font-medium text-primary">
+        <p className="mt-3 flex items-center gap-6 text-base font-semibold text-primary">
           <span>Learn more &rsaquo;</span>
           <Link href={notifyHref(product.slug)} className="relative z-10 hover:underline">
             Notify me &rsaquo;

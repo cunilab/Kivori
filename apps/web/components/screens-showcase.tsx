@@ -1,8 +1,8 @@
 'use client';
 
+import Image from 'next/image';
 import type { ReactElement } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@kivori/ui/components/tabs';
-import { DeviceScreen } from '@/components/device-screen';
 import { screens, type MediaImage } from '@/lib/media';
 
 interface View {
@@ -51,16 +51,16 @@ const VIEWS: readonly View[] = [
   },
 ];
 
-/** The five real display views as segmented Tabs, each in a glowing device screen. */
+/** The five real display views as Tabs: each frame large, crisp and pixel-sharp on the stage. */
 export function ScreensShowcase(): ReactElement {
   return (
-    <Tabs defaultValue="buddy" className="items-center gap-12">
-      <TabsList className="h-auto! max-w-full flex-wrap justify-center gap-1 rounded-full bg-white/8 p-1.5">
+    <Tabs defaultValue="buddy" className="items-center gap-10">
+      <TabsList className="h-auto! max-w-full flex-wrap justify-center gap-1 rounded-full border border-border bg-card p-1.5">
         {VIEWS.map((view) => (
           <TabsTrigger
             key={view.value}
             value={view.value}
-            className="h-10 rounded-full px-5 text-base text-white/70 hover:text-white data-active:bg-white data-active:text-[#0c101c] data-active:shadow-none dark:data-active:bg-white dark:data-active:text-[#0c101c]"
+            className="pixel h-10 rounded-full px-5 text-xs data-active:bg-mint data-active:text-primary-foreground dark:data-active:border-transparent dark:data-active:bg-mint dark:data-active:text-primary-foreground"
           >
             {view.label}
           </TabsTrigger>
@@ -68,15 +68,27 @@ export function ScreensShowcase(): ReactElement {
       </TabsList>
       {VIEWS.map((view) => (
         <TabsContent key={view.value} value={view.value} className="w-full">
-          <div className="grid items-center gap-10 md:grid-cols-2 md:gap-16">
-            <DeviceScreen
-              image={view.image}
-              glow
-              className="max-w-sm md:max-w-md md:justify-self-end"
-            />
+          <div className="grid items-center gap-8 md:grid-cols-2 md:gap-16">
+            <div className="relative isolate mx-auto w-full max-w-[420px] md:justify-self-end">
+              <div
+                aria-hidden="true"
+                className="glow stage-glow absolute -inset-10 -z-10 blur-xl"
+              />
+              <div className="rounded-[2rem] bg-linear-to-b from-[#222a40] to-[#0a0d17] p-3 shadow-[0_30px_80px_-20px_rgb(0_0_0/0.7)] ring-1 ring-white/10 sm:p-4">
+                <Image
+                  src={view.image.src}
+                  alt={view.image.alt}
+                  width={view.image.width}
+                  height={view.image.height}
+                  unoptimized
+                  sizes="(min-width: 768px) 420px, 90vw"
+                  className="aspect-square w-full rounded-[1.25rem] bg-stage [image-rendering:pixelated]"
+                />
+              </div>
+            </div>
             <div className="text-center md:text-left">
               <h3 className="display-3">{view.title}</h3>
-              <p className="lead mt-4 max-w-md md:mx-0">{view.body}</p>
+              <p className="lead mt-4 max-w-md max-md:mx-auto">{view.body}</p>
             </div>
           </div>
         </TabsContent>
