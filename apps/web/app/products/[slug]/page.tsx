@@ -32,7 +32,7 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
   const product = getProduct(slug);
   if (!product) return {};
   return pageMetadata({
-    title: product.name,
+    title: { absolute: `${product.name} ${product.edition} edition: specs and details` },
     description: `${product.tagline} ${product.summary}`,
     path: `/products/${product.slug}`,
     ogSlug: product.slug,
