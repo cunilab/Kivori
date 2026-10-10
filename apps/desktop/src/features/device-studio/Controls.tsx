@@ -1,8 +1,8 @@
 import type { ReactElement } from 'react';
 import { Pause, Play, Send, StepForward } from 'lucide-react';
-import { Button } from '../../components/ui/button';
-import { Slider } from '../../components/ui/slider';
-import { ToggleGroup, ToggleGroupItem } from '../../components/ui/toggle-group';
+import { Button } from '@kivori/ui/components/button';
+import { Slider } from '@kivori/ui/components/slider';
+import { ToggleGroup, ToggleGroupItem } from '@kivori/ui/components/toggle-group';
 import { useConfig } from '../../hooks/use-kivori';
 import { mirrorState, playMascotAction } from '../../lib/ipc';
 import type { CompanionState, MascotAction, SendableState } from '../../lib/ipc/types';

@@ -1,5 +1,14 @@
 import Link from 'next/link';
 import type { ReactElement } from 'react';
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@kivori/ui/components/table';
 import type { Comparison } from '@/lib/comparison';
 
 /** Spec comparison generated from product data. Scrolls sideways on narrow screens (focusable for keyboards). */
@@ -7,54 +16,62 @@ export function ComparisonTable({ comparison }: { comparison: Comparison }): Rea
   const { columns, groups } = comparison;
   return (
     <div
-      className="overflow-x-auto rounded-xl border border-border bg-card"
+      className="rounded-xl border border-border bg-card"
       role="region"
       aria-label="Product comparison"
       tabIndex={0}
     >
-      <table className="w-full min-w-120 border-collapse text-left text-sm">
-        <caption className="sr-only">Specifications compared across the Kivori lineup</caption>
-        <thead>
-          <tr className="border-b border-border">
-            <td className="w-1/3 p-4" />
+      <Table className="min-w-120">
+        <TableCaption className="sr-only">
+          Specifications compared across the Kivori lineup
+        </TableCaption>
+        <TableHeader>
+          <TableRow>
+            <TableCell className="w-1/3 p-4" />
             {columns.map((column) => (
-              <th key={column.slug} scope="col" className="p-4 align-bottom font-display text-base">
-                <Link href={`/products/${column.slug}`} className="hover:underline">
+              <TableHead key={column.slug} scope="col" className="h-auto p-4 align-bottom">
+                <Link
+                  href={`/products/${column.slug}`}
+                  className="font-display text-base hover:underline"
+                >
                   {column.name}
                 </Link>
                 <span className="block text-xs font-normal text-muted-foreground">
                   {column.edition} edition
                 </span>
-              </th>
+              </TableHead>
             ))}
-          </tr>
-        </thead>
+          </TableRow>
+        </TableHeader>
         {groups.map((group) => (
-          <tbody key={group.group} className="border-b border-border last:border-b-0">
-            <tr>
-              <th
+          <TableBody key={group.group}>
+            <TableRow>
+              <TableHead
                 scope="colgroup"
                 colSpan={columns.length + 1}
-                className="bg-secondary px-4 py-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+                className="h-auto bg-secondary px-4 py-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
               >
                 {group.group}
-              </th>
-            </tr>
+              </TableHead>
+            </TableRow>
             {group.rows.map((row) => (
-              <tr key={row.label} className="border-t border-border">
-                <th scope="row" className="p-4 align-top font-medium">
+              <TableRow key={row.label}>
+                <TableHead scope="row" className="h-auto p-4 align-top font-medium">
                   {row.label}
-                </th>
+                </TableHead>
                 {row.values.map((value, index) => (
-                  <td key={columns[index].slug} className="p-4 align-top text-muted-foreground">
+                  <TableCell
+                    key={columns[index].slug}
+                    className="p-4 align-top whitespace-normal text-muted-foreground"
+                  >
                     {value ?? <span aria-label="Not applicable">&mdash;</span>}
-                  </td>
+                  </TableCell>
                 ))}
-              </tr>
+              </TableRow>
             ))}
-          </tbody>
+          </TableBody>
         ))}
-      </table>
+      </Table>
     </div>
   );
 }

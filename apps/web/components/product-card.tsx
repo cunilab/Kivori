@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import type { ReactElement } from 'react';
 import { DeviceIllustration } from '@/components/device-illustration';
-import { StatusPill } from '@/components/status-pill';
+import { Badge } from '@kivori/ui/components/badge';
+import { Card, CardContent } from '@kivori/ui/components/card';
 import type { Product } from '@/content/products/types';
+import { PRODUCT_STATUS_LABEL } from '@/lib/product-labels';
 
 interface ProductCardProps {
   product: Product;
@@ -13,26 +15,28 @@ interface ProductCardProps {
 export function ProductCard({ product, headingLevel = 'h3' }: ProductCardProps): ReactElement {
   const Heading = headingLevel;
   return (
-    <article className="relative flex w-full flex-col overflow-hidden rounded-2xl border border-border bg-card transition-colors focus-within:border-primary hover:border-primary">
-      <div className="flex items-center justify-center bg-secondary px-8 py-8">
-        <DeviceIllustration className="w-full max-w-64" />
-      </div>
-      <div className="flex flex-1 flex-col gap-3 p-6">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">{product.edition} edition</p>
-          <StatusPill status={product.status} />
+    <article className="flex w-full">
+      <Card className="relative w-full gap-0 py-0 transition-colors focus-within:ring-primary hover:ring-primary">
+        <div className="flex items-center justify-center bg-secondary px-8 py-8">
+          <DeviceIllustration className="w-full max-w-64" />
         </div>
-        <Heading className="font-display text-2xl font-semibold">
-          <Link
-            href={`/products/${product.slug}`}
-            className="after:absolute after:inset-0 focus-visible:outline-none"
-          >
-            {product.name}
-          </Link>
-        </Heading>
-        <p className="text-muted-foreground">{product.summary}</p>
-        <p className="mt-auto pt-2 text-sm font-medium text-primary">See specs and details</p>
-      </div>
+        <CardContent className="flex flex-1 flex-col gap-3 p-6">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">{product.edition} edition</p>
+            <Badge variant="secondary">{PRODUCT_STATUS_LABEL[product.status]}</Badge>
+          </div>
+          <Heading className="font-display text-2xl font-semibold">
+            <Link
+              href={`/products/${product.slug}`}
+              className="after:absolute after:inset-0 focus-visible:outline-none"
+            >
+              {product.name}
+            </Link>
+          </Heading>
+          <p className="text-muted-foreground">{product.summary}</p>
+          <p className="mt-auto pt-2 text-sm font-medium text-primary">See specs and details</p>
+        </CardContent>
+      </Card>
     </article>
   );
 }

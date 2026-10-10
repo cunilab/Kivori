@@ -9,13 +9,14 @@ import { FaqList } from '@/components/faq-list';
 import { FeatureIcon } from '@/components/feature-icon';
 import { JsonLd } from '@/components/json-ld';
 import { Section } from '@/components/section';
-import { StatusPill } from '@/components/status-pill';
+import { Badge } from '@kivori/ui/components/badge';
 import { WaitlistSection } from '@/components/waitlist-section';
 import { getProduct } from '@/content/products';
 import { faqJsonLd, productJsonLd } from '@/lib/jsonld';
 import { pageMetadata } from '@/lib/metadata';
 import { COMPATIBILITY_LABEL } from '@/lib/product-labels';
-import { BTN_DISABLED, BTN_PRIMARY, BTN_SECONDARY } from '@/lib/ui';
+import { PRODUCT_STATUS_LABEL } from '@/lib/product-labels';
+import { Button } from '@kivori/ui/components/button';
 
 interface ProductPageProps {
   params: Promise<{ slug: string }>;
@@ -55,7 +56,7 @@ export default async function ProductPage({ params }: ProductPageProps): Promise
               <span aria-current="page">{product.name}</span>
             </nav>
             <div className="mt-5 flex items-center gap-3">
-              <StatusPill status={product.status} />
+              <Badge variant="secondary">{PRODUCT_STATUS_LABEL[product.status]}</Badge>
               <span className="text-sm text-muted-foreground">{product.edition} edition</span>
             </div>
             <h1
@@ -69,18 +70,23 @@ export default async function ProductPage({ params }: ProductPageProps): Promise
 
             <div id="buy" className="mt-8 flex flex-wrap items-center gap-3">
               {product.buyUrl ? (
-                <a href={product.buyUrl} className={BTN_PRIMARY}>
+                <Button size="lg" nativeButton={false} render={<a href={product.buyUrl} />}>
                   Buy {product.name}
                   {product.price ? ` · ${product.price}` : ''}
-                </a>
+                </Button>
               ) : (
-                <button type="button" disabled className={BTN_DISABLED}>
+                <Button size="lg" variant="outline" disabled>
                   Buy, coming soon
-                </button>
+                </Button>
               )}
-              <a href="#waitlist" className={BTN_SECONDARY}>
+              <Button
+                size="lg"
+                variant="outline"
+                nativeButton={false}
+                render={<a href="#waitlist" />}
+              >
                 Notify me
-              </a>
+              </Button>
             </div>
             <p className="mt-3 text-sm text-muted-foreground">
               {product.price
@@ -169,17 +175,17 @@ export default async function ProductPage({ params }: ProductPageProps): Promise
         </div>
         <div className="mt-10 flex flex-wrap items-center gap-3">
           {product.buyUrl ? (
-            <a href={product.buyUrl} className={BTN_PRIMARY}>
+            <Button size="lg" nativeButton={false} render={<a href={product.buyUrl} />}>
               Buy {product.name}
-            </a>
+            </Button>
           ) : (
-            <button type="button" disabled className={BTN_DISABLED}>
+            <Button size="lg" variant="outline" disabled>
               Buy, coming soon
-            </button>
+            </Button>
           )}
-          <a href="#waitlist" className={BTN_SECONDARY}>
+          <Button size="lg" variant="outline" nativeButton={false} render={<a href="#waitlist" />}>
             Notify me
-          </a>
+          </Button>
         </div>
       </Section>
 

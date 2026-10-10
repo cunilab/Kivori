@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Download, LifeBuoy, LoaderCircle, Plug, TriangleAlert } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription } from '@kivori/ui/components/alert';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,15 +12,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+} from '@kivori/ui/components/alert-dialog';
+import { Button } from '@kivori/ui/components/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@kivori/ui/components/card';
 import { flashFirmware, getFirmwareStatus, restoreFirmware } from '@/lib/ipc';
 import type { FirmwareStatusDto } from '@/lib/ipc/types';
 import { failureMessage, needsRestore } from './firmware-copy';
 import { RecoveryDialog } from './RecoveryDialog';
 import { strings } from '@/lib/i18n/strings';
-import { cn } from '@/lib/utils';
+import { cn } from '@kivori/ui/lib/utils';
 
 const PHASES = ['preparing', 'flashing', 'reconnecting', 'succeeded'] as const;
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { Button } from '@kivori/ui/components/button';
 import { getStartupSettings, setLaunchAtLogin } from '@/lib/ipc';
 import type {
   ConfigDto,
@@ -12,7 +12,7 @@ import type {
 import { uiConnection } from '@/hooks/use-kivori';
 import { brandIconUrl } from '@/lib/brand';
 import { format, strings } from '@/lib/i18n/strings';
-import { cn } from '@/lib/utils';
+import { cn } from '@kivori/ui/lib/utils';
 import { Customize } from './steps/Customize';
 import { Done } from './steps/Done';
 import { Permissions } from './steps/Permissions';

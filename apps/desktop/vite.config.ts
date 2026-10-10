@@ -11,6 +11,8 @@ const BRAND_ASSETS = fileURLToPath(new URL('../../assets', import.meta.url));
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
+    // One React for the app and the shared @kivori/ui source.
+    dedupe: ['react', 'react-dom'],
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
       // The brand art (mascot, app icon) lives once at the repo root, shared with the firmware asset

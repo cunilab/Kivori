@@ -14,7 +14,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@kivori/ui/components/alert';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,13 +24,25 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia } from '@/components/ui/item';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+} from '@kivori/ui/components/alert-dialog';
+import { Badge } from '@kivori/ui/components/badge';
+import { Button } from '@kivori/ui/components/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@kivori/ui/components/card';
+import {
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+} from '@kivori/ui/components/item';
+import { Skeleton } from '@kivori/ui/components/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@kivori/ui/components/tabs';
 import { Page } from '@/components/kivori/page';
 import { ResultBadge } from '@/components/kivori/result-badge';
 import {

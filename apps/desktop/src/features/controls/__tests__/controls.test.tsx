@@ -2,7 +2,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Toaster } from '@/components/ui/sonner';
+import { Toaster } from '@kivori/ui/components/sonner';
 import { useConfig, useDeskStatus } from '../../../hooks/use-kivori';
 import type { ConfigDto } from '../../../lib/ipc/types';
 

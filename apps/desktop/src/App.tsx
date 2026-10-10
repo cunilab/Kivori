@@ -13,8 +13,8 @@ import {
   Sun,
   type LucideIcon,
 } from 'lucide-react';
-import { Badge } from './components/ui/badge';
-import { Button } from './components/ui/button';
+import { Badge } from '@kivori/ui/components/badge';
+import { Button } from '@kivori/ui/components/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,8 +23,8 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
-} from './components/ui/dropdown-menu';
-import { Separator } from './components/ui/separator';
+} from '@kivori/ui/components/dropdown-menu';
+import { Separator } from '@kivori/ui/components/separator';
 import {
   Sidebar,
   SidebarContent,
@@ -40,9 +40,9 @@ import {
   SidebarProvider,
   SidebarRail,
   SidebarTrigger,
-} from './components/ui/sidebar';
-import { Toaster } from './components/ui/sonner';
-import { TooltipProvider } from './components/ui/tooltip';
+} from '@kivori/ui/components/sidebar';
+import { Toaster } from '@kivori/ui/components/sonner';
+import { TooltipProvider } from '@kivori/ui/components/tooltip';
 import { ActivityPage } from './features/activity/ActivityPage';
 import { ControlsPage } from './features/controls/ControlsPage';
 import { DevicePage } from './features/device/DevicePage';
@@ -65,7 +65,7 @@ import { brandIconUrl } from './lib/brand';
 import { useDevMode } from './lib/dev-mode';
 import { format, strings } from './lib/i18n/strings';
 import { setTheme, useTheme, type ThemeChoice } from './lib/theme';
-import { cn } from './lib/utils';
+import { cn } from '@kivori/ui/lib/utils';
 
 // The Device Studio route is served in dev builds only (FR-028). The backend independently gates its
 // dev-only IPC commands behind the `device-studio` Cargo feature, so both layers must agree.
@@ -165,6 +165,7 @@ function useConnectionToasts(ui: UiConnection): void {
 }
 
 export function App(): ReactElement {
+  const { resolved: resolvedTheme } = useTheme();
   const [page, setPage] = useState<PageId>('home');
   const connection = useConnectionStatus();
   const desk = useDeskStatus();
@@ -232,7 +233,7 @@ export function App(): ReactElement {
           updateAvailable={updateAvailable}
           onComplete={onboarding.complete}
         />
-        <Toaster position="bottom-right" richColors closeButton />
+        <Toaster theme={resolvedTheme} position="bottom-right" richColors closeButton />
       </TooltipProvider>
     );
   }
@@ -326,7 +327,7 @@ export function App(): ReactElement {
           </div>
         </SidebarInset>
       </SidebarProvider>
-      <Toaster position="bottom-right" richColors closeButton />
+      <Toaster theme={resolvedTheme} position="bottom-right" richColors closeButton />
     </TooltipProvider>
   );
 }

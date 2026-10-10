@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import { CircleAlert, Info, ListFilter, Search, TriangleAlert, X } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Badge } from '@kivori/ui/components/badge';
+import { Button } from '@kivori/ui/components/button';
+import { Card, CardContent, CardHeader } from '@kivori/ui/components/card';
 import {
   Empty,
   EmptyContent,
@@ -11,16 +11,16 @@ import {
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from '@/components/ui/empty';
-import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
+} from '@kivori/ui/components/empty';
+import { Input } from '@kivori/ui/components/input';
+import { ScrollArea } from '@kivori/ui/components/scroll-area';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@kivori/ui/components/select';
 import {
   Table,
   TableBody,
@@ -28,13 +28,13 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+} from '@kivori/ui/components/table';
+import { ToggleGroup, ToggleGroupItem } from '@kivori/ui/components/toggle-group';
 import { Page } from '@/components/kivori/page';
 import { getActivityLog, onActivityLog, type Unlisten } from '@/lib/ipc';
 import type { ActivityEventDto, ActivitySeverity, ActivitySource } from '@/lib/ipc/types';
 import { format, strings } from '@/lib/i18n/strings';
-import { cn } from '@/lib/utils';
+import { cn } from '@kivori/ui/lib/utils';
 
 /** The native session view is deliberately bounded to its 256 newest event IDs. */
 export const VIEW_LIMIT = 256;

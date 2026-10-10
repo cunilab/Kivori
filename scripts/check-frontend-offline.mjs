@@ -3,14 +3,14 @@
 //
 // Fails if the desktop frontend references any remote URL (CDN script/style/font/image, or any
 // http(s) origin other than the local dev server). All assets must be bundled locally so the app
-// works with no internet. Scans apps/desktop/index.html and apps/desktop/src/**.
+// works with no internet. Scans apps/desktop/index.html, apps/desktop/src/** and packages/ui/src/** (shared source the desktop bundles).
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, extname } from 'node:path';
 
 const ROOT = 'apps/desktop';
 const SCAN_FILES = [join(ROOT, 'index.html')];
-const SCAN_DIRS = [join(ROOT, 'src')];
+const SCAN_DIRS = [join(ROOT, 'src'), join('packages', 'ui', 'src')];
 const EXTS = new Set(['.ts', '.tsx', '.js', '.jsx', '.css', '.html']);
 
 // Only the local dev server is an allowed http(s) origin; everything else is a shipped remote ref.

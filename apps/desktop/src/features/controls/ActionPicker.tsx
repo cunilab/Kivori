@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import type { FormEvent, ReactElement } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Button } from '@kivori/ui/components/button';
+import { Input } from '@kivori/ui/components/input';
+import { Label } from '@kivori/ui/components/label';
+import { RadioGroup, RadioGroupItem } from '@kivori/ui/components/radio-group';
 import {
   Sheet,
   SheetContent,
@@ -11,7 +11,7 @@ import {
   SheetFooter,
   SheetHeader,
   SheetTitle,
-} from '@/components/ui/sheet';
+} from '@kivori/ui/components/sheet';
 import { CATALOG_SCOPES, MACRO_LIMITS } from '@/lib/ipc/types';
 import type {
   ActionCatalogEntryDto,
@@ -24,7 +24,8 @@ import type {
   StepSpec,
 } from '@/lib/ipc/types';
 import { format, strings } from '@/lib/i18n/strings';
-import { cn, errorText } from '@/lib/utils';
+import { cn } from '@kivori/ui/lib/utils';
+import { errorText } from '@/lib/utils';
 
 const t = strings.controls;
 const p = t.picker;

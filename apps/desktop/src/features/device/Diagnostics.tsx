@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { Check, Copy } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@kivori/ui/components/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@kivori/ui/components/card';
 import { Known } from '@/components/kivori/known';
 import { getDiagnostics } from '@/lib/ipc';
 import type { DiagnosticsDto } from '@/lib/ipc/types';

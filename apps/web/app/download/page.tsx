@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
 import type { ReactElement } from 'react';
-import { BetaBadge } from '@/components/beta-badge';
+import { Badge } from '@kivori/ui/components/badge';
+import { Button } from '@kivori/ui/components/button';
+import { Card, CardContent } from '@kivori/ui/components/card';
 import { JsonLd } from '@/components/json-ld';
 import { formatBytes, formatDate } from '@/lib/format';
 import { softwareApplicationJsonLd } from '@/lib/jsonld';
 import { pageMetadata } from '@/lib/metadata';
 import { loadReleases, type Release } from '@/lib/releases';
-import { BTN_PRIMARY } from '@/lib/ui';
 
 // Rendered per request; release data is cached for 600 s by lib/github-cache.ts.
 export const dynamic = 'force-dynamic';
@@ -17,17 +18,21 @@ export const metadata: Metadata = pageMetadata({
   path: '/download',
 });
 
-function Card({ children }: { children: React.ReactNode }): ReactElement {
-  return <div className="rounded-2xl border border-border bg-card p-6 sm:p-8">{children}</div>;
+function DownloadCard({ children }: { children: React.ReactNode }): ReactElement {
+  return (
+    <Card>
+      <CardContent className="p-2 sm:p-4">{children}</CardContent>
+    </Card>
+  );
 }
 
 function LatestCard({ release }: { release: Release }): ReactElement {
   const { installer } = release;
   return (
-    <Card>
+    <DownloadCard>
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="font-display text-2xl font-semibold">Kivori {release.version}</h2>
-        {release.prerelease ? <BetaBadge /> : null}
+        {release.prerelease ? <Badge variant="secondary">Beta</Badge> : null}
         {release.date ? (
           <span className="text-sm text-muted-foreground">{formatDate(release.date)}</span>
         ) : null}
@@ -36,9 +41,13 @@ function LatestCard({ release }: { release: Release }): ReactElement {
       {installer ? (
         <div className="mt-6 space-y-5">
           <div className="flex flex-wrap items-center gap-4">
-            <a href={`/download/windows/${release.version}`} className={BTN_PRIMARY}>
+            <Button
+              size="lg"
+              nativeButton={false}
+              render={<a href={`/download/windows/${release.version}`} />}
+            >
               Download for Windows
-            </a>
+            </Button>
             <span className="text-sm text-muted-foreground">
               Windows 10 and 11 · {formatBytes(installer.size)}
             </span>
@@ -51,9 +60,9 @@ function LatestCard({ release }: { release: Release }): ReactElement {
             This release has no installer yet. Join the waitlist and we will tell you when the first
             build is ready.
           </p>
-          <a href="/#waitlist" className={`${BTN_PRIMARY} mt-5`}>
+          <Button size="lg" className="mt-5" nativeButton={false} render={<a href="/#waitlist" />}>
             Join the waitlist
-          </a>
+          </Button>
         </div>
       )}
       <p className="mt-6 text-sm">
@@ -63,17 +72,17 @@ function LatestCard({ release }: { release: Release }): ReactElement {
         </a>
         .
       </p>
-    </Card>
+    </DownloadCard>
   );
 }
 
 function Fallback(): ReactElement {
   return (
-    <Card>
+    <DownloadCard>
       <p className="font-display text-xl font-semibold">
         Downloads are temporarily unavailable, please try again shortly
       </p>
-    </Card>
+    </DownloadCard>
   );
 }
 
@@ -98,12 +107,17 @@ export default async function DownloadPage(): Promise<ReactElement> {
           ) : latest ? (
             <LatestCard release={latest} />
           ) : (
-            <Card>
+            <DownloadCard>
               <p className="font-display text-xl font-semibold">First build coming soon</p>
-              <a href="/#waitlist" className={`${BTN_PRIMARY} mt-5`}>
+              <Button
+                size="lg"
+                className="mt-5"
+                nativeButton={false}
+                render={<a href="/#waitlist" />}
+              >
                 Join the waitlist
-              </a>
-            </Card>
+              </Button>
+            </DownloadCard>
           )}
         </div>
 
@@ -139,7 +153,7 @@ export default async function DownloadPage(): Promise<ReactElement> {
                     <a href={`/changelog#v${release.version}`} className="font-medium underline">
                       {release.version}
                     </a>
-                    {release.prerelease ? <BetaBadge /> : null}
+                    {release.prerelease ? <Badge variant="secondary">Beta</Badge> : null}
                   </span>
                   <span className="flex items-center gap-4 text-muted-foreground">
                     {formatDate(release.date)}

@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from 'react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@kivori/ui/components/tooltip';
 import { strings } from '@/lib/i18n/strings';
-import { cn } from '@/lib/utils';
+import { cn } from '@kivori/ui/lib/utils';
 
 /**
  * Honest value: renders `children(value)` when known, otherwise an explicit "—" whose tooltip says

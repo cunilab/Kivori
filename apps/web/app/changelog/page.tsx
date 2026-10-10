@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import type { ReactElement } from 'react';
-import { BetaBadge } from '@/components/beta-badge';
+import { Badge } from '@kivori/ui/components/badge';
 import { formatDate } from '@/lib/format';
 import { pageMetadata } from '@/lib/metadata';
 import { loadReleases } from '@/lib/releases';
@@ -36,7 +36,7 @@ export default async function ChangelogPage(): Promise<ReactElement> {
                   <h2 className="font-display text-2xl font-semibold">
                     <a href={`#v${release.version}`}>Version {release.version}</a>
                   </h2>
-                  {release.prerelease ? <BetaBadge /> : null}
+                  {release.prerelease ? <Badge variant="secondary">Beta</Badge> : null}
                   <span className="text-sm text-muted-foreground">
                     · {formatDate(release.date)}
                   </span>

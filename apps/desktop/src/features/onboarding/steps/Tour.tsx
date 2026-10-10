@@ -3,7 +3,7 @@ import { CircleCheck, Circle } from 'lucide-react';
 import { DeviceArt } from '@/components/kivori/device-art';
 import type { DeskStatusDto } from '@/lib/ipc/types';
 import { format, strings } from '@/lib/i18n/strings';
-import { cn } from '@/lib/utils';
+import { cn } from '@kivori/ui/lib/utils';
 import { TOUR_STEPS } from '../use-onboarding';
 import { StepFrame } from './frame';
 
