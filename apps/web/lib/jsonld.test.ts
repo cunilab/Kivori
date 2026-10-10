@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { kivori } from '@/content/products/kivori';
-import { faqJsonLd, organizationJsonLd, productJsonLd, serializeJsonLd } from './jsonld';
+import {
+  faqJsonLd,
+  organizationJsonLd,
+  productJsonLd,
+  serializeJsonLd,
+  softwareApplicationJsonLd,
+} from './jsonld';
 
 const origin = new URL('https://kivori.example');
 
@@ -52,5 +58,22 @@ describe('serializeJsonLd', () => {
     const out = serializeJsonLd({ text: '</script><b>' });
     expect(out).not.toContain('<');
     expect(JSON.parse(out).text).toBe('</script><b>');
+  });
+});
+
+describe('softwareApplicationJsonLd', () => {
+  it('describes the Windows app with its version and no offers', () => {
+    const data = softwareApplicationJsonLd('0.1.0', origin);
+    expect(data['@type']).toBe('SoftwareApplication');
+    expect(data.name).toBe('Kivori');
+    expect(data.operatingSystem).toBe('Windows 10, Windows 11');
+    expect(data.applicationCategory).toBe('UtilitiesApplication');
+    expect(data.softwareVersion).toBe('0.1.0');
+    expect(data.url).toBe('https://kivori.example/download');
+    expect(data).not.toHaveProperty('offers');
+  });
+
+  it('omits the version when no release is known', () => {
+    expect(softwareApplicationJsonLd(undefined, origin)).not.toHaveProperty('softwareVersion');
   });
 });
