@@ -69,7 +69,11 @@ export function ScreensShowcase(): ReactElement {
       {VIEWS.map((view) => (
         <TabsContent key={view.value} value={view.value} className="w-full">
           <div className="grid items-center gap-10 md:grid-cols-2 md:gap-16">
-            <DeviceScreen image={view.image} glow className="max-w-sm md:max-w-md md:justify-self-end" />
+            <DeviceScreen
+              image={view.image}
+              glow
+              className="max-w-sm md:max-w-md md:justify-self-end"
+            />
             <div className="text-center md:text-left">
               <h3 className="display-3">{view.title}</h3>
               <p className="lead mt-4 max-w-md md:mx-0">{view.body}</p>

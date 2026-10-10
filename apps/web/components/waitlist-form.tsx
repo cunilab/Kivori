@@ -211,90 +211,93 @@ export function WaitlistForm({
 
   return (
     <Card className="w-full rounded-3xl p-6 text-left shadow-sm sm:p-8">
-    <form ref={formRef} onSubmit={onSubmit} className="w-full">
-      <div>
-        <Label htmlFor={id('email')}>Email</Label>
-        <Input
-          id={id('email')}
-          name="email"
-          type="email"
-          required
-          autoComplete="email"
-          maxLength={LIMITS.email}
-          className="mt-1.5 h-11 rounded-xl px-3.5 text-base"
-        />
-      </div>
-      <div className="mt-4">
-        <Label htmlFor={id('product')}>Edition</Label>
-        <Select name="product" defaultValue={selected} key={selected} items={productItems}>
-          <SelectTrigger id={id('product')} className="mt-1.5 h-11 w-full rounded-xl px-3.5 text-base">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {productItems.map((item) => (
-              <SelectItem key={item.value} value={item.value}>
-                {item.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="mt-4">
-        <Label htmlFor={id('use-case')}>
-          What would you use Kivori for?{' '}
-          <span className="font-normal text-muted-foreground">(optional)</span>
-        </Label>
-        <Textarea
-          id={id('use-case')}
-          name="use_case"
-          rows={3}
-          maxLength={LIMITS.useCase}
-          className="mt-1.5 rounded-xl px-3.5 text-base"
-        />
-      </div>
+      <form ref={formRef} onSubmit={onSubmit} className="w-full">
+        <div>
+          <Label htmlFor={id('email')}>Email</Label>
+          <Input
+            id={id('email')}
+            name="email"
+            type="email"
+            required
+            autoComplete="email"
+            maxLength={LIMITS.email}
+            className="mt-1.5 h-11 rounded-xl px-3.5 text-base"
+          />
+        </div>
+        <div className="mt-4">
+          <Label htmlFor={id('product')}>Edition</Label>
+          <Select name="product" defaultValue={selected} key={selected} items={productItems}>
+            <SelectTrigger
+              id={id('product')}
+              className="mt-1.5 h-11 w-full rounded-xl px-3.5 text-base"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {productItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="mt-4">
+          <Label htmlFor={id('use-case')}>
+            What would you use Kivori for?{' '}
+            <span className="font-normal text-muted-foreground">(optional)</span>
+          </Label>
+          <Textarea
+            id={id('use-case')}
+            name="use_case"
+            rows={3}
+            maxLength={LIMITS.useCase}
+            className="mt-1.5 rounded-xl px-3.5 text-base"
+          />
+        </div>
 
-      {/* Honeypot: hidden from people and from assistive tech; bots fill it in. */}
-      <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
-        <label htmlFor={id('website')}>Leave this field empty</label>
-        <Input
-          id={id('website')}
-          name={HONEYPOT_FIELD}
-          type="text"
-          tabIndex={-1}
-          autoComplete="off"
-        />
-      </div>
-      <input type="hidden" name="utm_source" value={attribution.utm_source} />
-      <input type="hidden" name="utm_medium" value={attribution.utm_medium} />
-      <input type="hidden" name="utm_campaign" value={attribution.utm_campaign} />
-      <input type="hidden" name="referrer" value={attribution.referrer} />
+        {/* Honeypot: hidden from people and from assistive tech; bots fill it in. */}
+        <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
+          <label htmlFor={id('website')}>Leave this field empty</label>
+          <Input
+            id={id('website')}
+            name={HONEYPOT_FIELD}
+            type="text"
+            tabIndex={-1}
+            autoComplete="off"
+          />
+        </div>
+        <input type="hidden" name="utm_source" value={attribution.utm_source} />
+        <input type="hidden" name="utm_medium" value={attribution.utm_medium} />
+        <input type="hidden" name="utm_campaign" value={attribution.utm_campaign} />
+        <input type="hidden" name="referrer" value={attribution.referrer} />
 
-      <div ref={widgetRef} className="mt-4 min-h-[65px]" />
+        <div ref={widgetRef} className="mt-4 min-h-[65px]" />
 
-      <p
-        role={status === 'error' ? 'alert' : undefined}
-        className={`mt-2 min-h-5 text-sm ${status === 'error' ? 'font-medium text-destructive' : ''}`}
-      >
-        {status === 'error' ? message : ''}
-      </p>
+        <p
+          role={status === 'error' ? 'alert' : undefined}
+          className={`mt-2 min-h-5 text-sm ${status === 'error' ? 'font-medium text-destructive' : ''}`}
+        >
+          {status === 'error' ? message : ''}
+        </p>
 
-      <Button
-        type="submit"
-        size="lg"
-        disabled={submitting}
-        aria-busy={submitting}
-        className="mt-2 h-12 w-full rounded-full text-base disabled:cursor-wait"
-      >
-        {submitting ? 'Sending...' : 'Join the waitlist'}
-      </Button>
-      <p className="mt-3 text-xs text-muted-foreground">
-        We store your email, choice and answers only to tell you about Kivori. See the{' '}
-        <Link href="/privacy" className="underline">
-          privacy page
-        </Link>
-        .
-      </p>
-    </form>
+        <Button
+          type="submit"
+          size="lg"
+          disabled={submitting}
+          aria-busy={submitting}
+          className="mt-2 h-12 w-full rounded-full text-base disabled:cursor-wait"
+        >
+          {submitting ? 'Sending...' : 'Join the waitlist'}
+        </Button>
+        <p className="mt-3 text-xs text-muted-foreground">
+          We store your email, choice and answers only to tell you about Kivori. See the{' '}
+          <Link href="/privacy" className="underline">
+            privacy page
+          </Link>
+          .
+        </p>
+      </form>
     </Card>
   );
 }

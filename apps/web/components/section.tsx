@@ -2,7 +2,9 @@ import type { ReactElement, ReactNode } from 'react';
 import { cn } from '@kivori/ui/lib/utils';
 
 export function Eyebrow({ children }: { children: ReactNode }): ReactElement {
-  return <p className="text-sm font-semibold tracking-tight text-primary sm:text-base">{children}</p>;
+  return (
+    <p className="text-sm font-semibold tracking-tight text-primary sm:text-base">{children}</p>
+  );
 }
 
 interface SectionHeadingProps {

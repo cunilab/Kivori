@@ -1,10 +1,21 @@
 import { CheckIcon, InfoIcon, MonitorIcon, AppleIcon } from 'lucide-react';
 import type { Metadata } from 'next';
 import { Fragment, type ReactElement } from 'react';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@kivori/ui/components/accordion';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@kivori/ui/components/accordion';
 import { Badge } from '@kivori/ui/components/badge';
 import { Button } from '@kivori/ui/components/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@kivori/ui/components/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@kivori/ui/components/card';
 import {
   Table,
   TableBody,
@@ -122,7 +133,7 @@ export default async function DownloadPage(): Promise<ReactElement> {
               </ul>
               <p className="flex gap-2.5 text-sm text-muted-foreground">
                 <InfoIcon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                If Windows shows a protection notice, choose More info, then Run anyway.
+                If Windows shows a protection notice, choose More info → Run anyway.
               </p>
               {ready ? (
                 <Button

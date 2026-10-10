@@ -52,7 +52,9 @@ export default function RootLayout({ children }: { children: ReactNode }): React
           Skip to content
         </a>
         <SiteHeader />
-        <main id="main" className="flex-1">{children}</main>
+        <main id="main" className="flex-1">
+          {children}
+        </main>
         <SiteFooter />
         <JsonLd data={organizationJsonLd()} />
       </body>

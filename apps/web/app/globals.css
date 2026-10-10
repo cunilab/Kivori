@@ -16,7 +16,8 @@
 }
 
 @theme inline {
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, 'Segoe UI Variable',
+  --font-sans:
+    var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, 'Segoe UI Variable',
     'Segoe UI', sans-serif;
   --font-display: var(--font-sans);
   --color-surface: var(--surface);

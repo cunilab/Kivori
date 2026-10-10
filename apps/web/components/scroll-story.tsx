@@ -89,7 +89,12 @@ export function ScrollStory(): ReactElement {
             }}
             className="flex min-h-[55vh] flex-col justify-center md:min-h-screen"
           >
-            <h3 className={cn('display-1 transition-colors duration-500', index === active ? 'text-foreground' : 'text-foreground/25')}>
+            <h3
+              className={cn(
+                'display-1 transition-colors duration-500',
+                index === active ? 'text-foreground' : 'text-foreground/25',
+              )}
+            >
               {panel.headline}
             </h3>
             <p className="lead mt-5 max-w-md">{panel.body}</p>

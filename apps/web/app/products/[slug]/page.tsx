@@ -1,21 +1,22 @@
-import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import type { ReactElement } from 'react';
 import { renders } from '@/lib/media';
 import { FaqList } from '@/components/faq-list';
+import { BuyBar } from '@/components/buy-bar';
 import { FeatureIcon } from '@/components/feature-icon';
+import { ProductShot } from '@/components/product-shot';
+import { SpecsTable } from '@/components/specs-table';
 import { JsonLd } from '@/components/json-ld';
-import { Section } from '@/components/section';
+import { Eyebrow, Section } from '@/components/section';
 import { Badge } from '@kivori/ui/components/badge';
 import { WaitlistSection } from '@/components/waitlist-section';
 import { getProduct } from '@/content/products';
 import { faqJsonLd, productJsonLd } from '@/lib/jsonld';
 import { pageMetadata } from '@/lib/metadata';
-import { COMPATIBILITY_LABEL } from '@/lib/product-labels';
-import { PRODUCT_STATUS_LABEL } from '@/lib/product-labels';
-import { Button } from '@kivori/ui/components/button';
+import { COMPATIBILITY_LABEL, PRODUCT_STATUS_LABEL } from '@/lib/product-labels';
+import { Card } from '@kivori/ui/components/card';
 
 interface ProductPageProps {
   params: Promise<{ slug: string }>;
@@ -44,123 +45,93 @@ export default async function ProductPage({ params }: ProductPageProps): Promise
 
   return (
     <>
-      <section aria-labelledby="product-title" className="px-5 py-14 sm:py-20">
-        <div className="mx-auto grid max-w-5xl items-center gap-12 md:grid-cols-2">
-          <div>
-            <nav aria-label="Breadcrumb" className="text-sm text-muted-foreground">
-              <Link href="/products" className="hover:text-foreground hover:underline">
-                Products
-              </Link>
-              <span aria-hidden="true"> / </span>
-              <span aria-current="page">{product.name}</span>
-            </nav>
-            <div className="mt-5 flex items-center gap-3">
-              <Badge variant="secondary">{PRODUCT_STATUS_LABEL[product.status]}</Badge>
-              <span className="text-sm text-muted-foreground">{product.edition} edition</span>
-            </div>
-            <h1
-              id="product-title"
-              className="mt-4 font-display text-4xl leading-tight font-semibold sm:text-5xl"
-            >
-              {product.name}
-            </h1>
-            <p className="mt-3 font-display text-xl text-primary">{product.tagline}</p>
-            <p className="mt-4 max-w-xl text-lg text-muted-foreground">{product.summary}</p>
-
-            <div id="buy" className="mt-8 flex flex-wrap items-center gap-3">
-              {product.buyUrl ? (
-                <Button size="lg" nativeButton={false} render={<a href={product.buyUrl} />}>
-                  Buy {product.name}
-                  {product.price ? ` · ${product.price}` : ''}
-                </Button>
-              ) : (
-                <Button size="lg" variant="outline" disabled>
-                  Buy, coming soon
-                </Button>
-              )}
-              <Button
-                size="lg"
-                variant="outline"
-                nativeButton={false}
-                render={<a href="#waitlist" />}
-              >
-                Notify me
-              </Button>
-            </div>
-            <p className="mt-3 text-sm text-muted-foreground">
-              {product.price
-                ? `Price: ${product.price}`
-                : 'No price or ship date yet. Notify me and we will tell you.'}
-            </p>
-            <div id="waitlist" className="mt-6 max-w-md scroll-mt-20">
-              <WaitlistSection initialProduct={product.slug} idPrefix="product" />
-            </div>
+      <section
+        aria-labelledby="product-title"
+        className="overflow-hidden px-5 pt-14 sm:px-8 sm:pt-20"
+      >
+        <div className="mx-auto max-w-[1200px] text-center">
+          <nav aria-label="Breadcrumb" className="text-sm text-muted-foreground">
+            <Link href="/products" className="hover:text-foreground hover:underline">
+              Products
+            </Link>
+            <span aria-hidden="true"> / </span>
+            <span aria-current="page">{product.name}</span>
+          </nav>
+          <div className="mt-8 flex items-center justify-center gap-3">
+            <Badge variant="secondary">{PRODUCT_STATUS_LABEL[product.status]}</Badge>
+            <Eyebrow>{product.edition} edition</Eyebrow>
           </div>
-          <div className="mx-auto w-full max-w-xl">
-            <Image
-              src={renders.heroTransparent.src}
-              alt={product.hero.alt}
-              width={renders.heroTransparent.width}
-              height={renders.heroTransparent.height}
+          <h1 id="product-title" className="display-1 mt-4">
+            {product.name}
+          </h1>
+          <p className="lead mx-auto mt-5 max-w-2xl text-balance">{product.tagline}</p>
+          <div className="shot-stage mx-auto mt-10 max-w-[1000px] sm:mt-14">
+            <ProductShot
+              image={renders.hero}
+              large
               priority
-              className="h-auto w-full"
+              sizes="(min-width: 1000px) 1000px, 100vw"
             />
           </div>
         </div>
       </section>
 
-      <Section id="features" eyebrow="Features" title={`What ${product.name} does`}>
+      <BuyBar
+        name={product.name}
+        price={product.price}
+        buyUrl={product.buyUrl}
+        waitlist={<WaitlistSection initialProduct={product.slug} idPrefix="buybar" />}
+      />
+
+      <Section
+        id="features"
+        eyebrow="Highlights"
+        title={`What ${product.name} does.`}
+        intro={product.summary}
+      >
         <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {product.features.map((feature) => (
-            <li key={feature.title} className="rounded-2xl border border-border bg-card p-6">
-              <span className="flex size-11 items-center justify-center rounded-xl bg-accent text-accent-foreground">
-                <FeatureIcon name={feature.icon} />
-              </span>
-              <h3 className="mt-4 font-display text-lg font-semibold">{feature.title}</h3>
-              <p className="mt-2 text-sm text-muted-foreground">{feature.body}</p>
+            <li key={feature.title} className="reveal flex">
+              <Card className="w-full gap-0 rounded-3xl p-7 shadow-sm ring-1 ring-foreground/8">
+                <span className="flex size-11 items-center justify-center rounded-2xl bg-accent text-accent-foreground">
+                  <FeatureIcon name={feature.icon} />
+                </span>
+                <h3 className="mt-5 text-xl font-semibold tracking-tight">{feature.title}</h3>
+                <p className="mt-2 text-base text-muted-foreground">{feature.body}</p>
+              </Card>
             </li>
           ))}
         </ul>
       </Section>
 
-      <Section id="specs" tone="muted" eyebrow="Specs" title="Technical specifications">
-        <div className="grid gap-6 md:grid-cols-2">
-          {product.specs.map((group) => (
-            <div key={group.group} className="rounded-2xl border border-border bg-card p-6">
-              <h3 className="font-display text-lg font-semibold">{group.group}</h3>
-              <dl className="mt-3 divide-y divide-border text-sm">
-                {group.rows.map((row) => (
-                  <div key={row.label} className="flex justify-between gap-6 py-2.5">
-                    <dt className="font-medium">{row.label}</dt>
-                    <dd className="text-right text-muted-foreground">{row.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          ))}
+      <Section id="specs" tone="surface" eyebrow="Specs" title="Tech specs.">
+        <div className="mx-auto max-w-3xl">
+          <SpecsTable groups={product.specs} name={product.name} />
         </div>
       </Section>
 
-      <Section id="compatibility" eyebrow="Compatibility" title="Works with">
+      <Section id="compatibility" eyebrow="Compatibility" title="Works with.">
         <ul className="grid gap-4 sm:grid-cols-3">
           {product.compatibility.map((item) => (
-            <li key={item.os} className="rounded-2xl border border-border bg-card p-5">
-              <p className="font-display text-lg font-semibold">{item.os}</p>
-              <p
-                className={`mt-1 text-sm ${item.status === 'supported' || item.status === 'supported-beta' ? 'font-medium text-success' : 'text-muted-foreground'}`}
-              >
-                {COMPATIBILITY_LABEL[item.status]}
-              </p>
+            <li key={item.os}>
+              <Card className="gap-1 rounded-3xl p-7 shadow-sm ring-1 ring-foreground/8">
+                <p className="text-2xl font-semibold tracking-tight">{item.os}</p>
+                <p
+                  className={`text-sm ${item.status === 'supported' || item.status === 'supported-beta' ? 'font-medium text-success' : 'text-muted-foreground'}`}
+                >
+                  {COMPATIBILITY_LABEL[item.status]}
+                </p>
+              </Card>
             </li>
           ))}
         </ul>
       </Section>
 
       {product.inTheBox && product.inTheBox.length > 0 ? (
-        <Section id="in-the-box" tone="muted" eyebrow="In the box" title="What you get">
-          <ul className="max-w-xl divide-y divide-border rounded-2xl border border-border bg-card">
+        <Section id="in-the-box" tone="surface" eyebrow="In the box" title="What you get.">
+          <ul className="max-w-xl divide-y divide-border overflow-hidden rounded-3xl bg-card ring-1 ring-foreground/10">
             {product.inTheBox.map((item) => (
-              <li key={item} className="px-5 py-3 text-sm">
+              <li key={item} className="px-6 py-4 text-base">
                 {item}
               </li>
             ))}
@@ -168,23 +139,14 @@ export default async function ProductPage({ params }: ProductPageProps): Promise
         </Section>
       ) : null}
 
-      <Section id="faq" eyebrow="Questions" title="Good to know">
+      <Section
+        id="faq"
+        tone={product.inTheBox?.length ? 'plain' : 'surface'}
+        eyebrow="Questions"
+        title="Good to know."
+      >
         <div className="max-w-3xl">
           <FaqList items={product.faq} />
-        </div>
-        <div className="mt-10 flex flex-wrap items-center gap-3">
-          {product.buyUrl ? (
-            <Button size="lg" nativeButton={false} render={<a href={product.buyUrl} />}>
-              Buy {product.name}
-            </Button>
-          ) : (
-            <Button size="lg" variant="outline" disabled>
-              Buy, coming soon
-            </Button>
-          )}
-          <Button size="lg" variant="outline" nativeButton={false} render={<a href="#waitlist" />}>
-            Notify me
-          </Button>
         </div>
       </Section>
 

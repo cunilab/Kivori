@@ -18,7 +18,9 @@ const nextConfig: NextConfig = {
   // Images are pre-sized in the repo; Cloudflare image resizing is a paid add-on.
   images: { unoptimized: true },
   // Version history now lives on the download page.
-  redirects: async () => [{ source: '/changelog', destination: '/download#history', permanent: true }],
+  redirects: async () => [
+    { source: '/changelog', destination: '/download#history', permanent: true },
+  ],
 };
 
 initOpenNextCloudflareForDev();
