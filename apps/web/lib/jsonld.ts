@@ -50,3 +50,17 @@ export function faqJsonLd(faq: readonly FaqItem[]): JsonLd {
 export function serializeJsonLd(data: JsonLd): string {
   return JSON.stringify(data).replace(/</g, '\\u003c');
 }
+
+/** The desktop app; `softwareVersion` only when a release is known. No `offers`: the app is free. */
+export function softwareApplicationJsonLd(version?: string, origin?: URL): JsonLd {
+  const data: JsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: SITE_NAME,
+    operatingSystem: 'Windows 10, Windows 11',
+    applicationCategory: 'UtilitiesApplication',
+    url: absoluteUrl('/download', origin),
+  };
+  if (version) data.softwareVersion = version;
+  return data;
+}
