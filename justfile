@@ -153,3 +153,17 @@ app:
 provision:
     just fw-build
     KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/esp32-c3/target/riscv32imc-unknown-none-elf/release/kivori-firmware" cargo run -p kivori-desktop --example provision
+
+# ---- website (apps/web; Next.js on Cloudflare Workers via OpenNext) ----
+
+# Run the website dev server on :3000.
+web-dev:
+    bun --filter kivori-web dev
+
+# Build and run the site in the local Workers runtime (workerd).
+web-preview:
+    bun --filter kivori-web preview
+
+# Build and deploy the site to Cloudflare (needs `bunx wrangler login` or CLOUDFLARE_API_TOKEN).
+web-deploy:
+    bun --filter kivori-web deploy

@@ -1,0 +1,93 @@
+# Website CI/CD (apps/web): Next.js on Cloudflare Workers via OpenNext.
+#
+# Build and size reporting need no Cloudflare credentials. Deploy (main) and preview upload (PRs) run
+# only when the CLOUDFLARE_API_TOKEN secret exists (never on fork PRs); otherwise they skip cleanly.
+name: web
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'assets/**'
+      - '.github/workflows/web.yml'
+  pull_request:
+    paths:
+      - 'apps/web/**'
+      - 'assets/**'
+      - '.github/workflows/web.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+
+      - name: Build (next build)
+        run: bun --filter kivori-web run build
+
+      - name: Build (OpenNext for Cloudflare)
+        working-directory: apps/web
+        run: bunx opennextjs-cloudflare build
+
+      - name: Report compressed Worker size
+        working-directory: apps/web
+        run: |
+          bunx wrangler deploy --dry-run --outdir "$RUNNER_TEMP/worker-dry-run" | tee "$RUNNER_TEMP/dry-run.log"
+          size=$(grep 'Total Upload' "$RUNNER_TEMP/dry-run.log" || true)
+          echo "### Worker size" >> "$GITHUB_STEP_SUMMARY"
+          echo "${size:-unavailable} (Free plan limit: 3 MiB gzip; Paid: 10 MiB)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Detect Cloudflare API token
+        id: cf
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          # Presence only. The value is never printed, logged, or passed as an argument.
+          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Cloudflare deploy skipped::CLOUDFLARE_API_TOKEN is not configured. The site was built and size-checked only."
+          fi
+
+      - name: Deploy to Cloudflare
+        if: steps.cf.outputs.available == 'true' && github.event_name == 'push'
+        working-directory: apps/web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: bunx opennextjs-cloudflare deploy
+
+      # Needs the Worker to exist already (the first `main` deploy creates it).
+      - name: Upload preview version
+        id: preview
+        if: steps.cf.outputs.available == 'true' && github.event_name == 'pull_request'
+        working-directory: apps/web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          bunx wrangler versions upload --message "PR #${{ github.event.number }}" | tee "$RUNNER_TEMP/upload.log"
+          url=$(grep -oE 'https://[^ ]+\.workers\.dev' "$RUNNER_TEMP/upload.log" | head -1 || true)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Comment preview URL on the PR
+        if: steps.preview.outputs.url != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
+        run: |
+          gh pr comment "${{ github.event.number }}" --body "Website preview: $PREVIEW_URL"

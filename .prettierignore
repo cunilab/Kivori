@@ -11,3 +11,6 @@ sim/wokwi/generated/
 
 # Local Claude Code state and agent worktrees
 .claude/
+.next
+.open-next
+.wrangler
