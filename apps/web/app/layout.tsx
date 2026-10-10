@@ -3,8 +3,10 @@ import localFont from 'next/font/local';
 import type { ReactElement, ReactNode } from 'react';
 import brandIcon from '@brand/icon/kivori-icon.svg';
 import { SiteFooter } from '@/components/site-footer';
+import { JsonLd } from '@/components/json-ld';
 import { SiteHeader } from '@/components/site-header';
-import { DESCRIPTION, resolveSiteUrl, SITE_NAME } from '@/lib/site';
+import { organizationJsonLd } from '@/lib/jsonld';
+import { DESCRIPTION, ogImagePath, resolveSiteUrl, SITE_NAME } from '@/lib/site';
 import { THEME_INIT_SCRIPT } from './theme-script';
 import './globals.css';
 
@@ -24,7 +26,13 @@ export const metadata: Metadata = {
   // An `app/icon.tsx` ImageResponse was tried and dropped: its static prerender is not served by the
   // Worker without an incremental cache (arrives in W3), and it adds the resvg wasm to the bundle.
   icons: { icon: { url: brandIcon.src, type: 'image/svg+xml' } },
-  openGraph: { siteName: SITE_NAME, type: 'website' },
+  // Pages without their own share image fall back to the build-time default (scripts/build-assets.mjs).
+  openGraph: {
+    siteName: SITE_NAME,
+    type: 'website',
+    images: [{ url: ogImagePath(), width: 1200, height: 630, alt: SITE_NAME }],
+  },
+  twitter: { card: 'summary_large_image', images: [ogImagePath()] },
 };
 
 export const viewport: Viewport = {
@@ -47,6 +55,7 @@ export default function RootLayout({ children }: { children: ReactNode }): React
         <SiteHeader />
         <main className="flex-1">{children}</main>
         <SiteFooter />
+        <JsonLd data={organizationJsonLd()} />
       </body>
     </html>
   );
