@@ -46,6 +46,8 @@ interface TurnstileApi {
       callback: (token: string) => void;
       'expired-callback': () => void;
       'error-callback': () => void;
+      appearance?: 'always' | 'execute' | 'interaction-only';
+      theme?: 'auto' | 'light' | 'dark';
     },
   ): string;
   reset(widgetId?: string): void;
@@ -133,6 +135,9 @@ export function WaitlistForm({
             callback: setToken,
             'expired-callback': () => setToken(''),
             'error-callback': () => setToken(''),
+            // Stay invisible unless Cloudflare actually needs the visitor to click something.
+            appearance: 'interaction-only',
+            theme: 'dark',
           });
         })
         .catch(() => {

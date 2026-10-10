@@ -70,6 +70,8 @@
   html {
     scroll-behavior: smooth;
     background: var(--stage);
+    /* Reserve the scrollbar's space so the header doesn't shift between short and long pages. */
+    scrollbar-gutter: stable;
   }
 
   body {
