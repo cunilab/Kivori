@@ -11,12 +11,12 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "assets": "bun scripts/build-assets.mjs",
+    "check:leaks": "node scripts/check-leaks.mjs",
     "preview": "bun run assets && opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "bun run assets && opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {
-    "marked": "16",
     "next": "16.3.8",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"

@@ -23,7 +23,6 @@ export const SITE_NAME = 'Kivori';
 export const TAGLINE = 'Control the desktop physically. Understand the desktop visually.';
 export const DESCRIPTION =
   'Kivori is a desk buddy you control your computer with: the buddy is why you want one, the physical knob and button are why you keep using it, and the display shows important desktop and system state around the buddy.';
-export const GITHUB_URL = 'https://github.com/cunilab/Kivori';
 
 /** Resolves a path (`/products`) against the public site origin into an absolute URL. */
 export function absoluteUrl(

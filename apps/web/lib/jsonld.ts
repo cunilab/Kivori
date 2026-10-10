@@ -1,5 +1,5 @@
 import type { FaqItem, Product } from '@/content/products/types';
-import { absoluteUrl, GITHUB_URL, ogImagePath, SITE_NAME } from '@/lib/site';
+import { absoluteUrl, ogImagePath, SITE_NAME } from '@/lib/site';
 
 export type JsonLd = Record<string, unknown>;
 
@@ -9,7 +9,6 @@ export function organizationJsonLd(origin?: URL): JsonLd {
     '@type': 'Organization',
     name: 'Cunilab',
     url: absoluteUrl('/', origin),
-    sameAs: [GITHUB_URL],
   };
 }
 

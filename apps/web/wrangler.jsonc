@@ -14,7 +14,36 @@
       "service": "kivori-web",
     },
   ],
-  // Download counter (W3). The dataset is created on first write; the binding needs no setup.
-  "analytics_engine_datasets": [{ "binding": "DOWNLOADS", "dataset": "kivori_downloads" }],
-  // Later slices, intentionally absent: D1 + Turnstile + rate limiting (W4).
+  // Analytics Engine datasets are created on first write; the bindings need no setup. DOWNLOADS is
+  // the download counter (W3).
+  // Waitlist sign-up counts (W4): blobs [product, utm_source], no email.
+  "analytics_engine_datasets": [
+    { "binding": "DOWNLOADS", "dataset": "kivori_downloads" },
+    { "binding": "SIGNUPS", "dataset": "kivori_signups" },
+  ],
+  // Waitlist storage (W4). Apply migrations: see README.
+  "d1_databases": [
+    {
+      "binding": "WAITLIST_DB",
+      "database_name": "kivori-web",
+      "database_id": "6e9f114c-9121-4eaf-a0ef-639a0358b672",
+      "migrations_dir": "migrations",
+    },
+  ],
+  // Per-IP limit on sign-ups: 5 per 60 s. The IP is only the limiter key and is never stored.
+  "ratelimits": [
+    {
+      "name": "WAITLIST_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 5, "period": 60 },
+    },
+  ],
+  "vars": {
+    // Cloudflare's always-pass TEST site key. Replace with the real widget's key (see README).
+    // The matching secret is `TURNSTILE_SECRET_KEY` (a wrangler secret, never committed).
+    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
+    // Public contact address shown on /privacy. Leave empty until the mailbox exists; the page then
+    // says contact details are coming before launch.
+    "CONTACT_EMAIL": "",
+  },
 }

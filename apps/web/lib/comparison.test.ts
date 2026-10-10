@@ -9,7 +9,7 @@ const other: Product = {
   name: 'Kivori Mini',
   price: '$99',
   specs: [
-    { group: 'Display', rows: [{ label: 'Panel', value: '1.3" ST7789' }] },
+    { group: 'Display', rows: [{ label: 'Display', value: 'Smaller colour screen' }] },
     { group: 'Extras', rows: [{ label: 'Stand', value: 'Yes' }] },
   ],
 };
@@ -26,16 +26,16 @@ describe('buildComparison', () => {
       ],
     });
     const display = c.groups.find((g) => g.group === 'Display');
-    expect(display?.rows[0]).toEqual({ label: 'Panel', values: ['1.3" ST7789, 240 × 240'] });
+    expect(display?.rows[0]).toEqual({ label: 'Display', values: ['Bright colour screen'] });
     for (const g of c.groups) for (const r of g.rows) expect(r.values).toHaveLength(1);
   });
 
   it('lines shared rows up and leaves gaps for rows only one product has', () => {
     const c = buildComparison([kivori, other]);
     const display = c.groups.find((g) => g.group === 'Display');
-    expect(display?.rows.find((r) => r.label === 'Panel')?.values).toEqual([
-      '1.3" ST7789, 240 × 240',
-      '1.3" ST7789',
+    expect(display?.rows.find((r) => r.label === 'Display')?.values).toEqual([
+      'Bright colour screen',
+      'Smaller colour screen',
     ]);
     expect(display?.rows.find((r) => r.label === 'Views')?.values[1]).toBeNull();
     expect(c.groups.find((g) => g.group === 'Extras')?.rows[0].values).toEqual([null, 'Yes']);

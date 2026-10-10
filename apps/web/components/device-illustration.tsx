@@ -1,13 +1,10 @@
 import { useId, type ReactElement } from 'react';
 
-// Front view of the 110 x 70 mm wedge, 3 px per mm. Positions follow the enclosure README and the
-// blueprints in docs/assets (knob 48 mm, display window 23.4 mm, 14 mm buttons 18 mm apart); the right
-// group sits 10 mm further right than the 100 mm blueprint because the real case is 10 mm wider.
-// Colours are the product's own (light matte shell, black visor and knob, keycap-green buttons), so the
-// illustration looks the same in both site themes.
+// Front view of the Kivori wedge, drawn on a 3 px grid. Colours are the product's own (light matte shell,
+// black visor and knob, keycap-green buttons), so the illustration looks the same in both site themes.
 const FX = 15;
 const FY = 10;
-const mm = (n: number): number => n * 3;
+const unit = (n: number): number => n * 3;
 
 const BUTTONS = [
   { x: 65, rotate: -8 },
@@ -23,11 +20,11 @@ interface DeviceIllustrationProps {
 
 export function DeviceIllustration({ label, className }: DeviceIllustrationProps): ReactElement {
   const id = useId().replace(/:/g, '');
-  const knobX = FX + mm(27);
-  const knobY = FY + mm(35);
-  const screenX = FX + mm(82) - mm(23.4) / 2;
-  const screenY = FY + mm(23.4) - mm(23.4) / 2;
-  const screen = mm(23.4);
+  const knobX = FX + unit(27);
+  const knobY = FY + unit(35);
+  const screenX = FX + unit(82) - unit(23.4) / 2;
+  const screenY = FY + unit(23.4) - unit(23.4) / 2;
+  const screen = unit(23.4);
   const a11y = label ? { role: 'img', 'aria-label': label } : { 'aria-hidden': true };
 
   return (
@@ -62,7 +59,14 @@ export function DeviceIllustration({ label, className }: DeviceIllustrationProps
         strokeOpacity="0.7"
       />
 
-      <rect x={FX + mm(54)} y={FY + mm(6)} width={mm(54)} height={mm(58)} rx="14" fill="#12151f" />
+      <rect
+        x={FX + unit(54)}
+        y={FY + unit(6)}
+        width={unit(54)}
+        height={unit(58)}
+        rx="14"
+        fill="#12151f"
+      />
       <circle cx={knobX} cy={knobY} r="76" fill="#12151f" />
       <circle cx={knobX} cy={knobY} r="72" fill={`url(#${id}-knob)`} />
       <circle
@@ -101,8 +105,8 @@ export function DeviceIllustration({ label, className }: DeviceIllustrationProps
       <circle cx={screenX + screen - 8} cy={screenY + 8} r="3" fill="#3cc47c" />
 
       {BUTTONS.map(({ x, rotate }) => {
-        const cx = FX + mm(x);
-        const cy = FY + mm(52);
+        const cx = FX + unit(x);
+        const cy = FY + unit(52);
         return (
           <g key={x} transform={`rotate(${rotate} ${cx} ${cy})`}>
             <rect x={cx - 21} y={cy - 21} width="42" height="42" rx="9" fill="#05070d" />

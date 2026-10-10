@@ -40,6 +40,9 @@ jobs:
       - name: Build (next build)
         run: bun --filter kivori-web build
 
+      - name: Leak check (client-facing output)
+        run: bun --filter kivori-web check:leaks
+
       - name: Build (OpenNext for Cloudflare)
         working-directory: apps/web
         run: bunx opennextjs-cloudflare build
@@ -64,6 +67,13 @@ jobs:
             echo "available=false" >> "$GITHUB_OUTPUT"
             echo "::notice title=Cloudflare deploy skipped::CLOUDFLARE_API_TOKEN is not configured. The site was built and size-checked only."
           fi
+
+      - name: Apply D1 migrations
+        if: steps.cf.outputs.available == 'true' && github.event_name == 'push'
+        working-directory: apps/web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: bunx wrangler d1 migrations apply kivori-web --remote
 
       - name: Deploy to Cloudflare
         if: steps.cf.outputs.available == 'true' && github.event_name == 'push'

@@ -16,19 +16,11 @@ describe('product registry', () => {
       expect(text.trim()).not.toBe('');
     }
     expect(['in-development', 'coming-soon', 'available']).toContain(p.status);
-    expect(p.gallery.length).toBeGreaterThan(0);
-    for (const g of p.gallery) {
-      expect(g.src).toMatch(/^\/generated\/.+-1600\.webp$/);
-      expect(g.alt.trim()).not.toBe('');
-      expect(g.caption.trim()).not.toBe('');
-      expect(g.width).toBeGreaterThan(0);
-      expect(g.height).toBeGreaterThan(0);
-    }
     expect(p.features.length).toBeGreaterThan(0);
     expect(p.specs.length).toBeGreaterThan(0);
     for (const group of p.specs) expect(group.rows.length).toBeGreaterThan(0);
     expect(p.compatibility.length).toBeGreaterThan(0);
-    expect(p.inTheBox.length).toBeGreaterThan(0);
+    expect(p.inTheBox ?? []).not.toContain(expect.stringMatching(/TBC/));
     expect(p.faq.length).toBeGreaterThan(0);
   });
 

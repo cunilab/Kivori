@@ -11,12 +11,12 @@ import {
 const origin = new URL('https://kivori.example');
 
 describe('organizationJsonLd', () => {
-  it('names Cunilab and links GitHub', () => {
+  it('names Cunilab with no outside links', () => {
     const org = organizationJsonLd(origin);
     expect(org['@type']).toBe('Organization');
     expect(org.name).toBe('Cunilab');
     expect(org.url).toBe('https://kivori.example/');
-    expect(org.sameAs).toEqual(['https://github.com/cunilab/Kivori']);
+    expect(org).not.toHaveProperty('sameAs');
   });
 });
 

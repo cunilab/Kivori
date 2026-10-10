@@ -10,22 +10,20 @@ import { FeatureIcon } from '@/components/feature-icon';
 import { JsonLd } from '@/components/json-ld';
 import { Section } from '@/components/section';
 import { StatusPill } from '@/components/status-pill';
-import { getProduct, getProducts } from '@/content/products';
+import { WaitlistSection } from '@/components/waitlist-section';
+import { getProduct } from '@/content/products';
 import { faqJsonLd, productJsonLd } from '@/lib/jsonld';
 import { pageMetadata } from '@/lib/metadata';
-import { COMPATIBILITY_LABEL, notifyHref } from '@/lib/product-labels';
+import { COMPATIBILITY_LABEL } from '@/lib/product-labels';
 import { BTN_DISABLED, BTN_PRIMARY, BTN_SECONDARY } from '@/lib/ui';
 
 interface ProductPageProps {
   params: Promise<{ slug: string }>;
 }
 
-// Only the slugs in the registry exist; anything else is a 404.
-export const dynamicParams = false;
-
-export function generateStaticParams(): { slug: string }[] {
-  return getProducts().map(({ slug }) => ({ slug }));
-}
+// Rendered per request so the waitlist form gets the Turnstile site key from the Worker env at
+// runtime. Only the slugs in the registry exist; anything else is a 404 (see `notFound` below).
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
   const { slug } = await params;
@@ -37,11 +35,6 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
     path: `/products/${product.slug}`,
     ogSlug: product.slug,
   });
-}
-
-/** The 800 px twin of a gallery image, used for the thumbnail. */
-function thumbnail(src: string): string {
-  return src.replace(/-1600\.webp$/, '-800.webp');
 }
 
 export default async function ProductPage({ params }: ProductPageProps): Promise<ReactElement> {
@@ -85,15 +78,18 @@ export default async function ProductPage({ params }: ProductPageProps): Promise
                   Buy, coming soon
                 </button>
               )}
-              <Link href={notifyHref(product.slug)} className={BTN_SECONDARY}>
+              <a href="#waitlist" className={BTN_SECONDARY}>
                 Notify me
-              </Link>
+              </a>
             </div>
             <p className="mt-3 text-sm text-muted-foreground">
               {product.price
                 ? `Price: ${product.price}`
                 : 'No price or ship date yet. Notify me and we will tell you.'}
             </p>
+            <div id="waitlist" className="mt-6 max-w-md scroll-mt-20">
+              <WaitlistSection initialProduct={product.slug} idPrefix="product" />
+            </div>
           </div>
           <div className="relative mx-auto w-full max-w-md">
             <DeviceIllustration label={product.hero.alt} className="w-full drop-shadow-xl" />
@@ -107,38 +103,6 @@ export default async function ProductPage({ params }: ProductPageProps): Promise
           </div>
         </div>
       </section>
-
-      {product.gallery.length > 0 ? (
-        <Section
-          id="gallery"
-          tone="muted"
-          eyebrow="Gallery"
-          title="Drawn before it is built"
-          intro="There are no product photos yet. These are the enclosure blueprints the prototype follows."
-        >
-          <ul className="grid gap-6 md:grid-cols-2">
-            {product.gallery.map((image) => (
-              <li key={image.src}>
-                <figure className="overflow-hidden rounded-2xl border border-border bg-card">
-                  <a href={image.src} aria-label={`Open full size: ${image.alt}`}>
-                    <Image
-                      src={thumbnail(image.src)}
-                      alt={image.alt}
-                      width={800}
-                      height={Math.round((image.height / image.width) * 800)}
-                      sizes="(min-width: 768px) 50vw, 100vw"
-                      className="h-auto w-full"
-                    />
-                  </a>
-                  <figcaption className="p-4 text-sm text-muted-foreground">
-                    {image.caption}
-                  </figcaption>
-                </figure>
-              </li>
-            ))}
-          </ul>
-        </Section>
-      ) : null}
 
       <Section id="features" eyebrow="Features" title={`What ${product.name} does`}>
         <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -187,21 +151,17 @@ export default async function ProductPage({ params }: ProductPageProps): Promise
         </ul>
       </Section>
 
-      <Section
-        id="in-the-box"
-        tone="muted"
-        eyebrow="In the box"
-        title="What you get"
-        intro="The beta kit is not final, so the contents are still to be confirmed."
-      >
-        <ul className="max-w-xl divide-y divide-border rounded-2xl border border-border bg-card">
-          {product.inTheBox.map((item) => (
-            <li key={item} className="px-5 py-3 text-sm">
-              {item}
-            </li>
-          ))}
-        </ul>
-      </Section>
+      {product.inTheBox && product.inTheBox.length > 0 ? (
+        <Section id="in-the-box" tone="muted" eyebrow="In the box" title="What you get">
+          <ul className="max-w-xl divide-y divide-border rounded-2xl border border-border bg-card">
+            {product.inTheBox.map((item) => (
+              <li key={item} className="px-5 py-3 text-sm">
+                {item}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : null}
 
       <Section id="faq" eyebrow="Questions" title="Good to know">
         <div className="max-w-3xl">
@@ -217,9 +177,9 @@ export default async function ProductPage({ params }: ProductPageProps): Promise
               Buy, coming soon
             </button>
           )}
-          <Link href={notifyHref(product.slug)} className={BTN_SECONDARY}>
+          <a href="#waitlist" className={BTN_SECONDARY}>
             Notify me
-          </Link>
+          </a>
         </div>
       </Section>
 
