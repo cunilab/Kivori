@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kivori-web",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS",
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "kivori-web",
+    },
+  ],
+  // Bindings for later slices, intentionally absent from W1 (a W1 deploy creates no resources):
+  // R2 incremental cache (W3), D1 + Turnstile + rate limiting (W4), Analytics Engine (W3/W5).
+}

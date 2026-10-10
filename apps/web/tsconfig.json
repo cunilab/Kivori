@@ -1,0 +1,27 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      "@brand/*": ["../../assets/*"]
+    },
+    // Next 16 rewrites `jsx` to react-jsx itself (the automatic runtime); `preserve` would be reverted.
+    "jsx": "react-jsx",
+    // Next's compiler handles transpilation; allowJs lets Next's generated JS-flavoured files resolve.
+    "allowJs": true,
+    // Next's SWC transform (not tsc) emits code; `incremental` speeds up `tsc --noEmit` and is what Next writes.
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "types": ["node", "vitest/globals"]
+  },
+  "include": [
+    "next-env.d.ts",
+    "cloudflare-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": ["node_modules", ".next", ".open-next"]
+}
