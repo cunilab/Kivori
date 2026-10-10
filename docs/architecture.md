@@ -4,12 +4,12 @@ How Kivori is built today. Product goals are in [product.md](./product.md), open
 
 ## 1. Overview
 
-Kivori is a small desk companion. A keycap-shaped mascot lives on a 240x240 screen, reacts to what the desktop tells it, a rotary knob controls system volume, and its push switch runs actions (Press, Hold) and the out-of-band recovery hold. The display can also show a clock, volume, media and CPU/RAM view.
+Kivori is a small desk companion. A keycap-shaped mascot lives on a 240x240 screen, reacts to what the desktop tells it, a rotary knob turns volume (or per-profile shortcuts), its push switch runs actions (Press, Hold, Double press) and the out-of-band recovery hold, and three contextual buttons run per-profile actions. The display can also show a clock, volume, media and CPU/RAM view.
 
 | Component | What it is |
 |---|---|
-| Firmware | ESP32-C3, ST7789 240x240 panel, HW-040 rotary encoder. `no_std`, no heap, `riscv32imc`. |
-| Desktop native core | Tauri v2 Rust process. Owns the serial port, the connection, OS integration, preview rendering, flashing. |
+| Firmware | ESP32-C3, ST7789 240x240 panel, HW-040 rotary encoder, three buttons. Version 1.3.0, protocol 1.5. `no_std`, no heap, `riscv32imc`. |
+| Desktop native core | Tauri 2.12 Rust process. Owns the serial port, the connection, OS integration, preview rendering, flashing. |
 | Desktop webview | React UI. Only calls a fixed set of typed commands. No serial, filesystem or shell access. |
 | Shared crates | One copy of the model, protocol, renderer and asset reader, used by both firmware and desktop. |
 
@@ -40,12 +40,23 @@ Two Cargo workspaces. Shared crates are `no_std`, no-alloc, and the single sourc
 | `crates/kivori-framebuffer` | RGB565 tile bands and content hashing (change detection). |
 | `crates/kivori-renderer` | Deterministic scene compositor and volume overlay (`embedded-graphics` `DrawTarget`). |
 | `crates/kivori-assets` | Zero-copy reader for the compiled asset blob. |
-| `apps/desktop/src-tauri` | `kivori-desktop`: `device/` (discovery, session, reconnect, heartbeat, nonce), `runtime/` (device task), `orchestrator/`, `input/`, `action/`, `platform/`, `presentation/`, `companion.rs`, `activity/`, `firmware.rs`, `ipc/`, `render/`. |
+| `apps/desktop/src-tauri` | `kivori-desktop`: `device/` (discovery, session, reconnect, heartbeat, nonce), `runtime/` (device task), `orchestrator/`, `input/`, `action/`, `platform/`, `presentation/`, `desk/` (profiles, bindings, catalog, actions), `config/` (store, schema, resolve, migrate), `companion.rs`, `activity/`, `firmware.rs`, `firmware_marker.rs`, `window_lifecycle.rs`, `provision.rs` (dev-only `just provision`), `ipc/`, `render/`. |
 | `apps/desktop/src` | React frontend and typed IPC wrappers. |
 | `firmware/esp32-c3` | Separate workspace: `ports.rs`, `input/` (quadrature, gesture), `physical_st7789.rs`, `physical_rotary.rs`, `runtime.rs`, `proto.rs`, plus host simulation adapters in `sim/`. |
 | `tools/asset-compiler` | SVG to deterministic RGB565 blob (host build tool). |
 | `tools/wokwi-*`, `tests/e2e-host-sim`, `tests/golden-frames` | Simulation vectors, host-sim end-to-end tests, cross-OS frame-hash harness. |
+| `.github/workflows/` | CI, see below. |
 | `scripts/` | Boundary guards (`check-crate-boundaries.sh`, `check-offline-deps.sh`, `check-frontend-offline.mjs`) and firmware/desktop build scripts. |
+
+CI workflows (`.github/workflows/`):
+
+| Workflow | What it runs |
+|---|---|
+| `host` | Rust on Ubuntu and Windows, the frontend, and the Windows Device Studio startup smoke test: format, clippy, tests, the boundary, offline and release-surface guards. |
+| `firmware` | no_std isolation proof, firmware host-sim tests and RISC-V builds and clippy per feature set. |
+| `determinism` | Golden-frame hashes across operating systems and the byte-reproducible asset blob. |
+| `wokwi` | The Wokwi simulation gate. Path-filtered (`firmware/**`, `crates/**`, `sim/**`, Wokwi tools and scripts) because its minutes are metered. |
+| `release` | The unsigned Windows installer and draft release on a `v*` tag, manually with an optional macOS build; also on pull requests that touch packaging files ([release.md](./release.md)). |
 
 `scripts/check-crate-boundaries.sh` fails CI if a shared crate gains a std, host or OS dependency. Compiling the shared crates for RISC-V is the hard backstop.
 
@@ -204,6 +215,9 @@ The webview may call only these commands and listen to these events. No command 
 | `get_connection_status` | Connection, desired, reported, device info, retry count, connection generation, negotiated mascot flag, last mascot action, `host` (`active, locked, sleeping`) | all |
 | `list_states` | Companion states | all |
 | `set_desired_state` | Set `desired`; sends `SetState` when connected | all |
+| `get_onboarding`, `complete_onboarding`, `restart_onboarding` | First-run state (`completed`), finish it, reopen it ("Run setup again"); see First-run onboarding | all |
+| `get_accessibility`, `request_accessibility`, `open_accessibility_settings` | macOS Accessibility status (`granted, missing, notApplicable`), the system prompt, and the settings pane; see First-run onboarding | all |
+| `get_startup_settings`, `set_launch_at_login` | Launch-at-login state and switch (`startup://changed`); see Launch at login and tray | all |
 | `get_config` | Saved settings: `version`, `revision`, `notice`, `profiles` (every profile as resolved, each slot with `deviceLabel` and `overridden`), `display`, `buddy` | all |
 | `set_display_settings` | `defaultView`, `secondaryView` (a view, or `cycle`); returns the config | all |
 | `set_buddy_settings` | `reactions`, `intensity` (`low, normal, high`); returns the config | all |
@@ -211,6 +225,7 @@ The webview may call only these commands and listen to these events. No command 
 | `set_rotate` | `profile`, `rotate` (`systemVolume` or `shortcuts`, or `null` to reset); returns the config | all |
 | `reset_profile` | `profile`; drops every override of that profile; returns the config | all |
 | `reset_config` | Every setting back to its default; returns the config | all |
+| `save_macro`, `delete_macro` | Create or replace a macro by id; delete one (refused while a binding names it); returns the config | all |
 | `play_mascot_action` | `greet, pet, tickle, surprise, comfort` | all |
 | `get_activity_log` | Newest N activity records | all |
 | `get_diagnostics` | None; returns `DiagnosticsDto` (see Diagnostics) | all |

@@ -14,7 +14,7 @@ Kivori is a desk buddy you control your computer with: the buddy is why you want
 
 **M3 — Paid beta.** Software complete: host takeovers, sleep and lock handling, firmware update and recovery, launch at login with a tray, the installer and an unsigned release pipeline ([`docs/release.md`](docs/release.md)), first-run onboarding, and per-unit provisioning ([`docs/provisioning.md`](docs/provisioning.md)).
 
-Still open, and none of it is code: the hardware validation session (issue #38), signing the installer (needs certificates, #36), and the enclosure print (#33). See [`docs/roadmap.md`](docs/roadmap.md). Product behavior is defined in [`docs/product.md`](docs/product.md); durable technical choices are the ADRs in [`docs/architecture.md`](docs/architecture.md).
+Beta users start with the [user guide](docs/user-guide.md). Still open, and none of it is code: the hardware validation session (issue #38), signing the installer (needs certificates, #36), and the enclosure print (#33). See [`docs/roadmap.md`](docs/roadmap.md). Product behavior is defined in [`docs/product.md`](docs/product.md); durable technical choices are the ADRs in [`docs/architecture.md`](docs/architecture.md).
 
 ## Hardware
 
@@ -89,7 +89,7 @@ Host-sim, Wokwi simulation, and physical hardware are **separate classes of evid
 
 ## Documentation
 
-Four files, one topic each:
+One file per topic:
 
 | File | What it answers |
 |---|---|
@@ -97,6 +97,10 @@ Four files, one topic each:
 | [`docs/architecture.md`](docs/architecture.md) | How it works: components, wire protocol, IPC, rendering, rotary loop, decisions, principles |
 | [`docs/roadmap.md`](docs/roadmap.md) | What gets built next, milestone by milestone (M0 to paid beta to v1) |
 | [`docs/validation.md`](docs/validation.md) | The hardware checklist and how to run a validation session |
+| [`docs/release.md`](docs/release.md) | How to cut a Windows or macOS release, and the unsigned-installer limits |
+| [`docs/provisioning.md`](docs/provisioning.md) | Flashing and checking each new unit (`just provision`) |
+| [`docs/user-guide.md`](docs/user-guide.md) | Short guide for a beta customer: install, setup, controls, recovery |
+| [`docs/bom.md`](docs/bom.md) | Draft bill of materials (prices still to fill in) |
 
 Wokwi simulation setup lives in [`sim/wokwi/README.md`](sim/wokwi/README.md). If the docs disagree,
 `product.md` wins on behavior and the code wins on facts. Older plans, specs and research are in Git
@@ -106,7 +110,7 @@ history.
 
 ```text
 Kivori/
-├── docs/        product, architecture, roadmap, validation
+├── docs/        product, architecture, roadmap, validation, release, provisioning, user guide, BOM
 ├── apps/        Tauri desktop app (native core + Device Studio webview)
 ├── crates/      shared no_std crates: model, protocol, renderer, assets, framebuffer
 ├── firmware/    ESP32-C3 firmware
@@ -130,6 +134,10 @@ just fw-test           # firmware core against host-sim adapters
 just fw-build          # build the product ESP32-C3 firmware (physical-st7789)
 just fw-flash          # flash + monitor the product firmware over USB
 just sim-test          # Wokwi integration scenarios (needs WOKWI_CLI_TOKEN)
+just desktop           # UI dev server + native app with the bundled firmware
+just provision         # flash and check one new unit (docs/provisioning.md)
+just bundle-windows    # build the unsigned Windows installer (docs/release.md)
+just bundle-macos      # build the macOS .app/.dmg (docs/release.md)
 just golden            # deterministic rendering golden-frame tests
 just check-boundaries  # shared-crate dependency firewall
 just assets            # recompile the canonical asset blob
