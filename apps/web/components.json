@@ -5,17 +5,17 @@
   "tsx": true,
   "tailwind": {
     "config": "",
-    "css": "app/globals.css",
+    "css": "../../packages/ui/src/styles/globals.css",
     "baseColor": "neutral",
     "cssVariables": true,
     "prefix": ""
   },
   "iconLibrary": "lucide",
   "aliases": {
-    "components": "@/components",
-    "utils": "@/lib/utils",
-    "ui": "@/components/ui",
-    "lib": "@/lib",
-    "hooks": "@/hooks"
+    "components": "@kivori/ui/components",
+    "utils": "@kivori/ui/lib/utils",
+    "ui": "@kivori/ui/components",
+    "lib": "@kivori/ui/lib",
+    "hooks": "@kivori/ui/hooks"
   }
 }

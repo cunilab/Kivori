@@ -2,12 +2,18 @@ import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { toast } from 'sonner';
 import { TriangleAlert } from 'lucide-react';
-import { Alert, AlertAction, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Alert, AlertAction, AlertTitle } from '@kivori/ui/components/alert';
+import { Button } from '@kivori/ui/components/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@kivori/ui/components/card';
+import { Label } from '@kivori/ui/components/label';
+import { Switch } from '@kivori/ui/components/switch';
+import { ToggleGroup, ToggleGroupItem } from '@kivori/ui/components/toggle-group';
 import { useDevMode } from '@/lib/dev-mode';
 import { playMascotAction, setBuddySettings } from '@/lib/ipc';
 import { INTENSITIES } from '@/lib/ipc/types';

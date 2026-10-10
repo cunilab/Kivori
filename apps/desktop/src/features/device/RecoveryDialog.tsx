@@ -8,7 +8,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+} from '@kivori/ui/components/alert-dialog';
 import { strings } from '@/lib/i18n/strings';
 
 /**

@@ -15,7 +15,7 @@ import { getProduct, getProducts } from '@/content/products';
 import { faqJsonLd } from '@/lib/jsonld';
 import { pageMetadata } from '@/lib/metadata';
 import { DESCRIPTION, TAGLINE } from '@/lib/site';
-import { BTN_PRIMARY, BTN_SECONDARY } from '@/lib/ui';
+import { Button } from '@kivori/ui/components/button';
 
 export const metadata: Metadata = pageMetadata({ description: DESCRIPTION, path: '/' });
 
@@ -71,12 +71,17 @@ export default async function HomePage({ searchParams }: HomePageProps): Promise
               the physical knob and button are why you keep using it.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <a href="#waitlist" className={BTN_PRIMARY}>
+              <Button size="lg" nativeButton={false} render={<a href="#waitlist" />}>
                 Join the waitlist
-              </a>
-              <Link href="/products/kivori" className={BTN_SECONDARY}>
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                nativeButton={false}
+                render={<Link href="/products/kivori" />}
+              >
                 See Kivori
-              </Link>
+              </Button>
             </div>
           </div>
           <div className="relative mx-auto w-full max-w-md">
@@ -250,9 +255,15 @@ export default async function HomePage({ searchParams }: HomePageProps): Promise
           <div className="mt-8 w-full">
             <WaitlistSection initialProduct={preselected} idPrefix="home" />
           </div>
-          <Link href="/products/kivori" className={`${BTN_SECONDARY} mt-6`}>
+          <Button
+            size="lg"
+            variant="outline"
+            className="mt-6"
+            nativeButton={false}
+            render={<Link href="/products/kivori" />}
+          >
             See Kivori
-          </Link>
+          </Button>
         </div>
       </section>
 

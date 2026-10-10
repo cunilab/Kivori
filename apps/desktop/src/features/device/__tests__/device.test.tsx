@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import axe from 'axe-core';
 import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { TooltipProvider } from '@/components/ui/tooltip';
+import { TooltipProvider } from '@kivori/ui/components/tooltip';
 import type { ConnectionStatusDto } from '../../../lib/ipc/types';
 
 vi.mock('../../../lib/ipc', () => ({

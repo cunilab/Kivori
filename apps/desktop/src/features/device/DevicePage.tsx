@@ -1,19 +1,25 @@
 import type { ReactElement, ReactNode } from 'react';
 import { CircleCheck, LoaderCircle, TriangleAlert, Unplug } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Switch } from '@/components/ui/switch';
+import { Button } from '@kivori/ui/components/button';
+import { Alert, AlertDescription, AlertTitle } from '@kivori/ui/components/alert';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@kivori/ui/components/card';
+import { Label } from '@kivori/ui/components/label';
+import { Skeleton } from '@kivori/ui/components/skeleton';
+import { Switch } from '@kivori/ui/components/switch';
 import { Known } from '@/components/kivori/known';
 import { Page } from '@/components/kivori/page';
 import { uiConnection, type UiConnection } from '@/hooks/use-kivori';
 import type { AppInfoDto, ConnectionStatusDto } from '@/lib/ipc/types';
 import { setDevMode, useDevMode } from '@/lib/dev-mode';
 import { strings } from '@/lib/i18n/strings';
-import { cn } from '@/lib/utils';
+import { cn } from '@kivori/ui/lib/utils';
 import { Diagnostics } from './Diagnostics';
 import { FirmwareUpdate } from './FirmwareUpdate';
 import { StartupCard } from './StartupCard';

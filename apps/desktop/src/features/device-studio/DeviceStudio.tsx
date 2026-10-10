@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@kivori/ui/components/card';
 import { DevicePreview } from '../../lib/canvas/DevicePreview';
 import { onConnectionStatus, openPreviewStream, type PreviewStream } from '../../lib/ipc';
 import { PREVIEW_FPS } from '../../lib/ipc/types';

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import type { ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { TooltipProvider } from '@/components/ui/tooltip';
+import { TooltipProvider } from '@kivori/ui/components/tooltip';
 import type { ConnectionStatusDto, DeskStatusDto } from '../../../lib/ipc/types';
 
 vi.mock('../../../lib/ipc', () => ({ playMascotAction: vi.fn(() => Promise.resolve()) }));

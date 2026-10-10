@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+import { Card, CardContent, CardHeader, CardTitle } from '@kivori/ui/components/card';
+import { Label } from '@kivori/ui/components/label';
+import { Switch } from '@kivori/ui/components/switch';
 import { getStartupSettings, onStartupChanged, setLaunchAtLogin } from '@/lib/ipc';
 import type { StartupSettingsDto } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';

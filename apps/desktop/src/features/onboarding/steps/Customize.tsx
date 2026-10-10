@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { toast } from 'sonner';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Label } from '@kivori/ui/components/label';
+import { Switch } from '@kivori/ui/components/switch';
+import { ToggleGroup, ToggleGroupItem } from '@kivori/ui/components/toggle-group';
 import { setBuddySettings, setDisplaySettings } from '@/lib/ipc';
 import { DISPLAY_MODES, INTENSITIES } from '@/lib/ipc/types';
 import type { ConfigDto, DisplayMode, Intensity, StartupSettingsDto } from '@/lib/ipc/types';

@@ -18,10 +18,16 @@ import {
   VolumeX,
   Zap,
 } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardAction, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from '@kivori/ui/components/alert';
+import { Badge } from '@kivori/ui/components/badge';
+import { Button } from '@kivori/ui/components/button';
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+} from '@kivori/ui/components/card';
 import {
   Empty,
   EmptyContent,
@@ -29,9 +35,9 @@ import {
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from '@/components/ui/empty';
-import { Progress } from '@/components/ui/progress';
-import { Skeleton } from '@/components/ui/skeleton';
+} from '@kivori/ui/components/empty';
+import { Progress } from '@kivori/ui/components/progress';
+import { Skeleton } from '@kivori/ui/components/skeleton';
 import { DeviceArt } from '@/components/kivori/device-art';
 import { Known } from '@/components/kivori/known';
 import { Page } from '@/components/kivori/page';
@@ -42,7 +48,8 @@ import { useDevMode } from '@/lib/dev-mode';
 import { playMascotAction } from '@/lib/ipc';
 import type { ConnectionStatusDto, DeskStatusDto } from '@/lib/ipc/types';
 import { format, strings } from '@/lib/i18n/strings';
-import { cn, errorText } from '@/lib/utils';
+import { cn } from '@kivori/ui/lib/utils';
+import { errorText } from '@/lib/utils';
 
 export type NavigateTo = (page: 'display' | 'device') => void;
 

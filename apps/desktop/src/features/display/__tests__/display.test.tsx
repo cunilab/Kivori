@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { Toaster } from '@/components/ui/sonner';
+import { Toaster } from '@kivori/ui/components/sonner';
 import type { ConfigDto, DeskStatusDto } from '../../../lib/ipc/types';
 
 const h = vi.hoisted(() => ({

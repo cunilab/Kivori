@@ -2,7 +2,17 @@
 
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactElement } from 'react';
-import { BTN_PRIMARY } from '@/lib/ui';
+import { Button } from '@kivori/ui/components/button';
+import { Input } from '@kivori/ui/components/input';
+import { Label } from '@kivori/ui/components/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@kivori/ui/components/select';
+import { Textarea } from '@kivori/ui/components/textarea';
 import { HONEYPOT_FIELD, LIMITS } from '@/lib/waitlist';
 
 export interface ProductOption {
@@ -43,9 +53,6 @@ const SCRIPT_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render
 
 type Status = 'idle' | 'submitting' | 'success' | 'error';
 
-const FIELD =
-  'mt-1.5 w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground';
-
 function loadTurnstile(): Promise<TurnstileApi> {
   return new Promise((resolve, reject) => {
     if (window.turnstile) return resolve(window.turnstile);
@@ -84,6 +91,10 @@ export function WaitlistForm({
     referrer: '',
   });
 
+  const productItems = [
+    { value: 'general', label: 'Any / not sure yet' },
+    ...products.map((product) => ({ value: product.slug, label: product.name })),
+  ];
   const selected =
     initialProduct && products.some((product) => product.slug === initialProduct)
       ? initialProduct
@@ -205,56 +216,50 @@ export function WaitlistForm({
       className="w-full rounded-2xl border border-border bg-card p-6 text-left"
     >
       <div>
-        <label htmlFor={id('email')} className="text-sm font-medium">
-          Email
-        </label>
-        <input
+        <Label htmlFor={id('email')}>Email</Label>
+        <Input
           id={id('email')}
           name="email"
           type="email"
           required
           autoComplete="email"
           maxLength={LIMITS.email}
-          className={FIELD}
+          className="mt-1.5 h-10"
         />
       </div>
       <div className="mt-4">
-        <label htmlFor={id('product')} className="text-sm font-medium">
-          Which product?
-        </label>
-        <select
-          id={id('product')}
-          name="product"
-          defaultValue={selected}
-          key={selected}
-          className={FIELD}
-        >
-          <option value="general">Any / not sure yet</option>
-          {products.map((product) => (
-            <option key={product.slug} value={product.slug}>
-              {product.name}
-            </option>
-          ))}
-        </select>
+        <Label htmlFor={id('product')}>Which product?</Label>
+        <Select name="product" defaultValue={selected} key={selected} items={productItems}>
+          <SelectTrigger id={id('product')} className="mt-1.5 h-10 w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {productItems.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="mt-4">
-        <label htmlFor={id('use-case')} className="text-sm font-medium">
+        <Label htmlFor={id('use-case')}>
           What would you use Kivori for?{' '}
           <span className="font-normal text-muted-foreground">(optional)</span>
-        </label>
-        <textarea
+        </Label>
+        <Textarea
           id={id('use-case')}
           name="use_case"
           rows={3}
           maxLength={LIMITS.useCase}
-          className={FIELD}
+          className="mt-1.5"
         />
       </div>
 
       {/* Honeypot: hidden from people and from assistive tech; bots fill it in. */}
       <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
         <label htmlFor={id('website')}>Leave this field empty</label>
-        <input
+        <Input
           id={id('website')}
           name={HONEYPOT_FIELD}
           type="text"
@@ -276,14 +281,15 @@ export function WaitlistForm({
         {status === 'error' ? message : ''}
       </p>
 
-      <button
+      <Button
         type="submit"
+        size="lg"
         disabled={submitting}
         aria-busy={submitting}
-        className={`${BTN_PRIMARY} mt-2 w-full disabled:cursor-wait disabled:opacity-60`}
+        className="mt-2 h-10 w-full disabled:cursor-wait"
       >
         {submitting ? 'Sending...' : 'Join the waitlist'}
-      </button>
+      </Button>
       <p className="mt-3 text-xs text-muted-foreground">
         We store your email, choice and answers only to tell you about Kivori. See the{' '}
         <Link href="/privacy" className="underline">

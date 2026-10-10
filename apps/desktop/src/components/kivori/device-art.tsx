@@ -12,7 +12,7 @@ import {
   VolumeX,
 } from 'lucide-react';
 import { mascotUrl } from '@/lib/brand';
-import { cn } from '@/lib/utils';
+import { cn } from '@kivori/ui/lib/utils';
 import type { DeskStatusDto, DisplayMode } from '@/lib/ipc/types';
 
 // Custom (no shadcn equivalent): a CSS illustration of the Kivori hardware and its five screen

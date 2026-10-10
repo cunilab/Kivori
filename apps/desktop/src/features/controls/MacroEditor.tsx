@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import type { FormEvent, ReactElement } from 'react';
 import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Badge } from '@kivori/ui/components/badge';
+import { Button } from '@kivori/ui/components/button';
+import { Input } from '@kivori/ui/components/input';
+import { Label } from '@kivori/ui/components/label';
 import {
   Sheet,
   SheetContent,
@@ -12,7 +12,7 @@ import {
   SheetFooter,
   SheetHeader,
   SheetTitle,
-} from '@/components/ui/sheet';
+} from '@kivori/ui/components/sheet';
 import { saveMacro } from '@/lib/ipc';
 import { MACRO_LIMITS } from '@/lib/ipc/types';
 import type { ActionCatalogEntryDto, MacroSpec, StepSpec } from '@/lib/ipc/types';

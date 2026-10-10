@@ -8,11 +8,13 @@ on:
     branches: [main]
     paths:
       - 'apps/web/**'
+      - 'packages/ui/**'
       - 'assets/**'
       - '.github/workflows/web.yml'
   pull_request:
     paths:
       - 'apps/web/**'
+      - 'packages/ui/**'
       - 'assets/**'
       - '.github/workflows/web.yml'
 

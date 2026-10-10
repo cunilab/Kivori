@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import type { FormEvent, ReactElement } from 'react';
-import { Button } from '../../components/ui/button';
-import { Input } from '../../components/ui/input';
-import { Label } from '../../components/ui/label';
+import { Button } from '@kivori/ui/components/button';
+import { Input } from '@kivori/ui/components/input';
+import { Label } from '@kivori/ui/components/label';
 import { testAction } from '../../lib/ipc';
 import type { ActionSpec } from '../../lib/ipc/types';
 import { strings } from '../../lib/i18n/strings';

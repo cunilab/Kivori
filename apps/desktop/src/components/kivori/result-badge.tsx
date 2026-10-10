@@ -1,9 +1,9 @@
 import type { ReactElement } from 'react';
 import { CircleCheck, CircleHelp, LoaderCircle, TriangleAlert } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from '@kivori/ui/components/badge';
 import type { DeskResult } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
-import { cn } from '@/lib/utils';
+import { cn } from '@kivori/ui/lib/utils';
 
 // `tone` is the honest-result contract: only a confirmed/started outcome is "success" (green, check).
 // Unverified is amber with a "?" like the device badge, never a check; an error is red.
