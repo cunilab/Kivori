@@ -10,6 +10,7 @@ import { FeatureIcon } from '@/components/feature-icon';
 import { JsonLd } from '@/components/json-ld';
 import { ProductCard } from '@/components/product-card';
 import { Section } from '@/components/section';
+import { WaitlistSection } from '@/components/waitlist-section';
 import { getProduct, getProducts } from '@/content/products';
 import { faqJsonLd } from '@/lib/jsonld';
 import { pageMetadata } from '@/lib/metadata';
@@ -39,7 +40,13 @@ const VIEWS = [
   { name: 'System', does: 'CPU and memory.' },
 ] as const;
 
-export default function HomePage(): ReactElement {
+interface HomePageProps {
+  searchParams: Promise<{ product?: string | string[] }>;
+}
+
+export default async function HomePage({ searchParams }: HomePageProps): Promise<ReactElement> {
+  const { product: productParam } = await searchParams;
+  const preselected = Array.isArray(productParam) ? productParam[0] : productParam;
   const featured = getProduct('kivori');
   const products = getProducts();
   const features = featured?.features ?? [];
@@ -240,10 +247,9 @@ export default function HomePage(): ReactElement {
             There is no price or ship date yet. Put your name down and we will tell you when there
             is.
           </p>
-          {/* W4 replaces this note with the sign-up form (it reads ?product=<slug> from the URL). */}
-          <p className="mt-6 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
-            The sign-up form is on its way.
-          </p>
+          <div className="mt-8 w-full">
+            <WaitlistSection initialProduct={preselected} idPrefix="home" />
+          </div>
           <Link href="/products/kivori" className={`${BTN_SECONDARY} mt-6`}>
             See Kivori
           </Link>

@@ -26,4 +26,40 @@ Run from the repo root (or `cd apps/web`).
    Without the secrets the workflow still builds and reports the Worker size, then skips deploy.
 4. PR previews use `wrangler versions upload`, which requires the Worker to exist, so the first `main` deploy comes first.
 
-W1 binds no resources. R2, D1, Turnstile, rate limiting and Analytics Engine arrive in later slices.
+## Waitlist (W4)
+
+Sign-ups go to `POST /api/waitlist` and are stored in D1 (`WAITLIST_DB`, database `kivori-web`).
+Checks, in order: honeypot, field lengths, email, product, Turnstile, per-IP rate limit (5 per
+minute, `WAITLIST_RATE_LIMITER`). Repeat sign-ups return the same response as new ones. No IP is stored.
+
+### Migrations
+
+```sh
+cd apps/web
+bunx wrangler d1 migrations apply kivori-web --local    # local preview database
+bunx wrangler d1 migrations apply kivori-web --remote   # production (the deploy workflow also runs this)
+```
+
+### Exporting the list
+
+```sh
+bunx wrangler d1 execute kivori-web --remote --command "SELECT email, product, created_at FROM waitlist ORDER BY created_at"
+# add --json for machine-readable output
+```
+
+### Turnstile keys
+
+The repo ships Cloudflare's always-pass **test** keys: the site key is in `wrangler.jsonc` `vars`
+(`TURNSTILE_SITE_KEY`), and the server falls back to the test secret only while the site key is the
+test key. A real site key with no `TURNSTILE_SECRET_KEY` rejects every sign-up (fail closed). To go live:
+
+1. Cloudflare dashboard, Turnstile, Add widget, for hostname `kivori-web.andres12holivin.workers.dev`
+   (and the custom domain later).
+2. Put the widget's site key in `wrangler.jsonc` `vars.TURNSTILE_SITE_KEY`.
+3. `bunx wrangler secret put TURNSTILE_SECRET_KEY` and paste the widget's secret.
+4. Deploy.
+
+For local testing the test token `XXXX.DUMMY.TOKEN.XXXX` passes with the test secret.
+
+Sign-up counts (product and utm_source only, no email) go to the `SIGNUPS` Analytics Engine dataset
+`kivori_signups`. R2 and Cloudflare Web Analytics are not bound yet.
