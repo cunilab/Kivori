@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import type { ReactElement } from 'react';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { pageMetadata } from '@/lib/metadata';
-import { GITHUB_URL } from '@/lib/site';
 
 export const metadata: Metadata = pageMetadata({
   title: 'Privacy',
@@ -9,7 +9,22 @@ export const metadata: Metadata = pageMetadata({
   path: '/privacy',
 });
 
+// Rendered per request so CONTACT_EMAIL is read from the Worker env at runtime.
+export const dynamic = 'force-dynamic';
+
+function contactEmail(): string {
+  let value: unknown;
+  try {
+    value = (getCloudflareContext().env as { CONTACT_EMAIL?: unknown }).CONTACT_EMAIL;
+  } catch {
+    // outside a Worker (next dev, build): fall back to the process env
+  }
+  if (typeof value !== 'string' || !value.trim()) value = process.env.CONTACT_EMAIL;
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 export default function PrivacyPage(): ReactElement {
+  const email = contactEmail();
   return (
     <div className="px-5 py-14 sm:py-20">
       <div className="mx-auto max-w-3xl">
@@ -53,13 +68,14 @@ export default function PrivacyPage(): ReactElement {
 
         <h2 className="mt-10 font-display text-2xl font-semibold">Deleting your data</h2>
         <p className="mt-3 text-muted-foreground">
-          To have your waitlist entry deleted,{' '}
-          <a href={`${GITHUB_URL}/issues`} className="text-primary underline">
-            open a GitHub issue
-          </a>{' '}
-          (do not post your email in it; ask for deletion and we will arrange a private way to
-          confirm). {/* TODO(owner): replace with a privacy@ mailbox once the domain exists. */}A
-          privacy contact email will be added here once the site has its own domain.
+          To have your waitlist entry deleted, email us and ask for deletion.{' '}
+          {email ? (
+            <a href={`mailto:${email}`} className="text-primary underline">
+              {email}
+            </a>
+          ) : (
+            'Contact details will be published here before launch.'
+          )}
         </p>
       </div>
     </div>

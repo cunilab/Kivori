@@ -1,11 +1,9 @@
 // Build-time image pipeline, run by `predev`/`prebuild`/`preview` through bun (it imports the TS content).
 // Nothing here ships in the Worker: it writes static files into the gitignored public/generated/.
-//   1. Gallery: docs/assets/*.png -> resized WebP (1600 px and 800 px wide). The 1.6 MB PNG sources stay
-//      where they are and are never copied into git.
-//   2. Share images: 1200x630 PNGs per product plus default.png, composed with satori (text becomes
-//      paths, so no font is needed at rasterise time) and rasterised with sharp. Rendering these at
-//      request time with ImageResponse bloats the Worker with the resvg wasm and 500s on prerender.
-import { mkdir, readFile, stat } from 'node:fs/promises';
+// Share images: 1200x630 PNGs per product plus default.png, composed with satori (text becomes
+// paths, so no font is needed at rasterise time) and rasterised with sharp. Rendering these at
+// request time with ImageResponse bloats the Worker with the resvg wasm and 500s on prerender.
+import { mkdir, readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
@@ -18,39 +16,6 @@ const WEB_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 const OUT = `${WEB_ROOT}public/generated`;
 const require = createRequire(import.meta.url);
-
-const GALLERY = [
-  {
-    source: `${REPO_ROOT}docs/assets/soft-arc-faceplate-blueprint.png`,
-    name: 'soft-arc-faceplate-blueprint',
-  },
-  { source: `${REPO_ROOT}docs/assets/image.png`, name: 'image' },
-];
-const WIDTHS = [1600, 800];
-
-async function isFresh(output, source) {
-  try {
-    const [o, s] = await Promise.all([stat(output), stat(source)]);
-    return o.mtimeMs >= s.mtimeMs;
-  } catch {
-    return false;
-  }
-}
-
-async function buildGallery() {
-  await mkdir(OUT, { recursive: true });
-  for (const { source, name } of GALLERY) {
-    for (const width of WIDTHS) {
-      const output = `${OUT}/${name}-${width}.webp`;
-      if (await isFresh(output, source)) continue;
-      await sharp(source)
-        .resize({ width, withoutEnlargement: true })
-        .webp({ quality: 82 })
-        .toFile(output);
-      console.log(`[assets] ${name}-${width}.webp`);
-    }
-  }
-}
 
 const NAVY = '#0c101c';
 const GREEN = '#7df2c4';
@@ -156,5 +121,4 @@ async function buildShareImages() {
   }
 }
 
-await buildGallery();
 await buildShareImages();

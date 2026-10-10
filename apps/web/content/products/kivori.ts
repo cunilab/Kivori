@@ -1,7 +1,7 @@
 import type { Product } from './types';
 
-// Every fact comes from the repo (README.md, docs/product.md, docs/user-guide.md, docs/bom.md,
-// hardware/enclosure/README.md). Unknowns are written as "TBC" instead of guessed.
+// Public selling points only. Keep part names, exact dimensions and build details out of this file;
+// a fact that is not decided yet is left out rather than guessed.
 export const kivori: Product = {
   slug: 'kivori',
   name: 'Kivori',
@@ -14,24 +14,6 @@ export const kivori: Product = {
     art: 'device',
     alt: 'Illustration of the Kivori wedge: a big knob on the left, a square screen and three buttons on the right.',
   },
-  gallery: [
-    {
-      src: '/generated/soft-arc-faceplate-blueprint-1600.webp',
-      width: 1600,
-      height: 1174,
-      alt: 'Blueprint of the Kivori faceplate: the 48 mm knob, the square display opening and the three button openings, with dimensions.',
-      caption:
-        'Faceplate layout from the early blueprint, drawn at 100 mm wide. The current prototype is 110 mm wide so the knob clears the left button.',
-    },
-    {
-      src: '/generated/image-1600.webp',
-      width: 1600,
-      height: 1200,
-      alt: 'Five-view blueprint of the Kivori enclosure: front, right side, back, top back and top side.',
-      caption:
-        'Five views of the enclosure blueprint: the wedge profile (30 mm at the far edge, 18 mm at the near edge) and the USB-C opening.',
-    },
-  ],
   features: [
     {
       title: 'App-aware profiles',
@@ -59,8 +41,8 @@ export const kivori: Product = {
       icon: 'smile',
     },
     {
-      title: 'BOOT recovery',
-      body: 'Hold the knob for about 10 seconds to restart Kivori even if the app is closed. If a firmware update fails, the BOOT button restores the device in three steps.',
+      title: 'Always recoverable',
+      body: 'Hold the knob for about 10 seconds to restart Kivori even if the app is closed. If an update ever goes wrong, the device can always be restored from the app.',
       icon: 'life-buoy',
     },
     {
@@ -73,43 +55,35 @@ export const kivori: Product = {
     {
       group: 'Controls',
       rows: [
-        { label: 'Rotary encoder', value: 'HW-040 with push switch (beta part)' },
-        { label: 'Knob', value: '48 mm' },
-        { label: 'Buttons', value: '3 contextual buttons, Press and Hold each' },
-        { label: 'Recovery', value: 'Hold the knob about 10 s to reboot' },
+        { label: 'Controls', value: 'Clicky knob with press, plus three buttons' },
+        { label: 'Buttons', value: 'Press and Hold on each button' },
+        { label: 'Restart', value: 'Hold the knob for about 10 seconds' },
       ],
     },
     {
       group: 'Display',
       rows: [
-        { label: 'Panel', value: '1.3" ST7789, 240 × 240' },
+        { label: 'Display', value: 'Bright colour screen' },
         { label: 'Views', value: 'Buddy, Clock, Volume, Media, System' },
       ],
     },
     {
-      group: 'Electronics',
-      rows: [
-        { label: 'MCU', value: 'ESP32-C3' },
-        { label: 'Connection', value: 'USB-C: power, flashing and data' },
-        { label: 'Not included', value: 'Buzzer, haptics, light sensor' },
-      ],
+      group: 'Connection',
+      rows: [{ label: 'Connection', value: 'USB-C (power and data)' }],
     },
     {
-      group: 'Enclosure',
+      group: 'Design',
       rows: [
-        { label: 'Size', value: '110 × 70 mm wedge' },
-        { label: 'Thickness', value: '18 mm near edge, 30 mm far edge' },
-        { label: 'Face tilt', value: 'About 10° towards you' },
-        { label: 'Build', value: 'Printed shell, snap-fit, no screws (prototype v3)' },
-        { label: 'Weight', value: 'TBC' },
+        { label: 'Size', value: 'Fits beside your keyboard' },
+        { label: 'Angle', value: 'Tilted towards you' },
       ],
     },
     {
       group: 'Software',
       rows: [
         { label: 'Desktop app', value: 'Kivori Desktop' },
-        { label: 'Privacy', value: 'Offline, no account, no telemetry' },
-        { label: 'Configuration', value: 'Stored on your computer, per user' },
+        { label: 'Works with', value: 'Windows 10 and 11 · macOS coming later' },
+        { label: 'Privacy', value: 'Works offline, no account, no telemetry' },
       ],
     },
   ],
@@ -117,12 +91,6 @@ export const kivori: Product = {
     { os: 'Windows', status: 'supported-beta' },
     { os: 'macOS', status: 'later' },
     { os: 'Linux', status: 'not-planned' },
-  ],
-  inTheBox: [
-    'Kivori unit (knob, three buttons, screen): TBC',
-    'USB-C data cable: TBC',
-    'Installer download link or USB stick: TBC',
-    'Quick-start card: TBC',
   ],
   faq: [
     {
@@ -146,13 +114,9 @@ export const kivori: Product = {
         'The screen shows a badge after each action. Green is Confirmed (Kivori read the new state back), blue is Started, amber is Unverified (sent, but the computer cannot confirm it, as with shortcuts and media keys) and red is Error.',
     },
     {
-      question: 'What if the app crashes or a firmware update fails?',
+      question: 'What if the app crashes or an update fails?',
       answer:
-        'If the app stops, the screen shows Offline within about 4 seconds. Holding the knob for about 10 seconds restarts the device without the app. After a failed update, the BOOT button restores it in three steps.',
-    },
-    {
-      question: 'What is in the box?',
-      answer: 'To be confirmed. The contents of the beta kit are not final yet.',
+        'If the app stops, the screen shows Offline within about 4 seconds. Holding the knob for about 10 seconds restarts the device without the app. After a failed update, the app can always restore the device.',
     },
     {
       question: 'How much is it and when does it ship?',

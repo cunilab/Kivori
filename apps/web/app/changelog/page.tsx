@@ -1,17 +1,16 @@
 import type { Metadata } from 'next';
 import type { ReactElement } from 'react';
 import { BetaBadge } from '@/components/beta-badge';
-import { Markdown } from '@/components/markdown';
 import { formatDate } from '@/lib/format';
 import { pageMetadata } from '@/lib/metadata';
-import { loadReleases, RELEASES_PAGE_URL } from '@/lib/releases';
+import { loadReleases } from '@/lib/releases';
 
-// Rendered per request; GitHub data is cached for 600 s by lib/github-cache.ts.
+// Rendered per request; release data is cached for 600 s by lib/github-cache.ts.
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = pageMetadata({
   title: 'Changelog',
-  description: 'Release notes for every Kivori desktop version.',
+  description: 'Every Kivori desktop version and when it came out.',
   path: '/changelog',
 });
 
@@ -25,11 +24,7 @@ export default async function ChangelogPage(): Promise<ReactElement> {
 
         {result.status === 'error' ? (
           <p className="mt-8 text-muted-foreground">
-            We could not load the release notes right now. You can read them on{' '}
-            <a href={RELEASES_PAGE_URL} className="text-primary underline">
-              GitHub
-            </a>
-            .
+            We could not load the version history right now. Please try again shortly.
           </p>
         ) : result.releases.length === 0 ? (
           <p className="mt-8 text-muted-foreground">No releases yet.</p>
@@ -39,17 +34,12 @@ export default async function ChangelogPage(): Promise<ReactElement> {
               <li key={release.tag} id={`v${release.version}`} className="scroll-mt-20">
                 <div className="flex flex-wrap items-center gap-3">
                   <h2 className="font-display text-2xl font-semibold">
-                    <a href={`#v${release.version}`}>{release.name}</a>
+                    <a href={`#v${release.version}`}>Version {release.version}</a>
                   </h2>
                   {release.prerelease ? <BetaBadge /> : null}
-                  <span className="text-sm text-muted-foreground">{formatDate(release.date)}</span>
-                </div>
-                <div className="mt-4">
-                  {release.body.trim() ? (
-                    <Markdown source={release.body} />
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No release notes.</p>
-                  )}
+                  <span className="text-sm text-muted-foreground">
+                    · {formatDate(release.date)}
+                  </span>
                 </div>
               </li>
             ))}

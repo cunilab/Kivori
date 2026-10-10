@@ -1,26 +1,21 @@
 import type { Metadata } from 'next';
 import type { ReactElement } from 'react';
 import { BetaBadge } from '@/components/beta-badge';
-import { CopyButton } from '@/components/copy-button';
 import { JsonLd } from '@/components/json-ld';
 import { formatBytes, formatDate } from '@/lib/format';
 import { softwareApplicationJsonLd } from '@/lib/jsonld';
 import { pageMetadata } from '@/lib/metadata';
-import { loadReleases, RELEASES_PAGE_URL, type Release } from '@/lib/releases';
-import { GITHUB_URL } from '@/lib/site';
-import { BTN_PRIMARY, BTN_SECONDARY } from '@/lib/ui';
+import { loadReleases, type Release } from '@/lib/releases';
+import { BTN_PRIMARY } from '@/lib/ui';
 
-// Rendered per request; GitHub data is cached for 600 s by lib/github-cache.ts.
+// Rendered per request; release data is cached for 600 s by lib/github-cache.ts.
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = pageMetadata({
   title: 'Download',
-  description:
-    'Download the Kivori desktop app for Windows 10 and 11, with checksum and release history.',
+  description: 'Download the Kivori desktop app for Windows 10 and 11, with the version history.',
   path: '/download',
 });
-
-const USER_GUIDE_URL = `${GITHUB_URL}/blob/main/docs/user-guide.md`;
 
 function Card({ children }: { children: React.ReactNode }): ReactElement {
   return <div className="rounded-2xl border border-border bg-card p-6 sm:p-8">{children}</div>;
@@ -41,22 +36,13 @@ function LatestCard({ release }: { release: Release }): ReactElement {
       {installer ? (
         <div className="mt-6 space-y-5">
           <div className="flex flex-wrap items-center gap-4">
-            <a href="/download/windows/latest" className={BTN_PRIMARY}>
+            <a href={`/download/windows/${release.version}`} className={BTN_PRIMARY}>
               Download for Windows
             </a>
             <span className="text-sm text-muted-foreground">
-              {installer.name} · {formatBytes(installer.size)}
+              Windows 10 and 11 · {formatBytes(installer.size)}
             </span>
           </div>
-          {release.sha256 ? (
-            <div>
-              <p className="text-sm font-medium">SHA-256</p>
-              <div className="mt-1 flex flex-wrap items-center gap-3">
-                <code className="text-xs break-all text-muted-foreground">{release.sha256}</code>
-                <CopyButton value={release.sha256} label="Copy SHA-256 checksum" />
-              </div>
-            </div>
-          ) : null}
         </div>
       ) : (
         <div className="mt-6">
@@ -71,10 +57,7 @@ function LatestCard({ release }: { release: Release }): ReactElement {
         </div>
       )}
       <p className="mt-6 text-sm">
-        <a href={release.htmlUrl} className="text-primary underline">
-          Release notes on GitHub
-        </a>{' '}
-        or see the{' '}
+        See what is new in the{' '}
         <a href="/changelog" className="text-primary underline">
           changelog
         </a>
@@ -87,14 +70,9 @@ function LatestCard({ release }: { release: Release }): ReactElement {
 function Fallback(): ReactElement {
   return (
     <Card>
-      <p className="font-display text-xl font-semibold">We could not load the latest release</p>
-      <p className="mt-2 text-muted-foreground">
-        GitHub did not answer just now. Try again in a minute, or get Kivori straight from the
-        releases page.
+      <p className="font-display text-xl font-semibold">
+        Downloads are temporarily unavailable, please try again shortly
       </p>
-      <a href={RELEASES_PAGE_URL} className={`${BTN_SECONDARY} mt-5`}>
-        Open GitHub releases
-      </a>
     </Card>
   );
 }
@@ -146,17 +124,8 @@ export default async function DownloadPage(): Promise<ReactElement> {
           the SmartScreen step will go away with it.
         </p>
         <p className="mt-4 text-muted-foreground">
-          Kivori updates the device firmware itself: when the firmware in the app is newer than the
-          one on your device, you flash it from the app. You never download firmware separately.
+          Kivori keeps your device up to date from the app, so there is nothing else to download.
         </p>
-        <p className="mt-4 text-sm">
-          New here? Read the{' '}
-          <a href={USER_GUIDE_URL} className="text-primary underline">
-            user guide
-          </a>
-          .
-        </p>
-
         {older.length > 0 ? (
           <>
             <h2 className="mt-12 font-display text-2xl font-semibold">Older versions</h2>
@@ -175,8 +144,11 @@ export default async function DownloadPage(): Promise<ReactElement> {
                   <span className="flex items-center gap-4 text-muted-foreground">
                     {formatDate(release.date)}
                     {release.installer ? (
-                      <a href={release.installer.url} className="text-primary underline">
-                        {release.installer.name}
+                      <a
+                        href={`/download/windows/${release.version}`}
+                        className="text-primary underline"
+                      >
+                        Download
                       </a>
                     ) : (
                       <span>No installer</span>

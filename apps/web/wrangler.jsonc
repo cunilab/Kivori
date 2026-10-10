@@ -42,5 +42,8 @@
     // Cloudflare's always-pass TEST site key. Replace with the real widget's key (see README).
     // The matching secret is `TURNSTILE_SECRET_KEY` (a wrangler secret, never committed).
     "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
+    // Public contact address shown on /privacy. Leave empty until the mailbox exists; the page then
+    // says contact details are coming before launch.
+    "CONTACT_EMAIL": "",
   },
 }

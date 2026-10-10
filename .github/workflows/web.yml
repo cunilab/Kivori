@@ -40,6 +40,9 @@ jobs:
       - name: Build (next build)
         run: bun --filter kivori-web build
 
+      - name: Leak check (client-facing output)
+        run: bun --filter kivori-web check:leaks
+
       - name: Build (OpenNext for Cloudflare)
         working-directory: apps/web
         run: bunx opennextjs-cloudflare build

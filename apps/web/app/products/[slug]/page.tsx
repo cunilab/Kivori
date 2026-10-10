@@ -37,11 +37,6 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
   });
 }
 
-/** The 800 px twin of a gallery image, used for the thumbnail. */
-function thumbnail(src: string): string {
-  return src.replace(/-1600\.webp$/, '-800.webp');
-}
-
 export default async function ProductPage({ params }: ProductPageProps): Promise<ReactElement> {
   const { slug } = await params;
   const product = getProduct(slug);
@@ -109,38 +104,6 @@ export default async function ProductPage({ params }: ProductPageProps): Promise
         </div>
       </section>
 
-      {product.gallery.length > 0 ? (
-        <Section
-          id="gallery"
-          tone="muted"
-          eyebrow="Gallery"
-          title="Drawn before it is built"
-          intro="There are no product photos yet. These are the enclosure blueprints the prototype follows."
-        >
-          <ul className="grid gap-6 md:grid-cols-2">
-            {product.gallery.map((image) => (
-              <li key={image.src}>
-                <figure className="overflow-hidden rounded-2xl border border-border bg-card">
-                  <a href={image.src} aria-label={`Open full size: ${image.alt}`}>
-                    <Image
-                      src={thumbnail(image.src)}
-                      alt={image.alt}
-                      width={800}
-                      height={Math.round((image.height / image.width) * 800)}
-                      sizes="(min-width: 768px) 50vw, 100vw"
-                      className="h-auto w-full"
-                    />
-                  </a>
-                  <figcaption className="p-4 text-sm text-muted-foreground">
-                    {image.caption}
-                  </figcaption>
-                </figure>
-              </li>
-            ))}
-          </ul>
-        </Section>
-      ) : null}
-
       <Section id="features" eyebrow="Features" title={`What ${product.name} does`}>
         <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {product.features.map((feature) => (
@@ -188,21 +151,17 @@ export default async function ProductPage({ params }: ProductPageProps): Promise
         </ul>
       </Section>
 
-      <Section
-        id="in-the-box"
-        tone="muted"
-        eyebrow="In the box"
-        title="What you get"
-        intro="The beta kit is not final, so the contents are still to be confirmed."
-      >
-        <ul className="max-w-xl divide-y divide-border rounded-2xl border border-border bg-card">
-          {product.inTheBox.map((item) => (
-            <li key={item} className="px-5 py-3 text-sm">
-              {item}
-            </li>
-          ))}
-        </ul>
-      </Section>
+      {product.inTheBox && product.inTheBox.length > 0 ? (
+        <Section id="in-the-box" tone="muted" eyebrow="In the box" title="What you get">
+          <ul className="max-w-xl divide-y divide-border rounded-2xl border border-border bg-card">
+            {product.inTheBox.map((item) => (
+              <li key={item} className="px-5 py-3 text-sm">
+                {item}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : null}
 
       <Section id="faq" eyebrow="Questions" title="Good to know">
         <div className="max-w-3xl">
