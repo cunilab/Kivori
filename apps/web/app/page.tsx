@@ -4,7 +4,7 @@ import type { Metadata } from 'next';
 import type { ReactElement } from 'react';
 import mascot from '@brand/mascot.svg';
 import { ConfirmationBadges } from '@/components/confirmation-badges';
-import { DeviceIllustration } from '@/components/device-illustration';
+import { renders } from '@/lib/media';
 import { FaqList } from '@/components/faq-list';
 import { FeatureIcon } from '@/components/feature-icon';
 import { JsonLd } from '@/components/json-ld';
@@ -84,18 +84,14 @@ export default async function HomePage({ searchParams }: HomePageProps): Promise
               </Button>
             </div>
           </div>
-          <div className="relative mx-auto w-full max-w-md">
-            <DeviceIllustration
-              label="Illustration of Kivori: a wedge-shaped desk device with a big knob, a small square screen and three buttons."
-              className="w-full drop-shadow-xl"
-            />
+          <div className="mx-auto w-full max-w-xl">
             <Image
-              src={mascot}
-              alt="The Kivori keycap buddy"
-              width={120}
-              height={120}
+              src={renders.heroTransparent.src}
+              alt={renders.heroTransparent.alt}
+              width={renders.heroTransparent.width}
+              height={renders.heroTransparent.height}
               priority
-              className="animate-float absolute -top-8 right-2 sm:-top-10 sm:right-0"
+              className="h-auto w-full"
             />
           </div>
         </div>
