@@ -153,6 +153,22 @@
     @apply min-h-screen bg-background font-sans text-foreground antialiased;
   }
 
+  /* Visible keyboard focus in both themes (primary is the darker green in light mode). */
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+
   button:not(:disabled),
   [role='button']:not([aria-disabled='true']) {
     cursor: pointer;
