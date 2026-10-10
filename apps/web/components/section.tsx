@@ -60,7 +60,7 @@ export function Section({
       id={id}
       aria-labelledby={hasHeading ? `${id}-title` : undefined}
       className={cn(
-        'scroll-mt-14 px-5 py-20 sm:px-8 sm:py-28',
+        'scroll-mt-14 overflow-x-clip px-5 py-20 sm:px-8 sm:py-28',
         tone === 'surface' && 'bg-surface',
         tone === 'dark' && 'dark bg-[#0c101c] text-foreground',
         className,

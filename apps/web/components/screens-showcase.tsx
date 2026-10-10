@@ -55,7 +55,7 @@ const VIEWS: readonly View[] = [
 export function ScreensShowcase(): ReactElement {
   return (
     <Tabs defaultValue="buddy" className="items-center gap-12">
-      <TabsList className="h-auto max-w-full flex-wrap justify-center gap-1 rounded-full bg-white/8 p-1.5">
+      <TabsList className="h-auto! max-w-full flex-wrap justify-center gap-1 rounded-full bg-white/8 p-1.5">
         {VIEWS.map((view) => (
           <TabsTrigger
             key={view.value}
