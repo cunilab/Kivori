@@ -30,7 +30,9 @@ export function SectionHeading({
       <h2 id={id} className={cn(size, eyebrow && 'mt-3.5')}>
         {title}
       </h2>
-      {intro ? <p className="lead mt-4 max-w-[52ch]">{intro}</p> : null}
+      {intro ? (
+        <p className={cn('lead mt-4 max-w-[52ch]', align === 'center' && 'mx-auto')}>{intro}</p>
+      ) : null}
     </div>
   );
 }

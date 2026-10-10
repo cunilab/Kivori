@@ -191,7 +191,7 @@ export function CustomizeSection(): ReactElement {
     >
       <div className="grid items-center gap-6 md:grid-cols-2">
         <Card className="gap-5 rounded-2xl p-6 ring-1 ring-border">
-          <p className="pixel text-xs text-muted-foreground">Keys in Meetings</p>
+          <p className="pixel text-xs text-muted-foreground">Example: keys in Meetings</p>
           <ul className="grid grid-cols-3 gap-3">
             {KEYS.map((item) => (
               <li key={item.key} className="flex flex-col items-center gap-3 text-center">
@@ -208,7 +208,7 @@ export function CustomizeSection(): ReactElement {
           </ul>
         </Card>
         <Card className="gap-4 rounded-2xl p-6 ring-1 ring-border">
-          <p className="pixel text-xs text-muted-foreground">One-press macro</p>
+          <p className="pixel text-xs text-muted-foreground">Example: one-press macro</p>
           <ol className="flex flex-wrap items-center gap-2 text-sm">
             {['Mute mic', 'Open notes', 'Start timer'].map((step, index) => (
               <li key={step} className="flex items-center gap-2">

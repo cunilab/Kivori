@@ -6,7 +6,7 @@ import { FOOTER_NAV } from '@/lib/nav';
 export function SiteFooter(): ReactElement {
   return (
     <footer className="border-t border-border">
-      <div className="mx-auto max-w-[1180px] px-5 py-14 sm:px-8">
+      <div className="mx-auto max-w-[calc(1180px+4rem)] px-5 py-14 sm:px-8">
         <div className="grid gap-10 sm:grid-cols-[1.5fr_1fr_1fr]">
           <div>
             <Link
