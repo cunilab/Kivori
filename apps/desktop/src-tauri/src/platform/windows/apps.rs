@@ -120,16 +120,18 @@ unsafe fn bitmap_bgra(bitmap: HBITMAP) -> Option<(u32, u32, Vec<u8>)> {
     if read == 0 || w <= 0 || h <= 0 || w > 512 || h > 512 {
         return None;
     }
-    let mut info = BITMAPINFO::default();
-    info.bmiHeader = BITMAPINFOHEADER {
-        biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-        biWidth: w,
-        // Negative: rows run top to bottom.
-        biHeight: -h,
-        biPlanes: 1,
-        biBitCount: 32,
-        biCompression: BI_RGB.0,
-        ..BITMAPINFOHEADER::default()
+    let mut info = BITMAPINFO {
+        bmiHeader: BITMAPINFOHEADER {
+            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: w,
+            // Negative: rows run top to bottom.
+            biHeight: -h,
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB.0,
+            ..BITMAPINFOHEADER::default()
+        },
+        ..BITMAPINFO::default()
     };
     let mut pixels = vec![0u8; (w as usize) * (h as usize) * 4];
     let dc = GetDC(HWND::default());
@@ -159,8 +161,8 @@ unsafe fn icon_rgba(icon: HICON) -> Option<(u32, u32, Vec<u8>)> {
         }
     }
     let (w, h, mut px) = color?;
-    let has_alpha = px.chunks_exact(4).any(|p| p[3] != 0);
-    for (i, p) in px.chunks_exact_mut(4).enumerate() {
+    let has_alpha = px.as_chunks::<4>().0.iter().any(|p| p[3] != 0);
+    for (i, p) in px.as_chunks_mut::<4>().0.iter_mut().enumerate() {
         p.swap(0, 2);
         if !has_alpha {
             // A black mask pixel is opaque, a white one transparent.
