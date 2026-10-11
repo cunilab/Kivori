@@ -159,6 +159,14 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 - The desktop sends `Triggered` only when `QUIET_ACK_V1` was negotiated (`Session::send_feedback`); otherwise it sends `Unverified`, exactly as before.
 - The device shows `Triggered` for 400 ms: the keycap press and a brightened legend, no badge, never a success look, and `buddy_face` never celebrates for it. Activity and Test report it as Unverified.
 
+### Idle life and brightness (protocol 1.6, `IDLE_LIFE_V1`, ADR-0012)
+
+- One appended message: tag 21 `BuddySettings { session, personality, self_play, brightness }` (desktop to device). The device applies it only from the accepted session with the capability negotiated, and keeps the last values until it restarts. Desktop sends it on every session start and whenever the personality, reactions or brightness change (reactions are sent off while the screen is locked).
+- The firmware runs the idle moments itself (`kivori_model::IdleLife` beside `MascotAnimator`; the runtime polls it every tick). Moments: blinks and the slow gaze drift (pure functions of time in `MascotAnimator::pose_at`), glances left or right (`MascotAnimator::glance`, Idle and Happy only; every 3-6 s playful, 5-10 s cozy, 9-15 s calm; 1.4 s eased, 2 to 4 px by personality), the buddy's own reactions (`SelfPlay`, the same scheduler the desktop director wraps: calm 18-30 s, cozy 8-16 s, playful 4-8 s, only in Idle and Happy) and a look towards a touched control (`MascotAnimator::look_at`, from the knob turn or switch going down and each button going down, so it precedes the action and its feedback; eased in over 150 ms, held 700 ms after the last touch, eased out over 300 ms). Late evening (21:00 to 04:59 on the local clock from `Status`; no clock, no evening) stretches the blink from 160 ms to 400 ms. The eye layer only moves (`eye_offset_q8`, the existing eye frames), and outside Sleeping the eye scale never drops below 48/256.
+- Deterministic: the integer timebase plus a seed. A unit seeds from its device id (`device_id::idle_seed`, the 16 bytes folded to 32 bits), so units differ and a unit repeats; Device Studio and golden frames use `DEFAULT_IDLE_SEED`. A state change cancels a glance, look or reaction (the pose eases from where it was). Reactions off stops the buddy's own reactions only; glances and looks are not reactions. Until the first `BuddySettings` the device plays no reactions of its own, so a host without the capability never gets two schedulers.
+- Without the capability (older firmware) the desktop `CompanionDirector` keeps scheduling self-play and sending `PlayMascotAction`, as before. With it the director is not polled.
+- Brightness: five steps (`BRIGHTNESS_STEPS`); step 1 is 25 % duty and is still clearly on, step 5 is the old always-on. GPIO8 is a strapping pin sampled at reset, so the physical firmware keeps it a plain output while the panel initialises and hands it to LEDC (24 kHz, 8-bit, low-speed channel 0) afterwards. There is no time-based dimming. The step lives in the config (`display.brightness`, default 5, version 1 with `#[serde(default)]`), is set by `set_brightness` and applied at once.
+
 ### Device internals (protocol 1.6, `DEVICE_INTERNALS_V1`, ADR-0013)
 
 - Two appended messages: tag 19 `InternalsRequest { session }` (desktop to device) and tag 20 `Internals { session, DeviceInternals }` (device to desktop). The device answers a request from the accepted session with one reply, only when the capability was negotiated; anything else is dropped unseen. `Health` is unchanged.
@@ -199,6 +207,7 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 | 18 | `ControlLabels` | D to V | session, `ControlLabels` (rotate, press, hold) | `CONTROL_LABELS_V1` |
 | 19 | `InternalsRequest` | D to V | session | `DEVICE_INTERNALS_V1` |
 | 20 | `Internals` | V to D | session, `DeviceInternals` (every field optional) | `DEVICE_INTERNALS_V1` |
+| 21 | `BuddySettings` | D to V | session, personality, self-play on/off, brightness step (1 to 5) | `IDLE_LIFE_V1` |
 
 `InputEvent.control` is `Rotary`, `Button` or `ContextButton(0..3)` (the three contextual buttons, left to right; needs `CONTEXT_BUTTONS_V1`; `Press` and `Hold` only, an index of 3 or more is rejected). With `Rotary`, `kind` is `GestureStarted`, `Detent(Cw|Ccw)` or `GestureEnded`; with `Button` (needs `BUTTON_INPUT_V1` too), it is `Press`, `Hold` or `DoublePress` (needs `DOUBLE_PRESS_V1`), sent once per gesture. The desktop rejects a kind that does not belong to its control. `Presentation.primary` is `Idle, Active, Error, Unknown`. `value` is `{ kind: Volume, current_percent, confidence, at_boundary }`.
 
@@ -219,6 +228,7 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 | 10 | `HOST_TAKEOVERS_V1` |
 | 11 | `QUIET_ACK_V1` |
 | 12 | `DEVICE_INTERNALS_V1` |
+| 13 | `IDLE_LIFE_V1` |
 
 `Capabilities` is a `u32` set in `kivori-model`. Bits are allocated centrally and never reused.
 
@@ -304,7 +314,7 @@ The webview may call only these commands and listen to these events. No command 
 ### Companion and personality rules
 
 - Personalities: `cozy` (default), `playful`, `calm`. They scale motion amplitude and the self-play interval (calm 18-30 s, cozy 8-16 s, playful 4-8 s). They never change the reported state.
-- Reactions: `greet, pet, tickle, surprise, comfort`. The companion director (desktop) runs self-play only in `idle` and `happy`. Device Studio reactions are forwarded to a connected device that negotiated `MASCOT_INTERACTION`.
+- Reactions: `greet, pet, tickle, surprise, comfort`. Self-play runs only in `idle` and `happy`: on the device for firmware with `IDLE_LIFE_V1` (`IdleLife`), in the desktop companion director for older firmware. Device Studio reactions are forwarded to a connected device that negotiated `MASCOT_INTERACTION`.
 - Personality never looks like a desktop state. No reaction may use the same `(eye_frame, mouth_frame)` as any state face. A test enforces this.
 - A state change interrupts a running reaction.
 - Reactions over `busy`, `booting` and `offline` are refused (`CompanionState::allows_reaction`). Firmware sends no `MascotActionApplied` for a refused one, so the desktop never assumes it played. A poke over `sleeping` gives a sleepy `Affectionate` response, then returns to sleeping.
@@ -424,7 +434,7 @@ The typed session activity log is the only runtime log.
 - Recovery (`ConfigStore::open` never fails): a file over 256 KiB, not JSON, without a numeric `version`, with an unknown field or an invalid value is renamed to `config.corrupt-<unix_secs>.json` and defaults are used (`notice: recoveredCorrupt`). A `version` above this build's is renamed to `config.v<N>-<unix_secs>.json` with its bytes intact (`recoveredNewerVersion`). The newest 5 of these backups are kept. Each recovery is a `configRecovered` activity record and a `notice` on `ConfigDto`. Paths never cross IPC.
 - Versioning: `version` is read first. An older file is copied to `config.v<old>.bak`, migrated step by step (`config/migrate.rs`, one function per version) and written back (`notice: migrated`). The schema rejects unknown fields, so during M2 new fields stay in version 1 with `#[serde(default)]`; after the beta ships, any field change bumps `CONFIG_VERSION`.
 - Reset copies the current file to `config.before-reset.json` (one slot) and writes defaults.
-- The file holds `profiles` (sparse overrides by profile id: `rotate`, `press`, `hold` and three `buttons` of `press` and `hold`) and `macros` (at most 32, see Macros), `display` (`defaultView`, `secondaryView`) and `buddy` (`reactions`, `intensity`). Intensity is the mascot personality: low, normal, high are calm, cozy, playful. Reactions turn the companion director's self-play on or off. A double press toggles between the default and the chosen view (from any other view it returns to the default), or steps through every view when `secondaryView` is `cycle`.
+- The file holds `profiles` (sparse overrides by profile id: `rotate`, `press`, `hold` and three `buttons` of `press` and `hold`) and `macros` (at most 32, see Macros), `display` (`defaultView`, `secondaryView`, `brightness` 1 to 5) and `buddy` (`reactions`, `intensity`). Intensity is the mascot personality: low, normal, high are calm, cozy, playful. Reactions turn self-play on or off (on the device, or in the companion director for older firmware). A double press toggles between the default and the chosen view (from any other view it returns to the default), or steps through every view when `secondaryView` is `cycle`.
 
 ### Diagnostics
 

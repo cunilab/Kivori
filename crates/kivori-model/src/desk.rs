@@ -45,6 +45,11 @@ pub enum MediaStatus {
     Stopped,
 }
 
+/// Backlight brightness steps; 1 is the dimmest and still clearly on (never Display Sleep).
+pub const BRIGHTNESS_STEPS: u8 = 5;
+/// The step a fresh config and a freshly booted device use: full brightness, as before the setting.
+pub const BRIGHTNESS_DEFAULT: u8 = BRIGHTNESS_STEPS;
+
 /// Local wall-clock time of day, as the desktop observed it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClockTime {
@@ -57,6 +62,13 @@ pub struct ClockTime {
 }
 
 impl ClockTime {
+    /// Whether this is late in the evening or the small hours (21:00 to 04:59), when the buddy
+    /// blinks more slowly.
+    #[must_use]
+    pub const fn is_late_evening(self) -> bool {
+        self.hour >= 21 || self.hour < 5
+    }
+
     /// Seconds in a day.
     const DAY_S: u32 = 24 * 60 * 60;
 

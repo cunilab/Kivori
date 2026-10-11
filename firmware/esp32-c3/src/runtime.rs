@@ -40,12 +40,14 @@ use crate::state::{DeviceEvent, DeviceState};
 use kivori_assets::AssetBlob;
 use kivori_model::desk::{
     ActionFeedback, ControlLabels, CpuHistory, DeskStatus, DeskView, DisplayMode, MediaInfo,
-    VIEW_TRANSITION_MS,
+    BRIGHTNESS_STEPS, VIEW_TRANSITION_MS,
 };
 use kivori_model::input::InputLevels;
 use kivori_model::internals::DeviceInternals;
 use kivori_model::presentation::{PrimaryState, ValueDisplay};
-use kivori_model::{CompanionState, ElapsedMs, MascotAnimator};
+use kivori_model::{
+    CompanionState, ElapsedMs, IdleLife, LookTarget, MascotAnimator, MascotPersonality,
+};
 use kivori_protocol::{
     Bye, ByeReason, ControlId, ControlLabelsUpdate, Feedback, InputKind, InternalsReport,
     MediaInfoUpdate, Message, Nonce, Presentation, Status,
@@ -353,6 +355,17 @@ impl DeskState {
         true
     }
 
+    /// Whether the desktop's local clock, kept running here, says it is late in the evening. With
+    /// no clock (nothing sent yet, or no session) it never is.
+    #[must_use]
+    pub fn late_evening_at(&self, now_ms: u32) -> bool {
+        self.status.clock.is_some_and(|clock| {
+            clock
+                .advanced_by(now_ms.wrapping_sub(self.status_at_ms))
+                .is_late_evening()
+        })
+    }
+
     /// What to render at `now_ms`: the clock advanced locally, expired feedback dropped
     /// (wrap-safe elapsed comparison, as in [`PresentationState::value_at`]).
     #[must_use]
@@ -402,6 +415,8 @@ pub struct Runtime<'a> {
     next_health_ms: ElapsedMs,
     last_rendered: Option<CompanionState>,
     animator: MascotAnimator,
+    /// The buddy's idle life: its own reactions and glances, seeded from the device id.
+    idle: IdleLife,
     /// Turns raw quadrature levels into validated logical detents (never raw electrical edges).
     decoder: QuadratureDecoder,
     /// Groups validated detents into gestures (identity + the 250 ms inactivity boundary).
@@ -437,6 +452,8 @@ impl<'a> Runtime<'a> {
     /// Creates the runtime for a device advertising `identity`.
     #[must_use]
     pub fn new(identity: DeviceIdentity, config: RuntimeConfig) -> Self {
+        // Units differ by their id hash; no hardware random source is ever read.
+        let seed = crate::device_id::idle_seed(&identity.device_id);
         Self {
             dispatcher: Dispatcher::new(identity),
             device: DeviceState::new(),
@@ -446,7 +463,10 @@ impl<'a> Runtime<'a> {
             next_frame_ms: 0,
             next_health_ms: 0,
             last_rendered: None,
-            animator: MascotAnimator::new(CompanionState::Booting, 0),
+            animator: MascotAnimator::new_seeded(CompanionState::Booting, 0, seed),
+            // Reactions wait for the desktop's settings: a host that did not negotiate idle life
+            // schedules them itself, and two schedulers would double up.
+            idle: IdleLife::new(MascotPersonality::Cozy, false, seed, 0),
             decoder: QuadratureDecoder::new(),
             gesture: RotaryGesture::new(GESTURE_END_MS),
             presentation: PresentationState::new(),
@@ -591,6 +611,11 @@ impl<'a> Runtime<'a> {
         if let Some(update) = self.dispatcher.take_media_info() {
             self.redraw |= self.desk.apply_media_info(&update);
         }
+        if let Some(settings) = self.dispatcher.take_buddy_settings() {
+            self.idle
+                .configure(settings.personality, settings.self_play, now);
+            display.set_brightness(settings.brightness.clamp(1, BRIGHTNESS_STEPS));
+        }
 
         // Apply any `Presentation` the dispatcher accepted this poll. Capability negotiation and
         // session/revision freshness are already enforced by the dispatcher and `PresentationState`
@@ -629,6 +654,9 @@ impl<'a> Runtime<'a> {
             self.animator
                 .trigger_action(action.action, action.personality, action.seed, now);
         }
+        // Idle life runs here, on the device, so it goes on while the host is busy or gone.
+        self.animator.set_evening(self.desk.late_evening_at(now));
+        self.idle.poll(&mut self.animator, now);
         // 4. Render on the frame cadence, or at once when fresh feedback arrived, so detent ->
         //    panel latency does not wait out the frame interval (validation row 3.14). Only changed
         //    tiles reach the panel (FR-013).
@@ -937,6 +965,9 @@ impl<'a> Runtime<'a> {
         if levels.sw || self.button.is_down() || keys_busy {
             return;
         }
+        // The look is the device's own reaction to the touch: it needs no round trip and does not
+        // wait for whatever the action shows.
+        self.animator.look_at(LookTarget::Knob, at_ms);
         let (started, detent) = self.gesture.on_detent(direction, at_ms);
         if let Some(RotaryEvent::GestureStarted { gesture_id }) = started {
             self.dispatcher.send_input_event(
@@ -968,6 +999,9 @@ impl<'a> Runtime<'a> {
     /// desktop owns action meaning); everything else is local.
     fn on_button<T: Transport>(&mut self, transport: &mut T, event: ButtonEvent, at_ms: ElapsedMs) {
         self.redraw = true;
+        if event == ButtonEvent::Down {
+            self.animator.look_at(LookTarget::Knob, at_ms);
+        }
         let kind = match event {
             ButtonEvent::Press => InputKind::Press,
             ButtonEvent::Hold => InputKind::Hold,
@@ -1008,6 +1042,10 @@ impl<'a> Runtime<'a> {
         at_ms: ElapsedMs,
     ) {
         self.redraw = true;
+        if event == ButtonEvent::Down {
+            self.animator
+                .look_at(LookTarget::Button(index as u8), at_ms);
+        }
         let kind = match event {
             ButtonEvent::Press => InputKind::Press,
             ButtonEvent::Hold => InputKind::Hold,

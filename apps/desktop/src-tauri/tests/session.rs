@@ -920,3 +920,39 @@ fn an_unnegotiated_internals_reply_is_ignored() {
         .expect("pump");
     assert_eq!(session.internals(), None);
 }
+
+fn buddy_settings(msgs: &[Message]) -> Vec<kivori_protocol::BuddySettings> {
+    msgs.iter()
+        .filter_map(|m| match m {
+            Message::BuddySettings(settings) => Some(*settings),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn buddy_settings_go_only_to_a_device_that_runs_idle_life() {
+    let (mut link, mut session, _manager, _orch) = connect(SendableState::Idle);
+    let _ = desktop_drain(&mut link);
+    assert!(!session.supports_idle_life());
+    assert!(!session
+        .send_buddy_settings(&mut link, MascotPersonality::Calm, true, 3)
+        .expect("send"));
+    assert!(desktop_drain(&mut link).is_empty(), "nothing sent");
+
+    let (mut link, mut session, _manager, _orch) = connect_with_caps(
+        SendableState::Idle,
+        Capabilities::MASCOT_INTERACTION.union(Capabilities::IDLE_LIFE_V1),
+    );
+    let _ = desktop_drain(&mut link);
+    assert!(session.supports_idle_life());
+    assert!(session
+        .send_buddy_settings(&mut link, MascotPersonality::Calm, false, 2)
+        .expect("send"));
+    let sent = buddy_settings(&desktop_drain(&mut link));
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].session, session.current_session().unwrap());
+    assert_eq!(sent[0].personality, MascotPersonality::Calm);
+    assert!(!sent[0].self_play);
+    assert_eq!(sent[0].brightness, 2);
+}

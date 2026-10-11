@@ -95,6 +95,7 @@ export const CAPABILITY_NAMES = [
   'hostTakeoversV1',
   'quietAckV1',
   'deviceInternalsV1',
+  'idleLifeV1',
 ] as const;
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
 
@@ -415,6 +416,9 @@ export interface ButtonDto {
   hold: SlotDto | 'pin';
 }
 
+/** Backlight steps, 1 (dimmest, still clearly on) to 5 (full). */
+export const BRIGHTNESS_STEPS = 5;
+
 /** The saved settings. `secondaryView: 'cycle'` = a double press steps through every view. */
 export interface ConfigDto {
   version: number;
@@ -425,7 +429,7 @@ export interface ConfigDto {
   profiles: ProfileConfigDto[];
   /** The user's macros, in the order they were created. */
   macros: MacroSpec[];
-  display: { defaultView: DisplayMode; secondaryView: DisplayMode | 'cycle' };
+  display: { defaultView: DisplayMode; secondaryView: DisplayMode | 'cycle'; brightness: number };
   buddy: { reactions: boolean; intensity: Intensity };
 }
 export const MEDIA_STATUSES = ['playing', 'paused', 'stopped'] as const;
@@ -629,5 +633,7 @@ export interface AnimationTimeline {
   initialState: CompanionState;
   events: AnimationEvent[];
   actionEvents: MascotActionEvent[];
+  /** The buddy's own idle moments, replayed by the same code the firmware runs (fixed seed). */
+  idleLife?: { personality: MascotPersonality; selfPlay: boolean };
 }
 export const MAX_ANIMATION_EVENTS = 256;

@@ -1293,6 +1293,8 @@ pub struct DisplaySettingsDto {
     pub default_view: &'static str,
     /// A display-mode token, or `cycle` for the M1 behaviour (every view in turn).
     pub secondary_view: &'static str,
+    /// Backlight step, `1..=5`; 1 is the dimmest that is still clearly on.
+    pub brightness: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1332,7 +1334,8 @@ pub fn intensity_from_token(token: &str) -> Option<crate::config::Intensity> {
         .find(|intensity| intensity_token(*intensity) == token)
 }
 
-/// Parses a `defaultView`/`secondaryView` pair from the webview. `secondary` may be `cycle`.
+/// Parses a `defaultView`/`secondaryView` pair from the webview. `secondary` may be `cycle`. The
+/// brightness is not part of the pair: it comes back at the default and the caller keeps the saved one.
 ///
 /// # Errors
 /// A short reason naming the bad field or rule; never echoes the input.
@@ -1356,6 +1359,7 @@ pub fn display_settings_from_tokens(
     let settings = DisplaySettings {
         default_view,
         secondary_view,
+        ..DisplaySettings::default()
     };
     settings.validate()?;
     Ok(settings)
@@ -1378,6 +1382,7 @@ pub fn config_dto(store: &crate::config::ConfigStore) -> ConfigDto {
                 SecondaryView::Cycle => "cycle",
                 SecondaryView::View(view) => display_mode_token(view.mode()),
             },
+            brightness: file.display.brightness,
         },
         buddy: BuddySettingsDto {
             reactions: file.buddy.reactions,
@@ -1454,7 +1459,7 @@ pub const fn availability_token(
 }
 
 /// Every capability flag with the name the diagnostics page lists it by, in bit order.
-const CAPABILITY_TABLE: [(Capabilities, &str); 13] = [
+const CAPABILITY_TABLE: [(Capabilities, &str); 14] = [
     (Capabilities::MASCOT_INTERACTION, "mascotInteraction"),
     (Capabilities::PHYSICAL_INPUT_V1, "physicalInputV1"),
     (Capabilities::PRESENTATION_V1, "presentationV1"),
@@ -1468,6 +1473,7 @@ const CAPABILITY_TABLE: [(Capabilities, &str); 13] = [
     (Capabilities::HOST_TAKEOVERS_V1, "hostTakeoversV1"),
     (Capabilities::QUIET_ACK_V1, "quietAckV1"),
     (Capabilities::DEVICE_INTERNALS_V1, "deviceInternalsV1"),
+    (Capabilities::IDLE_LIFE_V1, "idleLifeV1"),
 ];
 
 /// The capability names the diagnostics page lists, in bit order.

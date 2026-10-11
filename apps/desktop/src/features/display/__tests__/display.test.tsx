@@ -9,11 +9,13 @@ import type { ConfigDto, DeskStatusDto } from '../../../lib/ipc/types';
 const h = vi.hoisted(() => ({
   setMode: vi.fn<(mode: string) => Promise<void>>(() => Promise.resolve()),
   setSettings: vi.fn<(...args: unknown[]) => Promise<void>>(() => Promise.resolve()),
+  setBrightness: vi.fn<(step: number) => Promise<void>>(() => Promise.resolve()),
 }));
 
 vi.mock('../../../lib/ipc', () => ({
   setDisplayMode: h.setMode,
   setDisplaySettings: h.setSettings,
+  setBrightness: h.setBrightness,
   setBuddySettings: vi.fn(() => Promise.resolve()),
   playMascotAction: vi.fn(() => Promise.resolve()),
 }));
@@ -49,7 +51,7 @@ const config: ConfigDto = {
   notice: null,
   profiles: [],
   macros: [],
-  display: { defaultView: 'buddy', secondaryView: 'system' },
+  display: { defaultView: 'buddy', secondaryView: 'system', brightness: 5 },
   buddy: { reactions: true, intensity: 'normal' },
 };
 
@@ -65,6 +67,7 @@ function view(d: DeskStatusDto, c: ConfigDto | null = config): ReactElement {
 beforeEach(() => {
   h.setMode.mockReset().mockResolvedValue(undefined);
   h.setSettings.mockReset().mockResolvedValue(undefined);
+  h.setBrightness.mockReset().mockResolvedValue(undefined);
   localStorage.clear();
 });
 
@@ -73,6 +76,22 @@ describe('DisplayPage', () => {
     render(view(desk));
     expect(screen.getByRole('radio', { name: /^Buddy/ })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByTestId('on-device').closest('label')).toHaveAttribute('data-mode', 'buddy');
+  });
+
+  it('shows the saved brightness step and saves a new one at once', async () => {
+    const user = userEvent.setup();
+    render(view(desk));
+    const group = screen.getByRole('group', { name: 'Brightness' });
+    expect(within(group).getByRole('button', { name: 'Step 5' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await user.click(within(group).getByRole('button', { name: 'Step 1' }));
+    expect(h.setBrightness).toHaveBeenCalledWith(1);
+    expect(within(group).getByRole('button', { name: 'Step 1' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
   });
 
   it('calls setDisplayMode, highlights optimistically, then follows desk://status', async () => {

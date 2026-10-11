@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use kivori_model::desk::DisplayMode;
+use kivori_model::desk::{DisplayMode, BRIGHTNESS_DEFAULT, BRIGHTNESS_STEPS};
 use kivori_model::MascotPersonality;
 use serde::de::{self, Deserializer};
 use serde::ser::Serializer;
@@ -320,6 +320,14 @@ impl<'de> Deserialize<'de> for SecondaryView {
 pub struct DisplaySettings {
     pub default_view: View,
     pub secondary_view: SecondaryView,
+    /// Backlight step, `1..=BRIGHTNESS_STEPS`; the lowest is still clearly on. A file written
+    /// before the setting existed loads at the top step (the always-on backlight it had).
+    #[serde(default = "default_brightness")]
+    pub brightness: u8,
+}
+
+const fn default_brightness() -> u8 {
+    BRIGHTNESS_DEFAULT
 }
 
 impl Default for DisplaySettings {
@@ -327,16 +335,22 @@ impl Default for DisplaySettings {
         Self {
             default_view: View::Buddy,
             secondary_view: SecondaryView::View(View::System),
+            brightness: BRIGHTNESS_DEFAULT,
         }
     }
 }
 
 impl DisplaySettings {
-    /// A double press that would toggle a view with itself would do nothing, so it is refused.
+    /// A double press that would toggle a view with itself would do nothing, so it is refused, and
+    /// so is a brightness step the device does not have.
     ///
     /// # Errors
-    /// A short reason when the secondary view equals the default view.
+    /// A short reason when the secondary view equals the default view or the brightness is out
+    /// of range.
     pub fn validate(&self) -> Result<(), &'static str> {
+        if !(1..=BRIGHTNESS_STEPS).contains(&self.brightness) {
+            return Err("unknown brightness step");
+        }
         match self.secondary_view {
             SecondaryView::View(view) if view == self.default_view => {
                 Err("the double-press view must differ from the default view")

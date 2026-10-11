@@ -31,6 +31,15 @@ pub fn derive_device_id(unique_id: &[u8; 16], base_mac: &[u8; 6]) -> DeviceId {
     id
 }
 
+/// The seed for the buddy's idle life: the device id folded to 32 bits, so each unit blinks and
+/// glances on its own schedule while every run of the same unit repeats exactly.
+pub fn idle_seed(id: &DeviceId) -> u32 {
+    id.as_chunks::<4>()
+        .0
+        .iter()
+        .fold(0, |seed, word| seed ^ u32::from_le_bytes(*word))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -77,6 +86,14 @@ mod tests {
         assert_eq!(a, derive_device_id(&zero, &MAC_A));
         assert_ne!(a, derive_device_id(&zero, &MAC_B));
         assert_ne!(a, [0u8; 16]);
+    }
+
+    #[test]
+    fn idle_seed_differs_per_unit_and_repeats_per_unit() {
+        let a = derive_device_id(&UID_A, &MAC_A);
+        let b = derive_device_id(&UID_B, &MAC_A);
+        assert_eq!(idle_seed(&a), idle_seed(&a));
+        assert_ne!(idle_seed(&a), idle_seed(&b));
     }
 
     #[test]

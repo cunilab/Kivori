@@ -194,7 +194,31 @@ pub fn set_display_settings(
     let display = dto::display_settings_from_tokens(&default_view, &secondary_view)
         .map_err(str::to_string)?;
     commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
-        let next = store.edited(|file| file.display = display);
+        let next = store.edited(|file| {
+            file.display = crate::config::DisplaySettings {
+                brightness: file.display.brightness,
+                ..display
+            };
+        });
+        store.save(next)
+    })
+}
+
+/// Sets the backlight brightness step (`1..=5`); the device follows at once.
+///
+/// # Errors
+/// Returns an error for a step the device does not have or a failed save.
+#[tauri::command]
+pub fn set_brightness(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+    step: u8,
+) -> Result<ConfigDto, String> {
+    if !(1..=kivori_model::desk::BRIGHTNESS_STEPS).contains(&step) {
+        return Err("unknown brightness step".to_string());
+    }
+    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+        let next = store.edited(|file| file.display.brightness = step);
         store.save(next)
     })
 }

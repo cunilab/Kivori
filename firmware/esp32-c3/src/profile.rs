@@ -64,6 +64,7 @@ pub mod physical_st7789 {
     use crate::display::PanelGeometry;
     #[cfg(feature = "physical-st7789")]
     use esp_hal::{gpio::Level, spi::Mode};
+    use kivori_model::desk::BRIGHTNESS_STEPS;
     use mipidsi::{
         models::ST7789,
         options::{ColorInversion, ColorOrder, Orientation, Rotation},
@@ -105,6 +106,29 @@ pub mod physical_st7789 {
 
     /// Backlight is enabled by driving the pin high.
     pub const BACKLIGHT_ACTIVE_HIGH: bool = true;
+
+    /// Backlight PWM duty (percent of "on") for each brightness step, dimmest first. The lowest
+    /// step stays clearly lit, so it can never be mistaken for Display Sleep.
+    pub const BACKLIGHT_DUTY_PCT: [u8; BRIGHTNESS_STEPS as usize] = [25, 40, 60, 80, 100];
+
+    /// The PWM duty to program for brightness `step` (clamped to `1..=BRIGHTNESS_STEPS`), as the
+    /// pin's own duty: inverted when the backlight is active low.
+    #[must_use]
+    pub const fn backlight_duty_pct(step: u8) -> u8 {
+        let step = if step < 1 {
+            1
+        } else if step > BRIGHTNESS_STEPS {
+            BRIGHTNESS_STEPS
+        } else {
+            step
+        };
+        let on = BACKLIGHT_DUTY_PCT[(step - 1) as usize];
+        if BACKLIGHT_ACTIVE_HIGH {
+            on
+        } else {
+            100 - on
+        }
+    }
 
     /// Verified physical display geometry.
     #[must_use]
@@ -217,4 +241,34 @@ pub mod physical_st7789 {
     ///
     /// Like the encoder map, a specification until physically verified.
     pub const CONTEXT_BUTTONS: [u8; 3] = [20, 10, 5];
+
+    #[cfg(all(test, feature = "host-sim"))]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn backlight_steps_rise_and_the_lowest_stays_clearly_on() {
+            let mut on = [0u8; BRIGHTNESS_STEPS as usize];
+            for step in 1..=BRIGHTNESS_STEPS {
+                let duty = backlight_duty_pct(step);
+                on[usize::from(step) - 1] = if BACKLIGHT_ACTIVE_HIGH {
+                    duty
+                } else {
+                    100 - duty
+                };
+            }
+            assert!(on.windows(2).all(|w| w[0] < w[1]), "{on:?}");
+            assert!(
+                on[0] >= 20,
+                "the dimmest step must never look like Display Sleep"
+            );
+            assert_eq!(on[on.len() - 1], 100, "the top step is the old always-on");
+        }
+
+        #[test]
+        fn out_of_range_steps_clamp() {
+            assert_eq!(backlight_duty_pct(0), backlight_duty_pct(1));
+            assert_eq!(backlight_duty_pct(99), backlight_duty_pct(BRIGHTNESS_STEPS));
+        }
+    }
 }

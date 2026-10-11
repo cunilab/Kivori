@@ -48,7 +48,7 @@ use crate::runtime::lifecycle;
 use crate::runtime::state::DeviceCommand;
 use kivori_model::desk::{ActionFeedback, ActionKind, FeedbackKind};
 use kivori_model::internals::DeviceInternals;
-use kivori_model::{Capabilities, CompanionState, ConnectionState};
+use kivori_model::{Capabilities, CompanionState, ConnectionState, MascotPersonality};
 use kivori_protocol::ByeReason;
 use kivori_protocol::{ErrorCategory, InputEvent, PlayMascotAction, Presentation};
 
@@ -203,6 +203,9 @@ fn device_loop(
     // The configured reactions setting, and whether a locked screen is holding them off.
     let mut self_play_wanted = config.buddy.reactions;
     let mut self_play_paused = false;
+    // The brightness step to show, and the last buddy settings the device was sent (per session).
+    let mut brightness = config.display.brightness;
+    let mut buddy_sent: Option<(u32, u32, MascotPersonality, bool, u8)> = None;
     let mut flash = FlashWorkflow::new(
         firmware::bundled_image_available(),
         firmware::BUNDLED_FIRMWARE.len() as u64,
@@ -277,6 +280,7 @@ fn device_loop(
                     let (personality, self_play) =
                         (config.buddy.intensity.personality(), config.buddy.reactions);
                     self_play_wanted = self_play;
+                    brightness = config.display.brightness;
                     let running = self_play && !self_play_paused;
                     // Restarting the cadence on an unrelated save would delay the next reaction.
                     if (personality, running) != (companion.personality(), companion.self_play()) {
@@ -755,8 +759,47 @@ fn device_loop(
             }
         }
 
-        // Desktop owns ambient behavior. Suppressed/disconnected states consume due opportunities,
-        // preventing stale antics from firing immediately after focus work or reconnect.
+        // A device that runs idle life itself gets the settings (once per session, and again on any
+        // change) and no self-play from here: it keeps moving even when this loop stalls.
+        if !flash.is_busy() && manager.state().can_drive_device() && session.supports_idle_life() {
+            if let (Some(nonce), Some(open_link)) = (session.current_session(), link.as_mut()) {
+                let key = (
+                    session.connection_generation(),
+                    nonce,
+                    companion.personality(),
+                    companion.self_play(),
+                    brightness,
+                );
+                if buddy_sent != Some(key) {
+                    buddy_sent = Some(key);
+                    let write_failed = session
+                        .send_buddy_settings(open_link, key.2, key.3, key.4)
+                        .is_err();
+                    if write_failed {
+                        recover_link(
+                            &mut activity_planner,
+                            &mut manager,
+                            ManagerEvent::IoError,
+                            LinkRecovery::new(
+                                &mut link,
+                                &mut connected_port,
+                                &mut retry_at,
+                                &mut deadlines,
+                                &flash,
+                            )
+                            .with_rotator(&mut rotator, started.elapsed()),
+                            |observation| {
+                                record_observations(&app, &activity_log, [observation]);
+                            },
+                        );
+                    }
+                }
+            }
+        }
+
+        // The desktop owns ambient behavior only for a device without idle life. Suppressed or
+        // disconnected states consume due opportunities, preventing stale antics from firing
+        // immediately after focus work or reconnect.
         let companion_state = if manager.state().can_drive_device() {
             session
                 .reported()
@@ -764,7 +807,12 @@ fn device_loop(
         } else {
             CompanionState::Offline
         };
-        if let Some(cue) = companion.poll(elapsed_ms(started.elapsed()), companion_state) {
+        let cue = if session.supports_idle_life() {
+            None
+        } else {
+            companion.poll(elapsed_ms(started.elapsed()), companion_state)
+        };
+        if let Some(cue) = cue {
             record_observations(
                 &app,
                 &activity_log,

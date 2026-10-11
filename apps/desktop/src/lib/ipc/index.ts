@@ -256,6 +256,13 @@ export async function setDisplaySettings(
   return unavailable();
 }
 
+/** Saves the backlight brightness step (1 to 5); the device follows at once. */
+export async function setBrightness(step: number): Promise<ConfigDto> {
+  if (isTauri()) return parseConfig(await invoke<unknown>('set_brightness', { step }));
+  if (import.meta.env.DEV) return (await devMock()).mockSetBrightness(step);
+  return unavailable();
+}
+
 /** Saves the buddy's reactions and intensity; rejects with the native error string. */
 export async function setBuddySettings(
   reactions: boolean,

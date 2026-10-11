@@ -69,3 +69,13 @@ fn device_internals_needs_both_peers() {
     let (_, caps) = negotiate(6, 6, both, Capabilities::MASCOT_INTERACTION);
     assert!(!caps.contains(Capabilities::DEVICE_INTERNALS_V1));
 }
+
+#[test]
+fn idle_life_needs_both_peers() {
+    let both = Capabilities::IDLE_LIFE_V1.union(Capabilities::MASCOT_INTERACTION);
+    let (_, caps) = negotiate(6, 6, both, both);
+    assert!(caps.contains(Capabilities::IDLE_LIFE_V1));
+    // Older firmware never negotiates bit 13, so the desktop keeps scheduling self-play itself.
+    let (_, caps) = negotiate(6, 6, both, Capabilities::MASCOT_INTERACTION);
+    assert!(!caps.contains(Capabilities::IDLE_LIFE_V1));
+}

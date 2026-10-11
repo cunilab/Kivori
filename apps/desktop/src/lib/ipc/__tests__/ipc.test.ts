@@ -434,7 +434,7 @@ describe('config ipc', () => {
     notice: null,
     profiles: [],
     macros: [],
-    display: { defaultView: 'buddy', secondaryView: 'cycle' },
+    display: { defaultView: 'buddy', secondaryView: 'cycle', brightness: 5 },
     buddy: { reactions: true, intensity: 'normal' },
   };
 
@@ -448,8 +448,11 @@ describe('config ipc', () => {
       null,
       { ...validConfig, notice: 'oops' },
       { ...validConfig, revision: -1 },
-      { ...validConfig, display: { defaultView: 'cycle', secondaryView: 'buddy' } },
-      { ...validConfig, display: { defaultView: 'buddy', secondaryView: 'nope' } },
+      { ...validConfig, display: { defaultView: 'cycle', secondaryView: 'buddy', brightness: 5 } },
+      { ...validConfig, display: { ...validConfig.display, brightness: 0 } },
+      { ...validConfig, display: { ...validConfig.display, brightness: 6 } },
+      { ...validConfig, display: { ...validConfig.display, brightness: 2.5 } },
+      { ...validConfig, display: { defaultView: 'buddy', secondaryView: 'nope', brightness: 5 } },
       { ...validConfig, buddy: { reactions: 'yes', intensity: 'normal' } },
       { ...validConfig, buddy: { reactions: true, intensity: 'extreme' } },
       { ...validConfig, profiles: 'none' },
@@ -541,10 +544,10 @@ describe('config ipc', () => {
     await resetConfig();
     await expect(setDisplaySettings('clock', 'clock')).rejects.toThrow('must differ');
     const saved = await setDisplaySettings('clock', 'media');
-    expect(saved.display).toEqual({ defaultView: 'clock', secondaryView: 'media' });
+    expect(saved.display).toEqual({ defaultView: 'clock', secondaryView: 'media', brightness: 5 });
     expect((await getDeskStatus()).mode).toBe('clock');
     const reset = await resetConfig();
-    expect(reset.display).toEqual({ defaultView: 'buddy', secondaryView: 'system' });
+    expect(reset.display).toEqual({ defaultView: 'buddy', secondaryView: 'system', brightness: 5 });
     expect(reset.revision).toBeGreaterThan(saved.revision);
   });
 

@@ -1490,6 +1490,7 @@ mod tests {
         let mut desk = runtime(Arc::default()).with_display(DisplaySettings {
             default_view: View::Clock,
             secondary_view: SecondaryView::View(View::Media),
+            ..DisplaySettings::default()
         });
         assert_eq!(
             desk.mode(),

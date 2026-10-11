@@ -23,8 +23,8 @@ use kivori_model::{
     Capabilities, CompanionState, MascotAction, MascotPersonality, ProtocolVersion, SendableState,
 };
 use kivori_protocol::{
-    decode_frame, decode_message, encode_message, evaluate_hello_ack, Bye, ByeReason,
-    ControlLabelsUpdate, Feedback, FirmwareVersion, HandshakeOutcome, Hello, InputEvent,
+    decode_frame, decode_message, encode_message, evaluate_hello_ack, BuddySettings, Bye,
+    ByeReason, ControlLabelsUpdate, Feedback, FirmwareVersion, HandshakeOutcome, Hello, InputEvent,
     InternalsRequest, MascotActionApplied, MediaInfoUpdate, Message, Ping, PlayMascotAction,
     Presentation, ProtoError, SeqClass, SequenceTracker, SetState, Status, MAX_FRAME, MAX_WIRE,
     PROTOCOL_MAJOR, PROTOCOL_MINOR,
@@ -68,7 +68,8 @@ impl Default for SessionConfig {
                 .union(Capabilities::CONTEXT_BUTTONS_V1)
                 .union(Capabilities::HOST_TAKEOVERS_V1)
                 .union(Capabilities::QUIET_ACK_V1)
-                .union(Capabilities::DEVICE_INTERNALS_V1),
+                .union(Capabilities::DEVICE_INTERNALS_V1)
+                .union(Capabilities::IDLE_LIFE_V1),
             supported_majors: vec![PROTOCOL_MAJOR],
         }
     }
@@ -256,6 +257,13 @@ impl Session {
             .contains(Capabilities::MASCOT_INTERACTION)
     }
 
+    /// Whether the device runs the buddy's idle life itself (`IDLE_LIFE_V1`). If so the desktop
+    /// sends it settings and no self-play; otherwise the companion director keeps playing for it.
+    #[must_use]
+    pub fn supports_idle_life(&self) -> bool {
+        self.negotiated_caps.contains(Capabilities::IDLE_LIFE_V1)
+    }
+
     /// Whether both peers negotiated host takeovers (`Bye(HostSleeping)` / `Bye(FirmwareUpdate)`)
     /// for this connection.
     #[must_use]
@@ -407,6 +415,36 @@ impl Session {
                 action,
                 personality,
                 seed,
+            }),
+        )?;
+        Ok(true)
+    }
+
+    /// Sends the buddy and display settings the device applies itself. Returns `Ok(false)` without
+    /// writing when there is no session or `IDLE_LIFE_V1` was not negotiated.
+    ///
+    /// # Errors
+    /// [`SessionError::Transport`] if the write fails.
+    pub fn send_buddy_settings<L: SerialLink>(
+        &mut self,
+        link: &mut L,
+        personality: MascotPersonality,
+        self_play: bool,
+        brightness: u8,
+    ) -> Result<bool, SessionError<L::Error>> {
+        let Some(session) = self.current_session else {
+            return Ok(false);
+        };
+        if !self.supports_idle_life() {
+            return Ok(false);
+        }
+        self.send(
+            link,
+            &Message::BuddySettings(BuddySettings {
+                session,
+                personality,
+                self_play,
+                brightness,
             }),
         )?;
         Ok(true)

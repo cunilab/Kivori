@@ -315,6 +315,11 @@ export const strings = {
       body: 'Double-press the knob to switch between the default view and this one.',
       cycle: 'Every view in turn',
     },
+    brightness: {
+      heading: 'Brightness',
+      body: 'How bright the screen is. Even the lowest step stays clearly on.',
+      step: (step: number): string => `Step ${step}`,
+    },
     view: 'Show now',
     viewBody: 'Switch the screen right now. This is not saved.',
     settingsFailed: 'Couldn’t save the display settings',

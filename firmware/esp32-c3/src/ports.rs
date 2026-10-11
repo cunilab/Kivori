@@ -76,6 +76,10 @@ pub trait DisplaySink {
         }
         Ok(())
     }
+
+    /// Sets the backlight to `step` (`1..=BRIGHTNESS_STEPS`, already clamped). Sinks without a
+    /// dimmable backlight (the simulator, a panel wired always-on) ignore it.
+    fn set_brightness(&mut self, _step: u8) {}
 }
 
 /// A monotonic millisecond clock, measured from device boot.

@@ -6,10 +6,10 @@ use kivori_model::desk::{
     MediaText,
 };
 use kivori_model::internals::{ChipModel, DeviceInternals, ResetReason};
-use kivori_model::{Capabilities, ProtocolVersion};
+use kivori_model::{Capabilities, MascotPersonality, ProtocolVersion};
 use kivori_protocol::{
-    decode_frame, decode_message, encode_message, ControlId, ControlLabelsUpdate, Feedback,
-    InputEvent, InputKind, InternalsReport, InternalsRequest, Message, Status, MAX_FRAME,
+    decode_frame, decode_message, encode_message, BuddySettings, ControlId, ControlLabelsUpdate,
+    Feedback, InputEvent, InputKind, InternalsReport, InternalsRequest, Message, Status, MAX_FRAME,
     MAX_PAYLOAD, MAX_WIRE,
 };
 
@@ -206,6 +206,7 @@ fn context_buttons_are_control_variant_2_with_their_index() {
     assert_eq!(Capabilities::HOST_TAKEOVERS_V1.bits(), 1 << 10);
     assert_eq!(Capabilities::QUIET_ACK_V1.bits(), 1 << 11);
     assert_eq!(Capabilities::DEVICE_INTERNALS_V1.bits(), 1 << 12);
+    assert_eq!(Capabilities::IDLE_LIFE_V1.bits(), 1 << 13);
 }
 
 /// Append-only: `Triggered` follows the original five kinds.
@@ -286,4 +287,18 @@ fn the_fullest_internals_snapshot_fits_one_frame() {
         internals: full_internals(),
     });
     assert!(payload(&report).len() < MAX_PAYLOAD / 2);
+}
+
+/// Append-only: the buddy settings follow `Internals` (tag 20) as tag 21.
+#[test]
+fn buddy_settings_are_appended_as_tag_21() {
+    let msg = Message::BuddySettings(BuddySettings {
+        session: 7,
+        personality: MascotPersonality::Playful,
+        self_play: false,
+        brightness: 3,
+    });
+    assert_eq!(payload(&msg)[0], 21);
+    assert_eq!(roundtrip(&msg), msg);
+    assert!(payload(&msg).len() <= 1 + 5 + 1 + 1 + 1);
 }

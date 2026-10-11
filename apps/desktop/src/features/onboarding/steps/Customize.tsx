@@ -46,6 +46,7 @@ export function Customize({
     if (!display || next === display.defaultView) return;
     // The double-press view must differ from the default, so picking it swaps the two.
     const settings = {
+      ...display,
       defaultView: next,
       secondaryView: display.secondaryView === next ? display.defaultView : display.secondaryView,
     };

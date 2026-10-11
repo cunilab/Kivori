@@ -22,7 +22,8 @@
     "contextButtonsV1",
     "hostTakeoversV1",
     "quietAckV1",
-    "deviceInternalsV1"
+    "deviceInternalsV1",
+    "idleLifeV1"
   ],
   "controls": [
     "press",

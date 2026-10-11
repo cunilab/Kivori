@@ -22,6 +22,19 @@ pub const HAPPY_PRESS_Q8: i32 = 16 * 256;
 
 const IDLE_EPOCH_MS: u32 = 6_000;
 const BLINK_HALF_WINDOW_MS: u32 = 80;
+/// Late in the evening the buddy blinks lazily: the same blink, stretched.
+const EVENING_BLINK_HALF_WINDOW_MS: u32 = 200;
+/// The eyes never close below this vertical scale outside Sleeping (about 19 %).
+const EYES_MIN_SCALE_Q8: u16 = 48;
+
+/// A glance lasts this long: eased in, held, eased out.
+const GLANCE_MS: u32 = 1_400;
+const GLANCE_IN_MS: u32 = 250;
+const GLANCE_OUT_MS: u32 = 350;
+/// Looking towards a touched control: eased in, held after the last touch, eased out.
+const LOOK_IN_MS: u32 = 150;
+const LOOK_HOLD_MS: u32 = 700;
+const LOOK_OUT_MS: u32 = 300;
 
 /// User-selectable temperament controlling mascot motion strength and autonomous cadence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
@@ -33,6 +46,60 @@ pub enum MascotPersonality {
     Playful,
     /// Quiet, attentive movement with restrained amplitude.
     Calm,
+}
+
+impl MascotPersonality {
+    /// Self-play interval bounds in milliseconds (docs/architecture.md, companion rules).
+    #[must_use]
+    pub const fn self_play_interval_ms(self) -> (u32, u32) {
+        match self {
+            Self::Cozy => (8_000, 16_000),
+            Self::Playful => (4_000, 8_000),
+            Self::Calm => (18_000, 30_000),
+        }
+    }
+
+    /// Glance interval bounds in milliseconds.
+    #[must_use]
+    pub const fn glance_interval_ms(self) -> (u32, u32) {
+        match self {
+            Self::Cozy => (5_000, 10_000),
+            Self::Playful => (3_000, 6_000),
+            Self::Calm => (9_000, 15_000),
+        }
+    }
+
+    /// How far a glance moves the eyes sideways, in Q8 pixels.
+    #[must_use]
+    pub const fn glance_q8(self) -> i32 {
+        match self {
+            Self::Cozy => 3 * 256,
+            Self::Playful => 4 * 256,
+            Self::Calm => 2 * 256,
+        }
+    }
+}
+
+/// A physical control the buddy looks towards as it is touched.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LookTarget {
+    /// The rotary knob (turned or pressed): up and to the left, where its label sits.
+    Knob,
+    /// One of the three contextual buttons under the keycap, by index (0 left, 1 middle, 2 right).
+    Button(u8),
+}
+
+impl LookTarget {
+    /// Eye offset that reads as looking at this control, in Q8 pixels.
+    #[must_use]
+    pub const fn gaze_q8(self) -> (i32, i32) {
+        match self {
+            Self::Knob => (-3 * 256, -256),
+            Self::Button(0) => (-3 * 256, 384),
+            Self::Button(2) => (3 * 256, 384),
+            Self::Button(_) => (0, 384),
+        }
+    }
 }
 
 /// Direct social interactions accepted by the companion.
@@ -230,6 +297,22 @@ struct ActiveAction {
     from: MascotPose,
 }
 
+/// A sideways glance in flight.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Glance {
+    dx_q8: i32,
+    started_at: ElapsedMs,
+}
+
+/// A look towards a touched control, retargeted by every further touch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Look {
+    from: (i32, i32),
+    to: (i32, i32),
+    started_at: ElapsedMs,
+    last_touch: ElapsedMs,
+}
+
 /// Stateful controller which preserves the resolved pose when its target state changes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MascotAnimator {
@@ -239,6 +322,10 @@ pub struct MascotAnimator {
     from: MascotPose,
     action: Option<ActiveAction>,
     idle_seed: u32,
+    /// Late evening by the device's local clock: blinks slow down.
+    evening: bool,
+    glance: Option<Glance>,
+    look: Option<Look>,
 }
 
 // Hard firmware budget: the controller and resolved pose never become framebuffer-sized.
@@ -263,6 +350,9 @@ impl MascotAnimator {
             from: MascotPose::for_state(state),
             action: None,
             idle_seed,
+            evening: false,
+            glance: None,
+            look: None,
         }
     }
 
@@ -287,6 +377,102 @@ impl MascotAnimator {
         };
         self.from = current;
         self.action = None;
+        // `current` already carries the gaze, so dropping it here eases out with the transition.
+        self.glance = None;
+        self.look = None;
+    }
+
+    /// Whether it is late in the evening by the device's local clock (slower blinks). Without a
+    /// clock the caller passes `false`.
+    pub fn set_evening(&mut self, evening: bool) {
+        self.evening = evening;
+    }
+
+    /// Starts a sideways glance by `dx_q8` Q8 pixels. Refused (`false`) unless the buddy is Idle or
+    /// Happy and no reaction, glance or look towards a control is under way.
+    pub fn glance(&mut self, dx_q8: i32, now_ms: ElapsedMs) -> bool {
+        if !matches!(self.target, CompanionState::Idle | CompanionState::Happy)
+            || self.reaction_active(now_ms)
+            || self.look_offset(now_ms).is_some()
+            || self
+                .glance
+                .is_some_and(|g| now_ms.saturating_sub(g.started_at) < GLANCE_MS)
+        {
+            return false;
+        }
+        self.glance = Some(Glance {
+            dx_q8,
+            started_at: now_ms,
+        });
+        true
+    }
+
+    /// The buddy looks towards a control that was just touched. It acts on the touch itself, so it
+    /// needs no round trip and comes before whatever the action shows. Ignored while Booting or
+    /// Sleeping, whose eyes do not look around.
+    pub fn look_at(&mut self, target: LookTarget, now_ms: ElapsedMs) {
+        if matches!(
+            self.target,
+            CompanionState::Booting | CompanionState::Sleeping
+        ) {
+            return;
+        }
+        // Easing from wherever the eyes are now keeps repeated touches (a spinning knob) smooth.
+        let from = self.gaze_offset(now_ms);
+        self.glance = None;
+        self.look = Some(Look {
+            from,
+            to: target.gaze_q8(),
+            started_at: now_ms,
+            last_touch: now_ms,
+        });
+    }
+
+    fn reaction_active(&self, now_ms: ElapsedMs) -> bool {
+        self.action
+            .is_some_and(|a| now_ms.saturating_sub(a.started_at) < a.action.duration_ms())
+    }
+
+    /// The look's eye offset, or `None` once it has finished easing out.
+    fn look_offset(&self, now_ms: ElapsedMs) -> Option<(i32, i32)> {
+        let look = self.look?;
+        let since_touch = now_ms.saturating_sub(look.last_touch);
+        if since_touch >= LOOK_HOLD_MS + LOOK_OUT_MS {
+            return None;
+        }
+        let progress = smoothstep_q8(now_ms.saturating_sub(look.started_at), LOOK_IN_MS);
+        let held = (
+            lerp_i32(look.from.0, look.to.0, progress),
+            lerp_i32(look.from.1, look.to.1, progress),
+        );
+        if since_touch <= LOOK_HOLD_MS {
+            return Some(held);
+        }
+        let out = smoothstep_q8(since_touch - LOOK_HOLD_MS, LOOK_OUT_MS);
+        Some((lerp_i32(held.0, 0, out), lerp_i32(held.1, 0, out)))
+    }
+
+    /// The extra eye offset a glance or a look adds at `now_ms`, in Q8 pixels.
+    fn gaze_offset(&self, now_ms: ElapsedMs) -> (i32, i32) {
+        if let Some(offset) = self.look_offset(now_ms) {
+            return offset;
+        }
+        match self.glance {
+            Some(glance) => {
+                let elapsed = now_ms.saturating_sub(glance.started_at);
+                let strength = if elapsed >= GLANCE_MS {
+                    0
+                } else if elapsed < GLANCE_IN_MS {
+                    smoothstep_q8(elapsed, GLANCE_IN_MS)
+                } else if elapsed > GLANCE_MS - GLANCE_OUT_MS {
+                    smoothstep_q8(GLANCE_MS - elapsed, GLANCE_OUT_MS)
+                } else {
+                    SCALE_Q8_ONE
+                };
+                (glance.dx_q8 * i32::from(strength) / 256, 0)
+            }
+            None => (0, 0),
+        }
     }
 
     /// Starts a social reaction. A new action replaces any earlier reaction immediately.
@@ -322,6 +508,7 @@ impl MascotAnimator {
             now_ms,
             now_ms.saturating_sub(self.transition_started_at),
             self.idle_seed,
+            self.evening,
         );
         let elapsed = now_ms.saturating_sub(self.transition_started_at);
         let mut pose = if self.transition_duration_ms == 0 || elapsed >= self.transition_duration_ms
@@ -343,6 +530,14 @@ impl MascotAnimator {
             if action_elapsed < action.action.duration_ms() {
                 apply_action(&mut pose, self.target, action, action_elapsed);
             }
+        }
+        if !matches!(
+            self.target,
+            CompanionState::Booting | CompanionState::Sleeping
+        ) {
+            let (x, y) = self.gaze_offset(now_ms);
+            pose.eye_offset_q8.0 += x;
+            pose.eye_offset_q8.1 += y;
         }
         pose
     }
@@ -376,6 +571,7 @@ fn target_pose(
     now_ms: ElapsedMs,
     state_age_ms: ElapsedMs,
     idle_seed: u32,
+    evening: bool,
 ) -> MascotPose {
     let mut pose = MascotPose::for_state(state);
     let (x, y, scale) = match state {
@@ -408,9 +604,9 @@ fn target_pose(
             let open = smoothstep_q8(state_age_ms.min(300), 300);
             48 + (u32::from(SCALE_Q8_ONE - 48) * u32::from(open) / 256) as u16
         }
-        CompanionState::Idle => idle_life(&mut pose, now_ms, idle_seed),
+        CompanionState::Idle => idle_life(&mut pose, now_ms, idle_seed, evening),
         CompanionState::Happy | CompanionState::Busy | CompanionState::Offline => {
-            varied_blink_scale(now_ms, idle_seed ^ state.index() as u32)
+            varied_blink_scale(now_ms, idle_seed ^ state.index() as u32, evening)
         }
     };
     pose
@@ -501,7 +697,8 @@ fn positive_wave(now_ms: ElapsedMs, period_ms: u32, amplitude: i32) -> i32 {
     }
 }
 
-fn idle_life(pose: &mut MascotPose, now_ms: ElapsedMs, seed: u32) -> u16 {
+fn idle_life(pose: &mut MascotPose, now_ms: ElapsedMs, seed: u32, evening: bool) -> u16 {
+    let half = blink_half_window(evening);
     let epoch = now_ms / IDLE_EPOCH_MS;
     let phase = now_ms % IDLE_EPOCH_MS;
     let random = mix_seed(seed ^ epoch.wrapping_mul(0x9E37_79B9));
@@ -509,12 +706,12 @@ fn idle_life(pose: &mut MascotPose, now_ms: ElapsedMs, seed: u32) -> u16 {
     let expressive = random & 0b11 == 0;
     let expression_end = primary + 900;
 
-    let mut scale = blink_at(phase, primary);
+    let mut scale = blink_at(phase, primary, half);
     if random & 0b111 == 0 {
-        scale = scale.min(blink_at(phase, primary + 260));
+        scale = scale.min(blink_at(phase, primary + 260, half));
     }
     if expressive {
-        scale = scale.min(blink_at(phase, expression_end));
+        scale = scale.min(blink_at(phase, expression_end, half));
         if (primary..expression_end).contains(&phase) {
             pose.expression = match (random >> 8) % 3 {
                 0 => MascotExpression::Reassuring,
@@ -551,24 +748,223 @@ fn idle_life(pose: &mut MascotPose, now_ms: ElapsedMs, seed: u32) -> u16 {
     scale
 }
 
-fn varied_blink_scale(now_ms: ElapsedMs, seed: u32) -> u16 {
+fn varied_blink_scale(now_ms: ElapsedMs, seed: u32, evening: bool) -> u16 {
+    let half = blink_half_window(evening);
     let epoch = now_ms / IDLE_EPOCH_MS;
     let phase = now_ms % IDLE_EPOCH_MS;
     let random = mix_seed(seed ^ epoch.wrapping_mul(0x9E37_79B9));
     let primary = 2_000 + random % 2_401;
-    let mut scale = blink_at(phase, primary);
+    let mut scale = blink_at(phase, primary, half);
     if random & 0b111 == 0 {
-        scale = scale.min(blink_at(phase, primary + 260));
+        scale = scale.min(blink_at(phase, primary + 260, half));
     }
     scale
 }
 
-fn blink_at(phase: u32, centre: u32) -> u16 {
+const fn blink_half_window(evening: bool) -> u32 {
+    if evening {
+        EVENING_BLINK_HALF_WINDOW_MS
+    } else {
+        BLINK_HALF_WINDOW_MS
+    }
+}
+
+fn blink_at(phase: u32, centre: u32, half_window: u32) -> u16 {
     let distance = phase.abs_diff(centre);
-    if distance >= BLINK_HALF_WINDOW_MS {
+    if distance >= half_window {
         SCALE_Q8_ONE
     } else {
-        48 + (u32::from(SCALE_Q8_ONE - 48) * distance / BLINK_HALF_WINDOW_MS) as u16
+        EYES_MIN_SCALE_Q8
+            + (u32::from(SCALE_Q8_ONE - EYES_MIN_SCALE_Q8) * distance / half_window) as u16
+    }
+}
+
+/// Schedules the buddy's own reactions: when one is due, which, and with what seed. Pure integer
+/// arithmetic on the ADR-0003 timebase plus a seed, so the same inputs always give the same cues
+/// (never a hardware random source). The firmware runs it through [`IdleLife`]; the desktop director
+/// runs the same code for a device that cannot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SelfPlay {
+    personality: MascotPersonality,
+    enabled: bool,
+    random_state: u32,
+    next_due_ms: u32,
+}
+
+impl SelfPlay {
+    /// Creates a scheduler and schedules its first reaction after `now_ms`.
+    #[must_use]
+    pub fn new(personality: MascotPersonality, enabled: bool, seed: u32, now_ms: u32) -> Self {
+        let mut play = Self {
+            personality,
+            enabled,
+            random_state: seed,
+            next_due_ms: now_ms,
+        };
+        play.schedule_after(now_ms);
+        play
+    }
+
+    /// Current personality.
+    #[must_use]
+    pub const fn personality(&self) -> MascotPersonality {
+        self.personality
+    }
+
+    /// Whether reactions are scheduled at all.
+    #[must_use]
+    pub const fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    /// The next scheduled millisecond, exposed for deterministic orchestration and tests.
+    #[must_use]
+    pub const fn next_due_ms(&self) -> u32 {
+        self.next_due_ms
+    }
+
+    /// Changes personality and starts a fresh cadence window.
+    pub fn set_personality(&mut self, personality: MascotPersonality, now_ms: u32) {
+        self.personality = personality;
+        self.schedule_after(now_ms);
+    }
+
+    /// Enables or disables reactions and starts a fresh cadence window.
+    pub fn set_enabled(&mut self, enabled: bool, now_ms: u32) {
+        self.enabled = enabled;
+        self.schedule_after(now_ms);
+    }
+
+    /// Returns one due reaction and its seed. A suppressed state (Booting, Busy, Sleeping,
+    /// Offline) consumes the opportunity and reschedules, so nothing stale fires on the way out.
+    pub fn poll(&mut self, now_ms: u32, state: CompanionState) -> Option<(MascotAction, u32)> {
+        if !self.enabled || !reached(now_ms, self.next_due_ms) {
+            return None;
+        }
+        if matches!(
+            state,
+            CompanionState::Booting
+                | CompanionState::Busy
+                | CompanionState::Sleeping
+                | CompanionState::Offline
+        ) {
+            self.schedule_after(now_ms);
+            return None;
+        }
+        let action = match self.next_random() % 5 {
+            0 => MascotAction::Greet,
+            1 => MascotAction::Pet,
+            2 => MascotAction::Tickle,
+            3 => MascotAction::Surprise,
+            _ => MascotAction::Comfort,
+        };
+        let seed = self.next_random();
+        self.schedule_after(now_ms);
+        Some((action, seed))
+    }
+
+    /// A fresh seed for one user-requested reaction.
+    pub fn next_seed(&mut self) -> u32 {
+        self.next_random()
+    }
+
+    fn schedule_after(&mut self, now_ms: u32) {
+        let (minimum, maximum) = self.personality.self_play_interval_ms();
+        let delay = minimum + self.next_random() % (maximum - minimum + 1);
+        self.next_due_ms = now_ms.wrapping_add(delay);
+    }
+
+    fn next_random(&mut self) -> u32 {
+        lcg(&mut self.random_state)
+    }
+}
+
+/// `now` is at or past `deadline` on the wrapping millisecond clock (deadlines are always less
+/// than ~24 days ahead, so the signed difference is exact).
+const fn reached(now_ms: u32, deadline_ms: u32) -> bool {
+    now_ms.wrapping_sub(deadline_ms) as i32 >= 0
+}
+
+fn lcg(state: &mut u32) -> u32 {
+    *state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+    *state
+}
+
+/// Everything the buddy does on its own while idle, scheduled from the integer timebase and a seed:
+/// its own reactions ([`SelfPlay`]) and sideways glances. Blinks and the slow gaze drift live in
+/// [`MascotAnimator::pose_at`], and looking towards a touched control in
+/// [`MascotAnimator::look_at`], because both are pure functions of time and input.
+///
+/// The firmware seeds it from the device id hash, so units differ; Device Studio and golden frames
+/// use a fixed seed. Glances and looks keep running when reactions are switched off: only the
+/// buddy's own reactions follow that setting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IdleLife {
+    self_play: SelfPlay,
+    glance_state: u32,
+    next_glance_ms: u32,
+}
+
+impl IdleLife {
+    /// Creates idle life and schedules its first moments after `now_ms`.
+    #[must_use]
+    pub fn new(personality: MascotPersonality, self_play: bool, seed: u32, now_ms: u32) -> Self {
+        let mut life = Self {
+            self_play: SelfPlay::new(personality, self_play, seed, now_ms),
+            glance_state: mix_seed(seed ^ 0x474C_414E),
+            next_glance_ms: now_ms,
+        };
+        life.schedule_glance(now_ms);
+        life
+    }
+
+    /// Current personality.
+    #[must_use]
+    pub const fn personality(&self) -> MascotPersonality {
+        self.self_play.personality()
+    }
+
+    /// Whether the buddy plays reactions on its own.
+    #[must_use]
+    pub const fn self_play(&self) -> bool {
+        self.self_play.enabled()
+    }
+
+    /// Applies the desktop's settings. Restarting the cadence on an unchanged setting would delay
+    /// the next moment, so only a real change does.
+    pub fn configure(&mut self, personality: MascotPersonality, self_play: bool, now_ms: u32) {
+        if personality != self.self_play.personality() {
+            self.self_play.set_personality(personality, now_ms);
+            self.schedule_glance(now_ms);
+        }
+        if self_play != self.self_play.enabled() {
+            self.self_play.set_enabled(self_play, now_ms);
+        }
+    }
+
+    /// Starts whatever is due at `now_ms` on `animator`. A suppressed state (or a refused glance)
+    /// consumes the opportunity, so a stalled loop never replays a backlog.
+    pub fn poll(&mut self, animator: &mut MascotAnimator, now_ms: ElapsedMs) {
+        let personality = self.personality();
+        if let Some((action, seed)) = self.self_play.poll(now_ms, animator.target()) {
+            animator.trigger_action(action, personality, seed, now_ms);
+        }
+        if reached(now_ms, self.next_glance_ms) {
+            let random = self.next_glance_random();
+            let direction = if random >> 24 & 1 == 0 { -1 } else { 1 };
+            animator.glance(direction * personality.glance_q8(), now_ms);
+            self.schedule_glance(now_ms);
+        }
+    }
+
+    fn schedule_glance(&mut self, now_ms: u32) {
+        let (minimum, maximum) = self.personality().glance_interval_ms();
+        let delay = minimum + (self.next_glance_random() >> 8) % (maximum - minimum + 1);
+        self.next_glance_ms = now_ms.wrapping_add(delay);
+    }
+
+    fn next_glance_random(&mut self) -> u32 {
+        lcg(&mut self.glance_state)
     }
 }
 

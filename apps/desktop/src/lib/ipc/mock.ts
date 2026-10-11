@@ -562,7 +562,7 @@ function defaultConfig(): ConfigDto {
     notice: null,
     profiles: builtinProfiles(),
     macros: [],
-    display: { defaultView: 'buddy', secondaryView: 'system' },
+    display: { defaultView: 'buddy', secondaryView: 'system', brightness: 5 },
     buddy: { reactions: true, intensity: 'normal' },
   };
 }
@@ -708,11 +708,29 @@ export function mockSetDisplaySettings(
   }
   const moved = defaultView !== config.display.defaultView;
   const saved = saveConfig(
-    { display: { defaultView, secondaryView }, buddy: config.buddy, profiles: config.profiles },
+    {
+      display: { defaultView, secondaryView, brightness: config.display.brightness },
+      buddy: config.buddy,
+      profiles: config.profiles,
+    },
     null,
   );
   if (moved) updateDesk({ mode: defaultView });
   return saved;
+}
+
+export function mockSetBrightness(step: number): ConfigDto {
+  if (!Number.isInteger(step) || step < 1 || step > 5) {
+    throw new Error('unknown brightness step');
+  }
+  return saveConfig(
+    {
+      display: { ...config.display, brightness: step },
+      buddy: config.buddy,
+      profiles: config.profiles,
+    },
+    null,
+  );
 }
 
 export function mockSetBuddySettings(reactions: boolean, intensity: Intensity): ConfigDto {

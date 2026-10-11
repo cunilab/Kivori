@@ -22,6 +22,7 @@ fn changed(store: &ConfigStore) -> ConfigFile {
         file.display = DisplaySettings {
             default_view: View::Clock,
             secondary_view: SecondaryView::Cycle,
+            brightness: 2,
         };
         file.buddy.reactions = false;
         file.buddy.intensity = Intensity::High;
@@ -76,7 +77,7 @@ fn the_file_uses_the_documented_shape() {
             "version": 1,
             "profiles": {},
             "macros": [],
-            "display": { "defaultView": "clock", "secondaryView": "cycle" },
+            "display": { "defaultView": "clock", "secondaryView": "cycle", "brightness": 2 },
             "buddy": { "reactions": false, "intensity": "high" },
             "onboarding": { "completed": false }
         })
@@ -91,6 +92,7 @@ fn an_invalid_save_is_refused_and_changes_nothing() {
         file.display = DisplaySettings {
             default_view: View::Media,
             secondary_view: SecondaryView::View(View::Media),
+            ..DisplaySettings::default()
         };
     });
     assert!(matches!(
@@ -473,4 +475,43 @@ fn reset_keeps_onboarding_completed() {
     assert!(store.file().onboarding.completed);
     assert!(store.file().buddy.reactions);
     assert!(ConfigStore::open(dir.path()).file().onboarding.completed);
+}
+
+/// A file written before the brightness setting existed stays version 1 and loads at the top step
+/// (the always-on backlight it had), so no migration and no backup is needed.
+#[test]
+fn a_file_without_brightness_loads_at_full_and_the_setting_survives_a_reopen() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("config.json"),
+        br#"{"version":1,"display":{"defaultView":"clock","secondaryView":"cycle"}}"#,
+    )
+    .unwrap();
+    let mut store = ConfigStore::open(dir.path());
+    assert_eq!(store.notice(), None);
+    assert_eq!(store.file().version, 1);
+    assert_eq!(store.file().display.brightness, 5);
+    assert_eq!(names(dir.path()), ["config.json"]);
+
+    let next = store.edited(|file| file.display.brightness = 1);
+    store.save(next).unwrap();
+    assert_eq!(ConfigStore::open(dir.path()).file().display.brightness, 1);
+}
+
+#[test]
+fn a_brightness_step_the_device_does_not_have_is_refused_and_corrupt_on_load() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = ConfigStore::open(dir.path());
+    for step in [0, 6] {
+        let bad = store.edited(|file| file.display.brightness = step);
+        assert!(matches!(store.save(bad), Err(ConfigError::Invalid(_))));
+    }
+    assert_eq!(store.file(), &ConfigFile::default());
+
+    let original =
+        br#"{"version":1,"display":{"defaultView":"buddy","secondaryView":"system","brightness":9}}"#;
+    fs::write(dir.path().join("config.json"), original).unwrap();
+    let reopened = ConfigStore::open(dir.path());
+    assert_eq!(reopened.notice(), Some(ConfigNotice::RecoveredCorrupt));
+    assert_eq!(reopened.file(), &ConfigFile::default());
 }

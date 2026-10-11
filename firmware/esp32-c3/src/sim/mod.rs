@@ -109,6 +109,8 @@ pub struct CaptureDisplay {
     pub blits: u32,
     /// Number of panel windows written (a merged block of tiles is one window, however many tiles).
     pub windows: u32,
+    /// The last backlight step the runtime set (`None` until it sets one).
+    pub brightness: Option<u8>,
 }
 
 impl CaptureDisplay {
@@ -119,6 +121,7 @@ impl CaptureDisplay {
             frame: [Rgb565::from_raw(0); FRAME_PIXELS],
             blits: 0,
             windows: 0,
+            brightness: None,
         }
     }
 
@@ -176,6 +179,10 @@ impl DisplaySink for CaptureDisplay {
         self.blits += (tiles.len() / TILE_PIXELS) as u32;
         self.windows += 1;
         Ok(())
+    }
+
+    fn set_brightness(&mut self, step: u8) {
+        self.brightness = Some(step);
     }
 }
 

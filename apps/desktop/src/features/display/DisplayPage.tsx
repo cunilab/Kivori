@@ -8,8 +8,8 @@ import { Skeleton } from '@kivori/ui/components/skeleton';
 import { DeviceScreen } from '@/components/kivori/device-art';
 import { Page } from '@/components/kivori/page';
 import { ToggleGroup, ToggleGroupItem } from '@kivori/ui/components/toggle-group';
-import { setDisplayMode, setDisplaySettings } from '@/lib/ipc';
-import { DISPLAY_MODES } from '@/lib/ipc/types';
+import { setBrightness, setDisplayMode, setDisplaySettings } from '@/lib/ipc';
+import { BRIGHTNESS_STEPS, DISPLAY_MODES } from '@/lib/ipc/types';
 import type { ConfigDto, ConnectionStatusDto, DeskStatusDto, DisplayMode } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
 import { cn } from '@kivori/ui/lib/utils';
@@ -39,10 +39,14 @@ export function DisplayPage({
 }): ReactElement {
   const [pending, setPending] = useState<DisplayMode | null>(null);
   const [pendingSettings, setPendingSettings] = useState<DisplaySettings | null>(null);
+  const [pendingBrightness, setPendingBrightness] = useState<number | null>(null);
 
   // The saved config arrived: it is the truth again.
   const revision = config?.revision;
-  useEffect(() => setPendingSettings(null), [revision]);
+  useEffect(() => {
+    setPendingSettings(null);
+    setPendingBrightness(null);
+  }, [revision]);
 
   const settings = pendingSettings ?? config?.display ?? null;
   const saveSettings = (next: DisplaySettings): void => {
@@ -52,10 +56,19 @@ export function DisplayPage({
       toast.error(t.settingsFailed, { description: errorText(error) });
     });
   };
+  const chooseBrightness = (step: number): void => {
+    if (!settings || step === (pendingBrightness ?? settings.brightness)) return;
+    setPendingBrightness(step);
+    void setBrightness(step).catch((error: unknown) => {
+      setPendingBrightness(null);
+      toast.error(t.settingsFailed, { description: errorText(error) });
+    });
+  };
   const chooseDefault = (view: DisplayMode): void => {
     if (!settings || view === settings.defaultView) return;
     // The double-press view must differ from the default, so picking it swaps the two.
     saveSettings({
+      ...settings,
       defaultView: view,
       secondaryView:
         settings.secondaryView === view ? settings.defaultView : settings.secondaryView,
@@ -147,6 +160,36 @@ export function DisplayPage({
           <ToggleGroupItem value="cycle" className="px-4">
             {t.doublePress.cycle}
           </ToggleGroupItem>
+        </ToggleGroup>
+      </section>
+
+      <section aria-labelledby="brightness-heading" className="space-y-3">
+        <div className="space-y-0.5">
+          <h2 id="brightness-heading" className="text-base font-semibold">
+            {t.brightness.heading}
+          </h2>
+          <p className="text-sm text-muted-foreground">{t.brightness.body}</p>
+        </div>
+        <ToggleGroup
+          aria-label={t.brightness.heading}
+          value={settings ? [String(pendingBrightness ?? settings.brightness)] : []}
+          disabled={settings === null}
+          onValueChange={(value) => {
+            if (value[0]) chooseBrightness(Number(value[0]));
+          }}
+          variant="outline"
+          className="flex-wrap"
+        >
+          {Array.from({ length: BRIGHTNESS_STEPS }, (_, i) => i + 1).map((step) => (
+            <ToggleGroupItem
+              key={step}
+              value={String(step)}
+              aria-label={t.brightness.step(step)}
+              className="px-4"
+            >
+              {step}
+            </ToggleGroupItem>
+          ))}
         </ToggleGroup>
       </section>
 

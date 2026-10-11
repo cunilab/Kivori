@@ -324,7 +324,7 @@ describe('ControlsPage notice', () => {
       notice: null,
       profiles: [],
       macros: [],
-      display: { defaultView: 'buddy', secondaryView: 'system' },
+      display: { defaultView: 'buddy', secondaryView: 'system', brightness: 5 },
       buddy: { reactions: true, intensity: 'normal' },
     };
   }

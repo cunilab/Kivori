@@ -29,6 +29,7 @@ impl Capabilities {
     //   bit 10 HOST_TAKEOVERS_V1   `Bye(HostSleeping | FirmwareUpdate)` takeovers and the host-silence timeout
     //   bit 11 QUIET_ACK_V1        `FeedbackKind::Triggered` quiet acknowledgement for trigger-only outcomes
     //   bit 12 DEVICE_INTERNALS_V1 `InternalsRequest` / `Internals`: the developer-mode device internals snapshot
+    //   bit 13 IDLE_LIFE_V1        `BuddySettings`: the device runs the buddy's idle life itself; carries brightness
 
     /// Bit 0 — device accepts deterministic social mascot actions and returns applied-time
     /// acknowledgments.
@@ -74,6 +75,11 @@ impl Capabilities {
     /// Bit 12 — the device answers `InternalsRequest` with one `Internals` snapshot (flash, RAM,
     /// CPU, chip and link counters) for the desktop's developer mode.
     pub const DEVICE_INTERNALS_V1: Capabilities = Capabilities(1 << 12);
+
+    /// Bit 13 — the device runs the buddy's idle life itself (self-play, glances, looks, evening
+    /// blinks) and accepts `BuddySettings` (personality, reactions on/off, brightness). Without it
+    /// the desktop director keeps scheduling self-play and sends no settings.
+    pub const IDLE_LIFE_V1: Capabilities = Capabilities(1 << 13);
 
     /// Creates a capability set from a raw bitmask.
     #[must_use]

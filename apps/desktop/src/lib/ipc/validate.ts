@@ -3,6 +3,7 @@
 
 import {
   ACTION_SPEC_KINDS,
+  BRIGHTNESS_STEPS,
   CAPABILITY_NAMES,
   CHIP_MODELS,
   RESET_REASONS,
@@ -59,6 +60,18 @@ function oneOf<T extends string>(name: string, allowed: readonly T[], value: unk
   if (typeof value === 'string' && (allowed as readonly string[]).includes(value))
     return value as T;
   throw new Error(`Kivori: unexpected ${name} token.`);
+}
+
+function brightness(value: unknown): number {
+  if (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= BRIGHTNESS_STEPS
+  ) {
+    return value;
+  }
+  throw new Error('Kivori: invalid brightness.');
 }
 
 function percentOrNull(name: string, value: unknown): number | null {
@@ -486,6 +499,7 @@ export function parseConfig(raw: unknown): ConfigDto {
     display: {
       defaultView: oneOf('display mode', DISPLAY_MODES, display.defaultView),
       secondaryView: oneOf('display mode', [...DISPLAY_MODES, 'cycle'], display.secondaryView),
+      brightness: brightness(display.brightness),
     },
     buddy: {
       reactions: buddy.reactions,

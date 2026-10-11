@@ -286,6 +286,21 @@ pub struct InternalsReport {
     pub internals: DeviceInternals,
 }
 
+/// Desktop -> device: the buddy and display settings the device applies itself (capability
+/// `IDLE_LIFE_V1`). Sent on every session start and whenever one changes; the device keeps the
+/// last values until it restarts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BuddySettings {
+    /// The handshake nonce of the session this applies to.
+    pub session: Nonce,
+    /// Motion amplitude and cadence of the buddy's idle life.
+    pub personality: MascotPersonality,
+    /// Whether the buddy plays reactions on its own. Glances and blinks are not reactions.
+    pub self_play: bool,
+    /// Backlight step, `1..=BRIGHTNESS_STEPS` (1 is the dimmest that is still clearly on).
+    pub brightness: u8,
+}
+
 /// The top-level wire message.
 ///
 /// **Append-only**: new variants are added at the end within a major version — the `postcard`
@@ -335,4 +350,6 @@ pub enum Message {
     InternalsRequest(InternalsRequest),
     /// Tag 20 — device -> desktop internals snapshot (capability `DEVICE_INTERNALS_V1`).
     Internals(InternalsReport),
+    /// Tag 21 — desktop -> device buddy and display settings (capability `IDLE_LIFE_V1`).
+    BuddySettings(BuddySettings),
 }
