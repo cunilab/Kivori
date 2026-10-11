@@ -151,11 +151,12 @@ Software done and host-tested (#12); macOS works the same way for daily testing.
 even when nothing is happening. Moved before the paid beta for the same reason as M2.5: a beta that
 only proves volume control cannot tell us whether people pay.
 
-Software only, Windows first; macOS may land (rule 4). Rules in [product.md](./product.md), design
+Software done and host-tested (#70, firmware 1.4.0, protocol minor 6); macOS works too. The
+hardware rows below remain. Rules in [product.md](./product.md), design
 in [architecture.md](./architecture.md) (ADR-0011 to ADR-0013); hardware rows are Phase 13 in
 [validation.md](./validation.md).
 
-- [ ] **Truthful mic mute** (ADR-0011):
+- [x] **Truthful mic mute** (ADR-0011):
   - `Mic Mute` action: mutes every active capture device at the OS level and reads each one back;
     State Confirmed only when all of them read muted, otherwise Error with what stayed live
   - a mic indicator in the top indicator slot (mic outranks everything, as product.md already
@@ -164,7 +165,7 @@ in [architecture.md](./architecture.md) (ADR-0011 to ADR-0013); hardware rows ar
     nothing, never "not live"
   - default binding: the left button in the Zoom and Teams profiles; offered in onboarding
   - wire: mic state behind a new capability (`Status` is a fixed struct, ADR-0008)
-- [ ] **Profiles for any app:**
+- [x] **Profiles for any app:**
   - "Add the app in front of me" (or pick a running app) creates a profile matched by executable
     or bundle id, starting as a copy of General
   - add an app to an existing profile (e.g. `idea64.exe` to Code); one app belongs to one profile
@@ -172,21 +173,22 @@ in [architecture.md](./architecture.md) (ADR-0011 to ADR-0013); hardware rows ar
   - custom profiles join the middle-button pin cycle only when marked "In pin cycle" (off by default)
   - wider built-in matches: Edge, Firefox, Brave, Arc for Browser; Cursor, JetBrains IDEs, Visual
     Studio, Windows Terminal for Code
-  - config schema version bump with a migration (the existing damaged / newer-config paths stay)
-- [ ] **A buddy that is alive when idle** (ADR-0012):
+  - config stays schema version 1 with serde defaults (the pre-beta rule in the schema); the damaged
+    and newer-config paths stay
+- [x] **A buddy that is alive when idle** (ADR-0012):
   - self-play moves from the desktop companion director into the firmware, so the buddy keeps
     moving through host stalls; the desktop only sends personality and on/off
   - new idle moments: glance left/right, look at a control when it is touched, slower blinks late in
     the evening (local clock from Desktop); the eyes never fully close outside Sleeping
   - deterministic: driven by the integer timebase and a per-unit seed, so golden frames stay exact
   - a brightness setting: backlight PWM on GPIO8 (today always on); no automatic night dim
-- [ ] **Quiet Unverified:**
+- [x] **Quiet Unverified:**
   - a trigger-only action (media key, shortcut, or a macro whose weakest step is one) gets a neutral acknowledgement:
     the keycap press and a label pulse, no amber "?" badge and never a success look (gate 1 holds)
   - the amber badge stays where a state action could not read its result back (mute, mic, app
     volume) because there the user relies on the answer
   - the app's Activity log and Test still say "Unverified" in words
-- [ ] **Device internals in developer mode** (ADR-0013):
+- [x] **Device internals in developer mode** (ADR-0013):
   - a "Device internals" card on the Device page, shown only with developer mode on
   - flash: app image size of the app partition, asset blob of its 128 KiB cap, total flash
   - RAM: static use, free SRAM (already sent), lowest free stack since boot
@@ -197,7 +199,7 @@ in [architecture.md](./architecture.md) (ADR-0011 to ADR-0013); hardware rows ar
     out and rejected
   - asked for once a second while the card is visible, never streamed otherwise; included in
     "Copy diagnostics" only with developer mode on
-- [ ] **Splash screen** on app start:
+- [x] **Splash screen** on app start:
   - a small window with the buddy, the app version and one honest status line ("Starting",
     "Looking for your Kivori"); indeterminate motion, never a made-up percentage
   - shown only while the app is really starting; skipped when it is ready in under ~300 ms, and
