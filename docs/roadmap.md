@@ -208,6 +208,50 @@ in [architecture.md](./architecture.md) (ADR-0011 to ADR-0013); hardware rows ar
 - [ ] Hardware: Phase 13 rows in [validation.md](./validation.md)
 - [ ] Gates 1, 3, 5, 6, 9
 
+## M2.7: Product identity, versioning and updates
+
+**Outcome:** one Kivori app can serve more than one hardware product for years, and a beta user
+always gets the latest app and firmware without hunting for installers. Moved before the paid beta
+because every shipped unit must already say what it is, and a beta without updates cannot be
+supported. Design: ADR-0014 to ADR-0016 in [architecture.md](./architecture.md); rules in
+[product.md](./product.md#updates-us10-us11); hardware rows are Phase 14 in
+[validation.md](./validation.md).
+
+- [ ] **Product identity** (ADR-0014):
+  - `products/registry.toml` hands out fixed machine ids and wire numbers for products and boards
+    (`desk-buddy` = 1, `c3-supermini` = 1); never reused, never renamed; display names live in the
+    catalog
+  - the device reports product, board and hardware revision in a new `Identity` message after the
+    handshake (capability `PRODUCT_IDENTITY_V1`); a device without it is the legacy Desk Buddy on
+    the C3 SuperMini, revision unknown
+  - each firmware image carries an identity record (product, board, firmware version, minimum
+    protocol) next to its version marker; the app refuses to flash an image onto a different
+    product or board, and the firmware shows an error screen if it boots on the wrong one
+  - `just provision --product --board --rev` writes the identity into chip one-time memory (C3 user
+    eFuse block) for units that are sold; it shows the record and needs a typed confirmation
+- [ ] **Product catalog in the app:** `products/<id>/product.toml` per product (display name, image,
+  boards, flash method per board, bundled firmware with version, SHA-256 and minimum protocol,
+  required capabilities); the app's device code reads the catalog instead of assuming one board.
+  `firmware/esp32-c3` moves to `firmware/desk-buddy`
+- [ ] **Release tooling:** release-please reads the conventional commits and opens one release PR
+  with a version and changelog per component; the app tags `vX.Y.Z` and gets a normal (not
+  pre-release) GitHub Release titled with its firmware ("Kivori 0.2.0 · Desk Buddy firmware
+  1.4.0"); firmware tags `fw-<product>-vX.Y.Z` with no GitHub Release of its own
+- [ ] **App updates** (ADR-0015): Tauri updater against the latest GitHub Release's `latest.json`,
+  every update verified with the updater key built into the app; checked at start and daily, on by
+  default, a setting to turn it off; tray badge, then a dialog when the window opens ("Install &
+  restart", "Later" for 3 days, "Skip this version"); never during a flash or a gesture
+- [ ] **Firmware update offer:** a few seconds after a device connects and is idle, if its firmware is
+  older than the bundled one for its product: "Update now" or "Later" (asked again on the next
+  connect; never skipped for good); app update first when both are due; an incompatible device gets
+  the required update; a device newer than the app gets "Update the Kivori app"
+- [ ] **Locking, first tier** (ADR-0016): wrong-product guard in the app and the firmware boot check
+  (above); secure boot waits for v1
+- [ ] Owner, once: create the updater signing key, back it up in two places, add the two GitHub
+  secrets; publish beta releases as normal releases
+- [ ] Hardware: Phase 14 rows in [validation.md](./validation.md)
+- [ ] Gates 5, 8, 10
+
 ## M3: Paid beta
 
 **Outcome:** an external user receives Kivori, installs it, configures it, recovers from common
@@ -243,8 +287,11 @@ before demand is proven.
 - Integrations (Discord, Teams, OBS) as indicators
 - Production PCB with an app-independent ROM recovery path, on the v1 controller chosen in ADR-0010
   (proposed: native USB so basic controls work with no app installed)
-- Signed release manifest, compatibility checks, `Update All`; A/B firmware with rollback
-- Installers with auto-update
+- `Update All` in one step; A/B firmware with rollback
+- Secure boot on production units with native USB (ADR-0016)
+- Update channels (beta / stable) and, if firmware cadence demands it, firmware fetched apart from
+  the app through the same catalog format (ADR-0014)
+- macOS auto-update, with Mac signing
 - Long-term reliability: 8 h idle soak, display idle and burn-in protection, 10 workdays of real use
 
 ## Later

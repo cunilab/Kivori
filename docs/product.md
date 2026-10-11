@@ -39,6 +39,10 @@ evidence (see [roadmap.md](roadmap.md#m4-v1)).
 - The ~10 s MCU reboot gesture; launch at login; tray presence.
 - Visible desktop and firmware versions; user-initiated flashing of the bundled firmware,
   shipped inside a signed installer.
+- One app for every Kivori product: each device reports its product, board and hardware revision,
+  and the app only flashes firmware made for that product and board.
+- App updates found through GitHub Releases and offered in the app; a firmware update offered when
+  a device with older firmware connects.
 
 ### After the beta (decided from beta evidence)
 
@@ -47,10 +51,10 @@ evidence (see [roadmap.md](roadmap.md#m4-v1)).
 - App-free basic controls (volume, media) on the v1 controller, when no Kivori Desktop session
   exists ([ADR-0010](architecture.md#7-decisions), proposed).
 - Display idle and burn-in protection beyond the basics.
-- Authenticated release manifest, compatibility checks, `Update All`; desktop auto-update;
-  rollback-safe (A/B) firmware install.
-- Production hardware with an app-independent recovery path, detected by Desktop;
-  hardware revision identity reported to Desktop.
+- `Update All` in one step; update channels; rollback-safe (A/B) firmware install; macOS
+  auto-update.
+- Production hardware with an app-independent recovery path, detected by Desktop; secure boot on
+  production units that can act as a USB keyboard (ADR-0016).
 - OS user switching; Passive handling of extra devices; factory reset.
 
 ### Not planned
@@ -62,6 +66,8 @@ evidence (see [roadmap.md](roadmap.md#m4-v1)).
 - More than one Active Kivori; Passive as Monitor Mode; waking the host.
 - Process injection, memory inspection or anti-cheat hooks to detect overlays.
 - Silent flashing, unauthenticated or known-incompatible installs, fake progress.
+- Firmware downloaded apart from the app (it ships inside the app; ADR-0014 keeps the format open).
+- Locking firmware against copying onto clone boards.
 
 The rules below are written for the whole product. A rule for a feature that is not shipped yet
 (profiles, macOS, multi-user) applies when that feature ships.
@@ -265,8 +271,27 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
 
 ### Updates (US10, US11)
 
-- Beta: flashing is manual and user-initiated with the bundled, known-compatible build. A
-  failed flash is reported as failed.
+- Versions: the app has one version (the release tag). Each product's firmware has its own
+  version. Compatibility is decided only by the protocol version and capabilities, never by
+  pairing app and firmware version numbers. The app supports the current and the previous protocol
+  major, and carries the firmware for every product it supports, so it can always bring a device up
+  to date.
+- Identity: a device is a product, a board and a hardware revision. Machine ids and wire numbers are
+  fixed in the product registry and never reused or renamed; display names may change. Kivori never
+  flashes firmware made for another product or board, and firmware that finds itself on the wrong
+  board says so on screen instead of running.
+- App updates (beta, Windows): the app checks the latest GitHub Release at start and once a day, on
+  by default, with a setting to turn it off. The check sends no ids. An update is installed only
+  after its signature checks out against the key built into the app, and only when the user chooses
+  "Install & restart"; "Later" asks again after 3 days and "Skip this version" skips that version.
+  The offer is a tray badge, then a dialog when the window opens; it never appears during a flash
+  or a gesture. No network, or a failed check, changes nothing and says nothing.
+- Firmware updates (beta): flashing is manual and user-initiated with the bundled,
+  known-compatible build. When a device whose firmware is older than the bundled one connects and is
+  idle for a few seconds, Desktop offers the update once per device and firmware version ("Update
+  now" or "Later"; "Later" asks again on the next connect). When an app update is also due, the app
+  update is offered first. A device that cannot work with this app gets the required update; a
+  device newer than the app is told to update the app. A failed flash is reported as failed.
 - Later: Desktop reads an authenticated manifest and checks compatibility and order before
   touching either side. `Update All` updates Desktop first when firmware needs it and
   stops if that fails.
