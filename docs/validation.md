@@ -124,7 +124,7 @@ Desktop automation was unavailable, so no native click-through has been verified
 **Latency and wiring**
 
 - [ ] 3.14 Flash `just fw-flash-latency`, turn single detents about 30 times, read `L` (last) and `H` (max) off the panel corner | max under 50 ms detent to flush complete; record several readings plus `H`. This is a gate: the phase is not done while this fails or is unmeasured. Scan-out adds up to one refresh on top. Worst case predicted at about 85 ms (50 ms desktop tick, serial, 33 ms frame), so expect to tune; remedies in order: blocking serial read instead of the 50 ms tick, then a shorter frame interval, then device-local feedback. Re-measure after any change, then `just fw-flash`
-- [ ] 3.15 Check wiring with a continuity test | CLK=GPIO4, DT=GPIO5, SW=GPIO10, COM to GND, VCC to 3V3. Do this first: rows 3.1 to 3.4 depend on it
+- [ ] 3.15 Check wiring with a continuity test | CLK=GPIO4, DT=GPIO0, SW=GPIO1, COM to GND, VCC to 3V3. Do this first: rows 3.1 to 3.4 depend on it
 
 **PRD gates**
 
@@ -189,7 +189,7 @@ Wiring: three momentary tactile switches (12×12 mm, 10 mm tall, seller drawing 
 capacitors; firmware enables the internal pull-ups and debounces 20 ms. Default bindings, left to
 right: Previous track, Play/Pause, Next track (Press only; Hold unbound by default).
 
-- [ ] 5.1 Before wiring: inspect the devkit near GPIO0/GPIO1 | no 32.768 kHz crystal fitted (if one is, stop: pick other pins before soldering)
+- [ ] 5.1 Before wiring: inspect the devkit near GPIO0/GPIO1 (encoder DT/SW since #67) | no 32.768 kHz crystal fitted (if one is, stop: pick other pins before soldering)
 - [ ] 5.2 Power on with each button held in turn | Kivori boots normally every time (none is a strapping pin); the boot log still appears on GPIO21
 - [ ] 5.3 Each button, ten short presses while music plays | exactly one Previous / Play-Pause / Next per press; amber "?" badge (Unverified); a white frame on press
 - [ ] 5.4 Each button held about 1 s | nothing runs (Hold is unbound); held 12 s | nothing runs and the device never reboots

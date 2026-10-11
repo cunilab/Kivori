@@ -83,7 +83,7 @@ stays the beta platform and its rows are tracked in a GitHub issue.
 Software complete and host-tested (S1–S7); the hardware rows and gates below remain.
 
 - [x] Three contextual buttons (#9), software done and host-tested end to end:
-  - pins GPIO0, GPIO1, GPIO20 to GND, internal pull-ups, no resistors; GPIO21 stays the UART0 boot
+  - pins GPIO20, GPIO10, GPIO5 to GND (moved from GPIO0/1/20 for the copper-tape PCB, #67), internal pull-ups, no resistors; GPIO21 stays the UART0 boot
     log, GPIO9 stays unused (download mode)
   - same edge interrupt as the encoder (ADR-0007); each button gives Press and Hold, never recovery;
     one gesture owns all input, so no chords and nothing during a recovery hold

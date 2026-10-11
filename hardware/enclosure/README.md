@@ -122,9 +122,9 @@ These are the pins from [`profile.rs`](../../firmware/esp32-c3/src/profile.rs) a
 | 3V3 | 3V3 | display VCC, encoder + (**never 5 V**) |
 | GND | GND | display GND, encoder GND, one leg of each switch |
 | IO4 | CLK | encoder CLK |
-| IO5 | DT | encoder DT |
-| IO10 | SW | encoder SW |
-| IO0 / IO1 / IO20 | B1 / B2 / B3 | left / middle / right switch, other leg |
+| IO0 | DT | encoder DT |
+| IO1 | SW | encoder SW |
+| IO20 / IO10 / IO5 | B1 / B2 / B3 | left / middle / right switch, other leg |
 
 Validation row 5.1 still applies: check that the SuperMini has no 32.768 kHz crystal on
 GPIO0/GPIO1.

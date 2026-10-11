@@ -30,9 +30,9 @@ One ESP32-C3, one ST7789 240×240 panel, one HW-040 rotary encoder, three moment
 | Display RST | 3 | |
 | Backlight | 8 | active-high; strapping pin, must be high at reset anyway |
 | Encoder CLK (A) | 4 | |
-| Encoder DT (B) | 5 | |
-| Encoder SW | 10 | push switch: Press, Hold, ~10 s recovery reboot |
-| Button left / middle / right | 0 / 1 / 20 | to GND, internal pull-up, no resistor; GPIO0/1 need a devkit without a 32 kHz crystal |
+| Encoder DT (B) | 0 | XTAL_32K pin: needs a devkit without a 32 kHz crystal |
+| Encoder SW | 1 | XTAL_32K pin, as DT; push switch: Press, Hold, ~10 s recovery reboot |
+| Button left / middle / right | 20 / 10 / 5 | to GND, internal pull-up, no resistor; none is a strapping pin |
 | USB D− / D+ | 18 / 19 | native USB Serial/JTAG, `0x303A:0x1001` |
 
 Encoder COM to **GND**, VCC to **3V3**. **Not 5V — ESP32-C3 GPIOs are not 5 V tolerant.** Firmware enables internal pull-ups and reads all three encoder lines active-low, so it works whether or not your HW-040 board populates its own pull-ups.
