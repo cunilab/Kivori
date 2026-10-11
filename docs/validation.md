@@ -309,9 +309,14 @@ Software rules in [product.md](./product.md); design in ADR-0011 and ADR-0012. W
 - [ ] 13.8 Mark a custom profile "In pin cycle", hold the middle button repeatedly | it appears after the built-ins; unmarked profiles do not
 - [ ] 13.9 Leave the app idle 5 minutes, then pause the desktop app (debugger or Task Manager suspend) | the buddy keeps blinking and glancing; no frozen frame; eyes never close fully outside Sleeping
 - [ ] 13.10 Touch each control slowly with the app idle | the buddy looks towards it before the action's own feedback
-- [ ] 13.11 Set the clock to 22:30 | the backlight dims within a minute, stays clearly on (never looks like Display Sleep); the brightness setting changes it
+- [ ] 13.11 Move the brightness setting from highest to lowest | the backlight follows at once; the lowest step is still clearly on (never looks like Display Sleep); the setting survives a restart
 - [ ] 13.12 Press a media key button and a shortcut button | a quiet press and label pulse, no amber badge, no celebration; Activity says "Unverified"
 - [ ] 13.13 Unplug the audio device and press Mute | the amber "?" appears (state action without read-back)
+- [ ] 13.14 Developer mode on, Device page | a Device internals card shows flash, RAM, CPU, frame time, chip and link numbers that update about once a second; developer mode off hides it
+- [ ] 13.15 Compare with the build | app image size matches the built firmware within a few KB; asset blob matches the blob size; spin the knob fast and busy % and frame time rise, then fall back
+- [ ] 13.16 "Copy diagnostics" with developer mode on, then off | internals are included only when on; no port names, ids or file paths either way
+- [ ] 13.17 Start the app from cold (after a reboot) | a splash with the buddy and "Starting" shows, then the main window; no percentage; start it again while warm and the splash does not flash up
+- [ ] 13.18 Sign in with "Start with Windows" on | no splash and no window, only the tray icon
 
 ## Evidence log
 

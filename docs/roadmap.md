@@ -152,7 +152,7 @@ even when nothing is happening. Moved before the paid beta for the same reason a
 only proves volume control cannot tell us whether people pay.
 
 Software only, Windows first; macOS may land (rule 4). Rules in [product.md](./product.md), design
-in [architecture.md](./architecture.md) (ADR-0011, ADR-0012); hardware rows are Phase 13 in
+in [architecture.md](./architecture.md) (ADR-0011 to ADR-0013); hardware rows are Phase 13 in
 [validation.md](./validation.md).
 
 - [ ] **Truthful mic mute** (ADR-0011):
@@ -179,14 +179,30 @@ in [architecture.md](./architecture.md) (ADR-0011, ADR-0012); hardware rows are 
   - new idle moments: glance left/right, look at a control when it is touched, slower blinks late in
     the evening (local clock from Desktop); the eyes never fully close outside Sleeping
   - deterministic: driven by the integer timebase and a per-unit seed, so golden frames stay exact
-  - night dim: backlight PWM on GPIO8 (today always on), a brightness setting, dim after 22:00 by
-    default
+  - a brightness setting: backlight PWM on GPIO8 (today always on); no automatic night dim
 - [ ] **Quiet Unverified:**
   - a trigger-only action (media key, shortcut, or a macro whose weakest step is one) gets a neutral acknowledgement:
     the keycap press and a label pulse, no amber "?" badge and never a success look (gate 1 holds)
   - the amber badge stays where a state action could not read its result back (mute, mic, app
     volume) because there the user relies on the answer
   - the app's Activity log and Test still say "Unverified" in words
+- [ ] **Device internals in developer mode** (ADR-0013):
+  - a "Device internals" card on the Device page, shown only with developer mode on
+  - flash: app image size of the app partition, asset blob of its 128 KiB cap, total flash
+  - RAM: static use, free SRAM (already sent), lowest free stack since boot
+  - CPU and display: run-loop busy %, frame compose and flush time, frames per second
+  - chip: model and revision, internal temperature where the chip reports it, uptime, last reset
+    reason
+  - input and link: edge-queue high-water mark and drops, invalid encoder transitions, frames in,
+    out and rejected
+  - asked for once a second while the card is visible, never streamed otherwise; included in
+    "Copy diagnostics" only with developer mode on
+- [ ] **Splash screen** on app start:
+  - a small window with the buddy, the app version and one honest status line ("Starting",
+    "Looking for your Kivori"); indeterminate motion, never a made-up percentage
+  - shown only while the app is really starting; skipped when it is ready in under ~300 ms, and
+    never shown on a hidden start at login
+  - local assets only (offline rule), light and dark themes, still under reduced motion
 - [ ] Hardware: Phase 13 rows in [validation.md](./validation.md)
 - [ ] Gates 1, 3, 5, 6, 9
 

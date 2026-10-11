@@ -34,7 +34,7 @@ evidence (see [roadmap.md](roadmap.md#m4-v1)).
   are: pinned profiles, not a second concept).
 - Presentation model (buddy, personality, takeover, health, indicators) with intentional
   visuals for every waiting, failure and recovery state the beta can reach. A buddy that stays
-  alive on its own when idle; night dim and a brightness setting.
+  alive on its own when idle; a brightness setting.
 - Recovery across sleep, wake, lock and reconnect.
 - The ~10 s MCU reboot gesture; launch at login; tray presence.
 - Visible desktop and firmware versions; user-initiated flashing of the bundled firmware,
@@ -218,9 +218,8 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   the console, Desktop releases the unit so that user's Kivori can use it.
 - Nothing is buffered during Reconnecting or Disconnected. Reconnect restores current
   truth and never replays old input or old transients.
-- Brightness is a setting. Night dim lowers it from 22:00 to 07:00 local time by default (Desktop
-  sends the clock; with no clock there is no night dim). It never goes dark enough to look like
-  Display Sleep.
+- Brightness is a setting. Its lowest step stays clearly on, so it never looks like Display Sleep.
+  Kivori does not dim on its own by time of day.
 - Display idle: Normal -> Dim -> Low Motion -> Display Sleep, staying Connected. Each step
   is configurable within hardware-safe bounds. Display Sleep is the one intended blank.
 - A gesture that starts in Display Sleep is wake-only for its whole length. In Dim or Low
@@ -242,6 +241,16 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   actions are not retried in a loop, and a broad loss may escalate to Permission Required.
 - macOS needs Accessibility for shortcuts and focused-app detection. Missing it is a normal
   Permission Required case, not an error.
+
+### Desktop app
+
+- Developer mode (a per-computer setting, off by default) reveals Activity, technical device
+  details and device internals: flash, RAM, CPU, frame timing, chip and link counters. Internals are
+  diagnostics only: they are fetched only while shown, carry no ids or payloads (ADR-0005), and a
+  value the device cannot measure shows as unavailable, never as zero.
+- A splash screen covers a real startup only: buddy, version and one honest status line, with
+  indeterminate motion. It is skipped on a fast start and on a hidden start at login, and it never
+  delays a ready app.
 
 ### Configuration and users (US11)
 
