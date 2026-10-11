@@ -158,6 +158,15 @@ const validDesk = {
   mediaTitle: 'Weightless',
   mediaArtist: '',
   lastAction: { action: 'shortcut', result: 'unverified', permissionRequired: true },
+  mic: {
+    muted: 'partial',
+    inUse: null,
+    live: false,
+    devices: [
+      { name: 'Built-in', state: 'muted' },
+      { name: 'USB headset', state: 'live' },
+    ],
+  },
   recentApp: { id: 'figma.exe', name: 'Figma' },
 };
 
@@ -196,6 +205,17 @@ describe('desk ipc (Tauri)', () => {
     });
     await testRotate({ kind: 'systemVolume' });
     expect(tauri.invoke).toHaveBeenCalledWith('test_rotate', { rotate: { kind: 'systemVolume' } });
+  });
+
+  it('rejects a mic state with an unknown token', async () => {
+    enterTauri();
+    tauri.invoke.mockResolvedValue({ ...validDesk, mic: { ...validDesk.mic, muted: 'maybe' } });
+    await expect(getDeskStatus()).rejects.toThrow();
+    tauri.invoke.mockResolvedValue({
+      ...validDesk,
+      mic: { ...validDesk.mic, devices: [{ name: 'A', state: 'broken' }] },
+    });
+    await expect(getDeskStatus()).rejects.toThrow();
   });
 
   it.each([

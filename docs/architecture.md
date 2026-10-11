@@ -167,6 +167,15 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 - Without the capability (older firmware) the desktop `CompanionDirector` keeps scheduling self-play and sending `PlayMascotAction`, as before. With it the director is not polled.
 - Brightness: five steps (`BRIGHTNESS_STEPS`); step 1 is 25 % duty and is still clearly on, step 5 is the old always-on. GPIO8 is a strapping pin sampled at reset, so the physical firmware keeps it a plain output while the panel initialises and hands it to LEDC (24 kHz, 8-bit, low-speed channel 0) afterwards. There is no time-based dimming. The step lives in the config (`display.brightness`, default 5, version 1 with `#[serde(default)]`), is set by `set_brightness` and applied at once.
 
+### Microphone state (protocol 1.6, `MIC_STATE_V1`, ADR-0011)
+
+- One appended message: tag 22 `MicState { session, mic }` (desktop to device), `mic` being `MicState { muted: Option<bool>, in_use: Option<bool> }` (`kivori-model::desk`). `muted` is `Some(true)` only when every active capture device reads muted, `Some(false)` when any reads live or has no mute control, and `None` when that cannot be told (a device could not be read, or there is none). `in_use` is `None` where the OS does not say. `None` is never rendered as muted or as "not live". `Status` stays a fixed struct (ADR-0008), so this is its own message.
+- The desktop sends it when the state changes, and with each status refresh while it is known, only with the capability negotiated; the device keeps the latest of the accepted session and forgets it at every session boundary.
+- The device draws the mic indicator in the top slot (priority over master mute and media): a slashed microphone when muted, a red microphone only when `in_use` AND unmuted ("Live"), nothing otherwise. The resting buddy wears the covered-mouth `MascotExpression::MicMuted` (eye frame 1, mouth frame 11, art `mouth-micmuted`) in Idle only, after Error and celebrate and before strained, master mute, listening and attentive.
+- `MicBackend` (`platform`): `devices`, `set_mute` (write every device, read each back), `in_use`, `try_recv_change`. The write returns the per-device read-back, so StateConfirmed stays structurally honest. The `Mic Mute` action (`Action::ToggleMicMute`, token `micMute`, wire kind `Mute`) mutes all unless all are already muted; Confirmed only if every device reads muted, Error if one stays live or has no mute control, Unverified if one cannot be read back. Device names are user data: they appear in the app (`mic.devices` in the desk status) and never in the activity log, which records only the action token.
+- Windows: one `kivori-mic` thread owns COM, `IAudioEndpointVolume` per active capture endpoint with an `IAudioEndpointVolumeCallback` (own writes carry a Kivori event context, so a user's change is External) and an `IMMNotificationClient` that rescans when a device arrives (it is muted too while mic mute is on). In use reads the consent store; any failure is unknown. macOS: `kAudioDevicePropertyMute` on the input scope per non-aggregate, non-hidden device with input streams (`kAudioHardwarePropertyDevices`), HAL listeners for mute and for the device list, `kAudioDevicePropertyDeviceIsRunningSomewhere` for in use (it can read true on a duplex device that is only playing). A device without a settable mute property is `Unsettable`: the action fails for it, with no fallback to input volume 0. Other targets report `NotImplementedYet`.
+- Default binding: the left button in the Zoom and Teams profiles (replacing the call app's own mute shortcut), so the mic mute is the OS microphone, not the app's button.
+
 ### Device internals (protocol 1.6, `DEVICE_INTERNALS_V1`, ADR-0013)
 
 - Two appended messages: tag 19 `InternalsRequest { session }` (desktop to device) and tag 20 `Internals { session, DeviceInternals }` (device to desktop). The device answers a request from the accepted session with one reply, only when the capability was negotiated; anything else is dropped unseen. `Health` is unchanged.
@@ -208,6 +217,7 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 | 19 | `InternalsRequest` | D to V | session | `DEVICE_INTERNALS_V1` |
 | 20 | `Internals` | V to D | session, `DeviceInternals` (every field optional) | `DEVICE_INTERNALS_V1` |
 | 21 | `BuddySettings` | D to V | session, personality, self-play on/off, brightness step (1 to 5) | `IDLE_LIFE_V1` |
+| 22 | `MicState` | D to V | session, `MicState` (muted and in use, each optional) | `MIC_STATE_V1` |
 
 `InputEvent.control` is `Rotary`, `Button` or `ContextButton(0..3)` (the three contextual buttons, left to right; needs `CONTEXT_BUTTONS_V1`; `Press` and `Hold` only, an index of 3 or more is rejected). With `Rotary`, `kind` is `GestureStarted`, `Detent(Cw|Ccw)` or `GestureEnded`; with `Button` (needs `BUTTON_INPUT_V1` too), it is `Press`, `Hold` or `DoublePress` (needs `DOUBLE_PRESS_V1`), sent once per gesture. The desktop rejects a kind that does not belong to its control. `Presentation.primary` is `Idle, Active, Error, Unknown`. `value` is `{ kind: Volume, current_percent, confidence, at_boundary }`.
 
@@ -229,6 +239,7 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 | 11 | `QUIET_ACK_V1` |
 | 12 | `DEVICE_INTERNALS_V1` |
 | 13 | `IDLE_LIFE_V1` |
+| 14 | `MIC_STATE_V1` |
 
 `Capabilities` is a `u32` set in `kivori-model`. Bits are allocated centrally and never reused.
 
@@ -311,7 +322,7 @@ The webview may call only these commands and listen to these events. No command 
 ### Mascot: the keycap buddy
 
 - Layers, in draw order: `Body` (the fixed base: side walls and front lip), `Cap` (top face, upper wall wedges, legend), both eyes, then the mouth. Base and cap are shared by all six states. One eye texture serves both eyes.
-- `face::buddy_face(state, view)` (`kivori-model`, #13) maps observed desk truth to a face override (Error, celebrate, Strained, Muted, Listening, Attentive; rules in product.md). The firmware applies it to the pose on the Buddy view only. Faces are eye/mouth sprite frames compiled from `assets/mascot.svg`; the blob is ~126 KB of its 128 KiB cap, so new faces need art or crop trimming first.
+- `face::buddy_face(state, view)` (`kivori-model`, #13) maps observed desk truth to a face override (Error, celebrate, MicMuted, Strained, Muted, Listening, Attentive; rules in product.md). The firmware applies it to the pose on the Buddy view only. Faces are eye/mouth sprite frames compiled from `assets/mascot.svg`; the blob is ~127.3 KB (127,253 bytes) of its 131,072-byte cap; the covered-mouth face added one 24x13 mouth frame (780 bytes) with no trimming, but a further face needs art or crop trimming first.
 - A pose's `press_q8` sinks the cap and the face printed on it while the base stays put, so the walls visibly shorten. Happy holds a 16 px press.
 - `MascotAnimator` (in `kivori-model`) resolves blinking, per-state motion, and eased transitions (350 ms, 600 ms into sleep). Expression changes are hidden inside a blink. Firmware keeps the animator between state changes and renders through the same compositor as Device Studio.
 - Volume overlay room: `MascotPose::with_overlay_room` scales the body by 0.72 (184/256) and lifts it 34 px so the keycap sits above the bar. The switch is instant, not eased.

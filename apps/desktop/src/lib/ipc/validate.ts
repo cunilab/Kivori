@@ -21,6 +21,8 @@ import {
   CATALOG_VERIFICATIONS,
   CONFIG_NOTICES,
   DESK_ACTIONS,
+  MIC_DEVICE_STATES,
+  MIC_MUTED_STATES,
   DESK_RESULTS,
   DISPLAY_MODES,
   DOUBLE_PRESS_ACTIONS,
@@ -37,6 +39,7 @@ import {
   ROTATE_SPEC_KINDS,
 } from './types';
 import type {
+  MicDto,
   ActionCatalogEntryDto,
   ConnectionStatusDto,
   ActionSpec,
@@ -339,7 +342,27 @@ export function parseDeskStatus(raw: unknown): DeskStatusDto {
     mediaTitle: textOrNull('mediaTitle', r.mediaTitle),
     mediaArtist: textOrNull('mediaArtist', r.mediaArtist),
     lastAction,
+    mic: parseMic(r.mic),
     recentApp: r.recentApp === null ? null : appRef(r.recentApp),
+  };
+}
+
+function parseMic(raw: unknown): MicDto {
+  const r = record('mic', raw);
+  if (r.inUse !== null && typeof r.inUse !== 'boolean') throw new Error('Kivori: invalid mic.');
+  if (typeof r.live !== 'boolean' || !Array.isArray(r.devices))
+    throw new Error('Kivori: invalid mic.');
+  return {
+    muted: oneOf('mic muted', MIC_MUTED_STATES, r.muted),
+    inUse: r.inUse,
+    live: r.live,
+    devices: r.devices.map((raw) => {
+      const d = record('mic device', raw);
+      return {
+        name: text('mic device name', d.name, 256),
+        state: oneOf('mic device state', MIC_DEVICE_STATES, d.state),
+      };
+    }),
   };
 }
 

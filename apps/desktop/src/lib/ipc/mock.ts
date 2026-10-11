@@ -312,6 +312,12 @@ let deskStatus: DeskStatusDto = {
   mediaTitle: null,
   mediaArtist: null,
   lastAction: null,
+  mic: {
+    muted: 'no',
+    inUse: null,
+    live: false,
+    devices: [{ name: 'Built-in Microphone', state: 'live' }],
+  },
   recentApp: null,
   ...connectedDesk,
 };
@@ -350,6 +356,7 @@ const ACTION_TOKENS: Record<ActionSpec['kind'], DeskActionToken> = {
   previousTrack: 'previousTrack',
   nextTrack: 'nextTrack',
   systemMute: 'mute',
+  micMute: 'micMute',
   appMute: 'appMute',
   shortcut: 'shortcut',
   launch: 'launch',
@@ -372,11 +379,26 @@ export function mockTestAction(action: ActionSpec): void {
   const unsupported = action.kind === 'appMute' && scenario() === 'mac';
   const result = unsupported
     ? 'error'
-    : action.kind === 'systemMute' || action.kind === 'appMute'
+    : action.kind === 'systemMute' || action.kind === 'micMute' || action.kind === 'appMute'
       ? 'stateConfirmed'
       : action.kind === 'launch'
         ? 'executionConfirmed'
         : 'unverified';
+  if (action.kind === 'micMute') {
+    const muted = deskStatus.mic.muted !== 'yes';
+    const devices = deskStatus.mic.devices.map((d) => ({
+      ...d,
+      state: muted ? ('muted' as const) : ('live' as const),
+    }));
+    updateDesk({
+      mic: {
+        ...deskStatus.mic,
+        muted: muted ? 'yes' : 'no',
+        live: !muted && deskStatus.mic.inUse === true,
+        devices,
+      },
+    });
+  }
   updateDesk({
     muted: action.kind === 'systemMute' ? !deskStatus.muted : deskStatus.muted,
     lastAction: { action: ACTION_TOKENS[action.kind], result, permissionRequired: false },
@@ -434,6 +456,7 @@ export function mockListActionCatalog(): ActionCatalogEntryDto[] {
     catalogEntry('previousTrack', 'discrete', 'media', 'unverified', 'none', true),
     catalogEntry('nextTrack', 'discrete', 'media', 'unverified', 'none', true),
     catalogEntry('systemMute', 'discrete', 'system', 'confirmed', 'none', true),
+    catalogEntry('micMute', 'discrete', 'system', 'confirmed', 'none', true),
     catalogEntry('appMute', 'discrete', 'app', 'confirmed', 'app', true, appUnsupported),
     catalogEntry('shortcut', 'discrete', 'keyboard', 'unverified', 'shortcut', false),
     catalogEntry('launch', 'discrete', 'launch', 'started', 'target', false),
@@ -454,6 +477,8 @@ function actionLabel(action: ActionSpec | null): string {
     case 'systemMute':
     case 'appMute':
       return 'Mute';
+    case 'micMute':
+      return 'Mic';
     case 'shortcut':
       return action.keys;
     case 'launch':
@@ -484,6 +509,14 @@ const mediaButtons: ProfileConfigDto['buttons'] = [
   { press: slot({ kind: 'previousTrack' }), hold: slot(null) },
   { press: slot(media), hold: 'pin' },
   { press: slot({ kind: 'nextTrack' }), hold: slot(null) },
+];
+/** The meeting profiles: the left button mutes the OS microphones, the others are the app's keys. */
+const meetingButtons = (
+  buttons: [[string, string], [string, string]],
+): ProfileConfigDto['buttons'] => [
+  { press: slot({ kind: 'micMute' }), hold: slot(null) },
+  { press: slot(key(buttons[0][1]), buttons[0][0]), hold: 'pin' },
+  { press: slot(key(buttons[1][1]), buttons[1][0]), hold: slot(null) },
 ];
 const shortcutButtons = (
   buttons: [[string, string], [string, string], [string, string]],
@@ -557,8 +590,7 @@ function builtinProfiles(): ProfileConfigDto[] {
       'zoom',
       'Zoom',
       ['zoom.exe'],
-      shortcutButtons([
-        ['Mic', 'Alt+A'],
+      meetingButtons([
         ['Video', 'Alt+V'],
         ['Leave', 'Alt+Q'],
       ]),
@@ -567,8 +599,7 @@ function builtinProfiles(): ProfileConfigDto[] {
       'teams',
       'Teams',
       ['ms-teams.exe', 'teams.exe'],
-      shortcutButtons([
-        ['Mic', 'Ctrl+Shift+M'],
+      meetingButtons([
         ['Video', 'Ctrl+Shift+O'],
         ['Leave', 'Ctrl+Shift+H'],
       ]),

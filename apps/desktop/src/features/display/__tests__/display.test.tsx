@@ -43,6 +43,7 @@ const desk: DeskStatusDto = {
   mediaTitle: null,
   mediaArtist: null,
   lastAction: null,
+  mic: { muted: 'unknown', inUse: null, live: false, devices: [] },
   recentApp: null,
 };
 

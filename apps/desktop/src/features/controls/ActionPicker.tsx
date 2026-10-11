@@ -182,6 +182,7 @@ function PickerForm({
       case 'previousTrack':
       case 'nextTrack':
       case 'systemMute':
+      case 'micMute':
         return { kind: id };
       default:
         return null;
@@ -282,6 +283,12 @@ function PickerForm({
             </div>
           )}
         </RadioGroup>
+
+        {id === 'micMute' && (
+          <p className="text-sm text-muted-foreground" data-testid="mic-note">
+            {p.micNote}
+          </p>
+        )}
 
         {params === 'macro' && (
           <Field

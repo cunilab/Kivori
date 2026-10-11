@@ -96,6 +96,7 @@ export const CAPABILITY_NAMES = [
   'quietAckV1',
   'deviceInternalsV1',
   'idleLifeV1',
+  'micStateV1',
 ] as const;
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
 
@@ -351,6 +352,8 @@ export type ActionSpec =
   | { kind: 'previousTrack' }
   | { kind: 'nextTrack' }
   | { kind: 'systemMute' }
+  /** Mutes every microphone the OS has, not an app's own mute button. */
+  | { kind: 'micMute' }
   /** `app` is the lowercase executable name on Windows (`spotify.exe`), at most 128 characters. */
   | { kind: 'appMute'; app: string }
   | { kind: 'shortcut'; keys: string }
@@ -362,6 +365,7 @@ export const ACTION_SPEC_KINDS = [
   'previousTrack',
   'nextTrack',
   'systemMute',
+  'micMute',
   'appMute',
   'shortcut',
   'launch',
@@ -449,6 +453,7 @@ export const DESK_ACTIONS = [
   'volume',
   'playPause',
   'mute',
+  'micMute',
   'shortcut',
   'launch',
   'previousTrack',
@@ -485,6 +490,27 @@ export interface AppRefDto {
 }
 
 /** Desk projection. Every unknown value is `null` (never guessed). */
+/** Whether the microphones are muted: `yes` only when every one reads muted, never a guess. */
+export const MIC_MUTED_STATES = ['yes', 'partial', 'no', 'unknown'] as const;
+export type MicMutedState = (typeof MIC_MUTED_STATES)[number];
+export const MIC_DEVICE_STATES = ['muted', 'live', 'unknown', 'cannotMute'] as const;
+export type MicDeviceState = (typeof MIC_DEVICE_STATES)[number];
+
+export interface MicDeviceDto {
+  name: string;
+  state: MicDeviceState;
+}
+
+/** The computer's microphones. Device names are for this window only; the activity log has none. */
+export interface MicDto {
+  muted: MicMutedState;
+  /** An app is using a microphone; `null` where the OS does not say (never read as "no"). */
+  inUse: boolean | null;
+  /** The "Live" cue: in use AND unmuted. Unknown on either side is `false`. */
+  live: boolean;
+  devices: MicDeviceDto[];
+}
+
 export interface DeskStatusDto {
   mode: DisplayMode;
   volumePercent: number | null;
@@ -515,6 +541,7 @@ export interface DeskStatusDto {
   mediaTitle: string | null;
   mediaArtist: string | null;
   lastAction: DeskActionDto | null;
+  mic: MicDto;
   /** The last app in front that is not Kivori itself (`null` = none yet). */
   recentApp: AppRefDto | null;
 }

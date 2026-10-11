@@ -61,12 +61,23 @@ restarts anything.
 
 Kivori changes what the controls do to suit the app in front of you, for example media keys in a
 player or tab switching in a browser. This is **Auto**, and the profile name shows at the top left of
-the screen. The built-in profiles are General, Browser, Code, Media, Zoom and Teams.
+the screen. The built-in profiles are General, Browser, Code, Media, Zoom and Teams. In Zoom and Teams the left
+button mutes your microphones.
 
 To stay on one profile, hold the middle button. Each hold moves on: General, Browser, Code, Media,
 Zoom, Teams, then back to Auto. A dot next to the name shows it is pinned. On a protected window
 (such as a Windows permission prompt or the lock screen) shortcuts and app launches pause, while
 volume, media keys and mute keep working.
+
+## Muting your microphones
+
+The **Mic mute** action (the left button in Zoom and Teams, or any control you give it on the
+Controls page) mutes every microphone your computer has, not just one app's, and then checks each
+one. The buddy covers its mouth and a slashed microphone shows in the corner only when every
+microphone reads muted. If one stays live, Kivori says so and shows it as failed, and the Home page
+names the microphone. It is the computer's microphone, not Zoom's or Teams' own mute button, so
+those apps can still show their own mute as off. A red microphone ("Live") shows when an app is
+using an unmuted microphone, where your computer reports that; if it does not, nothing shows.
 
 ## Customising controls and macros
 

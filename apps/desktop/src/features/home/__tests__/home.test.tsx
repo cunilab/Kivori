@@ -32,6 +32,7 @@ function desk(overrides: Partial<DeskStatusDto> = {}): DeskStatusDto {
     mediaTitle: null,
     mediaArtist: null,
     lastAction: null,
+    mic: { muted: 'unknown', inUse: null, live: false, devices: [] },
     recentApp: null,
     ...overrides,
   };
@@ -104,6 +105,71 @@ describe('HomePage', () => {
     expect(screen.getByTestId('desk-media')).toHaveTextContent('Paused');
     expect(screen.getByTestId('desk-title')).toHaveTextContent('Weightless');
     expect(screen.getByTestId('desk-artist')).toHaveTextContent('Marconi Union');
+  });
+
+  it('shows the microphones: muted, a Live cue only when in use and unmuted, unknown shows none', () => {
+    const mic = (m: Partial<DeskStatusDto['mic']>): DeskStatusDto['mic'] => ({
+      muted: 'no',
+      inUse: null,
+      live: false,
+      devices: [
+        { name: 'Built-in', state: 'live' },
+        { name: 'USB headset', state: 'live' },
+      ],
+      ...m,
+    });
+    const { unmount } = render(view(desk({ mic: mic({}) })));
+    expect(screen.getByTestId('mic-muted')).toHaveTextContent('On');
+    expect(screen.queryByTestId('mic-live')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mic-devices')).toHaveTextContent('USB headset');
+    // The scope is stated: the computer's microphones, not an app's own mute button.
+    expect(screen.getAllByText(/not an app’s own mute button/).length).toBeGreaterThan(0);
+    unmount();
+
+    const live = render(view(desk({ mic: mic({ inUse: true, live: true }) })));
+    expect(screen.getByTestId('mic-live')).toHaveTextContent('Live');
+    live.unmount();
+
+    const muted = render(
+      view(
+        desk({
+          mic: mic({
+            muted: 'yes',
+            devices: [
+              { name: 'Built-in', state: 'muted' },
+              { name: 'USB headset', state: 'muted' },
+            ],
+          }),
+        }),
+      ),
+    );
+    expect(screen.getByTestId('mic-muted')).toHaveTextContent('Muted');
+    expect(screen.queryByTestId('mic-live')).not.toBeInTheDocument();
+    muted.unmount();
+
+    // A device that stayed live is named, and the whole is never "Muted".
+    const partial = render(
+      view(
+        desk({
+          mic: mic({
+            muted: 'partial',
+            devices: [
+              { name: 'Built-in', state: 'muted' },
+              { name: 'USB headset', state: 'live' },
+            ],
+          }),
+        }),
+      ),
+    );
+    expect(screen.getByTestId('mic-muted')).toHaveTextContent('Partly muted');
+    expect(screen.getByTestId('mic-devices')).toHaveTextContent('USB headset');
+    partial.unmount();
+
+    // Unknown: nothing claims live or muted.
+    render(view(desk()));
+    expect(screen.getByTestId('mic-muted')).toHaveTextContent('Unknown');
+    expect(screen.queryByTestId('mic-live')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mic-none')).toHaveTextContent(/can’t read/);
   });
 
   it('distinguishes a player that shared no title from an unknown one', () => {

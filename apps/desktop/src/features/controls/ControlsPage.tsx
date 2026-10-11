@@ -285,6 +285,10 @@ export function ControlsPage({
         </Alert>
       ) : null}
 
+      <p className="text-xs text-muted-foreground" data-testid="mic-scope-note">
+        {t.micScope}
+      </p>
+
       <Card data-testid="active-profile">
         <CardHeader>
           <div className="flex items-center gap-3">
