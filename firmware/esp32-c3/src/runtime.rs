@@ -65,8 +65,9 @@ pub const UPDATING_MAX_MS: u32 = 120_000;
 /// Input snapshots processed per tick: the physical edge queue plus the closing current sample.
 const INPUT_SAMPLES: usize = 129;
 
-/// How far the keycap sinks while the switch is held: the device's own instant acknowledgement,
-/// shallower than Happy's 16 px press so it never reads as that state (Q8 pixels).
+/// How far the keycap sinks while the switch is held or a quiet acknowledgement shows: the
+/// device's own instant acknowledgement, shallower than Happy's 16 px press so it never reads as
+/// that state (Q8 pixels).
 const PRESS_ACK_Q8: i32 = 8 * 256;
 
 /// Loop timings. Both are integer milliseconds, so behaviour is deterministic (ADR-0003).
@@ -658,7 +659,7 @@ impl<'a> Runtime<'a> {
                 matches!(self.host_takeover, Some((HostTakeover::Updating, _))),
             );
             let mut pose = self.animator.pose_at(now);
-            if view.button_down && view.status.mode == DisplayMode::Buddy {
+            if (view.button_down || view.quiet_ack()) && view.status.mode == DisplayMode::Buddy {
                 pose.press_q8 = pose.press_q8.max(PRESS_ACK_Q8);
             }
             // Observed desk facts pick the buddy's face; the recovery takeover owns the screen.

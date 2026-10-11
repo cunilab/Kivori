@@ -1121,7 +1121,8 @@ const fn feedback_token(kind: kivori_model::desk::FeedbackKind) -> &'static str 
         FeedbackKind::Processing => "processing",
         FeedbackKind::StateConfirmed => "stateConfirmed",
         FeedbackKind::ExecutionConfirmed => "executionConfirmed",
-        FeedbackKind::Unverified => "unverified",
+        // Both unverified cases read "Unverified" in words; only the device tells them apart.
+        FeedbackKind::Unverified | FeedbackKind::Triggered => "unverified",
         FeedbackKind::Error => "error",
     }
 }
@@ -1452,7 +1453,7 @@ pub const fn availability_token(
 }
 
 /// Every capability flag with the name the diagnostics page lists it by, in bit order.
-const CAPABILITY_TABLE: [(Capabilities, &str); 11] = [
+const CAPABILITY_TABLE: [(Capabilities, &str); 12] = [
     (Capabilities::MASCOT_INTERACTION, "mascotInteraction"),
     (Capabilities::PHYSICAL_INPUT_V1, "physicalInputV1"),
     (Capabilities::PRESENTATION_V1, "presentationV1"),
@@ -1464,6 +1465,7 @@ const CAPABILITY_TABLE: [(Capabilities, &str); 11] = [
     (Capabilities::CONTROL_LABELS_V1, "controlLabelsV1"),
     (Capabilities::CONTEXT_BUTTONS_V1, "contextButtonsV1"),
     (Capabilities::HOST_TAKEOVERS_V1, "hostTakeoversV1"),
+    (Capabilities::QUIET_ACK_V1, "quietAckV1"),
 ];
 
 /// The capability names the diagnostics page lists, in bit order.

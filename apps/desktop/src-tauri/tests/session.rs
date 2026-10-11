@@ -780,3 +780,40 @@ fn takeover_byes_are_sent_only_to_a_device_that_negotiated_them() {
         .iter()
         .any(|m| matches!(m, Message::Bye(bye) if bye.reason == ByeReason::FirmwareUpdate)));
 }
+
+fn feedback_kinds(msgs: &[Message]) -> Vec<kivori_model::desk::FeedbackKind> {
+    msgs.iter()
+        .filter_map(|m| match m {
+            Message::Feedback(f) => Some(f.kind),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn triggered_feedback_goes_out_as_unverified_unless_quiet_ack_was_negotiated() {
+    use kivori_model::desk::{ActionFeedback, ActionKind, FeedbackKind};
+    let triggered = ActionFeedback {
+        action: ActionKind::PlayPause,
+        kind: FeedbackKind::Triggered,
+    };
+
+    let base = Capabilities::MASCOT_INTERACTION.union(Capabilities::ACTION_FEEDBACK_V1);
+    let (mut link, mut session, _manager, _orch) = connect_with_caps(SendableState::Idle, base);
+    let _ = desktop_drain(&mut link);
+    assert!(session.send_feedback(&mut link, triggered).expect("send"));
+    assert_eq!(
+        feedback_kinds(&desktop_drain(&mut link)),
+        [FeedbackKind::Unverified],
+        "a device without bit 11 keeps today's Unverified"
+    );
+
+    let caps = base.union(Capabilities::QUIET_ACK_V1);
+    let (mut link, mut session, _manager, _orch) = connect_with_caps(SendableState::Idle, caps);
+    let _ = desktop_drain(&mut link);
+    assert!(session.send_feedback(&mut link, triggered).expect("send"));
+    assert_eq!(
+        feedback_kinds(&desktop_drain(&mut link)),
+        [FeedbackKind::Triggered]
+    );
+}

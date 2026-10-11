@@ -1356,10 +1356,10 @@ pub fn render_chrome(band: &mut TileBand, view: &DeskView) {
     }
 
     if let (DisplayMode::Buddy, Some(labels)) = (status.mode, view.controls) {
-        control_legend(band, &labels, view.switch_down);
+        control_legend(band, &labels, view.switch_down, view.quiet_ack());
     }
 
-    if let Some(fb) = view.feedback {
+    if let Some(fb) = view.feedback.filter(|f| f.kind != FeedbackKind::Triggered) {
         badge(band, fb.kind, view.elapsed_ms);
     }
 
@@ -1383,7 +1383,8 @@ pub fn render_chrome(band: &mut TileBand, view: &DeskView) {
 ///   the knob's own switch is held, the row shows what releasing it does (`PRESS` / `HOLD`).
 /// * Without contextual buttons, the bottom row is a `TURN` / `PRESS` / `HOLD` legend instead
 ///   and the knob label stays there.
-fn control_legend(band: &mut TileBand, labels: &ControlLabels, switch_down: bool) {
+/// * `pulse` (a quiet acknowledgement) brightens the ticks and captions.
+fn control_legend(band: &mut TileBand, labels: &ControlLabels, switch_down: bool, pulse: bool) {
     const COL_W: i32 = SCREEN / 3;
     let profile = labels.profile.as_latin1();
     if !profile.is_empty() {
@@ -1395,6 +1396,9 @@ fn control_legend(band: &mut TileBand, labels: &ControlLabels, switch_down: bool
         text_clipped(band, F_LABEL, profile, (x, 10), MUTED, (x - 10, 92, 10));
     }
     let buttons = labels.buttons.iter().any(|b| !b.is_empty());
+    // The quiet acknowledgement: the ticks under the labels and the captions brighten for its
+    // ~400 ms. Neutral white, never green or a check.
+    let tick = if pulse { TEXT } else { FAINT };
     if buttons && !switch_down {
         for (i, label) in labels.buttons.iter().enumerate() {
             if label.is_empty() {
@@ -1402,7 +1406,7 @@ fn control_legend(band: &mut TileBand, labels: &ControlLabels, switch_down: bool
             }
             let x0 = i as i32 * COL_W;
             column_label(band, label.as_latin1(), (x0, x0 + COL_W), 214);
-            rrect(band, x0 + COL_W / 2 - 8, 234, 16, 3, 1, FAINT);
+            rrect(band, x0 + COL_W / 2 - 8, 234, 16, 3, 1, tick);
         }
     }
     if buttons {
@@ -1422,22 +1426,34 @@ fn control_legend(band: &mut TileBand, labels: &ControlLabels, switch_down: bool
         ];
         for (i, (caption, label)) in columns.into_iter().enumerate() {
             let x0 = i as i32 * COL_W;
-            captioned(band, caption, label.as_latin1(), (x0, x0 + COL_W));
+            captioned(band, caption, label.as_latin1(), (x0, x0 + COL_W), tick);
         }
     } else if switch_down {
         // What releasing the held switch does, in two halves of the row.
-        captioned(band, b"PRESS", labels.press.as_latin1(), (0, CENTER));
-        captioned(band, b"HOLD", labels.hold.as_latin1(), (CENTER, SCREEN));
+        captioned(band, b"PRESS", labels.press.as_latin1(), (0, CENTER), tick);
+        captioned(
+            band,
+            b"HOLD",
+            labels.hold.as_latin1(),
+            (CENTER, SCREEN),
+            tick,
+        );
     }
 }
 
-/// A small caption over its label in the column `[x0, x1)` of the bottom row; nothing when the
-/// label is empty.
-fn captioned(band: &mut TileBand, caption: &[u8], label: &[u8], (x0, x1): (i32, i32)) {
+/// A small caption (in `tone`) over its label in the column `[x0, x1)` of the bottom row; nothing
+/// when the label is empty.
+fn captioned(
+    band: &mut TileBand,
+    caption: &[u8],
+    label: &[u8],
+    (x0, x1): (i32, i32),
+    tone: Rgb565,
+) {
     if label.is_empty() {
         return;
     }
-    text_c(band, F_SMALL, caption, (x0 + x1) / 2, 210, FAINT);
+    text_c(band, F_SMALL, caption, (x0 + x1) / 2, 210, tone);
     column_label(band, label, (x0, x1), 222);
 }
 
@@ -1484,6 +1500,8 @@ fn badge(band: &mut TileBand, kind: FeedbackKind, elapsed_ms: u32) {
             line(band, (cx - 7, cy - 7), (cx + 7, cy + 7), 2, TEXT);
             line(band, (cx + 7, cy - 7), (cx - 7, cy + 7), 2, TEXT);
         }
+        // The quiet acknowledgement has no badge; the legend pulses instead.
+        FeedbackKind::Triggered => {}
         FeedbackKind::Processing => {
             // Indeterminate: a faint ring with eight dots and a bright head circling it.
             let head = ((elapsed_ms / 100) % 8) as i32;

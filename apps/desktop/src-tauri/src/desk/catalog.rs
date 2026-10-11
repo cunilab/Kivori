@@ -476,7 +476,9 @@ mod tests {
             let class = match execute(&action, &fakes()).kind {
                 FeedbackKind::StateConfirmed => ConfirmationClass::StateConfirmed,
                 FeedbackKind::ExecutionConfirmed => ConfirmationClass::ExecutionConfirmed,
-                FeedbackKind::Unverified => ConfirmationClass::TriggeredUnverified,
+                FeedbackKind::Unverified | FeedbackKind::Triggered => {
+                    ConfirmationClass::TriggeredUnverified
+                }
                 other => panic!("{}: the fakes should succeed, got {other:?}", entry.id),
             };
             assert_eq!(entry.verification, Verification::of(class), "{}", entry.id);
@@ -519,9 +521,9 @@ mod tests {
         let entry = entry_named("macro");
         assert_eq!(entry.verification, Verification::LeastOfSteps);
         assert_eq!(entry.token, ActionToken::Macro);
-        // Mute is state-confirmed, play/pause unverified: the macro shows the lesser.
+        // Mute is state-confirmed, play/pause trigger-only: the macro shows the lesser.
         let action = example("macro").unwrap();
-        assert_eq!(execute(&action, &fakes()).kind, FeedbackKind::Unverified);
+        assert_eq!(execute(&action, &fakes()).kind, FeedbackKind::Triggered);
         assert_eq!(action.token(), entry.token);
     }
 

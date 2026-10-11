@@ -93,6 +93,7 @@ export const CAPABILITY_NAMES = [
   'controlLabelsV1',
   'contextButtonsV1',
   'hostTakeoversV1',
+  'quietAckV1',
 ] as const;
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
 

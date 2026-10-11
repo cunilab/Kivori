@@ -254,8 +254,9 @@ const fn confirmation_rank(kind: FeedbackKind) -> u8 {
     match kind {
         FeedbackKind::Error => 0,
         FeedbackKind::Processing | FeedbackKind::Unverified => 1,
-        FeedbackKind::ExecutionConfirmed => 2,
-        FeedbackKind::StateConfirmed => 3,
+        FeedbackKind::Triggered => 2,
+        FeedbackKind::ExecutionConfirmed => 3,
+        FeedbackKind::StateConfirmed => 4,
     }
 }
 
@@ -878,7 +879,7 @@ impl DeskRuntime {
             FeedbackKind::StateConfirmed | FeedbackKind::ExecutionConfirmed => {
                 ActivityEventKind::DeskActionConfirmed
             }
-            FeedbackKind::Unverified | FeedbackKind::Processing => {
+            FeedbackKind::Unverified | FeedbackKind::Triggered | FeedbackKind::Processing => {
                 ActivityEventKind::DeskActionUnverified
             }
             FeedbackKind::Error => ActivityEventKind::DeskActionFailed,
@@ -1148,7 +1149,7 @@ mod tests {
             "Ctrl+R"
         };
         assert_eq!(sent(&synth), [reload]);
-        assert_eq!(feedback[0].kind, FeedbackKind::Unverified);
+        assert_eq!(feedback[0].kind, FeedbackKind::Triggered);
         assert_eq!(text(desk.labels().profile), "Browser");
     }
 
@@ -1289,7 +1290,7 @@ mod tests {
         let shortcut: Shortcut = "Ctrl+M".parse().unwrap();
         desk.test(Action::Shortcut(shortcut), ms(0), &mut |_| {});
         let feedback = settle(&mut desk, ms(10), |f| !f.is_empty());
-        assert_eq!(feedback[0].kind, FeedbackKind::Unverified);
+        assert_eq!(feedback[0].kind, FeedbackKind::Triggered);
         assert_eq!(sent(&synth), ["Ctrl+M"]);
     }
 

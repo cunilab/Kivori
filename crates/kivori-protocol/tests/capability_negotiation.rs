@@ -47,3 +47,15 @@ fn host_takeovers_needs_both_peers() {
     assert_eq!(minor, 4);
     assert!(!caps.contains(Capabilities::HOST_TAKEOVERS_V1));
 }
+
+#[test]
+fn quiet_ack_needs_both_peers() {
+    let both = Capabilities::QUIET_ACK_V1.union(Capabilities::MASCOT_INTERACTION);
+    let (_, caps) = negotiate(6, 6, both, both);
+    assert!(caps.contains(Capabilities::QUIET_ACK_V1));
+    // An older device (1.5, no bit 11) never negotiates it, so the desktop must keep sending
+    // `Unverified` to it.
+    let (minor, caps) = negotiate(6, 5, both, Capabilities::MASCOT_INTERACTION);
+    assert_eq!(minor, 5);
+    assert!(!caps.contains(Capabilities::QUIET_ACK_V1));
+}

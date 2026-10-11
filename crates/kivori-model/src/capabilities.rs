@@ -27,6 +27,7 @@ impl Capabilities {
     //   bit 8  CONTROL_LABELS_V1   `ControlLabels` message (what the knob / press / hold do)
     //   bit 9  CONTEXT_BUTTONS_V1  three contextual buttons (`ControlId::ContextButton` input)
     //   bit 10 HOST_TAKEOVERS_V1   `Bye(HostSleeping | FirmwareUpdate)` takeovers and the host-silence timeout
+    //   bit 11 QUIET_ACK_V1        `FeedbackKind::Triggered` quiet acknowledgement for trigger-only outcomes
 
     /// Bit 0 — device accepts deterministic social mascot actions and returns applied-time
     /// acknowledgments.
@@ -64,6 +65,10 @@ impl Capabilities {
     /// Bit 10 — the device honours `Bye(HostSleeping)` (keeps showing Sleeping after the link drops)
     /// and `Bye(FirmwareUpdate)` (shows Updating), and goes offline after 4 s of host silence.
     pub const HOST_TAKEOVERS_V1: Capabilities = Capabilities(1 << 10);
+
+    /// Bit 11 — the device renders `FeedbackKind::Triggered` as a quiet acknowledgement (keycap
+    /// press and label pulse, no badge). Without it the desktop sends `Unverified` instead.
+    pub const QUIET_ACK_V1: Capabilities = Capabilities(1 << 11);
 
     /// Creates a capability set from a raw bitmask.
     #[must_use]

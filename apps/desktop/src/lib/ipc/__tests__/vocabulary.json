@@ -20,7 +20,8 @@
     "mediaInfoV1",
     "controlLabelsV1",
     "contextButtonsV1",
-    "hostTakeoversV1"
+    "hostTakeoversV1",
+    "quietAckV1"
   ],
   "controls": [
     "press",

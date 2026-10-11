@@ -17,7 +17,7 @@ use crate::device::nonce::{NonceSource, OsNonceSource};
 use crate::device::transport::SerialLink;
 use crate::input::DeviceClock;
 use crate::orchestrator::Orchestrator;
-use kivori_model::desk::{ActionFeedback, ControlLabels, DeskStatus, MediaInfo};
+use kivori_model::desk::{ActionFeedback, ControlLabels, DeskStatus, FeedbackKind, MediaInfo};
 use kivori_model::{
     Capabilities, CompanionState, MascotAction, MascotPersonality, ProtocolVersion, SendableState,
 };
@@ -65,7 +65,8 @@ impl Default for SessionConfig {
                 .union(Capabilities::MEDIA_INFO_V1)
                 .union(Capabilities::CONTROL_LABELS_V1)
                 .union(Capabilities::CONTEXT_BUTTONS_V1)
-                .union(Capabilities::HOST_TAKEOVERS_V1),
+                .union(Capabilities::HOST_TAKEOVERS_V1)
+                .union(Capabilities::QUIET_ACK_V1),
             supported_majors: vec![PROTOCOL_MAJOR],
         }
     }
@@ -529,7 +530,8 @@ impl Session {
     }
 
     /// Sends one action outcome for the current session. Returns `Ok(false)` without encoding
-    /// anything when there is no session or `ACTION_FEEDBACK_V1` was not negotiated.
+    /// anything when there is no session or `ACTION_FEEDBACK_V1` was not negotiated. `Triggered`
+    /// goes out as `Unverified` unless `QUIET_ACK_V1` was negotiated.
     ///
     /// # Errors
     /// [`SessionError::Transport`] if the write fails.
@@ -547,12 +549,21 @@ impl Session {
         {
             return Ok(false);
         }
+        // A device that did not negotiate the quiet acknowledgement still gets today's Unverified.
+        let kind = match feedback.kind {
+            FeedbackKind::Triggered
+                if !self.negotiated_caps.contains(Capabilities::QUIET_ACK_V1) =>
+            {
+                FeedbackKind::Unverified
+            }
+            kind => kind,
+        };
         self.send(
             link,
             &Message::Feedback(Feedback {
                 session,
                 action: feedback.action,
-                kind: feedback.kind,
+                kind,
             }),
         )?;
         Ok(true)

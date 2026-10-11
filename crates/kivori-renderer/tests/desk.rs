@@ -3,8 +3,8 @@
 
 use kivori_framebuffer::TileBand;
 use kivori_model::desk::{
-    ActionFeedback, ActionKind, ClockTime, CpuHistory, DeskStatus, DeskView, DisplayMode,
-    FeedbackKind, MediaInfo, MediaStatus, MediaText, VIEW_TRANSITION_MS,
+    ActionFeedback, ActionKind, ClockTime, ControlLabels, CpuHistory, DeskStatus, DeskView,
+    DisplayMode, FeedbackKind, MediaInfo, MediaStatus, MediaText, VIEW_TRANSITION_MS,
 };
 use kivori_model::presentation::{ValueConfidence, ValueDisplay, ValueKind};
 use kivori_model::{Rect, Rgb565};
@@ -480,6 +480,36 @@ fn unverified_never_looks_like_success() {
     for y in 10..47 {
         for x in 12..49 {
             assert_ne!(px(&frame, x, y), Rgb565::WHITE, "white at {x},{y}");
+        }
+    }
+}
+
+#[test]
+fn the_quiet_acknowledgement_has_no_badge_and_no_success_look() {
+    // Away from the Buddy legend there is nothing to pulse: the frame is the plain view.
+    let mut v = view(DisplayMode::Volume, |s| s.volume_percent = Some(40));
+    let baseline = full(|b| scene(b, &v, None));
+    v.feedback = feedback(FeedbackKind::Triggered);
+    assert_eq!(full(|b| scene(b, &v, None)), baseline);
+
+    // In the Buddy view only the legend brightens; the badge corner and the colours stay neutral.
+    let mut buddy = view(DisplayMode::Buddy, |_| {});
+    buddy.controls = Some(ControlLabels {
+        press: MediaText::from_text("Play/Pause"),
+        buttons: ["Back", "", "Next"].map(MediaText::from_text),
+        ..ControlLabels::default()
+    });
+    let plain = full(|b| scene(b, &buddy, None));
+    buddy.feedback = feedback(FeedbackKind::Triggered);
+    let quiet = full(|b| scene(b, &buddy, None));
+    assert_ne!(quiet, plain, "the label pulse shows");
+    for y in 0..DIM {
+        for x in 0..DIM {
+            let (r, g, b) = px(&quiet, x, y).to_rgb888();
+            assert!(!(i32::from(g) > i32::from(r) + 40 && i32::from(g) > i32::from(b) + 40));
+            if y < 56 && x < 56 {
+                assert_eq!(px(&quiet, x, y), px(&plain, x, y), "badge corner {x},{y}");
+            }
         }
     }
 }

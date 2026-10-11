@@ -94,6 +94,7 @@ fn every_feedback_roundtrips() {
             FeedbackKind::ExecutionConfirmed,
             FeedbackKind::Unverified,
             FeedbackKind::Error,
+            FeedbackKind::Triggered,
         ] {
             let msg = Message::Feedback(Feedback {
                 session: 5,
@@ -201,4 +202,18 @@ fn context_buttons_are_control_variant_2_with_their_index() {
     );
     assert_eq!(Capabilities::CONTEXT_BUTTONS_V1.bits(), 1 << 9);
     assert_eq!(Capabilities::HOST_TAKEOVERS_V1.bits(), 1 << 10);
+    assert_eq!(Capabilities::QUIET_ACK_V1.bits(), 1 << 11);
+}
+
+/// Append-only: `Triggered` follows the original five kinds.
+#[test]
+fn triggered_feedback_is_appended_as_kind_5() {
+    for (kind, wire_value) in [(FeedbackKind::Error, 4u8), (FeedbackKind::Triggered, 5)] {
+        let msg = Message::Feedback(Feedback {
+            session: 0,
+            action: ActionKind::Volume,
+            kind,
+        });
+        assert_eq!(payload(&msg).last().copied(), Some(wire_value), "{kind:?}");
+    }
 }

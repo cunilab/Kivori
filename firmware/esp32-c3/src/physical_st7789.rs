@@ -274,7 +274,7 @@ pub fn run_mode(
                 .expect("6-byte base MAC"),
         ),
 
-        // 1.3: host takeovers (Sleeping, Updating, silence timeout) on top of M2; protocol 1.5.
+        // 1.3: host takeovers (Sleeping, Updating, silence timeout) on top of M2; protocol 1.6 (quiet acknowledgement).
         firmware_version: FIRMWARE_VERSION,
 
         capabilities: Capabilities::MASCOT_INTERACTION
@@ -287,7 +287,8 @@ pub fn run_mode(
             .union(Capabilities::MEDIA_INFO_V1)
             .union(Capabilities::CONTROL_LABELS_V1)
             .union(Capabilities::CONTEXT_BUTTONS_V1)
-            .union(Capabilities::HOST_TAKEOVERS_V1),
+            .union(Capabilities::HOST_TAKEOVERS_V1)
+            .union(Capabilities::QUIET_ACK_V1),
     };
 
     // Keeps `FW_VERSION_MARKER` (and so the version text) in the linked image.

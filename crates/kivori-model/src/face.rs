@@ -2,7 +2,7 @@
 //!
 //! Pure and allocation-free, shared by firmware and desktop preview. Every override comes from an
 //! observed fact (invariant 2): a confirmation face only follows a confirmed outcome (gate 1, so
-//! `Unverified` and `Processing` never celebrate), and the connection/sleep truth states are never
+//! `Unverified`, `Triggered` and `Processing` never celebrate), and the connection/sleep truth states are never
 //! overridden (invariant 21).
 
 use crate::desk::{ContextMood, DeskView, FeedbackKind, MediaStatus};
@@ -45,7 +45,8 @@ pub fn buddy_face(state: CompanionState, view: &DeskView) -> Option<FaceOverride
                 press_q8: HAPPY_PRESS_Q8,
             })
         }
-        Some(FeedbackKind::Processing | FeedbackKind::Unverified) | None => {}
+        Some(FeedbackKind::Processing | FeedbackKind::Unverified | FeedbackKind::Triggered)
+        | None => {}
     }
     if state != CompanionState::Idle {
         return None;
@@ -139,7 +140,11 @@ mod tests {
 
     #[test]
     fn unverified_and_processing_never_celebrate() {
-        for kind in [FeedbackKind::Unverified, FeedbackKind::Processing] {
+        for kind in [
+            FeedbackKind::Unverified,
+            FeedbackKind::Triggered,
+            FeedbackKind::Processing,
+        ] {
             let view = with(|v| v.feedback = feedback(kind));
             for state in CompanionState::ALL {
                 assert_eq!(buddy_face(state, &view), None, "{kind:?} in {state:?}");

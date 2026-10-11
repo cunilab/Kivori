@@ -278,8 +278,8 @@ pub fn execute_while(action: &Action, platform: &Platform, current: &dyn Fn() ->
     match action {
         Action::Macro(m) => execute_macro(m, platform, current),
         // A media key's effect cannot be tied to this press: the observer's state may be stale
-        // or changed by something else, so a matching state is never proof. Always Unverified;
-        // the media indicator and view show the playback the OS actually reports.
+        // or changed by something else, so a matching state is never proof. Always Triggered (the
+        // quiet Unverified: named so in words, never success); the media indicator and view show the playback the OS actually reports.
         Action::PlayPause | Action::PreviousTrack | Action::NextTrack => {
             let key = match action {
                 Action::PreviousTrack => MediaKey::Previous,
@@ -287,7 +287,7 @@ pub fn execute_while(action: &Action, platform: &Platform, current: &dyn Fn() ->
                 _ => MediaKey::PlayPause,
             };
             match platform.synth.send_media_key(key) {
-                Ok(()) => Outcome::of(FeedbackKind::Unverified),
+                Ok(()) => Outcome::of(FeedbackKind::Triggered),
                 Err(error) => Outcome::from_error(&error),
             }
         }
@@ -346,7 +346,7 @@ pub fn execute_while(action: &Action, platform: &Platform, current: &dyn Fn() ->
         }
         Action::VolumeNudge { app } => nudge_volume(platform, app.as_deref()),
         Action::Shortcut(shortcut) => match platform.synth.send_shortcut(shortcut) {
-            Ok(()) => Outcome::of(FeedbackKind::Unverified),
+            Ok(()) => Outcome::of(FeedbackKind::Triggered),
             Err(error) => Outcome::from_error(&error),
         },
         Action::Launch(target) => match (platform.launch)(target) {
@@ -412,8 +412,11 @@ const fn rank(kind: FeedbackKind) -> u8 {
     match kind {
         FeedbackKind::Error => 0,
         FeedbackKind::Unverified | FeedbackKind::Processing => 1,
-        FeedbackKind::ExecutionConfirmed => 2,
-        FeedbackKind::StateConfirmed => 3,
+        // A trigger-only outcome is better known than a state that could not be read back: the
+        // user relies on the latter, so a macro keeps the amber one.
+        FeedbackKind::Triggered => 2,
+        FeedbackKind::ExecutionConfirmed => 3,
+        FeedbackKind::StateConfirmed => 4,
     }
 }
 
@@ -446,7 +449,7 @@ fn same_place(start: &Foreground, now: &Foreground) -> bool {
 }
 
 /// Runs a macro's steps in order and keeps the least-confirmed outcome (Error < Unverified <
-/// Started < Confirmed). The first Error stops it and nothing is rolled back.
+/// Triggered < Started < Confirmed). The first Error stops it and nothing is rolled back.
 ///
 /// It also stops, as an Error, when `current` goes false between steps (the session ended), and
 /// before a shortcut or launch step when the foreground became Protected or is no longer the app
@@ -654,14 +657,14 @@ mod tests {
     }
 
     #[test]
-    fn previous_and_next_send_their_media_key_and_stay_unverified() {
+    fn previous_and_next_send_their_media_key_and_stay_triggered() {
         let synth = Arc::new(FakeInputSynth::new(Ok(())));
         let p = Platform {
             synth: synth.clone(),
             ..platform(Ok(()), None, FakeVolumeBackend::new(0)).0
         };
-        assert_eq!(kind(&Action::PreviousTrack, &p), FeedbackKind::Unverified);
-        assert_eq!(kind(&Action::NextTrack, &p), FeedbackKind::Unverified);
+        assert_eq!(kind(&Action::PreviousTrack, &p), FeedbackKind::Triggered);
+        assert_eq!(kind(&Action::NextTrack, &p), FeedbackKind::Triggered);
         assert_eq!(
             *synth.sent.lock().unwrap(),
             ["media-previous", "media-next"]
@@ -669,10 +672,10 @@ mod tests {
     }
 
     #[test]
-    fn play_pause_is_never_more_than_unverified() {
+    fn play_pause_is_never_more_than_triggered() {
         for media in [None, Some(MediaStatus::Paused), Some(MediaStatus::Playing)] {
             let (p, _) = platform(Ok(()), media, FakeVolumeBackend::new(0));
-            assert_eq!(kind(&Action::PlayPause, &p), FeedbackKind::Unverified);
+            assert_eq!(kind(&Action::PlayPause, &p), FeedbackKind::Triggered);
         }
     }
 
@@ -846,12 +849,12 @@ mod tests {
     }
 
     #[test]
-    fn a_shortcut_is_never_more_than_unverified() {
+    fn a_shortcut_is_never_more_than_triggered() {
         let shortcut: Shortcut = "Ctrl+Shift+M".parse().unwrap();
         let (p, _) = platform(Ok(()), None, FakeVolumeBackend::new(0));
         assert_eq!(
             kind(&Action::Shortcut(shortcut), &p),
-            FeedbackKind::Unverified
+            FeedbackKind::Triggered
         );
     }
 
@@ -987,12 +990,12 @@ mod tests {
         let kind_of = |steps| kind(&macro_of(steps), &p);
         assert_eq!(
             kind_of(vec![run(Action::ToggleMute), run(Action::PlayPause)]),
-            FeedbackKind::Unverified,
-            "confirmed + unverified"
+            FeedbackKind::Triggered,
+            "confirmed + trigger-only"
         );
         assert_eq!(
             kind_of(vec![run(Action::PlayPause), run(Action::ToggleMute)]),
-            FeedbackKind::Unverified,
+            FeedbackKind::Triggered,
             "order does not matter"
         );
         assert_eq!(

@@ -153,6 +153,9 @@ pub enum FeedbackKind {
     Unverified,
     /// Known failure.
     Error,
+    /// A trigger-only action (media key, shortcut) was dispatched; its effect cannot be read back
+    /// by design. Shown as a quiet acknowledgement, never as success; needs `QUIET_ACK_V1`.
+    Triggered,
 }
 
 impl FeedbackKind {
@@ -164,6 +167,7 @@ impl FeedbackKind {
         match self {
             FeedbackKind::StateConfirmed | FeedbackKind::ExecutionConfirmed => 800,
             FeedbackKind::Unverified => 1_200,
+            FeedbackKind::Triggered => 400,
             FeedbackKind::Error | FeedbackKind::Processing => 2_000,
         }
     }
@@ -358,6 +362,16 @@ pub struct DeskView {
     pub controls: Option<ControlLabels>,
 }
 
+impl DeskView {
+    /// A quiet acknowledgement (`FeedbackKind::Triggered`) is in force: the keycap press and a
+    /// label pulse, no badge and never a success look.
+    #[must_use]
+    pub fn quiet_ack(&self) -> bool {
+        self.feedback
+            .is_some_and(|f| f.kind == FeedbackKind::Triggered)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -416,5 +430,13 @@ mod tests {
             FeedbackKind::Unverified.transient_ms() > FeedbackKind::StateConfirmed.transient_ms()
         );
         assert!(FeedbackKind::Error.transient_ms() > FeedbackKind::Unverified.transient_ms());
+    }
+
+    #[test]
+    fn the_quiet_acknowledgement_is_the_shortest_transient() {
+        assert_eq!(FeedbackKind::Triggered.transient_ms(), 400);
+        assert!(
+            FeedbackKind::Triggered.transient_ms() < FeedbackKind::StateConfirmed.transient_ms()
+        );
     }
 }
