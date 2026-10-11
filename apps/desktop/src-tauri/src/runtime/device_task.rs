@@ -47,6 +47,7 @@ use crate::presentation::{PresentationResolver, ProductSnapshot};
 use crate::runtime::lifecycle;
 use crate::runtime::state::DeviceCommand;
 use kivori_model::desk::{ActionFeedback, ActionKind, FeedbackKind};
+use kivori_model::internals::DeviceInternals;
 use kivori_model::{Capabilities, CompanionState, ConnectionState};
 use kivori_protocol::ByeReason;
 use kivori_protocol::{ErrorCategory, InputEvent, PlayMascotAction, Presentation};
@@ -340,6 +341,13 @@ fn device_loop(
                     }
                 }
                 DeviceCommand::Refresh => {}
+                DeviceCommand::RequestInternals => {
+                    // A write failure here resurfaces through the next pump, so it is not handled
+                    // twice. Nothing is sent while the serial port is reserved for flashing.
+                    if let Some(link) = link.as_mut().filter(|_| !flash.is_busy()) {
+                        let _ = session.request_internals(link);
+                    }
+                }
                 DeviceCommand::SetDisplayMode(mode) => {
                     desk.set_mode(mode, &mut |observation| {
                         record_observations(&app, &activity_log, [observation]);
@@ -1272,6 +1280,7 @@ pub fn plan_device_request(
         DeviceCommand::FlashFirmware
         | DeviceCommand::RestoreFirmware
         | DeviceCommand::Refresh
+        | DeviceCommand::RequestInternals
         | DeviceCommand::SetDisplayMode(_)
         | DeviceCommand::TestAction(_)
         | DeviceCommand::ApplyConfig(_) => None,
@@ -1418,6 +1427,9 @@ pub fn observe_connection_transition(
 #[derive(Default)]
 struct DiagnosticsPublisher {
     last_published: Option<Instant>,
+    /// The internals snapshot in the last publish; a new one is published at once so the card
+    /// does not wait out the interval.
+    last_internals: Option<DeviceInternals>,
     connected_since: Option<Instant>,
     connections: u32,
 }
@@ -1441,13 +1453,16 @@ impl DiagnosticsPublisher {
         } else if !connected {
             self.connected_since = None;
         }
-        if self
-            .last_published
-            .is_some_and(|at| now.duration_since(at) < Self::INTERVAL)
+        let internals = session.internals();
+        if internals == self.last_internals
+            && self
+                .last_published
+                .is_some_and(|at| now.duration_since(at) < Self::INTERVAL)
         {
             return;
         }
         self.last_published = Some(now);
+        self.last_internals = internals;
         let device = manager.device().filter(|_| connected);
         *cell.lock().expect("diagnostics lock") = DiagnosticsSnapshot {
             connection: crate::ipc::dto::connection_token(manager.state()),
@@ -1469,6 +1484,7 @@ impl DiagnosticsPublisher {
             retry_count: manager.retry_count(),
             session: session.diagnostics(),
             host,
+            internals,
         };
     }
 }

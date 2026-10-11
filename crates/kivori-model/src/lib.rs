@@ -18,6 +18,7 @@ pub mod desk;
 pub mod face;
 pub mod geometry;
 pub mod input;
+pub mod internals;
 pub mod mascot;
 pub mod presentation;
 pub mod profile;

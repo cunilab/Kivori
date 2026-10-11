@@ -21,6 +21,7 @@ import type {
   AccessibilityState,
   MascotAction,
   ConfigDto,
+  DeviceInternalsDto,
   DiagnosticsDto,
   ControlRef,
   ProfileId,
@@ -37,6 +38,7 @@ import {
   parseConfig,
   parseConnectionStatus,
   parseDeskStatus,
+  parseDeviceInternals,
   parseDiagnostics,
   parseFirmwareStatus,
   parseStartupSettings,
@@ -218,6 +220,16 @@ export async function setDesiredState(state: SendableState): Promise<void> {
 export async function getDiagnostics(): Promise<DiagnosticsDto> {
   if (isTauri()) return parseDiagnostics(await invoke<unknown>('get_diagnostics'));
   if (import.meta.env.DEV) return (await devMock()).mockGetDiagnostics();
+  return unavailable();
+}
+
+/**
+ * The developer-mode Device internals card. Asks the device for a fresh snapshot and returns the
+ * latest one it answered with, so call it about once a second, and only while the card is visible.
+ */
+export async function getDeviceInternals(): Promise<DeviceInternalsDto> {
+  if (isTauri()) return parseDeviceInternals(await invoke<unknown>('get_device_internals'));
+  if (import.meta.env.DEV) return (await devMock()).mockGetDeviceInternals();
   return unavailable();
 }
 

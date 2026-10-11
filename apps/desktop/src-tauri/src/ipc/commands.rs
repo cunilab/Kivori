@@ -10,8 +10,8 @@ use tauri::{AppHandle, State};
 use crate::activity::ActivityEventKind;
 use crate::firmware::FirmwareStatus;
 use crate::ipc::dto::{
-    self, ActivityEventDto, AppInfoDto, ConfigDto, ConnectionStatusDto, DiagnosticsDto,
-    OnboardingDto, StartupSettingsDto,
+    self, ActivityEventDto, AppInfoDto, ConfigDto, ConnectionStatusDto, DeviceInternalsDto,
+    DiagnosticsDto, OnboardingDto, StartupSettingsDto,
 };
 use crate::ipc::events;
 use crate::runtime::state::{AppState, DeviceCommand};
@@ -65,6 +65,16 @@ pub fn set_desired_state(app: State<'_, AppState>, state: String) -> Result<(), 
 #[tauri::command]
 pub fn get_diagnostics(app: State<'_, AppState>) -> DiagnosticsDto {
     app.diagnostics_snapshot()
+}
+
+/// The Device internals card (developer mode). Asks the device for a fresh snapshot and returns the
+/// latest one it has already answered with, so a card polling about once a second always shows the
+/// previous reply and the device is only ever asked while the card is visible.
+#[tauri::command]
+pub fn get_device_internals(app: State<'_, AppState>) -> DeviceInternalsDto {
+    // The device thread only stops at shutdown; a failed send just leaves the cached figures.
+    let _ = app.send_command(DeviceCommand::RequestInternals);
+    app.internals_snapshot()
 }
 
 /// Whether Kivori starts at login, read from the OS entry (all builds).

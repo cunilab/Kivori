@@ -817,3 +817,106 @@ fn triggered_feedback_goes_out_as_unverified_unless_quiet_ack_was_negotiated() {
         [FeedbackKind::Triggered]
     );
 }
+
+fn internals_request_session(msgs: &[Message]) -> Option<u32> {
+    msgs.iter().find_map(|m| match m {
+        Message::InternalsRequest(request) => Some(request.session),
+        _ => None,
+    })
+}
+
+fn sample_internals() -> kivori_model::internals::DeviceInternals {
+    kivori_model::internals::DeviceInternals {
+        app_image_bytes: Some(700_000),
+        fps: Some(30),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn internals_are_requested_only_from_a_device_that_negotiated_them() {
+    let (mut link, mut session, _manager, _orch) = connect(SendableState::Idle);
+    let _ = desktop_drain(&mut link);
+    assert!(!session.request_internals(&mut link).expect("request"));
+    assert!(desktop_drain(&mut link).is_empty(), "nothing sent");
+
+    let (mut link, mut session, _manager, _orch) = connect_with_caps(
+        SendableState::Idle,
+        Capabilities::MASCOT_INTERACTION.union(Capabilities::DEVICE_INTERNALS_V1),
+    );
+    let _ = desktop_drain(&mut link);
+    assert!(session.request_internals(&mut link).expect("request"));
+    assert!(internals_request_session(&desktop_drain(&mut link)).is_some());
+}
+
+#[test]
+fn the_latest_internals_reply_is_cached_and_forgotten_with_the_connection() {
+    let (mut link, mut session, mut manager, mut orch) = connect_with_caps(
+        SendableState::Idle,
+        Capabilities::MASCOT_INTERACTION.union(Capabilities::DEVICE_INTERNALS_V1),
+    );
+    let _ = desktop_drain(&mut link);
+    assert_eq!(session.internals(), None);
+    assert!(session.request_internals(&mut link).expect("request"));
+    let nonce = internals_request_session(&desktop_drain(&mut link)).expect("request sent");
+
+    // A snapshot for some other session is dropped unseen.
+    device_push(
+        &mut link,
+        &Message::Internals(kivori_protocol::InternalsReport {
+            session: nonce.wrapping_add(1),
+            internals: sample_internals(),
+        }),
+        wire_version(),
+        1,
+    );
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+    assert_eq!(session.internals(), None);
+
+    device_push(
+        &mut link,
+        &Message::Internals(kivori_protocol::InternalsReport {
+            session: nonce,
+            internals: sample_internals(),
+        }),
+        wire_version(),
+        2,
+    );
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+    assert_eq!(session.internals(), Some(sample_internals()));
+
+    // The device ends the session: the snapshot describes a connection that is gone.
+    device_push(
+        &mut link,
+        &Message::Bye(Bye {
+            reason: ByeReason::Shutdown,
+        }),
+        wire_version(),
+        3,
+    );
+    let _ = session.pump(&mut link, &mut manager, &mut orch);
+    assert_eq!(session.internals(), None);
+}
+
+#[test]
+fn an_unnegotiated_internals_reply_is_ignored() {
+    let (mut link, mut session, mut manager, mut orch) = connect(SendableState::Idle);
+    let _ = desktop_drain(&mut link);
+    device_push(
+        &mut link,
+        &Message::Internals(kivori_protocol::InternalsReport {
+            session: 1,
+            internals: sample_internals(),
+        }),
+        wire_version(),
+        1,
+    );
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+    assert_eq!(session.internals(), None);
+}

@@ -29,6 +29,7 @@ use kivori_protocol::FirmwareVersion;
 use mipidsi::{interface::SpiInterface, Builder};
 
 use crate::{
+    chip_probe,
     device_id::derive_device_id,
     display::MipidsiSink,
     physical_rotary::PhysicalRotary,
@@ -117,6 +118,10 @@ pub fn run_mode(
     assets: &'static [u8],
 ) -> ! {
     esp_println::println!("KIVORI physical ST7789 runtime");
+
+    // Paint the unused stack now, while little of it is in use, so the device internals snapshot
+    // can report how deep it has ever gone.
+    chip_probe::paint_stack();
 
     // -------------------------------------------------------------------------
     // USB Serial/JTAG transport
@@ -256,6 +261,7 @@ pub fn run_mode(
     // -------------------------------------------------------------------------
 
     let blob = AssetBlob::parse(assets).expect("Kivori asset blob");
+    chip_probe::init(peripherals.TSENS, assets.len());
 
     esp_println::println!("KIVORI assets loaded");
 
@@ -274,7 +280,7 @@ pub fn run_mode(
                 .expect("6-byte base MAC"),
         ),
 
-        // 1.3: host takeovers (Sleeping, Updating, silence timeout) on top of M2; protocol 1.6 (quiet acknowledgement).
+        // 1.3: host takeovers (Sleeping, Updating, silence timeout) on top of M2; protocol 1.6 (quiet acknowledgement, device internals).
         firmware_version: FIRMWARE_VERSION,
 
         capabilities: Capabilities::MASCOT_INTERACTION
@@ -288,7 +294,8 @@ pub fn run_mode(
             .union(Capabilities::CONTROL_LABELS_V1)
             .union(Capabilities::CONTEXT_BUTTONS_V1)
             .union(Capabilities::HOST_TAKEOVERS_V1)
-            .union(Capabilities::QUIET_ACK_V1),
+            .union(Capabilities::QUIET_ACK_V1)
+            .union(Capabilities::DEVICE_INTERNALS_V1),
     };
 
     // Keeps `FW_VERSION_MARKER` (and so the version text) in the linked image.
@@ -328,6 +335,7 @@ pub fn run_mode(
         &mut display,
         &blob,
         frame_buffer,
+        chip_probe::probe,
         |tick, transport| {
             if tick.reboot {
                 // Give the queued `Bye` a bounded moment to reach the host, then reboot. The

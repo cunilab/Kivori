@@ -21,6 +21,7 @@ import { setDevMode, useDevMode } from '@/lib/dev-mode';
 import { strings } from '@/lib/i18n/strings';
 import { cn } from '@kivori/ui/lib/utils';
 import { Diagnostics } from './Diagnostics';
+import { DeviceInternals } from './DeviceInternals';
 import { FirmwareUpdate } from './FirmwareUpdate';
 import { StartupCard } from './StartupCard';
 
@@ -142,6 +143,7 @@ export function DevicePage({
             </Card>
           ) : null}
           <Diagnostics />
+          {devMode ? <DeviceInternals /> : null}
           <Card size="sm">
             <CardHeader>
               <CardTitle>{t.app}</CardTitle>

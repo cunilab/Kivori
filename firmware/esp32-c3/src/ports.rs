@@ -108,4 +108,10 @@ pub trait InputSource {
     fn dropped_edges(&self) -> u32 {
         0
     }
+
+    /// The most edges ever waiting in the capture queue at once (since boot). Polled sources have
+    /// no queue, so the default is 0.
+    fn edge_high_water(&self) -> u32 {
+        0
+    }
 }

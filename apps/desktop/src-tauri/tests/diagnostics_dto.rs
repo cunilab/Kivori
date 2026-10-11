@@ -136,3 +136,41 @@ fn capability_names_follow_bit_order_and_skip_unset_bits() {
         vec!["hostTakeoversV1"]
     );
 }
+
+#[test]
+fn internals_dto_keeps_unavailable_as_null_and_hides_a_stale_snapshot() {
+    use kivori_desktop::ipc::dto::device_internals_dto;
+    use kivori_model::internals::{ChipModel, DeviceInternals, ResetReason};
+
+    let mut snapshot = connected_snapshot(Instant::now());
+    snapshot.internals = Some(DeviceInternals {
+        app_image_bytes: Some(700_000),
+        chip_model: Some(ChipModel::Esp32C3),
+        chip_revision: Some((0, 4)),
+        reset_reason: Some(ResetReason::PowerOn),
+        ..Default::default()
+    });
+
+    // A device that did not negotiate the capability reports nothing, whatever was cached.
+    let dto = device_internals_dto(&snapshot);
+    assert!(dto.connected && !dto.supported && dto.snapshot.is_none());
+
+    snapshot.negotiated_caps = snapshot
+        .negotiated_caps
+        .union(Capabilities::DEVICE_INTERNALS_V1);
+    let json = serde_json::to_value(device_internals_dto(&snapshot)).unwrap();
+    assert_eq!(json["supported"], true);
+    let internals = &json["snapshot"];
+    assert_eq!(internals["appImageBytes"], 700_000);
+    assert_eq!(internals["chipModel"], "esp32c3");
+    assert_eq!(internals["chipRevision"]["minor"], 4);
+    assert_eq!(internals["resetReason"], "powerOn");
+    // Unmeasured is null, never 0.
+    assert!(internals["temperatureDeciCelsius"].is_null());
+    assert!(internals["busyPercent"].is_null());
+    assert!(internals["framesIn"].is_null());
+
+    // No answer yet on this connection.
+    snapshot.internals = None;
+    assert!(device_internals_dto(&snapshot).snapshot.is_none());
+}

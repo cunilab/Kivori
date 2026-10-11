@@ -94,6 +94,7 @@ export const CAPABILITY_NAMES = [
   'contextButtonsV1',
   'hostTakeoversV1',
   'quietAckV1',
+  'deviceInternalsV1',
 ] as const;
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
 
@@ -148,6 +149,53 @@ export interface DiagnosticsDto {
     customBindings: number;
     macros: number;
   };
+}
+
+export const CHIP_MODELS = ['esp32c3'] as const;
+export const RESET_REASONS = [
+  'powerOn',
+  'software',
+  'watchdog',
+  'brownout',
+  'deepSleep',
+  'other',
+] as const;
+
+/**
+ * The developer-mode Device internals card (ADR-0013). `snapshot` is `null` until the device has
+ * answered on this connection; inside it, `null` means the device cannot measure that value, never 0.
+ */
+export interface DeviceInternalsDto {
+  connected: boolean;
+  /** The connected device's firmware reports internals. */
+  supported: boolean;
+  snapshot: {
+    appImageBytes: number | null;
+    appPartitionBytes: number | null;
+    assetBlobBytes: number | null;
+    assetBlobCapBytes: number | null;
+    flashTotalBytes: number | null;
+    ramTotalBytes: number | null;
+    ramStaticBytes: number | null;
+    ramFreeBytes: number | null;
+    stackFreeMinBytes: number | null;
+    busyPercent: number | null;
+    composeMs: number | null;
+    flushMs: number | null;
+    fps: number | null;
+    chipModel: (typeof CHIP_MODELS)[number] | null;
+    chipRevision: { major: number; minor: number } | null;
+    /** Tenths of a degree Celsius. */
+    temperatureDeciCelsius: number | null;
+    uptimeMs: number | null;
+    resetReason: (typeof RESET_REASONS)[number] | null;
+    edgeQueueHighWater: number | null;
+    droppedEdges: number | null;
+    invalidTransitions: number | null;
+    framesIn: number | null;
+    framesOut: number | null;
+    framesRejected: number | null;
+  } | null;
 }
 
 export interface ConnectionStatusDto {

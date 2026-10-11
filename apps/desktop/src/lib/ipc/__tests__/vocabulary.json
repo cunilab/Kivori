@@ -21,7 +21,8 @@
     "controlLabelsV1",
     "contextButtonsV1",
     "hostTakeoversV1",
-    "quietAckV1"
+    "quietAckV1",
+    "deviceInternalsV1"
   ],
   "controls": [
     "press",
@@ -55,6 +56,8 @@
     "unknown"
   ],
   "hostAvailability": ["available", "unsupported", "unavailable"],
+  "chipModels": ["esp32c3"],
+  "resetReasons": ["powerOn", "software", "watchdog", "brownout", "deepSleep", "other"],
   "hostFocus": ["detecting", "unknown"],
   "hostInputPermission": ["required", "granted", "notNeeded", "unknown"],
   "hostMedia": ["observable", "notObservable"],

@@ -50,7 +50,9 @@ import {
   CONTROL_REFS,
   DESK_ACTIONS,
   HOST_AVAILABILITIES,
+  CHIP_MODELS,
   HOST_FOCUS,
+  RESET_REASONS,
   FLASH_FAILURES,
   HOST_PRESENCES,
   HOST_INPUT_PERMISSIONS,
@@ -655,6 +657,8 @@ describe('Rust/TS token vocabulary', () => {
     expect([...CAPABILITY_NAMES]).toEqual(vocabulary.capabilityNames);
     expect([...HOST_AVAILABILITIES]).toEqual(vocabulary.hostAvailability);
     expect([...HOST_MEDIA]).toEqual(vocabulary.hostMedia);
+    expect([...CHIP_MODELS]).toEqual(vocabulary.chipModels);
+    expect([...RESET_REASONS]).toEqual(vocabulary.resetReasons);
     expect([...HOST_FOCUS]).toEqual(vocabulary.hostFocus);
     expect([...HOST_PRESENCES]).toEqual(vocabulary.hostPresence);
     expect([...HOST_INPUT_PERMISSIONS]).toEqual(vocabulary.hostInputPermission);

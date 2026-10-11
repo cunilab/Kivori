@@ -18,15 +18,16 @@ use crate::device::transport::SerialLink;
 use crate::input::DeviceClock;
 use crate::orchestrator::Orchestrator;
 use kivori_model::desk::{ActionFeedback, ControlLabels, DeskStatus, FeedbackKind, MediaInfo};
+use kivori_model::internals::DeviceInternals;
 use kivori_model::{
     Capabilities, CompanionState, MascotAction, MascotPersonality, ProtocolVersion, SendableState,
 };
 use kivori_protocol::{
     decode_frame, decode_message, encode_message, evaluate_hello_ack, Bye, ByeReason,
     ControlLabelsUpdate, Feedback, FirmwareVersion, HandshakeOutcome, Hello, InputEvent,
-    MascotActionApplied, MediaInfoUpdate, Message, Ping, PlayMascotAction, Presentation,
-    ProtoError, SeqClass, SequenceTracker, SetState, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR,
-    PROTOCOL_MINOR,
+    InternalsRequest, MascotActionApplied, MediaInfoUpdate, Message, Ping, PlayMascotAction,
+    Presentation, ProtoError, SeqClass, SequenceTracker, SetState, Status, MAX_FRAME, MAX_WIRE,
+    PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 /// Static session parameters (the desktop's advertised identity + compatibility).
@@ -66,7 +67,8 @@ impl Default for SessionConfig {
                 .union(Capabilities::CONTROL_LABELS_V1)
                 .union(Capabilities::CONTEXT_BUTTONS_V1)
                 .union(Capabilities::HOST_TAKEOVERS_V1)
-                .union(Capabilities::QUIET_ACK_V1),
+                .union(Capabilities::QUIET_ACK_V1)
+                .union(Capabilities::DEVICE_INTERNALS_V1),
             supported_majors: vec![PROTOCOL_MAJOR],
         }
     }
@@ -137,6 +139,8 @@ pub struct Session {
     device_clock: DeviceClock,
     /// Health and link-quality figures for diagnostics. Connection-scoped.
     diagnostics: SessionDiagnostics,
+    /// The latest `Internals` snapshot of this session (developer mode). Connection-scoped.
+    internals: Option<DeviceInternals>,
 }
 
 impl Session {
@@ -172,6 +176,7 @@ impl Session {
             host_ms: 0,
             device_clock: DeviceClock::default(),
             diagnostics: SessionDiagnostics::default(),
+            internals: None,
         }
     }
 
@@ -194,6 +199,7 @@ impl Session {
         self.reported = None;
         self.clear_session_identity();
         self.diagnostics = SessionDiagnostics::default();
+        self.internals = None;
         self.pending_inputs.clear();
         self.last_mascot_action_applied = None;
         self.activity.clear();
@@ -569,6 +575,39 @@ impl Session {
         Ok(true)
     }
 
+    /// Asks the device for one `Internals` snapshot. Returns `false` (nothing sent) without an
+    /// established session or when the device did not negotiate `DEVICE_INTERNALS_V1`. The answer
+    /// arrives later through [`Session::pump`] and is read with [`Session::internals`].
+    ///
+    /// # Errors
+    /// [`SessionError::Transport`] if the write fails.
+    pub fn request_internals<L: SerialLink>(
+        &mut self,
+        link: &mut L,
+    ) -> Result<bool, SessionError<L::Error>> {
+        let Some(session) = self.current_session else {
+            return Ok(false);
+        };
+        if !self
+            .negotiated_caps
+            .contains(Capabilities::DEVICE_INTERNALS_V1)
+        {
+            return Ok(false);
+        }
+        self.send(
+            link,
+            &Message::InternalsRequest(InternalsRequest { session }),
+        )?;
+        Ok(true)
+    }
+
+    /// The latest `Internals` snapshot of this connection (`None` until one arrives, and again
+    /// after the connection ends).
+    #[must_use]
+    pub const fn internals(&self) -> Option<DeviceInternals> {
+        self.internals
+    }
+
     /// Whether the heartbeat has missed its threshold (the caller then raises `HeartbeatTimeout`).
     #[must_use]
     pub fn heartbeat_timed_out(&self) -> bool {
@@ -775,6 +814,15 @@ impl Session {
             {
                 self.pending_inputs.push(event);
             }
+            // Only a snapshot answering this session counts; a stale one is dropped unseen.
+            Message::Internals(report)
+                if self
+                    .negotiated_caps
+                    .contains(Capabilities::DEVICE_INTERNALS_V1)
+                    && self.current_session == Some(report.session) =>
+            {
+                self.internals = Some(report.internals);
+            }
             // The device is ending the session: no connection, no session identity.
             Message::Bye(_) => {
                 self.clear_session_identity();
@@ -852,6 +900,7 @@ impl Session {
         // The figures describe the ended connection; the counters stay until the next `open`.
         self.diagnostics.free_bytes = None;
         self.diagnostics.last_pong = None;
+        self.internals = None;
     }
 
     fn observe(&mut self, kind: ActivityEventKind, metadata: Option<ActivityMetadata>) {

@@ -41,6 +41,8 @@ pub enum DeviceCommand {
     RestoreFirmware,
     /// Re-publish the current status (used by an explicit UI resync).
     Refresh,
+    /// Ask the device for one internals snapshot (developer mode, while the card is visible).
+    RequestInternals,
     /// Show another full-screen view on the device.
     SetDisplayMode(kivori_model::desk::DisplayMode),
     /// Try one desk action now, exactly as if its control fired (the Test button). A protected
@@ -233,6 +235,13 @@ impl AppState {
         let snapshot = self.diagnostics.lock().expect("diagnostics lock").clone();
         let config = self.config.lock().expect("config lock");
         dto::diagnostics_dto(&snapshot, &config, std::time::Instant::now())
+    }
+
+    /// The Device internals card as of now: the latest snapshot the device thread cached.
+    #[must_use]
+    pub fn internals_snapshot(&self) -> dto::DeviceInternalsDto {
+        let snapshot = self.diagnostics.lock().expect("diagnostics lock").clone();
+        dto::device_internals_dto(&snapshot)
     }
 
     /// The current desk projection.

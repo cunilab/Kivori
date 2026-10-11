@@ -59,3 +59,13 @@ fn quiet_ack_needs_both_peers() {
     assert_eq!(minor, 5);
     assert!(!caps.contains(Capabilities::QUIET_ACK_V1));
 }
+
+#[test]
+fn device_internals_needs_both_peers() {
+    let both = Capabilities::DEVICE_INTERNALS_V1.union(Capabilities::MASCOT_INTERACTION);
+    let (_, caps) = negotiate(6, 6, both, both);
+    assert!(caps.contains(Capabilities::DEVICE_INTERNALS_V1));
+    // A device without bit 12 never negotiates it, so the desktop must not send the request.
+    let (_, caps) = negotiate(6, 6, both, Capabilities::MASCOT_INTERACTION);
+    assert!(!caps.contains(Capabilities::DEVICE_INTERNALS_V1));
+}

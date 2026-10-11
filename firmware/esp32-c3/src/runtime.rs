@@ -17,7 +17,7 @@
 //!    the negotiated `PHYSICAL_INPUT_V1` capability and an accepted session inside the dispatcher;
 //! 4. render the current state through the shared renderer, flushing only changed tiles (FR-013);
 //! 5. emit at most one safe `Diagnostic` (allowlisted category + code — never payload bytes);
-//! 6. emit `Health` on a fixed interval.
+//! 6. emit `Health` on a fixed interval, and one `Internals` snapshot when the host asked for it.
 //!
 //! The loop never returns and never panics on bad input: a transport failure is reported as a diagnostic
 //! and the link drops to `offline`, from which a new `Hello` can bring the session back up.
@@ -32,6 +32,7 @@ use crate::health::{build_diagnostic, build_health, DeviceDiagnostic};
 use crate::input::button::{ButtonEvent, ButtonGesture};
 use crate::input::gesture::{RotaryEvent, RotaryGesture};
 use crate::input::quadrature::QuadratureDecoder;
+use crate::internals::{ChipProbe, LoadMeter, ASSET_BLOB_CAP_BYTES};
 use crate::ports::{Clock, DisplaySink, InputSource, Transport};
 use crate::proto::{DeviceIdentity, Dispatcher, HostTakeover};
 use crate::render::TileRenderer;
@@ -42,11 +43,12 @@ use kivori_model::desk::{
     VIEW_TRANSITION_MS,
 };
 use kivori_model::input::InputLevels;
+use kivori_model::internals::DeviceInternals;
 use kivori_model::presentation::{PrimaryState, ValueDisplay};
 use kivori_model::{CompanionState, ElapsedMs, MascotAnimator};
 use kivori_protocol::{
-    Bye, ByeReason, ControlId, ControlLabelsUpdate, Feedback, InputKind, MediaInfoUpdate, Message,
-    Nonce, Presentation, Status,
+    Bye, ByeReason, ControlId, ControlLabelsUpdate, Feedback, InputKind, InternalsReport,
+    MediaInfoUpdate, Message, Nonce, Presentation, Status,
 };
 
 /// Inactivity window, in milliseconds, after which an open rotary gesture ends
@@ -423,6 +425,10 @@ pub struct Runtime<'a> {
     /// [`Dispatcher::inbound_frames`] at the last tick, and the time it last moved.
     seen_inbound: u32,
     last_inbound_ms: ElapsedMs,
+    /// Run-loop load and frame timing for the device internals snapshot.
+    load: LoadMeter,
+    /// The board's contribution to the internals snapshot, if it has one.
+    chip_probe: Option<ChipProbe>,
     #[cfg(feature = "latency-probe")]
     latency: crate::latency_probe::LatencyProbe,
 }
@@ -457,6 +463,8 @@ impl<'a> Runtime<'a> {
             host_takeover: None,
             seen_inbound: 0,
             last_inbound_ms: 0,
+            load: LoadMeter::new(),
+            chip_probe: None,
             #[cfg(feature = "latency-probe")]
             latency: crate::latency_probe::LatencyProbe::new(),
         }
@@ -472,6 +480,11 @@ impl<'a> Runtime<'a> {
             renderer: TileRenderer::with_frame_buffer(frame_buffer),
             ..Self::new(identity, config)
         }
+    }
+
+    /// Lets the board fill the device internals snapshot fields only it can measure.
+    pub fn set_chip_probe(&mut self, probe: ChipProbe) {
+        self.chip_probe = Some(probe);
     }
 
     /// The companion state the device currently holds.
@@ -513,6 +526,7 @@ impl<'a> Runtime<'a> {
     {
         let mut tick = Tick::default();
         let now = clock.now_ms();
+        let mut worked = false;
 
         // 1. The device owns `booting` at power-on and falls back to `offline` with no host present.
         if !self.booted {
@@ -540,6 +554,7 @@ impl<'a> Runtime<'a> {
         // A silent host: nothing valid arrived for a while on an accepted session.
         let inbound = self.dispatcher.inbound_frames();
         if inbound != self.seen_inbound {
+            worked = true;
             self.seen_inbound = inbound;
             self.last_inbound_ms = now;
         }
@@ -685,9 +700,11 @@ impl<'a> Runtime<'a> {
             }
             // Compose the whole frame, then transfer it window by window. Between windows the loop
             // drains input, so a detent waits for at most one window, not the whole frame.
+            let compose_started = clock.now_ms();
             let mut outcome =
                 self.renderer
                     .prepare_frame(blob, state, &pose, overlay, &view, &mut counting);
+            let composed_at = clock.now_ms();
             while outcome.is_ok() {
                 match self.renderer.flush_next_window(&mut counting) {
                     Ok(true) => {
@@ -699,6 +716,10 @@ impl<'a> Runtime<'a> {
                     Err(error) => outcome = Err(error),
                 }
             }
+            self.load.on_frame(
+                composed_at.wrapping_sub(compose_started),
+                clock.now_ms().wrapping_sub(composed_at),
+            );
             tick.tiles_flushed = counting.flushes;
             tick.windows_flushed = counting.windows;
             #[cfg(feature = "latency-probe")]
@@ -741,6 +762,20 @@ impl<'a> Runtime<'a> {
                 outbound_failed = true;
             }
         }
+        // 6b. One snapshot for an accepted `InternalsRequest` (the dispatcher already checked the
+        //     capability and the session). Dropped if the link failed this tick; the host asks again.
+        if let Some(session) = self.dispatcher.take_internals_request() {
+            if !outbound_failed && self.dispatcher.accepted_session() == Some(session) {
+                let message = Message::Internals(InternalsReport {
+                    session,
+                    internals: self.internals_snapshot(now, input),
+                });
+                worked = true;
+                if self.dispatcher.emit(transport, &message).is_err() {
+                    outbound_failed = true;
+                }
+            }
+        }
         if outbound_failed {
             self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
             self.dispatcher.link_lost();
@@ -761,7 +796,33 @@ impl<'a> Runtime<'a> {
         tick.hello_acks = self.dispatcher.hello_acks();
         tick.pongs = self.dispatcher.pongs();
         tick.state_reports = self.dispatcher.state_reports();
+        // The loop never sleeps, so only ticks that did something count as busy.
+        let end = clock.now_ms();
+        worked |= tick.frame_rendered || tick.diagnostic.is_some() || tick.health_sent;
+        self.load.on_tick(
+            end,
+            if worked { end.wrapping_sub(now) } else { 0 },
+            tick.frame_rendered,
+        );
         tick
+    }
+
+    /// The device internals snapshot at `now`: the board's figures first, then the loop's own.
+    fn internals_snapshot<I: InputSource>(&self, now: ElapsedMs, input: &I) -> DeviceInternals {
+        let mut out = DeviceInternals::default();
+        if let Some(probe) = self.chip_probe {
+            probe(&mut out);
+        }
+        out.asset_blob_cap_bytes = out.asset_blob_bytes.map(|_| ASSET_BLOB_CAP_BYTES);
+        self.load.fill(&mut out);
+        out.uptime_ms = Some(now);
+        out.edge_queue_high_water = Some(input.edge_high_water().min(u32::from(u16::MAX)) as u16);
+        out.dropped_edges = Some(input.dropped_edges());
+        out.invalid_transitions = Some(self.decoder.invalid_transitions());
+        out.frames_in = Some(self.dispatcher.inbound_frames());
+        out.frames_out = Some(self.dispatcher.outbound_frames());
+        out.frames_rejected = Some(self.dispatcher.rejected_frames());
+        out
     }
 
     /// Drains the input source up to `now`: each snapshot first closes the idle gesture boundary at
@@ -1034,6 +1095,7 @@ pub fn run_buffered<C, T, I, D>(
     display: &mut D,
     blob: &AssetBlob,
     frame_buffer: &mut [kivori_model::Rgb565; crate::render::FRAME_PIXELS],
+    chip_probe: ChipProbe,
     observe: impl FnMut(&Tick, &mut T),
 ) -> !
 where
@@ -1043,6 +1105,7 @@ where
     D: DisplaySink,
 {
     let mut runtime = Runtime::with_frame_buffer(identity, config, frame_buffer);
+    runtime.set_chip_probe(chip_probe);
     run_loop(
         &mut runtime,
         clock,

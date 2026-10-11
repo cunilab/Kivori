@@ -94,6 +94,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Message::Feedback(_) => "Feedback",
                             Message::MediaInfo(_) => "MediaInfo",
                             Message::ControlLabels(_) => "ControlLabels",
+                            Message::InternalsRequest(_) => "InternalsRequest",
+                            Message::Internals(_) => "Internals",
                         }
                     ),
                     Err(_) if !packet.is_empty() => invalid += 1,

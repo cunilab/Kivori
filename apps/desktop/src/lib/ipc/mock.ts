@@ -12,6 +12,7 @@ import type {
   AppInfoDto,
   CompanionState,
   ConfigDto,
+  DeviceInternalsDto,
   DiagnosticsDto,
   FirmwareStatusDto,
   OnboardingDto,
@@ -651,6 +652,44 @@ export function mockGetDiagnostics(): DiagnosticsDto {
       customBindings: 3,
       macros: config.macros.length,
     },
+  };
+}
+
+/** Under `?mock=connected`, a plausible snapshot with the temperature left unavailable. */
+export function mockGetDeviceInternals(): DeviceInternalsDto {
+  const connected = connectedScenario();
+  const seconds = Math.floor((Date.now() - mockStartedAt) / 1000);
+  return {
+    connected,
+    supported: connected,
+    snapshot: connected
+      ? {
+          appImageBytes: 742_880,
+          appPartitionBytes: 4_128_768,
+          assetBlobBytes: 61_440,
+          assetBlobCapBytes: 131_072,
+          flashTotalBytes: 4_194_304,
+          ramTotalBytes: 320_512,
+          ramStaticBytes: 125_600,
+          ramFreeBytes: 188_000,
+          stackFreeMinBytes: 190_400,
+          busyPercent: 12 + (seconds % 5),
+          composeMs: 6,
+          flushMs: 21,
+          fps: 30,
+          chipModel: 'esp32c3',
+          chipRevision: { major: 0, minor: 4 },
+          temperatureDeciCelsius: null,
+          uptimeMs: 3_723_000 + seconds * 1000,
+          resetReason: 'powerOn',
+          edgeQueueHighWater: 6,
+          droppedEdges: 0,
+          invalidTransitions: 0,
+          framesIn: 3_910 + seconds,
+          framesOut: 7_802 + seconds * 2,
+          framesRejected: 0,
+        }
+      : null,
   };
 }
 

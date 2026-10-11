@@ -103,6 +103,10 @@ pub struct Dispatcher {
     pending_takeover: Option<HostTakeover>,
     /// Frames decoded since boot (wrapping): the runtime watches it move to notice a silent host.
     inbound_frames: u32,
+    /// Frames fully written to the transport since boot (wrapping).
+    outbound_frames: u32,
+    /// The session of a negotiated `InternalsRequest`, awaiting [`Self::take_internals_request`].
+    pending_internals: Option<Nonce>,
 }
 
 impl Dispatcher {
@@ -132,6 +136,8 @@ impl Dispatcher {
             pending_controls: None,
             pending_takeover: None,
             inbound_frames: 0,
+            outbound_frames: 0,
+            pending_internals: None,
         }
     }
 
@@ -140,6 +146,17 @@ impl Dispatcher {
     #[must_use]
     pub const fn inbound_frames(&self) -> u32 {
         self.inbound_frames
+    }
+
+    /// Frames written to the transport since boot (wrapping).
+    #[must_use]
+    pub const fn outbound_frames(&self) -> u32 {
+        self.outbound_frames
+    }
+
+    /// Takes the session of a pending `InternalsRequest`, if one was accepted.
+    pub fn take_internals_request(&mut self) -> Option<Nonce> {
+        self.pending_internals.take()
     }
 
     /// Takes the pending host takeover announced by a `Bye`, if any.
@@ -519,6 +536,15 @@ impl Dispatcher {
             {
                 self.pending_controls = Some(update);
             }
+            // Only the accepted session may ask, and only with the capability negotiated.
+            Message::InternalsRequest(request)
+                if self
+                    .negotiated_caps
+                    .contains(Capabilities::DEVICE_INTERNALS_V1)
+                    && self.accepted_session == Some(request.session) =>
+            {
+                self.pending_internals = Some(request.session);
+            }
             Message::Feedback(feedback)
                 if self
                     .negotiated_caps
@@ -593,6 +619,7 @@ impl Dispatcher {
             written += n;
         }
         self.tx_seq = self.tx_seq.wrapping_add(1);
+        self.outbound_frames = self.outbound_frames.wrapping_add(1);
         Ok(())
     }
 }

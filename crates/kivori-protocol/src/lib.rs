@@ -20,9 +20,9 @@ pub use frame::{crc32, decode_frame, encode_frame, Header};
 pub use handshake::{evaluate_hello_ack, HandshakeOutcome};
 pub use message::{
     Bye, ControlId, ControlLabelsUpdate, DeviceId, Diagnostic, ErrorReport, Feedback,
-    FirmwareVersion, Health, Hello, HelloAck, InputEvent, InputKind, MascotActionApplied,
-    MediaInfoUpdate, Message, Nonce, Ping, PlayMascotAction, Pong, Presentation, Ready, SetState,
-    StateReport, Status, CONTEXT_BUTTONS,
+    FirmwareVersion, Health, Hello, HelloAck, InputEvent, InputKind, InternalsReport,
+    InternalsRequest, MascotActionApplied, MediaInfoUpdate, Message, Nonce, Ping, PlayMascotAction,
+    Pong, Presentation, Ready, SetState, StateReport, Status, CONTEXT_BUTTONS,
 };
 pub use negotiate::negotiate;
 

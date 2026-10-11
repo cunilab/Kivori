@@ -4,6 +4,8 @@
 import {
   ACTION_SPEC_KINDS,
   CAPABILITY_NAMES,
+  CHIP_MODELS,
+  RESET_REASONS,
   HOST_AVAILABILITIES,
   HOST_FOCUS,
   HOST_INPUT_PERMISSIONS,
@@ -39,6 +41,7 @@ import type {
   ActivityEventDto,
   ButtonDto,
   ConfigDto,
+  DeviceInternalsDto,
   DiagnosticsDto,
   FirmwareStatusDto,
   AccessibilityState,
@@ -220,6 +223,58 @@ export function parseDiagnostics(raw: unknown): DiagnosticsDto {
       schemaVersion: count('schemaVersion', config.schemaVersion),
       customBindings: count('customBindings', config.customBindings),
       macros: count('macros', config.macros),
+    },
+  };
+}
+
+/** Validates a `DeviceInternalsDto`: unknown tokens and non-count figures are rejected. */
+export function parseDeviceInternals(raw: unknown): DeviceInternalsDto {
+  const r = record('device internals', raw);
+  if (typeof r.connected !== 'boolean' || typeof r.supported !== 'boolean') {
+    throw new Error('Kivori: invalid device internals.');
+  }
+  if (r.snapshot === null)
+    return { connected: r.connected, supported: r.supported, snapshot: null };
+  const s = record('internals snapshot', r.snapshot);
+  const n = (name: string): number | null => countOrNull(name, s[name]);
+  let chipRevision: { major: number; minor: number } | null = null;
+  if (s.chipRevision !== null) {
+    const rev = record('chip revision', s.chipRevision);
+    chipRevision = { major: count('chip major', rev.major), minor: count('chip minor', rev.minor) };
+  }
+  const temperature = s.temperatureDeciCelsius;
+  if (temperature !== null && !Number.isInteger(temperature)) {
+    throw new Error('Kivori: invalid temperatureDeciCelsius.');
+  }
+  return {
+    connected: r.connected,
+    supported: r.supported,
+    snapshot: {
+      appImageBytes: n('appImageBytes'),
+      appPartitionBytes: n('appPartitionBytes'),
+      assetBlobBytes: n('assetBlobBytes'),
+      assetBlobCapBytes: n('assetBlobCapBytes'),
+      flashTotalBytes: n('flashTotalBytes'),
+      ramTotalBytes: n('ramTotalBytes'),
+      ramStaticBytes: n('ramStaticBytes'),
+      ramFreeBytes: n('ramFreeBytes'),
+      stackFreeMinBytes: n('stackFreeMinBytes'),
+      busyPercent: percentOrNull('busyPercent', s.busyPercent),
+      composeMs: n('composeMs'),
+      flushMs: n('flushMs'),
+      fps: n('fps'),
+      chipModel: s.chipModel === null ? null : oneOf('chip model', CHIP_MODELS, s.chipModel),
+      chipRevision,
+      temperatureDeciCelsius: temperature as number | null,
+      uptimeMs: n('uptimeMs'),
+      resetReason:
+        s.resetReason === null ? null : oneOf('reset reason', RESET_REASONS, s.resetReason),
+      edgeQueueHighWater: n('edgeQueueHighWater'),
+      droppedEdges: n('droppedEdges'),
+      invalidTransitions: n('invalidTransitions'),
+      framesIn: n('framesIn'),
+      framesOut: n('framesOut'),
+      framesRejected: n('framesRejected'),
     },
   };
 }

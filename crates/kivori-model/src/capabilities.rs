@@ -28,6 +28,7 @@ impl Capabilities {
     //   bit 9  CONTEXT_BUTTONS_V1  three contextual buttons (`ControlId::ContextButton` input)
     //   bit 10 HOST_TAKEOVERS_V1   `Bye(HostSleeping | FirmwareUpdate)` takeovers and the host-silence timeout
     //   bit 11 QUIET_ACK_V1        `FeedbackKind::Triggered` quiet acknowledgement for trigger-only outcomes
+    //   bit 12 DEVICE_INTERNALS_V1 `InternalsRequest` / `Internals`: the developer-mode device internals snapshot
 
     /// Bit 0 — device accepts deterministic social mascot actions and returns applied-time
     /// acknowledgments.
@@ -69,6 +70,10 @@ impl Capabilities {
     /// Bit 11 — the device renders `FeedbackKind::Triggered` as a quiet acknowledgement (keycap
     /// press and label pulse, no badge). Without it the desktop sends `Unverified` instead.
     pub const QUIET_ACK_V1: Capabilities = Capabilities(1 << 11);
+
+    /// Bit 12 — the device answers `InternalsRequest` with one `Internals` snapshot (flash, RAM,
+    /// CPU, chip and link counters) for the desktop's developer mode.
+    pub const DEVICE_INTERNALS_V1: Capabilities = Capabilities(1 << 12);
 
     /// Creates a capability set from a raw bitmask.
     #[must_use]

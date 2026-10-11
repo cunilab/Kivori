@@ -6,6 +6,7 @@
 
 use std::time::Instant;
 
+use kivori_model::internals::{ChipModel, DeviceInternals, ResetReason};
 use kivori_model::{
     Capabilities, CompanionState, ConnectionState, MascotAction, MascotPersonality,
     ProtocolVersion, SendableState,
@@ -1453,7 +1454,7 @@ pub const fn availability_token(
 }
 
 /// Every capability flag with the name the diagnostics page lists it by, in bit order.
-const CAPABILITY_TABLE: [(Capabilities, &str); 12] = [
+const CAPABILITY_TABLE: [(Capabilities, &str); 13] = [
     (Capabilities::MASCOT_INTERACTION, "mascotInteraction"),
     (Capabilities::PHYSICAL_INPUT_V1, "physicalInputV1"),
     (Capabilities::PRESENTATION_V1, "presentationV1"),
@@ -1466,6 +1467,7 @@ const CAPABILITY_TABLE: [(Capabilities, &str); 12] = [
     (Capabilities::CONTEXT_BUTTONS_V1, "contextButtonsV1"),
     (Capabilities::HOST_TAKEOVERS_V1, "hostTakeoversV1"),
     (Capabilities::QUIET_ACK_V1, "quietAckV1"),
+    (Capabilities::DEVICE_INTERNALS_V1, "deviceInternalsV1"),
 ];
 
 /// The capability names the diagnostics page lists, in bit order.
@@ -1524,6 +1526,8 @@ pub struct DiagnosticsSnapshot {
     pub session: SessionDiagnostics,
     /// Host service status.
     pub host: HostServicesSnapshot,
+    /// The latest device internals snapshot of this connection (developer mode).
+    pub internals: Option<DeviceInternals>,
 }
 
 impl DiagnosticsSnapshot {
@@ -1547,6 +1551,7 @@ impl DiagnosticsSnapshot {
                 focus: "unknown",
                 input_permission: "unknown",
             },
+            internals: None,
         }
     }
 }
@@ -1695,6 +1700,126 @@ pub fn diagnostics_dto(
     }
 }
 
+pub const CHIP_MODEL_TOKENS: [&str; 1] = ["esp32c3"];
+pub const RESET_REASON_TOKENS: [&str; 6] = [
+    "powerOn",
+    "software",
+    "watchdog",
+    "brownout",
+    "deepSleep",
+    "other",
+];
+
+const fn chip_model_token(model: ChipModel) -> &'static str {
+    match model {
+        ChipModel::Esp32C3 => CHIP_MODEL_TOKENS[0],
+    }
+}
+
+const fn reset_reason_token(reason: ResetReason) -> &'static str {
+    match reason {
+        ResetReason::PowerOn => RESET_REASON_TOKENS[0],
+        ResetReason::Software => RESET_REASON_TOKENS[1],
+        ResetReason::Watchdog => RESET_REASON_TOKENS[2],
+        ResetReason::Brownout => RESET_REASON_TOKENS[3],
+        ResetReason::DeepSleep => RESET_REASON_TOKENS[4],
+        ResetReason::Other => RESET_REASON_TOKENS[5],
+    }
+}
+
+/// What the developer-mode Device internals card shows (ADR-0013).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceInternalsDto {
+    /// A device is connected.
+    pub connected: bool,
+    /// The connected device's firmware reports internals (it negotiated the capability).
+    pub supported: bool,
+    /// The latest snapshot of this connection; `None` until the device has answered.
+    pub snapshot: Option<InternalsSnapshotDto>,
+}
+
+/// The device's snapshot, field for field. `None` is "the device cannot measure it", never 0.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InternalsSnapshotDto {
+    pub app_image_bytes: Option<u32>,
+    pub app_partition_bytes: Option<u32>,
+    pub asset_blob_bytes: Option<u32>,
+    pub asset_blob_cap_bytes: Option<u32>,
+    pub flash_total_bytes: Option<u32>,
+    pub ram_total_bytes: Option<u32>,
+    pub ram_static_bytes: Option<u32>,
+    pub ram_free_bytes: Option<u32>,
+    pub stack_free_min_bytes: Option<u32>,
+    pub busy_percent: Option<u8>,
+    pub compose_ms: Option<u16>,
+    pub flush_ms: Option<u16>,
+    pub fps: Option<u8>,
+    pub chip_model: Option<&'static str>,
+    pub chip_revision: Option<ChipRevisionDto>,
+    /// Tenths of a degree Celsius.
+    pub temperature_deci_celsius: Option<i16>,
+    pub uptime_ms: Option<u32>,
+    pub reset_reason: Option<&'static str>,
+    pub edge_queue_high_water: Option<u16>,
+    pub dropped_edges: Option<u32>,
+    pub invalid_transitions: Option<u32>,
+    pub frames_in: Option<u32>,
+    pub frames_out: Option<u32>,
+    pub frames_rejected: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChipRevisionDto {
+    pub major: u8,
+    pub minor: u8,
+}
+
+/// Projects the internals card from the device thread's latest figures.
+#[must_use]
+pub fn device_internals_dto(snapshot: &DiagnosticsSnapshot) -> DeviceInternalsDto {
+    let supported = snapshot
+        .negotiated_caps
+        .contains(Capabilities::DEVICE_INTERNALS_V1);
+    DeviceInternalsDto {
+        connected: snapshot.connection == connection_token(ConnectionState::Connected),
+        supported,
+        snapshot: snapshot
+            .internals
+            .filter(|_| supported)
+            .map(|i| InternalsSnapshotDto {
+                app_image_bytes: i.app_image_bytes,
+                app_partition_bytes: i.app_partition_bytes,
+                asset_blob_bytes: i.asset_blob_bytes,
+                asset_blob_cap_bytes: i.asset_blob_cap_bytes,
+                flash_total_bytes: i.flash_total_bytes,
+                ram_total_bytes: i.ram_total_bytes,
+                ram_static_bytes: i.ram_static_bytes,
+                ram_free_bytes: i.ram_free_bytes,
+                stack_free_min_bytes: i.stack_free_min_bytes,
+                busy_percent: i.busy_percent,
+                compose_ms: i.compose_ms,
+                flush_ms: i.flush_ms,
+                fps: i.fps,
+                chip_model: i.chip_model.map(chip_model_token),
+                chip_revision: i
+                    .chip_revision
+                    .map(|(major, minor)| ChipRevisionDto { major, minor }),
+                temperature_deci_celsius: i.temperature_decicelsius,
+                uptime_ms: i.uptime_ms,
+                reset_reason: i.reset_reason.map(reset_reason_token),
+                edge_queue_high_water: i.edge_queue_high_water,
+                dropped_edges: i.dropped_edges,
+                invalid_transitions: i.invalid_transitions,
+                frames_in: i.frames_in,
+                frames_out: i.frames_out,
+                frames_rejected: i.frames_rejected,
+            }),
+    }
+}
+
 /// The closed `ProfileId` and `Control` vocabularies, for the Rust/TS drift check.
 #[must_use]
 pub fn vocabulary_json() -> serde_json::Value {
@@ -1706,6 +1831,8 @@ pub fn vocabulary_json() -> serde_json::Value {
         "rotateSpecKinds": crate::config::resolve::ROTATE_SPEC_KINDS,
         "deskActions": crate::desk::ActionToken::ALL.map(crate::desk::ActionToken::token),
         "capabilityNames": CAPABILITY_TABLE.map(|(_, name)| name),
+        "chipModels": CHIP_MODEL_TOKENS,
+        "resetReasons": RESET_REASON_TOKENS,
         "hostAvailability": HOST_AVAILABILITY_TOKENS,
         "hostMedia": HOST_MEDIA_TOKENS,
         "hostFocus": HOST_FOCUS_TOKENS,
