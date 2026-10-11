@@ -432,7 +432,7 @@ pub fn production_runtime() -> String {
     // ORDER MATTERS: `wait-serial` scans forward only, so these must appear in the order the runtime
     // genuinely emits them. Health goes out on the FIRST tick (next_health_ms starts at 0), before the
     // second tick can observe a quiet frame — pinned by `emission_order_is_stable` in
-    // firmware/esp32-c3/tests/production_runtime.rs.
+    // firmware/desk-buddy/tests/production_runtime.rs.
     wait(&mut s, "KIVORI-RUN PASS lifecycle-booting-to-offline");
     wait(&mut s, "KIVORI-RUN PASS first-frame-36-tiles");
     wait(&mut s, "KIVORI-RUN PASS health-report");

@@ -31,7 +31,7 @@ build:
 
 # Compile the shared crates for RISC-V (no_std / no-alloc isolation proof).
 fw-check:
-    cd firmware/esp32-c3 && cargo build -p kivori-model -p kivori-protocol -p kivori-framebuffer -p kivori-renderer -p kivori-assets
+    cd firmware/desk-buddy && cargo build -p kivori-model -p kivori-protocol -p kivori-framebuffer -p kivori-renderer -p kivori-assets
 
 # The flashable binary needs `--features embedded` at minimum: the bin target declares it in
 # `required-features`, so a plain `cargo build --release` silently builds only the library and
@@ -41,11 +41,11 @@ fw-check:
 
 # Build the flashable RISC-V firmware binary (the physical ST7789 + rotary product runtime).
 fw-build:
-    cd firmware/esp32-c3 && cargo build --release --features physical-st7789
+    cd firmware/desk-buddy && cargo build --release --features physical-st7789
 
 # Host-side device-core tests (no hardware, no simulator).
 fw-test:
-    cd firmware/esp32-c3 && cargo test --features host-sim --target $(rustc -vV | sed -n 's/^host: //p')
+    cd firmware/desk-buddy && cargo test --features host-sim --target $(rustc -vV | sed -n 's/^host: //p')
 
 # Flashes and monitors via the `espflash` runner in .cargo/config.toml.
 # The physical ESP32-C3 + ST7789 profile is verified in docs/validation.md; simulator profiles
@@ -55,12 +55,12 @@ fw-test:
 
 # Flash + monitor the verified physical board profile (ST7789 + rotary product runtime).
 fw-flash:
-    cd firmware/esp32-c3 && cargo run --release --features physical-st7789
+    cd firmware/desk-buddy && cargo run --release --features physical-st7789
 
 # DEVELOPMENT ONLY: physical profile plus the on-panel detent -> flush latency readout (Slice 002
 # checklist row 14). Never a product build.
 fw-flash-latency:
-    cd firmware/esp32-c3 && cargo run --release --features physical-st7789,latency-probe
+    cd firmware/desk-buddy && cargo run --release --features physical-st7789,latency-probe
 
 # ---- Wokwi pre-hardware simulation gate (sim/wokwi/README.md) ----
 
@@ -103,10 +103,10 @@ check-boundaries:
 # Build the unsigned Windows NSIS installer (run on Windows; needs PowerShell, bun and Rust).
 bundle-windows:
     powershell -NoProfile -File scripts/fetch-espflash.ps1
-    cd firmware/esp32-c3 && cargo build --locked --release --target riscv32imc-unknown-none-elf --no-default-features --features physical-st7789
+    cd firmware/desk-buddy && cargo build --locked --release --target riscv32imc-unknown-none-elf --no-default-features --features physical-st7789
     bun install --frozen-lockfile
     bun --filter kivori-desktop-ui build
-    cd apps/desktop && KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/esp32-c3/target/riscv32imc-unknown-none-elf/release/kivori-firmware" bunx tauri build --config src-tauri/tauri.release.conf.json -- --no-default-features
+    cd apps/desktop && KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/desk-buddy/target/riscv32imc-unknown-none-elf/release/kivori-firmware" bunx tauri build --config src-tauri/tauri.release.conf.json -- --no-default-features
 
 # Build the macOS .app + .dmg (run on a Mac; signs only when APPLE_SIGNING_IDENTITY is set).
 bundle-macos:
@@ -139,12 +139,12 @@ desktop:
         kill -0 "$ui" 2>/dev/null || { echo "The UI dev server exited." >&2; exit 1; }
         sleep 0.3
     done
-    KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/esp32-c3/target/riscv32imc-unknown-none-elf/release/kivori-firmware" cargo run -p kivori-desktop
+    KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/desk-buddy/target/riscv32imc-unknown-none-elf/release/kivori-firmware" cargo run -p kivori-desktop
 
 # Run Kivori Desktop with the freshly built product firmware embedded.
 app:
     just fw-build
-    KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/esp32-c3/target/riscv32imc-unknown-none-elf/release/kivori-firmware" cargo run -p kivori-desktop
+    KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/desk-buddy/target/riscv32imc-unknown-none-elf/release/kivori-firmware" cargo run -p kivori-desktop
 
 # DEV ONLY (M3 S7; docs/provisioning.md): flash the freshly built firmware onto the ONE plugged-in
 # unit, check the link and controls, print PASS/FAIL and append to provisioning-log.csv.
@@ -152,7 +152,7 @@ app:
 # Provision and QA one Kivori unit (builds the firmware first).
 provision:
     just fw-build
-    KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/esp32-c3/target/riscv32imc-unknown-none-elf/release/kivori-firmware" cargo run -p kivori-desktop --example provision
+    KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/desk-buddy/target/riscv32imc-unknown-none-elf/release/kivori-firmware" cargo run -p kivori-desktop --example provision
 
 # ---- website (apps/web; Next.js on Cloudflare Workers via OpenNext) ----
 

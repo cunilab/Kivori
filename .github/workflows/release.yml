@@ -42,12 +42,12 @@ jobs:
         with:
           targets: riscv32imc-unknown-none-elf
       - name: Build the product firmware (physical ST7789 + rotary runtime)
-        working-directory: firmware/esp32-c3
+        working-directory: firmware/desk-buddy
         run: cargo build --locked --release --target riscv32imc-unknown-none-elf --no-default-features --features physical-st7789
       - uses: actions/upload-artifact@v4
         with:
           name: firmware-elf
-          path: firmware/esp32-c3/target/riscv32imc-unknown-none-elf/release/kivori-firmware
+          path: firmware/desk-buddy/target/riscv32imc-unknown-none-elf/release/kivori-firmware
           if-no-files-found: error
 
   windows:

@@ -232,7 +232,7 @@ supported. Design: ADR-0014 to ADR-0016 in [architecture.md](./architecture.md);
 - [ ] **Product catalog in the app:** `products/<id>/product.toml` per product (display name, image,
   boards, flash method per board, bundled firmware with version, SHA-256 and minimum protocol,
   required capabilities); the app's device code reads the catalog instead of assuming one board.
-  `firmware/esp32-c3` moves to `firmware/desk-buddy`
+  `firmware/desk-buddy` moves to `firmware/desk-buddy`
 - [ ] **Release tooling:** release-please reads the conventional commits and opens one release PR
   with a version and changelog per component; the app tags `vX.Y.Z` and gets a normal (not
   pre-release) GitHub Release titled with its firmware ("Kivori 0.2.0 · Desk Buddy firmware

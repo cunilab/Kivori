@@ -14,7 +14,7 @@
 # Nothing here flashes or touches hardware.
 set -euo pipefail
 
-FW_DIR="firmware/esp32-c3"
+FW_DIR="firmware/desk-buddy"
 TARGET="riscv32imc-unknown-none-elf"
 BUILT="$FW_DIR/target/$TARGET/release/kivori-firmware"
 STAGE="target/wokwi"

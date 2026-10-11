@@ -12,7 +12,7 @@ measurement or observation on the same line. A phase closes only when all its ro
 **You need:** the board, a Windows PC and a Mac, one unrelated USB-serial device (Arduino or UART
 adapter), and a phone that films slow motion (backup for latency only).
 
-Pins (source of truth: `firmware/esp32-c3/src/profile.rs`). Display pins are measured; encoder pins are a
+Pins (source of truth: `firmware/desk-buddy/src/profile.rs`). Display pins are measured; encoder pins are a
 specification until row 3.15 is ticked.
 
 | Signal | GPIO | Signal | GPIO |

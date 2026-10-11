@@ -20,9 +20,9 @@ bash scripts/fetch-espflash.sh
 bun install --frozen-lockfile
 bun --filter kivori-desktop-ui build
 
-(cd firmware/esp32-c3 && cargo build --locked --release --target riscv32imc-unknown-none-elf \
+(cd firmware/desk-buddy && cargo build --locked --release --target riscv32imc-unknown-none-elf \
   --no-default-features --features physical-st7789)
-export KIVORI_FIRMWARE_PATH="$root/firmware/esp32-c3/target/riscv32imc-unknown-none-elf/release/kivori-firmware"
+export KIVORI_FIRMWARE_PATH="$root/firmware/desk-buddy/target/riscv32imc-unknown-none-elf/release/kivori-firmware"
 
 (cd apps/desktop && bunx tauri build \
   --config src-tauri/tauri.release.conf.json \

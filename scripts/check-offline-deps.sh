@@ -35,7 +35,7 @@ check_workspace() {
 }
 
 check_workspace "."
-check_workspace "firmware/esp32-c3"
+check_workspace "firmware/desk-buddy"
 
 if [ "$fail" -ne 0 ]; then
   echo "Offline dependency check FAILED (see violations above)." >&2

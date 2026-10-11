@@ -42,7 +42,7 @@ Two Cargo workspaces. Shared crates are `no_std`, no-alloc, and the single sourc
 | `crates/kivori-assets` | Zero-copy reader for the compiled asset blob. |
 | `apps/desktop/src-tauri` | `kivori-desktop`: `device/` (discovery, session, reconnect, heartbeat, nonce), `runtime/` (device task), `orchestrator/`, `input/`, `action/`, `platform/`, `presentation/`, `desk/` (profiles, bindings, catalog, actions), `config/` (store, schema, resolve, migrate), `companion.rs`, `activity/`, `firmware.rs`, `firmware_marker.rs`, `window_lifecycle.rs`, `provision.rs` (dev-only `just provision`), `ipc/`, `render/`. |
 | `apps/desktop/src` | React frontend and typed IPC wrappers. |
-| `firmware/esp32-c3` | Separate workspace: `ports.rs`, `input/` (quadrature, gesture), `physical_st7789.rs`, `physical_rotary.rs`, `runtime.rs`, `proto.rs`, plus host simulation adapters in `sim/`. |
+| `firmware/desk-buddy` | Separate workspace: `ports.rs`, `input/` (quadrature, gesture), `physical_st7789.rs`, `physical_rotary.rs`, `runtime.rs`, `proto.rs`, plus host simulation adapters in `sim/`. |
 | `tools/asset-compiler` | SVG to deterministic RGB565 blob (host build tool). |
 | `tools/wokwi-*`, `tests/e2e-host-sim`, `tests/golden-frames` | Simulation vectors, host-sim end-to-end tests, cross-OS frame-hash harness. |
 | `.github/workflows/` | CI, see below. |

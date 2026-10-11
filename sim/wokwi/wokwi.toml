@@ -1,10 +1,10 @@
 # Wokwi project for the Kivori ESP32-C3 pre-hardware simulation gate.
 #
-# Loads the REAL firmware ELF built from firmware/esp32-c3 with the `wokwi` feature (see
+# Loads the REAL firmware ELF built from firmware/desk-buddy with the `wokwi` feature (see
 # scripts/build-wokwi-firmware.sh). Simulation is an ADDITIONAL gate: it never replaces the host-sim
 # tests, and it is never evidence of physical correctness — see README.md "What this does not prove".
 [wokwi]
 version = 1
 # Paths are relative to this file.
-elf = "../../firmware/esp32-c3/target/riscv32imc-unknown-none-elf/release/kivori-firmware"
-firmware = "../../firmware/esp32-c3/target/riscv32imc-unknown-none-elf/release/kivori-firmware"
+elf = "../../firmware/desk-buddy/target/riscv32imc-unknown-none-elf/release/kivori-firmware"
+firmware = "../../firmware/desk-buddy/target/riscv32imc-unknown-none-elf/release/kivori-firmware"

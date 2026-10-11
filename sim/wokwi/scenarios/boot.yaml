@@ -1,7 +1,7 @@
 # Wokwi scenario: firmware boot, deterministic clock, and the device-owned lifecycle transition.
 #
 # Each `wait-serial` step fails the run on timeout, so a panic, a hang, or a missing assertion line all
-# surface as a scenario failure. Lines are emitted by firmware/esp32-c3/src/selftest.rs.
+# surface as a scenario failure. Lines are emitted by firmware/desk-buddy/src/selftest.rs.
 name: kivori-boot
 version: 1
 author: Kivori

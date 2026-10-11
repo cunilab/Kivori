@@ -9,4 +9,4 @@ One cargo workspace unifies features, so a std feature enabled by the desktop wo
 
 ## Decision
 
-The root workspace holds the host crates, the desktop, tools and tests. `firmware/esp32-c3` has its own `[workspace]` and reaches shared crates by path.
+The root workspace holds the host crates, the desktop, tools and tests. `firmware/desk-buddy` has its own `[workspace]` and reaches shared crates by path.

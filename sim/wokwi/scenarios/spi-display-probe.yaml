@@ -2,7 +2,7 @@
 #
 # Runs `kivori-spi.elf` (--features wokwi-spi) against `diagram-spi.json`, where a built-in
 # `wokwi-ili9341` part stands in as a GENERIC SPI display sink. Lines come from
-# firmware/esp32-c3/src/spi_probe.rs and are printed only AFTER the work they name has completed and its
+# firmware/desk-buddy/src/spi_probe.rs and are printed only AFTER the work they name has completed and its
 # post-condition has been checked.
 #
 # SCOPE — this asserts generic bus and tile-stream properties only:
