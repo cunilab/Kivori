@@ -318,7 +318,21 @@ Software rules in [product.md](./product.md); design in ADR-0011 and ADR-0012. W
 - [ ] 13.17 Start the app from cold (after a reboot) | a splash with the buddy and "Starting" shows, then the main window; no percentage; start it again while warm and the splash does not flash up
 - [ ] 13.18 Sign in with "Start with Windows" on | no splash and no window, only the tray icon
 
-## Evidence log
+## Phase 14: Identity and updates (M2.7)
+
+Rules in [product.md](./product.md#updates-us10-us11); design in ADR-0014 to ADR-0016.
+
+- [ ] 14.1 Plug in a unit with M2.7 firmware, open Diagnostics | product "Kivori Desk Buddy", board "C3 SuperMini", revision shown (or "unknown" before provisioning)
+- [ ] 14.2 Plug in a unit with older firmware | the app treats it as Desk Buddy on the C3 SuperMini and offers the firmware update a few seconds after it connects
+- [ ] 14.3 Choose "Later", unplug and replug | the offer comes back; choose "Update now" | "Updating" on the panel, then the buddy; Device page shows the new firmware
+- [ ] 14.4 Try to flash an image built for another board (developer build with a test image) | the app refuses and names the mismatch; nothing is written
+- [ ] 14.5 Provisioning with `--product desk-buddy --board c3-supermini --rev 1` on a spare unit | the record is shown and needs typing to confirm; afterwards Diagnostics shows the identity from the chip
+- [ ] 14.6 Install an older release, publish a newer one | within a day, or at the next start, a tray badge; opening the window shows the update dialog with the new version and notes
+- [ ] 14.7 "Install & restart" | the installer runs without questions, Kivori restarts on the new version, the device reconnects; the firmware offer follows if the new app bundles newer firmware
+- [ ] 14.8 "Skip this version", restart | no offer for that version; a newer one is offered again
+- [ ] 14.9 Turn off the network, start the app | no error, no wait; turn off "Check for updates" | no request to GitHub (check with a firewall log)
+- [ ] 14.10 Tamper with the downloaded update (developer test: wrong signature) | it is refused and nothing installs
+
 
 | Date | What | Result |
 |---|---|---|

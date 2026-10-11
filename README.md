@@ -14,6 +14,8 @@ Kivori is a desk buddy you control your computer with: the buddy is why you want
 
 **M2.6 — Beta hero features (planned).** Truthful mic mute across every microphone, profiles for any app, a buddy that stays alive on its own, a brightness setting, quieter feedback for actions Kivori cannot confirm, device internals in developer mode, and a splash screen. See [`docs/roadmap.md`](docs/roadmap.md#m26-beta-hero-features).
 
+**M2.7 — Product identity, versioning and updates (planned).** Every device says which product and board it is, one app serves every Kivori product, app updates arrive through GitHub Releases, and a firmware update is offered when an older device connects. See [`docs/roadmap.md`](docs/roadmap.md#m27-product-identity-versioning-and-updates).
+
 **M3 — Paid beta.** Software complete: host takeovers, sleep and lock handling, firmware update and recovery, launch at login with a tray, the installer and an unsigned release pipeline ([`docs/release.md`](docs/release.md)), first-run onboarding, and per-unit provisioning ([`docs/provisioning.md`](docs/provisioning.md)).
 
 Beta users start with the [user guide](docs/user-guide.md). Still open, and none of it is code: the hardware validation session (issue #38), signing the installer (needs certificates, #36), and the enclosure print (#33). See [`docs/roadmap.md`](docs/roadmap.md). Product behavior is defined in [`docs/product.md`](docs/product.md); durable technical choices are the ADRs in [`docs/architecture.md`](docs/architecture.md).
@@ -97,6 +99,7 @@ One file per topic:
 |---|---|
 | [`docs/product.md`](docs/product.md) | What Kivori must do: scope, behavior rules, numbered invariants, acceptance gates |
 | [`docs/architecture.md`](docs/architecture.md) | How it works: components, wire protocol, IPC, rendering, rotary loop, decisions, principles |
+| [`docs/adr/`](docs/adr/README.md) | Architecture decision records: one file per decision, with context and rejected options |
 | [`docs/roadmap.md`](docs/roadmap.md) | What gets built next, milestone by milestone (M0 to paid beta to v1) |
 | [`docs/validation.md`](docs/validation.md) | The hardware checklist and how to run a validation session |
 | [`docs/assembly.md`](docs/assembly.md) | Building one beta unit: copper traces, soldering, checks, provisioning, closing the case |

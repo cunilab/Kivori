@@ -26,6 +26,23 @@ To try the pipeline without a tag, run the `release` workflow by hand (Actions, 
 uploads the installer as a workflow artifact and creates no release. Pull requests that touch
 packaging files run it too.
 
+## Planned: M2.7 release flow
+
+Not built yet ([roadmap.md](./roadmap.md#m27-product-identity-versioning-and-updates), ADR-0014 and
+ADR-0015). Once it lands:
+
+1. Merge pull requests with conventional commit titles (`feat:`, `fix:`, scoped by component).
+2. release-please keeps one release PR open with the next app version, each changed firmware's next
+   version and their changelogs. Merge it when you want a release.
+3. That tags `vX.Y.Z` for the app (and `fw-<product>-vX.Y.Z` for each firmware that changed). The
+   release workflow builds the installer, signs it for the updater, writes `latest.json` and
+   attaches them to a draft release titled with the bundled firmware.
+4. Check the draft and publish it as a normal release (not a pre-release): installed apps see it
+   within a day.
+
+Keep the updater signing key offline in two places. Losing it means installed apps can never
+update themselves again.
+
 ## macOS
 
 Run `just bundle-macos` (or `scripts/bundle-macos.sh`) on a Mac with Xcode Command Line Tools. The
