@@ -493,7 +493,13 @@ export interface AppRefDto {
 /** Whether the microphones are muted: `yes` only when every one reads muted, never a guess. */
 export const MIC_MUTED_STATES = ['yes', 'partial', 'no', 'unknown'] as const;
 export type MicMutedState = (typeof MIC_MUTED_STATES)[number];
-export const MIC_DEVICE_STATES = ['muted', 'live', 'unknown', 'cannotMute'] as const;
+export const MIC_DEVICE_STATES = [
+  'muted',
+  'live',
+  'unknown',
+  'cannotMuteIdle',
+  'cannotMuteLive',
+] as const;
 export type MicDeviceState = (typeof MIC_DEVICE_STATES)[number];
 
 export interface MicDeviceDto {

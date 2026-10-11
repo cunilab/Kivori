@@ -366,8 +366,9 @@ pub fn execute_while(action: &Action, platform: &Platform, current: &dyn Fn() ->
 
 /// How a mic mute request ended, from what the OS read back for each device (ADR-0011). Muting
 /// is State Confirmed only when every device reads muted: one that stays live, or has no mute to
-/// set, is a known failure (the panel names it); one that cannot be read back is Unverified.
-/// Unmuting is confirmed when every device reads live; a device with no mute cannot have been
+/// set while capturing or not known to be idle, is a known failure (the panel names it); one with
+/// no mute that is observed idle is fine, but muting only such devices muted nothing, so it is an
+/// Error; one that cannot be read back is Unverified. Unmuting is confirmed when every device reads live; a device with no mute cannot have been
 /// muted, so it does not count against it.
 fn mic_outcome(target_muted: bool, devices: &[MicDevice]) -> FeedbackKind {
     if devices.is_empty() {
@@ -375,12 +376,14 @@ fn mic_outcome(target_muted: bool, devices: &[MicDevice]) -> FeedbackKind {
     }
     let failed = |d: &MicDevice| {
         if target_muted {
-            matches!(d.mute, MicMute::Live | MicMute::Unsettable)
+            d.mute == MicMute::Live || (d.mute == MicMute::Unsettable && d.capturing != Some(false))
         } else {
             d.mute == MicMute::Muted
         }
     };
-    if devices.iter().any(failed) {
+    // Only unmutable idle devices: nothing was muted, whatever they are doing now.
+    let nothing_muted = target_muted && devices.iter().all(|d| d.mute == MicMute::Unsettable);
+    if devices.iter().any(failed) || nothing_muted {
         FeedbackKind::Error
     } else if devices.iter().any(|d| d.mute == MicMute::Unreadable) {
         FeedbackKind::Unverified
@@ -767,6 +770,70 @@ mod tests {
                 "{quirk:?}"
             );
         }
+    }
+
+    #[test]
+    fn an_unmutable_device_counts_as_muted_only_while_observed_idle() {
+        let dev = |mute, capturing| MicDevice {
+            name: "d".into(),
+            mute,
+            capturing,
+        };
+        let muted = || dev(MicMute::Muted, None);
+        let idle = || dev(MicMute::Unsettable, Some(false));
+        let busy = || dev(MicMute::Unsettable, Some(true));
+        let unknown = || dev(MicMute::Unsettable, None);
+        // (devices, mics_muted, muting outcome)
+        let cases = [
+            (
+                vec![muted(), idle()],
+                Some(true),
+                FeedbackKind::StateConfirmed,
+            ),
+            (vec![muted(), busy()], Some(false), FeedbackKind::Error),
+            (vec![muted(), unknown()], Some(false), FeedbackKind::Error),
+            // None actually muted: never muted, and the press did nothing.
+            (vec![idle()], Some(false), FeedbackKind::Error),
+            (vec![idle(), idle()], Some(false), FeedbackKind::Error),
+            (
+                vec![muted(), dev(MicMute::Unreadable, None), idle()],
+                None,
+                FeedbackKind::Unverified,
+            ),
+            (
+                vec![dev(MicMute::Live, None), idle()],
+                Some(false),
+                FeedbackKind::Error,
+            ),
+        ];
+        for (devices, expected, outcome) in cases {
+            assert_eq!(mics_muted(&devices), expected, "{devices:?}");
+            assert_eq!(mic_outcome(true, &devices), outcome, "{devices:?}");
+        }
+        // Unmuting is confirmed with an unmutable device present, whatever it does.
+        let unmuted = [dev(MicMute::Live, None), busy()];
+        assert_eq!(mic_outcome(false, &unmuted), FeedbackKind::StateConfirmed);
+    }
+
+    #[test]
+    fn the_fake_unmutable_quirks_press_to_confirmed_or_error() {
+        let press = |quirk| {
+            let p = mic_platform(
+                FakeMicBackend::new()
+                    .with_device("Built-in", FakeMicQuirk::Works)
+                    .with_device("Phone", quirk),
+            );
+            kind(&Action::ToggleMicMute, &p)
+        };
+        assert_eq!(
+            press(FakeMicQuirk::UnsettableIdle),
+            FeedbackKind::StateConfirmed
+        );
+        assert_eq!(
+            press(FakeMicQuirk::UnsettableCapturing),
+            FeedbackKind::Error
+        );
+        assert_eq!(press(FakeMicQuirk::Unsettable), FeedbackKind::Error);
     }
 
     #[test]

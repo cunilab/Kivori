@@ -12,10 +12,15 @@
 //! sub-devices are listed on their own) and hidden ones. A device that arrives while mic mute is
 //! on is muted and read back too; if that fails it reads live, so the state says live.
 //!
-//! IN USE: `kAudioDevicePropertyDeviceIsRunningSomewhere` ('gone') on each capture device. The
-//! HAL sets it while ANY process runs IO on the device, so on a duplex device (a headset) that is
-//! playing audio it can read true with the microphone idle: a "Live" cue there is a known
-//! over-report, never a missing one.
+//! IN USE: any process object other than Kivori's own (`kAudioHardwarePropertyProcessObjectList`)
+//! with `kAudioProcessPropertyIsRunningInput` set. A headset that is only PLAYING audio does not
+//! count. PER-DEVICE CAPTURE (`MicDevice::capturing`): the devices a running-input process lists
+//! on `kAudioProcessPropertyDevices` with the input scope (an aggregate expands to its active
+//! sub-devices). Without the process API (property missing, or any read fails) it falls back to
+//! `kAudioDevicePropertyDeviceIsRunningSomewhere`, trusted only on input-only devices (on a duplex
+//! one it cannot tell playing from recording): there in use ignores them and capturing is `None`.
+//! Capture start is not pushed: the desk re-reads `devices()` on its 1 s tick, which is prompt
+//! enough and avoids a listener per process object that must follow processes coming and going.
 //!
 //! THREADING and LISTENER LIFETIME mirror `audio.rs`: one `kivori-mic` thread owns all state and
 //! makes every CoreAudio call; HAL listeners only post a command, with an opaque token that is
@@ -34,7 +39,7 @@ use super::audio::{
     fourcc, get, put, AudioObjectAddPropertyListener, AudioObjectGetPropertyData,
     AudioObjectHasProperty, AudioObjectId, AudioObjectIsPropertySettable,
     AudioObjectRemovePropertyListener, OsStatus, PropertyAddress, ELEMENT_MAIN, RUN_LOOP,
-    SCOPE_GLOBAL, SYSTEM_OBJECT,
+    SCOPE_GLOBAL, SCOPE_OUTPUT, SYSTEM_OBJECT,
 };
 use crate::platform::{
     ActionAvailability, BackendError, ChangeOrigin, ConfirmationClass, MicBackend, MicChange,
@@ -83,6 +88,17 @@ const NAME: PropertyAddress = address(b"lnam", SCOPE_GLOBAL);
 const TRANSPORT: PropertyAddress = address(b"tran", SCOPE_GLOBAL);
 const HIDDEN: PropertyAddress = address(b"hidn", SCOPE_GLOBAL);
 const RUNNING_SOMEWHERE: PropertyAddress = address(b"gone", SCOPE_GLOBAL);
+const OUTPUT_STREAMS: PropertyAddress = address(b"stm#", SCOPE_OUTPUT);
+/// `kAudioAggregateDevicePropertyActiveSubDeviceList`.
+const AGGREGATE_SUB_DEVICES: PropertyAddress = address(b"agrp", SCOPE_GLOBAL);
+/// `kAudioHardwarePropertyProcessObjectList`.
+const PROCESSES: PropertyAddress = address(b"prs#", SCOPE_GLOBAL);
+/// `kAudioProcessPropertyPID`.
+const PROCESS_PID: PropertyAddress = address(b"ppid", SCOPE_GLOBAL);
+/// `kAudioProcessPropertyIsRunningInput`.
+const PROCESS_RUNNING_INPUT: PropertyAddress = address(b"piri", SCOPE_GLOBAL);
+/// `kAudioProcessPropertyDevices`, input scope: the devices the process captures from.
+const PROCESS_INPUT_DEVICES: PropertyAddress = address(b"pdv#", SCOPE_INPUT);
 
 /// How long after an own write a notification still counts as its echo.
 const ECHO_WINDOW: Duration = Duration::from_millis(250);
@@ -227,13 +243,15 @@ impl MicBackend for MacMicBackend {
     }
 }
 
-/// The ids of every device the HAL knows.
-fn all_device_ids() -> Result<Vec<AudioObjectId>, OsStatus> {
+/// The object ids an array property of `object` holds.
+fn object_ids(
+    object: AudioObjectId,
+    address: &PropertyAddress,
+) -> Result<Vec<AudioObjectId>, OsStatus> {
     let mut size = 0u32;
-    // SAFETY: valid address and out pointer; the system object always exists.
-    let status = unsafe {
-        AudioObjectGetPropertyDataSize(SYSTEM_OBJECT, &DEVICES, 0, std::ptr::null(), &mut size)
-    };
+    // SAFETY: valid address and out pointer; the caller passes an object the HAL returned.
+    let status =
+        unsafe { AudioObjectGetPropertyDataSize(object, address, 0, std::ptr::null(), &mut size) };
     if status != 0 {
         return Err(status);
     }
@@ -242,8 +260,8 @@ fn all_device_ids() -> Result<Vec<AudioObjectId>, OsStatus> {
     // SAFETY: `ids` is a writable buffer of exactly `size` bytes.
     let status = unsafe {
         AudioObjectGetPropertyData(
-            SYSTEM_OBJECT,
-            &DEVICES,
+            object,
+            address,
             0,
             std::ptr::null(),
             &mut size,
@@ -257,13 +275,21 @@ fn all_device_ids() -> Result<Vec<AudioObjectId>, OsStatus> {
     Ok(ids)
 }
 
-fn has_input(device: AudioObjectId) -> bool {
+/// The ids of every device the HAL knows.
+fn all_device_ids() -> Result<Vec<AudioObjectId>, OsStatus> {
+    object_ids(SYSTEM_OBJECT, &DEVICES)
+}
+
+fn has_streams(device: AudioObjectId, streams: &PropertyAddress) -> bool {
     let mut size = 0u32;
     // SAFETY: valid address and out pointer.
-    let status = unsafe {
-        AudioObjectGetPropertyDataSize(device, &INPUT_STREAMS, 0, std::ptr::null(), &mut size)
-    };
+    let status =
+        unsafe { AudioObjectGetPropertyDataSize(device, streams, 0, std::ptr::null(), &mut size) };
     status == 0 && size > 0
+}
+
+fn has_input(device: AudioObjectId) -> bool {
+    has_streams(device, &INPUT_STREAMS)
 }
 
 /// Every active capture device: it has an input stream and is neither aggregate nor hidden.
@@ -345,23 +371,91 @@ fn write_mute(device: AudioObjectId, muted: bool) -> MicMute {
     read_mute(device)
 }
 
+/// The devices some process other than Kivori is recording from, and whether any is: `None` when
+/// the process objects cannot be read (the API is missing, or a process vanished mid-read), which
+/// is unknown, never "idle".
+struct Capture {
+    any: bool,
+    devices: Vec<AudioObjectId>,
+}
+
+fn capture_scan() -> Option<Capture> {
+    let own = std::process::id();
+    let mut capture = Capture {
+        any: false,
+        devices: Vec::new(),
+    };
+    for process in object_ids(SYSTEM_OBJECT, &PROCESSES).ok()? {
+        if get::<i32>(process, &PROCESS_PID).ok()? as u32 == own {
+            continue;
+        }
+        if get::<u32>(process, &PROCESS_RUNNING_INPUT).ok()? == 0 {
+            continue;
+        }
+        capture.any = true;
+        for device in object_ids(process, &PROCESS_INPUT_DEVICES).ok()? {
+            // A process on an aggregate device records from its sub-devices.
+            match object_ids(device, &AGGREGATE_SUB_DEVICES) {
+                Ok(subs) if get::<u32>(device, &TRANSPORT) == Ok(TRANSPORT_AGGREGATE) => {
+                    capture.devices.extend(subs);
+                }
+                _ => {}
+            }
+            capture.devices.push(device);
+        }
+    }
+    Some(capture)
+}
+
+/// `kAudioDevicePropertyDeviceIsRunningSomewhere`: true while ANY process runs IO on the device.
+fn running_somewhere(device: AudioObjectId) -> Option<bool> {
+    get::<u32>(device, &RUNNING_SOMEWHERE).ok().map(|v| v != 0)
+}
+
+/// Per device: is a process recording from it (see the module docs for the fallback).
+fn capturing_of(ids: &[AudioObjectId]) -> Vec<Option<bool>> {
+    match capture_scan() {
+        Some(capture) => ids
+            .iter()
+            .map(|id| Some(capture.devices.contains(id)))
+            .collect(),
+        None => ids
+            .iter()
+            .map(|&id| {
+                if has_streams(id, &OUTPUT_STREAMS) {
+                    None
+                } else {
+                    running_somewhere(id)
+                }
+            })
+            .collect(),
+    }
+}
+
 fn snapshot(ids: &[AudioObjectId]) -> Vec<MicDevice> {
+    let capturing = capturing_of(ids);
     ids.iter()
-        .map(|&id| MicDevice {
+        .zip(capturing)
+        .map(|(&id, capturing)| MicDevice {
             name: device_name(id),
             mute: read_mute(id),
+            capturing,
         })
         .collect()
 }
 
 fn in_use_of(ids: &[AudioObjectId]) -> Option<bool> {
+    if let Some(capture) = capture_scan() {
+        return Some(capture.any);
+    }
+    // No process objects: only an input-only device's "running somewhere" means capture.
     let mut any_known = false;
-    for &id in ids {
-        match get::<u32>(id, &RUNNING_SOMEWHERE) {
-            Ok(0) => any_known = true,
-            Ok(_) => return Some(true),
+    for &id in ids.iter().filter(|&&id| !has_streams(id, &OUTPUT_STREAMS)) {
+        match running_somewhere(id) {
+            Some(false) => any_known = true,
+            Some(true) => return Some(true),
             // One unreadable device means "not running" cannot be claimed for all of them.
-            Err(_) => return None,
+            None => return None,
         }
     }
     any_known.then_some(false)
@@ -444,11 +538,18 @@ impl Mic {
             return Err(BackendError::NoEndpoint);
         }
         self.hold_muted = muted;
+        let mutes = ids
+            .iter()
+            .map(|&id| write_mute(id, muted))
+            .collect::<Vec<_>>();
         let devices = ids
             .iter()
-            .map(|&id| MicDevice {
+            .zip(mutes)
+            .zip(capturing_of(&ids))
+            .map(|((&id, mute), capturing)| MicDevice {
                 name: device_name(id),
-                mute: write_mute(id, muted),
+                mute,
+                capturing,
             })
             .collect::<Vec<_>>();
         self.last_write = Some(Instant::now());
@@ -557,5 +658,25 @@ mod tests {
         assert_eq!(INPUT_MUTE.selector, 0x6D75_7465);
         assert_eq!(INPUT_MUTE.scope, 0x696E_7074);
         assert_eq!(RUNNING_SOMEWHERE.selector, 0x676F_6E65);
+        assert_eq!(PROCESSES.selector, 0x7072_7323);
+        assert_eq!(PROCESS_RUNNING_INPUT.selector, 0x7069_7269);
+        assert_eq!(PROCESS_INPUT_DEVICES.selector, 0x7064_7623);
+        assert_eq!(PROCESS_INPUT_DEVICES.scope, 0x696E_7074);
+    }
+
+    /// READ-ONLY real OS calls (never mutes): `cargo test -p kivori-desktop -- --ignored
+    /// --nocapture mac_mics_now`.
+    #[test]
+    #[ignore = "reads the live capture devices, their mute and who is recording"]
+    fn mac_mics_now() {
+        let mic = MacMicBackend::new();
+        for d in mic.devices().expect("devices") {
+            println!("{d:?}");
+        }
+        println!("in use: {:?}", mic.in_use());
+        println!(
+            "process scan: {:?}",
+            capture_scan().map(|c| (c.any, c.devices))
+        );
     }
 }

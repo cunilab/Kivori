@@ -380,7 +380,7 @@ function Microphone({ desk }: { desk: DeskStatusDto }): ReactElement {
                 <span
                   className={cn(
                     'shrink-0 text-xs',
-                    device.state === 'live' || device.state === 'cannotMute'
+                    device.state === 'live' || device.state === 'cannotMuteLive'
                       ? 'font-medium text-destructive'
                       : 'text-muted-foreground',
                   )}

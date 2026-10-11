@@ -131,7 +131,8 @@ pub enum MicMute {
     /// The mute could not be read (the write may or may not have landed).
     Unreadable,
     /// The device has no settable mute at all (macOS: no `kAudioDevicePropertyMute` on the input
-    /// scope). Kivori never substitutes input volume 0 (invariant 19), so it stays live.
+    /// scope, e.g. a phone's Continuity microphone). Kivori never substitutes input volume 0
+    /// (invariant 19), so it counts as muted only while it is observed not capturing.
     Unsettable,
 }
 
@@ -140,22 +141,34 @@ pub enum MicMute {
 pub struct MicDevice {
     pub name: String,
     pub mute: MicMute,
+    /// Whether some process is recording from this device: `Some(true)` capturing, `Some(false)`
+    /// observed idle, `None` unknown (never read as idle). Only an `Unsettable` device's value
+    /// matters for the muted state.
+    pub capturing: Option<bool>,
 }
 
-/// Whether the microphones are muted: `Some(true)` only when there is at least one device and
-/// EVERY one reads muted, `Some(false)` when any is (or must be treated as) live, `None` when
-/// that cannot be told. Never claims muted while any microphone may be live.
+/// Whether the microphones are muted: `Some(true)` only when at least one device reads muted and
+/// every other one is muted or has no mute control while observed idle, `Some(false)` when any is
+/// (or must be treated as) live, `None` when that cannot be told. A device with no mute control
+/// that is capturing, or whose capture is unknown, is live. Never claims muted while any
+/// microphone may be live.
 #[must_use]
 pub fn mics_muted(devices: &[MicDevice]) -> Option<bool> {
-    if devices
-        .iter()
-        .any(|d| matches!(d.mute, MicMute::Live | MicMute::Unsettable))
-    {
-        Some(false)
-    } else if devices.is_empty() || devices.iter().any(|d| d.mute == MicMute::Unreadable) {
+    let mut any_muted = false;
+    let mut any_unreadable = false;
+    for d in devices {
+        match d.mute {
+            MicMute::Muted => any_muted = true,
+            MicMute::Live => return Some(false),
+            MicMute::Unsettable if d.capturing != Some(false) => return Some(false),
+            MicMute::Unsettable => {}
+            MicMute::Unreadable => any_unreadable = true,
+        }
+    }
+    if devices.is_empty() || any_unreadable {
         None
     } else {
-        Some(true)
+        Some(any_muted)
     }
 }
 
@@ -178,7 +191,7 @@ pub trait MicBackend: Send + Sync {
     /// While muted, a device that arrives later is muted and read back too; unmuting ends that.
     fn set_mute(&self, muted: bool) -> Result<Vec<MicDevice>, BackendError>;
     /// Whether an app is capturing audio right now, where the OS reports it; `None` = unknown
-    /// (never "not in use").
+    /// (never "not in use"). A device that is only playing audio does not count.
     fn in_use(&self) -> Option<bool>;
     /// One pending change observed by the OS since the last call, if any. Never blocks.
     fn try_recv_change(&self) -> Option<MicChange> {
@@ -403,8 +416,29 @@ pub enum FakeMicQuirk {
     StaysLive,
     /// The write lands but the read-back fails.
     Unreadable,
-    /// No mute property at all.
+    /// No mute property at all, capture state unknown.
     Unsettable,
+    /// No mute property, observed not capturing.
+    UnsettableIdle,
+    /// No mute property, and some process is recording from it.
+    UnsettableCapturing,
+}
+
+impl FakeMicQuirk {
+    fn unsettable(self) -> bool {
+        matches!(
+            self,
+            Self::Unsettable | Self::UnsettableIdle | Self::UnsettableCapturing
+        )
+    }
+
+    fn capturing(self) -> Option<bool> {
+        match self {
+            Self::UnsettableIdle => Some(false),
+            Self::UnsettableCapturing => Some(true),
+            _ => None,
+        }
+    }
 }
 
 impl FakeMicBackend {
@@ -439,11 +473,12 @@ impl FakeMicBackend {
         let hold = *self.hold_muted.lock().expect("fake mic mutex");
         let mut device = MicDevice {
             name: name.to_string(),
-            mute: if quirk == FakeMicQuirk::Unsettable {
+            mute: if quirk.unsettable() {
                 MicMute::Unsettable
             } else {
                 MicMute::Live
             },
+            capturing: quirk.capturing(),
         };
         if hold {
             device.mute = Self::applied(quirk, true, device.mute);
@@ -463,6 +498,23 @@ impl FakeMicBackend {
 
     pub fn set_in_use(&self, in_use: Option<bool>) {
         *self.in_use.lock().expect("fake mic mutex") = in_use;
+    }
+
+    /// An app starts or stops recording from `name` (`None` = unknown); the change is observed.
+    pub fn set_capturing(&self, name: &str, capturing: Option<bool>) {
+        let mut devices = self.devices.lock().expect("fake mic mutex");
+        for (device, _) in devices.iter_mut().filter(|(d, _)| d.name == name) {
+            device.capturing = capturing;
+        }
+        let snapshot = devices.iter().map(|(d, _)| d.clone()).collect();
+        drop(devices);
+        self.changes
+            .lock()
+            .expect("fake mic mutex")
+            .push_back(MicChange {
+                devices: snapshot,
+                origin: ChangeOrigin::External,
+            });
     }
 
     /// The user mutes or unmutes `name` in the OS settings.
@@ -488,7 +540,7 @@ impl FakeMicBackend {
             (FakeMicQuirk::Works, false) => MicMute::Live,
             (FakeMicQuirk::StaysLive, _) => before,
             (FakeMicQuirk::Unreadable, _) => MicMute::Unreadable,
-            (FakeMicQuirk::Unsettable, _) => MicMute::Unsettable,
+            (_, _) => MicMute::Unsettable,
         }
     }
 

@@ -147,7 +147,9 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   macro Error / Partial Failure. No automatic rollback of earlier steps.
 - **Mic mute** mutes every active capture device at the OS level, below any app, and reads each one
   back. It is State Confirmed only when every device reads muted; a device that stays live makes it
-  Error and names that device. A device that cannot be read back makes it Unverified with the
+  Error and names that device. A device with no mute control (a phone's Continuity microphone)
+  counts as muted only while no app is recording from it; if one starts, the state turns live
+  within about a second, and a device whose capture cannot be observed counts as live. A device that cannot be read back makes it Unverified with the
   amber badge, never Confirmed. Unmute restores each device to unmuted (not to a remembered
   level). The scope is the OS microphone, not an app's own mute button, and the UI says so.
 - "Mic in use" (an app is capturing) is shown only where the OS reports it. Unknown shows no cue,

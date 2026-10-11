@@ -198,6 +198,7 @@ impl Endpoint {
         MicDevice {
             name: self.name.clone(),
             mute,
+            capturing: None,
         }
     }
 

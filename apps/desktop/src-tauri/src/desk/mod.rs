@@ -2221,4 +2221,29 @@ mod mic_tests {
         let _ = tick(&mut desk, 30);
         assert_eq!(desk.mic().0.muted, Some(false));
     }
+
+    #[test]
+    fn a_guarded_device_that_starts_capturing_turns_the_state_live() {
+        let mic = Arc::new(
+            FakeMicBackend::new()
+                .with_device("Built-in", FakeMicQuirk::Works)
+                .with_device("Phone", FakeMicQuirk::UnsettableIdle),
+        );
+        let mut desk = desk(&mic);
+        let _ = tick(&mut desk, 0);
+        mic.set_mute(true).unwrap();
+        let _ = tick(&mut desk, 1_100);
+        assert_eq!(desk.mic().0.muted, Some(true), "idle unmutable is guarded");
+        // An app starts recording from the phone: live on the next sample (1 s).
+        mic.set_capturing("Phone", Some(true));
+        let _ = tick(&mut desk, 2_200);
+        assert_eq!(desk.mic().0.muted, Some(false));
+        // ...and back to muted when it stops, and an unknown reading is live too.
+        mic.set_capturing("Phone", Some(false));
+        let _ = tick(&mut desk, 3_300);
+        assert_eq!(desk.mic().0.muted, Some(true));
+        mic.set_capturing("Phone", None);
+        let _ = tick(&mut desk, 4_400);
+        assert_eq!(desk.mic().0.muted, Some(false));
+    }
 }

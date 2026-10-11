@@ -1108,7 +1108,8 @@ pub struct MicDto {
 #[serde(rename_all = "camelCase")]
 pub struct MicDeviceDto {
     pub name: String,
-    /// `muted`, `live`, `unknown` (could not be read) or `cannotMute` (no mute control).
+    /// `muted`, `live`, `unknown` (could not be read), `cannotMuteIdle` (no mute control, observed
+    /// not in use) or `cannotMuteLive` (no mute control, in use or not known to be idle).
     pub state: &'static str,
 }
 
@@ -1282,14 +1283,22 @@ fn mic_dto(desk: &crate::desk::DeskRuntime) -> MicDto {
             .iter()
             .map(|d| MicDeviceDto {
                 name: d.name.clone(),
-                state: match d.mute {
-                    MicMute::Muted => "muted",
-                    MicMute::Live => "live",
-                    MicMute::Unreadable => "unknown",
-                    MicMute::Unsettable => "cannotMute",
-                },
+                state: mic_device_state(d),
             })
             .collect(),
+    }
+}
+
+/// The wire state of one capture device. One with no mute control is fine while observed idle;
+/// capturing, or not known to be idle, it is live.
+fn mic_device_state(d: &crate::platform::MicDevice) -> &'static str {
+    use crate::platform::MicMute;
+    match d.mute {
+        MicMute::Muted => "muted",
+        MicMute::Live => "live",
+        MicMute::Unreadable => "unknown",
+        MicMute::Unsettable if d.capturing == Some(false) => "cannotMuteIdle",
+        MicMute::Unsettable => "cannotMuteLive",
     }
 }
 
@@ -1939,4 +1948,28 @@ pub fn vocabulary_json() -> serde_json::Value {
         "startupPlatform": STARTUP_PLATFORM_TOKENS,
         "accessibility": crate::platform::permissions::ACCESSIBILITY_TOKENS,
     })
+}
+
+#[cfg(test)]
+mod mic_tests {
+    use super::mic_device_state;
+    use crate::platform::{MicDevice, MicMute};
+
+    fn state(mute: MicMute, capturing: Option<bool>) -> &'static str {
+        mic_device_state(&MicDevice {
+            name: "Mic".into(),
+            mute,
+            capturing,
+        })
+    }
+
+    #[test]
+    fn a_device_with_no_mute_is_fine_only_while_observed_idle() {
+        assert_eq!(state(MicMute::Muted, None), "muted");
+        assert_eq!(state(MicMute::Live, Some(false)), "live");
+        assert_eq!(state(MicMute::Unreadable, None), "unknown");
+        assert_eq!(state(MicMute::Unsettable, Some(false)), "cannotMuteIdle");
+        assert_eq!(state(MicMute::Unsettable, Some(true)), "cannotMuteLive");
+        assert_eq!(state(MicMute::Unsettable, None), "cannotMuteLive");
+    }
 }
