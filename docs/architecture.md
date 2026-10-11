@@ -494,26 +494,8 @@ Core function needs no internet, cloud, CDN, telemetry or licence check. Discove
 
 ## 7. Decisions
 
-Each architecture decision is its own record in [`docs/adr/`](./adr/); see its [README](./adr/README.md) for how to add one.
-
-| ADR | Decision | Status |
-|---|---|---|
-| [ADR-0001](./adr/0001-two-cargo-workspaces.md) | Two cargo workspaces | Accepted |
-| [ADR-0002](./adr/0002-one-wire-protocol-crate.md) | One wire protocol crate | Accepted |
-| [ADR-0003](./adr/0003-integer-millisecond-timebase.md) | Integer-millisecond timebase | Accepted |
-| [ADR-0004](./adr/0004-layered-scenes-and-compiled-asset-blob.md) | Layered scenes and a compiled asset blob | Accepted |
-| [ADR-0005](./adr/0005-typed-activity-log-with-allowlist.md) | Typed activity log with an allowlist | Accepted |
-| [ADR-0006](./adr/0006-handshake-nonce-is-session-identity.md) | The handshake nonce is the session identity | Accepted |
-| [ADR-0007](./adr/0007-interrupt-captured-input-edges.md) | Interrupt-captured input edges | Accepted |
-| [ADR-0008](./adr/0008-desk-state-as-two-new-messages.md) | Desk state as two new messages | Accepted |
-| [ADR-0009](./adr/0009-macos-now-playing-layered-observation.md) | macOS now-playing observation is layered: MediaRemote adapter, then AppleScript, then unknown | Accepted |
-| [ADR-0010](./adr/0010-v1-controller-with-native-usb.md) | v1 controller with native USB | Proposed |
-| [ADR-0011](./adr/0011-mic-mute-every-capture-device.md) | Mic mute mutes every active capture device | Accepted |
-| [ADR-0012](./adr/0012-idle-life-runs-in-the-firmware.md) | Idle life runs in the firmware | Accepted |
-| [ADR-0013](./adr/0013-device-internals-on-request.md) | Device internals on request | Accepted |
-| [ADR-0014](./adr/0014-versions-product-identity-and-product-catalog.md) | Versions, product identity and the product catalog | Proposed |
-| [ADR-0015](./adr/0015-app-updates-through-github-releases.md) | App updates through GitHub Releases | Proposed |
-| [ADR-0016](./adr/0016-locking-a-board-to-its-firmware-in-tiers.md) | Locking a board to its firmware, in tiers | Proposed |
+Each architecture decision is its own record in [`docs/adr/`](./adr/). The [ADR index](./adr/README.md)
+lists them all with their status and says how to add one.
 
 ## 8. Engineering principles
 
