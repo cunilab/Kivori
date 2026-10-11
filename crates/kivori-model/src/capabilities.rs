@@ -30,6 +30,7 @@ impl Capabilities {
     //   bit 11 QUIET_ACK_V1        `FeedbackKind::Triggered` quiet acknowledgement for trigger-only outcomes
     //   bit 12 DEVICE_INTERNALS_V1 `InternalsRequest` / `Internals`: the developer-mode device internals snapshot
     //   bit 13 IDLE_LIFE_V1        `BuddySettings`: the device runs the buddy's idle life itself; carries brightness
+    //   bit 14 MIC_STATE_V1        `MicStateUpdate`: whether every microphone is muted, and whether one is in use
 
     /// Bit 0 — device accepts deterministic social mascot actions and returns applied-time
     /// acknowledgments.
@@ -80,6 +81,10 @@ impl Capabilities {
     /// blinks) and accepts `BuddySettings` (personality, reactions on/off, brightness). Without it
     /// the desktop director keeps scheduling self-play and sends no settings.
     pub const IDLE_LIFE_V1: Capabilities = Capabilities(1 << 13);
+
+    /// Bit 14 — the device renders `MicStateUpdate`: the mic indicator (muted or live) in the top
+    /// indicator slot and the covered-mouth buddy face. Without it the desktop sends no mic state.
+    pub const MIC_STATE_V1: Capabilities = Capabilities(1 << 14);
 
     /// Creates a capability set from a raw bitmask.
     #[must_use]

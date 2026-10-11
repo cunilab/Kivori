@@ -167,6 +167,8 @@ pub enum MascotExpression {
     Listening = 14,
     /// A meeting profile is active: open eyes and a small round mouth.
     Attentive = 15,
+    /// Every microphone is muted: a covered mouth, distinct from the master-mute zipped mouth.
+    MicMuted = 16,
 }
 
 impl MascotExpression {
@@ -189,7 +191,7 @@ impl MascotExpression {
             Self::Affectionate => 6,
             Self::Error => 7,
             Self::Strained => 8,
-            Self::Muted | Self::Attentive => 1,
+            Self::Muted | Self::Attentive | Self::MicMuted => 1,
             Self::Listening => 2,
         }
     }
@@ -209,6 +211,7 @@ impl MascotExpression {
             Self::Strained => 8,
             Self::Muted => 9,
             Self::Attentive => 10,
+            Self::MicMuted => 11,
             Self::Listening => 1,
         }
     }

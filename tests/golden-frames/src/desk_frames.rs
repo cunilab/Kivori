@@ -215,6 +215,24 @@ pub fn desk_frames() -> Vec<(&'static str, DeskFrame)> {
             }),
         ),
         (
+            "buddy_mic_muted",
+            view(DisplayMode::Buddy, |v| {
+                v.mic.muted = Some(true);
+                v.status.muted = Some(true);
+                v.status.media = Some(MediaStatus::Playing);
+                v.elapsed_ms = 600;
+            }),
+        ),
+        (
+            "buddy_mic_live",
+            view(DisplayMode::Buddy, |v| {
+                v.mic.muted = Some(false);
+                v.mic.in_use = Some(true);
+                v.status.muted = Some(true);
+                v.elapsed_ms = 600;
+            }),
+        ),
+        (
             "buddy_controls",
             view(DisplayMode::Buddy, |v| {
                 v.status.clock = at(19, 52, 0);

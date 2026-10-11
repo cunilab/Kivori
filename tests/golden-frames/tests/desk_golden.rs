@@ -26,6 +26,8 @@ const GOLDEN: &[(&str, u64)] = &[
     ("updating", 0x58F1_F5C4_A39E_9FD7),
     ("buddy_load_pressed", 0xF50D_D6AE_8FCE_55A5),
     ("buddy_indicators", 0x43A7_0108_2EFC_22A2),
+    ("buddy_mic_muted", 0x85BA_BF28_A3F0_5480),
+    ("buddy_mic_live", 0x571C_C976_A766_BA56),
     ("buddy_controls", 0xA2B3_1723_8197_0EBD),
     ("buddy_buttons", 0xCF11_7344_19EF_61FB),
     ("buddy_profile", 0xE45E_3338_1C8B_927A),

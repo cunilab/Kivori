@@ -2,7 +2,9 @@
 //! the `postcard` variant index is the wire tag.
 
 use crate::error::{ByeReason, ErrorCategory};
-use kivori_model::desk::{ActionKind, ControlLabels, DeskStatus, FeedbackKind, MediaInfo};
+use kivori_model::desk::{
+    ActionKind, ControlLabels, DeskStatus, FeedbackKind, MediaInfo, MicState,
+};
 use kivori_model::input::Direction;
 use kivori_model::internals::DeviceInternals;
 use kivori_model::presentation::{PrimaryState, ValueDisplay};
@@ -301,6 +303,17 @@ pub struct BuddySettings {
     pub brightness: u8,
 }
 
+/// Desktop -> device: what the computer's microphones are doing (capability `MIC_STATE_V1`). Sent
+/// on every session start and whenever it changes; session scoped like `Status`, and the device
+/// forgets it when the session ends (unknown shows nothing).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MicStateUpdate {
+    /// The handshake nonce of the session this applies to.
+    pub session: Nonce,
+    /// Muted (only when every microphone reads muted) and in use, each possibly unknown.
+    pub mic: MicState,
+}
+
 /// The top-level wire message.
 ///
 /// **Append-only**: new variants are added at the end within a major version — the `postcard`
@@ -352,4 +365,6 @@ pub enum Message {
     Internals(InternalsReport),
     /// Tag 21 — desktop -> device buddy and display settings (capability `IDLE_LIFE_V1`).
     BuddySettings(BuddySettings),
+    /// Tag 22 — desktop -> device microphone state (capability `MIC_STATE_V1`).
+    MicState(MicStateUpdate),
 }

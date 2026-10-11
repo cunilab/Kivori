@@ -783,6 +783,29 @@ fn speaker_muted(band: &mut TileBand, x: i32, y: i32, col: Rgb565, halo: Rgb565)
     line(band, (x + 3, y + 3), (x + 21, y + 21), 1, col);
 }
 
+/// A microphone, 24x24 at `(x, y)`: capsule, cradle and stand.
+fn mic(band: &mut TileBand, x: i32, y: i32, col: Rgb565) {
+    rrect(band, x + 8, y + 1, 8, 13, 4, col);
+    for (a, b) in [
+        ((x + 4, y + 9), (x + 5, y + 14)),
+        ((x + 5, y + 14), (x + 9, y + 18)),
+        ((x + 9, y + 18), (x + 15, y + 18)),
+        ((x + 15, y + 18), (x + 19, y + 14)),
+        ((x + 19, y + 14), (x + 20, y + 9)),
+    ] {
+        line(band, a, b, 1, col);
+    }
+    rect(band, x + 11, y + 18, 2, 3, col);
+    rect(band, x + 8, y + 21, 8, 2, col);
+}
+
+/// A microphone with a slash through it, 24x24 at `(x, y)`; `halo` is what the slash cuts with.
+fn mic_muted(band: &mut TileBand, x: i32, y: i32, col: Rgb565, halo: Rgb565) {
+    mic(band, x, y, col);
+    line(band, (x + 3, y + 3), (x + 21, y + 21), 3, halo);
+    line(band, (x + 3, y + 3), (x + 21, y + 21), 1, col);
+}
+
 /// An eighth note, 24x24 at `(x, y)`.
 fn note(band: &mut TileBand, x: i32, y: i32, col: Rgb565) {
     disc(band, x + 8, y + 18, 4, col);
@@ -1309,7 +1332,8 @@ fn sparkline(band: &mut TileBand, samples: &[u8], hot: bool) {
 /// pixels it draws.
 ///
 /// The status row is the badge on the left, the time in the centre (every view except Clock,
-/// which is the time) and the indicators on the right: master mute, then media.
+/// which is the time) and the indicators on the right: microphone (muted, or live while an app
+/// uses it), then master mute, then media.
 pub fn render_chrome(band: &mut TileBand, view: &DeskView) {
     let status = &view.status;
 
@@ -1325,8 +1349,16 @@ pub fn render_chrome(band: &mut TileBand, view: &DeskView) {
         text_c(band, F_STATUS, &s, CENTER, 10, MUTED);
     }
 
-    // Indicators, right-aligned; master mute has priority (rightmost).
+    // Indicators, right-aligned; the microphone has priority (rightmost), then master mute.
     let mut slot_x = SCREEN - 8 - 24;
+    if view.mic.is_muted() {
+        mic_muted(band, slot_x, 8, TEXT, BG);
+        slot_x -= 24 + 6;
+    } else if view.mic.is_live() {
+        // Unknown, or not in use, shows nothing: never a "not live" claim.
+        mic(band, slot_x, 8, RED);
+        slot_x -= 24 + 6;
+    }
     if status.muted == Some(true) {
         speaker_muted(band, slot_x, 8, TEXT, BG);
         slot_x -= 24 + 6;

@@ -9,8 +9,8 @@ use kivori_model::internals::{ChipModel, DeviceInternals, ResetReason};
 use kivori_model::{Capabilities, MascotPersonality, ProtocolVersion};
 use kivori_protocol::{
     decode_frame, decode_message, encode_message, BuddySettings, ControlId, ControlLabelsUpdate,
-    Feedback, InputEvent, InputKind, InternalsReport, InternalsRequest, Message, Status, MAX_FRAME,
-    MAX_PAYLOAD, MAX_WIRE,
+    Feedback, InputEvent, InputKind, InternalsReport, InternalsRequest, Message, MicStateUpdate,
+    Status, MAX_FRAME, MAX_PAYLOAD, MAX_WIRE,
 };
 
 fn encode(msg: &Message) -> Vec<u8, MAX_WIRE> {
@@ -207,6 +207,7 @@ fn context_buttons_are_control_variant_2_with_their_index() {
     assert_eq!(Capabilities::QUIET_ACK_V1.bits(), 1 << 11);
     assert_eq!(Capabilities::DEVICE_INTERNALS_V1.bits(), 1 << 12);
     assert_eq!(Capabilities::IDLE_LIFE_V1.bits(), 1 << 13);
+    assert_eq!(Capabilities::MIC_STATE_V1.bits(), 1 << 14);
 }
 
 /// Append-only: `Triggered` follows the original five kinds.
@@ -301,4 +302,25 @@ fn buddy_settings_are_appended_as_tag_21() {
     assert_eq!(payload(&msg)[0], 21);
     assert_eq!(roundtrip(&msg), msg);
     assert!(payload(&msg).len() <= 1 + 5 + 1 + 1 + 1);
+}
+
+#[test]
+fn mic_state_is_appended_as_tag_22() {
+    use kivori_model::desk::MicState;
+    for mic in [
+        MicState::UNKNOWN,
+        MicState {
+            muted: Some(true),
+            in_use: Some(false),
+        },
+        MicState {
+            muted: Some(false),
+            in_use: Some(true),
+        },
+    ] {
+        let msg = Message::MicState(MicStateUpdate { session: 7, mic });
+        assert_eq!(payload(&msg)[0], 22);
+        assert_eq!(roundtrip(&msg), msg);
+        assert!(payload(&msg).len() <= 1 + 5 + 2 + 2);
+    }
 }

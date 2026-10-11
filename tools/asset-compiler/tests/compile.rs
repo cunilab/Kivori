@@ -64,7 +64,7 @@ fn blob_has_six_five_layer_scenes_and_shared_expression_sheets() {
             _ => panic!("mouth is sprite"),
         };
         assert_eq!(asset.bitmap(eyes).unwrap().frames, 9);
-        assert_eq!(asset.bitmap(mouth).unwrap().frames, 11);
+        assert_eq!(asset.bitmap(mouth).unwrap().frames, 12);
     }
 
     let first_body = match asset.scene(CompanionState::Booting).unwrap().layers[0].kind {

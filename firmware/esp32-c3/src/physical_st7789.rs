@@ -364,7 +364,8 @@ pub fn run_mode(
             .union(Capabilities::HOST_TAKEOVERS_V1)
             .union(Capabilities::QUIET_ACK_V1)
             .union(Capabilities::DEVICE_INTERNALS_V1)
-            .union(Capabilities::IDLE_LIFE_V1),
+            .union(Capabilities::IDLE_LIFE_V1)
+            .union(Capabilities::MIC_STATE_V1),
     };
 
     // Keeps `FW_VERSION_MARKER` (and so the version text) in the linked image.

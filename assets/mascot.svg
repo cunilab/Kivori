@@ -39,6 +39,7 @@ Mouth groups draw inside the mouth crop (96,134 48x24). No raster images or exte
     <g id="mouth-strained"><path d="M110.5 147 L115 142 L120 147 L125 142 L129.5 147" fill="none" stroke="#10131a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></g>
     <g id="mouth-muted"><path d="M110 145 L130 145" stroke="#10131a" stroke-width="3.5" stroke-linecap="round"/><path d="M114 141 L114 149 M120 141 L120 149 M126 141 L126 149" stroke="#10131a" stroke-width="2.8" stroke-linecap="round"/></g>
     <g id="mouth-attentive"><circle cx="120" cy="145" r="4" fill="none" stroke="#10131a" stroke-width="3"/></g>
+    <g id="mouth-micmuted"><rect x="109" y="140" width="22" height="11" rx="5" fill="#35a87c" stroke="#10131a" stroke-width="2"/><path d="M114 146 L126 146" stroke="#10131a" stroke-width="2.5" stroke-linecap="round"/></g>
   </defs>
   <use href="#body"/>
   <use href="#cap"/>

@@ -79,3 +79,11 @@ fn idle_life_needs_both_peers() {
     let (_, caps) = negotiate(6, 6, both, Capabilities::MASCOT_INTERACTION);
     assert!(!caps.contains(Capabilities::IDLE_LIFE_V1));
 }
+
+#[test]
+fn mic_state_needs_both_peers() {
+    let (_, caps) = negotiate(6, 6, Capabilities::MIC_STATE_V1, Capabilities::MIC_STATE_V1);
+    assert!(caps.contains(Capabilities::MIC_STATE_V1));
+    let (_, caps) = negotiate(6, 6, Capabilities::MIC_STATE_V1, Capabilities::NONE);
+    assert!(!caps.contains(Capabilities::MIC_STATE_V1));
+}

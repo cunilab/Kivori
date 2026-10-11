@@ -252,6 +252,7 @@ pub fn compile_default_blob() -> Vec<u8> {
         "strained",
         "muted",
         "attentive",
+        "micmuted",
     ];
     let mut eye_pixels = Vec::new();
     let mut eye_alpha = Vec::new();
@@ -311,10 +312,14 @@ mod tests {
         for name in faces.iter().chain(&["affectionate", "error", "strained"]) {
             layers.push((format!("eyes-{name}"), EYE_CROP));
         }
-        for name in faces
-            .iter()
-            .chain(&["laughing", "error", "strained", "muted", "attentive"])
-        {
+        for name in faces.iter().chain(&[
+            "laughing",
+            "error",
+            "strained",
+            "muted",
+            "attentive",
+            "micmuted",
+        ]) {
             layers.push((format!("mouth-{name}"), MOUTH_CROP));
         }
         for (id, (cx, cy, cw, ch)) in layers {

@@ -40,7 +40,7 @@ use crate::state::{DeviceEvent, DeviceState};
 use kivori_assets::AssetBlob;
 use kivori_model::desk::{
     ActionFeedback, ControlLabels, CpuHistory, DeskStatus, DeskView, DisplayMode, MediaInfo,
-    BRIGHTNESS_STEPS, VIEW_TRANSITION_MS,
+    MicState, BRIGHTNESS_STEPS, VIEW_TRANSITION_MS,
 };
 use kivori_model::input::InputLevels;
 use kivori_model::internals::DeviceInternals;
@@ -50,7 +50,7 @@ use kivori_model::{
 };
 use kivori_protocol::{
     Bye, ByeReason, ControlId, ControlLabelsUpdate, Feedback, InputKind, InternalsReport,
-    MediaInfoUpdate, Message, Nonce, Presentation, Status,
+    MediaInfoUpdate, Message, MicStateUpdate, Nonce, Presentation, Status,
 };
 
 /// Inactivity window, in milliseconds, after which an open rotary gesture ends
@@ -285,6 +285,7 @@ pub struct DeskState {
     feedback: Option<(ActionFeedback, u32)>,
     media_info: Option<MediaInfo>,
     controls: Option<ControlLabels>,
+    mic: MicState,
     cpu_history: CpuHistory,
     /// The view before the latest switch, and when the switch happened.
     previous_mode: Option<DisplayMode>,
@@ -337,6 +338,15 @@ impl DeskState {
             return false;
         }
         self.controls = Some(update.labels);
+        true
+    }
+
+    /// Applies the microphone state of the current session.
+    pub fn apply_mic_state(&mut self, update: &MicStateUpdate) -> bool {
+        if self.session != Some(update.session) {
+            return false;
+        }
+        self.mic = update.mic;
         true
     }
 
@@ -400,6 +410,7 @@ impl DeskState {
                 .filter(|_| mode_age_ms < VIEW_TRANSITION_MS),
             mode_age_ms,
             controls: self.controls,
+            mic: self.mic,
         }
     }
 }
@@ -610,6 +621,9 @@ impl<'a> Runtime<'a> {
         }
         if let Some(update) = self.dispatcher.take_media_info() {
             self.redraw |= self.desk.apply_media_info(&update);
+        }
+        if let Some(update) = self.dispatcher.take_mic_state() {
+            self.redraw |= self.desk.apply_mic_state(&update);
         }
         if let Some(settings) = self.dispatcher.take_buddy_settings() {
             self.idle

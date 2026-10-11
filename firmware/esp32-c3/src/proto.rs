@@ -12,8 +12,9 @@ use kivori_model::{Capabilities, ProtocolVersion};
 use kivori_protocol::{
     decode_message, encode_message, BuddySettings, ByeReason, ControlId, ControlLabelsUpdate,
     DeviceId, Feedback, FirmwareVersion, HelloAck, InputEvent, InputKind, MascotActionApplied,
-    MediaInfoUpdate, Message, Nonce, PlayMascotAction, Presentation, ProtoError, SeqClass,
-    SequenceTracker, StateReport, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
+    MediaInfoUpdate, Message, MicStateUpdate, Nonce, PlayMascotAction, Presentation, ProtoError,
+    SeqClass, SequenceTracker, StateReport, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR,
+    PROTOCOL_MINOR,
 };
 
 /// Inbound accumulation capacity: room for a partial packet plus one full wire packet.
@@ -101,6 +102,8 @@ pub struct Dispatcher {
     pending_controls: Option<ControlLabelsUpdate>,
     /// The latest accepted `BuddySettings`, awaiting [`Self::take_buddy_settings`].
     pending_buddy: Option<BuddySettings>,
+    /// The latest accepted `MicState`, awaiting [`Self::take_mic_state`].
+    pending_mic: Option<MicStateUpdate>,
     /// The latest takeover announced by a negotiated `Bye`, awaiting [`Self::take_host_takeover`].
     pending_takeover: Option<HostTakeover>,
     /// Frames decoded since boot (wrapping): the runtime watches it move to notice a silent host.
@@ -137,6 +140,7 @@ impl Dispatcher {
             pending_media_info: None,
             pending_controls: None,
             pending_buddy: None,
+            pending_mic: None,
             pending_takeover: None,
             inbound_frames: 0,
             outbound_frames: 0,
@@ -285,6 +289,11 @@ impl Dispatcher {
     /// Takes the pending accepted `ControlLabels`, if any.
     pub fn take_control_labels(&mut self) -> Option<ControlLabelsUpdate> {
         self.pending_controls.take()
+    }
+
+    /// Takes the pending accepted `MicState`, if any.
+    pub fn take_mic_state(&mut self) -> Option<MicStateUpdate> {
+        self.pending_mic.take()
     }
 
     /// Takes the pending accepted `BuddySettings`, if any.
@@ -550,6 +559,12 @@ impl Dispatcher {
                     && self.accepted_session == Some(settings.session) =>
             {
                 self.pending_buddy = Some(settings);
+            }
+            // Same inertness rule as `Status`: unnegotiated means dropped, unseen.
+            Message::MicState(update)
+                if self.negotiated_caps.contains(Capabilities::MIC_STATE_V1) =>
+            {
+                self.pending_mic = Some(update);
             }
             // Only the accepted session may ask, and only with the capability negotiated.
             Message::InternalsRequest(request)

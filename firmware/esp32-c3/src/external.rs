@@ -96,6 +96,7 @@ fn kind_name(message: &Message) -> &'static str {
         Message::InternalsRequest(_) => "InternalsRequest",
         Message::Internals(_) => "Internals",
         Message::BuddySettings(_) => "BuddySettings",
+        Message::MicState(_) => "MicState",
     }
 }
 

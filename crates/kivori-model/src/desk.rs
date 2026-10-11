@@ -132,6 +132,39 @@ impl Default for DeskStatus {
     }
 }
 
+/// What the desktop knows about the computer's microphones (`Message::MicState`). Every field is
+/// observed, never guessed: `None` is "could not be read" and shows nothing, never "not live".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct MicState {
+    /// `Some(true)` only when EVERY active capture device read back muted; `Some(false)` when any
+    /// reads live (or cannot be muted at all); `None` when that cannot be told (a device could not
+    /// be read, or there is none). It never claims muted while any microphone may be live.
+    pub muted: Option<bool>,
+    /// An app is capturing audio right now, where the OS reports it. `None` = the OS does not say
+    /// (Windows' consent store is undocumented, so a failed read is unknown).
+    pub in_use: Option<bool>,
+}
+
+impl MicState {
+    /// Nothing observed: no indicator, no face.
+    pub const UNKNOWN: MicState = MicState {
+        muted: None,
+        in_use: None,
+    };
+
+    /// Every microphone is muted.
+    #[must_use]
+    pub const fn is_muted(self) -> bool {
+        matches!(self.muted, Some(true))
+    }
+
+    /// An app is using an unmuted microphone: the "Live" cue. Unknown on either side is no cue.
+    #[must_use]
+    pub const fn is_live(self) -> bool {
+        matches!(self.muted, Some(false)) && matches!(self.in_use, Some(true))
+    }
+}
+
 /// The action a feedback refers to. Wire-significant, append-only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ActionKind {
@@ -372,6 +405,8 @@ pub struct DeskView {
     pub mode_age_ms: u32,
     /// What the controls do, when the desktop sent it this session (`None` = not known).
     pub controls: Option<ControlLabels>,
+    /// The microphones, when the desktop sent it this session (unknown otherwise).
+    pub mic: MicState,
 }
 
 impl DeskView {
