@@ -1,0 +1,112 @@
+# Release automation (M2.7, ADR-0014/0015; docs/release.md). On every push to main release-please keeps one
+# release PR open (app version, firmware version, changelogs). Merging it tags the app `vX.Y.Z`
+# (and the firmware `fw-desk-buddy-vX.Y.Z`), creates the app's DRAFT release, and this workflow then
+# calls release.yml, which builds the installer and fills the draft. Nothing is published automatically.
+# Tags made with GITHUB_TOKEN do not start other workflows, hence the workflow_call instead of `v*` tags.
+# release-please-action is pinned to the major tag v4 (floating within v4).
+name: release-please
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
+      prs_created: ${{ steps.rp.outputs.prs_created }}
+      pr: ${{ steps.rp.outputs.pr }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: rp
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # Cargo.lock holds the workspace members' versions, and release-please only edits Cargo.toml for the
+  # app. Sync the lockfiles on the release PR branch so `--locked` builds keep passing. Commits pushed
+  # with GITHUB_TOKEN do not start PR checks: close and reopen the PR to run them.
+  lockfile:
+    needs: release-please
+    if: needs.release-please.outputs.prs_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ fromJSON(needs.release-please.outputs.pr).headBranchName }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Sync Cargo.lock files with the bumped versions
+        run: |
+          set -euo pipefail
+          cargo update --workspace
+          (cd firmware/desk-buddy && cargo update --workspace)
+          if git diff --quiet -- Cargo.lock firmware/desk-buddy/Cargo.lock; then
+            echo "Lockfiles already consistent."
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add Cargo.lock firmware/desk-buddy/Cargo.lock
+            git commit -m 'chore: sync Cargo.lock with the release versions'
+            git push
+          fi
+
+  # The firmware component has no GitHub Release (skip-github-release), and release-please may then not
+  # create its tag or move the release PR to `autorelease: tagged`. Do both here, idempotently.
+  finalize:
+    needs: release-please
+    if: needs.release-please.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Tag a firmware version bumped by this push
+        shell: bash
+        run: |
+          set -euo pipefail
+          key='firmware/desk-buddy'
+          new="$(node -p "require('./.release-please-manifest.json')['$key']")"
+          old="$(git show HEAD^:.release-please-manifest.json 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync(0,'utf8'))['$key'] ?? ''" || true)"
+          tag="fw-desk-buddy-v${new}"
+          if [ "$new" = "$old" ]; then echo "Firmware version unchanged (${new})."; exit 0; fi
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+            echo "Tag ${tag} exists."
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/git/refs" -f "ref=refs/tags/${tag}" -f "sha=${GITHUB_SHA}"
+            echo "Created ${tag} at ${GITHUB_SHA}."
+          fi
+      - name: Mark merged release PRs as tagged
+        shell: bash
+        run: |
+          set -euo pipefail
+          for pr in $(gh pr list --state merged --label 'autorelease: pending' --json number --jq '.[].number'); do
+            gh pr edit "$pr" --remove-label 'autorelease: pending' --add-label 'autorelease: tagged'
+          done
+
+  release:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+    secrets: inherit

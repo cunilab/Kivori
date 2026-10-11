@@ -1,11 +1,26 @@
 # Release pipeline (M3 S5; docs/release.md). Builds the product firmware, then the unsigned Windows NSIS
 # installer with the pinned espflash sidecar, installs it silently on the runner and smoke-tests it.
-# A `v*` tag also creates a DRAFT GitHub release; nothing is published automatically.
-# Signing is a placeholder that waits on owner certificates (#36): installers are unsigned until then.
+# A `v*` tag, or a call from release-please.yml with `tag`, also fills the DRAFT GitHub release (creating it
+# when release-please has not); nothing is published automatically.
+# The installer is signed for the updater (ADR-0015) when the TAURI_SIGNING_PRIVATE_KEY secret exists, and
+# latest.json is attached. Windows code signing is a placeholder that waits on owner certificates (#36).
 name: release
 on:
   push:
     tags: ['v*']
+  # Called by release-please.yml after the release PR merges (a tag created with GITHUB_TOKEN does not
+  # trigger the push event above). `tag` is the vX.Y.Z tag release-please created.
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Release tag to build and attach to (vX.Y.Z)'
+        type: string
+        required: true
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY:
+        required: false
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD:
+        required: false
   workflow_dispatch:
     inputs:
       macos:
@@ -15,6 +30,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/release.yml'
+      - 'scripts/release-info.mjs'
+      - 'scripts/updater-manifest.mjs'
       - 'apps/desktop/package.json'
       - 'apps/desktop/src-tauri/tauri*.json'
       - 'apps/desktop/src-tauri/Info.plist'
@@ -54,20 +71,50 @@ jobs:
     needs: firmware
     runs-on: windows-latest
     permissions:
-      contents: write # only used by the draft-release step, which runs on tags
+      contents: write # only used by the draft-release step, which runs for a release tag
     env:
       # Set the repository variable WINDOWS_SIGNING=true once the signing step below is filled in.
       WINDOWS_SIGNING: ${{ vars.WINDOWS_SIGNING }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0 # the previous app tag is needed for the release notes
+      - name: Release tag (empty when this is not a release run)
+        id: release
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="${INPUT_TAG}"
+          if [ -z "$tag" ] && [[ "${GITHUB_REF}" == refs/tags/v* ]]; then tag="${GITHUB_REF_NAME}"; fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "Release tag: '${tag}'"
       - name: The tag must equal the workspace version
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.release.outputs.tag != ''
         shell: bash
         run: |
           version="$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\(.*\)"/\1/p;}' Cargo.toml | head -n1)"
-          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
-            echo "Tag ${GITHUB_REF_NAME} does not match the workspace version v${version} (Cargo.toml)." >&2
+          if [ "${{ steps.release.outputs.tag }}" != "v${version}" ]; then
+            echo "Tag ${{ steps.release.outputs.tag }} does not match the workspace version v${version} (Cargo.toml)." >&2
             exit 1
+          fi
+      - name: Updater signing key (ADR-0015)
+        id: updater
+        shell: bash
+        env:
+          # Never read on pull requests. Empty until the owner adds the secret (docs/release.md).
+          KEY: ${{ github.event_name != 'pull_request' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+        run: |
+          if [ -n "$KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            if [ -n "${{ steps.release.outputs.tag }}" ]; then
+              echo "::warning title=Release is not updatable::TAURI_SIGNING_PRIVATE_KEY is not set, so no updater signature or latest.json is produced. Installed apps will not see this release. See docs/release.md, One-time owner setup."
+            else
+              echo "::notice::No TAURI_SIGNING_PRIVATE_KEY: building without updater artifacts."
+            fi
           fi
       - uses: oven-sh/setup-bun@v2
         with:
@@ -87,9 +134,19 @@ jobs:
       - run: bun --filter kivori-desktop-ui build
       - name: Build the NSIS installer
         working-directory: apps/desktop
+        shell: bash
         env:
           KIVORI_FIRMWARE_PATH: ${{ runner.temp }}/firmware/kivori-firmware
-        run: bunx tauri build --config src-tauri/tauri.release.conf.json -- --no-default-features
+          TAURI_SIGNING_PRIVATE_KEY: ${{ steps.updater.outputs.enabled == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ steps.updater.outputs.enabled == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+        run: |
+          set -euo pipefail
+          args=(--config src-tauri/tauri.release.conf.json)
+          # tauri.release.conf.json asks for updater artifacts; without the key that would fail the build.
+          if [ '${{ steps.updater.outputs.enabled }}' != 'true' ]; then
+            args+=(--config '{"bundle":{"createUpdaterArtifacts":false}}')
+          fi
+          bunx tauri build "${args[@]}" -- --no-default-features
       - name: Locate the installer
         id: installer
         shell: bash
@@ -98,6 +155,9 @@ jobs:
           installer="$(ls target/release/bundle/nsis/*-setup.exe | head -n1)"
           echo "path=${installer}" >> "$GITHUB_OUTPUT"
           echo "Installer: ${installer}"
+          if [ '${{ steps.updater.outputs.enabled }}' = 'true' ]; then
+            test -s "${installer}.sig" || { echo "Missing ${installer}.sig although the signing key is set." >&2; exit 1; }
+          fi
       # PLACEHOLDER (#36, runs only when the WINDOWS_SIGNING repository variable is 'true'). Fails closed
       # so a missing implementation can never ship as "signed". Fill in with one of:
       #   - Azure Trusted Signing: secrets AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET and the
@@ -163,21 +223,62 @@ jobs:
           cd "$(dirname '${{ steps.installer.outputs.path }}')"
           sha256sum "$(basename '${{ steps.installer.outputs.path }}')" > SHA256SUMS
           cat SHA256SUMS
+      - name: Release title and notes
+        if: steps.release.outputs.tag != ''
+        id: info
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag='${{ steps.release.outputs.tag }}'
+          prev="$(git describe --tags --abbrev=0 --match 'v[0-9]*' "${tag}^" 2>/dev/null || true)"
+          node scripts/release-info.mjs --version "${tag#v}" ${prev:+--prev-tag "$prev"} --out-dir "$RUNNER_TEMP/release-info"
+          cat "$RUNNER_TEMP/release-info/title.txt"; echo; cat "$RUNNER_TEMP/release-info/notes.md"
+      - name: Write latest.json (updater manifest)
+        if: steps.release.outputs.tag != '' && steps.updater.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag='${{ steps.release.outputs.tag }}'
+          node scripts/updater-manifest.mjs --version "${tag#v}" --installer '${{ steps.installer.outputs.path }}' \
+            --notes "$RUNNER_TEMP/release-info/notes.md" --repo '${{ github.repository }}' \
+            --out target/release/bundle/nsis/latest.json
+          cat target/release/bundle/nsis/latest.json
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installer
           path: |
             ${{ steps.installer.outputs.path }}
+            ${{ steps.installer.outputs.path }}.sig
             target/release/bundle/nsis/SHA256SUMS
+            target/release/bundle/nsis/latest.json
           if-no-files-found: error
-      - name: Create the draft release
-        if: startsWith(github.ref, 'refs/tags/v')
+      # One draft per version: release-please already created the draft (and the tag) when it ran, a
+      # manual `v*` tag push has none yet. Either way this step sets the title and notes and uploads the
+      # assets. It never publishes and never marks a pre-release (the updater ignores pre-releases).
+      - name: Fill the draft release
+        if: steps.release.outputs.tag != ''
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" --draft --verify-tag --title "Kivori ${GITHUB_REF_NAME}" --generate-notes \
-            '${{ steps.installer.outputs.path }}' target/release/bundle/nsis/SHA256SUMS
+          set -euo pipefail
+          dir=target/release/bundle/nsis
+          assets=('${{ steps.installer.outputs.path }}' "$dir/SHA256SUMS")
+          [ -f "$dir/latest.json" ] && assets+=("$dir/latest.json")
+          [ -f '${{ steps.installer.outputs.path }}.sig' ] && assets+=('${{ steps.installer.outputs.path }}.sig')
+          title="$(cat "$RUNNER_TEMP/release-info/title.txt")"
+          notes="$RUNNER_TEMP/release-info/notes.md"
+          state="$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate --jq ".[] | select(.tag_name==\"${TAG}\") | .draft" | head -n1)"
+          if [ "$state" = "true" ]; then
+            gh release edit "$TAG" --title "$title" --notes-file "$notes" --prerelease=false
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          elif [ -z "$state" ]; then
+            gh release create "$TAG" --draft --verify-tag --title "$title" --notes-file "$notes" "${assets[@]}"
+          else
+            echo "Release ${TAG} is already published; refusing to change it." >&2
+            exit 1
+          fi
 
   macos:
     # No macOS runner budget by default: only when dispatched with macos=true. The owner's local

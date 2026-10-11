@@ -21,6 +21,8 @@ The firmware offer reuses the existing comparison (`UpdateAdvice`) against the c
 
 Key custody: losing the updater key means installed apps can never auto-update again (users reinstall by hand), so it is kept offline in two places; rotation ships one update signed with the old key that carries the new public key. Channels or our own server later only change the endpoint, through one update.
 
+**As built (step 4).** `tauri.release.conf.json` sets `bundle.createUpdaterArtifacts: true`. `release.yml` checks for the `TAURI_SIGNING_PRIVATE_KEY` secret (never read on pull requests); without it the build merges `{"bundle":{"createUpdaterArtifacts":false}}`, prints a `::warning::` that the release is not updatable and skips `latest.json`. With it the installer gets a `.sig` and `scripts/updater-manifest.mjs` writes `latest.json` (`version`, `notes`, `pub_date`, `platforms."windows-x86_64"` with `signature` and the stable `releases/download/vX.Y.Z/<installer>` URL). The release is a draft, never a pre-release, and carries the installer, `.sig`, `latest.json` and `SHA256SUMS`. The public key is not in any config yet (step 5). The installed Tauri CLI also offers `requireSignedVersion` in the updater plugin; step 5 should enable it.
+
 ## Alternatives considered
 
 - Our own update server now: rejected, GitHub already hosts the binaries.
