@@ -15,6 +15,7 @@
 //! here.
 
 mod app_volume;
+pub mod apps;
 pub mod foreground;
 pub mod host_events;
 pub mod media;

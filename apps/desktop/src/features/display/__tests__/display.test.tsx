@@ -43,6 +43,7 @@ const desk: DeskStatusDto = {
   mediaTitle: null,
   mediaArtist: null,
   lastAction: null,
+  recentApp: null,
 };
 
 const config: ConfigDto = {

@@ -23,6 +23,7 @@ import type {
   ConfigDto,
   DeviceInternalsDto,
   DiagnosticsDto,
+  AppRefDto,
   ControlRef,
   ProfileId,
   RotateSpec,
@@ -44,6 +45,7 @@ import {
   parseStartupSettings,
   parseOnboarding,
   parseAccessibility,
+  appRef,
 } from './validate';
 
 /// Handle returned by an event subscription; call it to unsubscribe.
@@ -314,6 +316,82 @@ export async function resetProfile(profile: ProfileId): Promise<ConfigDto> {
   if (isTauri()) return parseConfig(await invoke<unknown>('reset_profile', { profile }));
   if (import.meta.env.DEV) return (await devMock()).mockResetProfile(profile);
   return unavailable();
+}
+
+/** Creates a custom profile for an app (a copy of General's bindings, made now). `name` is the
+ *  app's display name; the app moves out of any profile that held it. */
+export async function addCustomProfile(appId: string, name: string): Promise<ConfigDto> {
+  if (isTauri()) return parseConfig(await invoke<unknown>('add_custom_profile', { appId, name }));
+  if (import.meta.env.DEV) return (await devMock()).mockAddCustomProfile(appId, name);
+  return unavailable();
+}
+
+/** Moves an app into a profile (`'general'` = out of the profile that lists it). */
+export async function assignApp(profile: ProfileId, appId: string): Promise<ConfigDto> {
+  if (isTauri()) return parseConfig(await invoke<unknown>('assign_app', { profile, appId }));
+  if (import.meta.env.DEV) return (await devMock()).mockAssignApp(profile, appId);
+  return unavailable();
+}
+
+/** Renames a custom profile. */
+export async function renameProfile(profile: ProfileId, name: string): Promise<ConfigDto> {
+  if (isTauri()) return parseConfig(await invoke<unknown>('rename_profile', { profile, name }));
+  if (import.meta.env.DEV) return (await devMock()).mockRenameProfile(profile, name);
+  return unavailable();
+}
+
+/** Deletes a custom profile; its apps stop matching it. */
+export async function deleteProfile(profile: ProfileId): Promise<ConfigDto> {
+  if (isTauri()) return parseConfig(await invoke<unknown>('delete_profile', { profile }));
+  if (import.meta.env.DEV) return (await devMock()).mockDeleteProfile(profile);
+  return unavailable();
+}
+
+/** Puts a custom profile in or out of the middle button's pin cycle. */
+export async function setProfilePinCycle(profile: ProfileId, enabled: boolean): Promise<ConfigDto> {
+  if (isTauri()) {
+    return parseConfig(await invoke<unknown>('set_profile_pin_cycle', { profile, enabled }));
+  }
+  if (import.meta.env.DEV) return (await devMock()).mockSetProfilePinCycle(profile, enabled);
+  return unavailable();
+}
+
+/** The apps with a window open now. Resolves to an empty list where this OS cannot say. */
+export async function listRunningApps(): Promise<AppRefDto[]> {
+  if (isTauri()) {
+    const raw = await invoke<unknown>('list_running_apps');
+    if (!Array.isArray(raw)) throw new Error('Kivori: invalid running apps.');
+    return raw.map(appRef);
+  }
+  if (import.meta.env.DEV) return (await devMock()).mockListRunningApps();
+  return unavailable();
+}
+
+const icons = new Map<string, Promise<string | null>>();
+
+/**
+ * An app's icon as a PNG data URL, `null` when none can be read (show a letter). One lookup per
+ * app id: the native side caches too, and a failure is simply a letter, never an error.
+ */
+export function getAppIcon(appId: string): Promise<string | null> {
+  const known = icons.get(appId);
+  if (known) return known;
+  const lookup = (async (): Promise<string | null> => {
+    try {
+      if (isTauri()) {
+        const url = await invoke<unknown>('get_app_icon', { appId });
+        return typeof url === 'string' && url.startsWith('data:image/png;base64,') ? url : null;
+      }
+      if (import.meta.env.DEV) return (await devMock()).mockGetAppIcon(appId);
+    } catch {
+      // Nothing to show but the letter.
+    }
+    return null;
+  })();
+  icons.set(appId, lookup);
+  // A miss may be an app that has not started yet: ask again next time.
+  void lookup.then((url) => url ?? icons.delete(appId));
+  return lookup;
 }
 
 /** Restores every setting to its default (the previous file is kept as one backup). */

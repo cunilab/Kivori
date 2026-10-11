@@ -1,4 +1,5 @@
 {
+  "accessibility": ["granted", "missing", "notApplicable"],
   "actionSpecKinds": [
     "playPause",
     "previousTrack",
@@ -25,6 +26,7 @@
     "deviceInternalsV1",
     "idleLifeV1"
   ],
+  "chipModels": ["esp32c3"],
   "controls": [
     "press",
     "hold",
@@ -57,16 +59,19 @@
     "unknown"
   ],
   "hostAvailability": ["available", "unsupported", "unavailable"],
-  "chipModels": ["esp32c3"],
-  "resetReasons": ["powerOn", "software", "watchdog", "brownout", "deepSleep", "other"],
   "hostFocus": ["detecting", "unknown"],
   "hostInputPermission": ["required", "granted", "notNeeded", "unknown"],
   "hostMedia": ["observable", "notObservable"],
   "hostPresence": ["active", "locked", "sleeping"],
   "profileIds": ["general", "browser", "code", "media", "zoom", "teams"],
+  "profileLimits": {
+    "apps": 32,
+    "customProfiles": 16,
+    "nameMax": 32
+  },
+  "resetReasons": ["powerOn", "software", "watchdog", "brownout", "deepSleep", "other"],
   "rotateSpecKinds": ["systemVolume", "shortcuts", "appVolume"],
-  "stepSpecKinds": ["action", "delay"],
-  "updateAdvice": ["upToDate", "updateAvailable", "deviceNewer", "unknown"],
   "startupPlatform": ["windows", "macos", "other"],
-  "accessibility": ["granted", "missing", "notApplicable"]
+  "stepSpecKinds": ["action", "delay"],
+  "updateAdvice": ["upToDate", "updateAvailable", "deviceNewer", "unknown"]
 }

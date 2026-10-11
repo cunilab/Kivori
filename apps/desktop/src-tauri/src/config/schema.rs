@@ -2,7 +2,8 @@
 //!
 //! The file is strict (`deny_unknown_fields`): an unknown field is treated as corruption, backed up
 //! and reported, rather than silently dropped on the next save. Fields added during M2 stay in
-//! version 1 with `#[serde(default)]`; once the beta ships, any field change bumps [`CONFIG_VERSION`].
+//! version 1 with `#[serde(default)]` (custom profiles and the per-profile app lists included);
+//! once the beta ships, any field change bumps [`CONFIG_VERSION`].
 
 use std::collections::BTreeMap;
 
@@ -23,6 +24,9 @@ pub struct ConfigFile {
     /// Sparse per-profile overrides of the built-in profiles.
     #[serde(default)]
     pub profiles: BTreeMap<ProfileId, ProfileOverride>,
+    /// The user's own profiles, in list order, at most [`MAX_CUSTOM_PROFILES`].
+    #[serde(default)]
+    pub custom_profiles: Vec<CustomProfile>,
     /// User macros, at most [`MAX_MACROS`].
     #[serde(default)]
     pub macros: Vec<MacroSpec>,
@@ -41,6 +45,7 @@ impl Default for ConfigFile {
         Self {
             version: CONFIG_VERSION,
             profiles: BTreeMap::new(),
+            custom_profiles: Vec::new(),
             macros: Vec::new(),
             display: DisplaySettings::default(),
             buddy: BuddySettings::default(),
@@ -67,14 +72,19 @@ impl ConfigFile {
                 Some(SlotSpec { action: Some(ActionSpec::Macro { id: bound }), .. }) if bound == id
             )
         };
-        self.profiles.values().any(|over| {
+        let in_override = |over: &ProfileOverride| {
             is_it(&over.press)
                 || is_it(&over.hold)
                 || over
                     .buttons
                     .iter()
                     .any(|b| is_it(&b.press) || is_it(&b.hold))
-        })
+        };
+        self.profiles.values().any(in_override)
+            || self
+                .custom_profiles
+                .iter()
+                .any(|p| in_override(&p.bindings))
     }
 
     /// Checks the rules serde cannot express.
@@ -130,6 +140,66 @@ impl ProfileId {
     }
 }
 
+/// Which profile something belongs to: a built-in one, or one of the user's (`custom-<n>`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProfileRef {
+    Builtin(ProfileId),
+    Custom(String),
+}
+
+impl ProfileRef {
+    /// The token used over IPC: the built-in's own, or the custom profile's id.
+    #[must_use]
+    pub fn token(&self) -> &str {
+        match self {
+            Self::Builtin(id) => id.token(),
+            Self::Custom(id) => id,
+        }
+    }
+
+    /// Parses a webview token; `None` for anything that is neither a built-in nor a well-formed
+    /// custom id.
+    #[must_use]
+    pub fn parse(token: &str) -> Option<Self> {
+        ProfileId::from_token(token)
+            .map(Self::Builtin)
+            .or_else(|| custom_id_ok(token).then(|| Self::Custom(token.to_string())))
+    }
+}
+
+/// A custom profile id: `custom-` and 1 to 4 digits.
+#[must_use]
+pub fn custom_id_ok(id: &str) -> bool {
+    id.strip_prefix("custom-")
+        .is_some_and(|n| (1..=4).contains(&n.len()) && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// The most custom profiles a config holds.
+pub const MAX_CUSTOM_PROFILES: usize = 16;
+/// The most apps one profile lists on its own: a custom profile's apps, or those added to a
+/// built-in profile.
+pub const MAX_PROFILE_APPS: usize = 32;
+/// The longest profile name, in characters: what the panel's profile slot is sent.
+pub const PROFILE_NAME_MAX: usize = 32;
+
+/// One profile of the user's own. It matches only the apps it lists and starts as a copy of
+/// General's bindings (made once, when it is created or reset), so `bindings` holds every slot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CustomProfile {
+    /// Stable identity (`custom-<n>`); never reused while the profile exists.
+    pub id: String,
+    pub name: String,
+    /// Lowercase foreground ids (Windows executables, macOS bundle ids).
+    #[serde(default)]
+    pub apps: Vec<String>,
+    /// Whether the middle button's Hold cycle includes it.
+    #[serde(default)]
+    pub in_pin_cycle: bool,
+    #[serde(default)]
+    pub bindings: ProfileOverride,
+}
+
 /// One profile's overrides. Every field is sparse: `None` inherits the built-in.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -142,6 +212,13 @@ pub struct ProfileOverride {
     pub hold: Option<SlotSpec>,
     #[serde(default, skip_serializing_if = "buttons_untouched")]
     pub buttons: [ButtonOverride; 3],
+    /// Apps the user moved into this built-in profile (lowercase ids). Never used by a custom
+    /// profile, which lists its own `apps`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub added_apps: Vec<String>,
+    /// Built-in apps the user moved out of this built-in profile to General.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub removed_apps: Vec<String>,
 }
 
 fn buttons_untouched(buttons: &[ButtonOverride; 3]) -> bool {

@@ -1,7 +1,23 @@
 //! Pure foreground classification, shared by the Windows and macOS observers so the protected
 //! rules (invariant 9) are unit-tested on every host. The OS backends only gather raw facts.
 
+use std::sync::OnceLock;
+
 use super::Foreground;
+
+/// Kivori's own bundle identifier (`identifier` in `tauri.conf.json`), lowercase.
+const OWN_BUNDLE_ID: &str = "id.immer.kivori";
+
+/// Whether foreground `id` is Kivori's own window: a user clicking inside Kivori makes Kivori the
+/// foreground app, which is never an app to build a profile for.
+pub fn is_own_app(id: &str) -> bool {
+    static EXE: OnceLock<Option<String>> = OnceLock::new();
+    let exe = EXE.get_or_init(|| {
+        let path = std::env::current_exe().ok()?;
+        Some(path.file_name()?.to_str()?.to_lowercase())
+    });
+    id == OWN_BUNDLE_ID || exe.as_deref() == Some(id)
+}
 
 /// Windows executables that are protected surfaces whatever their elevation.
 const WINDOWS_PROTECTED: [&str; 4] = [

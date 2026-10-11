@@ -325,8 +325,14 @@ export const INTENSITY_PERSONALITY: Record<Intensity, MascotPersonality> = {
 export const CONFIG_NOTICES = ['recoveredCorrupt', 'recoveredNewerVersion', 'migrated'] as const;
 export type ConfigNotice = (typeof CONFIG_NOTICES)[number];
 
+/** The built-in profiles; a custom profile's id is `custom-<n>`. */
 export const PROFILE_IDS = ['general', 'browser', 'code', 'media', 'zoom', 'teams'] as const;
-export type ProfileId = (typeof PROFILE_IDS)[number];
+export type BuiltinProfileId = (typeof PROFILE_IDS)[number];
+export type ProfileId = BuiltinProfileId | `custom-${number}`;
+/** A custom profile's id: `custom-` and 1 to 4 digits. */
+export const CUSTOM_PROFILE_ID = /^custom-\d{1,4}$/;
+/** The native limits, checked again there. */
+export const PROFILE_LIMITS = { customProfiles: 16, apps: 32, nameMax: 32 } as const;
 
 /** Controls `setBinding` targets. The middle button's Hold is reserved for the profile pin. */
 export const CONTROL_REFS = [
@@ -403,6 +409,10 @@ export interface SlotDto {
 export interface ProfileConfigDto {
   id: ProfileId;
   name: string;
+  /** The user's own profile: it can be renamed and deleted. Built-ins cannot. */
+  custom: boolean;
+  /** The middle button's Hold cycle visits it (always true for a built-in). */
+  inPinCycle: boolean;
   /** Foreground app ids that select this profile (empty for General). */
   apps: string[];
   rotate: { spec: RotateSpec; deviceLabel: string; overridden: boolean };
@@ -425,7 +435,8 @@ export interface ConfigDto {
   /** Counts saves and resets in this run: a lower revision is a stale copy. */
   revision: number;
   notice: ConfigNotice | null;
-  /** Every built-in profile as resolved (overrides over built-ins), General first. */
+  /** Every profile as resolved: the built-ins with the user's overrides (General first), then the
+   *  user's own profiles in list order. */
   profiles: ProfileConfigDto[];
   /** The user's macros, in the order they were created. */
   macros: MacroSpec[];
@@ -467,6 +478,12 @@ export interface DeskActionDto {
   permissionRequired: boolean;
 }
 
+/** An app by foreground id (Windows: `code.exe`; macOS: bundle id) and display name. */
+export interface AppRefDto {
+  id: string;
+  name: string;
+}
+
 /** Desk projection. Every unknown value is `null` (never guessed). */
 export interface DeskStatusDto {
   mode: DisplayMode;
@@ -498,6 +515,8 @@ export interface DeskStatusDto {
   mediaTitle: string | null;
   mediaArtist: string | null;
   lastAction: DeskActionDto | null;
+  /** The last app in front that is not Kivori itself (`null` = none yet). */
+  recentApp: AppRefDto | null;
 }
 
 export const CATALOG_SLOTS = ['rotate', 'discrete'] as const;

@@ -9,12 +9,14 @@
 //! machine fact the UI needs, "this OS cannot do it", is `ActionAvailability::Unsupported`,
 //! decided by the action catalog (`desk::catalog`), not by a probe.
 
+pub mod apps;
 pub mod foreground;
 pub mod host_events;
 pub mod launch;
 #[cfg(target_os = "macos")]
 pub mod macos;
 pub mod permissions;
+pub mod png;
 pub mod shortcut;
 #[cfg(any(windows, target_os = "macos"))]
 pub mod synth;

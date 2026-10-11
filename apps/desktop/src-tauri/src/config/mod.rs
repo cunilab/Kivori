@@ -5,6 +5,7 @@
 //! only a [`ConfigNotice`] and a fixed error text (ADR-0005).
 
 pub mod migrate;
+pub mod profiles;
 pub mod resolve;
 pub mod schema;
 pub mod store;
@@ -13,9 +14,10 @@ use crate::desk::actions::Macros;
 use crate::desk::profile::{builtins, Profile};
 
 pub use schema::{
-    ActionSpec, BuddySettings, ButtonOverride, ConfigFile, DisplaySettings, Intensity, MacroSpec,
-    ProfileId, ProfileOverride, RotateSpec, SecondaryView, SlotSpec, StepSpec, View,
-    CONFIG_VERSION,
+    ActionSpec, BuddySettings, ButtonOverride, ConfigFile, CustomProfile, DisplaySettings,
+    Intensity, MacroSpec, ProfileId, ProfileOverride, ProfileRef, RotateSpec, SecondaryView,
+    SlotSpec, StepSpec, View, CONFIG_VERSION, MAX_CUSTOM_PROFILES, MAX_PROFILE_APPS,
+    PROFILE_NAME_MAX,
 };
 pub use store::{ConfigError, ConfigNotice, ConfigStore};
 

@@ -41,7 +41,15 @@ import {
   testRotate,
   setDisplayMode,
   renderPreviewFrame,
+  addCustomProfile,
+  assignApp,
+  renameProfile,
+  deleteProfile,
+  setProfilePinCycle,
+  listRunningApps,
+  getAppIcon,
 } from '../index';
+import { mockGetConfig } from '../mock';
 import vocabulary from './vocabulary.json';
 import {
   ACTION_SPEC_KINDS,
@@ -59,6 +67,7 @@ import {
   HOST_MEDIA,
   PREVIEW_DIM,
   PROFILE_IDS,
+  PROFILE_LIMITS,
   ROTATE_SPEC_KINDS,
   STEP_SPEC_KINDS,
   ACCESSIBILITY_STATES,
@@ -149,6 +158,7 @@ const validDesk = {
   mediaTitle: 'Weightless',
   mediaArtist: '',
   lastAction: { action: 'shortcut', result: 'unverified', permissionRequired: true },
+  recentApp: { id: 'figma.exe', name: 'Figma' },
 };
 
 describe('app ready signal', () => {
@@ -669,6 +679,7 @@ describe('Rust/TS token vocabulary', () => {
     expect([...UPDATE_ADVICE]).toEqual(vocabulary.updateAdvice);
     expect([...STARTUP_PLATFORMS]).toEqual(vocabulary.startupPlatform);
     expect([...ACCESSIBILITY_STATES]).toEqual(vocabulary.accessibility);
+    expect(PROFILE_LIMITS).toEqual(vocabulary.profileLimits);
   });
 });
 
@@ -751,5 +762,62 @@ describe('parseConnectionStatus', () => {
     expect(() => parseConnectionStatus({ ...good, host: 'hibernating' })).toThrow();
     expect(() => parseConnectionStatus({ ...good, host: undefined })).toThrow();
     expect(() => parseConnectionStatus(null)).toThrow();
+  });
+});
+
+describe('profile commands', () => {
+  const enterTauri = (): void => {
+    (window as Window & { __TAURI_INTERNALS__?: object }).__TAURI_INTERNALS__ = {};
+  };
+  beforeEach(() => {
+    enterTauri();
+  });
+
+  it('call the native commands with camelCase arguments', async () => {
+    tauri.invoke.mockResolvedValue(mockGetConfig());
+    await addCustomProfile('figma.exe', 'Figma');
+    expect(tauri.invoke).toHaveBeenLastCalledWith('add_custom_profile', {
+      appId: 'figma.exe',
+      name: 'Figma',
+    });
+    await assignApp('code', 'idea64.exe');
+    expect(tauri.invoke).toHaveBeenLastCalledWith('assign_app', {
+      profile: 'code',
+      appId: 'idea64.exe',
+    });
+    await renameProfile('custom-1', 'Design');
+    expect(tauri.invoke).toHaveBeenLastCalledWith('rename_profile', {
+      profile: 'custom-1',
+      name: 'Design',
+    });
+    await deleteProfile('custom-1');
+    expect(tauri.invoke).toHaveBeenLastCalledWith('delete_profile', { profile: 'custom-1' });
+    await setProfilePinCycle('custom-1', true);
+    expect(tauri.invoke).toHaveBeenLastCalledWith('set_profile_pin_cycle', {
+      profile: 'custom-1',
+      enabled: true,
+    });
+  });
+
+  it('validates running apps and icons, and an icon failure is just no icon', async () => {
+    tauri.invoke.mockResolvedValue([{ id: 'figma.exe', name: 'Figma' }]);
+    await expect(listRunningApps()).resolves.toEqual([{ id: 'figma.exe', name: 'Figma' }]);
+    tauri.invoke.mockResolvedValue([{ id: 3 }]);
+    await expect(listRunningApps()).rejects.toThrow();
+    tauri.invoke.mockResolvedValue('data:image/png;base64,AAAA');
+    await expect(getAppIcon('icon-ok.exe')).resolves.toBe('data:image/png;base64,AAAA');
+    tauri.invoke.mockResolvedValue('javascript:alert(1)');
+    await expect(getAppIcon('icon-bad.exe')).resolves.toBeNull();
+    tauri.invoke.mockRejectedValue(new Error('nope'));
+    await expect(getAppIcon('icon-fail.exe')).resolves.toBeNull();
+  });
+
+  it('accepts a custom profile id in the desk status and rejects a malformed one', async () => {
+    tauri.invoke.mockResolvedValue({ ...validDesk, profileId: 'custom-12' });
+    await expect(getDeskStatus()).resolves.toMatchObject({ profileId: 'custom-12' });
+    tauri.invoke.mockResolvedValue({ ...validDesk, profileId: 'custom-' });
+    await expect(getDeskStatus()).rejects.toThrow();
+    tauri.invoke.mockResolvedValue({ ...validDesk, recentApp: null });
+    await expect(getDeskStatus()).resolves.toMatchObject({ recentApp: null });
   });
 });

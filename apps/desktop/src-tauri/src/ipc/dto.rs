@@ -1068,7 +1068,7 @@ pub struct DeskStatusDto {
     /// middle one is always `null`, it pins the profile).
     pub button_hold_actions: [Option<&'static str>; 3],
     /// The active profile's id token (what the config UI keys its tabs by).
-    pub profile_id: &'static str,
+    pub profile_id: String,
     /// The active profile's name, exactly as the device shows it (`null` = the General fallback).
     pub profile: Option<String>,
     /// The profile was pinned from the device instead of following the focused app.
@@ -1081,6 +1081,17 @@ pub struct DeskStatusDto {
     pub media_title: Option<String>,
     pub media_artist: Option<String>,
     pub last_action: Option<DeskActionDto>,
+    /// The last app in front that is not Kivori itself (`null` = none yet): what "add the app in
+    /// front of me" adds, since clicking in Kivori's window makes Kivori the foreground app.
+    pub recent_app: Option<RunningAppDto>,
+}
+
+/// An app by foreground id and display name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunningAppDto {
+    pub id: String,
+    pub name: String,
 }
 
 /// One action outcome for the UI.
@@ -1172,7 +1183,7 @@ pub fn initial_desk_status(config: &crate::config::ResolvedConfig) -> DeskStatus
         double_press_action: "nextView",
         button_actions: button_tokens(bindings),
         button_hold_actions: button_hold_tokens(bindings),
-        profile_id: context.profile().id.token(),
+        profile_id: context.profile().id.token().to_string(),
         profile: None,
         pinned: false,
         rotate_label: text(labels.rotate),
@@ -1180,6 +1191,7 @@ pub fn initial_desk_status(config: &crate::config::ResolvedConfig) -> DeskStatus
         media_title: None,
         media_artist: None,
         last_action: None,
+        recent_app: None,
     }
 }
 
@@ -1201,7 +1213,7 @@ pub fn desk_status_dto(desk: &crate::desk::DeskRuntime) -> DeskStatusDto {
         double_press_action: "nextView",
         button_actions: button_tokens(desk.bindings()),
         button_hold_actions: button_hold_tokens(desk.bindings()),
-        profile_id: desk.context().profile().id.token(),
+        profile_id: desk.context().profile().id.token().to_string(),
         profile: Some(text(labels.profile)).filter(|name| !name.is_empty()),
         pinned: labels.pinned,
         rotate_label: text(labels.rotate),
@@ -1212,6 +1224,10 @@ pub fn desk_status_dto(desk: &crate::desk::DeskRuntime) -> DeskStatusDto {
             action: desk_action_token(last.action),
             result: feedback_token(last.kind),
             permission_required: last.permission_required,
+        }),
+        recent_app: desk.context().recent_app().map(|(id, name)| RunningAppDto {
+            id: id.to_string(),
+            name: name.to_string(),
         }),
     }
 }
@@ -1237,9 +1253,13 @@ pub struct ConfigDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileConfigDto {
-    /// `general`, `browser`, `code`, `media`, `zoom` or `teams`.
-    pub id: &'static str,
+    /// `general`, `browser`, `code`, `media`, `zoom`, `teams`, or a custom profile's `custom-<n>`.
+    pub id: String,
     pub name: String,
+    /// The user's own profile (renamable, deletable); built-ins are not.
+    pub custom: bool,
+    /// Whether the middle button's Hold cycle visits it (always for a built-in).
+    pub in_pin_cycle: bool,
     /// The foreground app ids that select this profile (empty for General).
     pub apps: Vec<String>,
     pub rotate: RotateDto,
@@ -1409,12 +1429,13 @@ fn profile_dtos(store: &crate::config::ConfigStore) -> Vec<ProfileConfigDto> {
         .profiles
         .iter()
         .map(|profile| {
-            let over = store
-                .file()
-                .profiles
-                .get(&profile.id)
-                .cloned()
-                .unwrap_or_default();
+            // A custom profile holds every slot, so none of them reads as changed.
+            let over = match &profile.id {
+                crate::config::ProfileRef::Builtin(id) => {
+                    store.file().profiles.get(id).cloned().unwrap_or_default()
+                }
+                crate::config::ProfileRef::Custom(_) => crate::config::ProfileOverride::default(),
+            };
             let b = &profile.bindings;
             let button = |i: usize| ButtonDto {
                 press: slot_dto(&b.buttons[i].press, over.buttons[i].press.is_some()),
@@ -1425,8 +1446,10 @@ fn profile_dtos(store: &crate::config::ConfigStore) -> Vec<ProfileConfigDto> {
                 },
             };
             ProfileConfigDto {
-                id: profile.id.token(),
+                id: profile.id.token().to_string(),
                 name: profile.name.clone(),
+                custom: matches!(profile.id, crate::config::ProfileRef::Custom(_)),
+                in_pin_cycle: profile.in_pin_cycle,
                 apps: profile.ids.clone(),
                 rotate: RotateDto {
                     spec: crate::config::resolve::rotate_spec(&profile.rotate),
@@ -1831,6 +1854,11 @@ pub fn device_internals_dto(snapshot: &DiagnosticsSnapshot) -> DeviceInternalsDt
 pub fn vocabulary_json() -> serde_json::Value {
     serde_json::json!({
         "profileIds": crate::config::ProfileId::ALL.map(crate::config::ProfileId::token),
+        "profileLimits": {
+            "customProfiles": crate::config::MAX_CUSTOM_PROFILES,
+            "apps": crate::config::MAX_PROFILE_APPS,
+            "nameMax": crate::config::PROFILE_NAME_MAX,
+        },
         "controls": crate::config::resolve::CONTROL_TOKENS,
         "actionSpecKinds": crate::config::resolve::ACTION_SPEC_KINDS,
         "stepSpecKinds": crate::config::resolve::STEP_SPEC_KINDS,

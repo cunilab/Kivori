@@ -10,8 +10,9 @@ use std::time::Duration;
 use kivori_model::desk::{ContextMood, ControlLabels, MediaText};
 
 use super::actions::{Action, Bindings, ButtonSlots, Slot};
-use crate::config::ProfileId;
+use crate::config::{ProfileId, ProfileRef};
 use crate::input::LogicalInput;
+use crate::platform::foreground::is_own_app;
 use crate::platform::{Foreground, Shortcut};
 
 /// A new foreground owns the controls after it has been stable this long (product: 300-500 ms).
@@ -47,10 +48,14 @@ impl RotateBinding {
 /// One profile: which apps it matches and what every control does there.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Profile {
-    pub id: ProfileId,
+    pub id: ProfileRef,
     pub name: String,
-    /// Lowercase foreground ids, Windows executables and macOS bundle ids in one list.
+    /// Lowercase foreground ids, Windows executables and macOS bundle ids in one list. Config
+    /// resolution keeps an id in one profile only.
     pub ids: Vec<String>,
+    /// Whether the middle button's Hold cycle visits it (every built-in does; a custom profile
+    /// opts in).
+    pub in_pin_cycle: bool,
     pub mood: ContextMood,
     pub rotate: RotateBinding,
     pub bindings: Bindings,
@@ -75,9 +80,10 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
     };
     let ids = |ids: &[&str]| ids.iter().map(ToString::to_string).collect::<Vec<_>>();
     let general = Profile {
-        id: ProfileId::General,
+        id: ProfileRef::Builtin(ProfileId::General),
         name: "General".into(),
         ids: Vec::new(),
+        in_pin_cycle: true,
         mood: ContextMood::Neutral,
         rotate: RotateBinding::Volume,
         bindings: Bindings::default(),
@@ -85,7 +91,7 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
     vec![
         general.clone(),
         Profile {
-            id: ProfileId::Browser,
+            id: ProfileRef::Builtin(ProfileId::Browser),
             name: "Browser".into(),
             ids: ids(&[
                 "chrome.exe",
@@ -97,6 +103,7 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
                 "org.mozilla.firefox",
                 "com.microsoft.edgemac",
                 "com.brave.browser",
+                "company.thebrowser.browser",
             ]),
             rotate: RotateBinding::Shortcuts {
                 label: "Tabs".into(),
@@ -111,9 +118,33 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
             ..general.clone()
         },
         Profile {
-            id: ProfileId::Code,
+            id: ProfileRef::Builtin(ProfileId::Code),
             name: "Code".into(),
-            ids: ids(&["code.exe", "com.microsoft.vscode"]),
+            // Terminals are not here: these shortcuts mean nothing in them. A JetBrains IDE or
+            // Visual Studio can rebind the three buttons, but its apps are listed by default.
+            ids: ids(&[
+                "code.exe",
+                "com.microsoft.vscode",
+                "cursor.exe",
+                "com.todesktop.230313mzl4w4u92",
+                "devenv.exe",
+                "idea64.exe",
+                "pycharm64.exe",
+                "webstorm64.exe",
+                "goland64.exe",
+                "clion64.exe",
+                "rider64.exe",
+                "rustrover64.exe",
+                "com.jetbrains.intellij",
+                "com.jetbrains.intellij.ce",
+                "com.jetbrains.pycharm",
+                "com.jetbrains.pycharm.ce",
+                "com.jetbrains.webstorm",
+                "com.jetbrains.goland",
+                "com.jetbrains.clion",
+                "com.jetbrains.rider",
+                "com.jetbrains.rustrover",
+            ]),
             bindings: with_buttons([
                 named("Terminal", shortcut("Ctrl+`")),
                 named("Run", shortcut("F5")),
@@ -122,13 +153,13 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
             ..general.clone()
         },
         Profile {
-            id: ProfileId::Media,
+            id: ProfileRef::Builtin(ProfileId::Media),
             name: "Media".into(),
             ids: ids(&["spotify.exe", "com.spotify.client", "com.apple.music"]),
             ..general.clone()
         },
         Profile {
-            id: ProfileId::Zoom,
+            id: ProfileRef::Builtin(ProfileId::Zoom),
             name: "Zoom".into(),
             ids: ids(&["zoom.exe", "us.zoom.xos"]),
             mood: ContextMood::Meeting,
@@ -140,7 +171,7 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
             ..general.clone()
         },
         Profile {
-            id: ProfileId::Teams,
+            id: ProfileRef::Builtin(ProfileId::Teams),
             name: "Teams".into(),
             ids: ids(&["ms-teams.exe", "teams.exe", "com.microsoft.teams2"]),
             mood: ContextMood::Meeting,
@@ -193,6 +224,9 @@ pub struct Context {
     /// The profile of the last committed app (or General for Unknown); kept under Protected.
     app_profile: usize,
     pinned: Option<usize>,
+    /// The last app that held focus long enough to commit and is not Kivori itself: what "add the
+    /// app in front of me" means while the user is clicking in Kivori's own window.
+    recent_app: Option<Foreground>,
 }
 
 impl Context {
@@ -205,6 +239,7 @@ impl Context {
             pending: None,
             app_profile: 0,
             pinned: None,
+            recent_app: None,
         }
     }
 
@@ -240,7 +275,12 @@ impl Context {
 
     fn commit(&mut self, foreground: Foreground) {
         match &foreground {
-            Foreground::App { id, .. } => self.app_profile = match_profile(&self.profiles, id),
+            Foreground::App { id, .. } => {
+                self.app_profile = match_profile(&self.profiles, id);
+                if !is_own_app(id) {
+                    self.recent_app = Some(foreground.clone());
+                }
+            }
             Foreground::Unknown => self.app_profile = 0,
             Foreground::Protected => {}
         }
@@ -248,28 +288,39 @@ impl Context {
         self.pending = None;
     }
 
-    /// Swaps in re-resolved profiles (same count and order: the config only overrides bindings).
-    /// The pin and the committed app's profile are kept; `pending` is left alone.
+    /// Swaps in re-resolved profiles (custom ones may have come or gone). The pin and the
+    /// committed app's profile are kept by identity; a pinned profile that is gone falls back to
+    /// Auto. `pending` is left alone.
     pub fn set_profiles(&mut self, profiles: Vec<Profile>) {
         assert!(!profiles.is_empty(), "General is always there");
+        let find =
+            |profiles: &[Profile], id: &ProfileRef| profiles.iter().position(|p| p.id == *id);
+        let pinned = self.pinned.map(|i| self.profiles[i].id.clone());
+        let kept = self.profiles[self.app_profile].id.clone();
         self.profiles = profiles;
-        let last = self.profiles.len() - 1;
-        self.pinned = self.pinned.map(|i| i.min(last));
+        self.pinned = pinned.and_then(|id| find(&self.profiles, &id));
         self.app_profile = match &self.committed {
             Foreground::App { id, .. } => match_profile(&self.profiles, id),
             Foreground::Unknown => 0,
             // Protected keeps the last app's profile.
-            Foreground::Protected => self.app_profile.min(last),
+            Foreground::Protected => find(&self.profiles, &kept).unwrap_or(0),
         };
     }
 
-    /// Auto -> each profile in order -> Auto.
+    /// Auto -> General -> the built-ins -> the custom profiles marked "In pin cycle", in list
+    /// order -> Auto.
     pub fn cycle_pin(&mut self) {
-        self.pinned = match self.pinned {
-            None => Some(0),
-            Some(i) if i + 1 < self.profiles.len() => Some(i + 1),
-            Some(_) => None,
-        };
+        let from = self.pinned.map_or(0, |i| i + 1);
+        self.pinned = (from..self.profiles.len()).find(|&i| self.profiles[i].in_pin_cycle);
+    }
+
+    /// The last non-Kivori app that held focus, as `(id, display name)`; `None` until one has.
+    #[must_use]
+    pub fn recent_app(&self) -> Option<(&str, &str)> {
+        match &self.recent_app {
+            Some(Foreground::App { id, name }) => Some((id, name)),
+            _ => None,
+        }
     }
 
     /// The most recent focus observation, committed or not: where synthesized keys land now.
@@ -404,8 +455,26 @@ mod tests {
                 ("org.mozilla.firefox", "Browser"),
                 ("com.microsoft.edgemac", "Browser"),
                 ("com.brave.browser", "Browser"),
+                ("company.thebrowser.browser", "Browser"),
                 ("code.exe", "Code"),
                 ("com.microsoft.vscode", "Code"),
+                ("cursor.exe", "Code"),
+                ("com.todesktop.230313mzl4w4u92", "Code"),
+                ("devenv.exe", "Code"),
+                ("idea64.exe", "Code"),
+                ("pycharm64.exe", "Code"),
+                ("webstorm64.exe", "Code"),
+                ("goland64.exe", "Code"),
+                ("clion64.exe", "Code"),
+                ("rider64.exe", "Code"),
+                ("rustrover64.exe", "Code"),
+                ("com.jetbrains.intellij", "Code"),
+                ("com.jetbrains.pycharm.ce", "Code"),
+                ("com.jetbrains.rustrover", "Code"),
+                // Terminals keep General: the Code shortcuts mean nothing in them.
+                ("windowsterminal.exe", "General"),
+                ("com.apple.terminal", "General"),
+                ("com.googlecode.iterm2", "General"),
                 ("spotify.exe", "Media"),
                 ("com.spotify.client", "Media"),
                 ("com.apple.music", "Media"),
@@ -648,5 +717,165 @@ mod tests {
         assert_eq!(ctx.resolve(&hold(0)), Resolved::Run(Action::ToggleMute));
         assert_eq!(ctx.resolve(&hold(1)), Resolved::CyclePin);
         assert_eq!(ctx.resolve(&hold(2)), Resolved::Nothing);
+    }
+
+    /// Resolved profiles for `file`, as the device thread gets them.
+    fn resolved(file: &crate::config::ConfigFile) -> Vec<Profile> {
+        crate::config::resolve::resolve(builtins(), file)
+            .unwrap()
+            .profiles
+    }
+
+    fn file_with_custom(apps: &[&str], in_pin_cycle: bool) -> crate::config::ConfigFile {
+        let mut file = crate::config::ConfigFile::default();
+        let id = crate::config::profiles::add_custom_profile(
+            &mut file,
+            apps[0],
+            "Design",
+            crate::config::ProfileOverride::default(),
+        )
+        .unwrap();
+        let id = ProfileRef::Custom(id);
+        for app in &apps[1..] {
+            crate::config::profiles::assign_app(&mut file, &id, app).unwrap();
+        }
+        file.custom_profiles[0].in_pin_cycle = in_pin_cycle;
+        file
+    }
+
+    #[test]
+    fn a_custom_profile_beats_the_built_in_that_listed_the_app() {
+        let mut ctx = Context::new(resolved(&file_with_custom(&["chrome.exe"], false)));
+        ctx.observe(app("chrome.exe"), ms(0));
+        ctx.commit_pending();
+        assert_eq!(name(&ctx), "Design");
+        ctx.observe(app("msedge.exe"), ms(10));
+        ctx.commit_pending();
+        assert_eq!(
+            name(&ctx),
+            "Browser",
+            "the other browsers keep their profile"
+        );
+        assert_eq!(text(ctx.labels().profile), "Browser");
+    }
+
+    #[test]
+    fn a_moved_built_in_app_follows_its_new_profile() {
+        let mut file = crate::config::ConfigFile::default();
+        let code = ProfileRef::Builtin(ProfileId::Code);
+        crate::config::profiles::assign_app(&mut file, &code, "pycharm64.exe").unwrap();
+        crate::config::profiles::assign_app(&mut file, &code, "chrome.exe").unwrap();
+        let mut ctx = Context::new(resolved(&file));
+        ctx.observe(app("chrome.exe"), ms(0));
+        ctx.commit_pending();
+        assert_eq!(name(&ctx), "Code");
+        let general = ProfileRef::Builtin(ProfileId::General);
+        crate::config::profiles::assign_app(&mut file, &general, "pycharm64.exe").unwrap();
+        ctx.set_profiles(resolved(&file));
+        ctx.observe(app("pycharm64.exe"), ms(10));
+        ctx.commit_pending();
+        assert_eq!(name(&ctx), "General", "a built-in app moved out to General");
+    }
+
+    #[test]
+    fn protected_still_wins_over_a_custom_profile_and_a_pin_to_it() {
+        let mut ctx = Context::new(resolved(&file_with_custom(&["figma.exe"], true)));
+        ctx.observe(app("figma.exe"), ms(0));
+        ctx.commit_pending();
+        assert_eq!(name(&ctx), "Design");
+        ctx.observe(Foreground::Protected, ms(10));
+        assert!(ctx.protected());
+        assert_eq!(text(ctx.labels().profile), "Protected");
+        assert_eq!(ctx.rotate(), Some(&RotateBinding::Volume));
+    }
+
+    #[test]
+    fn the_pin_cycle_adds_only_the_marked_custom_profiles_after_the_built_ins() {
+        let cycle = |file: &crate::config::ConfigFile| {
+            let mut ctx = Context::new(resolved(file));
+            let mut seen = Vec::new();
+            loop {
+                ctx.cycle_pin();
+                if !ctx.pinned() {
+                    break;
+                }
+                seen.push(name(&ctx).to_string());
+            }
+            seen
+        };
+        let builtin = ["General", "Browser", "Code", "Media", "Zoom", "Teams"];
+        assert_eq!(cycle(&file_with_custom(&["figma.exe"], false)), builtin);
+        let mut file = file_with_custom(&["figma.exe"], true);
+        let second = crate::config::profiles::add_custom_profile(
+            &mut file,
+            "obs64.exe",
+            "Stream",
+            crate::config::ProfileOverride::default(),
+        )
+        .unwrap();
+        let third = crate::config::profiles::add_custom_profile(
+            &mut file,
+            "slack.exe",
+            "Chat",
+            crate::config::ProfileOverride::default(),
+        )
+        .unwrap();
+        crate::config::profiles::set_pin_cycle(&mut file, &ProfileRef::Custom(third), true)
+            .unwrap();
+        let _ = second;
+        let seen = cycle(&file);
+        assert_eq!(seen[..6], builtin);
+        assert_eq!(
+            seen[6..],
+            ["Design", "Chat"],
+            "in list order, unmarked skipped"
+        );
+    }
+
+    #[test]
+    fn a_pin_survives_a_swap_by_identity_and_falls_to_auto_when_its_profile_goes() {
+        let file = file_with_custom(&["figma.exe"], true);
+        let mut ctx = Context::new(resolved(&file));
+        for _ in 0..7 {
+            ctx.cycle_pin();
+        }
+        assert_eq!(name(&ctx), "Design");
+        let mut more = file.clone();
+        crate::config::profiles::add_custom_profile(
+            &mut more,
+            "obs64.exe",
+            "Stream",
+            crate::config::ProfileOverride::default(),
+        )
+        .unwrap();
+        ctx.set_profiles(resolved(&more));
+        assert_eq!(name(&ctx), "Design");
+        ctx.set_profiles(builtins());
+        assert!(!ctx.pinned(), "the pinned profile was deleted");
+        assert_eq!(name(&ctx), "General");
+    }
+
+    #[test]
+    fn the_app_in_front_is_the_last_committed_app_that_is_not_kivori() {
+        let mut ctx = Context::new(builtins());
+        assert_eq!(ctx.recent_app(), None);
+        ctx.observe(app("figma.exe"), ms(0));
+        assert_eq!(ctx.recent_app(), None, "not stable yet");
+        ctx.observe(app("figma.exe"), ms(400));
+        assert_eq!(ctx.recent_app(), Some(("figma.exe", "figma.exe")));
+        // The user clicks into Kivori's own window: it commits, and the answer stays Figma.
+        ctx.observe(app("id.immer.kivori"), ms(500));
+        ctx.observe(app("id.immer.kivori"), ms(900));
+        assert_eq!(name(&ctx), "General");
+        assert_eq!(ctx.recent_app(), Some(("figma.exe", "figma.exe")));
+        // Protected and Unknown never replace it.
+        ctx.observe(Foreground::Protected, ms(1_000));
+        ctx.observe(Foreground::Unknown, ms(1_100));
+        ctx.observe(Foreground::Unknown, ms(1_600));
+        assert_eq!(ctx.recent_app(), Some(("figma.exe", "figma.exe")));
+        // A deliberate input commits a pending app at once.
+        ctx.observe(app("obs64.exe"), ms(1_700));
+        ctx.commit_pending();
+        assert_eq!(ctx.recent_app(), Some(("obs64.exe", "obs64.exe")));
     }
 }

@@ -3,6 +3,7 @@
 //! `platform::synth`.
 
 mod app_volume;
+pub mod apps;
 mod audio;
 mod foreground;
 pub mod host_events;

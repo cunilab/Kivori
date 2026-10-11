@@ -11,17 +11,17 @@ use std::ffi::{c_char, c_void, CStr};
 use crate::platform::foreground::classify_mac;
 use crate::platform::{Foreground, ForegroundObserver};
 
-type Id = *mut c_void;
-type Sel = *mut c_void;
+pub(super) type Id = *mut c_void;
+pub(super) type Sel = *mut c_void;
 type CfRef = *const c_void;
 
 #[link(name = "objc")]
 extern "C" {
-    fn objc_getClass(name: *const c_char) -> Id;
-    fn sel_registerName(name: *const c_char) -> Sel;
-    fn objc_msgSend();
-    fn objc_autoreleasePoolPush() -> *mut c_void;
-    fn objc_autoreleasePoolPop(pool: *mut c_void);
+    pub(super) fn objc_getClass(name: *const c_char) -> Id;
+    pub(super) fn sel_registerName(name: *const c_char) -> Sel;
+    pub(super) fn objc_msgSend();
+    pub(super) fn objc_autoreleasePoolPush() -> *mut c_void;
+    pub(super) fn objc_autoreleasePoolPop(pool: *mut c_void);
 }
 
 // Makes sure NSWorkspace is registered with the runtime even if nothing else pulled AppKit in.
@@ -67,7 +67,7 @@ impl ForegroundObserver for MacForeground {
 }
 
 /// `objc_msgSend` with no arguments and an object result.
-unsafe fn send(receiver: Id, selector: &CStr) -> Id {
+pub(super) unsafe fn send(receiver: Id, selector: &CStr) -> Id {
     if receiver.is_null() {
         return std::ptr::null_mut();
     }
@@ -79,7 +79,7 @@ unsafe fn send(receiver: Id, selector: &CStr) -> Id {
 }
 
 /// Copies an `NSString` out; `None` for nil.
-unsafe fn string(ns: Id) -> Option<String> {
+pub(super) unsafe fn string(ns: Id) -> Option<String> {
     let utf8 = send(ns, c"UTF8String") as *const c_char;
     (!utf8.is_null()).then(|| CStr::from_ptr(utf8).to_string_lossy().into_owned())
 }

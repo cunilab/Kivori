@@ -32,6 +32,7 @@ function desk(overrides: Partial<DeskStatusDto> = {}): DeskStatusDto {
     mediaTitle: null,
     mediaArtist: null,
     lastAction: null,
+    recentApp: null,
     ...overrides,
   };
 }

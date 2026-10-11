@@ -9,8 +9,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde_json::Value;
 
 use super::migrate::{migrate, LoadError};
-use super::resolve::{canonical_macro, resolve};
-use super::schema::{ConfigFile, MacroSpec};
+use super::profiles;
+use super::resolve::{canonical_macro, full_override, resolve};
+use super::schema::{ConfigFile, MacroSpec, ProfileRef};
 use super::ResolvedConfig;
 use crate::desk::profile::builtins;
 
@@ -222,6 +223,83 @@ impl ConfigStore {
             return Err(ConfigError::Invalid("unknown macro"));
         }
         let next = self.edited(|file| file.macros.retain(|m| m.id != id));
+        self.save(next)
+    }
+
+    /// Creates a custom profile for `app` (`name` is its display name, may be empty) as a copy of
+    /// General's bindings as they are now, moving `app` out of any profile that held it.
+    ///
+    /// # Errors
+    /// [`ConfigError`]; on any error the stored config is unchanged.
+    pub fn add_custom_profile(&mut self, app: &str, name: &str) -> Result<(), ConfigError> {
+        let general = full_override(&self.resolved.profiles[0]);
+        let mut next = self.file.clone();
+        profiles::add_custom_profile(&mut next, app, name, general)
+            .map_err(ConfigError::Invalid)?;
+        self.save(next)
+    }
+
+    /// Moves `app` into `profile` (General = out of every other profile).
+    ///
+    /// # Errors
+    /// [`ConfigError`]; on any error the stored config is unchanged.
+    pub fn assign_app(&mut self, profile: &ProfileRef, app: &str) -> Result<(), ConfigError> {
+        let mut next = self.file.clone();
+        profiles::assign_app(&mut next, profile, app).map_err(ConfigError::Invalid)?;
+        self.save(next)
+    }
+
+    /// Renames a custom profile.
+    ///
+    /// # Errors
+    /// [`ConfigError`]; on any error the stored config is unchanged.
+    pub fn rename_profile(&mut self, profile: &ProfileRef, name: &str) -> Result<(), ConfigError> {
+        let mut next = self.file.clone();
+        profiles::rename_profile(&mut next, profile, name).map_err(ConfigError::Invalid)?;
+        self.save(next)
+    }
+
+    /// Deletes a custom profile.
+    ///
+    /// # Errors
+    /// [`ConfigError`]; on any error the stored config is unchanged.
+    pub fn delete_profile(&mut self, profile: &ProfileRef) -> Result<(), ConfigError> {
+        let mut next = self.file.clone();
+        profiles::delete_profile(&mut next, profile).map_err(ConfigError::Invalid)?;
+        self.save(next)
+    }
+
+    /// Puts a custom profile in or out of the pin cycle.
+    ///
+    /// # Errors
+    /// [`ConfigError`]; on any error the stored config is unchanged.
+    pub fn set_pin_cycle(&mut self, profile: &ProfileRef, on: bool) -> Result<(), ConfigError> {
+        let mut next = self.file.clone();
+        profiles::set_pin_cycle(&mut next, profile, on).map_err(ConfigError::Invalid)?;
+        self.save(next)
+    }
+
+    /// A built-in profile goes back to its built-in bindings and app list; a custom one goes back
+    /// to a fresh copy of General's bindings (its name and apps stay).
+    ///
+    /// # Errors
+    /// [`ConfigError`]; on any error the stored config is unchanged.
+    pub fn reset_profile(&mut self, profile: &ProfileRef) -> Result<(), ConfigError> {
+        let general = full_override(&self.resolved.profiles[0]);
+        let mut next = self.file.clone();
+        match profile {
+            ProfileRef::Builtin(id) => {
+                next.profiles.remove(id);
+            }
+            ProfileRef::Custom(id) => {
+                let custom = next
+                    .custom_profiles
+                    .iter_mut()
+                    .find(|p| p.id == *id)
+                    .ok_or(ConfigError::Invalid("unknown profile"))?;
+                custom.bindings = general;
+            }
+        }
         self.save(next)
     }
 

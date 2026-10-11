@@ -32,6 +32,7 @@ import {
   INTENSITIES,
   MASCOT_ACTIONS,
   MEDIA_STATUSES,
+  CUSTOM_PROFILE_ID,
   PROFILE_IDS,
   ROTATE_SPEC_KINDS,
 } from './types';
@@ -51,7 +52,9 @@ import type {
   MacroSpec,
   StepSpec,
   DeskStatusDto,
+  AppRefDto,
   ProfileConfigDto,
+  ProfileId,
   RotateSpec,
   SlotDto,
 } from './types';
@@ -79,6 +82,11 @@ function percentOrNull(name: string, value: unknown): number | null {
   if (typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 100) {
     return value;
   }
+  throw new Error(`Kivori: invalid ${name}.`);
+}
+
+function bool(name: string, value: unknown): boolean {
+  if (typeof value === 'boolean') return value;
   throw new Error(`Kivori: invalid ${name}.`);
 }
 
@@ -323,7 +331,7 @@ export function parseDeskStatus(raw: unknown): DeskStatusDto {
     doublePressAction: oneOf('double-press action', DOUBLE_PRESS_ACTIONS, r.doublePressAction),
     buttonActions: buttonActions('buttonActions', r.buttonActions),
     buttonHoldActions: buttonActions('buttonHoldActions', r.buttonHoldActions),
-    profileId: oneOf('profile', PROFILE_IDS, r.profileId),
+    profileId: profileId(r.profileId),
     profile: textOrNull('profile', r.profile),
     pinned: r.pinned,
     rotateLabel: label('rotateLabel', r.rotateLabel),
@@ -331,7 +339,20 @@ export function parseDeskStatus(raw: unknown): DeskStatusDto {
     mediaTitle: textOrNull('mediaTitle', r.mediaTitle),
     mediaArtist: textOrNull('mediaArtist', r.mediaArtist),
     lastAction,
+    recentApp: r.recentApp === null ? null : appRef(r.recentApp),
   };
+}
+
+/** A built-in profile token or a well-formed custom profile id. */
+function profileId(value: unknown): ProfileId {
+  if (typeof value === 'string' && CUSTOM_PROFILE_ID.test(value)) return value as ProfileId;
+  return oneOf('profile', PROFILE_IDS, value);
+}
+
+/** Validates an app reference (`recentApp`, a running app). */
+export function appRef(raw: unknown): AppRefDto {
+  const r = record('app', raw);
+  return { id: text('app id', r.id, MAX_APP_ID), name: text('app name', r.name) };
 }
 
 function record(name: string, value: unknown): Record<string, unknown> {
@@ -437,9 +458,11 @@ function profileDto(raw: unknown): ProfileConfigDto {
     throw new Error('Kivori: invalid buttons.');
   }
   return {
-    id: oneOf('profile', PROFILE_IDS, r.id),
+    id: profileId(r.id),
     name: text('profile name', r.name),
-    apps: r.apps.map((app) => text('app id', app)),
+    custom: bool('custom', r.custom),
+    inPinCycle: bool('inPinCycle', r.inPinCycle),
+    apps: r.apps.map((app) => text('app id', app, MAX_APP_ID)),
     rotate: {
       spec: rotateSpec(rotate.spec),
       deviceLabel: text('device label', rotate.deviceLabel),
