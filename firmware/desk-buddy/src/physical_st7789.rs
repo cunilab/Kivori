@@ -30,6 +30,7 @@ use esp_hal::{
 use kivori_assets::AssetBlob;
 use kivori_model::desk::BRIGHTNESS_DEFAULT;
 use kivori_model::{Capabilities, Rect, Rgb565};
+use kivori_protocol::identity::{ChipRecord, RECORD_LEN};
 use kivori_protocol::FirmwareVersion;
 
 use mipidsi::{interface::SpiInterface, Builder};
@@ -38,6 +39,7 @@ use crate::{
     chip_probe,
     device_id::derive_device_id,
     display::MipidsiSink,
+    identity::{check_boot, ProductIdentity, IMAGE_RECORD},
     physical_rotary::PhysicalRotary,
     ports::{Clock, DisplaySink},
     profile::physical_st7789 as hw,
@@ -77,6 +79,21 @@ const FIRMWARE_VERSION: FirmwareVersion = FirmwareVersion {
 #[used]
 static FW_VERSION_MARKER: &[u8] =
     concat!("KIVORI-FW-VERSION:", env!("CARGO_PKG_VERSION"), "\0").as_bytes();
+
+/// The image identity record (product, board, firmware version, minimum protocol) as searchable
+/// text beside the version marker; the app checks it against the connected device before it
+/// flashes. Kept in the image the same way as [`FW_VERSION_MARKER`].
+#[used]
+static FW_IDENTITY_MARKER: &[u8] = IMAGE_RECORD.as_bytes();
+
+/// Reads the chip identity record from the user eFuse block (BLOCK3, `BLOCK_USR_DATA`, 192 bits).
+/// Read only: this firmware never writes eFuses; the provisioning tool does (ADR-0014). Only the
+/// first [`RECORD_LEN`] bytes are the record; the rest of the block (and the custom MAC bits
+/// beyond it) are not touched.
+fn read_chip_record() -> kivori_protocol::identity::ChipRecordState {
+    let block: [u8; 24] = efuse::read_field_le(efuse::BLOCK_USR_DATA);
+    ChipRecord::decode(&block[..RECORD_LEN])
+}
 
 /// Bytes held by each DMA transfer. This fits a complete 40x40 RGB565 tile
 /// (3,200 bytes) and is also the maximum mipidsi SPI batch size.
@@ -365,12 +382,19 @@ pub fn run_mode(
             .union(Capabilities::QUIET_ACK_V1)
             .union(Capabilities::DEVICE_INTERNALS_V1)
             .union(Capabilities::IDLE_LIFE_V1)
-            .union(Capabilities::MIC_STATE_V1),
+            .union(Capabilities::MIC_STATE_V1)
+            .union(Capabilities::PRODUCT_IDENTITY_V1),
     };
+
+    // Tier A (ADR-0016): a valid chip record for another product or board means this image must
+    // not run the product. The check result also sets what the handshake reports.
+    let boot = check_boot(ProductIdentity::BUILD, read_chip_record());
 
     // Keeps `FW_VERSION_MARKER` (and so the version text) in the linked image.
     // SAFETY: a valid, aligned read of the first byte of a live static.
     let _ = unsafe { core::ptr::read_volatile(FW_VERSION_MARKER.as_ptr()) };
+    // SAFETY: as above, for the identity record.
+    let _ = unsafe { core::ptr::read_volatile(FW_IDENTITY_MARKER.as_ptr()) };
 
     esp_println::println!("KIVORI runtime starting");
 
@@ -406,6 +430,7 @@ pub fn run_mode(
         &blob,
         frame_buffer,
         chip_probe::probe,
+        boot,
         |tick, transport| {
             if tick.reboot {
                 // Give the queued `Bye` a bounded moment to reach the host, then reboot. The

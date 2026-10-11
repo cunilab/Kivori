@@ -20,10 +20,27 @@ export interface AppInfoDto {
   deviceStudioEnabled: boolean;
 }
 
+/** Where a device's identity came from: `legacy` means it reported none (the original Desk Buddy). */
+export const IDENTITY_SOURCES = ['legacy', 'build', 'chip'] as const;
+export type IdentitySource = (typeof IDENTITY_SOURCES)[number];
+
+/** Which product and board a connected device is. Names are display names, never ids. */
+export interface DeviceIdentityDto {
+  product: string;
+  board: string;
+  /** `null` until provisioning burned a revision. */
+  hwRev: number | null;
+  source: IdentitySource;
+  /** Whether this app knows both the product and the board. */
+  known: boolean;
+}
+
 export interface DeviceInfoDto {
   firmwareVersion: string;
   protocolVersion: ProtocolVersion;
   deviceIdHashShort: string;
+  /** `null` while a device that reports its identity has not yet. */
+  identity: DeviceIdentityDto | null;
 }
 
 export const FIRMWARE_PHASES = [
@@ -43,6 +60,8 @@ export const FLASH_FAILURES = [
   'cancelled',
   'imageUnavailable',
   'reconnectTimedOut',
+  'wrongProduct',
+  'chooseProduct',
   'unknown',
 ] as const;
 export type FlashFailure = (typeof FLASH_FAILURES)[number];
@@ -79,6 +98,10 @@ export interface FirmwareStatusDto {
   /** Firmware version bundled in this app, when known. */
   bundledVersion: string | null;
   advice: UpdateAdvice;
+  /** Both names; set only with the `wrongProduct` failure. */
+  wrongProduct: { device: string; image: string } | null;
+  /** The products to pick from; set only with the `chooseProduct` failure. */
+  restoreChoices: { id: string; name: string }[];
 }
 
 export const CAPABILITY_NAMES = [
@@ -97,6 +120,7 @@ export const CAPABILITY_NAMES = [
   'deviceInternalsV1',
   'idleLifeV1',
   'micStateV1',
+  'productIdentityV1',
 ] as const;
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
 
@@ -122,6 +146,8 @@ export interface DiagnosticsDto {
     negotiatedMinor: number | null;
     capabilities: CapabilityName[];
     deviceHash: string | null;
+    /** Which product and board the connected device is. */
+    identity: DeviceIdentityDto | null;
   };
   connection: {
     state: ConnectionState;

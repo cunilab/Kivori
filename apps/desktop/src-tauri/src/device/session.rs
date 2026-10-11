@@ -15,6 +15,7 @@ use crate::device::fsm::{ConnectionManager, ManagerEvent};
 use crate::device::heartbeat::HeartbeatMonitor;
 use crate::device::nonce::{NonceSource, OsNonceSource};
 use crate::device::transport::SerialLink;
+use crate::identity::DeviceIdentity;
 use crate::input::DeviceClock;
 use crate::orchestrator::Orchestrator;
 use kivori_model::desk::{
@@ -72,7 +73,8 @@ impl Default for SessionConfig {
                 .union(Capabilities::QUIET_ACK_V1)
                 .union(Capabilities::DEVICE_INTERNALS_V1)
                 .union(Capabilities::IDLE_LIFE_V1)
-                .union(Capabilities::MIC_STATE_V1),
+                .union(Capabilities::MIC_STATE_V1)
+                .union(Capabilities::PRODUCT_IDENTITY_V1),
             supported_majors: vec![PROTOCOL_MAJOR],
         }
     }
@@ -145,6 +147,9 @@ pub struct Session {
     diagnostics: SessionDiagnostics,
     /// The latest `Internals` snapshot of this session (developer mode). Connection-scoped.
     internals: Option<DeviceInternals>,
+    /// The identity the device reported after the handshake (`PRODUCT_IDENTITY_V1`).
+    /// Connection-scoped, exactly like `current_session`.
+    identity: Option<DeviceIdentity>,
 }
 
 impl Session {
@@ -181,6 +186,7 @@ impl Session {
             device_clock: DeviceClock::default(),
             diagnostics: SessionDiagnostics::default(),
             internals: None,
+            identity: None,
         }
     }
 
@@ -204,6 +210,7 @@ impl Session {
         self.clear_session_identity();
         self.diagnostics = SessionDiagnostics::default();
         self.internals = None;
+        self.identity = None;
         self.pending_inputs.clear();
         self.last_mascot_action_applied = None;
         self.activity.clear();
@@ -246,6 +253,22 @@ impl Session {
     #[must_use]
     pub const fn negotiated_caps(&self) -> Capabilities {
         self.negotiated_caps
+    }
+
+    /// Which product and board the connected device is. `None` with no session, and while a device
+    /// that negotiated `PRODUCT_IDENTITY_V1` has not sent its `Identity` yet; a device that did not
+    /// negotiate it is the legacy Desk Buddy on the C3 SuperMini (revision unknown).
+    #[must_use]
+    pub fn identity(&self) -> Option<DeviceIdentity> {
+        self.current_session?;
+        if self
+            .negotiated_caps
+            .contains(Capabilities::PRODUCT_IDENTITY_V1)
+        {
+            self.identity
+        } else {
+            Some(DeviceIdentity::legacy())
+        }
     }
 
     /// Drains every `InputEvent` decoded by [`Session::pump`] since the last call.
@@ -884,6 +907,23 @@ impl Session {
             {
                 self.internals = Some(report.internals);
             }
+            // Only the identity of this session counts. A product or board the catalog does not
+            // know is never guessed: the device is shown as unknown and nothing is negotiated
+            // for it, so no feature is driven and the flashing guard refuses it.
+            Message::Identity(report)
+                if self
+                    .negotiated_caps
+                    .contains(Capabilities::PRODUCT_IDENTITY_V1)
+                    && self.current_session == Some(report.session) =>
+            {
+                let identity = DeviceIdentity::from_wire(&report);
+                if identity.resolve().is_none() {
+                    self.negotiated_caps = self
+                        .negotiated_caps
+                        .intersection(Capabilities::PRODUCT_IDENTITY_V1);
+                }
+                self.identity = Some(identity);
+            }
             // The device is ending the session: no connection, no session identity.
             Message::Bye(_) => {
                 self.clear_session_identity();
@@ -962,6 +1002,7 @@ impl Session {
         self.diagnostics.free_bytes = None;
         self.diagnostics.last_pong = None;
         self.internals = None;
+        self.identity = None;
     }
 
     fn observe(&mut self, kind: ActivityEventKind, metadata: Option<ActivityMetadata>) {

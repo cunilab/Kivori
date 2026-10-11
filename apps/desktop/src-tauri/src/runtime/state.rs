@@ -39,6 +39,8 @@ pub enum DeviceCommand {
     /// Restore the bundled firmware on the one Kivori device present, even one that cannot
     /// handshake (wrong-major firmware, or a unit held in ROM download mode).
     RestoreFirmware,
+    /// The same restore, for the product the user picked when more than one could be on the port.
+    RestoreFirmwareFor(String),
     /// Re-publish the current status (used by an explicit UI resync).
     Refresh,
     /// Ask the device for one internals snapshot (developer mode, while the card is visible).
@@ -306,6 +308,12 @@ impl AppState {
         self.reserve_and_queue(DeviceCommand::RestoreFirmware)
     }
 
+    /// [`Self::queue_firmware_restore`] for the product the user picked (a machine id from the
+    /// status's restore choices).
+    pub fn queue_firmware_restore_for(&self, product: String) -> Result<(), String> {
+        self.reserve_and_queue(DeviceCommand::RestoreFirmwareFor(product))
+    }
+
     fn reserve_and_queue(&self, command: DeviceCommand) -> Result<(), String> {
         let previous = {
             let mut status = self.firmware_status.lock().expect("firmware status lock");
@@ -322,6 +330,8 @@ impl AppState {
             status.phase = FirmwarePhase::Preparing;
             status.message = "Preparing firmware update.".to_string();
             status.failure = None;
+            status.wrong_product = None;
+            status.restore_choices.clear();
             previous
         };
         if let Err(error) = self.send_command(command) {

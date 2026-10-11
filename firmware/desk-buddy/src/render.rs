@@ -18,7 +18,7 @@ use kivori_model::desk::{DeskView, DisplayMode};
 use kivori_model::presentation::ValueDisplay;
 use kivori_model::{CompanionState, ElapsedMs, MascotAnimator, MascotPose, Rect, Rgb565};
 use kivori_renderer::desk::{
-    render_chrome, render_recovery, render_updating, render_view, render_views,
+    render_chrome, render_recovery, render_updating, render_view, render_views, render_wrong_board,
 };
 use kivori_renderer::overlay::render_volume_overlay;
 use kivori_renderer::render_scene;
@@ -66,6 +66,9 @@ pub struct TileRenderer<'a> {
     /// Buffered path: tiles composed but not yet transferred (bit = tile index). Their new
     /// signatures are already in `signatures`; a failed pass resets them to `None`.
     pending: u64,
+    /// Tier A: the chip belongs to another product, so the whole screen is the wrong-board notice
+    /// (below only the recovery takeover).
+    wrong_board: bool,
     #[cfg(feature = "latency-probe")]
     latency: crate::latency_probe::Readout,
     #[cfg(feature = "latency-probe")]
@@ -84,6 +87,7 @@ impl<'a> TileRenderer<'a> {
             signatures: [None; TILE_COUNT],
             frame_buffer: None,
             pending: 0,
+            wrong_board: false,
             #[cfg(feature = "latency-probe")]
             latency: crate::latency_probe::Readout {
                 last: None,
@@ -106,6 +110,11 @@ impl<'a> TileRenderer<'a> {
             frame_buffer: Some(frame_buffer),
             ..Self::new()
         }
+    }
+
+    /// Makes every following frame the wrong-board notice (recovery still takes the screen).
+    pub fn set_wrong_board(&mut self, wrong_board: bool) {
+        self.wrong_board = wrong_board;
     }
 
     /// Sets the latency readout composited as the last layer of every following frame.
@@ -372,6 +381,8 @@ impl<'a> TileRenderer<'a> {
             if let Some(percent) = view.recovery_percent {
                 // The recovery takeover owns the whole screen (highest layer).
                 render_recovery(&mut band, percent);
+            } else if self.wrong_board {
+                render_wrong_board(&mut band);
             } else if view.updating {
                 // Then the update takeover: the host is flashing this device.
                 render_updating(&mut band);

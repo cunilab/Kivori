@@ -534,10 +534,14 @@ pub fn flash_firmware(app: State<'_, AppState>) -> Result<(), String> {
 
 /// Queues recovery of this application's fixed bundled firmware on the one Kivori device present,
 /// including one that cannot handshake. Takes no arguments; the device thread finds the port and
-/// refuses unless exactly one allowlisted device is connected.
+/// refuses unless exactly one allowlisted device is connected. `product` is a machine id from the
+/// status's restore choices, sent back only after the app asked which product the device is.
 #[tauri::command]
-pub fn restore_firmware(app: State<'_, AppState>) -> Result<(), String> {
-    app.queue_firmware_restore()
+pub fn restore_firmware(app: State<'_, AppState>, product: Option<String>) -> Result<(), String> {
+    match product {
+        Some(product) => app.queue_firmware_restore_for(product),
+        None => app.queue_firmware_restore(),
+    }
 }
 
 /// Recent session activity, oldest first, capped at `limit` (all builds).

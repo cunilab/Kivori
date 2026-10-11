@@ -47,6 +47,7 @@ function connection(overrides: Partial<ConnectionStatusDto> = {}): ConnectionSta
       firmwareVersion: '0.4.0',
       protocolVersion: { major: 1, minor: 3 },
       deviceIdHashShort: 'deadbeef',
+      identity: null,
     },
     incompatibleReason: null,
     retryCount: 0,

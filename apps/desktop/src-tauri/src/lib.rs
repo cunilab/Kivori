@@ -13,6 +13,7 @@ pub mod desk;
 pub mod device;
 pub mod firmware;
 pub mod firmware_marker;
+pub mod identity;
 pub mod input;
 pub mod ipc;
 pub mod orchestrator;

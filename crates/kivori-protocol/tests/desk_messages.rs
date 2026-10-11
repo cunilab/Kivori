@@ -208,6 +208,7 @@ fn context_buttons_are_control_variant_2_with_their_index() {
     assert_eq!(Capabilities::DEVICE_INTERNALS_V1.bits(), 1 << 12);
     assert_eq!(Capabilities::IDLE_LIFE_V1.bits(), 1 << 13);
     assert_eq!(Capabilities::MIC_STATE_V1.bits(), 1 << 14);
+    assert_eq!(Capabilities::PRODUCT_IDENTITY_V1.bits(), 1 << 15);
 }
 
 /// Append-only: `Triggered` follows the original five kinds.
@@ -322,5 +323,25 @@ fn mic_state_is_appended_as_tag_22() {
         assert_eq!(payload(&msg)[0], 22);
         assert_eq!(roundtrip(&msg), msg);
         assert!(payload(&msg).len() <= 1 + 5 + 2 + 2);
+    }
+}
+
+#[test]
+fn identity_is_appended_as_tag_23() {
+    use kivori_protocol::{Identity, IdentitySource};
+    for (hw_rev, source) in [
+        (None, IdentitySource::Build),
+        (Some(3), IdentitySource::Chip),
+    ] {
+        let msg = Message::Identity(Identity {
+            session: 7,
+            product: 1,
+            board: 1,
+            hw_rev,
+            source,
+        });
+        assert_eq!(payload(&msg)[0], 23);
+        assert_eq!(roundtrip(&msg), msg);
+        assert!(payload(&msg).len() <= 1 + 5 + 3 + 3 + 2);
     }
 }

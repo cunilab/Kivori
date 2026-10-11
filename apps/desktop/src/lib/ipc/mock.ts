@@ -14,6 +14,7 @@ import type {
   ConfigDto,
   DeviceInternalsDto,
   DiagnosticsDto,
+  DeviceIdentityDto,
   FirmwareStatusDto,
   OnboardingDto,
   StartupSettingsDto,
@@ -117,6 +118,15 @@ export function mockOnStartupChanged(handler: (settings: StartupSettingsDto) => 
   };
 }
 
+/** What a device that reports no identity looks like: the original Desk Buddy. */
+const mockIdentity: DeviceIdentityDto = {
+  product: 'Kivori Desk Buddy',
+  board: 'C3 SuperMini',
+  hwRev: null,
+  source: 'legacy',
+  known: true,
+};
+
 export function mockFirmwareStatus(): FirmwareStatusDto {
   const base: FirmwareStatusDto = {
     available: true,
@@ -126,6 +136,8 @@ export function mockFirmwareStatus(): FirmwareStatusDto {
     failure: null,
     bundledVersion: '1.3.0',
     advice: 'unknown',
+    wrongProduct: null,
+    restoreChoices: [],
   };
   switch (scenario()) {
     case 'incompatible':
@@ -178,6 +190,7 @@ export function mockConnectionStatus(): ConnectionStatusDto {
           firmwareVersion: '0.4.0',
           protocolVersion: { major: 1, minor: 3 },
           deviceIdHashShort: '3fa9c1d2',
+          identity: mockIdentity,
         },
         connectionGeneration: 1,
         mascotInteraction: true,
@@ -674,6 +687,7 @@ export function mockGetDiagnostics(): DiagnosticsDto {
         ? ['mascotInteraction', 'physicalInputV1', 'presentationV1', 'deskStatusV1', 'mediaInfoV1']
         : [],
       deviceHash: connected ? '3fa9c1d2' : null,
+      identity: connected ? mockIdentity : null,
     },
     connection: {
       state: connected ? 'connected' : 'disconnected',

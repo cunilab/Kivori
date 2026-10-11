@@ -867,6 +867,28 @@ pub fn render_updating(band: &mut TileBand) {
     text_c(band, F_LABEL, b"Keep Kivori plugged in", CENTER, 202, MUTED);
 }
 
+/// The wrong-board takeover (tier A, ADR-0016): the chip's burned identity is not this firmware's
+/// product, so the device runs nothing and only says so. A full amber ring around an exclamation
+/// mark; static on purpose (nothing here may need the host). Draws every pixel of the band.
+pub fn render_wrong_board(band: &mut TileBand) {
+    band.fill(BG);
+    let a = &RECOVERY_RING;
+    arc(band, a, 0, a.sweep, 0, AMBER);
+    // The exclamation mark: a bar and a dot.
+    rect(band, CENTER - 5, 70, 10, 44, TEXT);
+    rect(band, CENTER - 5, 124, 10, 10, TEXT);
+    text_c(band, F_TITLE, b"Wrong firmware", CENTER, 172, TEXT);
+    text_c(band, F_TITLE, b"for this Kivori", CENTER, 196, TEXT);
+    text_c(
+        band,
+        F_LABEL,
+        b"Reflash it in the Kivori app",
+        CENTER,
+        220,
+        MUTED,
+    );
+}
+
 /// A clockwise circular arrow of outer radius `r` centred on `(cx, cy)`: the recovery restart
 /// glyph at 24, the knob icon when small.
 fn restart_glyph(band: &mut TileBand, cx: i32, cy: i32, r: i32, col: Rgb565) {

@@ -421,11 +421,15 @@ fn classifier_fixtures_cover_every_class() {
     for (exit, stderr, expected) in fixtures {
         assert_eq!(classify_espflash(*exit, stderr), *expected, "{stderr}");
     }
-    // The fixtures reach every class except the workflow-assigned one.
+    // The fixtures reach every class except the workflow-assigned ones.
     for class in FlashFailure::ALL {
         assert!(
-            class == FlashFailure::ReconnectTimedOut
-                || fixtures.iter().any(|(_, _, expected)| *expected == class),
+            matches!(
+                class,
+                FlashFailure::ReconnectTimedOut
+                    | FlashFailure::WrongProduct
+                    | FlashFailure::ChooseProduct
+            ) || fixtures.iter().any(|(_, _, expected)| *expected == class),
             "{class:?} has no fixture"
         );
     }
@@ -511,7 +515,9 @@ fn firmware_status_exposes_no_port_or_path() {
                 "failure",
                 "imageSize",
                 "message",
-                "phase"
+                "phase",
+                "restoreChoices",
+                "wrongProduct"
             ]
         );
         let text = json.to_string();
@@ -521,4 +527,76 @@ fn firmware_status_exposes_no_port_or_path() {
         flash.finish(Err(FlashFailure::Unknown));
         flash.request_recovery(&[kivori_port("COM7")]).unwrap();
     }
+}
+
+#[test]
+fn a_wrong_product_refusal_writes_nothing_and_carries_both_names() {
+    use kivori_desktop::identity::{check_image_for_device, DeviceIdentity};
+    let image = kivori_desktop::firmware_marker::ImageIdentity {
+        product: 1,
+        board: 1,
+        version: "1.4.0".into(),
+        min_protocol: (1, 6),
+    };
+    let device = DeviceIdentity {
+        product: 7,
+        board: 1,
+        ..DeviceIdentity::legacy()
+    };
+    let refusal = check_image_for_device(&image, &device).expect_err("another product");
+
+    let mut flash = FlashWorkflow::new(true, 512);
+    flash.fail_wrong_product(refusal);
+    let status = flash.status();
+    assert_eq!(status.phase, FirmwarePhase::Failed);
+    assert_eq!(status.failure, Some(FlashFailure::WrongProduct));
+    let names = status.wrong_product.as_ref().expect("both names");
+    assert_eq!(names.device, "Unknown product (7) on Unknown board (1)");
+    assert_eq!(names.image, "Kivori Desk Buddy on C3 SuperMini");
+    // The flasher was never reserved: nothing owns the port.
+    assert!(!flash.is_busy());
+    let kinds: Vec<_> = flash.drain_activity().iter().map(|a| a.kind).collect();
+    assert!(kinds.contains(&ActivityEventKind::FirmwarePreparationRejected));
+    assert!(!kinds.contains(&ActivityEventKind::FirmwareFlasherStarted));
+
+    // The next attempt starts clean.
+    flash.request(true, Some("COM7"), Some("deadbeef")).unwrap();
+    assert_eq!(flash.status().failure, None);
+    assert_eq!(flash.status().wrong_product, None);
+}
+
+#[test]
+fn a_restore_that_needs_a_pick_lists_the_products_and_clears_on_the_next_attempt() {
+    use kivori_desktop::identity::RestoreOption;
+    let mut flash = FlashWorkflow::new(true, 512);
+    flash.ask_restore_choice(vec![
+        RestoreOption {
+            id: "desk-buddy".into(),
+            name: "Kivori Desk Buddy".into(),
+        },
+        RestoreOption {
+            id: "lamp".into(),
+            name: "Lamp".into(),
+        },
+    ]);
+    assert_eq!(flash.status().failure, Some(FlashFailure::ChooseProduct));
+    assert_eq!(flash.status().restore_choices.len(), 2);
+    assert_eq!(flash.status().restore_choices[1].id, "lamp");
+    assert!(!flash.is_busy());
+    let candidates = [PortCandidate::new("COM7", Some(0x303A), Some(0x1001))];
+    flash.request_recovery(&candidates).unwrap();
+    assert!(flash.status().restore_choices.is_empty());
+}
+
+#[test]
+fn a_restore_for_a_picked_product_is_queued_with_its_id() {
+    let (state, rx) = app_state_with_connection("disconnected");
+    assert!(state
+        .queue_firmware_restore_for("desk-buddy".into())
+        .is_ok());
+    assert_eq!(
+        rx.recv().unwrap(),
+        DeviceCommand::RestoreFirmwareFor("desk-buddy".into())
+    );
+    state.shutdown();
 }

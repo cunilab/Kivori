@@ -29,6 +29,7 @@
 //! order, and backlight are supplied from outside this module and remain unconfirmed.
 
 use crate::health::{build_diagnostic, build_health, DeviceDiagnostic};
+use crate::identity::BootCheck;
 use crate::input::button::{ButtonEvent, ButtonGesture};
 use crate::input::gesture::{RotaryEvent, RotaryGesture};
 use crate::input::quadrature::QuadratureDecoder;
@@ -45,6 +46,7 @@ use kivori_model::desk::{
 use kivori_model::input::InputLevels;
 use kivori_model::internals::DeviceInternals;
 use kivori_model::presentation::{PrimaryState, ValueDisplay};
+use kivori_model::Capabilities;
 use kivori_model::{
     CompanionState, ElapsedMs, IdleLife, LookTarget, MascotAnimator, MascotPersonality,
 };
@@ -516,6 +518,21 @@ impl<'a> Runtime<'a> {
     /// Lets the board fill the device internals snapshot fields only it can measure.
     pub fn set_chip_probe(&mut self, probe: ChipProbe) {
         self.chip_probe = Some(probe);
+    }
+
+    /// Applies the boot identity check (tier A). A wrong board runs no product: the panel shows
+    /// the wrong-board notice, the link only offers `PRODUCT_IDENTITY_V1` (so the app can read the
+    /// chip's identity and reflash), and the recovery hold keeps working (invariant 24).
+    pub fn set_boot_check(&mut self, check: BootCheck) {
+        match check {
+            BootCheck::Run(identity) => self.dispatcher.set_product_identity(identity),
+            BootCheck::WrongBoard(identity) => {
+                self.dispatcher.set_product_identity(identity);
+                self.dispatcher
+                    .restrict_capabilities(Capabilities::PRODUCT_IDENTITY_V1);
+                self.renderer.set_wrong_board(true);
+            }
+        }
     }
 
     /// The companion state the device currently holds.
@@ -1148,6 +1165,7 @@ pub fn run_buffered<C, T, I, D>(
     blob: &AssetBlob,
     frame_buffer: &mut [kivori_model::Rgb565; crate::render::FRAME_PIXELS],
     chip_probe: ChipProbe,
+    boot: BootCheck,
     observe: impl FnMut(&Tick, &mut T),
 ) -> !
 where
@@ -1158,6 +1176,7 @@ where
 {
     let mut runtime = Runtime::with_frame_buffer(identity, config, frame_buffer);
     runtime.set_chip_probe(chip_probe);
+    runtime.set_boot_check(boot);
     run_loop(
         &mut runtime,
         clock,

@@ -62,6 +62,7 @@ describe('DevicePage', () => {
             firmwareVersion: '1.4.2',
             protocolVersion: { major: 1, minor: 0 },
             deviceIdHashShort: 'deadbeef',
+            identity: null,
           },
         }),
       ),
@@ -71,6 +72,57 @@ describe('DevicePage', () => {
     expect(screen.getByTestId('desired')).toHaveTextContent('Busy');
     expect(screen.getByTestId('reported')).toHaveTextContent('Happy');
     expect(screen.getByText('deadbeef')).toBeInTheDocument();
+  });
+
+  it('shows the product, board and identity source, with the revision unknown until provisioned', () => {
+    render(
+      view(
+        status({
+          connection: 'connected',
+          device: {
+            firmwareVersion: '1.4.2',
+            protocolVersion: { major: 1, minor: 6 },
+            deviceIdHashShort: 'deadbeef',
+            identity: {
+              product: 'Kivori Desk Buddy',
+              board: 'C3 SuperMini',
+              hwRev: null,
+              source: 'build',
+              known: true,
+            },
+          },
+        }),
+      ),
+    );
+    expect(screen.getByTestId('device-product')).toHaveTextContent('Kivori Desk Buddy');
+    expect(screen.getByTestId('device-board')).toHaveTextContent('C3 SuperMini');
+    expect(screen.getByTestId('device-hw-rev')).toHaveTextContent(/^—$/);
+    expect(screen.getByTestId('device-identity-source')).toHaveTextContent('Firmware build');
+  });
+
+  it('shows an unknown product by its number and a provisioned revision', () => {
+    render(
+      view(
+        status({
+          connection: 'connected',
+          device: {
+            firmwareVersion: '1.4.2',
+            protocolVersion: { major: 1, minor: 6 },
+            deviceIdHashShort: 'deadbeef',
+            identity: {
+              product: 'Unknown product (9)',
+              board: 'Unknown board (4)',
+              hwRev: 2,
+              source: 'chip',
+              known: false,
+            },
+          },
+        }),
+      ),
+    );
+    expect(screen.getByTestId('device-product')).toHaveTextContent('Unknown product (9)');
+    expect(screen.getByTestId('device-hw-rev')).toHaveTextContent('2');
+    expect(screen.getByTestId('device-identity-source')).toHaveTextContent('Chip');
   });
 
   it('shows reconnecting with the attempt count and unknown versions as "—"', () => {

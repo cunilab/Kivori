@@ -25,7 +25,7 @@ import { flashFirmware, getFirmwareStatus, restoreFirmware } from '@/lib/ipc';
 import type { FirmwareStatusDto } from '@/lib/ipc/types';
 import { failureMessage, needsRestore } from './firmware-copy';
 import { RecoveryDialog } from './RecoveryDialog';
-import { strings } from '@/lib/i18n/strings';
+import { format, strings } from '@/lib/i18n/strings';
 import { cn } from '@kivori/ui/lib/utils';
 
 const PHASES = ['preparing', 'flashing', 'reconnecting', 'succeeded'] as const;
@@ -102,13 +102,13 @@ export function FirmwareUpdate({
     }
   };
 
-  const restore = async (): Promise<void> => {
+  const restore = async (product?: string): Promise<void> => {
     if (!canRestore || pending.current) return;
     pending.current = true;
     setRequesting(true);
     setRequestError(null);
     try {
-      await restoreFirmware();
+      await restoreFirmware(product);
       const snapshot = await getFirmwareStatus();
       if (mounted.current) setStatus(snapshot);
     } catch (failure) {
@@ -172,7 +172,7 @@ export function FirmwareUpdate({
           {requesting
             ? t.preparing
             : phase === 'failed'
-              ? failureMessage(status?.failure ?? null)
+              ? failureMessage(status?.failure ?? null, status?.wrongProduct ?? null)
               : (status?.message ?? t.checking)}
         </p>
         {status ? (
@@ -233,6 +233,22 @@ export function FirmwareUpdate({
           <Plug className="mt-px size-3.5 shrink-0" aria-hidden="true" />
           {t.caution}
         </p>
+        {phase === 'failed' && status?.failure === 'chooseProduct' ? (
+          <ul className="space-y-2" aria-label={t.failures.chooseProduct}>
+            {status.restoreChoices.map((choice) => (
+              <li key={choice.id}>
+                <Button
+                  variant="outline"
+                  disabled={!canRestore}
+                  onClick={() => void restore(choice.id)}
+                >
+                  <LifeBuoy aria-hidden="true" />
+                  {format(t.chooseProductAction, { product: choice.name })}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         {showRestore ? (
           <div className="space-y-2">
             <Button

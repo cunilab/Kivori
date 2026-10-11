@@ -21,6 +21,8 @@ pub mod debug_payloads;
 pub mod device_id;
 pub mod display;
 pub mod health;
+/// Product identity: the build's product and board, the image record, and the wrong-board check (ADR-0014).
+pub mod identity;
 pub mod input;
 /// Device internals snapshot pieces (ADR-0013): load meter, flash and stack arithmetic.
 pub mod internals;

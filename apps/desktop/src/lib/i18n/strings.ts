@@ -454,6 +454,19 @@ export const strings = {
     firmware: 'Firmware',
     protocol: 'Protocol',
     deviceId: 'Device ID (short)',
+    product: 'Product',
+    board: 'Board',
+    hardwareRevision: 'Hardware revision',
+    identitySource: 'Identity source',
+    identity: {
+      sources: {
+        legacy: 'Not reported (original firmware)',
+        build: 'Firmware build',
+        chip: 'Chip (provisioned)',
+      },
+      why: 'Connect Kivori to read this.',
+      revisionWhy: 'This unit has not been provisioned with a hardware revision.',
+    },
     buddyRequested: 'Buddy (requested)',
     buddyReported: 'Buddy (on device)',
     app: 'Kivori Desktop',
@@ -492,6 +505,10 @@ export const strings = {
       negotiatedMinor: 'Negotiated minor',
       capabilities: 'Capabilities',
       deviceHash: 'Device (short hash)',
+      product: 'Product',
+      board: 'Board',
+      hardwareRevision: 'Hardware revision',
+      identitySource: 'Identity source',
       state: 'State',
       connectedFor: 'Connected for',
       reconnects: 'Reconnects',
@@ -532,6 +549,7 @@ export const strings = {
     },
     why: {
       device: 'Connect Kivori to read this.',
+      revision: 'This unit has not been provisioned with a hardware revision.',
       pong: 'The device has not replied yet.',
       health: 'The device has not reported this yet.',
     },
@@ -618,9 +636,13 @@ export const strings = {
         'The firmware could not be prepared. This build of Kivori has no usable firmware.',
       reconnectTimedOut:
         'The update finished, but Kivori could not confirm your device afterwards. Unplug it, plug it in again, and check the Device page.',
+      wrongProduct:
+        'This firmware is not for your device, so nothing was changed. Your device is {device}; the firmware in this app is for {image}.',
+      chooseProduct: 'Kivori could not tell which product this is. Choose yours, then restore it.',
       unknown:
         'The update did not finish. If your Kivori no longer works, restore it with the BOOT button.',
     },
+    chooseProductAction: 'Restore {product}',
     restore: 'Restore with the BOOT button',
     restoreHint: 'Use this if the update failed or your Kivori shows the wrong firmware.',
     confirmTitle: 'Flash Kivori firmware?',

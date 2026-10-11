@@ -20,6 +20,7 @@ const disconnected: DiagnosticsDto = {
     negotiatedMinor: null,
     capabilities: [],
     deviceHash: null,
+    identity: null,
   },
   connection: {
     state: 'disconnected',
@@ -54,6 +55,13 @@ const connected: DiagnosticsDto = {
     negotiatedMinor: 3,
     capabilities: ['mascotInteraction', 'deskStatusV1'],
     deviceHash: '3fa9c1d2',
+    identity: {
+      product: 'Kivori Desk Buddy',
+      board: 'C3 SuperMini',
+      hwRev: null,
+      source: 'legacy',
+      known: true,
+    },
   },
   connection: { ...disconnected.connection, state: 'connected', rttMs: 6, lastPongAgeMs: 400 },
   health: { ...disconnected.health, freeBytes: 2048, deviceUptimeMs: 65_000 },
@@ -75,8 +83,9 @@ describe('Diagnostics card', () => {
     view();
     await screen.findByText('0.1.0');
     expect(screen.getByRole('button', { name: 'Copy diagnostics' })).toBeEnabled();
-    // firmware, negotiated minor, hash, connected for, last reply, rtt, uptime, memory
-    expect(screen.getAllByLabelText(/^— /)).toHaveLength(8);
+    // product, board, revision, identity source, firmware, negotiated minor, hash, connected for,
+    // last reply, rtt, uptime, memory
+    expect(screen.getAllByLabelText(/^— /)).toHaveLength(12);
     expect(screen.queryByText('0 ms')).not.toBeInTheDocument();
   });
 
@@ -87,6 +96,31 @@ describe('Diagnostics card', () => {
     expect(screen.getByText('mascotInteraction, deskStatusV1')).toBeInTheDocument();
     expect(screen.getByText('6 ms')).toBeInTheDocument();
     expect(screen.getByText('2.0 KiB')).toBeInTheDocument();
+  });
+
+  it('shows the product, board and identity source, and a revision that is unknown until provisioned', async () => {
+    bridge.get.mockResolvedValue(connected);
+    view();
+    await screen.findByText('3fa9c1d2');
+    expect(screen.getByTestId('diag-product')).toHaveTextContent('Kivori Desk Buddy');
+    expect(screen.getByTestId('diag-board')).toHaveTextContent('C3 SuperMini');
+    expect(screen.getByTestId('diag-identity-source')).toHaveTextContent('Not reported');
+    expect(screen.getByTestId('diag-hw-rev')).toHaveTextContent('—');
+    expect(screen.getByLabelText(/provisioned with a hardware revision/)).toBeInTheDocument();
+  });
+
+  it('shows a provisioned unit by its revision and chip source', async () => {
+    bridge.get.mockResolvedValue({
+      ...connected,
+      versions: {
+        ...connected.versions,
+        identity: { ...connected.versions.identity!, hwRev: 2, source: 'chip' },
+      },
+    });
+    view();
+    await screen.findByText('3fa9c1d2');
+    expect(screen.getByTestId('diag-hw-rev')).toHaveTextContent('2');
+    expect(screen.getByTestId('diag-identity-source')).toHaveTextContent('Chip');
   });
 
   it('polls again every second while mounted', async () => {

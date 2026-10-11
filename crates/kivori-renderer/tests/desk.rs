@@ -10,7 +10,7 @@ use kivori_model::presentation::{ValueConfidence, ValueDisplay, ValueKind};
 use kivori_model::{Rect, Rgb565};
 use kivori_renderer::desk::{
     render_chrome, render_mode, render_recovery, render_updating, render_view, render_views,
-    view_switch,
+    render_wrong_board, view_switch,
 };
 
 const DIM: u16 = 240;
@@ -216,6 +216,11 @@ fn tiles_stitch_to_the_full_frame_for_recovery() {
 #[test]
 fn tiles_stitch_to_the_full_frame_for_updating() {
     assert_eq!(tiled(render_updating), full(render_updating));
+}
+
+#[test]
+fn tiles_stitch_to_the_full_frame_for_wrong_board() {
+    assert_eq!(tiled(render_wrong_board), full(render_wrong_board));
 }
 
 #[test]
@@ -672,6 +677,11 @@ fn render_mode_writes_every_pixel() {
 #[test]
 fn render_updating_writes_every_pixel() {
     assert_no_sentinel(&full(render_updating), "updating");
+}
+
+#[test]
+fn render_wrong_board_writes_every_pixel() {
+    assert_no_sentinel(&full(render_wrong_board), "wrong board");
 }
 
 #[test]

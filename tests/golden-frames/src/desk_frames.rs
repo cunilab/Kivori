@@ -20,6 +20,8 @@ pub enum DeskFrame {
     Recovery(u8),
     /// `render_updating`.
     Updating,
+    /// `render_wrong_board`.
+    WrongBoard,
     /// `render_views` (with an optional live volume overlay) then `render_chrome`.
     View(DeskView, Option<ValueDisplay>),
 }
@@ -39,6 +41,7 @@ pub fn render_desk_with(frame: &DeskFrame, mut buddy: impl FnMut(&mut TileBand))
     match frame {
         DeskFrame::Recovery(percent) => desk::render_recovery(&mut band, *percent),
         DeskFrame::Updating => desk::render_updating(&mut band),
+        DeskFrame::WrongBoard => desk::render_wrong_board(&mut band),
         DeskFrame::View(view, overlay) => {
             let _ = desk::render_views(&mut band, view, |b, mode| {
                 desk::render_view(b, mode, view, *overlay);
@@ -199,6 +202,7 @@ pub fn desk_frames() -> Vec<(&'static str, DeskFrame)> {
         ("recovery_50", DeskFrame::Recovery(50)),
         ("recovery_100", DeskFrame::Recovery(100)),
         ("updating", DeskFrame::Updating),
+        ("wrong_board", DeskFrame::WrongBoard),
         (
             "buddy_load_pressed",
             view(DisplayMode::Buddy, |v| {

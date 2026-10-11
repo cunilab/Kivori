@@ -988,3 +988,104 @@ fn mic_state_goes_only_to_a_device_that_negotiated_it() {
     assert_eq!(sent[0].session, session.current_session().unwrap());
     assert_eq!(sent[0].mic, state);
 }
+
+fn identity_message(session: u32, product: u16, board: u16) -> Message {
+    Message::Identity(kivori_protocol::Identity {
+        session,
+        product,
+        board,
+        hw_rev: Some(2),
+        source: kivori_protocol::IdentitySource::Chip,
+    })
+}
+
+#[test]
+fn a_device_without_the_identity_capability_is_the_legacy_desk_buddy() {
+    use kivori_desktop::identity::{DeviceIdentity, IdentitySource};
+    let (_link, session, _manager, _orch) = connect(SendableState::Idle);
+    let identity = session.identity().expect("legacy identity");
+    assert_eq!(identity, DeviceIdentity::legacy());
+    assert_eq!(identity.source, IdentitySource::Legacy);
+    assert_eq!(identity.hw_rev, None);
+    assert_eq!(identity.label(), "Kivori Desk Buddy on C3 SuperMini");
+}
+
+#[test]
+fn identity_is_pending_until_the_message_arrives_then_scoped_to_the_connection() {
+    use kivori_desktop::identity::IdentitySource;
+    let (mut link, mut session, mut manager, mut orch) = connect_with_caps(
+        SendableState::Idle,
+        Capabilities::MASCOT_INTERACTION.union(Capabilities::PRODUCT_IDENTITY_V1),
+    );
+    assert_eq!(session.identity(), None, "negotiated but not yet reported");
+    let nonce = session.current_session().expect("session");
+
+    // An identity for another session is dropped unseen.
+    device_push(
+        &mut link,
+        &identity_message(nonce.wrapping_add(1), 1, 1),
+        wire_version(),
+        1,
+    );
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+    assert_eq!(session.identity(), None);
+
+    device_push(&mut link, &identity_message(nonce, 1, 1), wire_version(), 2);
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+    let identity = session.identity().expect("identity");
+    assert_eq!(
+        (identity.hw_rev, identity.source),
+        (Some(2), IdentitySource::Chip)
+    );
+    assert!(identity.resolve().is_some());
+
+    device_push(
+        &mut link,
+        &Message::Bye(Bye {
+            reason: ByeReason::Shutdown,
+        }),
+        wire_version(),
+        3,
+    );
+    let _ = session.pump(&mut link, &mut manager, &mut orch);
+    assert_eq!(session.identity(), None, "gone with the connection");
+}
+
+#[test]
+fn an_unknown_product_is_never_guessed_and_nothing_is_negotiated_for_it() {
+    let (mut link, mut session, mut manager, mut orch) = connect_with_caps(
+        SendableState::Idle,
+        Capabilities::MASCOT_INTERACTION.union(Capabilities::PRODUCT_IDENTITY_V1),
+    );
+    let nonce = session.current_session().expect("session");
+    device_push(&mut link, &identity_message(nonce, 9, 1), wire_version(), 1);
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+    let identity = session.identity().expect("reported identity");
+    assert!(identity.resolve().is_none());
+    assert_eq!(identity.product_name(), "Unknown product (9)");
+    assert!(
+        !session.supports_mascot_interaction(),
+        "no feature is driven"
+    );
+}
+
+#[test]
+fn an_unnegotiated_identity_message_is_ignored() {
+    let (mut link, mut session, mut manager, mut orch) = connect(SendableState::Idle);
+    let nonce = session.current_session().expect("session");
+    device_push(&mut link, &identity_message(nonce, 9, 9), wire_version(), 1);
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+    assert_eq!(
+        session.identity().map(|i| i.product),
+        Some(1),
+        "still the legacy identity"
+    );
+}

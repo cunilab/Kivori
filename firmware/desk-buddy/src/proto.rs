@@ -5,16 +5,17 @@
 //! frames are dropped without side effects and never panic (SC-008).
 
 use crate::health::{build_pong, diagnostic_for_sequence, DeviceDiagnostic, RejectReason};
+use crate::identity::ProductIdentity;
 use crate::ports::Transport;
 use crate::state::{DeviceEvent, DeviceState};
 use heapless::Vec;
 use kivori_model::{Capabilities, ProtocolVersion};
 use kivori_protocol::{
     decode_message, encode_message, BuddySettings, ByeReason, ControlId, ControlLabelsUpdate,
-    DeviceId, Feedback, FirmwareVersion, HelloAck, InputEvent, InputKind, MascotActionApplied,
-    MediaInfoUpdate, Message, MicStateUpdate, Nonce, PlayMascotAction, Presentation, ProtoError,
-    SeqClass, SequenceTracker, StateReport, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR,
-    PROTOCOL_MINOR,
+    DeviceId, Feedback, FirmwareVersion, HelloAck, Identity, InputEvent, InputKind,
+    MascotActionApplied, MediaInfoUpdate, Message, MicStateUpdate, Nonce, PlayMascotAction,
+    Presentation, ProtoError, SeqClass, SequenceTracker, StateReport, Status, MAX_FRAME, MAX_WIRE,
+    PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 /// Inbound accumulation capacity: room for a partial packet plus one full wire packet.
@@ -63,6 +64,9 @@ pub struct Dispatcher {
     tracker: SequenceTracker,
     tx_seq: u16,
     identity: DeviceIdentity,
+    /// What the `Identity` message reports (`PRODUCT_IDENTITY_V1`): the build's until the board
+    /// adapter says otherwise.
+    product: ProductIdentity,
     version: ProtocolVersion,
     /// One pending safe diagnostic, so the production runtime can report *that* a frame was rejected or a
     /// gap was seen without the dispatcher itself owning a transmit policy. Deliberately a single slot:
@@ -123,6 +127,7 @@ impl Dispatcher {
             tracker: SequenceTracker::new(),
             tx_seq: 0,
             identity,
+            product: ProductIdentity::BUILD,
             version: ProtocolVersion::new(PROTOCOL_MAJOR, PROTOCOL_MINOR),
             pending: None,
             rejected: 0,
@@ -146,6 +151,18 @@ impl Dispatcher {
             outbound_frames: 0,
             pending_internals: None,
         }
+    }
+
+    /// Sets the identity the device reports right after a handshake that negotiated
+    /// `PRODUCT_IDENTITY_V1` (the board adapter passes the chip's record result).
+    pub fn set_product_identity(&mut self, product: ProductIdentity) {
+        self.product = product;
+    }
+
+    /// Narrows the advertised capabilities to `keep`. A device that runs no product (wrong board)
+    /// offers only what lets the app recognise and reflash it.
+    pub fn restrict_capabilities(&mut self, keep: Capabilities) {
+        self.identity.capabilities = self.identity.capabilities.intersection(keep);
     }
 
     /// Frames decoded since boot (wrapping). It moves whenever the host sends anything valid, so
@@ -490,6 +507,25 @@ impl Dispatcher {
                         .negotiated_caps
                         .intersection(self.identity.capabilities)
                         .intersection(hello_caps);
+                }
+                // The identity rides right behind the handshake, once per session, and only to a
+                // host that negotiated it (a legacy host never sees an unknown tag).
+                if let (true, Some(session)) = (
+                    self.negotiated_caps
+                        .contains(Capabilities::PRODUCT_IDENTITY_V1),
+                    self.accepted_session,
+                ) {
+                    let product = self.product;
+                    self.send(
+                        transport,
+                        &Message::Identity(Identity {
+                            session,
+                            product: product.product,
+                            board: product.board,
+                            hw_rev: product.hw_rev,
+                            source: product.source,
+                        }),
+                    )?;
                 }
             }
             // Every accepted `SetState` is answered with the state now shown, changed or not: a

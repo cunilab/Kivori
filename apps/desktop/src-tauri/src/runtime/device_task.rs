@@ -23,6 +23,7 @@ use crate::activity::{
     ActivityEventKind, ActivityLog, ActivityMetadata, RuntimeActivityPlanner,
     RuntimeActivityRequest, SessionActivity,
 };
+use crate::catalog::Catalog;
 use crate::companion::CompanionDirector;
 use crate::config::ResolvedConfig;
 use crate::desk::catalog::{Os, Services, ServicesCell};
@@ -34,6 +35,7 @@ use crate::device::serial::{enumerate, SerialPortLink};
 use crate::device::session::{Session, SessionConfig, SessionError};
 use crate::device::transport::SerialLink;
 use crate::firmware::{self, FirmwareStatus, FlashFailure, FlashWorkflow, ResumeTarget};
+use crate::identity::{check_image_for_device, decide_recovery, DeviceIdentity, RecoveryDecision};
 use crate::input::{Freshness, InputIngress, LogicalInput, RejectReason};
 use crate::ipc::dto::{
     availability_token, connection_status, desk_status_dto, ConnectionStatusDto, DeskStatusDto,
@@ -223,7 +225,8 @@ fn device_loop(
         session.last_mascot_action_applied(),
         session.connection_generation(),
         presence.presence(),
-    );
+    )
+    .with_identity(session.identity());
     *status.lock().expect("status lock") = last.clone();
     events::emit_status(&app, &last);
     lifecycle::refresh_tray(&app, &last);
@@ -363,21 +366,62 @@ fn device_loop(
                         record_observations(&app, &activity_log, [observation]);
                     });
                 }
-                flash_command @ (DeviceCommand::FlashFirmware | DeviceCommand::RestoreFirmware) => {
+                flash_command @ (DeviceCommand::FlashFirmware
+                | DeviceCommand::RestoreFirmware
+                | DeviceCommand::RestoreFirmwareFor(_)) => {
                     // A device that cannot be verified (wrong-major firmware, a unit in ROM download
                     // mode) is recovered by identity-free port rules instead of a verified handshake.
-                    let recovery = flash_command == DeviceCommand::RestoreFirmware
+                    let chosen = match &flash_command {
+                        DeviceCommand::RestoreFirmwareFor(product) => Some(product.clone()),
+                        _ => None,
+                    };
+                    let recovery = flash_command != DeviceCommand::FlashFirmware
                         || manager.state() == ConnectionState::Incompatible;
                     let mut refusal = firmware::FlashFailure::Unknown;
+                    let image = firmware::bundled_image_identity();
                     let requested = if recovery {
                         let candidates = enumerate();
-                        if filter_candidates(&candidates, default_allowlist()).is_empty() {
+                        let found = filter_candidates(&candidates, default_allowlist());
+                        if found.is_empty() {
                             refusal = firmware::FlashFailure::NoDownloadMode;
                         }
-                        flash.request_recovery(&candidates)
+                        // No handshake, so no identity: with one product for this port it is used;
+                        // with several the user picks, and the pick must be the bundled image's.
+                        let usb = found.first().and_then(|p| Some((p.vid?, p.pid?)));
+                        match decide_recovery(Catalog::embedded(), usb, chosen.as_deref(), image) {
+                            RecoveryDecision::Proceed => flash.request_recovery(&candidates),
+                            RecoveryDecision::Choose(options) if found.len() == 1 => {
+                                flash.ask_restore_choice(options);
+                                drain_firmware_activity(&app, &activity_log, &mut flash);
+                                publish_firmware_status(&firmware_status, &flash);
+                                continue;
+                            }
+                            RecoveryDecision::Refuse(wrong) if found.len() == 1 => {
+                                flash.fail_wrong_product(wrong);
+                                drain_firmware_activity(&app, &activity_log, &mut flash);
+                                publish_firmware_status(&firmware_status, &flash);
+                                continue;
+                            }
+                            // Not exactly one device on a port: the port rules refuse it as before.
+                            _ => flash.request_recovery(&candidates),
+                        }
                     } else {
+                        // Tier A (ADR-0016): the image's identity record must match the connected
+                        // device (legacy counts as desk-buddy on c3-supermini), checked before
+                        // anything is reserved, let alone written. A device whose identity has not
+                        // arrived yet cannot be verified and is refused by `request` below.
+                        let mismatch = session.identity().zip(image).and_then(|(device, image)| {
+                            check_image_for_device(image, &device).err()
+                        });
+                        if let Some(wrong) = mismatch {
+                            flash.fail_wrong_product(wrong);
+                            drain_firmware_activity(&app, &activity_log, &mut flash);
+                            publish_firmware_status(&firmware_status, &flash);
+                            continue;
+                        }
+                        let identity_pending = session.identity().is_none();
                         flash.request(
-                            manager.state().can_drive_device(),
+                            manager.state().can_drive_device() && !identity_pending,
                             connected_port.as_deref(),
                             manager
                                 .device()
@@ -871,7 +915,8 @@ fn device_loop(
             session.last_mascot_action_applied(),
             session.connection_generation(),
             presence.presence(),
-        );
+        )
+        .with_identity(session.identity());
         if snapshot != last {
             *status.lock().expect("status lock") = snapshot.clone();
             events::emit_status(&app, &snapshot);
@@ -1332,6 +1377,7 @@ pub fn plan_device_request(
         }
         DeviceCommand::FlashFirmware
         | DeviceCommand::RestoreFirmware
+        | DeviceCommand::RestoreFirmwareFor(_)
         | DeviceCommand::Refresh
         | DeviceCommand::RequestInternals
         | DeviceCommand::SetDisplayMode(_)
@@ -1483,6 +1529,8 @@ struct DiagnosticsPublisher {
     /// The internals snapshot in the last publish; a new one is published at once so the card
     /// does not wait out the interval.
     last_internals: Option<DeviceInternals>,
+    /// The identity in the last publish, published at once when it arrives.
+    last_identity: Option<DeviceIdentity>,
     connected_since: Option<Instant>,
     connections: u32,
 }
@@ -1507,7 +1555,9 @@ impl DiagnosticsPublisher {
             self.connected_since = None;
         }
         let internals = session.internals();
+        let identity = session.identity();
         if internals == self.last_internals
+            && identity == self.last_identity
             && self
                 .last_published
                 .is_some_and(|at| now.duration_since(at) < Self::INTERVAL)
@@ -1516,6 +1566,7 @@ impl DiagnosticsPublisher {
         }
         self.last_published = Some(now);
         self.last_internals = internals;
+        self.last_identity = identity;
         let device = manager.device().filter(|_| connected);
         *cell.lock().expect("diagnostics lock") = DiagnosticsSnapshot {
             connection: crate::ipc::dto::connection_token(manager.state()),
@@ -1538,6 +1589,7 @@ impl DiagnosticsPublisher {
             session: session.diagnostics(),
             host,
             internals,
+            identity: session.identity().filter(|_| connected),
         };
     }
 }

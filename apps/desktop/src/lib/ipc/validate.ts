@@ -12,6 +12,7 @@ import {
   HOST_INPUT_PERMISSIONS,
   HOST_MEDIA,
   HOST_PRESENCES,
+  IDENTITY_SOURCES,
   STEP_SPEC_KINDS,
   ACTIVITY_EVENT_TYPES,
   CATALOG_AVAILABILITIES,
@@ -42,6 +43,7 @@ import type {
   MicDto,
   ActionCatalogEntryDto,
   ConnectionStatusDto,
+  DeviceIdentityDto,
   ActionSpec,
   ActivityEventDto,
   ButtonDto,
@@ -157,9 +159,26 @@ function countOrNull(name: string, value: unknown): number | null {
  */
 export function parseConnectionStatus(raw: unknown): ConnectionStatusDto {
   const r = record('connection status', raw);
+  const status = r as unknown as ConnectionStatusDto;
   return {
-    ...(r as unknown as ConnectionStatusDto),
+    ...status,
+    device: status.device
+      ? { ...status.device, identity: parseIdentity(record('device', status.device).identity) }
+      : status.device,
     host: oneOf('host presence', HOST_PRESENCES, r.host),
+  };
+}
+
+/** A device identity, or `null` while the device has not reported one. An unknown source is rejected. */
+function parseIdentity(raw: unknown): DeviceIdentityDto | null {
+  if (raw === null || raw === undefined) return null;
+  const r = record('device identity', raw);
+  return {
+    product: text('product name', r.product, 96),
+    board: text('board name', r.board, 96),
+    hwRev: countOrNull('hardware revision', r.hwRev ?? null),
+    source: oneOf('identity source', IDENTITY_SOURCES, r.source),
+    known: r.known === true,
   };
 }
 
@@ -196,6 +215,26 @@ export function parseFirmwareStatus(raw: unknown): FirmwareStatusDto {
     failure: r.failure === null ? null : oneOf('firmware failure', FLASH_FAILURES, r.failure),
     bundledVersion: textOrNull('bundled firmware version', r.bundledVersion),
     advice: oneOf('update advice', UPDATE_ADVICE, r.advice),
+    wrongProduct:
+      r.wrongProduct === null || r.wrongProduct === undefined
+        ? null
+        : {
+            device: text(
+              'wrong product device',
+              record('wrong product', r.wrongProduct).device,
+              192,
+            ),
+            image: text('wrong product image', record('wrong product', r.wrongProduct).image, 192),
+          },
+    restoreChoices: Array.isArray(r.restoreChoices)
+      ? r.restoreChoices.map((raw) => {
+          const choice = record('restore choice', raw);
+          return {
+            id: text('product id', choice.id, 64),
+            name: text('product name', choice.name, 96),
+          };
+        })
+      : [],
   };
 }
 
@@ -219,6 +258,7 @@ export function parseDiagnostics(raw: unknown): DiagnosticsDto {
       ),
       deviceHash:
         versions.deviceHash === null ? null : text('device hash', versions.deviceHash, 32),
+      identity: parseIdentity(versions.identity),
     },
     connection: {
       state: oneOf('connection state', CONNECTION_STATES, connection.state),

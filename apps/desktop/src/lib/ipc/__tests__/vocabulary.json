@@ -26,7 +26,8 @@
     "quietAckV1",
     "deviceInternalsV1",
     "idleLifeV1",
-    "micStateV1"
+    "micStateV1",
+    "productIdentityV1"
   ],
   "chipModels": ["esp32c3"],
   "controls": [
@@ -59,6 +60,8 @@
     "cancelled",
     "imageUnavailable",
     "reconnectTimedOut",
+    "wrongProduct",
+    "chooseProduct",
     "unknown"
   ],
   "hostAvailability": ["available", "unsupported", "unavailable"],
@@ -66,6 +69,7 @@
   "hostInputPermission": ["required", "granted", "notNeeded", "unknown"],
   "hostMedia": ["observable", "notObservable"],
   "hostPresence": ["active", "locked", "sleeping"],
+  "identitySources": ["legacy", "build", "chip"],
   "profileIds": ["general", "browser", "code", "media", "zoom", "teams"],
   "profileLimits": {
     "apps": 32,

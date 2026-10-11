@@ -2300,7 +2300,7 @@ dependencies = [
 
 [[package]]
 name = "kivori-firmware"
-version = "1.4.1"
+version = "1.4.0"
 dependencies = [
  "embedded-graphics-core",
  "embedded-hal",
