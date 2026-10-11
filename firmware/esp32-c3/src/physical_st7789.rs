@@ -99,11 +99,11 @@ const _: () = {
     assert!(hw::BL == 8);
     assert!(hw::CS.is_none());
     assert!(hw::ROTARY.clk == 4);
-    assert!(hw::ROTARY.dt == 5);
-    assert!(hw::ROTARY.sw == 10);
-    assert!(hw::CONTEXT_BUTTONS[0] == 0);
-    assert!(hw::CONTEXT_BUTTONS[1] == 1);
-    assert!(hw::CONTEXT_BUTTONS[2] == 20);
+    assert!(hw::ROTARY.dt == 0);
+    assert!(hw::ROTARY.sw == 1);
+    assert!(hw::CONTEXT_BUTTONS[0] == 20);
+    assert!(hw::CONTEXT_BUTTONS[1] == 10);
+    assert!(hw::CONTEXT_BUTTONS[2] == 5);
 };
 
 /// Runs Kivori on the verified physical ESP32-C3 + ST7789 hardware.
@@ -229,8 +229,8 @@ pub fn run_mode(
     // Wiring specification (unverified on physical hardware; see
     // `profile::physical_st7789::ROTARY`):
     //   CLK -> GPIO4
-    //   DT  -> GPIO5
-    //   SW  -> GPIO10
+    //   DT  -> GPIO0
+    //   SW  -> GPIO1
     //
     // All three lines are active-low (HW-040 COM to GND), so they are read with
     // internal pull-ups. `PhysicalRotary` only reads and inverts pin levels; all
@@ -239,14 +239,14 @@ pub fn run_mode(
 
     let rotary_pull = InputConfig::default().with_pull(Pull::Up);
     let rotary_clk = Input::new(peripherals.GPIO4, rotary_pull);
-    let rotary_dt = Input::new(peripherals.GPIO5, rotary_pull);
-    let rotary_sw = Input::new(peripherals.GPIO10, rotary_pull);
-    // Contextual buttons: GPIO0 / GPIO1 / GPIO20 to GND, same pull-up active-low reading
+    let rotary_dt = Input::new(peripherals.GPIO0, rotary_pull);
+    let rotary_sw = Input::new(peripherals.GPIO1, rotary_pull);
+    // Contextual buttons: GPIO20 / GPIO10 / GPIO5 to GND, same pull-up active-low reading
     // (`profile::physical_st7789::CONTEXT_BUTTONS`).
     let keys = [
-        Input::new(peripherals.GPIO0, rotary_pull),
-        Input::new(peripherals.GPIO1, rotary_pull),
         Input::new(peripherals.GPIO20, rotary_pull),
+        Input::new(peripherals.GPIO10, rotary_pull),
+        Input::new(peripherals.GPIO5, rotary_pull),
     ];
     let mut io = Io::new(peripherals.IO_MUX);
     let mut rotary = PhysicalRotary::new(&mut io, rotary_clk, rotary_dt, rotary_sw, keys);

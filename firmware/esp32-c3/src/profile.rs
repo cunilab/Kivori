@@ -168,17 +168,20 @@ pub mod physical_st7789 {
     ///
     /// Pin choices, decided deliberately:
     ///
-    /// * **CLK = GPIO4, DT = GPIO5, SW = GPIO10.**
+    /// * **CLK = GPIO4, DT = GPIO0, SW = GPIO1.** All three sit on the SuperMini's left pin row,
+    ///   next to the encoder, so the copper-tape PCB needs no trace crossing between the rows.
     /// * **GPIO9 was rejected for `sw`** despite being the devkit BOOT button. Holding GPIO9 low
     ///   at reset enters ROM download mode, and the encoder switch is Kivori's recovery control —
     ///   a user power-cycling while holding it for recovery would land in the downloader instead
     ///   of booting Kivori.
-    /// * GPIO2 and GPIO8 are strapping pins and already taken (D/C, backlight). GPIO0, GPIO1 and
-    ///   GPIO20 carry the contextual buttons (see [`CONTEXT_BUTTONS`]); GPIO21 stays free as the
-    ///   UART0 TX boot / log console.
-    /// * **Known tradeoff:** only GPIO0-5 can wake the C3 from deep sleep, so `sw` on GPIO10
-    ///   cannot. Kivori's Display Sleep is panel blanking with the MCU awake, so this is outside
-    ///   the MVP contract; if deep-sleep wake is ever wanted, `sw` moves to GPIO1.
+    /// * GPIO2 and GPIO8 are strapping pins and already taken (D/C, backlight). GPIO20, GPIO10
+    ///   and GPIO5 carry the contextual buttons (see [`CONTEXT_BUTTONS`]); GPIO21 stays free as
+    ///   the UART0 TX boot / log console.
+    /// * **GPIO0 and GPIO1** are the XTAL_32K pair. They are plain GPIOs only when no 32.768 kHz
+    ///   crystal is fitted: check the devkit first (validation row 5.1).
+    /// * None of the three is a strapping pin, and all three are in GPIO0-5, so any of them can
+    ///   wake the C3 from deep sleep if that is ever wanted (Kivori's Display Sleep is panel
+    ///   blanking with the MCU awake).
     ///
     /// The three lines are wired active-low (HW-040 COM to GND) and read with internal pull-ups;
     /// the adapter in `physical_rotary` inverts them to logical levels.
@@ -195,8 +198,8 @@ pub mod physical_st7789 {
     /// HW-040 wiring specification decided for this board (see [`RotaryProfile`]).
     pub const ROTARY: RotaryProfile = RotaryProfile {
         clk: 4,
-        dt: 5,
-        sw: 10,
+        dt: 0,
+        sw: 1,
     };
 
     /// The three contextual buttons, left to right. Each is a plain momentary switch from the
@@ -204,8 +207,8 @@ pub mod physical_st7789 {
     ///
     /// These are the only free GPIOs left, decided deliberately:
     ///
-    /// * **GPIO0 and GPIO1** are the XTAL_32K pair. They are plain GPIOs only when no 32.768 kHz
-    ///   crystal is fitted: check the devkit first (validation row 5.1).
+    /// * All three sit on the SuperMini's right pin row, next to the buttons, so the copper-tape
+    ///   PCB needs no trace crossing between the rows.
     /// * **GPIO20** is UART0 RX. Kivori never reads UART0 (the data link is USB Serial/JTAG and
     ///   `esp-println` only writes TX), so the boot log on GPIO21 keeps working.
     /// * **GPIO9 stays unused**: pressed at reset it would enter ROM download mode.
@@ -213,5 +216,5 @@ pub mod physical_st7789 {
     ///   chip boots.
     ///
     /// Like the encoder map, a specification until physically verified.
-    pub const CONTEXT_BUTTONS: [u8; 3] = [0, 1, 20];
+    pub const CONTEXT_BUTTONS: [u8; 3] = [20, 10, 5];
 }

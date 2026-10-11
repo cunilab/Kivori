@@ -1623,6 +1623,32 @@ fn the_rotary_profile_does_not_collide_with_the_display_profile() {
 }
 
 #[test]
+fn the_context_buttons_are_free_non_strapping_pins() {
+    use kivori_firmware::profile::physical_st7789::{
+        BL, CONTEXT_BUTTONS, DC, MOSI, ROTARY, RST, SCK,
+    };
+
+    let taken = [SCK, MOSI, DC, RST, BL, ROTARY.clk, ROTARY.dt, ROTARY.sw];
+    for (i, pin) in CONTEXT_BUTTONS.into_iter().enumerate() {
+        assert!(!taken.contains(&pin), "button pin {pin} is already taken");
+        assert!(
+            !CONTEXT_BUTTONS[..i].contains(&pin),
+            "button pin {pin} is used twice"
+        );
+        // GPIO2/8/9 are strapping pins: a button held at power-on must not change the boot mode.
+        assert!(
+            ![2, 8, 9].contains(&pin),
+            "button pin {pin} is a strapping pin"
+        );
+        // GPIO18/19 are native USB, GPIO21 the UART0 boot log.
+        assert!(
+            ![18, 19, 21].contains(&pin),
+            "button pin {pin} collides with USB or the log"
+        );
+    }
+}
+
+#[test]
 fn a_reconnect_hello_clears_the_previous_sessions_capabilities() {
     // A reconnect that never sent `Bye` arrives as a bare `Hello`. Between it and the `Ready`
     // that follows, the device already holds the NEW session's nonce; if it also still held the
