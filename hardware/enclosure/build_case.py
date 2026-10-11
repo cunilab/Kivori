@@ -34,7 +34,7 @@ V = App.Vector
 # face, a dark visor carries the display and buttons, and the shell floats on a dark plinth.
 W, H = 110.0, 70.0          # face outline (outer edge of the bevel)
 R_CORNER = 8.0              # face corner radius
-T_NEAR, T_FAR = 18.0, 30.0  # case thickness at the near (y=0) and far (y=H) edge -> ~9.7° wedge
+T_NEAR, T_FAR = 20.7, 32.7  # case thickness at the near (y=0) and far (y=H) edge -> ~9.7° wedge
 WALL = 2.0                  # side wall thickness (horizontal)
 WALL_TAPER = 6.0            # degrees the walls lean in towards the face (keycap draft)
 FACE_T = 2.5                # faceplate thickness (room for the visor pocket in front)
@@ -79,17 +79,18 @@ HW040_BACK_PARTS = 2.0      # how far those (and the header joints) stick out of
 # The HW-040 hangs behind the printed PCB, on two back-plate columns whose pegs go through its M3
 # holes, with the EC11 body reaching forward through a hole in the PCB. Deep in the wedge, the
 # long shaft ends low and the knob stays short; the columns also take the knob's push.
-HW040_FRONT = -17.5         # board front (component side), clear of the back plate behind it
-# Copper-trace version: the HW-040 hangs from the printed PCB on two printed spacer tubes, an
-# M2 x 12 self-tapping screw from its back through each hole and spacer into a boss on the PCB
-# front; its five pins are bent up 90° just past the header and soldered into pads on the copper.
-HW040_SPACER = (4.4, 2.4)   # spacer tube OD, bore
-HW040_BOSS = (4.4, 3.0)     # boss on the printed PCB front round each screw (Ø, height)
-HW040_PIN_BEND = 1.45       # pins bend up this far past the header row (just past the plastic)
-HW040_COL_D = 5.4           # hand-wired version: back-plate columns under its two holes
-HW040_PAD = (8.1, 7.6, 2.4)  # third support under the board (module frame x, y, Ø), between the
-                            # EC11 parts and the header joints
-EC11_HOLE_CLR = 0.6         # printed PCB hole round the EC11 body, per side (clear of the screw bosses)
+HW040_FRONT = -20.2         # board front: the EC11 body top 0.3 behind the printed PCB, only its bushing goes through
+# The back plate holds the HW-040 on two pillars with pegs through its two holes (it cannot slide or
+# turn) and four corner brackets: a ledge under each board corner (a knob press cannot tip it) and
+# a low wall round it, all clear of the resistors and solder joints in the middle of its back.
+# With copper traces its five header pins stand straight up (straightened, or a straight header)
+# through pads on the printed PCB.
+ENC_BORDER = (0.3, 1.2, 1.0, 1.2)  # board clearance, wall thickness, wall height, ledge under the edge
+ENC_CORNER = 5.0            # each corner bracket runs this far along both board edges
+HW040_COL_D = 5.0           # pillars under its two holes ...
+HW040_PEG_CLR = 0.2         # ... pegs 2.8 mm in its 3.2 mm holes
+HW040_PIN_BEND = 0.0        # straight pins, up from the header row
+EC11_HOLE_CLR = 0.3         # printed PCB round hole round the EC11 bushing, per side (it also centres the encoder)
 
 # Display: ST7789 1.3" 240x240, 7-pin module, mounted rotated 90° (header on the right)
 DISP_C = (80.35, 46.0)      # centre of the window on the face (board centre stays at x 78.5)
@@ -138,7 +139,7 @@ CAP_STOP_D = 2.6            # stop post on the head, round its centre hole
 SW_PADS = [(-6.25, -2.5), (6.25, -2.5), (-6.25, 2.5), (6.25, 2.5)]  # pin 1,1,2,2 (land pattern Ø1.5)
 SW_PEGS = [(0.0, -4.5), (0.0, 4.5)]  # clearance for locating bosses some 12x12 switches have (B3F)
 SW_PEG_HOLE_D = 2.0
-BTN_GPIO = ["IO20", "IO10", "IO5"]  # left, middle, right (copper-trace pin map, see README Wiring)
+BTN_GPIO = ["IO3", "IO4", "IO5"]  # left, middle, right (copper-trace pin map, see README Wiring)
 
 # Printed PCB ("carrier"): same plane as a future real PCB
 C_FRONT = -10.2             # sets the switches: plunger top 0.2 below the face (long cap fingers)
@@ -162,7 +163,6 @@ SCREW_PILOT, SCREW_CLR = 1.6, 2.4
 SCREW_HEAD_D = 4.4          # counterbore for a pan head up to 4 mm
 SCREW_SEAT_Z = -16.5        # all heads seat here, so every screw is 12 mm
 PEG_CLR = 0.1               # peg diameter = hole - 2 * clearance (press fit)
-HW040_SCREW_PILOT = 1.6     # HW-040: an M2 x 8 self-tapping screw through each of its holes
 PEG_PROUD = 1.0             # peg tip past the module board: press fit, or melt it (heat-stake)
 PEG_RELIEF = 0.7            # face-back relief over the display peg tips (room for a staked head)
 
@@ -204,13 +204,15 @@ C_TAB_CLR = 0.4             # carrier tab under the SuperMini header ends, to th
 # off the rest. The gaps are on the bed side (gaps in the first layers, short bridges over them).
 # Two crossovers remain (copper_layout).
 COPPER_TRACES = True        # False: the hand-wired version (header strips in slots)
-TRACE_W = 1.2               # trace width (six fit between the SuperMini pin rows, 0.92 apart)
-TRACE_GROOVE = (0.8, 0.6)   # gap along both sides of every trace and pad: width, depth
+TRACE_W = 1.4               # trace width (1.0 where room is short)
+TRACE_GROOVE = (1.0, 0.6)   # gap along both sides of every trace and pad: width, depth
 TRACE_PAD = (3.0, 1.5)      # oblong pads at the 2.54 mm pins (length, width)
 TRACE_PAD_D = 3.4           # round pads at the switch legs (0.8 mm of plastic round the leg hole)
 TAPE_T = 0.06               # copper tape thickness (stand-in only)
 SM_PAD_D = 1.6              # round pads round the SuperMini pins
 ENC_PAD = (1.9, 1.4)        # oblong pads for the bent HW-040 pins (reach out to the west)
+TRACE_ISLAND_MIN = 12.0     # mm²: smaller islands of plastic between the gaps become gap (FDM)
+TRACE_GROOVE_MIN = 0.6      # gaps thinner than this (crumbs) are filled in
 TRACE_RIDGE_MIN = 1.0       # plastic left between two gaps: at least this wide, or it becomes gap
 # At the 2.54 mm pin rows a gap between two pins would leave rings of plastic round the holes too
 # thin to print, so the rows stay solid: one short blade cut between neighbouring pins
@@ -475,7 +477,7 @@ hw_holes = [(hw_c[0] + hx, hw_c[1] + hy) for (hx, hy) in HW040_HOLES]
 hw_hdr = (hw_c[0] + HW040_HDR_X, hw_c[1] + HW040_SHAFT[1])  # header row centre
 hw_pin_tip_x = hw_c[0] + HW040[0] / 2 + 6.0                    # right-angle pins end about here
 hw_back = HW040_FRONT - HW040[2]           # HW-040 board back
-enc_x = hw_hdr[0] + HW040_PIN_BEND         # where the bent pins come up through the printed PCB
+enc_x = hw_hdr[0] + HW040_PIN_BEND         # where its pins come up through the printed PCB
 enc_pins = {n: (enc_x, hw_hdr[1] + (2 - i) * 2.54) for i, n in enumerate(["CLK", "DT", "SW", "+", "GND"])}
 
 sm_c = (SM_X, SM_USB_END - SM[1] / 2)
@@ -672,10 +674,7 @@ def make_back_plate():
         adds.append(cyl(COLUMN_D, x, y, z_back(y) + 0.5, C_BACK - 0.1))
     for (x, y) in ([] if SM_FRONT else sm_btns):
         adds.append(cyl(TUBE_OD, x, y, z_back(y) + 0.5, tube_top))
-    for (x, y) in ([] if COPPER_TRACES else hw_holes):  # hand-wired: HW-040 screwed onto two columns
-        adds.append(cyl(HW040_COL_D, x, y, z_back(y) + 0.5, hw_back))
-    px, py = hw_c[0] + HW040_PAD[0], hw_c[1] + HW040_PAD[1]  # third support, so a knob press can't tip it
-    adds.append(cyl(HW040_PAD[2], px, py, z_back(py) + 0.5, hw_back))
+    adds.append(enc_cradle())
     if not SM_FRONT:  # a pad presses up under the USB connector
         usb_y0 = max(SM_USB_END - SM_USB[1] + 1.5, sm_btns[0][1] + TUBE_OD / 2 + 0.5)
         adds.append(box(SM_X - 3.5, usb_y0, z_back(SM_USB_END) + 0.5, SM_X + 3.5, SM_USB_END - 0.5,
@@ -707,12 +706,29 @@ def make_back_plate():
     plate = plate.fuse(plinth)
 
     cuts = [cyl(PINHOLE_D, x, y, -60, tube_top + 1) for (x, y) in ([] if SM_FRONT else sm_btns)]
-    cuts += [cyl(HW040_SCREW_PILOT, x, y, hw_back - 7.0, hw_back + 1) for (x, y) in ([] if COPPER_TRACES else hw_holes)]
     for (x, y) in POSTS:  # screw through each column: clearance hole and a counterbore from below
         cuts.append(cyl(SCREW_CLR, x, y, -60, C_BACK + 1))
         cuts.append(cyl(SCREW_HEAD_D, x, y, -60, SCREW_SEAT_Z))
         cuts.append(cyl(SPIGOT_HOLE_D, x, y, C_BACK - SPIGOT_INTO_COL - SPIGOT_SOCKET_CLR, C_BACK + 1))
     return plate.cut(cuts).removeSplitter()
+
+
+def enc_cradle():
+    """The HW-040's corner brackets and pillars on the back plate (see ENC_BORDER)."""
+    clr, wt, wh, ledge = ENC_BORDER
+    L, Wd = HW040[0] + 2 * clr, HW040[1] + 2 * clr
+    outer = lambda z0, z1: cbox(hw_c[0], hw_c[1], L + 2 * wt, Wd + 2 * wt, z0, z1)
+    ring = outer(z_back(hw_c[1] + Wd) - 1, hw_back).cut(
+        cbox(hw_c[0], hw_c[1], HW040[0] - 2 * ledge, HW040[1] - 2 * ledge, -60, 0))
+    wall = outer(hw_back - 0.01, hw_back + wh).cut(cbox(hw_c[0], hw_c[1], L, Wd, -60, 0))
+    a = ENC_CORNER + clr + wt
+    corners = fuse_all([cbox(hw_c[0] + su * (L / 2 + wt - a / 2), hw_c[1] + sv * (Wd / 2 + wt - a / 2), a, a, -60, 0)
+                        for su in (-1, 1) for sv in (-1, 1)])
+    parts = [ring.fuse(wall).common(corners)]
+    for (x, y) in hw_holes:
+        parts += [cyl(HW040_COL_D, x, y, z_back(y) - 1, hw_back),
+                  peg(x, y, HW040_HOLE_D, hw_back - 0.01, HW040_FRONT + PEG_PROUD, HW040_PEG_CLR)]
+    return fuse_all(parts)
 
 
 def dot_positions():
@@ -736,13 +752,6 @@ def make_rubber_dots():
     return desk_to_face(Part.makeCompound(dots))
 
 
-def make_spacers():
-    """The two tubes the HW-040 hangs on, between its board and the printed PCB (one print)."""
-    od, bore = HW040_SPACER
-    return Part.makeCompound([cyl(od, x, y, HW040_FRONT, C_BACK).cut(cyl(bore, x, y, HW040_FRONT - 1, C_BACK + 1))
-                              for (x, y) in hw_holes])
-
-
 def carrier_outline():
     c = rr_prism(W - 2 * WALL - 2 * C_INSET, H - 2 * WALL - 2 * C_INSET, R_CORNER - WALL - C_INSET,
                  W / 2, H / 2, C_BACK, C_FRONT)
@@ -762,9 +771,8 @@ def carrier_through_cuts(pcb=False):
         cuts.append(box(x0, yc - HOOK_W / 2 - 1.2, C_BACK - 1, x1, yc + HOOK_W / 2 + 1.2, C_FRONT + 1))
     for (x, y) in POSTS:
         cuts.append(cyl(SPIGOT_HOLE_D, x, y, C_BACK - 1, C_FRONT + 1))
-    # the EC11 body reaches through from the HW-040 hanging behind
-    cuts.append(cbox(KNOB_C[0], KNOB_C[1], EC11_BODY[0] + 2 * EC11_HOLE_CLR, EC11_BODY[1] + 2 * EC11_HOLE_CLR,
-                     C_BACK - 1, C_FRONT + 1))
+    # the EC11 bushing reaches through from the HW-040 hanging behind (its body stops just behind)
+    cuts.append(cyl(EC11_BUSH_D + 2 * EC11_HOLE_CLR, KNOB_C[0], KNOB_C[1], C_BACK - 1, C_FRONT + 1))
     if COPPER_TRACES:  # a hole per display pin, each in a pad
         cuts += [cyl(HOLE_D, x, y, C_BACK - 1, C_FRONT + 1) for (x, y) in disp_pins.values()]
     else:
@@ -781,9 +789,8 @@ def carrier_through_cuts(pcb=False):
         return cuts
     if SM_FRONT:  # its soldered pins go through to the copper
         cuts += [cyl(HOLE_D, x, y, C_BACK - 1, C_FRONT + 1) for (x, y) in sm_pins.values()]
-    if COPPER_TRACES:  # the HW-040's bent pins, and its two screws
+    if COPPER_TRACES:  # the HW-040's bent pins
         cuts += [cyl(HOLE_D, x, y, C_BACK - 1, C_FRONT + 1) for (x, y) in enc_pins.values()]
-        cuts += [cyl(SCREW_PILOT, x, y, C_BACK - 1, C_FRONT + HW040_BOSS[1] + 1) for (x, y) in hw_holes]
         return cuts
     w, l = SM_HDR[0] + 2 * SM_HDR_CLR, SM_HDR[1] + 2 * SM_HDR_CLR
     c = SM_HDR_CHAMFER
@@ -798,82 +805,81 @@ def carrier_through_cuts(pcb=False):
 def copper_layout():
     """Nets as {name: (pads, traces)} plus the crossovers, laid out by hand for the current part
     positions; check_traces() reports the clearance between nets after any change.
-    Pads: ("rect", x, y[, length[, width]]) oblong along x, or ("round", x, y, d). Traces: point lists.
+    Pads: ("rect", x, y[, length[, width]]) oblong along x, or ("round", x, y, d). Traces: point
+    lists, or ("w", width, points). Crossovers: [(x0, y0, x1, y1), [nets on top]].
 
-    Pin map chosen for this board (README, Wiring): the left SuperMini row feeds the encoder and
-    the display's power, RES and DC; the right row feeds SCL, SDA, BLK and the three buttons.
-    Six traces run down the channel between the rows: encoder DT and SW straight into the
-    encoder's bent pins, GND, 3V3, RES and DC fanning out under the display. CLK, 3V3 and GND run
-    down the outside of the left row to the encoder (GND on to the switches). Two crossovers
-    remain: a patch of insulating tape over the lower traces, the upper traces' copper laid on
-    top. Crossovers: [(x0, y0, x1, y1), [nets on top]]."""
+    Pin map chosen for this board (README, Wiring): the right SuperMini row feeds the whole display
+    and the right button; the left row feeds the encoder and the other two buttons.
+    - Display: SCL, SDA, RES, DC, BLK leave the right row side by side and fan down onto the
+      display pins in order; VCC and GND come in from the right.
+    - Encoder: DT, SW, 3V3 and GND run down between the rows and into its pins from the east,
+      CLK down the outside of the left row into its pin from the west.
+    - B1 and B2 go round the outside of the knob and along the bottom edge, rising into their
+      switches between the switch legs (the switch's own pin pairs bridge them). B3 runs along
+      the top edge and down the right edge.
+    - GND runs from the encoder down to the switches, from switch to switch through each switch's
+      lower pin pair, and up the right edge to the display. VCC crosses GND once (crossover)."""
     xa, xb = sm_rows                                  # left / right pin row
     ys = {n: p[1] for n, p in sm_pins.items()}
     yd = {n: p[1] for n, p in disp_pins.items()}
     ye = {n: p[1] for n, p in enc_pins.items()}
     xd0, xd1 = disp_hdr_x - 0.8, disp_hdr_x + 0.8     # traces end inside the display pads
-    leg = lambda i, k: btn_pin(i, k)                  # k: 0/1 lower pin pair (GND), 2/3 upper pair
+    leg = lambda i, k: btn_pin(i, k)                  # k: 0/1 lower pin pair, 2/3 upper pair
     sw = lambda i, k: ("round", leg(i, k)[0], leg(i, k)[1], TRACE_PAD_D)
     sm = lambda n: ("round", sm_pins[n][0], sm_pins[n][1], SM_PAD_D)
     dd = lambda n: ("rect", disp_hdr_x, yd[n], 2.6)
-    ew = enc_x - 0.3                                  # encoder pads: west part (entered from the west)
-    ee = enc_x + 0.3                                  # ... east part (entered from the east)
-    epw = lambda n: ("rect", ew, ye[n], 1.8, ENC_PAD[1])
-    epe = lambda n: ("rect", ee, ye[n], 1.8, ENC_PAD[1])
-    gap = (SM_ROW - SM_PAD_D - 6 * TRACE_W) / 7
-    p = TRACE_W + gap
-    lane = [xa + SM_PAD_D / 2 + gap + TRACE_W / 2 + k * p for k in range(6)]  # DT SW DC RES 3V3 GND
-    dc = 0.586 * p                                    # corner chamfer step that keeps the pitch
-    xg, xv, xc = 35.4, 37.2, 39.0                     # outside lanes: GND, 3V3, CLK (1.0 mm wide)
+    epw = lambda n: ("rect", enc_x - 0.45, ye[n], 1.9, ENC_PAD[1])   # entered from the west
+    epe = lambda n: ("rect", enc_x + 0.45, ye[n], 1.9, ENC_PAD[1])   # entered from the east
+    W1 = lambda pts: ("w", 1.0, pts)
+    # between the rows: four lanes (shifted east below the SuperMini if needed to clear the encoder pins)
+    g4 = (SM_ROW - SM_PAD_D - 4 * TRACE_W) / 5
+    lane = [xa + SM_PAD_D / 2 + g4 + TRACE_W / 2 + k * (TRACE_W + g4) for k in range(4)]  # DT SW 3V3 GND
+    dx = max(0.0, enc_x + 0.6 + 0.8 + 1.2 + TRACE_W / 2 - lane[0])  # (0: the encoder pins are west of them)
+    low = [x + dx for x in lane]
+    y_sh = 43.8                                       # where the first lane steps east (below the SuperMini)
 
-    def channel(n, k, y_out, x_rise, y_end):
-        """Left-row pin -> channel lane k -> 45° corner east at y_out -> 45° up to the display pad."""
-        x, c = lane[k], 1.0 + (5 - k) * dc
-        return [(xa, ys[n]), (x, ys[n]), (x, y_out + c), (x + c, y_out), (x_rise, y_out),
-                (x_rise + y_end - y_out, y_end), (xd0, y_end)]
+    def down(n, k, y_end):
+        x0, x1, y0 = lane[k], low[k], y_sh + k * 0.8   # staggered, so the 45° steps stay apart
+        step = [(x0, y0), (x1, y0 - dx)] if dx > 0 else []
+        return [(xa, ys[n]), (x0, ys[n])] + step + [(x1, y_end)]
 
-    yo = [46.0 - k * p for k in range(4)]             # corner heights: GND, 3V3, RES, DC
-    # (each rise starts so the 45° runs stay a lane pitch apart: x_rise = y_out + 32, 35, 38, 41)
-    x1, x2 = 59.5, 61.6                               # B1, B2 coming down past the display bundle
+    # display fan: right-row pins east, then down at these x, then east onto the display pins
+    fan = {"SCL": ("IO6", 75.2), "SDA": ("IO7", 72.4), "RES": ("IO8", 69.6), "DC": ("IO10", 66.8), "BLK": ("IO20", 64.0)}
+    yv = 35.0                                         # VCC's run under the display
+    xv, xg, x5 = disp_hdr_x + 1.3 + 1.2 + 0.5, disp_hdr_x + 1.3 + 1.2 + 0.5 + 2.2, disp_hdr_x + 1.3 + 1.2 + 0.5 + 4.4
+    bl3, bl2 = 8.6, 5.8                               # B1 / B2 along the bottom edge
+    xw3, xw2 = 13.6, 11.0                             # B1 / B2 down the left side
+    b1x = (leg(0, 0)[0] + leg(0, 1)[0]) / 2           # rise between the legs of switch 1 ...
+    b2x = (leg(1, 0)[0] + leg(1, 1)[0]) / 2           # ... and 2
     nets = {
-        "GND": ([sm("GND"), dd("GND"), epw("GND")] + [sw(i, k) for i in range(3) for k in (0, 1)],
-                [channel("GND", 5, yo[0], yo[0] + 32.0, yd["GND"]),
-                 # down the outside of the left row to the encoder and on to the left switch, then
-                 # from switch to switch through each switch's lower pin pair (joined inside it)
-                 ("w", 1.0, [(xa, ys["GND"]), (xg, ys["GND"]), (xg, 14.6), (xg + 1.2, 13.4)]),
-                 [(xg + 1.2, 13.4), (leg(0, 0)[0] - 1.29, 13.4), leg(0, 0)],
-                 ("w", 1.0, [(xg, ye["GND"]), (ew, ye["GND"])]),
-                 [leg(0, 1), leg(1, 0)], [leg(1, 1), leg(2, 0)]]),
-        "3V3": ([sm("3V3"), dd("VCC"), epw("+")],
-                [channel("3V3", 4, yo[1], yo[1] + 35.0, yd["VCC"]),
-                 ("w", 1.0, [(xa, ys["3V3"]), (xv, ys["3V3"]), (xv, ye["+"]), (ew, ye["+"])])]),
-        "RES": ([sm("IO3"), dd("RES")], [channel("IO3", 3, yo[2], yo[2] + 38.0, yd["RES"])]),
-        "DC": ([sm("IO2"), dd("DC")], [channel("IO2", 2, yo[3], yo[3] + 41.0, yd["DC"])]),
-        # encoder: CLK and power from the west, DT and SW from the channel on the east
-        "CLK": ([sm("IO4"), epw("CLK")], [("w", 1.0, [(xa, ys["IO4"]), (xc, ys["IO4"]), (xc, ye["CLK"]), (ew, ye["CLK"])])]),
-        "DT": ([sm("IO0"), epe("DT")], [[(xa, ys["IO0"]), (lane[0], ys["IO0"]), (lane[0], ye["DT"]), (ee, ye["DT"])]]),
-        "SW": ([sm("IO1"), epe("SW")], [[(xa, ys["IO1"]), (lane[1], ys["IO1"]), (lane[1], ye["SW"]), (ee, ye["SW"])]]),
-        # right row: SCL and SDA down onto the display pins (crossover 1), BLK over the top of the
-        # display pins and in from the right, B3 over the top and down the right edge, B1 and B2
-        # straight down to their switches (crossover 2)
-        "SCL": ([sm("IO6"), dd("SCL")], [[(xb, ys["IO6"]), (90.5, ys["IO6"]), (90.5, yd["SCL"]), (xd0, yd["SCL"])]]),
-        "SDA": ([sm("IO7"), dd("SDA")], [[(xb, ys["IO7"]), (88.0, ys["IO7"]), (88.0, yd["SDA"]), (xd0, yd["SDA"])]]),
-        "BLK": ([sm("IO8"), dd("BLK")],
-                [[(xb, ys["IO8"]), (62.0, ys["IO8"]), (62.0 + ys["IO8"] - 57.5, 57.5), (99.2, 57.5),
-                  (99.2, yd["BLK"]), (xd1, yd["BLK"])]]),
+        "GND": ([sm("GND"), dd("GND"), epe("GND")] + [sw(i, k) for i in range(3) for k in (0, 1)],
+                [down("GND", 3, ye["GND"]) + [(enc_x, ye["GND"])],
+                 # to the left switch's lower-left leg, passing west of its upper-left leg
+                 [(low[3], ye["GND"]), (low[3], 25.0), (49.7, 25.0 - (low[3] - 49.7)), (49.7, leg(0, 0)[1] + 1.5),
+                  (49.7 + 1.5, leg(0, 0)[1]), leg(0, 0)],
+                 [leg(0, 1), leg(1, 0)], [leg(1, 1), leg(2, 0)],
+                 W1([leg(2, 1), (99.0, leg(2, 1)[1] + 2.5), (99.0, 21.0), (xg, 21.0 + xg - 99.0), (xg, yd["GND"]), (xd1, yd["GND"])])]),
+        "3V3": ([sm("3V3"), dd("VCC"), epe("+")],
+                [down("3V3", 2, ye["+"]) + [(enc_x, ye["+"])],
+                 [(low[2], yv), (xv - 1.0, yv)], W1([(xv - 1.0, yv), (xv, yv + 1.0), (xv, yd["VCC"]), (xd1, yd["VCC"])])]),
+        "DT": ([sm("IO0"), epe("DT")], [down("IO0", 0, ye["DT"]) + [(enc_x, ye["DT"])]]),
+        "SW": ([sm("IO1"), epe("SW")], [down("IO1", 1, ye["SW"]) + [(enc_x, ye["SW"])]]),
+        "CLK": ([sm("IO2"), epw("CLK")], [[(xa, ys["IO2"]), (38.8, ys["IO2"]), (38.8, ye["CLK"]), (enc_x, ye["CLK"])]]),
+        "B1": ([sm("IO3"), sw(0, 2), sw(0, 3)],
+               [[(xa, ys["IO3"]), (xw3, ys["IO3"]), (xw3, bl3 + 1.4), (xw3 + 1.4, bl3), (b1x, bl3),
+                 (b1x, leg(0, 3)[1] - 2.0), (leg(0, 3)[0], leg(0, 3)[1])]]),
+        "B2": ([sm("IO4"), sw(1, 2), sw(1, 3)],
+               [[(xa, ys["IO4"]), (xw2, ys["IO4"]), (xw2, bl2 + 1.4), (xw2 + 1.4, bl2), (b2x, bl2),
+                 (b2x, leg(1, 3)[1] - 3.0), (b2x + 3.0, leg(1, 3)[1]), leg(1, 3)]]),
         "B3": ([sm("IO5"), sw(2, 2), sw(2, 3)],
-               [("w", 1.0, [(xb, ys["IO5"]), (xb + 1.2, ys["IO5"]), (xb + 1.2 + ys["IO5"] - 65.9, 65.9), (100.6, 65.9), (100.6, 59.0), (103.1, 56.5),
-                 (103.1, leg(2, 3)[1] + 2.5), leg(2, 3)])]),
-        "B1": ([sm("IO20"), sw(0, 2), sw(0, 3)],
-               [[(xb, ys["IO20"]), (x1, ys["IO20"]), (x1, 23.0), (x1 + 23.0 - leg(0, 3)[1], leg(0, 3)[1]), leg(0, 3)]]),
-        "B2": ([sm("IO10"), sw(1, 2), sw(1, 3)],
-               [[(xb, ys["IO10"]), (x2, ys["IO10"]), (x2, 26.5), (x2 + 1.3, 25.2),
-                 (leg(1, 2)[0] - 25.2 + leg(1, 2)[1], 25.2), leg(1, 2)]]),
-        # unused pins: pads only, for a solid joint
+               [W1([(xb, ys["IO5"]), (xb + 1.2, ys["IO5"]), (xb + 1.2 + ys["IO5"] - 66.35, 66.35), (100.6, 66.35),
+                    (100.6, 59.0), (x5, 59.0 - (x5 - 100.6)), (x5, leg(2, 3)[1] + 2.5), leg(2, 3)])]),
         "nc5V": ([sm("5V")], []), "ncIO9": ([sm("IO9")], []), "ncIO21": ([sm("IO21")], []),
     }
-    crossovers = [((86.9, 49.3, 91.6, 58.9), ["SCL", "SDA"]),   # over BLK, GND and VCC
-                  ((58.4, 37.6, 62.7, 48.2), ["B1", "B2"])]     # over GND, 3V3, RES and DC
+    for name, (pin, x) in fan.items():
+        y0, y1 = ys[pin], yd[name]
+        nets[name] = ([sm(pin), dd(name)], [[(xb, y0), (x, y0), (x, y1), (xd0, y1)]])
+    crossovers = [((low[3] - 2.1, yv - 1.6, low[3] + 2.1, yv + 1.6), ["3V3"])]  # VCC over GND
     return nets, crossovers
 
 
@@ -918,11 +924,12 @@ def patch_box(rect, z0, z1):
     return box(rect[0], rect[1], z0, rect[2], rect[3], z1)
 
 
-def board_nets(z0, z1, grow=0.0):
+def board_nets(z0, z1, grow=0.0, clip=True):
     """Each net's copper that lies on the board: nets on top of a crossover lose the part inside
-    the patch (that part sits on the insulating tape, above the copper below)."""
+    the patch (that part sits on the insulating tape, above the copper below). clip=False keeps
+    them whole (the gaps draw every line in full, through the crossovers)."""
     nets, crossovers = copper_layout()
-    over = net_parts(nets, crossovers)
+    over = net_parts(nets, crossovers) if clip else {}
     out = {}
     for k, n in nets.items():
         sol = net_solid(n, z0, z1, grow)
@@ -935,11 +942,12 @@ def board_nets(z0, z1, grow=0.0):
 def copper_grooves():
     """The gap along both sides of every trace and pad, cut into the printed PCB's back. Where two
     gaps leave less than TRACE_RIDGE_MIN of plastic between them (or to a hole or the edge), that
-    sliver becomes gap too. Inside a crossover patch only the lower traces get their gap."""
+    sliver becomes gap too, and so does any island of plastic smaller than TRACE_ISLAND_MIN. Every
+    line is drawn in full, through the crossovers too (cut the crossing apart by hand there)."""
     z0, z1 = C_BACK - 1, C_BACK + TRACE_GROOVE[1]
     flat = lambda shp: [f for f in shp.Faces if abs(f.normalAt(0, 0).z) > 0.99 and abs(f.CenterOfMass.z - z0) < 1e-6]
-    outer = fuse_all(list(board_nets(z0, z1, TRACE_GROOVE[0]).values()))
-    copper = fuse_all(list(board_nets(z0 - 1, z1 + 1).values()))
+    outer = fuse_all(list(board_nets(z0, z1, TRACE_GROOVE[0], clip=False).values()))
+    copper = fuse_all(list(board_nets(z0 - 1, z1 + 1, clip=False).values()))
     # the printed PCB's back face (outline and holes), so slivers next to holes and edges go too
     board = carrier_outline().cut(carrier_through_cuts())
     plate = Part.makeCompound([f.copy() for f in board.Faces
@@ -961,7 +969,10 @@ def copper_grooves():
                     out.append(f)              # (no wires = it shrank away: a sliver)
         return out
 
-    kept = Part.makeCompound(offset(offset(field.Faces, -r), r))
+    kept = [f for f in offset(offset(field.Faces, -r), r)]
+    small = [f for f in kept if f.Area < TRACE_ISLAND_MIN]
+    print("plastic islands made gap: %d (%s mm²)" % (len(small), ", ".join("%.1f" % f.Area for f in small)))
+    kept = Part.makeCompound([f for f in kept if f.Area >= TRACE_ISLAND_MIN])
     keep = kept.extrude(V(0, 0, z1 - z0 + 1)) if kept.Faces else None
     grooves = Part.makeCompound([f.extrude(V(0, 0, z1 - z0)) for f in plate.Faces]).cut(copper)
     rows = [list(sm_pins.values())[:8], list(sm_pins.values())[8:], list(disp_pins.values()), list(enc_pins.values())]
@@ -969,7 +980,19 @@ def copper_grooves():
         xs, ys_ = [q[0] for q in pts], [q[1] for q in pts]
         grooves = grooves.cut(box(min(xs) - PIN_ROW_BAND, min(ys_) - PIN_ROW_BAND, z0 - 1,
                                   max(xs) + PIN_ROW_BAND, max(ys_) + PIN_ROW_BAND, z1 + 1))
-    return grooves.cut(keep) if keep else grooves
+    grooves = grooves.cut(keep) if keep else grooves
+    # and no gap thinner than TRACE_GROOVE_MIN (crumbs left where the gaps meet the pin rows): a
+    # face that opens away is a crumb; one that the offset mangles (loses half) is kept as it is
+    opened, crumbs = [], []
+    for f in flat(grooves):
+        o = offset(offset([f], -TRACE_GROOVE_MIN / 2), TRACE_GROOVE_MIN / 2)
+        a = sum(g.Area for g in o)
+        if a < 1e-6 and f.Area < 3.0:
+            crumbs.append(f.Area)
+        else:
+            opened += o if a > 0.5 * f.Area else [f]
+    print("gap crumbs filled: %d (%s mm²)" % (len(crumbs), ", ".join("%.2f" % c for c in crumbs)))
+    return Part.makeCompound([f.extrude(V(0, 0, z1 - z0)) for f in opened])
 
 
 def check_traces():
@@ -1008,11 +1031,7 @@ def make_carrier():
     for (x, y) in disp_holes:  # display standoffs with pegs through its four corner holes
         adds.append(cyl(DISP_STANDOFF_D, x, y, C_FRONT - 0.01, dpcb_z1))
         adds.append(peg(x, y, DISP_HOLE_D, dpcb_z1 - 0.01, glass_z1 + PEG_PROUD))
-    for (x, y) in (hw_holes if COPPER_TRACES else []):  # screw bosses for the hanging HW-040
-        adds.append(cyl(HW040_BOSS[0], x, y, C_FRONT - 0.01, C_FRONT + HW040_BOSS[1]))
     c = c.fuse(adds)
-    if COPPER_TRACES:
-        c = c.cut([cyl(SCREW_PILOT, x, y, C_BACK - 1, C_FRONT + HW040_BOSS[1] + 1) for (x, y) in hw_holes])
     # keep the display header clear of the standoffs
     c = c.cut(cbox(disp_hdr_x, dpcb_c[1], 2.6, 7 * 2.54 + 1.0, C_FRONT, C_FRONT + 6))
     if not COPPER_TRACES:
@@ -1128,10 +1147,8 @@ def dummy_encoder():
     # right-angle header: plastic on the front of the board, pins lying flat and pointing +x
     hdr = cbox(hw_hdr[0], hw_hdr[1], 2.5, 5 * 2.54, f, f + 2.5)
     pins = box(hw_hdr[0], hw_hdr[1] - 5.6, f + 1.0, hw_pin_tip_x, hw_hdr[1] + 5.6, f + 1.64)
-    if COPPER_TRACES:  # pins bent up 90° into the printed PCB; screw heads under the board
-        pins = fuse_all([box(hw_hdr[0], y - 0.32, f + 1.0, x + 0.32, y + 0.32, f + 1.64) for (x, y) in enc_pins.values()]
-                        + [cbox(x, y, 0.64, 0.64, f + 1.0, C_FRONT + 0.5) for (x, y) in enc_pins.values()]
-                        + [cyl(4.0, x, y, hw_back - 1.3, hw_back + 0.01) for (x, y) in hw_holes])
+    if COPPER_TRACES:  # straight pins, up through the printed PCB
+        pins = fuse_all([cbox(x, y, 0.64, 0.64, f, f + 2.5 + 6.0) for (x, y) in enc_pins.values()])
     # on its back: EC11 legs and resistors, header solder joints
     kx0, kx1, ky0, ky1 = HW040_BACK_KEEPOUT
     legs = box(KNOB_C[0] + kx0, KNOB_C[1] + ky0, hw_back - HW040_BACK_PARTS, KNOB_C[0] + kx1, KNOB_C[1] + ky1, hw_back + 0.01)
@@ -1215,7 +1232,7 @@ COLORS = {  # two-tone: light matte shell; black visor, knob and plinth; warm ac
     "Shell": (0.93, 0.93, 0.91), "Visor": (0.06, 0.06, 0.07), "BackPlate": (0.13, 0.13, 0.15),
     "Carrier": (0.12, 0.45, 0.25), "Knob": (0.10, 0.10, 0.11), "Cap": (0.95, 0.50, 0.18),
     "Dummy": (0.30, 0.45, 0.85), "RubberDots": (0.20, 0.20, 0.22),
-    "Dummy_Copper": (0.85, 0.50, 0.25), "Dummy_Kapton": (0.95, 0.70, 0.15), "Spacers": (0.12, 0.45, 0.25),
+    "Dummy_Copper": (0.85, 0.50, 0.25), "Dummy_Kapton": (0.95, 0.70, 0.15),
 }
 
 
@@ -1225,8 +1242,6 @@ def build():
     PRINTED["BackPlate"] = make_back_plate()
     PRINTED["RubberDots"] = make_rubber_dots()
     PRINTED["Carrier"] = make_carrier()
-    if COPPER_TRACES:
-        PRINTED["Spacers"] = make_spacers()
     PRINTED["Knob"] = make_knob()
     for i, n in enumerate(["CapLeft", "CapMiddle", "CapRight"]):
         PRINTED[n] = make_cap(i)
