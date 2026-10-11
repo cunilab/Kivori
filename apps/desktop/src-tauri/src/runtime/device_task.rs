@@ -186,6 +186,7 @@ fn device_loop(
     let backend = Arc::clone(&services.volume);
     // The diagnostics page reads these without going through the desk runtime that owns them.
     let app_volume = Arc::clone(&services.app_volume);
+    let mic = Arc::clone(&services.mic);
     let media = Arc::clone(&services.media);
     let foreground = Arc::clone(&services.foreground);
     let mut diagnostics_publisher = DiagnosticsPublisher::default();
@@ -718,6 +719,9 @@ fn device_loop(
                 if let Some(labels) = desk_out.controls {
                     write_failed |= session.send_control_labels(open_link, labels).is_err();
                 }
+                if let Some(mic) = desk_out.mic {
+                    write_failed |= session.send_mic_state(open_link, mic).is_err();
+                }
                 if write_failed {
                     recover_link(
                         &mut activity_planner,
@@ -885,6 +889,7 @@ fn device_loop(
                 volume: system_volume.clone(),
                 input: Services::expected(Os::current()).input,
                 app_volume: app_volume_availability.clone(),
+                mic: mic.availability(),
             },
         );
         diagnostics_publisher.publish(

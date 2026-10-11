@@ -7,11 +7,12 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use kivori_desktop::platform::macos::{
-    local_time, MacMediaObserver, MacSystemProbe, MacVolumeBackend,
+    local_time, MacMediaObserver, MacMicBackend, MacSystemProbe, MacVolumeBackend,
 };
 use kivori_desktop::platform::system::{cpu_percent, SystemProbe};
 use kivori_desktop::platform::{
-    ActionAvailability, ChangeOrigin, ConfirmationClass, MediaObserver, VolumeBackend, VolumeChange,
+    mics_muted, ActionAvailability, ChangeOrigin, ConfirmationClass, MediaObserver, MicBackend,
+    VolumeBackend, VolumeChange,
 };
 
 #[test]
@@ -30,6 +31,31 @@ fn volume_backend_reads_the_default_output_or_reports_runtime_unavailable() {
         }
         other => panic!("macOS is implemented; got {other:?}"),
     }
+}
+
+/// Read-only: lists the capture devices and reads their mute and use. It never writes a mute.
+#[test]
+fn mic_backend_lists_capture_devices_and_never_claims_muted_without_reading_it() {
+    let backend = MacMicBackend::new();
+    let devices = backend.devices().expect("list capture devices");
+    for device in &devices {
+        assert!(!device.name.is_empty());
+    }
+    match backend.availability() {
+        ActionAvailability::Available { .. } => assert!(!devices.is_empty()),
+        ActionAvailability::RuntimeUnavailable { .. } => assert!(devices.is_empty()),
+        other => panic!("macOS is implemented; got {other:?}"),
+    }
+    // An unmuted or unmutable microphone must never read as muted.
+    if devices.iter().any(|d| {
+        matches!(
+            d.mute,
+            kivori_desktop::platform::MicMute::Live | kivori_desktop::platform::MicMute::Unsettable
+        )
+    }) {
+        assert_eq!(mics_muted(&devices), Some(false));
+    }
+    let _in_use: Option<bool> = backend.in_use();
 }
 
 #[test]

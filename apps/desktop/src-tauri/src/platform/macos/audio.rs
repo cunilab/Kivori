@@ -39,29 +39,29 @@ use crate::platform::{
     ActionAvailability, BackendError, ChangeOrigin, ConfirmationClass, VolumeBackend, VolumeChange,
 };
 
-type AudioObjectId = u32;
-type OsStatus = i32;
+pub(super) type AudioObjectId = u32;
+pub(super) type OsStatus = i32;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-struct PropertyAddress {
-    selector: u32,
-    scope: u32,
-    element: u32,
+pub(super) struct PropertyAddress {
+    pub(super) selector: u32,
+    pub(super) scope: u32,
+    pub(super) element: u32,
 }
 
-type ListenerProc =
+pub(super) type ListenerProc =
     unsafe extern "C" fn(AudioObjectId, u32, *const PropertyAddress, *mut c_void) -> OsStatus;
 
 #[link(name = "CoreAudio", kind = "framework")]
 extern "C" {
-    fn AudioObjectHasProperty(id: AudioObjectId, address: *const PropertyAddress) -> u8;
-    fn AudioObjectIsPropertySettable(
+    pub(super) fn AudioObjectHasProperty(id: AudioObjectId, address: *const PropertyAddress) -> u8;
+    pub(super) fn AudioObjectIsPropertySettable(
         id: AudioObjectId,
         address: *const PropertyAddress,
         out_settable: *mut u8,
     ) -> OsStatus;
-    fn AudioObjectGetPropertyData(
+    pub(super) fn AudioObjectGetPropertyData(
         id: AudioObjectId,
         address: *const PropertyAddress,
         qualifier_size: u32,
@@ -69,7 +69,7 @@ extern "C" {
         io_size: *mut u32,
         out_data: *mut c_void,
     ) -> OsStatus;
-    fn AudioObjectSetPropertyData(
+    pub(super) fn AudioObjectSetPropertyData(
         id: AudioObjectId,
         address: *const PropertyAddress,
         qualifier_size: u32,
@@ -77,13 +77,13 @@ extern "C" {
         size: u32,
         data: *const c_void,
     ) -> OsStatus;
-    fn AudioObjectAddPropertyListener(
+    pub(super) fn AudioObjectAddPropertyListener(
         id: AudioObjectId,
         address: *const PropertyAddress,
         listener: ListenerProc,
         client_data: *mut c_void,
     ) -> OsStatus;
-    fn AudioObjectRemovePropertyListener(
+    pub(super) fn AudioObjectRemovePropertyListener(
         id: AudioObjectId,
         address: *const PropertyAddress,
         listener: ListenerProc,
@@ -92,15 +92,15 @@ extern "C" {
 }
 
 /// A CoreAudio four-character code.
-const fn fourcc(code: &[u8; 4]) -> u32 {
+pub(super) const fn fourcc(code: &[u8; 4]) -> u32 {
     u32::from_be_bytes(*code)
 }
 
-const SYSTEM_OBJECT: AudioObjectId = 1;
-const UNKNOWN_OBJECT: AudioObjectId = 0;
-const SCOPE_GLOBAL: u32 = fourcc(b"glob");
-const SCOPE_OUTPUT: u32 = fourcc(b"outp");
-const ELEMENT_MAIN: u32 = 0;
+pub(super) const SYSTEM_OBJECT: AudioObjectId = 1;
+pub(super) const UNKNOWN_OBJECT: AudioObjectId = 0;
+pub(super) const SCOPE_GLOBAL: u32 = fourcc(b"glob");
+pub(super) const SCOPE_OUTPUT: u32 = fourcc(b"outp");
+pub(super) const ELEMENT_MAIN: u32 = 0;
 const ELEMENT_WILDCARD: u32 = u32::MAX;
 
 const DEFAULT_OUTPUT: PropertyAddress = PropertyAddress {
@@ -110,7 +110,7 @@ const DEFAULT_OUTPUT: PropertyAddress = PropertyAddress {
 };
 /// `kAudioHardwarePropertyRunLoop`; set to NULL so the HAL delivers notifications on its own
 /// thread instead of the main run loop (which a test binary, or a busy UI thread, never spins).
-const RUN_LOOP: PropertyAddress = PropertyAddress {
+pub(super) const RUN_LOOP: PropertyAddress = PropertyAddress {
     selector: fourcc(b"rnlp"),
     scope: SCOPE_GLOBAL,
     element: ELEMENT_MAIN,
@@ -336,12 +336,15 @@ fn percent_to_scalar(percent: u8) -> f32 {
     f32::from(percent.min(100)) / 100.0
 }
 
-fn os_error(what: &str, status: OsStatus) -> BackendError {
+pub(super) fn os_error(what: &str, status: OsStatus) -> BackendError {
     BackendError::Os(format!("{what} failed (OSStatus {status})"))
 }
 
 /// Reads a fixed-size POD property.
-fn get<T: Copy + Default>(id: AudioObjectId, address: &PropertyAddress) -> Result<T, OsStatus> {
+pub(super) fn get<T: Copy + Default>(
+    id: AudioObjectId,
+    address: &PropertyAddress,
+) -> Result<T, OsStatus> {
     let mut value = T::default();
     let mut size = std::mem::size_of::<T>() as u32;
     // SAFETY: `address` is a valid property address; `value`/`size` describe a writable buffer
@@ -363,7 +366,11 @@ fn get<T: Copy + Default>(id: AudioObjectId, address: &PropertyAddress) -> Resul
     }
 }
 
-fn put<T: Copy>(id: AudioObjectId, address: &PropertyAddress, value: T) -> Result<(), OsStatus> {
+pub(super) fn put<T: Copy>(
+    id: AudioObjectId,
+    address: &PropertyAddress,
+    value: T,
+) -> Result<(), OsStatus> {
     // SAFETY: `address` is a valid property address; `value` is a readable buffer of exactly the
     // property's documented type and size.
     let status = unsafe {

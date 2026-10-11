@@ -5,6 +5,7 @@
     "previousTrack",
     "nextTrack",
     "systemMute",
+    "micMute",
     "appMute",
     "shortcut",
     "launch",
@@ -24,7 +25,8 @@
     "hostTakeoversV1",
     "quietAckV1",
     "deviceInternalsV1",
-    "idleLifeV1"
+    "idleLifeV1",
+    "micStateV1"
   ],
   "chipModels": ["esp32c3"],
   "controls": [
@@ -40,6 +42,7 @@
     "volume",
     "playPause",
     "mute",
+    "micMute",
     "shortcut",
     "launch",
     "previousTrack",

@@ -235,6 +235,7 @@ fn shortcut_detents_are_never_batched() {
     let mut desk = DeskRuntime::new(OsServices {
         volume: Arc::new(FakeVolumeBackend::new(20)),
         app_volume: Arc::new(FakeAppVolumeBackend::new()),
+        mic: Arc::new(kivori_desktop::platform::FakeMicBackend::new()),
         synth: synth.clone(),
         media: Arc::new(FakeMediaObserver::default()),
         system: Box::new(NoSystemProbe),

@@ -17,7 +17,9 @@ use crate::device::nonce::{NonceSource, OsNonceSource};
 use crate::device::transport::SerialLink;
 use crate::input::DeviceClock;
 use crate::orchestrator::Orchestrator;
-use kivori_model::desk::{ActionFeedback, ControlLabels, DeskStatus, FeedbackKind, MediaInfo};
+use kivori_model::desk::{
+    ActionFeedback, ControlLabels, DeskStatus, FeedbackKind, MediaInfo, MicState,
+};
 use kivori_model::internals::DeviceInternals;
 use kivori_model::{
     Capabilities, CompanionState, MascotAction, MascotPersonality, ProtocolVersion, SendableState,
@@ -25,9 +27,9 @@ use kivori_model::{
 use kivori_protocol::{
     decode_frame, decode_message, encode_message, evaluate_hello_ack, BuddySettings, Bye,
     ByeReason, ControlLabelsUpdate, Feedback, FirmwareVersion, HandshakeOutcome, Hello, InputEvent,
-    InternalsRequest, MascotActionApplied, MediaInfoUpdate, Message, Ping, PlayMascotAction,
-    Presentation, ProtoError, SeqClass, SequenceTracker, SetState, Status, MAX_FRAME, MAX_WIRE,
-    PROTOCOL_MAJOR, PROTOCOL_MINOR,
+    InternalsRequest, MascotActionApplied, MediaInfoUpdate, Message, MicStateUpdate, Ping,
+    PlayMascotAction, Presentation, ProtoError, SeqClass, SequenceTracker, SetState, Status,
+    MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 /// Static session parameters (the desktop's advertised identity + compatibility).
@@ -69,7 +71,8 @@ impl Default for SessionConfig {
                 .union(Capabilities::HOST_TAKEOVERS_V1)
                 .union(Capabilities::QUIET_ACK_V1)
                 .union(Capabilities::DEVICE_INTERNALS_V1)
-                .union(Capabilities::IDLE_LIFE_V1),
+                .union(Capabilities::IDLE_LIFE_V1)
+                .union(Capabilities::MIC_STATE_V1),
             supported_majors: vec![PROTOCOL_MAJOR],
         }
     }
@@ -544,6 +547,26 @@ impl Session {
             return Ok(false);
         }
         self.send(link, &Message::MediaInfo(MediaInfoUpdate { session, info }))?;
+        Ok(true)
+    }
+
+    /// Sends the microphone state for the current session. Returns `Ok(false)` without encoding
+    /// anything when there is no session or `MIC_STATE_V1` was not negotiated.
+    ///
+    /// # Errors
+    /// [`SessionError::Transport`] if the write fails.
+    pub fn send_mic_state<L: SerialLink>(
+        &mut self,
+        link: &mut L,
+        mic: MicState,
+    ) -> Result<bool, SessionError<L::Error>> {
+        let Some(session) = self.current_session else {
+            return Ok(false);
+        };
+        if !self.negotiated_caps.contains(Capabilities::MIC_STATE_V1) {
+            return Ok(false);
+        }
+        self.send(link, &Message::MicState(MicStateUpdate { session, mic }))?;
         Ok(true)
     }
 

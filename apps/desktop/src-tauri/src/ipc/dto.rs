@@ -888,7 +888,8 @@ pub fn action_catalog(
                     Slot::Discrete => "discrete",
                 },
                 scope: match entry.scope {
-                    Scope::System => "system",
+                    // The OS microphones are system-wide too; the id says which action it is.
+                    Scope::System | Scope::Mic => "system",
                     Scope::App => "app",
                     Scope::Media => "media",
                     Scope::Keyboard => "keyboard",
@@ -1081,9 +1082,34 @@ pub struct DeskStatusDto {
     pub media_title: Option<String>,
     pub media_artist: Option<String>,
     pub last_action: Option<DeskActionDto>,
+    /// The computer's microphones: whether they are muted, whether one is in use, and each device.
+    pub mic: MicDto,
     /// The last app in front that is not Kivori itself (`null` = none yet): what "add the app in
     /// front of me" adds, since clicking in Kivori's window makes Kivori the foreground app.
     pub recent_app: Option<RunningAppDto>,
+}
+
+/// The microphones for the UI. Names are shown here and never logged (ADR-0005).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MicDto {
+    /// `yes` (every microphone reads muted), `partial` (some do), `no` (none does) or `unknown`
+    /// (it could not be read, or there is no microphone). Never `yes` while any may be live.
+    pub muted: &'static str,
+    /// An app is using a microphone: `null` where the OS does not say (never read as "no").
+    pub in_use: Option<bool>,
+    /// The "Live" cue: in use AND unmuted. Unknown on either side is `false`.
+    pub live: bool,
+    pub devices: Vec<MicDeviceDto>,
+}
+
+/// One capture device.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MicDeviceDto {
+    pub name: String,
+    /// `muted`, `live`, `unknown` (could not be read) or `cannotMute` (no mute control).
+    pub state: &'static str,
 }
 
 /// An app by foreground id and display name.
@@ -1191,6 +1217,12 @@ pub fn initial_desk_status(config: &crate::config::ResolvedConfig) -> DeskStatus
         media_title: None,
         media_artist: None,
         last_action: None,
+        mic: MicDto {
+            muted: "unknown",
+            in_use: None,
+            live: false,
+            devices: Vec::new(),
+        },
         recent_app: None,
     }
 }
@@ -1225,10 +1257,39 @@ pub fn desk_status_dto(desk: &crate::desk::DeskRuntime) -> DeskStatusDto {
             result: feedback_token(last.kind),
             permission_required: last.permission_required,
         }),
+        mic: mic_dto(desk),
         recent_app: desk.context().recent_app().map(|(id, name)| RunningAppDto {
             id: id.to_string(),
             name: name.to_string(),
         }),
+    }
+}
+
+fn mic_dto(desk: &crate::desk::DeskRuntime) -> MicDto {
+    use crate::platform::MicMute;
+    let (state, devices) = desk.mic();
+    let any_muted = devices.iter().any(|d| d.mute == MicMute::Muted);
+    MicDto {
+        muted: match state.muted {
+            Some(true) => "yes",
+            Some(false) if any_muted => "partial",
+            Some(false) => "no",
+            None => "unknown",
+        },
+        in_use: state.in_use,
+        live: state.is_live(),
+        devices: devices
+            .iter()
+            .map(|d| MicDeviceDto {
+                name: d.name.clone(),
+                state: match d.mute {
+                    MicMute::Muted => "muted",
+                    MicMute::Live => "live",
+                    MicMute::Unreadable => "unknown",
+                    MicMute::Unsettable => "cannotMute",
+                },
+            })
+            .collect(),
     }
 }
 
@@ -1482,7 +1543,7 @@ pub const fn availability_token(
 }
 
 /// Every capability flag with the name the diagnostics page lists it by, in bit order.
-const CAPABILITY_TABLE: [(Capabilities, &str); 14] = [
+const CAPABILITY_TABLE: [(Capabilities, &str); 15] = [
     (Capabilities::MASCOT_INTERACTION, "mascotInteraction"),
     (Capabilities::PHYSICAL_INPUT_V1, "physicalInputV1"),
     (Capabilities::PRESENTATION_V1, "presentationV1"),
@@ -1497,6 +1558,7 @@ const CAPABILITY_TABLE: [(Capabilities, &str); 14] = [
     (Capabilities::QUIET_ACK_V1, "quietAckV1"),
     (Capabilities::DEVICE_INTERNALS_V1, "deviceInternalsV1"),
     (Capabilities::IDLE_LIFE_V1, "idleLifeV1"),
+    (Capabilities::MIC_STATE_V1, "micStateV1"),
 ];
 
 /// The capability names the diagnostics page lists, in bit order.

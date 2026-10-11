@@ -956,3 +956,35 @@ fn buddy_settings_go_only_to_a_device_that_runs_idle_life() {
     assert!(!sent[0].self_play);
     assert_eq!(sent[0].brightness, 2);
 }
+
+#[test]
+fn mic_state_goes_only_to_a_device_that_negotiated_it() {
+    use kivori_model::desk::MicState;
+    let state = MicState {
+        muted: Some(true),
+        in_use: None,
+    };
+    let mics = |msgs: &[Message]| -> Vec<kivori_protocol::MicStateUpdate> {
+        msgs.iter()
+            .filter_map(|m| match m {
+                Message::MicState(update) => Some(*update),
+                _ => None,
+            })
+            .collect()
+    };
+    let (mut link, mut session, _manager, _orch) = connect(SendableState::Idle);
+    let _ = desktop_drain(&mut link);
+    assert!(!session.send_mic_state(&mut link, state).expect("send"));
+    assert!(desktop_drain(&mut link).is_empty(), "nothing sent");
+
+    let (mut link, mut session, _manager, _orch) = connect_with_caps(
+        SendableState::Idle,
+        Capabilities::MASCOT_INTERACTION.union(Capabilities::MIC_STATE_V1),
+    );
+    let _ = desktop_drain(&mut link);
+    assert!(session.send_mic_state(&mut link, state).expect("send"));
+    let sent = mics(&desktop_drain(&mut link));
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].session, session.current_session().unwrap());
+    assert_eq!(sent[0].mic, state);
+}

@@ -263,6 +263,8 @@ pub enum ActionSpec {
     PreviousTrack,
     NextTrack,
     SystemMute,
+    /// Toggles mute on every microphone the OS has, not an app's own mute button.
+    MicMute,
     /// Toggles mute on one app's audio (`app` is its lowercase executable name on Windows).
     AppMute {
         app: String,

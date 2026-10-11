@@ -74,6 +74,12 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
         press: Slot::named(Action::Shortcut(s), name),
         hold: Slot::default(),
     };
+    // The OS microphones, not the call app's own mute button: it reads back and works the same in
+    // every meeting app (ADR-0011).
+    let mic_mute = ButtonSlots {
+        press: Slot::bound(Action::ToggleMicMute),
+        hold: Slot::default(),
+    };
     let with_buttons = |buttons: [ButtonSlots; 3]| Bindings {
         buttons,
         ..Bindings::default()
@@ -164,7 +170,7 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
             ids: ids(&["zoom.exe", "us.zoom.xos"]),
             mood: ContextMood::Meeting,
             bindings: with_buttons([
-                named("Mic", os("Alt+A", "Meta+Shift+A")),
+                mic_mute.clone(),
                 named("Video", os("Alt+V", "Meta+Shift+V")),
                 named("Leave", os("Alt+Q", "Meta+W")),
             ]),
@@ -176,7 +182,7 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
             ids: ids(&["ms-teams.exe", "teams.exe", "com.microsoft.teams2"]),
             mood: ContextMood::Meeting,
             bindings: with_buttons([
-                named("Mic", os("Ctrl+Shift+M", "Meta+Shift+M")),
+                mic_mute,
                 named("Video", os("Ctrl+Shift+O", "Meta+Shift+O")),
                 named("Leave", os("Ctrl+Shift+H", "Meta+Shift+H")),
             ]),
@@ -492,6 +498,31 @@ mod tests {
         }
     }
 
+    /// The left button in the meeting profiles is the OS microphone mute, on every OS, not the
+    /// call app's own mute shortcut (ADR-0011); the other two stay the app's shortcuts.
+    #[test]
+    fn meeting_profiles_bind_the_left_button_to_mic_mute() {
+        for mac in [false, true] {
+            for profile in builtins_for(mac)
+                .iter()
+                .filter(|p| ["Zoom", "Teams"].contains(&p.name.as_str()))
+            {
+                let left = &profile.bindings.buttons[0];
+                assert_eq!(
+                    left.press.action,
+                    Some(Action::ToggleMicMute),
+                    "{}",
+                    profile.name
+                );
+                assert_eq!(left.press.device_label(), "Mic");
+                assert!(left.hold.action.is_none());
+                for other in &profile.bindings.buttons[1..] {
+                    assert!(matches!(other.press.action, Some(Action::Shortcut(_))));
+                }
+            }
+        }
+    }
+
     #[test]
     fn built_in_shortcuts_follow_the_os() {
         let button = |p: &Profile, i: usize| match &p.bindings.buttons[i].press.action {
@@ -511,7 +542,7 @@ mod tests {
         );
         assert_eq!(button(&win[4], 2), "Alt+Q");
         assert_eq!(button(&mac[4], 2), "Meta+W");
-        assert_eq!(button(&mac[5], 0), "Shift+Meta+M");
+        assert_eq!(button(&mac[5], 2), "Shift+Meta+H");
         assert_eq!(
             mac[1].rotate,
             RotateBinding::Shortcuts {

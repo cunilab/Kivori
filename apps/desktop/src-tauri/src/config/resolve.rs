@@ -43,11 +43,12 @@ pub const CONTROL_TOKENS: [&str; 7] = [
 ];
 
 /// Every `kind` an [`ActionSpec`] serializes with, for the Rust/TS vocabulary check.
-pub const ACTION_SPEC_KINDS: [&str; 8] = [
+pub const ACTION_SPEC_KINDS: [&str; 9] = [
     "playPause",
     "previousTrack",
     "nextTrack",
     "systemMute",
+    "micMute",
     "appMute",
     "shortcut",
     "launch",
@@ -192,6 +193,7 @@ pub fn resolve_action(spec: &ActionSpec, macros: &Macros) -> Result<Action, &'st
         ActionSpec::PreviousTrack => Action::PreviousTrack,
         ActionSpec::NextTrack => Action::NextTrack,
         ActionSpec::SystemMute => Action::ToggleMute,
+        ActionSpec::MicMute => Action::ToggleMicMute,
         ActionSpec::AppMute { app } => Action::AppMute { app: app_id(app)? },
         ActionSpec::Shortcut { keys } => Action::Shortcut(shortcut(keys)?),
         ActionSpec::Launch { target } => Action::Launch(
@@ -258,6 +260,7 @@ pub fn action_spec(action: &Action) -> Option<ActionSpec> {
         Action::PreviousTrack => ActionSpec::PreviousTrack,
         Action::NextTrack => ActionSpec::NextTrack,
         Action::ToggleMute => ActionSpec::SystemMute,
+        Action::ToggleMicMute => ActionSpec::MicMute,
         Action::AppMute { app } => ActionSpec::AppMute { app: app.clone() },
         Action::Shortcut(s) => ActionSpec::Shortcut {
             keys: s.to_string(),
@@ -718,6 +721,7 @@ mod tests {
             ActionSpec::PreviousTrack,
             ActionSpec::NextTrack,
             ActionSpec::SystemMute,
+            ActionSpec::MicMute,
             ActionSpec::AppMute { app: "a".into() },
             ActionSpec::Shortcut { keys: "A".into() },
             ActionSpec::Launch { target: "a".into() },

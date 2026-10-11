@@ -1,4 +1,4 @@
-//! Windows Core Audio master volume.
+//! Windows Core Audio master volume (and, in `mic`, per-device microphone mute).
 //!
 //! THREADING (research R-50, R-76): there is no tokio in this crate. A dedicated
 //! `kivori-audio` OS thread performs `CoInitializeEx`, owns the `IMMDeviceEnumerator` and the
@@ -19,10 +19,12 @@ pub mod apps;
 pub mod foreground;
 pub mod host_events;
 pub mod media;
+mod mic;
 pub mod system;
 
 pub use foreground::WindowsForeground;
 pub use media::WindowsMediaObserver;
+pub use mic::WindowsMicBackend;
 pub use system::{local_time, WindowsSystemProbe};
 
 use std::sync::atomic::{AtomicBool, Ordering};
