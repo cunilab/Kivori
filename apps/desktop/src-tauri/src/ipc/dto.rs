@@ -1109,7 +1109,8 @@ pub struct MicDto {
 pub struct MicDeviceDto {
     pub name: String,
     /// `muted`, `live`, `unknown` (could not be read), `cannotMuteIdle` (no mute control, observed
-    /// not in use) or `cannotMuteLive` (no mute control, in use or not known to be idle).
+    /// not in use), `cannotMuteLive` (no mute control, in use) or `cannotMuteUnknown` (no mute
+    /// control, use cannot be observed; counts as live for muting, but is never called "in use").
     pub state: &'static str,
 }
 
@@ -1290,15 +1291,19 @@ fn mic_dto(desk: &crate::desk::DeskRuntime) -> MicDto {
 }
 
 /// The wire state of one capture device. One with no mute control is fine while observed idle;
-/// capturing, or not known to be idle, it is live.
+/// capturing, it is live. When its use cannot be observed it is reported as exactly that, never as
+/// "in use" (no state invention).
 fn mic_device_state(d: &crate::platform::MicDevice) -> &'static str {
     use crate::platform::MicMute;
     match d.mute {
         MicMute::Muted => "muted",
         MicMute::Live => "live",
         MicMute::Unreadable => "unknown",
-        MicMute::Unsettable if d.capturing == Some(false) => "cannotMuteIdle",
-        MicMute::Unsettable => "cannotMuteLive",
+        MicMute::Unsettable => match d.capturing {
+            Some(false) => "cannotMuteIdle",
+            Some(true) => "cannotMuteLive",
+            None => "cannotMuteUnknown",
+        },
     }
 }
 
@@ -1970,6 +1975,6 @@ mod mic_tests {
         assert_eq!(state(MicMute::Unreadable, None), "unknown");
         assert_eq!(state(MicMute::Unsettable, Some(false)), "cannotMuteIdle");
         assert_eq!(state(MicMute::Unsettable, Some(true)), "cannotMuteLive");
-        assert_eq!(state(MicMute::Unsettable, None), "cannotMuteLive");
+        assert_eq!(state(MicMute::Unsettable, None), "cannotMuteUnknown");
     }
 }

@@ -499,6 +499,7 @@ export const MIC_DEVICE_STATES = [
   'unknown',
   'cannotMuteIdle',
   'cannotMuteLive',
+  'cannotMuteUnknown',
 ] as const;
 export type MicDeviceState = (typeof MIC_DEVICE_STATES)[number];
 

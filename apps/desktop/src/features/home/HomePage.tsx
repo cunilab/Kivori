@@ -382,7 +382,9 @@ function Microphone({ desk }: { desk: DeskStatusDto }): ReactElement {
                     'shrink-0 text-xs',
                     device.state === 'live' || device.state === 'cannotMuteLive'
                       ? 'font-medium text-destructive'
-                      : 'text-muted-foreground',
+                      : device.state === 'cannotMuteUnknown'
+                        ? 'font-medium text-warning'
+                        : 'text-muted-foreground',
                   )}
                 >
                   {t.micDeviceStates[device.state]}

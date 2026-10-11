@@ -100,6 +100,7 @@ export const strings = {
       unknown: 'Can’t tell',
       cannotMuteIdle: 'Can’t be muted · not in use',
       cannotMuteLive: 'Can’t be muted · in use',
+      cannotMuteUnknown: 'Can’t be muted · can’t tell if in use',
     },
     micNone: 'No microphone found.',
     micScope: 'This is the computer’s microphones, not an app’s own mute button.',
