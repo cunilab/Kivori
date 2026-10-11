@@ -26,7 +26,17 @@ export default defineConfig({
     strictPort: true,
     fs: { allow: [searchForWorkspaceRoot(process.cwd()), BRAND_ASSETS] },
   },
-  build: { outDir: 'dist', emptyOutDir: true },
+  // Two pages: the app, and the small startup splash window (splash.html).
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        splash: fileURLToPath(new URL('./splash.html', import.meta.url)),
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,

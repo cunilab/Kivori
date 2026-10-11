@@ -84,6 +84,20 @@ export async function getAppInfo(): Promise<AppInfoDto> {
   return unavailable();
 }
 
+/**
+ * Tells the native core the first screen is ready, so it shows the main window (and closes the
+ * startup splash). A no-op outside Tauri; a failure is swallowed because the core shows the window
+ * after a timeout anyway.
+ */
+export async function appReady(): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    await invoke<void>('app_ready');
+  } catch {
+    // The native fallback timer covers a missed signal.
+  }
+}
+
 export async function getConnectionStatus(): Promise<ConnectionStatusDto> {
   if (isTauri()) return parseConnectionStatus(await invoke<unknown>('get_connection_status'));
   if (import.meta.env.DEV) return (await devMock()).mockConnectionStatus();

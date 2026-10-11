@@ -21,6 +21,7 @@ pub mod presentation;
 pub mod provision;
 pub mod render;
 pub mod runtime;
+pub mod startup;
 pub mod window_lifecycle;
 
 /// Launches the Tauri application runtime. Called by the thin `main.rs` binary.
@@ -105,15 +106,18 @@ pub fn run() {
             // After the device thread exists, so the first lock or sleep notice has a reader.
             app.manage(runtime::state::HostEventsHandle::start(host_tx));
             runtime::lifecycle::build_tray(app.handle())?;
-            // The window is configured hidden. A login launch keeps it that way (tray only); any
-            // other launch shows it.
+            // The window is configured hidden. A login launch keeps it that way (tray only). Any
+            // other launch shows it once the frontend calls `app_ready`, behind a splash if that
+            // is slow (see `runtime::splash`).
+            let readiness = std::sync::Arc::new(runtime::splash::Readiness::default());
+            app.manage(std::sync::Arc::clone(&readiness));
             if window_lifecycle::launched_at_login(std::env::args()) {
                 *app.state::<runtime::state::AppState>()
                     .lifecycle
                     .lock()
                     .expect("lifecycle lock") = window_lifecycle::WindowLifecycle::hidden();
             } else {
-                runtime::lifecycle::show_main(app.handle());
+                runtime::splash::watch_startup(app.handle(), readiness);
             }
             Ok(())
         });
@@ -121,6 +125,7 @@ pub fn run() {
     #[cfg(feature = "device-studio")]
     let builder = builder.invoke_handler(tauri::generate_handler![
         ipc::commands::get_app_info,
+        ipc::commands::app_ready,
         ipc::commands::get_connection_status,
         ipc::commands::list_states,
         ipc::commands::set_desired_state,
@@ -162,6 +167,7 @@ pub fn run() {
     #[cfg(not(feature = "device-studio"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         ipc::commands::get_app_info,
+        ipc::commands::app_ready,
         ipc::commands::get_connection_status,
         ipc::commands::list_states,
         ipc::commands::set_desired_state,

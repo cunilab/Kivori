@@ -62,6 +62,7 @@ import {
   type UiConnection,
 } from './hooks/use-kivori';
 import { brandIconUrl } from './lib/brand';
+import { appReady } from './lib/ipc';
 import { useDevMode } from './lib/dev-mode';
 import { format, strings } from './lib/i18n/strings';
 import { setTheme, useTheme, type ThemeChoice } from './lib/theme';
@@ -183,6 +184,14 @@ export function App(): ReactElement {
   const onboarding = useOnboarding();
   const ui = uiConnection(connection);
   useConnectionToasts(ui);
+
+  // The first native answer is in: the page has real content, so the core may show the window.
+  const reportedReady = useRef(false);
+  useEffect(() => {
+    if (ui === 'loading' || reportedReady.current) return;
+    reportedReady.current = true;
+    void appReady();
+  }, [ui]);
 
   const devMode = useDevMode();
   // Developer mode never reveals Device Studio in a production build: the build gate comes first.

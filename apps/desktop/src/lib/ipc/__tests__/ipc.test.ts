@@ -10,6 +10,7 @@ vi.mock('@tauri-apps/api/event', () => ({ listen: tauri.listen }));
 import {
   flashFirmware,
   getFirmwareStatus,
+  appReady,
   getAppInfo,
   getOnboarding,
   completeOnboarding,
@@ -147,6 +148,22 @@ const validDesk = {
   mediaArtist: '',
   lastAction: { action: 'shortcut', result: 'unverified', permissionRequired: true },
 };
+
+describe('app ready signal', () => {
+  it('does nothing in a plain browser', async () => {
+    await appReady();
+    expect(tauri.invoke).not.toHaveBeenCalled();
+  });
+
+  it('calls the native app_ready command in Tauri, and never throws if it fails', async () => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} });
+    tauri.invoke.mockResolvedValue(undefined);
+    await appReady();
+    expect(tauri.invoke).toHaveBeenCalledWith('app_ready', undefined);
+    tauri.invoke.mockRejectedValue(new Error('boom'));
+    await expect(appReady()).resolves.toBeUndefined();
+  });
+});
 
 describe('desk ipc (Tauri)', () => {
   const enterTauri = (): void => {

@@ -36,6 +36,11 @@ export const strings = {
     toastConnected: 'Kivori connected',
     toastLost: 'Kivori disconnected — reconnecting automatically',
   },
+  splash: {
+    version: 'Version {version}',
+    starting: 'Starting',
+    looking: 'Looking for your Kivori',
+  },
   home: {
     title: 'Home',
     description: 'Your Kivori and this computer at a glance.',

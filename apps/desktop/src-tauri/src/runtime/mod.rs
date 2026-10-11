@@ -3,6 +3,7 @@
 
 pub mod device_task;
 pub mod lifecycle;
+pub mod splash;
 pub mod state;
 
 pub use state::{AppState, DeviceCommand};

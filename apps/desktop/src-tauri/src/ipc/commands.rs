@@ -23,6 +23,13 @@ pub fn get_app_info(app: State<'_, AppState>) -> AppInfoDto {
     dto::app_info(app.device_studio_enabled)
 }
 
+/// The frontend has rendered: lets the startup watcher show the main window (all builds). A no-op
+/// on a login launch, which stays hidden.
+#[tauri::command]
+pub fn app_ready(readiness: State<'_, std::sync::Arc<crate::runtime::splash::Readiness>>) {
+    readiness.mark_ready();
+}
+
 /// The current three-axis connection snapshot (initial UI sync; all builds).
 #[tauri::command]
 pub fn get_connection_status(app: State<'_, AppState>) -> ConnectionStatusDto {
