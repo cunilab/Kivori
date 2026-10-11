@@ -4,6 +4,7 @@
 //! decides PASS or FAIL and formats the log row. No I/O and no clock, so it is table-testable.
 //! The log row carries only the short device hash and versions: never the raw device id or a port.
 
+use crate::catalog::Catalog;
 use kivori_model::input::Direction;
 use kivori_model::Capabilities;
 use kivori_protocol::{ControlId, InputKind};
@@ -17,8 +18,8 @@ pub const HEARTBEAT_HOLD_SECS: u64 = 5;
 /// How many detents each turn check needs.
 pub const DETENTS_REQUIRED: u32 = 3;
 
-/// Every capability a beta unit must negotiate.
-pub const REQUIRED_CAPABILITIES: [(&str, Capabilities); 11] = [
+/// Every capability name the catalog may require, with its flag.
+const KNOWN_CAPABILITIES: [(&str, Capabilities); 11] = [
     ("MASCOT_INTERACTION", Capabilities::MASCOT_INTERACTION),
     ("PHYSICAL_INPUT_V1", Capabilities::PHYSICAL_INPUT_V1),
     ("PRESENTATION_V1", Capabilities::PRESENTATION_V1),
@@ -31,6 +32,31 @@ pub const REQUIRED_CAPABILITIES: [(&str, Capabilities); 11] = [
     ("CONTEXT_BUTTONS_V1", Capabilities::CONTEXT_BUTTONS_V1),
     ("HOST_TAKEOVERS_V1", Capabilities::HOST_TAKEOVERS_V1),
 ];
+
+/// The product this QA helper checks (the only one that exists so far).
+const PRODUCT_ID: &str = "desk-buddy";
+
+/// Every capability a beta unit must negotiate: the catalog's list for the product.
+///
+/// # Panics
+/// If the catalog names a capability this build does not know; a test rejects that.
+#[must_use]
+pub fn required_capabilities() -> Vec<(&'static str, Capabilities)> {
+    let product = Catalog::embedded()
+        .product(PRODUCT_ID)
+        .expect("the catalog lists the QA product");
+    product
+        .required_capabilities
+        .iter()
+        .map(|name| {
+            KNOWN_CAPABILITIES
+                .iter()
+                .find(|(known, _)| known == name)
+                .copied()
+                .unwrap_or_else(|| panic!("catalog names unknown capability `{name}`"))
+        })
+        .collect()
+}
 
 /// One guided input the operator performs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -249,7 +275,7 @@ pub fn evaluate(obs: &Observations) -> Verdict {
         failed.push(FailedCheck::Handshake);
         return Verdict { failed };
     }
-    for (name, cap) in REQUIRED_CAPABILITIES {
+    for (name, cap) in required_capabilities() {
         if !obs.negotiated_caps.contains(cap) {
             failed.push(FailedCheck::Capability(name));
         }
@@ -339,8 +365,13 @@ pub fn format_utc(unix_secs: u64) -> String {
 mod tests {
     use super::*;
 
+    #[test]
+    fn catalog_capabilities_are_all_known() {
+        assert_eq!(required_capabilities().len(), 11);
+    }
+
     fn all_caps() -> Capabilities {
-        REQUIRED_CAPABILITIES
+        required_capabilities()
             .iter()
             .fold(Capabilities::NONE, |acc, (_, cap)| acc.union(*cap))
     }

@@ -6,6 +6,7 @@
 
 pub mod action;
 pub mod activity;
+pub mod catalog;
 pub mod companion;
 pub mod config;
 pub mod desk;

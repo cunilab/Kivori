@@ -9,16 +9,16 @@
 use crate::device::reconnect::{base_delay_ms, Backoff};
 use core::time::Duration;
 
-/// A `(vendor, product)` USB id pair.
-pub type UsbId = (u16, u16);
+use crate::catalog::Catalog;
+pub use crate::catalog::UsbId;
 
-/// Espressif's USB vendor id (the ESP32-C3 USB Serial/JTAG).
-pub const KIVORI_VID: u16 = 0x303A;
-/// Kivori's USB product id.
-pub const KIVORI_PID: u16 = 0x1001;
-
-/// The default VID/PID allowlist (a single Kivori id; widen it to onboard new hardware).
-pub const DEFAULT_ALLOWLIST: &[UsbId] = &[(KIVORI_VID, KIVORI_PID)];
+/// The default VID/PID allowlist: every USB id the product catalog lists for a board. Onboarding
+/// new hardware means adding its board to the catalog.
+#[must_use]
+pub fn default_allowlist() -> &'static [UsbId] {
+    static ALLOWLIST: std::sync::OnceLock<Vec<UsbId>> = std::sync::OnceLock::new();
+    ALLOWLIST.get_or_init(|| Catalog::embedded().usb_ids())
+}
 
 /// An enumerated serial port and its USB identity (absent for non-USB ports).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -216,12 +216,13 @@ mod tests {
     const MS: fn(u64) -> Duration = Duration::from_millis;
 
     fn port(name: &str) -> PortCandidate {
-        PortCandidate::new(name, Some(KIVORI_VID), Some(KIVORI_PID))
+        let (vid, pid) = default_allowlist()[0];
+        PortCandidate::new(name, Some(vid), Some(pid))
     }
 
     fn next(r: &mut CandidateRotator, names: &[&str], now: Duration) -> Option<String> {
         let ports: Vec<_> = names.iter().map(|n| port(n)).collect();
-        r.next(&ports, DEFAULT_ALLOWLIST, now)
+        r.next(&ports, default_allowlist(), now)
     }
 
     #[test]
@@ -320,6 +321,6 @@ mod tests {
     fn ports_outside_the_allowlist_are_never_picked() {
         let mut r = CandidateRotator::new();
         let other = PortCandidate::new("other", Some(0x1234), Some(0x5678));
-        assert_eq!(r.next(&[other], DEFAULT_ALLOWLIST, MS(0)), None);
+        assert_eq!(r.next(&[other], default_allowlist(), MS(0)), None);
     }
 }

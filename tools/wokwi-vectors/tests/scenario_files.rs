@@ -141,8 +141,8 @@ fn the_spi_probe_scenario_matches_the_firmware_markers() {
     let root = repo_root();
     let yaml = fs::read_to_string(root.join("sim/wokwi/scenarios/spi-display-probe.yaml"))
         .expect("spi-display-probe.yaml");
-    let source =
-        fs::read_to_string(root.join("firmware/desk-buddy/src/spi_probe.rs")).expect("spi_probe.rs");
+    let source = fs::read_to_string(root.join("firmware/desk-buddy/src/spi_probe.rs"))
+        .expect("spi_probe.rs");
 
     let markers = awaited_markers(&yaml);
     assert!(

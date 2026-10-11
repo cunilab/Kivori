@@ -25,6 +25,8 @@ Kivori will be one desktop app for several hardware products, so identity and ve
 
 The catalog format leaves room for firmware as its own downloads later.
 
+**As built (step 1).** `products/registry.toml` holds two tables (`[products]`, `[boards]`) of id to `u16`; 0 is reserved for unknown and never assigned. `product.toml` carries `display_name`, `image`, `required_capabilities` and a `[boards.<id>]` table with `flash`, `usb` (VID:PID hints) and `[boards.<id>.firmware]` (`crate`, `artifact`, `min_protocol`). The firmware version, SHA-256 and identity record are not in the catalog yet: the version stays read from the image's marker, and `build.rs` fails the build if an embedded image differs from the version of the catalog's firmware crate. `apps/desktop/src-tauri/src/catalog.rs` embeds and validates the files (also run by `build.rs`); discovery's USB allowlist and the provisioning helper's required capabilities now come from it.
+
 ## Alternatives considered
 
 - Firmware as its own downloads now: rejected, a second signing chain and server, and code fetched from the network onto a device; the catalog format leaves room for it later.

@@ -9,7 +9,7 @@ use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use kivori_desktop::device::{
-    discovery::{filter_candidates, PortCandidate, DEFAULT_ALLOWLIST},
+    discovery::{default_allowlist, filter_candidates, PortCandidate},
     fsm::{ConnectionManager, ManagerEvent},
     serial::{enumerate, SerialPortLink},
     session::{Session, SessionConfig},
@@ -96,7 +96,7 @@ fn append_log(row: &str) -> std::io::Result<()> {
 /// Exactly one allowlisted port, or a message for the operator.
 fn single_port() -> Result<PortCandidate, String> {
     let ports = enumerate();
-    let found = filter_candidates(&ports, DEFAULT_ALLOWLIST);
+    let found = filter_candidates(&ports, default_allowlist());
     match found.as_slice() {
         [only] => Ok((*only).clone()),
         [] => Err("no Kivori unit found: plug in one unit and retry.".into()),

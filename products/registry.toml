@@ -1,0 +1,17 @@
+# The one place Kivori machine ids and wire numbers are handed out (ADR-0014).
+#
+# Rules:
+#   * An id is a lowercase kebab-case machine name; its number is a u16 sent on the wire
+#     (the Identity message, firmware image records, the chip identity record).
+#   * Ids and numbers are never reused and never renamed, even for a retired product or board.
+#     A rename would orphan every unit already sold; add a new entry instead.
+#   * Numbers are unique within their table. 0 is reserved for "unknown / legacy" and is never
+#     assigned (a device that sends no identity is the legacy Desk Buddy on the C3 SuperMini).
+#   * Display names, images and everything else live in `products/<id>/product.toml`, not here.
+#   * A product's `product.toml` may only name boards listed here.
+
+[products]
+desk-buddy = 1
+
+[boards]
+c3-supermini = 1

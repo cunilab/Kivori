@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::activity::{ActivityEventKind, SessionActivity};
-use crate::device::discovery::{filter_candidates, PortCandidate, DEFAULT_ALLOWLIST};
+use crate::device::discovery::{default_allowlist, filter_candidates, PortCandidate};
 use serde::Serialize;
 
 /// Maximum time allowed for one `espflash` process before it is terminated.
@@ -409,7 +409,7 @@ impl FlashWorkflow {
         if self.is_busy() {
             return Err("A firmware update is already in progress.".to_string());
         }
-        let found = filter_candidates(candidates, DEFAULT_ALLOWLIST);
+        let found = filter_candidates(candidates, default_allowlist());
         let [only] = found.as_slice() else {
             return Err(if found.is_empty() {
                 "No Kivori device was found to restore.".to_string()

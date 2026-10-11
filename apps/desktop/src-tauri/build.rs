@@ -1,6 +1,9 @@
 use std::path::Path;
 use std::process::Command;
 
+#[path = "src/catalog.rs"]
+#[allow(dead_code)]
+mod catalog;
 #[path = "src/firmware_marker.rs"]
 mod firmware_marker;
 
@@ -33,6 +36,7 @@ fn main() {
     // flashed. Empty when no firmware is embedded (ordinary host/CI builds).
     let bundled_version = firmware_marker::scan_firmware_version(&firmware).unwrap_or_default();
     println!("cargo:rustc-env=KIVORI_BUNDLED_FIRMWARE_VERSION={bundled_version}");
+    check_catalog(&bundled_version);
     std::fs::write(Path::new(&out_dir).join("kivori-firmware.elf"), firmware)
         .expect("write bundled firmware");
 
@@ -41,6 +45,29 @@ fn main() {
     }
 
     tauri_build::build();
+}
+
+/// Validates the product catalog (ADR-0014) and, when a firmware image is embedded, checks that its
+/// version is the `version` of the catalog's firmware crate, so the two cannot drift. The embedded
+/// image is the catalog's first product on its first board (the only one so far).
+fn check_catalog(bundled_version: &str) {
+    println!("cargo:rerun-if-changed=../../../products");
+    let catalog = catalog::Catalog::embedded();
+    if bundled_version.is_empty() {
+        return;
+    }
+    let board = &catalog.products()[0].boards[0];
+    let manifest = Path::new("../../..")
+        .join(&board.firmware.crate_dir)
+        .join("Cargo.toml");
+    println!("cargo:rerun-if-changed={}", manifest.display());
+    let text = std::fs::read_to_string(&manifest).expect("read the catalog's firmware Cargo.toml");
+    let crate_version = catalog::crate_version(&text).expect("firmware Cargo.toml has a version");
+    assert_eq!(
+        bundled_version, crate_version,
+        "embedded firmware image is {bundled_version} but {} is {crate_version}; rebuild the firmware",
+        manifest.display()
+    );
 }
 
 /// Compiles the vendored mediaremote-adapter (ADR-0009) with plain clang into

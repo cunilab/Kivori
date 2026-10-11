@@ -27,7 +27,7 @@ use crate::companion::CompanionDirector;
 use crate::config::ResolvedConfig;
 use crate::desk::catalog::{Os, Services, ServicesCell};
 use crate::desk::DeskRuntime;
-use crate::device::discovery::{filter_candidates, CandidateRotator, DEFAULT_ALLOWLIST};
+use crate::device::discovery::{default_allowlist, filter_candidates, CandidateRotator};
 use crate::device::fsm::{ConnectionManager, ManagerEvent};
 use crate::device::reconnect::base_delay_ms;
 use crate::device::serial::{enumerate, SerialPortLink};
@@ -371,7 +371,7 @@ fn device_loop(
                     let mut refusal = firmware::FlashFailure::Unknown;
                     let requested = if recovery {
                         let candidates = enumerate();
-                        if filter_candidates(&candidates, DEFAULT_ALLOWLIST).is_empty() {
+                        if filter_candidates(&candidates, default_allowlist()).is_empty() {
                             refusal = firmware::FlashFailure::NoDownloadMode;
                         }
                         flash.request_recovery(&candidates)
@@ -508,7 +508,7 @@ fn device_loop(
                         crate::firmware::FirmwarePhase::Reconnecting => {
                             flash_target(&flash).map(str::to_string)
                         }
-                        _ => rotator.next(&enumerate(), DEFAULT_ALLOWLIST, started.elapsed()),
+                        _ => rotator.next(&enumerate(), default_allowlist(), started.elapsed()),
                     };
                     if candidate.is_none()
                         && manager.state() == ConnectionState::Incompatible

@@ -1,0 +1,43 @@
+# Catalog entry for one product (ADR-0014). Compiled into the desktop app and validated against
+# `products/registry.toml` by `apps/desktop/src-tauri/src/catalog.rs`. The directory name is the
+# product's machine id from the registry.
+
+display_name = "Kivori Desk Buddy"
+
+# Product picture shown in the app, relative to this directory. Empty until artwork exists.
+image = ""
+
+# Capabilities (names of `kivori_model::Capabilities` flags) every unit of this product must
+# negotiate. Features stay capability-driven; nothing branches on the product id.
+required_capabilities = [
+  "MASCOT_INTERACTION",
+  "PHYSICAL_INPUT_V1",
+  "PRESENTATION_V1",
+  "BUTTON_INPUT_V1",
+  "DESK_STATUS_V1",
+  "ACTION_FEEDBACK_V1",
+  "DOUBLE_PRESS_V1",
+  "MEDIA_INFO_V1",
+  "CONTROL_LABELS_V1",
+  "CONTEXT_BUTTONS_V1",
+  "HOST_TAKEOVERS_V1",
+]
+
+# One table per board this product ships on; the key is the board's id in the registry.
+[boards.c3-supermini]
+display_name = "C3 SuperMini"
+# How the app flashes this board. Only "espflash" exists today.
+flash = "espflash"
+# USB discovery hints ("VID:PID", hex), used only to nominate serial ports. NEVER identity: a stock
+# ESP32-C3 reports the same ids, so only the handshake makes a port a device.
+usb = ["303A:1001"]
+
+# The firmware bundled for this board. The version is not repeated here: it is the `version` of the
+# crate below, and the desktop build checks the embedded image against it.
+[boards.c3-supermini.firmware]
+# Firmware crate directory, relative to the repository root.
+crate = "firmware/desk-buddy"
+# Release build output, relative to the crate directory (what KIVORI_FIRMWARE_PATH points at).
+artifact = "target/riscv32imc-unknown-none-elf/release/kivori-firmware"
+# Oldest wire protocol (major.minor) this firmware speaks.
+min_protocol = "1.6"
