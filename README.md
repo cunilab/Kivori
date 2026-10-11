@@ -97,6 +97,7 @@ One file per topic:
 | [`docs/architecture.md`](docs/architecture.md) | How it works: components, wire protocol, IPC, rendering, rotary loop, decisions, principles |
 | [`docs/roadmap.md`](docs/roadmap.md) | What gets built next, milestone by milestone (M0 to paid beta to v1) |
 | [`docs/validation.md`](docs/validation.md) | The hardware checklist and how to run a validation session |
+| [`docs/assembly.md`](docs/assembly.md) | Building one beta unit: copper traces, soldering, checks, provisioning, closing the case |
 | [`docs/release.md`](docs/release.md) | How to cut a Windows or macOS release, and the unsigned-installer limits |
 | [`docs/provisioning.md`](docs/provisioning.md) | Flashing and checking each new unit (`just provision`) |
 | [`docs/user-guide.md`](docs/user-guide.md) | Short guide for a beta customer: install, setup, controls, recovery |

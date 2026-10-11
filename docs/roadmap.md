@@ -153,7 +153,7 @@ problems and uses it without developer help. Start charging for beta units here.
   buttons sit in a row directly under the screen, centres one third of the panel's active width
   apart, each under its 80 px label column (#14))
 - [ ] BOM and real unit cost (draft parts list in [bom.md](./bom.md); prices, suppliers and the real unit cost still need the owner)
-- [ ] Repeatable assembly process
+- [ ] Repeatable assembly process (guide written: [assembly.md](./assembly.md); stays open until a person has built a unit with it)
 - [ ] Device flashing and provisioning process (tool exists: `just provision`, see [provisioning.md](./provisioning.md); stays open until a person has run it on real units)
 - [ ] Hardware QA checklist per unit (built from the remaining Phase 1–3 rows in [validation.md](./validation.md); the automated part is `just provision`, validation Phase 12, which still needs a human run)
 - [ ] Signed Windows installer, bundling the known-compatible firmware (this is the beta's update authentication, gate 10). The unsigned pipeline exists (M3 S5: `release.yml` builds, install-tests and drafts the NSIS installer with the pinned `espflash` sidecar); this stays open until the installer is signed, which waits on owner certificates (#36). See [release.md](./release.md)
