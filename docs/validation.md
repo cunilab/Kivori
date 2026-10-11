@@ -295,6 +295,29 @@ Run for every assembled beta unit with `just provision` ([provisioning.md](./pro
 - [ ] 12.2 Follow the prompts | knob right x3, left x3, press, hold and the three buttons are each seen
 - [ ] 12.3 Open `provisioning-log.csv` | one row for the unit: short hash and versions, no raw device id, no port name
 
+## Phase 13: Beta hero features (M2.6)
+
+Software rules in [product.md](./product.md); design in ADR-0011 and ADR-0012. Windows first.
+
+- [ ] 13.1 Two mics active (built-in and a USB headset), Mic Mute | both read muted in Windows Sound settings; buddy shows the covered-mouth face; Confirmed (celebrates), not amber
+- [ ] 13.2 Mic muted, plug in another mic | it is muted too within about 1 s; if it cannot be, the panel shows the mic live, never muted
+- [ ] 13.3 Unmute from Windows settings while Kivori shows muted | the panel follows within about 1 s (External); no Kivori action runs
+- [ ] 13.4 Start a Zoom or Teams call, mic unmuted | a Live cue shows; mute it and the cue changes to muted; with the cue unknown nothing shows
+- [ ] 13.5 Zoom's own mute on, Kivori's off | Kivori says unmuted (it reports the OS mic, not Zoom's button); the Controls page explains the difference
+- [ ] 13.6 Focus an app with no profile, "Add the app in front of me" | a new profile appears with that app's icon, starting as General; the panel shows its name within about ½ s of focusing it
+- [ ] 13.7 Add `idea64.exe` (or any app) to Code, then to a custom profile | it moves, and the app says it moved; never in two profiles
+- [ ] 13.8 Mark a custom profile "In pin cycle", hold the middle button repeatedly | it appears after the built-ins; unmarked profiles do not
+- [ ] 13.9 Leave the app idle 5 minutes, then pause the desktop app (debugger or Task Manager suspend) | the buddy keeps blinking and glancing; no frozen frame; eyes never close fully outside Sleeping
+- [ ] 13.10 Touch each control slowly with the app idle | the buddy looks towards it before the action's own feedback
+- [ ] 13.11 Move the brightness setting from highest to lowest | the backlight follows at once; the lowest step is still clearly on (never looks like Display Sleep); the setting survives a restart
+- [ ] 13.12 Press a media key button and a shortcut button | a quiet press and label pulse, no amber badge, no celebration; Activity says "Unverified"
+- [ ] 13.13 Unplug the audio device and press Mute | the amber "?" appears (state action without read-back)
+- [ ] 13.14 Developer mode on, Device page | a Device internals card shows flash, RAM, CPU, frame time, chip and link numbers that update about once a second; developer mode off hides it
+- [ ] 13.15 Compare with the build | app image size matches the built firmware within a few KB; asset blob matches the blob size; spin the knob fast and busy % and frame time rise, then fall back
+- [ ] 13.16 "Copy diagnostics" with developer mode on, then off | internals are included only when on; no port names, ids or file paths either way
+- [ ] 13.17 Start the app from cold (after a reboot) | a splash with the buddy and "Starting" shows, then the main window; no percentage; start it again while warm and the splash does not flash up
+- [ ] 13.18 Sign in with "Start with Windows" on | no splash and no window, only the tray icon
+
 ## Evidence log
 
 | Date | What | Result |

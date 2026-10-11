@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use kivori_model::desk::{
     ActionFeedback, ActionKind, ClockTime, ControlLabels, DeskStatus, DisplayMode, FeedbackKind,
-    MediaInfo, MediaStatus, MediaText,
+    MediaInfo, MediaStatus, MediaText, MicState,
 };
 
 use crate::activity::{ActivityEventKind, ActivityMetadata, SessionActivity};
@@ -23,8 +23,8 @@ use crate::config::{DisplaySettings, ResolvedConfig, SecondaryView};
 use crate::input::LogicalInput;
 use crate::platform::system::{SystemMonitor, SystemProbe, SystemSample};
 use crate::platform::{
-    Foreground, ForegroundObserver, LocalClock, MediaObserver, NowPlaying, OsServices, Shortcut,
-    VolumeBackend, VolumeChange,
+    mic_state, Foreground, ForegroundObserver, LocalClock, MediaObserver, MicBackend, MicChange,
+    MicDevice, NowPlaying, OsServices, Shortcut, VolumeBackend, VolumeChange,
 };
 pub use actions::{Action, ActionWorker, Bindings, ButtonSlots, Finished, Outcome, Platform, Slot};
 pub use catalog::ActionToken;
@@ -254,8 +254,9 @@ const fn confirmation_rank(kind: FeedbackKind) -> u8 {
     match kind {
         FeedbackKind::Error => 0,
         FeedbackKind::Processing | FeedbackKind::Unverified => 1,
-        FeedbackKind::ExecutionConfirmed => 2,
-        FeedbackKind::StateConfirmed => 3,
+        FeedbackKind::Triggered => 2,
+        FeedbackKind::ExecutionConfirmed => 3,
+        FeedbackKind::StateConfirmed => 4,
     }
 }
 
@@ -268,6 +269,8 @@ pub struct DeskOutput {
     pub media_info: Option<Option<MediaInfo>>,
     /// Control labels to send: once per session, and again if a binding changes.
     pub controls: Option<ControlLabels>,
+    /// The microphone state to send: when it changes, and with each status refresh while known.
+    pub mic: Option<MicState>,
 }
 
 /// The last action outcome, for the desktop UI.
@@ -296,6 +299,14 @@ pub struct DeskRuntime {
     publisher: StatusPublisher,
     monitor: SystemMonitor<Box<dyn SystemProbe>>,
     volume: Arc<dyn VolumeBackend>,
+    mic: Arc<dyn MicBackend>,
+    /// Every active capture device as last read, with what the OS says about each one.
+    mic_devices: Vec<MicDevice>,
+    /// An app is capturing audio, where the OS reports it (`None` = unknown).
+    mic_in_use: Option<bool>,
+    /// The microphone state the device was last sent (`UNKNOWN` = nothing, which is what a fresh
+    /// session shows).
+    sent_mic: MicState,
     media: Arc<dyn MediaObserver>,
     clock: LocalClock,
     next_sample: Duration,
@@ -315,6 +326,7 @@ impl DeskRuntime {
         let OsServices {
             volume,
             app_volume,
+            mic,
             synth,
             media,
             system,
@@ -324,6 +336,7 @@ impl DeskRuntime {
         let worker = ActionWorker::spawn(Platform {
             volume: Arc::clone(&volume),
             app_volume,
+            mic: Arc::clone(&mic),
             synth,
             media: Arc::clone(&media),
             foreground: Arc::clone(&foreground),
@@ -343,6 +356,10 @@ impl DeskRuntime {
             publisher: StatusPublisher::default(),
             monitor: SystemMonitor::new(system),
             volume,
+            mic,
+            mic_devices: Vec::new(),
+            mic_in_use: None,
+            sent_mic: MicState::UNKNOWN,
             media,
             clock,
             next_sample: Duration::ZERO,
@@ -427,6 +444,15 @@ impl DeskRuntime {
     #[must_use]
     pub const fn last_action(&self) -> Option<LastAction> {
         self.last_action
+    }
+
+    /// The microphones as last observed: what the device is told, and the devices behind it.
+    #[must_use]
+    pub fn mic(&self) -> (MicState, &[MicDevice]) {
+        (
+            mic_state(&self.mic_devices, self.mic_in_use),
+            &self.mic_devices,
+        )
     }
 
     /// What is playing, as last observed.
@@ -775,8 +801,22 @@ impl DeskRuntime {
         });
     }
 
+    /// An OS-observed change to the capture devices (the user toggled mute in Sound settings, or
+    /// a device came or went): show it without waiting for the next sample. Every value in it
+    /// was read from the OS.
+    pub fn on_mic_change(&mut self, change: MicChange) {
+        self.mic_devices = change.devices;
+    }
+
+    /// Reads the microphones now. A device list that cannot be read is empty: unknown.
+    fn sample_mic(&mut self) {
+        self.mic_devices = self.mic.devices().unwrap_or_default();
+        self.mic_in_use = self.mic.in_use();
+    }
+
     /// A new session: the device knows nothing yet.
     pub fn on_session_begin(&mut self) {
+        self.sent_mic = MicState::UNKNOWN;
         self.publisher.invalidate();
         self.sent_media = None;
         self.sent_controls = None;
@@ -807,6 +847,10 @@ impl DeskRuntime {
                 system: self.monitor.sample(),
             });
             self.now_playing = self.media.now_playing();
+            self.sample_mic();
+        }
+        while let Some(change) = self.mic.try_recv_change() {
+            self.on_mic_change(change);
         }
         if now >= self.next_focus_poll {
             self.poll_focus(now);
@@ -839,6 +883,10 @@ impl DeskRuntime {
                 }
                 continue;
             }
+            if finished.action == ActionToken::MicMute {
+                // The panel names what stayed live, so it must not wait for the next sample.
+                self.sample_mic();
+            }
             self.finish(finished.action, finished.outcome, observe);
             if let Some(feedback) = self.ladder.on_outcome(finished.id, finished.outcome.kind) {
                 self.outbox.push(feedback);
@@ -854,11 +902,20 @@ impl DeskRuntime {
             }
             self.outbox.push(feedback);
         }
+        let status = self.publisher.due((self.clock)(), now);
+        let mic = mic_state(&self.mic_devices, self.mic_in_use);
+        // Resent with each status refresh, so a lost message heals; unknown is the device's default.
+        let mic_update = (mic != self.sent_mic || (status.is_some() && mic != MicState::UNKNOWN))
+            .then(|| {
+                self.sent_mic = mic;
+                mic
+            });
         DeskOutput {
-            status: self.publisher.due((self.clock)(), now),
+            status,
             feedback: std::mem::take(&mut self.outbox),
             media_info: media_update,
             controls,
+            mic: mic_update,
         }
     }
 
@@ -878,7 +935,7 @@ impl DeskRuntime {
             FeedbackKind::StateConfirmed | FeedbackKind::ExecutionConfirmed => {
                 ActivityEventKind::DeskActionConfirmed
             }
-            FeedbackKind::Unverified | FeedbackKind::Processing => {
+            FeedbackKind::Unverified | FeedbackKind::Triggered | FeedbackKind::Processing => {
                 ActivityEventKind::DeskActionUnverified
             }
             FeedbackKind::Error => ActivityEventKind::DeskActionFailed,
@@ -1046,6 +1103,7 @@ mod tests {
         DeskRuntime::new(OsServices {
             volume: Arc::new(FakeVolumeBackend::new(20)),
             app_volume: Arc::new(crate::platform::FakeAppVolumeBackend::new()),
+            mic: Arc::new(crate::platform::FakeMicBackend::new()),
             synth: Arc::new(FakeInputSynth::new(Ok(()))),
             media,
             system: Box::new(NoSystemProbe),
@@ -1062,6 +1120,7 @@ mod tests {
         let mut desk = DeskRuntime::new(OsServices {
             volume: Arc::new(FakeVolumeBackend::new(20)),
             app_volume: Arc::new(crate::platform::FakeAppVolumeBackend::new()),
+            mic: Arc::new(crate::platform::FakeMicBackend::new()),
             synth: synth.clone(),
             media: Arc::new(crate::platform::FakeMediaObserver::default()),
             system: Box::new(NoSystemProbe),
@@ -1148,7 +1207,7 @@ mod tests {
             "Ctrl+R"
         };
         assert_eq!(sent(&synth), [reload]);
-        assert_eq!(feedback[0].kind, FeedbackKind::Unverified);
+        assert_eq!(feedback[0].kind, FeedbackKind::Triggered);
         assert_eq!(text(desk.labels().profile), "Browser");
     }
 
@@ -1289,7 +1348,7 @@ mod tests {
         let shortcut: Shortcut = "Ctrl+M".parse().unwrap();
         desk.test(Action::Shortcut(shortcut), ms(0), &mut |_| {});
         let feedback = settle(&mut desk, ms(10), |f| !f.is_empty());
-        assert_eq!(feedback[0].kind, FeedbackKind::Unverified);
+        assert_eq!(feedback[0].kind, FeedbackKind::Triggered);
         assert_eq!(sent(&synth), ["Ctrl+M"]);
     }
 
@@ -1489,6 +1548,7 @@ mod tests {
         let mut desk = runtime(Arc::default()).with_display(DisplaySettings {
             default_view: View::Clock,
             secondary_view: SecondaryView::View(View::Media),
+            ..DisplaySettings::default()
         });
         assert_eq!(
             desk.mode(),
@@ -1756,6 +1816,7 @@ mod tests {
         let mut desk = DeskRuntime::new(OsServices {
             volume: system.clone(),
             app_volume: Arc::new(app_volume),
+            mic: Arc::new(crate::platform::FakeMicBackend::new()),
             synth: Arc::new(FakeInputSynth::new(Ok(()))),
             media: Arc::new(crate::platform::FakeMediaObserver::default()),
             system: Box::new(NoSystemProbe),
@@ -1858,6 +1919,7 @@ mod tests {
         let mut desk = DeskRuntime::new(OsServices {
             volume: Arc::new(crate::platform::FakeVolumeBackend::new(20)),
             app_volume: backend.clone(),
+            mic: Arc::new(crate::platform::FakeMicBackend::new()),
             synth: Arc::new(FakeInputSynth::new(Ok(()))),
             media: Arc::new(crate::platform::FakeMediaObserver::default()),
             system: Box::new(crate::platform::system::NoSystemProbe),
@@ -1976,5 +2038,212 @@ mod recovery_tests {
         let _lost = publisher.due(None, Duration::ZERO).unwrap();
         let retried = (1..10).find_map(|second| publisher.due(None, Duration::from_secs(second)));
         assert_eq!(retried.map(|status| status.mode), Some(DisplayMode::Volume));
+    }
+}
+
+#[cfg(test)]
+mod mic_tests {
+    use super::*;
+    use crate::platform::system::NoSystemProbe;
+    use crate::platform::{
+        FakeAppVolumeBackend, FakeForeground, FakeInputSynth, FakeMediaObserver, FakeMicBackend,
+        FakeMicQuirk, FakeVolumeBackend,
+    };
+
+    const fn ms(n: u64) -> Duration {
+        Duration::from_millis(n)
+    }
+
+    fn desk(mic: &Arc<FakeMicBackend>) -> DeskRuntime {
+        let mut desk = DeskRuntime::new(OsServices {
+            volume: Arc::new(FakeVolumeBackend::new(20)),
+            app_volume: Arc::new(FakeAppVolumeBackend::new()),
+            mic: mic.clone(),
+            synth: Arc::new(FakeInputSynth::new(Ok(()))),
+            media: Arc::new(FakeMediaObserver::default()),
+            system: Box::new(NoSystemProbe),
+            clock: || None,
+            foreground: Arc::new(FakeForeground::default()),
+        });
+        desk.on_session_begin();
+        desk
+    }
+
+    fn two_mics() -> Arc<FakeMicBackend> {
+        Arc::new(
+            FakeMicBackend::new()
+                .with_device("Built-in", FakeMicQuirk::Works)
+                .with_device("USB headset", FakeMicQuirk::Works),
+        )
+    }
+
+    fn tick(desk: &mut DeskRuntime, at: u64) -> DeskOutput {
+        desk.tick(ms(at), &mut |_| {})
+    }
+
+    fn wait_for_outcome(desk: &mut DeskRuntime, from: u64) -> (DeskOutput, u64) {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let mut at = from;
+        loop {
+            at += 10;
+            let out = tick(desk, at);
+            if !out.feedback.is_empty() || Instant::now() > deadline {
+                return (out, at);
+            }
+            std::thread::sleep(ms(5));
+        }
+    }
+
+    #[test]
+    fn an_unreadable_or_absent_microphone_sends_nothing_and_claims_nothing() {
+        let mic = Arc::new(FakeMicBackend::new());
+        let mut desk = desk(&mic);
+        assert_eq!(
+            tick(&mut desk, 0).mic,
+            None,
+            "unknown is the device's default"
+        );
+        assert_eq!(desk.mic().0, MicState::UNKNOWN);
+    }
+
+    #[test]
+    fn the_state_is_sent_when_it_changes_and_refreshed_with_the_status() {
+        let mic = two_mics();
+        let mut desk = desk(&mic);
+        let first = tick(&mut desk, 0).mic.expect("a known state is sent");
+        assert_eq!(first.muted, Some(false));
+        assert_eq!(first.in_use, None);
+        assert_eq!(tick(&mut desk, 100).mic, None, "unchanged, no refresh due");
+        // The status refresh (about once a second) carries the mic state too, so a lost message heals.
+        assert_eq!(tick(&mut desk, 1_200).mic, Some(first));
+
+        mic.set_in_use(Some(true));
+        let out = tick(&mut desk, 2_400);
+        assert_eq!(
+            out.mic.map(|m| (m.muted, m.in_use)),
+            Some((Some(false), Some(true)))
+        );
+        assert!(out.mic.unwrap().is_live(), "in use and unmuted is Live");
+    }
+
+    #[test]
+    fn a_new_session_starts_from_unknown_and_sends_again() {
+        let mic = two_mics();
+        let mut desk = desk(&mic);
+        let state = tick(&mut desk, 0).mic;
+        assert!(state.is_some());
+        desk.on_session_end();
+        desk.on_session_begin();
+        assert_eq!(tick(&mut desk, 100).mic, state);
+    }
+
+    #[test]
+    fn mic_mute_confirms_only_when_every_device_reads_muted_and_names_what_stayed_live() {
+        let mic = Arc::new(
+            FakeMicBackend::new()
+                .with_device("Built-in", FakeMicQuirk::Works)
+                .with_device("Stubborn", FakeMicQuirk::StaysLive),
+        );
+        let mut desk = desk(&mic);
+        let _ = tick(&mut desk, 0);
+        desk.test(Action::ToggleMicMute, ms(50), &mut |_| {});
+        let (out, at) = wait_for_outcome(&mut desk, 50);
+        assert_eq!(
+            out.feedback.last().map(|f| f.kind),
+            Some(FeedbackKind::Error)
+        );
+        let last = desk.last_action().expect("last action");
+        assert_eq!(
+            (last.action, last.kind),
+            (ActionToken::MicMute, FeedbackKind::Error)
+        );
+        // The panel's device list is fresh: the one that stayed live is named, the state is live.
+        let (state, devices) = desk.mic();
+        assert_eq!(
+            state.muted,
+            Some(false),
+            "never claims muted while a device is live"
+        );
+        let live: Vec<_> = devices
+            .iter()
+            .filter(|d| d.mute == crate::platform::MicMute::Live)
+            .map(|d| d.name.as_str())
+            .collect();
+        assert_eq!(live, ["Stubborn"]);
+        assert!(at > 0);
+    }
+
+    #[test]
+    fn mic_mute_on_every_device_is_confirmed_and_the_device_is_told() {
+        let mic = two_mics();
+        let mut desk = desk(&mic);
+        let _ = tick(&mut desk, 0);
+        desk.test(Action::ToggleMicMute, ms(50), &mut |_| {});
+        let (out, at) = wait_for_outcome(&mut desk, 50);
+        assert_eq!(
+            out.feedback.last().map(|f| f.kind),
+            Some(FeedbackKind::StateConfirmed)
+        );
+        assert_eq!(out.mic.map(|m| m.muted), Some(Some(true)));
+        assert_eq!(desk.mic().0.muted, Some(true));
+        // Pressing again unmutes them all.
+        desk.test(Action::ToggleMicMute, ms(at + 10), &mut |_| {});
+        let (out, _) = wait_for_outcome(&mut desk, at + 10);
+        assert_eq!(
+            out.feedback.last().map(|f| f.kind),
+            Some(FeedbackKind::StateConfirmed)
+        );
+        assert_eq!(desk.mic().0.muted, Some(false));
+    }
+
+    #[test]
+    fn an_outside_change_updates_the_state_at_once_and_a_new_device_is_muted_too() {
+        let mic = two_mics();
+        let mut desk = desk(&mic);
+        let _ = tick(&mut desk, 0);
+        mic.set_mute(true).unwrap();
+        // The user unmutes one device in Sound settings: External, shown on the next tick.
+        mic.external_mute("USB headset", false);
+        let _ = tick(&mut desk, 10);
+        assert_eq!(desk.mic().0.muted, Some(false));
+        assert!(desk
+            .mic()
+            .1
+            .iter()
+            .any(|d| d.name == "USB headset" && d.mute == crate::platform::MicMute::Live));
+        // A device arrives while mic mute is on: it is muted, and so is everything else again.
+        mic.set_mute(true).unwrap();
+        mic.add_device("Webcam", FakeMicQuirk::Works);
+        let _ = tick(&mut desk, 20);
+        assert_eq!(desk.mic().0.muted, Some(true));
+        // One that cannot be muted reads live, so the state is live.
+        mic.add_device("Stubborn", FakeMicQuirk::StaysLive);
+        let _ = tick(&mut desk, 30);
+        assert_eq!(desk.mic().0.muted, Some(false));
+    }
+
+    #[test]
+    fn a_guarded_device_that_starts_capturing_turns_the_state_live() {
+        let mic = Arc::new(
+            FakeMicBackend::new()
+                .with_device("Built-in", FakeMicQuirk::Works)
+                .with_device("Phone", FakeMicQuirk::UnsettableIdle),
+        );
+        let mut desk = desk(&mic);
+        let _ = tick(&mut desk, 0);
+        mic.set_mute(true).unwrap();
+        let _ = tick(&mut desk, 1_100);
+        assert_eq!(desk.mic().0.muted, Some(true), "idle unmutable is guarded");
+        // An app starts recording from the phone: live on the next sample (1 s).
+        mic.set_capturing("Phone", Some(true));
+        let _ = tick(&mut desk, 2_200);
+        assert_eq!(desk.mic().0.muted, Some(false));
+        // ...and back to muted when it stops, and an unknown reading is live too.
+        mic.set_capturing("Phone", Some(false));
+        let _ = tick(&mut desk, 3_300);
+        assert_eq!(desk.mic().0.muted, Some(true));
+        mic.set_capturing("Phone", None);
+        let _ = tick(&mut desk, 4_400);
+        assert_eq!(desk.mic().0.muted, Some(false));
     }
 }

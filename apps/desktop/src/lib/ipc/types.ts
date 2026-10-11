@@ -93,6 +93,10 @@ export const CAPABILITY_NAMES = [
   'controlLabelsV1',
   'contextButtonsV1',
   'hostTakeoversV1',
+  'quietAckV1',
+  'deviceInternalsV1',
+  'idleLifeV1',
+  'micStateV1',
 ] as const;
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
 
@@ -147,6 +151,53 @@ export interface DiagnosticsDto {
     customBindings: number;
     macros: number;
   };
+}
+
+export const CHIP_MODELS = ['esp32c3'] as const;
+export const RESET_REASONS = [
+  'powerOn',
+  'software',
+  'watchdog',
+  'brownout',
+  'deepSleep',
+  'other',
+] as const;
+
+/**
+ * The developer-mode Device internals card (ADR-0013). `snapshot` is `null` until the device has
+ * answered on this connection; inside it, `null` means the device cannot measure that value, never 0.
+ */
+export interface DeviceInternalsDto {
+  connected: boolean;
+  /** The connected device's firmware reports internals. */
+  supported: boolean;
+  snapshot: {
+    appImageBytes: number | null;
+    appPartitionBytes: number | null;
+    assetBlobBytes: number | null;
+    assetBlobCapBytes: number | null;
+    flashTotalBytes: number | null;
+    ramTotalBytes: number | null;
+    ramStaticBytes: number | null;
+    ramFreeBytes: number | null;
+    stackFreeMinBytes: number | null;
+    busyPercent: number | null;
+    composeMs: number | null;
+    flushMs: number | null;
+    fps: number | null;
+    chipModel: (typeof CHIP_MODELS)[number] | null;
+    chipRevision: { major: number; minor: number } | null;
+    /** Tenths of a degree Celsius. */
+    temperatureDeciCelsius: number | null;
+    uptimeMs: number | null;
+    resetReason: (typeof RESET_REASONS)[number] | null;
+    edgeQueueHighWater: number | null;
+    droppedEdges: number | null;
+    invalidTransitions: number | null;
+    framesIn: number | null;
+    framesOut: number | null;
+    framesRejected: number | null;
+  } | null;
 }
 
 export interface ConnectionStatusDto {
@@ -275,8 +326,14 @@ export const INTENSITY_PERSONALITY: Record<Intensity, MascotPersonality> = {
 export const CONFIG_NOTICES = ['recoveredCorrupt', 'recoveredNewerVersion', 'migrated'] as const;
 export type ConfigNotice = (typeof CONFIG_NOTICES)[number];
 
+/** The built-in profiles; a custom profile's id is `custom-<n>`. */
 export const PROFILE_IDS = ['general', 'browser', 'code', 'media', 'zoom', 'teams'] as const;
-export type ProfileId = (typeof PROFILE_IDS)[number];
+export type BuiltinProfileId = (typeof PROFILE_IDS)[number];
+export type ProfileId = BuiltinProfileId | `custom-${number}`;
+/** A custom profile's id: `custom-` and 1 to 4 digits. */
+export const CUSTOM_PROFILE_ID = /^custom-\d{1,4}$/;
+/** The native limits, checked again there. */
+export const PROFILE_LIMITS = { customProfiles: 16, apps: 32, nameMax: 32 } as const;
 
 /** Controls `setBinding` targets. The middle button's Hold is reserved for the profile pin. */
 export const CONTROL_REFS = [
@@ -295,6 +352,8 @@ export type ActionSpec =
   | { kind: 'previousTrack' }
   | { kind: 'nextTrack' }
   | { kind: 'systemMute' }
+  /** Mutes every microphone the OS has, not an app's own mute button. */
+  | { kind: 'micMute' }
   /** `app` is the lowercase executable name on Windows (`spotify.exe`), at most 128 characters. */
   | { kind: 'appMute'; app: string }
   | { kind: 'shortcut'; keys: string }
@@ -306,6 +365,7 @@ export const ACTION_SPEC_KINDS = [
   'previousTrack',
   'nextTrack',
   'systemMute',
+  'micMute',
   'appMute',
   'shortcut',
   'launch',
@@ -353,6 +413,10 @@ export interface SlotDto {
 export interface ProfileConfigDto {
   id: ProfileId;
   name: string;
+  /** The user's own profile: it can be renamed and deleted. Built-ins cannot. */
+  custom: boolean;
+  /** The middle button's Hold cycle visits it (always true for a built-in). */
+  inPinCycle: boolean;
   /** Foreground app ids that select this profile (empty for General). */
   apps: string[];
   rotate: { spec: RotateSpec; deviceLabel: string; overridden: boolean };
@@ -366,17 +430,21 @@ export interface ButtonDto {
   hold: SlotDto | 'pin';
 }
 
+/** Backlight steps, 1 (dimmest, still clearly on) to 5 (full). */
+export const BRIGHTNESS_STEPS = 5;
+
 /** The saved settings. `secondaryView: 'cycle'` = a double press steps through every view. */
 export interface ConfigDto {
   version: number;
   /** Counts saves and resets in this run: a lower revision is a stale copy. */
   revision: number;
   notice: ConfigNotice | null;
-  /** Every built-in profile as resolved (overrides over built-ins), General first. */
+  /** Every profile as resolved: the built-ins with the user's overrides (General first), then the
+   *  user's own profiles in list order. */
   profiles: ProfileConfigDto[];
   /** The user's macros, in the order they were created. */
   macros: MacroSpec[];
-  display: { defaultView: DisplayMode; secondaryView: DisplayMode | 'cycle' };
+  display: { defaultView: DisplayMode; secondaryView: DisplayMode | 'cycle'; brightness: number };
   buddy: { reactions: boolean; intensity: Intensity };
 }
 export const MEDIA_STATUSES = ['playing', 'paused', 'stopped'] as const;
@@ -385,6 +453,7 @@ export const DESK_ACTIONS = [
   'volume',
   'playPause',
   'mute',
+  'micMute',
   'shortcut',
   'launch',
   'previousTrack',
@@ -414,7 +483,41 @@ export interface DeskActionDto {
   permissionRequired: boolean;
 }
 
+/** An app by foreground id (Windows: `code.exe`; macOS: bundle id) and display name. */
+export interface AppRefDto {
+  id: string;
+  name: string;
+}
+
 /** Desk projection. Every unknown value is `null` (never guessed). */
+/** Whether the microphones are muted: `yes` only when every one reads muted, never a guess. */
+export const MIC_MUTED_STATES = ['yes', 'partial', 'no', 'unknown'] as const;
+export type MicMutedState = (typeof MIC_MUTED_STATES)[number];
+export const MIC_DEVICE_STATES = [
+  'muted',
+  'live',
+  'unknown',
+  'cannotMuteIdle',
+  'cannotMuteLive',
+  'cannotMuteUnknown',
+] as const;
+export type MicDeviceState = (typeof MIC_DEVICE_STATES)[number];
+
+export interface MicDeviceDto {
+  name: string;
+  state: MicDeviceState;
+}
+
+/** The computer's microphones. Device names are for this window only; the activity log has none. */
+export interface MicDto {
+  muted: MicMutedState;
+  /** An app is using a microphone; `null` where the OS does not say (never read as "no"). */
+  inUse: boolean | null;
+  /** The "Live" cue: in use AND unmuted. Unknown on either side is `false`. */
+  live: boolean;
+  devices: MicDeviceDto[];
+}
+
 export interface DeskStatusDto {
   mode: DisplayMode;
   volumePercent: number | null;
@@ -445,6 +548,9 @@ export interface DeskStatusDto {
   mediaTitle: string | null;
   mediaArtist: string | null;
   lastAction: DeskActionDto | null;
+  mic: MicDto;
+  /** The last app in front that is not Kivori itself (`null` = none yet). */
+  recentApp: AppRefDto | null;
 }
 
 export const CATALOG_SLOTS = ['rotate', 'discrete'] as const;
@@ -580,5 +686,7 @@ export interface AnimationTimeline {
   initialState: CompanionState;
   events: AnimationEvent[];
   actionEvents: MascotActionEvent[];
+  /** The buddy's own idle moments, replayed by the same code the firmware runs (fixed seed). */
+  idleLife?: { personality: MascotPersonality; selfPlay: boolean };
 }
 export const MAX_ANIMATION_EVENTS = 256;

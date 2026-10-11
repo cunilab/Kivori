@@ -10,8 +10,9 @@ use std::time::Duration;
 use kivori_model::desk::MediaText;
 
 use super::schema::{
-    ActionSpec, ConfigFile, MacroSpec, ProfileId, ProfileOverride, RotateSpec, SlotSpec, StepSpec,
-    DELAY_MS, MAX_MACROS, MAX_STEPS,
+    custom_id_ok, ActionSpec, ButtonOverride, ConfigFile, MacroSpec, ProfileId, ProfileOverride,
+    ProfileRef, RotateSpec, SlotSpec, StepSpec, DELAY_MS, MAX_CUSTOM_PROFILES, MAX_MACROS,
+    MAX_PROFILE_APPS, MAX_STEPS, PROFILE_NAME_MAX,
 };
 use super::store::ConfigError;
 use super::ResolvedConfig;
@@ -42,11 +43,12 @@ pub const CONTROL_TOKENS: [&str; 7] = [
 ];
 
 /// Every `kind` an [`ActionSpec`] serializes with, for the Rust/TS vocabulary check.
-pub const ACTION_SPEC_KINDS: [&str; 8] = [
+pub const ACTION_SPEC_KINDS: [&str; 9] = [
     "playPause",
     "previousTrack",
     "nextTrack",
     "systemMute",
+    "micMute",
     "appMute",
     "shortcut",
     "launch",
@@ -112,7 +114,7 @@ fn label(text: &str) -> Result<String, &'static str> {
 const APP_ID_MAX: usize = 128;
 
 /// An app id as stored: trimmed and lowercased, 1 to 128 characters, a bare name (no path).
-fn app_id(app: &str) -> Result<String, &'static str> {
+pub(super) fn app_id(app: &str) -> Result<String, &'static str> {
     let app = app.trim().to_lowercase();
     if app.is_empty() {
         return Err("an app cannot be empty");
@@ -124,6 +126,25 @@ fn app_id(app: &str) -> Result<String, &'static str> {
         return Err("an app is a name, not a path");
     }
     Ok(app)
+}
+
+/// A profile name as stored: trimmed, 1 to [`PROFILE_NAME_MAX`] characters, no control characters.
+/// The panel shortens a long name to its slot and never replaces it, so nothing is rewritten here.
+///
+/// # Errors
+/// A fixed reason naming what is wrong.
+pub fn profile_name(name: &str) -> Result<String, &'static str> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("a profile name cannot be empty");
+    }
+    if name.chars().count() > PROFILE_NAME_MAX {
+        return Err("a profile name is at most 32 characters");
+    }
+    if name.chars().any(char::is_control) {
+        return Err("a profile name cannot hold control characters");
+    }
+    Ok(name.to_string())
 }
 
 /// The device label for an app with no name of its own: `spotify.exe` -> `spotify`, cut to what
@@ -172,6 +193,7 @@ pub fn resolve_action(spec: &ActionSpec, macros: &Macros) -> Result<Action, &'st
         ActionSpec::PreviousTrack => Action::PreviousTrack,
         ActionSpec::NextTrack => Action::NextTrack,
         ActionSpec::SystemMute => Action::ToggleMute,
+        ActionSpec::MicMute => Action::ToggleMicMute,
         ActionSpec::AppMute { app } => Action::AppMute { app: app_id(app)? },
         ActionSpec::Shortcut { keys } => Action::Shortcut(shortcut(keys)?),
         ActionSpec::Launch { target } => Action::Launch(
@@ -238,6 +260,7 @@ pub fn action_spec(action: &Action) -> Option<ActionSpec> {
         Action::PreviousTrack => ActionSpec::PreviousTrack,
         Action::NextTrack => ActionSpec::NextTrack,
         Action::ToggleMute => ActionSpec::SystemMute,
+        Action::ToggleMicMute => ActionSpec::MicMute,
         Action::AppMute { app } => ActionSpec::AppMute { app: app.clone() },
         Action::Shortcut(s) => ActionSpec::Shortcut {
             keys: s.to_string(),
@@ -395,7 +418,25 @@ fn apply(
     Ok(())
 }
 
-/// Layers `file`'s overrides over `builtins`.
+/// A list of app ids, canonical (lowercase) and free of repeats.
+fn app_list(apps: &[String]) -> Result<Vec<String>, &'static str> {
+    if apps.len() > MAX_PROFILE_APPS {
+        return Err("a profile lists at most 32 apps");
+    }
+    let mut out: Vec<String> = Vec::with_capacity(apps.len());
+    for app in apps {
+        let app = app_id(app)?;
+        if out.contains(&app) {
+            return Err("an app is listed twice");
+        }
+        out.push(app);
+    }
+    Ok(out)
+}
+
+/// Layers `file`'s overrides over `builtins`, then appends the user's own profiles. An app the
+/// user listed explicitly (added to a built-in profile or in a custom one) is taken out of every
+/// other profile, so each id selects exactly one.
 ///
 /// # Errors
 /// [`ConfigError::Invalid`] for the first override that is not acceptable.
@@ -404,17 +445,102 @@ pub fn resolve(
     file: &ConfigFile,
 ) -> Result<ResolvedConfig, ConfigError> {
     let macros = resolve_macros(file).map_err(ConfigError::Invalid)?;
+    if file.custom_profiles.len() > MAX_CUSTOM_PROFILES {
+        return Err(ConfigError::Invalid("at most 16 custom profiles"));
+    }
+    let general = builtins[0].clone();
+    // Every explicit claim on an app id, with the profile that holds it.
+    let mut claims: Vec<(String, ProfileRef)> = Vec::new();
     for profile in &mut builtins {
-        if let Some(over) = file.profiles.get(&profile.id) {
-            apply(profile, over, &macros).map_err(ConfigError::Invalid)?;
+        let ProfileRef::Builtin(id) = profile.id else {
+            continue;
+        };
+        let Some(over) = file.profiles.get(&id) else {
+            continue;
+        };
+        apply(profile, over, &macros).map_err(ConfigError::Invalid)?;
+        let added = app_list(&over.added_apps).map_err(ConfigError::Invalid)?;
+        let removed = app_list(&over.removed_apps).map_err(ConfigError::Invalid)?;
+        if id == ProfileId::General && !(added.is_empty() && removed.is_empty()) {
+            return Err(ConfigError::Invalid(
+                "General matches the apps nothing else does",
+            ));
+        }
+        if added.iter().any(|app| removed.contains(app)) {
+            return Err(ConfigError::Invalid("an app is both added and removed"));
+        }
+        profile.ids.retain(|known| !removed.contains(known));
+        for app in added {
+            if !profile.ids.contains(&app) {
+                profile.ids.push(app.clone());
+            }
+            claims.push((app, profile.id.clone()));
         }
     }
+    let mut profiles = builtins;
+    let mut seen_ids: Vec<&str> = Vec::new();
+    for custom in &file.custom_profiles {
+        if !custom_id_ok(&custom.id) || seen_ids.contains(&custom.id.as_str()) {
+            return Err(ConfigError::Invalid("a custom profile id is not valid"));
+        }
+        seen_ids.push(&custom.id);
+        if !(custom.bindings.added_apps.is_empty() && custom.bindings.removed_apps.is_empty()) {
+            return Err(ConfigError::Invalid("a custom profile lists its own apps"));
+        }
+        let apps = app_list(&custom.apps).map_err(ConfigError::Invalid)?;
+        let id = ProfileRef::Custom(custom.id.clone());
+        let mut profile = Profile {
+            id: id.clone(),
+            name: profile_name(&custom.name).map_err(ConfigError::Invalid)?,
+            ids: apps.clone(),
+            in_pin_cycle: custom.in_pin_cycle,
+            ..general.clone()
+        };
+        apply(&mut profile, &custom.bindings, &macros).map_err(ConfigError::Invalid)?;
+        claims.extend(apps.into_iter().map(|app| (app, id.clone())));
+        profiles.push(profile);
+    }
+    for (i, (app, _)) in claims.iter().enumerate() {
+        if claims[..i].iter().any(|(other, _)| other == app) {
+            return Err(ConfigError::Invalid("an app belongs to one profile"));
+        }
+    }
+    for profile in &mut profiles {
+        profile.ids.retain(|known| {
+            claims
+                .iter()
+                .find(|(app, _)| app == known)
+                .is_none_or(|(_, owner)| *owner == profile.id)
+        });
+    }
     Ok(ResolvedConfig {
-        profiles: builtins,
+        profiles,
         macros,
         display: file.display,
         buddy: file.buddy,
     })
+}
+
+/// `profile`'s bindings as a complete override: every slot written out, so a profile built from it
+/// no longer follows what it was copied from.
+#[must_use]
+pub fn full_override(profile: &Profile) -> ProfileOverride {
+    let spec = |slot: &Slot| SlotSpec {
+        action: slot.action.as_ref().and_then(action_spec),
+        label: slot.label.clone(),
+    };
+    let bindings = &profile.bindings;
+    ProfileOverride {
+        rotate: Some(rotate_spec(&profile.rotate)),
+        press: Some(spec(&bindings.press)),
+        hold: Some(spec(&bindings.hold)),
+        buttons: std::array::from_fn(|i| ButtonOverride {
+            press: Some(spec(&bindings.buttons[i].press)),
+            // The middle button's Hold is reserved for the pin and never written.
+            hold: (i != 1).then(|| spec(&bindings.buttons[i].hold)),
+        }),
+        ..ProfileOverride::default()
+    }
 }
 
 /// Whether `profile` has any override in `file` (the UI's "Custom" badge input lives per slot).
@@ -595,6 +721,7 @@ mod tests {
             ActionSpec::PreviousTrack,
             ActionSpec::NextTrack,
             ActionSpec::SystemMute,
+            ActionSpec::MicMute,
             ActionSpec::AppMute { app: "a".into() },
             ActionSpec::Shortcut { keys: "A".into() },
             ActionSpec::Launch { target: "a".into() },
@@ -907,5 +1034,131 @@ mod tests {
         let mut dup = many(2);
         dup.macros[1].id = "m0".into();
         assert_eq!(invalid(&dup), "two macros share an id");
+    }
+
+    fn custom(id: &str, name: &str, apps: &[&str]) -> crate::config::CustomProfile {
+        crate::config::CustomProfile {
+            id: id.into(),
+            name: name.into(),
+            apps: apps.iter().map(ToString::to_string).collect(),
+            in_pin_cycle: false,
+            bindings: ProfileOverride::default(),
+        }
+    }
+
+    #[test]
+    fn a_custom_profile_follows_the_built_ins_and_takes_its_apps_from_them() {
+        let mut file = ConfigFile::default();
+        file.custom_profiles
+            .push(custom("custom-1", "Mine", &["Chrome.exe", "figma.exe"]));
+        let resolved = run(false, &file).unwrap();
+        let mine = resolved.profiles.last().unwrap();
+        assert_eq!(resolved.profiles.len(), 7);
+        assert_eq!((mine.name.as_str(), mine.ids.len()), ("Mine", 2));
+        assert_eq!(mine.ids[0], "chrome.exe", "stored ids are lowercase");
+        assert!(!resolved.profiles[1].ids.contains(&"chrome.exe".to_string()));
+        assert!(resolved.profiles[1].ids.contains(&"msedge.exe".to_string()));
+        assert_eq!(mine.bindings, resolved.profiles[0].bindings);
+    }
+
+    #[test]
+    fn every_inconsistent_app_list_is_refused() {
+        let mut two = ConfigFile::default();
+        two.custom_profiles
+            .push(custom("custom-1", "A", &["x.exe"]));
+        two.custom_profiles
+            .push(custom("custom-2", "B", &["X.exe"]));
+        assert_eq!(invalid(&two), "an app belongs to one profile");
+
+        let mut custom_and_added = ConfigFile::default();
+        custom_and_added
+            .custom_profiles
+            .push(custom("custom-1", "A", &["x.exe"]));
+        custom_and_added
+            .profiles
+            .entry(ProfileId::Code)
+            .or_default()
+            .added_apps = vec!["x.exe".into()];
+        assert_eq!(invalid(&custom_and_added), "an app belongs to one profile");
+
+        let mut both = ConfigFile::default();
+        let over = both.profiles.entry(ProfileId::Code).or_default();
+        over.added_apps = vec!["x.exe".into()];
+        over.removed_apps = vec!["x.exe".into()];
+        assert_eq!(invalid(&both), "an app is both added and removed");
+
+        let mut general = ConfigFile::default();
+        general
+            .profiles
+            .entry(ProfileId::General)
+            .or_default()
+            .added_apps = vec!["x.exe".into()];
+        assert!(!invalid(&general).is_empty());
+
+        for bad in ["custom-", "custom-12345", "browser", "custom-1x"] {
+            let mut file = ConfigFile::default();
+            file.custom_profiles.push(custom(bad, "A", &[]));
+            assert_eq!(invalid(&file), "a custom profile id is not valid", "{bad}");
+        }
+        let mut dup = ConfigFile::default();
+        dup.custom_profiles.push(custom("custom-1", "A", &[]));
+        dup.custom_profiles.push(custom("custom-1", "B", &[]));
+        assert_eq!(invalid(&dup), "a custom profile id is not valid");
+
+        let mut name = ConfigFile::default();
+        name.custom_profiles.push(custom("custom-1", "  ", &[]));
+        assert_eq!(invalid(&name), "a profile name cannot be empty");
+        let mut long = ConfigFile::default();
+        long.custom_profiles
+            .push(custom("custom-1", &"x".repeat(33), &[]));
+        assert_eq!(invalid(&long), "a profile name is at most 32 characters");
+
+        let mut many = ConfigFile::default();
+        for n in 1..=17 {
+            many.custom_profiles
+                .push(custom(&format!("custom-{n}"), "A", &[]));
+        }
+        assert_eq!(invalid(&many), "at most 16 custom profiles");
+
+        let mut own = ConfigFile::default();
+        let mut c = custom("custom-1", "A", &[]);
+        c.bindings.added_apps = vec!["x.exe".into()];
+        own.custom_profiles.push(c);
+        assert_eq!(invalid(&own), "a custom profile lists its own apps");
+    }
+
+    #[test]
+    fn a_removed_built_in_app_leaves_its_profile_and_an_added_one_joins() {
+        let mut file = ConfigFile::default();
+        let over = file.profiles.entry(ProfileId::Browser).or_default();
+        over.removed_apps = vec!["Brave.exe".into()];
+        let code = file.profiles.entry(ProfileId::Code).or_default();
+        code.added_apps = vec!["notepad++.exe".into(), "firefox.exe".into()];
+        let resolved = run(false, &file).unwrap();
+        let ids = |i: usize| resolved.profiles[i].ids.clone();
+        assert!(!ids(1).contains(&"brave.exe".to_string()));
+        assert!(
+            !ids(1).contains(&"firefox.exe".to_string()),
+            "claimed by Code"
+        );
+        assert!(ids(2).contains(&"notepad++.exe".to_string()));
+        assert!(ids(2).contains(&"firefox.exe".to_string()));
+    }
+
+    #[test]
+    fn a_custom_profile_rebinding_is_layered_over_the_copy() {
+        let mut file = ConfigFile::default();
+        let mut c = custom("custom-1", "A", &["x.exe"]);
+        c.bindings.press = Some(spec(Some(ActionSpec::NextTrack), None));
+        file.custom_profiles.push(c);
+        let resolved = run(false, &file).unwrap();
+        assert_eq!(
+            resolved.profiles[6].bindings.press.action,
+            Some(Action::NextTrack)
+        );
+        // The middle button's Hold stays reserved.
+        file.custom_profiles[0].bindings.buttons[1].hold =
+            Some(spec(Some(ActionSpec::PlayPause), None));
+        assert!(matches!(run(false, &file), Err(ConfigError::Invalid(_))));
     }
 }

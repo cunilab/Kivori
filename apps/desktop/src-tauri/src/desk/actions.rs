@@ -19,8 +19,9 @@ use kivori_model::input::Direction;
 use super::catalog::ActionToken;
 use crate::action::volume::apply_step;
 use crate::platform::{
-    ActionAvailability, ActionError, AppVolumeBackend, AppVolumeError, BackendError, Foreground,
-    ForegroundObserver, InputSynth, MediaKey, MediaObserver, Shortcut, VolumeBackend,
+    mics_muted, ActionAvailability, ActionError, AppVolumeBackend, AppVolumeError, BackendError,
+    Foreground, ForegroundObserver, InputSynth, MediaKey, MediaObserver, MicBackend, MicDevice,
+    MicMute, Shortcut, VolumeBackend,
 };
 
 /// The user's macros by id. A binding holds the same `Arc` the table does.
@@ -62,6 +63,8 @@ pub enum Action {
     NextTrack,
     /// Toggle master mute on the default output device.
     ToggleMute,
+    /// Toggle mute on every active capture device (the OS microphones, not an app's own button).
+    ToggleMicMute,
     /// Send a keyboard shortcut.
     Shortcut(Shortcut),
     /// Launch an application (validated target).
@@ -87,7 +90,7 @@ impl Action {
             Action::PlayPause => ActionKind::PlayPause,
             Action::PreviousTrack => ActionKind::PreviousTrack,
             Action::NextTrack => ActionKind::NextTrack,
-            Action::ToggleMute => ActionKind::Mute,
+            Action::ToggleMute | Action::ToggleMicMute => ActionKind::Mute,
             Action::Shortcut(_) => ActionKind::Shortcut,
             Action::Launch(_) => ActionKind::Launch,
             Action::AppMute { .. } => ActionKind::Mute,
@@ -109,6 +112,7 @@ impl Action {
             Action::PreviousTrack => ActionToken::PreviousTrack,
             Action::NextTrack => ActionToken::NextTrack,
             Action::ToggleMute => ActionToken::Mute,
+            Action::ToggleMicMute => ActionToken::MicMute,
             Action::Shortcut(_) => ActionToken::Shortcut,
             Action::Launch(_) => ActionToken::Launch,
             Action::AppMute { .. } => ActionToken::AppMute,
@@ -130,6 +134,7 @@ impl Action {
             | Action::PreviousTrack
             | Action::NextTrack
             | Action::ToggleMute
+            | Action::ToggleMicMute
             | Action::AppMute { .. }
             | Action::AppVolumeStep { .. }
             | Action::VolumeNudge { .. } => true,
@@ -145,6 +150,7 @@ impl Action {
             Action::PreviousTrack => "Previous".into(),
             Action::NextTrack => "Next".into(),
             Action::ToggleMute | Action::AppMute { .. } => "Mute".into(),
+            Action::ToggleMicMute => "Mic".into(),
             Action::AppVolumeStep { .. } | Action::VolumeNudge { .. } => "Volume".into(),
             Action::Macro(m) => m.name.clone(),
             Action::Shortcut(shortcut) => shortcut.to_string(),
@@ -259,6 +265,7 @@ impl Outcome {
 pub struct Platform {
     pub volume: Arc<dyn VolumeBackend>,
     pub app_volume: Arc<dyn AppVolumeBackend>,
+    pub mic: Arc<dyn MicBackend>,
     pub synth: Arc<dyn InputSynth>,
     pub media: Arc<dyn MediaObserver>,
     /// Where keys would land: a macro checks it before each shortcut or launch step.
@@ -278,8 +285,8 @@ pub fn execute_while(action: &Action, platform: &Platform, current: &dyn Fn() ->
     match action {
         Action::Macro(m) => execute_macro(m, platform, current),
         // A media key's effect cannot be tied to this press: the observer's state may be stale
-        // or changed by something else, so a matching state is never proof. Always Unverified;
-        // the media indicator and view show the playback the OS actually reports.
+        // or changed by something else, so a matching state is never proof. Always Triggered (the
+        // quiet Unverified: named so in words, never success); the media indicator and view show the playback the OS actually reports.
         Action::PlayPause | Action::PreviousTrack | Action::NextTrack => {
             let key = match action {
                 Action::PreviousTrack => MediaKey::Previous,
@@ -287,7 +294,7 @@ pub fn execute_while(action: &Action, platform: &Platform, current: &dyn Fn() ->
                 _ => MediaKey::PlayPause,
             };
             match platform.synth.send_media_key(key) {
-                Ok(()) => Outcome::of(FeedbackKind::Unverified),
+                Ok(()) => Outcome::of(FeedbackKind::Triggered),
                 Err(error) => Outcome::from_error(&error),
             }
         }
@@ -303,6 +310,7 @@ pub fn execute_while(action: &Action, platform: &Platform, current: &dyn Fn() ->
                 Err(_) => Outcome::of(FeedbackKind::Error),
             }
         }
+        Action::ToggleMicMute => toggle_mic_mute(platform.mic.as_ref()),
         Action::AppMute { app } => {
             // Never falls back to the system mute (invariant 19).
             if !matches!(
@@ -346,13 +354,57 @@ pub fn execute_while(action: &Action, platform: &Platform, current: &dyn Fn() ->
         }
         Action::VolumeNudge { app } => nudge_volume(platform, app.as_deref()),
         Action::Shortcut(shortcut) => match platform.synth.send_shortcut(shortcut) {
-            Ok(()) => Outcome::of(FeedbackKind::Unverified),
+            Ok(()) => Outcome::of(FeedbackKind::Triggered),
             Err(error) => Outcome::from_error(&error),
         },
         Action::Launch(target) => match (platform.launch)(target) {
             Ok(()) => Outcome::of(FeedbackKind::ExecutionConfirmed),
             Err(error) => Outcome::from_error(&error),
         },
+    }
+}
+
+/// How a mic mute request ended, from what the OS read back for each device (ADR-0011). Muting
+/// is State Confirmed only when every device reads muted: one that stays live, or has no mute to
+/// set while capturing or not known to be idle, is a known failure (the panel names it); one with
+/// no mute that is observed idle is fine, but muting only such devices muted nothing, so it is an
+/// Error; one that cannot be read back is Unverified. Unmuting is confirmed when every device reads live; a device with no mute cannot have been
+/// muted, so it does not count against it.
+fn mic_outcome(target_muted: bool, devices: &[MicDevice]) -> FeedbackKind {
+    if devices.is_empty() {
+        return FeedbackKind::Error;
+    }
+    let failed = |d: &MicDevice| {
+        if target_muted {
+            d.mute == MicMute::Live || (d.mute == MicMute::Unsettable && d.capturing != Some(false))
+        } else {
+            d.mute == MicMute::Muted
+        }
+    };
+    // Only unmutable idle devices: nothing was muted, whatever they are doing now.
+    let nothing_muted = target_muted && devices.iter().all(|d| d.mute == MicMute::Unsettable);
+    if devices.iter().any(failed) || nothing_muted {
+        FeedbackKind::Error
+    } else if devices.iter().any(|d| d.mute == MicMute::Unreadable) {
+        FeedbackKind::Unverified
+    } else {
+        FeedbackKind::StateConfirmed
+    }
+}
+
+/// Toggles every microphone: mutes all unless they are all muted already, then unmutes all.
+fn toggle_mic_mute(mic: &dyn MicBackend) -> Outcome {
+    if !matches!(mic.availability(), ActionAvailability::Available { .. }) {
+        return Outcome::error();
+    }
+    let Ok(before) = mic.devices() else {
+        return Outcome::error();
+    };
+    let target_muted = mics_muted(&before) != Some(true);
+    match mic.set_mute(target_muted) {
+        Ok(after) => Outcome::of(mic_outcome(target_muted, &after)),
+        Err(BackendError::ReadBackUnavailable) => Outcome::of(FeedbackKind::Unverified),
+        Err(_) => Outcome::error(),
     }
 }
 
@@ -412,8 +464,11 @@ const fn rank(kind: FeedbackKind) -> u8 {
     match kind {
         FeedbackKind::Error => 0,
         FeedbackKind::Unverified | FeedbackKind::Processing => 1,
-        FeedbackKind::ExecutionConfirmed => 2,
-        FeedbackKind::StateConfirmed => 3,
+        // A trigger-only outcome is better known than a state that could not be read back: the
+        // user relies on the latter, so a macro keeps the amber one.
+        FeedbackKind::Triggered => 2,
+        FeedbackKind::ExecutionConfirmed => 3,
+        FeedbackKind::StateConfirmed => 4,
     }
 }
 
@@ -446,7 +501,7 @@ fn same_place(start: &Foreground, now: &Foreground) -> bool {
 }
 
 /// Runs a macro's steps in order and keeps the least-confirmed outcome (Error < Unverified <
-/// Started < Confirmed). The first Error stops it and nothing is rolled back.
+/// Triggered < Started < Confirmed). The first Error stops it and nothing is rolled back.
 ///
 /// It also stops, as an Error, when `current` goes false between steps (the session ended), and
 /// before a shortcut or launch step when the foreground became Protected or is no longer the app
@@ -603,7 +658,7 @@ mod tests {
     use super::*;
     use crate::platform::{
         ActionAvailability, FakeAppVolumeBackend, FakeForeground, FakeInputSynth,
-        FakeMediaObserver, FakeVolumeBackend,
+        FakeMediaObserver, FakeMicBackend, FakeMicQuirk, FakeVolumeBackend,
     };
     use kivori_model::desk::MediaStatus;
 
@@ -618,6 +673,11 @@ mod tests {
             Platform {
                 volume: Arc::new(volume),
                 app_volume: Arc::new(FakeAppVolumeBackend::new().with_session("spotify.exe", 50)),
+                mic: Arc::new(
+                    FakeMicBackend::new()
+                        .with_device("Built-in", FakeMicQuirk::Works)
+                        .with_device("USB headset", FakeMicQuirk::Works),
+                ),
                 synth: Arc::new(FakeInputSynth::new(synth)),
                 media: observer.clone(),
                 foreground: Arc::new(FakeForeground::default()),
@@ -653,15 +713,180 @@ mod tests {
         assert_eq!(kind(&Action::ToggleMute, &p), FeedbackKind::Error);
     }
 
+    fn mic_platform(mic: FakeMicBackend) -> Platform {
+        Platform {
+            mic: Arc::new(mic),
+            ..platform(Ok(()), None, FakeVolumeBackend::new(50)).0
+        }
+    }
+
+    fn mics(p: &Platform) -> Vec<MicMute> {
+        p.mic.devices().unwrap().iter().map(|d| d.mute).collect()
+    }
+
     #[test]
-    fn previous_and_next_send_their_media_key_and_stay_unverified() {
+    fn mic_mute_mutes_every_device_and_is_confirmed_only_when_all_read_muted() {
+        let p = platform(Ok(()), None, FakeVolumeBackend::new(50)).0;
+        assert_eq!(
+            kind(&Action::ToggleMicMute, &p),
+            FeedbackKind::StateConfirmed
+        );
+        assert_eq!(mics(&p), [MicMute::Muted, MicMute::Muted]);
+        assert_eq!(
+            kind(&Action::ToggleMicMute, &p),
+            FeedbackKind::StateConfirmed
+        );
+        assert_eq!(mics(&p), [MicMute::Live, MicMute::Live]);
+        // It never touches the system output mute.
+        assert_eq!(p.volume.read_mute(), Ok(false));
+    }
+
+    #[test]
+    fn a_partly_muted_set_is_muted_fully_never_unmuted() {
+        // The user unmutes one in the OS: the next press mutes it again.
+        let fake = FakeMicBackend::new().with_device("A", FakeMicQuirk::Works);
+        fake.set_mute(true).unwrap();
+        fake.external_mute("A", false);
+        fake.add_device("B", FakeMicQuirk::Works);
+        let p = mic_platform(fake);
+        assert_eq!(
+            kind(&Action::ToggleMicMute, &p),
+            FeedbackKind::StateConfirmed
+        );
+        assert_eq!(mics(&p), [MicMute::Muted, MicMute::Muted]);
+    }
+
+    #[test]
+    fn a_device_that_stays_live_or_cannot_mute_is_an_error_never_confirmed() {
+        for quirk in [FakeMicQuirk::StaysLive, FakeMicQuirk::Unsettable] {
+            let p = mic_platform(
+                FakeMicBackend::new()
+                    .with_device("Built-in", FakeMicQuirk::Works)
+                    .with_device("Stubborn", quirk),
+            );
+            assert_eq!(
+                kind(&Action::ToggleMicMute, &p),
+                FeedbackKind::Error,
+                "{quirk:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unmutable_device_counts_as_muted_only_while_observed_idle() {
+        let dev = |mute, capturing| MicDevice {
+            name: "d".into(),
+            mute,
+            capturing,
+        };
+        let muted = || dev(MicMute::Muted, None);
+        let idle = || dev(MicMute::Unsettable, Some(false));
+        let busy = || dev(MicMute::Unsettable, Some(true));
+        let unknown = || dev(MicMute::Unsettable, None);
+        // (devices, mics_muted, muting outcome)
+        let cases = [
+            (
+                vec![muted(), idle()],
+                Some(true),
+                FeedbackKind::StateConfirmed,
+            ),
+            (vec![muted(), busy()], Some(false), FeedbackKind::Error),
+            (vec![muted(), unknown()], Some(false), FeedbackKind::Error),
+            // None actually muted: never muted, and the press did nothing.
+            (vec![idle()], Some(false), FeedbackKind::Error),
+            (vec![idle(), idle()], Some(false), FeedbackKind::Error),
+            (
+                vec![muted(), dev(MicMute::Unreadable, None), idle()],
+                None,
+                FeedbackKind::Unverified,
+            ),
+            (
+                vec![dev(MicMute::Live, None), idle()],
+                Some(false),
+                FeedbackKind::Error,
+            ),
+        ];
+        for (devices, expected, outcome) in cases {
+            assert_eq!(mics_muted(&devices), expected, "{devices:?}");
+            assert_eq!(mic_outcome(true, &devices), outcome, "{devices:?}");
+        }
+        // Unmuting is confirmed with an unmutable device present, whatever it does.
+        let unmuted = [dev(MicMute::Live, None), busy()];
+        assert_eq!(mic_outcome(false, &unmuted), FeedbackKind::StateConfirmed);
+    }
+
+    #[test]
+    fn the_fake_unmutable_quirks_press_to_confirmed_or_error() {
+        let press = |quirk| {
+            let p = mic_platform(
+                FakeMicBackend::new()
+                    .with_device("Built-in", FakeMicQuirk::Works)
+                    .with_device("Phone", quirk),
+            );
+            kind(&Action::ToggleMicMute, &p)
+        };
+        assert_eq!(
+            press(FakeMicQuirk::UnsettableIdle),
+            FeedbackKind::StateConfirmed
+        );
+        assert_eq!(
+            press(FakeMicQuirk::UnsettableCapturing),
+            FeedbackKind::Error
+        );
+        assert_eq!(press(FakeMicQuirk::Unsettable), FeedbackKind::Error);
+    }
+
+    #[test]
+    fn a_device_that_cannot_be_read_back_is_unverified() {
+        let p = mic_platform(
+            FakeMicBackend::new()
+                .with_device("Built-in", FakeMicQuirk::Works)
+                .with_device("Odd", FakeMicQuirk::Unreadable),
+        );
+        assert_eq!(kind(&Action::ToggleMicMute, &p), FeedbackKind::Unverified);
+        // A live device outranks an unreadable one: still a known failure.
+        let p = mic_platform(
+            FakeMicBackend::new()
+                .with_device("Odd", FakeMicQuirk::Unreadable)
+                .with_device("Stubborn", FakeMicQuirk::StaysLive),
+        );
+        assert_eq!(kind(&Action::ToggleMicMute, &p), FeedbackKind::Error);
+    }
+
+    #[test]
+    fn mic_mute_with_no_microphone_or_no_backend_is_an_error() {
+        assert_eq!(
+            kind(&Action::ToggleMicMute, &mic_platform(FakeMicBackend::new())),
+            FeedbackKind::Error
+        );
+        let off = FakeMicBackend::with_availability(ActionAvailability::Unknown);
+        assert_eq!(
+            kind(&Action::ToggleMicMute, &mic_platform(off)),
+            FeedbackKind::Error
+        );
+    }
+
+    #[test]
+    fn a_device_that_arrives_while_muted_is_muted_too_or_reads_live() {
+        let fake = Arc::new(FakeMicBackend::new().with_device("Built-in", FakeMicQuirk::Works));
+        fake.set_mute(true).unwrap();
+        fake.add_device("USB", FakeMicQuirk::Works);
+        fake.add_device("Stubborn", FakeMicQuirk::StaysLive);
+        let devices = fake.devices().unwrap();
+        assert_eq!(devices[1].mute, MicMute::Muted);
+        assert_eq!(devices[2].mute, MicMute::Live);
+        assert_eq!(mics_muted(&devices), Some(false), "live, not muted");
+    }
+
+    #[test]
+    fn previous_and_next_send_their_media_key_and_stay_triggered() {
         let synth = Arc::new(FakeInputSynth::new(Ok(())));
         let p = Platform {
             synth: synth.clone(),
             ..platform(Ok(()), None, FakeVolumeBackend::new(0)).0
         };
-        assert_eq!(kind(&Action::PreviousTrack, &p), FeedbackKind::Unverified);
-        assert_eq!(kind(&Action::NextTrack, &p), FeedbackKind::Unverified);
+        assert_eq!(kind(&Action::PreviousTrack, &p), FeedbackKind::Triggered);
+        assert_eq!(kind(&Action::NextTrack, &p), FeedbackKind::Triggered);
         assert_eq!(
             *synth.sent.lock().unwrap(),
             ["media-previous", "media-next"]
@@ -669,10 +894,10 @@ mod tests {
     }
 
     #[test]
-    fn play_pause_is_never_more_than_unverified() {
+    fn play_pause_is_never_more_than_triggered() {
         for media in [None, Some(MediaStatus::Paused), Some(MediaStatus::Playing)] {
             let (p, _) = platform(Ok(()), media, FakeVolumeBackend::new(0));
-            assert_eq!(kind(&Action::PlayPause, &p), FeedbackKind::Unverified);
+            assert_eq!(kind(&Action::PlayPause, &p), FeedbackKind::Triggered);
         }
     }
 
@@ -846,12 +1071,12 @@ mod tests {
     }
 
     #[test]
-    fn a_shortcut_is_never_more_than_unverified() {
+    fn a_shortcut_is_never_more_than_triggered() {
         let shortcut: Shortcut = "Ctrl+Shift+M".parse().unwrap();
         let (p, _) = platform(Ok(()), None, FakeVolumeBackend::new(0));
         assert_eq!(
             kind(&Action::Shortcut(shortcut), &p),
-            FeedbackKind::Unverified
+            FeedbackKind::Triggered
         );
     }
 
@@ -987,12 +1212,12 @@ mod tests {
         let kind_of = |steps| kind(&macro_of(steps), &p);
         assert_eq!(
             kind_of(vec![run(Action::ToggleMute), run(Action::PlayPause)]),
-            FeedbackKind::Unverified,
-            "confirmed + unverified"
+            FeedbackKind::Triggered,
+            "confirmed + trigger-only"
         );
         assert_eq!(
             kind_of(vec![run(Action::PlayPause), run(Action::ToggleMute)]),
-            FeedbackKind::Unverified,
+            FeedbackKind::Triggered,
             "order does not matter"
         );
         assert_eq!(

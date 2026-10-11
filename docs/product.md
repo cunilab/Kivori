@@ -22,17 +22,19 @@ evidence (see [roadmap.md](roadmap.md#m4-v1)).
 ### In the paid beta
 
 - One Kivori on one active desktop session, on Windows. macOS code may exist but is not supported.
-- Rotary + button input (press, hold). Actions: system volume, media, master mute, keyboard
-  shortcut, app launch, simple ordered macros.
-- Monitoring: CPU, RAM, volume / mute, current media, clock, connection and device health.
+- Rotary + button input (press, hold). Actions: system volume, media, master mute, mic mute,
+  keyboard shortcut, app launch, simple ordered macros.
+- Monitoring: CPU, RAM, volume / mute, mic mute and mic in use, current media, clock, connection and
+  device health.
 - Immediate acknowledgement, honest confirmation, live state sync (including changes
   made outside Kivori).
 - General profile; config UI; config local per OS user and machine; reset to defaults.
-- App-aware profiles on Windows: match by executable, General as fallback, Protected classified
-  first. A profile can be pinned from the device (this is what "Focus / Media / Meeting" modes
+- App-aware profiles on Windows: built-in and user-created, match by executable, General as
+  fallback, Protected classified first. A profile can be pinned from the device (this is what "Focus / Media / Meeting" modes
   are: pinned profiles, not a second concept).
 - Presentation model (buddy, personality, takeover, health, indicators) with intentional
-  visuals for every waiting, failure and recovery state the beta can reach.
+  visuals for every waiting, failure and recovery state the beta can reach. A buddy that stays
+  alive on its own when idle; a brightness setting.
 - Recovery across sleep, wake, lock and reconnect.
 - The ~10 s MCU reboot gesture; launch at login; tray presence.
 - Visible desktop and firmware versions; user-initiated flashing of the bundled firmware,
@@ -41,7 +43,9 @@ evidence (see [roadmap.md](roadmap.md#m4-v1)).
 ### After the beta (decided from beta evidence)
 
 - macOS support (including Accessibility permission handling) and parity with Windows.
-- Mic mute and call indicators; GPU temperature and custom sources.
+- Call indicators; GPU temperature and custom sources.
+- App-free basic controls (volume, media) on the v1 controller, when no Kivori Desktop session
+  exists ([ADR-0010](architecture.md#7-decisions), proposed).
 - Display idle and burn-in protection beyond the basics.
 - Authenticated release manifest, compatibility checks, `Update All`; desktop auto-update;
   rollback-safe (A/B) firmware install.
@@ -55,7 +59,7 @@ evidence (see [roadmap.md](roadmap.md#m4-v1)).
   orchestration.
 - Implicit chords, implicit key-repeat, split rotary directions, guessing sub-apps.
 - Replaying input or transients after reconnect; auto-restarting uncertain host jobs.
-- More than one Active Kivori; Passive as Monitor Mode; driverless mode; waking the host.
+- More than one Active Kivori; Passive as Monitor Mode; waking the host.
 - Process injection, memory inspection or anti-cheat hooks to detect overlays.
 - Silent flashing, unauthenticated or known-incompatible installs, fake progress.
 
@@ -115,8 +119,15 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   targets more precisely. Background apps never own physical mappings.
 - Built-in profiles: General (fallback), Browser, Code, Media, Zoom, Teams. Users can override
   any binding per profile in the config UI, and reset a profile or everything to these defaults.
-  Holding the middle contextual button pins the next profile (Auto, then each profile,
-  then back to Auto); a pin ignores focus but never Protected.
+- Custom profiles: "Add the app in front of me" (or a running app) creates a profile matched by that
+  executable (bundle id on macOS). It starts as a copy of General's bindings, made once at creation;
+  later changes to General do not flow into it. Users can add apps to any profile, built-in ones
+  included. One app belongs to exactly one profile: adding it elsewhere moves it, and says so.
+  At most 16 custom profiles; a name longer than the panel's profile slot is shortened there,
+  never replaced. Deleting a profile sends its apps back to General.
+- Holding the middle contextual button pins the next profile (Auto, then General and the built-in
+  profiles, then custom profiles marked "In pin cycle", then back to Auto); a pin ignores focus but
+  never Protected.
 - In a protected context, shortcuts and launches are suspended: their labels disappear and a
   press says it can't run. System volume, media keys and mute keep working.
 - A knob bound to shortcuts sends one per detent with no badge per detent; the label is the
@@ -134,9 +145,23 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   Error; unknown outcome -> Unverified. Timeout alone is never Error.
 - Macros report their least-confirmed required step; a known step failure makes the
   macro Error / Partial Failure. No automatic rollback of earlier steps.
+- **Mic mute** mutes every active capture device at the OS level, below any app, and reads each one
+  back. It is State Confirmed only when every device reads muted; a device that stays live makes it
+  Error and names that device. A device with no mute control (a phone's Continuity microphone)
+  counts as muted only while no app is recording from it; if one starts, the state turns live
+  within about a second, and a device whose capture cannot be observed counts as live. A device that cannot be read back makes it Unverified with the
+  amber badge, never Confirmed. Unmute restores each device to unmuted (not to a remembered
+  level). The scope is the OS microphone, not an app's own mute button, and the UI says so.
+- "Mic in use" (an app is capturing) is shown only where the OS reports it. Unknown shows no cue,
+  never "not live".
 - Long-running host jobs have a Running state. A link problem does not fail a job the
   host still observes; reconnect reconciles the job and never reissues it.
-- Transients: Success ~800 ms, Unverified ~1.2 s, Error ~2 s. The newest deliberate input
+- **Quiet Unverified.** A trigger-only outcome (media key, shortcut, a macro whose weakest step is
+  a trigger) is acknowledged quietly on the device: the keycap press and a short label pulse, no
+  badge. It never borrows a success look and never celebrates. The amber "?" badge is kept for a
+  state action that could not read its result back (mute, mic mute, app volume), where the user
+  relies on the answer. Desktop's Activity log and Test always name the outcome in words.
+- Transients: Success ~800 ms, quiet acknowledgement ~400 ms, Unverified badge ~1.2 s, Error ~2 s. The newest deliberate input
   replaces older feedback (no queue); background transients wait; urgent states may
   preempt. A finished transient returns to the real state (for example Running), not Idle.
 
@@ -164,8 +189,8 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
 - Primary states (Idle, Active, Busy, Success, Error, Unknown) each have a distinct face.
 - The resting buddy reads observed truth (#13), first match wins: an Error result shows the
   error face; a confirmed result (State or Execution Confirmed, never Unverified) celebrates
-  with a deep press; then sustained high load (strained), master mute (muted), media playing
-  (listening), a meeting profile (attentive). Booting, Offline and Sleeping are never
+  with a deep press; then mic muted (a covered mouth, distinct from master mute), sustained high
+  load (strained), master mute (muted), media playing (listening), a meeting profile (attentive). Booting, Offline and Sleeping are never
   overridden, and Offline never looks like Sleeping.
   One unknown indicator never makes the whole buddy Unknown.
 - Indicator priority: mic, call, master mute, media, custom app. Custom indicators never
@@ -173,6 +198,10 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   a lower one promotes after ~250 ms stable.
 - Personality may animate freely but must never look like a desktop state. It yields to
   every layer above it, and its settings change intensity only.
+- Idle life runs on the device itself (blinks, glances, a look towards a control as it is touched,
+  slower blinks late in the evening), so a busy or stalled host never leaves a frozen buddy. Outside
+  Sleeping the eyes never fully close, so idle life never looks like Sleeping. The buddy is still
+  not a pet: no needs, no progression, nothing that punishes neglect.
 - No ambiguous silence: when the device can render, every waiting, processing, restricted,
   transitional, failure or recovery state has an intentional look. Unknown progress is
   indeterminate activity, never a made-up percentage.
@@ -191,6 +220,8 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   the console, Desktop releases the unit so that user's Kivori can use it.
 - Nothing is buffered during Reconnecting or Disconnected. Reconnect restores current
   truth and never replays old input or old transients.
+- Brightness is a setting. Its lowest step stays clearly on, so it never looks like Display Sleep.
+  Kivori does not dim on its own by time of day.
 - Display idle: Normal -> Dim -> Low Motion -> Display Sleep, staying Connected. Each step
   is configurable within hardware-safe bounds. Display Sleep is the one intended blank.
 - A gesture that starts in Display Sleep is wake-only for its whole length. In Dim or Low
@@ -212,6 +243,16 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   actions are not retried in a loop, and a broad loss may escalate to Permission Required.
 - macOS needs Accessibility for shortcuts and focused-app detection. Missing it is a normal
   Permission Required case, not an error.
+
+### Desktop app
+
+- Developer mode (a per-computer setting, off by default) reveals Activity, technical device
+  details and device internals: flash, RAM, CPU, frame timing, chip and link counters. Internals are
+  diagnostics only: they are fetched only while shown, carry no ids or payloads (ADR-0005), and a
+  value the device cannot measure shows as unavailable, never as zero.
+- A splash screen covers a real startup only: buddy, version and one honest status line, with
+  indeterminate motion. It is skipped on a fast start and on a hidden start at login, and it never
+  delays a ready app.
 
 ### Configuration and users (US11)
 

@@ -783,6 +783,29 @@ fn speaker_muted(band: &mut TileBand, x: i32, y: i32, col: Rgb565, halo: Rgb565)
     line(band, (x + 3, y + 3), (x + 21, y + 21), 1, col);
 }
 
+/// A microphone, 24x24 at `(x, y)`: capsule, cradle and stand.
+fn mic(band: &mut TileBand, x: i32, y: i32, col: Rgb565) {
+    rrect(band, x + 8, y + 1, 8, 13, 4, col);
+    for (a, b) in [
+        ((x + 4, y + 9), (x + 5, y + 14)),
+        ((x + 5, y + 14), (x + 9, y + 18)),
+        ((x + 9, y + 18), (x + 15, y + 18)),
+        ((x + 15, y + 18), (x + 19, y + 14)),
+        ((x + 19, y + 14), (x + 20, y + 9)),
+    ] {
+        line(band, a, b, 1, col);
+    }
+    rect(band, x + 11, y + 18, 2, 3, col);
+    rect(band, x + 8, y + 21, 8, 2, col);
+}
+
+/// A microphone with a slash through it, 24x24 at `(x, y)`; `halo` is what the slash cuts with.
+fn mic_muted(band: &mut TileBand, x: i32, y: i32, col: Rgb565, halo: Rgb565) {
+    mic(band, x, y, col);
+    line(band, (x + 3, y + 3), (x + 21, y + 21), 3, halo);
+    line(band, (x + 3, y + 3), (x + 21, y + 21), 1, col);
+}
+
 /// An eighth note, 24x24 at `(x, y)`.
 fn note(band: &mut TileBand, x: i32, y: i32, col: Rgb565) {
     disc(band, x + 8, y + 18, 4, col);
@@ -1309,7 +1332,8 @@ fn sparkline(band: &mut TileBand, samples: &[u8], hot: bool) {
 /// pixels it draws.
 ///
 /// The status row is the badge on the left, the time in the centre (every view except Clock,
-/// which is the time) and the indicators on the right: master mute, then media.
+/// which is the time) and the indicators on the right: microphone (muted, or live while an app
+/// uses it), then master mute, then media.
 pub fn render_chrome(band: &mut TileBand, view: &DeskView) {
     let status = &view.status;
 
@@ -1325,8 +1349,16 @@ pub fn render_chrome(band: &mut TileBand, view: &DeskView) {
         text_c(band, F_STATUS, &s, CENTER, 10, MUTED);
     }
 
-    // Indicators, right-aligned; master mute has priority (rightmost).
+    // Indicators, right-aligned; the microphone has priority (rightmost), then master mute.
     let mut slot_x = SCREEN - 8 - 24;
+    if view.mic.is_muted() {
+        mic_muted(band, slot_x, 8, TEXT, BG);
+        slot_x -= 24 + 6;
+    } else if view.mic.is_live() {
+        // Unknown, or not in use, shows nothing: never a "not live" claim.
+        mic(band, slot_x, 8, RED);
+        slot_x -= 24 + 6;
+    }
     if status.muted == Some(true) {
         speaker_muted(band, slot_x, 8, TEXT, BG);
         slot_x -= 24 + 6;
@@ -1356,10 +1388,10 @@ pub fn render_chrome(band: &mut TileBand, view: &DeskView) {
     }
 
     if let (DisplayMode::Buddy, Some(labels)) = (status.mode, view.controls) {
-        control_legend(band, &labels, view.switch_down);
+        control_legend(band, &labels, view.switch_down, view.quiet_ack());
     }
 
-    if let Some(fb) = view.feedback {
+    if let Some(fb) = view.feedback.filter(|f| f.kind != FeedbackKind::Triggered) {
         badge(band, fb.kind, view.elapsed_ms);
     }
 
@@ -1383,7 +1415,8 @@ pub fn render_chrome(band: &mut TileBand, view: &DeskView) {
 ///   the knob's own switch is held, the row shows what releasing it does (`PRESS` / `HOLD`).
 /// * Without contextual buttons, the bottom row is a `TURN` / `PRESS` / `HOLD` legend instead
 ///   and the knob label stays there.
-fn control_legend(band: &mut TileBand, labels: &ControlLabels, switch_down: bool) {
+/// * `pulse` (a quiet acknowledgement) brightens the ticks and captions.
+fn control_legend(band: &mut TileBand, labels: &ControlLabels, switch_down: bool, pulse: bool) {
     const COL_W: i32 = SCREEN / 3;
     let profile = labels.profile.as_latin1();
     if !profile.is_empty() {
@@ -1395,6 +1428,9 @@ fn control_legend(band: &mut TileBand, labels: &ControlLabels, switch_down: bool
         text_clipped(band, F_LABEL, profile, (x, 10), MUTED, (x - 10, 92, 10));
     }
     let buttons = labels.buttons.iter().any(|b| !b.is_empty());
+    // The quiet acknowledgement: the ticks under the labels and the captions brighten for its
+    // ~400 ms. Neutral white, never green or a check.
+    let tick = if pulse { TEXT } else { FAINT };
     if buttons && !switch_down {
         for (i, label) in labels.buttons.iter().enumerate() {
             if label.is_empty() {
@@ -1402,7 +1438,7 @@ fn control_legend(band: &mut TileBand, labels: &ControlLabels, switch_down: bool
             }
             let x0 = i as i32 * COL_W;
             column_label(band, label.as_latin1(), (x0, x0 + COL_W), 214);
-            rrect(band, x0 + COL_W / 2 - 8, 234, 16, 3, 1, FAINT);
+            rrect(band, x0 + COL_W / 2 - 8, 234, 16, 3, 1, tick);
         }
     }
     if buttons {
@@ -1422,22 +1458,34 @@ fn control_legend(band: &mut TileBand, labels: &ControlLabels, switch_down: bool
         ];
         for (i, (caption, label)) in columns.into_iter().enumerate() {
             let x0 = i as i32 * COL_W;
-            captioned(band, caption, label.as_latin1(), (x0, x0 + COL_W));
+            captioned(band, caption, label.as_latin1(), (x0, x0 + COL_W), tick);
         }
     } else if switch_down {
         // What releasing the held switch does, in two halves of the row.
-        captioned(band, b"PRESS", labels.press.as_latin1(), (0, CENTER));
-        captioned(band, b"HOLD", labels.hold.as_latin1(), (CENTER, SCREEN));
+        captioned(band, b"PRESS", labels.press.as_latin1(), (0, CENTER), tick);
+        captioned(
+            band,
+            b"HOLD",
+            labels.hold.as_latin1(),
+            (CENTER, SCREEN),
+            tick,
+        );
     }
 }
 
-/// A small caption over its label in the column `[x0, x1)` of the bottom row; nothing when the
-/// label is empty.
-fn captioned(band: &mut TileBand, caption: &[u8], label: &[u8], (x0, x1): (i32, i32)) {
+/// A small caption (in `tone`) over its label in the column `[x0, x1)` of the bottom row; nothing
+/// when the label is empty.
+fn captioned(
+    band: &mut TileBand,
+    caption: &[u8],
+    label: &[u8],
+    (x0, x1): (i32, i32),
+    tone: Rgb565,
+) {
     if label.is_empty() {
         return;
     }
-    text_c(band, F_SMALL, caption, (x0 + x1) / 2, 210, FAINT);
+    text_c(band, F_SMALL, caption, (x0 + x1) / 2, 210, tone);
     column_label(band, label, (x0, x1), 222);
 }
 
@@ -1484,6 +1532,8 @@ fn badge(band: &mut TileBand, kind: FeedbackKind, elapsed_ms: u32) {
             line(band, (cx - 7, cy - 7), (cx + 7, cy + 7), 2, TEXT);
             line(band, (cx + 7, cy - 7), (cx - 7, cy + 7), 2, TEXT);
         }
+        // The quiet acknowledgement has no badge; the legend pulses instead.
+        FeedbackKind::Triggered => {}
         FeedbackKind::Processing => {
             // Indeterminate: a faint ring with eight dots and a bright head circling it.
             let head = ((elapsed_ms / 100) % 8) as i32;

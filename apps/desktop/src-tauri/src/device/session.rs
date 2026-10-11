@@ -17,16 +17,19 @@ use crate::device::nonce::{NonceSource, OsNonceSource};
 use crate::device::transport::SerialLink;
 use crate::input::DeviceClock;
 use crate::orchestrator::Orchestrator;
-use kivori_model::desk::{ActionFeedback, ControlLabels, DeskStatus, MediaInfo};
+use kivori_model::desk::{
+    ActionFeedback, ControlLabels, DeskStatus, FeedbackKind, MediaInfo, MicState,
+};
+use kivori_model::internals::DeviceInternals;
 use kivori_model::{
     Capabilities, CompanionState, MascotAction, MascotPersonality, ProtocolVersion, SendableState,
 };
 use kivori_protocol::{
-    decode_frame, decode_message, encode_message, evaluate_hello_ack, Bye, ByeReason,
-    ControlLabelsUpdate, Feedback, FirmwareVersion, HandshakeOutcome, Hello, InputEvent,
-    MascotActionApplied, MediaInfoUpdate, Message, Ping, PlayMascotAction, Presentation,
-    ProtoError, SeqClass, SequenceTracker, SetState, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR,
-    PROTOCOL_MINOR,
+    decode_frame, decode_message, encode_message, evaluate_hello_ack, BuddySettings, Bye,
+    ByeReason, ControlLabelsUpdate, Feedback, FirmwareVersion, HandshakeOutcome, Hello, InputEvent,
+    InternalsRequest, MascotActionApplied, MediaInfoUpdate, Message, MicStateUpdate, Ping,
+    PlayMascotAction, Presentation, ProtoError, SeqClass, SequenceTracker, SetState, Status,
+    MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 /// Static session parameters (the desktop's advertised identity + compatibility).
@@ -65,7 +68,11 @@ impl Default for SessionConfig {
                 .union(Capabilities::MEDIA_INFO_V1)
                 .union(Capabilities::CONTROL_LABELS_V1)
                 .union(Capabilities::CONTEXT_BUTTONS_V1)
-                .union(Capabilities::HOST_TAKEOVERS_V1),
+                .union(Capabilities::HOST_TAKEOVERS_V1)
+                .union(Capabilities::QUIET_ACK_V1)
+                .union(Capabilities::DEVICE_INTERNALS_V1)
+                .union(Capabilities::IDLE_LIFE_V1)
+                .union(Capabilities::MIC_STATE_V1),
             supported_majors: vec![PROTOCOL_MAJOR],
         }
     }
@@ -136,6 +143,8 @@ pub struct Session {
     device_clock: DeviceClock,
     /// Health and link-quality figures for diagnostics. Connection-scoped.
     diagnostics: SessionDiagnostics,
+    /// The latest `Internals` snapshot of this session (developer mode). Connection-scoped.
+    internals: Option<DeviceInternals>,
 }
 
 impl Session {
@@ -171,6 +180,7 @@ impl Session {
             host_ms: 0,
             device_clock: DeviceClock::default(),
             diagnostics: SessionDiagnostics::default(),
+            internals: None,
         }
     }
 
@@ -193,6 +203,7 @@ impl Session {
         self.reported = None;
         self.clear_session_identity();
         self.diagnostics = SessionDiagnostics::default();
+        self.internals = None;
         self.pending_inputs.clear();
         self.last_mascot_action_applied = None;
         self.activity.clear();
@@ -247,6 +258,13 @@ impl Session {
     pub fn supports_mascot_interaction(&self) -> bool {
         self.negotiated_caps
             .contains(Capabilities::MASCOT_INTERACTION)
+    }
+
+    /// Whether the device runs the buddy's idle life itself (`IDLE_LIFE_V1`). If so the desktop
+    /// sends it settings and no self-play; otherwise the companion director keeps playing for it.
+    #[must_use]
+    pub fn supports_idle_life(&self) -> bool {
+        self.negotiated_caps.contains(Capabilities::IDLE_LIFE_V1)
     }
 
     /// Whether both peers negotiated host takeovers (`Bye(HostSleeping)` / `Bye(FirmwareUpdate)`)
@@ -405,6 +423,36 @@ impl Session {
         Ok(true)
     }
 
+    /// Sends the buddy and display settings the device applies itself. Returns `Ok(false)` without
+    /// writing when there is no session or `IDLE_LIFE_V1` was not negotiated.
+    ///
+    /// # Errors
+    /// [`SessionError::Transport`] if the write fails.
+    pub fn send_buddy_settings<L: SerialLink>(
+        &mut self,
+        link: &mut L,
+        personality: MascotPersonality,
+        self_play: bool,
+        brightness: u8,
+    ) -> Result<bool, SessionError<L::Error>> {
+        let Some(session) = self.current_session else {
+            return Ok(false);
+        };
+        if !self.supports_idle_life() {
+            return Ok(false);
+        }
+        self.send(
+            link,
+            &Message::BuddySettings(BuddySettings {
+                session,
+                personality,
+                self_play,
+                brightness,
+            }),
+        )?;
+        Ok(true)
+    }
+
     /// Ends the session on purpose: sends `Bye(reason)` and forgets the session identity, so the
     /// device does not have to wait out its host-silence timeout.
     ///
@@ -502,6 +550,26 @@ impl Session {
         Ok(true)
     }
 
+    /// Sends the microphone state for the current session. Returns `Ok(false)` without encoding
+    /// anything when there is no session or `MIC_STATE_V1` was not negotiated.
+    ///
+    /// # Errors
+    /// [`SessionError::Transport`] if the write fails.
+    pub fn send_mic_state<L: SerialLink>(
+        &mut self,
+        link: &mut L,
+        mic: MicState,
+    ) -> Result<bool, SessionError<L::Error>> {
+        let Some(session) = self.current_session else {
+            return Ok(false);
+        };
+        if !self.negotiated_caps.contains(Capabilities::MIC_STATE_V1) {
+            return Ok(false);
+        }
+        self.send(link, &Message::MicState(MicStateUpdate { session, mic }))?;
+        Ok(true)
+    }
+
     /// Sends the control labels for the current session. Returns `Ok(false)` without encoding
     /// anything when there is no session or `CONTROL_LABELS_V1` was not negotiated.
     ///
@@ -529,7 +597,8 @@ impl Session {
     }
 
     /// Sends one action outcome for the current session. Returns `Ok(false)` without encoding
-    /// anything when there is no session or `ACTION_FEEDBACK_V1` was not negotiated.
+    /// anything when there is no session or `ACTION_FEEDBACK_V1` was not negotiated. `Triggered`
+    /// goes out as `Unverified` unless `QUIET_ACK_V1` was negotiated.
     ///
     /// # Errors
     /// [`SessionError::Transport`] if the write fails.
@@ -547,15 +616,57 @@ impl Session {
         {
             return Ok(false);
         }
+        // A device that did not negotiate the quiet acknowledgement still gets today's Unverified.
+        let kind = match feedback.kind {
+            FeedbackKind::Triggered
+                if !self.negotiated_caps.contains(Capabilities::QUIET_ACK_V1) =>
+            {
+                FeedbackKind::Unverified
+            }
+            kind => kind,
+        };
         self.send(
             link,
             &Message::Feedback(Feedback {
                 session,
                 action: feedback.action,
-                kind: feedback.kind,
+                kind,
             }),
         )?;
         Ok(true)
+    }
+
+    /// Asks the device for one `Internals` snapshot. Returns `false` (nothing sent) without an
+    /// established session or when the device did not negotiate `DEVICE_INTERNALS_V1`. The answer
+    /// arrives later through [`Session::pump`] and is read with [`Session::internals`].
+    ///
+    /// # Errors
+    /// [`SessionError::Transport`] if the write fails.
+    pub fn request_internals<L: SerialLink>(
+        &mut self,
+        link: &mut L,
+    ) -> Result<bool, SessionError<L::Error>> {
+        let Some(session) = self.current_session else {
+            return Ok(false);
+        };
+        if !self
+            .negotiated_caps
+            .contains(Capabilities::DEVICE_INTERNALS_V1)
+        {
+            return Ok(false);
+        }
+        self.send(
+            link,
+            &Message::InternalsRequest(InternalsRequest { session }),
+        )?;
+        Ok(true)
+    }
+
+    /// The latest `Internals` snapshot of this connection (`None` until one arrives, and again
+    /// after the connection ends).
+    #[must_use]
+    pub const fn internals(&self) -> Option<DeviceInternals> {
+        self.internals
     }
 
     /// Whether the heartbeat has missed its threshold (the caller then raises `HeartbeatTimeout`).
@@ -764,6 +875,15 @@ impl Session {
             {
                 self.pending_inputs.push(event);
             }
+            // Only a snapshot answering this session counts; a stale one is dropped unseen.
+            Message::Internals(report)
+                if self
+                    .negotiated_caps
+                    .contains(Capabilities::DEVICE_INTERNALS_V1)
+                    && self.current_session == Some(report.session) =>
+            {
+                self.internals = Some(report.internals);
+            }
             // The device is ending the session: no connection, no session identity.
             Message::Bye(_) => {
                 self.clear_session_identity();
@@ -841,6 +961,7 @@ impl Session {
         // The figures describe the ended connection; the counters stay until the next `open`.
         self.diagnostics.free_bytes = None;
         self.diagnostics.last_pong = None;
+        self.internals = None;
     }
 
     fn observe(&mut self, kind: ActivityEventKind, metadata: Option<ActivityMetadata>) {

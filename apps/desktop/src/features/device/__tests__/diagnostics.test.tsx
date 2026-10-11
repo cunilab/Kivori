@@ -1,14 +1,16 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@kivori/ui/components/tooltip';
 import type { DiagnosticsDto } from '../../../lib/ipc/types';
+import { setDevMode } from '../../../lib/dev-mode';
 import { parseDiagnostics } from '../../../lib/ipc/validate';
 
 const bridge = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('../../../lib/ipc', () => ({ getDiagnostics: bridge.get }));
 
 import { Diagnostics } from '../Diagnostics';
+import { setLatestInternals } from '../internals-latest';
 
 const disconnected: DiagnosticsDto = {
   versions: {
@@ -123,5 +125,40 @@ describe('Diagnostics card', () => {
       'config',
     ]);
     expect(JSON.stringify(copied)).not.toMatch(/"(port|path|deviceId)"/i);
+  });
+
+  it('adds the device internals to the copy only with developer mode on', async () => {
+    bridge.get.mockResolvedValue(connected);
+    const internals = { connected: true, supported: true, snapshot: null };
+    setLatestInternals(internals);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    try {
+      view();
+      await screen.findByText('3fa9c1d2');
+      await user.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
+      await screen.findByText('Copied');
+      expect(Object.keys(JSON.parse(writeText.mock.calls[0][0] as string) as object)).not.toContain(
+        'internals',
+      );
+
+      act(() => setDevMode(true));
+      writeText.mockClear();
+      await user.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
+      await waitFor(() => expect(writeText).toHaveBeenCalled());
+      const copied = JSON.parse(writeText.mock.calls[0][0] as string) as Record<string, unknown>;
+      expect(copied.internals).toEqual(internals);
+      expect(Object.keys(copied).slice(0, 5)).toEqual([
+        'versions',
+        'connection',
+        'health',
+        'host',
+        'config',
+      ]);
+    } finally {
+      setDevMode(false);
+      setLatestInternals(null);
+    }
   });
 });

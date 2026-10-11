@@ -21,6 +21,7 @@ fn live_updates_keep_only_the_latest_timestamp() {
                 initial_state: "idle".into(),
                 events: vec![],
                 action_events: vec![],
+                idle_life: None,
             },
             ms,
         );
@@ -32,6 +33,7 @@ fn live_updates_keep_only_the_latest_timestamp() {
             initial_state: "idle".into(),
             events: vec![],
             action_events: vec![],
+            idle_life: None,
         },
         133,
     );
@@ -42,6 +44,7 @@ fn live_updates_keep_only_the_latest_timestamp() {
             initial_state: "idle".into(),
             events: vec![],
             action_events: vec![],
+            idle_life: None,
         },
         166,
     );

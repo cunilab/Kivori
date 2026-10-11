@@ -76,6 +76,10 @@ pub trait DisplaySink {
         }
         Ok(())
     }
+
+    /// Sets the backlight to `step` (`1..=BRIGHTNESS_STEPS`, already clamped). Sinks without a
+    /// dimmable backlight (the simulator, a panel wired always-on) ignore it.
+    fn set_brightness(&mut self, _step: u8) {}
 }
 
 /// A monotonic millisecond clock, measured from device boot.
@@ -106,6 +110,12 @@ pub trait InputSource {
     /// Edges the source had to drop because its capture queue was full (cumulative). Polled
     /// sources capture nothing and drop nothing; only a diagnostic readout reads this.
     fn dropped_edges(&self) -> u32 {
+        0
+    }
+
+    /// The most edges ever waiting in the capture queue at once (since boot). Polled sources have
+    /// no queue, so the default is 0.
+    fn edge_high_water(&self) -> u32 {
         0
     }
 }

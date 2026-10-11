@@ -5,10 +5,12 @@ use kivori_model::desk::{
     ActionKind, ClockTime, ControlLabels, DeskStatus, DisplayMode, FeedbackKind, MediaStatus,
     MediaText,
 };
-use kivori_model::{Capabilities, ProtocolVersion};
+use kivori_model::internals::{ChipModel, DeviceInternals, ResetReason};
+use kivori_model::{Capabilities, MascotPersonality, ProtocolVersion};
 use kivori_protocol::{
-    decode_frame, decode_message, encode_message, ControlId, ControlLabelsUpdate, Feedback,
-    InputEvent, InputKind, Message, Status, MAX_FRAME, MAX_WIRE,
+    decode_frame, decode_message, encode_message, BuddySettings, ControlId, ControlLabelsUpdate,
+    Feedback, InputEvent, InputKind, InternalsReport, InternalsRequest, Message, MicStateUpdate,
+    Status, MAX_FRAME, MAX_PAYLOAD, MAX_WIRE,
 };
 
 fn encode(msg: &Message) -> Vec<u8, MAX_WIRE> {
@@ -94,6 +96,7 @@ fn every_feedback_roundtrips() {
             FeedbackKind::ExecutionConfirmed,
             FeedbackKind::Unverified,
             FeedbackKind::Error,
+            FeedbackKind::Triggered,
         ] {
             let msg = Message::Feedback(Feedback {
                 session: 5,
@@ -201,4 +204,123 @@ fn context_buttons_are_control_variant_2_with_their_index() {
     );
     assert_eq!(Capabilities::CONTEXT_BUTTONS_V1.bits(), 1 << 9);
     assert_eq!(Capabilities::HOST_TAKEOVERS_V1.bits(), 1 << 10);
+    assert_eq!(Capabilities::QUIET_ACK_V1.bits(), 1 << 11);
+    assert_eq!(Capabilities::DEVICE_INTERNALS_V1.bits(), 1 << 12);
+    assert_eq!(Capabilities::IDLE_LIFE_V1.bits(), 1 << 13);
+    assert_eq!(Capabilities::MIC_STATE_V1.bits(), 1 << 14);
+}
+
+/// Append-only: `Triggered` follows the original five kinds.
+#[test]
+fn triggered_feedback_is_appended_as_kind_5() {
+    for (kind, wire_value) in [(FeedbackKind::Error, 4u8), (FeedbackKind::Triggered, 5)] {
+        let msg = Message::Feedback(Feedback {
+            session: 0,
+            action: ActionKind::Volume,
+            kind,
+        });
+        assert_eq!(payload(&msg).last().copied(), Some(wire_value), "{kind:?}");
+    }
+}
+
+fn full_internals() -> DeviceInternals {
+    DeviceInternals {
+        app_image_bytes: Some(u32::MAX),
+        app_partition_bytes: Some(u32::MAX),
+        asset_blob_bytes: Some(u32::MAX),
+        asset_blob_cap_bytes: Some(u32::MAX),
+        flash_total_bytes: Some(u32::MAX),
+        ram_total_bytes: Some(u32::MAX),
+        ram_static_bytes: Some(u32::MAX),
+        ram_free_bytes: Some(u32::MAX),
+        stack_free_min_bytes: Some(u32::MAX),
+        busy_percent: Some(100),
+        compose_ms: Some(u16::MAX),
+        flush_ms: Some(u16::MAX),
+        fps: Some(u8::MAX),
+        chip_model: Some(ChipModel::Esp32C3),
+        chip_revision: Some((u8::MAX, u8::MAX)),
+        temperature_decicelsius: Some(i16::MIN),
+        uptime_ms: Some(u32::MAX),
+        reset_reason: Some(ResetReason::Other),
+        edge_queue_high_water: Some(u16::MAX),
+        dropped_edges: Some(u32::MAX),
+        invalid_transitions: Some(u32::MAX),
+        frames_in: Some(u32::MAX),
+        frames_out: Some(u32::MAX),
+        frames_rejected: Some(u32::MAX),
+    }
+}
+
+/// Append-only: the request and the snapshot follow `ControlLabels` (tag 18) as tags 19 and 20.
+#[test]
+fn internals_messages_are_appended_as_tags_19_and_20() {
+    let request = Message::InternalsRequest(InternalsRequest { session: 7 });
+    assert_eq!(payload(&request)[0], 19);
+    assert_eq!(roundtrip(&request), request);
+
+    let report = Message::Internals(InternalsReport {
+        session: 7,
+        internals: full_internals(),
+    });
+    assert_eq!(payload(&report)[0], 20);
+    assert_eq!(roundtrip(&report), report);
+}
+
+/// Every field optional: a device that measures nothing still sends a valid, small snapshot, and
+/// `None` stays `None` (never 0) across the wire.
+#[test]
+fn an_empty_internals_snapshot_roundtrips_as_all_unavailable() {
+    let report = Message::Internals(InternalsReport {
+        session: 1,
+        internals: DeviceInternals::default(),
+    });
+    assert_eq!(roundtrip(&report), report);
+    // Tag, session varint, then one `None` byte per field.
+    assert!(payload(&report).len() <= 2 + 5 + 24);
+}
+
+/// The fullest possible snapshot must stay far inside one frame.
+#[test]
+fn the_fullest_internals_snapshot_fits_one_frame() {
+    let report = Message::Internals(InternalsReport {
+        session: u32::MAX,
+        internals: full_internals(),
+    });
+    assert!(payload(&report).len() < MAX_PAYLOAD / 2);
+}
+
+/// Append-only: the buddy settings follow `Internals` (tag 20) as tag 21.
+#[test]
+fn buddy_settings_are_appended_as_tag_21() {
+    let msg = Message::BuddySettings(BuddySettings {
+        session: 7,
+        personality: MascotPersonality::Playful,
+        self_play: false,
+        brightness: 3,
+    });
+    assert_eq!(payload(&msg)[0], 21);
+    assert_eq!(roundtrip(&msg), msg);
+    assert!(payload(&msg).len() <= 1 + 5 + 1 + 1 + 1);
+}
+
+#[test]
+fn mic_state_is_appended_as_tag_22() {
+    use kivori_model::desk::MicState;
+    for mic in [
+        MicState::UNKNOWN,
+        MicState {
+            muted: Some(true),
+            in_use: Some(false),
+        },
+        MicState {
+            muted: Some(false),
+            in_use: Some(true),
+        },
+    ] {
+        let msg = Message::MicState(MicStateUpdate { session: 7, mic });
+        assert_eq!(payload(&msg)[0], 22);
+        assert_eq!(roundtrip(&msg), msg);
+        assert!(payload(&msg).len() <= 1 + 5 + 2 + 2);
+    }
 }

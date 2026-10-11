@@ -22,6 +22,7 @@ fn changed(store: &ConfigStore) -> ConfigFile {
         file.display = DisplaySettings {
             default_view: View::Clock,
             secondary_view: SecondaryView::Cycle,
+            brightness: 2,
         };
         file.buddy.reactions = false;
         file.buddy.intensity = Intensity::High;
@@ -75,12 +76,39 @@ fn the_file_uses_the_documented_shape() {
         serde_json::json!({
             "version": 1,
             "profiles": {},
+            "customProfiles": [],
             "macros": [],
-            "display": { "defaultView": "clock", "secondaryView": "cycle" },
+            "display": { "defaultView": "clock", "secondaryView": "cycle", "brightness": 2 },
             "buddy": { "reactions": false, "intensity": "high" },
             "onboarding": { "completed": false }
         })
     );
+}
+
+#[test]
+fn a_custom_profile_is_written_with_its_apps_and_pin_cycle_flag() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = ConfigStore::open(dir.path());
+    store.add_custom_profile("Figma.exe", "Figma").unwrap();
+    store
+        .assign_app(
+            &kivori_desktop::config::ProfileRef::Builtin(ProfileId::Code),
+            "sublime_text.exe",
+        )
+        .unwrap();
+    let json: serde_json::Value =
+        serde_json::from_slice(&fs::read(dir.path().join("config.json")).unwrap()).unwrap();
+    let custom = &json["customProfiles"][0];
+    assert_eq!(custom["id"], "custom-1");
+    assert_eq!(custom["name"], "Figma");
+    assert_eq!(custom["apps"], serde_json::json!(["figma.exe"]));
+    assert_eq!(custom["inPinCycle"], false);
+    assert_eq!(custom["bindings"]["buttons"].as_array().unwrap().len(), 3);
+    assert_eq!(
+        json["profiles"]["code"]["addedApps"],
+        serde_json::json!(["sublime_text.exe"])
+    );
+    assert!(json["profiles"]["code"].get("removedApps").is_none());
 }
 
 #[test]
@@ -91,6 +119,7 @@ fn an_invalid_save_is_refused_and_changes_nothing() {
         file.display = DisplaySettings {
             default_view: View::Media,
             secondary_view: SecondaryView::View(View::Media),
+            ..DisplaySettings::default()
         };
     });
     assert!(matches!(
@@ -473,4 +502,276 @@ fn reset_keeps_onboarding_completed() {
     assert!(store.file().onboarding.completed);
     assert!(store.file().buddy.reactions);
     assert!(ConfigStore::open(dir.path()).file().onboarding.completed);
+}
+
+/// A file written before the brightness setting existed stays version 1 and loads at the top step
+/// (the always-on backlight it had), so no migration and no backup is needed.
+#[test]
+fn a_file_without_brightness_loads_at_full_and_the_setting_survives_a_reopen() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("config.json"),
+        br#"{"version":1,"display":{"defaultView":"clock","secondaryView":"cycle"}}"#,
+    )
+    .unwrap();
+    let mut store = ConfigStore::open(dir.path());
+    assert_eq!(store.notice(), None);
+    assert_eq!(store.file().version, 1);
+    assert_eq!(store.file().display.brightness, 5);
+    assert_eq!(names(dir.path()), ["config.json"]);
+
+    let next = store.edited(|file| file.display.brightness = 1);
+    store.save(next).unwrap();
+    assert_eq!(ConfigStore::open(dir.path()).file().display.brightness, 1);
+}
+
+#[test]
+fn a_brightness_step_the_device_does_not_have_is_refused_and_corrupt_on_load() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = ConfigStore::open(dir.path());
+    for step in [0, 6] {
+        let bad = store.edited(|file| file.display.brightness = step);
+        assert!(matches!(store.save(bad), Err(ConfigError::Invalid(_))));
+    }
+    assert_eq!(store.file(), &ConfigFile::default());
+
+    let original =
+        br#"{"version":1,"display":{"defaultView":"buddy","secondaryView":"system","brightness":9}}"#;
+    fs::write(dir.path().join("config.json"), original).unwrap();
+    let reopened = ConfigStore::open(dir.path());
+    assert_eq!(reopened.notice(), Some(ConfigNotice::RecoveredCorrupt));
+    assert_eq!(reopened.file(), &ConfigFile::default());
+}
+
+mod profiles {
+    use kivori_desktop::config::{ProfileRef, MAX_CUSTOM_PROFILES};
+
+    use super::*;
+
+    fn custom(id: &str) -> ProfileRef {
+        ProfileRef::Custom(id.into())
+    }
+
+    fn names_of(store: &ConfigStore) -> Vec<String> {
+        store
+            .resolved()
+            .profiles
+            .iter()
+            .map(|p| p.name.clone())
+            .collect()
+    }
+
+    #[test]
+    fn a_file_without_custom_profiles_loads_with_the_default_and_stays_version_1() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("config.json"),
+            br#"{ "version": 1, "profiles": {} }"#,
+        )
+        .unwrap();
+        let store = ConfigStore::open(dir.path());
+        assert_eq!(store.notice(), None);
+        assert!(store.file().custom_profiles.is_empty());
+        assert_eq!(store.file().version, 1);
+    }
+
+    #[test]
+    fn a_custom_profile_copies_general_once_and_survives_a_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = ConfigStore::open(dir.path());
+        // General's Press is changed before the copy, then again after it.
+        let press = |keys: &str| SlotSpec {
+            action: Some(ActionSpec::Shortcut { keys: keys.into() }),
+            label: Some("Mine".into()),
+        };
+        store
+            .save(store.edited(|f| {
+                f.profiles.entry(ProfileId::General).or_default().press = Some(press("Ctrl+K"));
+            }))
+            .unwrap();
+        store.add_custom_profile("Figma.exe", "Figma").unwrap();
+        store
+            .save(store.edited(|f| {
+                f.profiles.entry(ProfileId::General).or_default().press = Some(press("Ctrl+J"));
+            }))
+            .unwrap();
+        let reopened = ConfigStore::open(dir.path());
+        assert_eq!(reopened.file(), store.file());
+        let resolved = reopened.resolved();
+        let figma = resolved.profiles.last().unwrap();
+        assert_eq!(figma.name, "Figma");
+        assert_eq!(figma.ids, ["figma.exe"]);
+        assert!(!figma.in_pin_cycle);
+        let bound = |p: &kivori_desktop::desk::profile::Profile| p.bindings.press.action.clone();
+        assert_ne!(
+            bound(figma),
+            bound(&resolved.profiles[0]),
+            "later edits do not flow in"
+        );
+        assert_eq!(figma.bindings.press.label.as_deref(), Some("Mine"));
+    }
+
+    #[test]
+    fn reset_to_general_recopies_a_custom_profile_and_a_built_in_gets_its_apps_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = ConfigStore::open(dir.path());
+        store.add_custom_profile("figma.exe", "").unwrap();
+        let id = custom("custom-1");
+        store
+            .save(store.edited(|f| {
+                f.custom_profiles[0].bindings.press = Some(SlotSpec {
+                    action: Some(ActionSpec::NextTrack),
+                    label: None,
+                });
+            }))
+            .unwrap();
+        store.reset_profile(&id).unwrap();
+        assert_eq!(
+            store.resolved().profiles.last().unwrap().bindings,
+            store.resolved().profiles[0].bindings
+        );
+        assert_eq!(
+            store.file().custom_profiles[0].apps,
+            ["figma.exe"],
+            "apps stay"
+        );
+
+        store
+            .assign_app(&ProfileRef::Builtin(ProfileId::Code), "sublime_text.exe")
+            .unwrap();
+        store
+            .assign_app(&ProfileRef::Builtin(ProfileId::General), "code.exe")
+            .unwrap();
+        let code = |s: &ConfigStore| s.resolved().profiles[2].ids.clone();
+        assert!(code(&store).contains(&"sublime_text.exe".to_string()));
+        assert!(!code(&store).contains(&"code.exe".to_string()));
+        store
+            .reset_profile(&ProfileRef::Builtin(ProfileId::Code))
+            .unwrap();
+        assert!(code(&store).contains(&"code.exe".to_string()));
+        assert!(store.file().profiles.is_empty());
+    }
+
+    #[test]
+    fn rename_delete_and_pin_cycle_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = ConfigStore::open(dir.path());
+        store.add_custom_profile("figma.exe", "Figma").unwrap();
+        store
+            .rename_profile(&custom("custom-1"), "  Design  ")
+            .unwrap();
+        store.set_pin_cycle(&custom("custom-1"), true).unwrap();
+        let reopened = ConfigStore::open(dir.path());
+        assert_eq!(
+            names_of(&reopened).last().map(String::as_str),
+            Some("Design")
+        );
+        assert!(reopened.resolved().profiles.last().unwrap().in_pin_cycle);
+        let revision = store.revision();
+        assert!(store.rename_profile(&custom("custom-1"), " ").is_err());
+        assert!(store
+            .rename_profile(&custom("custom-1"), &"x".repeat(33))
+            .is_err());
+        assert_eq!(store.revision(), revision, "a refused change saves nothing");
+        store.delete_profile(&custom("custom-1")).unwrap();
+        assert!(store.file().custom_profiles.is_empty());
+        assert!(store.delete_profile(&custom("custom-1")).is_err());
+    }
+
+    #[test]
+    fn at_most_sixteen_custom_profiles() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = ConfigStore::open(dir.path());
+        for n in 0..MAX_CUSTOM_PROFILES {
+            store
+                .add_custom_profile(&format!("app{n}.exe"), "")
+                .unwrap();
+        }
+        assert!(matches!(
+            store.add_custom_profile("one-more.exe", ""),
+            Err(ConfigError::Invalid(_))
+        ));
+        assert_eq!(store.file().custom_profiles.len(), MAX_CUSTOM_PROFILES);
+    }
+
+    #[test]
+    fn a_file_with_an_app_in_two_profiles_is_set_aside_like_any_damaged_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let both = r#"{ "version": 1, "customProfiles": [
+            { "id": "custom-1", "name": "A", "apps": ["figma.exe"] },
+            { "id": "custom-2", "name": "B", "apps": ["FIGMA.exe"] } ] }"#;
+        fs::write(dir.path().join("config.json"), both).unwrap();
+        let store = ConfigStore::open(dir.path());
+        assert_eq!(store.notice(), Some(ConfigNotice::RecoveredCorrupt));
+        assert!(store.file().custom_profiles.is_empty());
+        assert!(names(dir.path())
+            .iter()
+            .any(|n| n.starts_with("config.corrupt-")));
+    }
+
+    #[test]
+    fn a_newer_file_with_custom_profiles_is_still_set_aside() {
+        let dir = tempfile::tempdir().unwrap();
+        let newer = r#"{ "version": 2, "customProfiles": [{ "id": "custom-1", "name": "A" }] }"#;
+        fs::write(dir.path().join("config.json"), newer).unwrap();
+        let store = ConfigStore::open(dir.path());
+        assert_eq!(store.notice(), Some(ConfigNotice::RecoveredNewerVersion));
+        assert!(store.file().custom_profiles.is_empty());
+    }
+
+    #[test]
+    fn reset_everything_removes_custom_profiles_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = ConfigStore::open(dir.path());
+        store.add_custom_profile("figma.exe", "").unwrap();
+        store.reset().unwrap();
+        assert!(store.file().custom_profiles.is_empty());
+        assert_eq!(store.resolved().profiles.len(), ProfileId::ALL.len());
+    }
+
+    #[test]
+    fn a_macro_bound_in_a_custom_profile_cannot_be_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = ConfigStore::open(dir.path());
+        store
+            .save_macro(MacroSpec {
+                id: "hello".into(),
+                name: "Hello".into(),
+                steps: vec![StepSpec::Action {
+                    action: ActionSpec::PlayPause,
+                }],
+            })
+            .unwrap();
+        store.add_custom_profile("figma.exe", "").unwrap();
+        store
+            .save(store.edited(|f| {
+                f.custom_profiles[0].bindings.hold = Some(SlotSpec {
+                    action: Some(ActionSpec::Macro { id: "hello".into() }),
+                    label: None,
+                });
+            }))
+            .unwrap();
+        assert!(store.delete_macro("hello").is_err());
+        let _ = ProfileOverride::default();
+    }
+
+    #[test]
+    fn the_config_dto_marks_custom_profiles_and_their_pin_cycle_flag() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = ConfigStore::open(dir.path());
+        store.add_custom_profile("figma.exe", "Figma").unwrap();
+        store.set_pin_cycle(&custom("custom-1"), true).unwrap();
+        let dto = kivori_desktop::ipc::dto::config_dto(&store);
+        assert_eq!(dto.profiles.len(), 7);
+        assert!(dto.profiles[..6]
+            .iter()
+            .all(|p| !p.custom && p.in_pin_cycle));
+        let mine = &dto.profiles[6];
+        assert_eq!(
+            (mine.id.as_str(), mine.custom, mine.in_pin_cycle),
+            ("custom-1", true, true)
+        );
+        assert_eq!(mine.apps, ["figma.exe"]);
+        assert!(!mine.press.overridden);
+    }
 }

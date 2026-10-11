@@ -12,7 +12,9 @@ import {
 import { Known } from '@/components/kivori/known';
 import { getDiagnostics } from '@/lib/ipc';
 import type { DiagnosticsDto } from '@/lib/ipc/types';
+import { useDevMode } from '@/lib/dev-mode';
 import { strings } from '@/lib/i18n/strings';
+import { getLatestInternals } from './internals-latest';
 
 const t = strings.diagnostics;
 const unknown = strings.unknown;
@@ -60,6 +62,7 @@ export function Diagnostics(): ReactElement {
   const [failed, setFailed] = useState(false);
   const [copy, setCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
   const latest = useRef<DiagnosticsDto | null>(null);
+  const devMode = useDevMode();
 
   useEffect(() => {
     let active = true;
@@ -88,7 +91,11 @@ export function Diagnostics(): ReactElement {
   const copyJson = async (): Promise<void> => {
     if (!latest.current) return;
     try {
-      await navigator.clipboard.writeText(JSON.stringify(latest.current, null, 2));
+      // Internals are developer-mode information: they join the copy only while it is on.
+      const copied = devMode
+        ? { ...latest.current, internals: getLatestInternals() }
+        : latest.current;
+      await navigator.clipboard.writeText(JSON.stringify(copied, null, 2));
       setCopy('copied');
     } catch {
       setCopy('failed');

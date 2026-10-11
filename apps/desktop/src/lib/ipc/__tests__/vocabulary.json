@@ -1,9 +1,11 @@
 {
+  "accessibility": ["granted", "missing", "notApplicable"],
   "actionSpecKinds": [
     "playPause",
     "previousTrack",
     "nextTrack",
     "systemMute",
+    "micMute",
     "appMute",
     "shortcut",
     "launch",
@@ -20,8 +22,13 @@
     "mediaInfoV1",
     "controlLabelsV1",
     "contextButtonsV1",
-    "hostTakeoversV1"
+    "hostTakeoversV1",
+    "quietAckV1",
+    "deviceInternalsV1",
+    "idleLifeV1",
+    "micStateV1"
   ],
+  "chipModels": ["esp32c3"],
   "controls": [
     "press",
     "hold",
@@ -35,6 +42,7 @@
     "volume",
     "playPause",
     "mute",
+    "micMute",
     "shortcut",
     "launch",
     "previousTrack",
@@ -59,9 +67,14 @@
   "hostMedia": ["observable", "notObservable"],
   "hostPresence": ["active", "locked", "sleeping"],
   "profileIds": ["general", "browser", "code", "media", "zoom", "teams"],
+  "profileLimits": {
+    "apps": 32,
+    "customProfiles": 16,
+    "nameMax": 32
+  },
+  "resetReasons": ["powerOn", "software", "watchdog", "brownout", "deepSleep", "other"],
   "rotateSpecKinds": ["systemVolume", "shortcuts", "appVolume"],
-  "stepSpecKinds": ["action", "delay"],
-  "updateAdvice": ["upToDate", "updateAvailable", "deviceNewer", "unknown"],
   "startupPlatform": ["windows", "macos", "other"],
-  "accessibility": ["granted", "missing", "notApplicable"]
+  "stepSpecKinds": ["action", "delay"],
+  "updateAdvice": ["upToDate", "updateAvailable", "deviceNewer", "unknown"]
 }

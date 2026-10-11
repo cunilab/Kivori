@@ -49,6 +49,12 @@ fn observed_state_faces_render_to_committed_hashes() {
             0x3CEA_C170_7B97_941D,
         ),
         (
+            "mic_muted",
+            MascotExpression::MicMuted,
+            0,
+            0x9722_5C37_D69E_6901,
+        ),
+        (
             "celebrate",
             MascotExpression::Happy,
             HAPPY_PRESS_Q8,

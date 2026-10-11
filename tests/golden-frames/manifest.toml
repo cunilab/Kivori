@@ -34,7 +34,20 @@ strained = "0x1FAF968520A564AD"
 muted = "0xF002D0A8222C3523"
 listening = "0xDC32707D6C37C51D"
 attentive = "0x3CEAC1707B97941D"
+mic_muted = "0x97225C37D69E6901"
 celebrate = "0xF27A470A3F4D6B85"
+
+# Idle moments (ADR-0012): the Idle scene with the pose the shared `MascotAnimator` resolves for a
+# glance, a look towards a control, or a late-evening blink, from `DEFAULT_IDLE_SEED`. Asserted by
+# tests/idle_poses.rs.
+[idle_poses]
+glance_left = "0x7B31E27F61303295"
+glance_right = "0x6BAA40DC31935555"
+look_knob = "0x2CF4E609D405C295"
+look_button_left = "0x2148151830AD1295"
+look_button_middle = "0xCC3C0F77CC9A7EC5"
+look_button_right = "0xABAED790E5D63D55"
+evening_blink = "0x7D94F9AB66AB462D"
 
 # Task 10 — canonical volume overlay (kivori_renderer::overlay::render_volume_overlay), sampled at the
 # (percent, confidence, at_boundary) combinations exercised by tests/overlay_golden.rs.
@@ -122,6 +135,8 @@ media_long_title_4000 = "0xF671883D0F380BCD"
 media_paused_info = "0x5033143EAF6F11DB"
 system_history = "0x066AEC2DF6A4F72F"
 system_history_high_load = "0x8201D9BBA2097EB1"
+buddy_mic_muted = "0x85BABF28A3F05480"
+buddy_mic_live = "0x571CC976A766BA56"
 buddy_status_row = "0x89850E35B26DBB34"
 switch_clock_to_volume_mid = "0x08E8E3E77B01E035"
 switch_media_to_system_mid = "0x321BAE64BA1A3629"

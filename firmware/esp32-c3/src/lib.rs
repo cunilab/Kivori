@@ -22,6 +22,8 @@ pub mod device_id;
 pub mod display;
 pub mod health;
 pub mod input;
+/// Device internals snapshot pieces (ADR-0013): load meter, flash and stack arithmetic.
+pub mod internals;
 /// Detent -> on-panel latency readout, development-only (Slice 002 checklist row 14).
 #[cfg(feature = "latency-probe")]
 pub mod latency_probe;
@@ -59,6 +61,9 @@ pub mod tx_buffer;
 #[cfg(feature = "wokwi-runtime")]
 pub mod wokwi_runtime;
 
+/// Board measurements for the device internals snapshot (flash, RAM, stack, chip, temperature).
+#[cfg(feature = "physical-st7789")]
+pub mod chip_probe;
 /// Physical HW-040 rotary encoder `InputSource` adapter.
 #[cfg(feature = "physical-st7789")]
 pub mod physical_rotary;

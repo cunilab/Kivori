@@ -34,6 +34,7 @@ fn cold_preview_child() {
                 initial_state: "idle".into(),
                 events: vec![],
                 action_events: vec![],
+                idle_life: None,
             };
             let rgba = kivori_desktop::render::render_animation_rgba(blob, &timeline, 0).unwrap();
             assert_eq!(rgba.len(), 240 * 240 * 4);

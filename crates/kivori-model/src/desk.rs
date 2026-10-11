@@ -45,6 +45,11 @@ pub enum MediaStatus {
     Stopped,
 }
 
+/// Backlight brightness steps; 1 is the dimmest and still clearly on (never Display Sleep).
+pub const BRIGHTNESS_STEPS: u8 = 5;
+/// The step a fresh config and a freshly booted device use: full brightness, as before the setting.
+pub const BRIGHTNESS_DEFAULT: u8 = BRIGHTNESS_STEPS;
+
 /// Local wall-clock time of day, as the desktop observed it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClockTime {
@@ -57,6 +62,13 @@ pub struct ClockTime {
 }
 
 impl ClockTime {
+    /// Whether this is late in the evening or the small hours (21:00 to 04:59), when the buddy
+    /// blinks more slowly.
+    #[must_use]
+    pub const fn is_late_evening(self) -> bool {
+        self.hour >= 21 || self.hour < 5
+    }
+
     /// Seconds in a day.
     const DAY_S: u32 = 24 * 60 * 60;
 
@@ -120,6 +132,39 @@ impl Default for DeskStatus {
     }
 }
 
+/// What the desktop knows about the computer's microphones (`Message::MicState`). Every field is
+/// observed, never guessed: `None` is "could not be read" and shows nothing, never "not live".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct MicState {
+    /// `Some(true)` only when EVERY active capture device read back muted; `Some(false)` when any
+    /// reads live (or cannot be muted at all); `None` when that cannot be told (a device could not
+    /// be read, or there is none). It never claims muted while any microphone may be live.
+    pub muted: Option<bool>,
+    /// An app is capturing audio right now, where the OS reports it. `None` = the OS does not say
+    /// (Windows' consent store is undocumented, so a failed read is unknown).
+    pub in_use: Option<bool>,
+}
+
+impl MicState {
+    /// Nothing observed: no indicator, no face.
+    pub const UNKNOWN: MicState = MicState {
+        muted: None,
+        in_use: None,
+    };
+
+    /// Every microphone is muted.
+    #[must_use]
+    pub const fn is_muted(self) -> bool {
+        matches!(self.muted, Some(true))
+    }
+
+    /// An app is using an unmuted microphone: the "Live" cue. Unknown on either side is no cue.
+    #[must_use]
+    pub const fn is_live(self) -> bool {
+        matches!(self.muted, Some(false)) && matches!(self.in_use, Some(true))
+    }
+}
+
 /// The action a feedback refers to. Wire-significant, append-only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ActionKind {
@@ -153,6 +198,9 @@ pub enum FeedbackKind {
     Unverified,
     /// Known failure.
     Error,
+    /// A trigger-only action (media key, shortcut) was dispatched; its effect cannot be read back
+    /// by design. Shown as a quiet acknowledgement, never as success; needs `QUIET_ACK_V1`.
+    Triggered,
 }
 
 impl FeedbackKind {
@@ -164,6 +212,7 @@ impl FeedbackKind {
         match self {
             FeedbackKind::StateConfirmed | FeedbackKind::ExecutionConfirmed => 800,
             FeedbackKind::Unverified => 1_200,
+            FeedbackKind::Triggered => 400,
             FeedbackKind::Error | FeedbackKind::Processing => 2_000,
         }
     }
@@ -356,6 +405,18 @@ pub struct DeskView {
     pub mode_age_ms: u32,
     /// What the controls do, when the desktop sent it this session (`None` = not known).
     pub controls: Option<ControlLabels>,
+    /// The microphones, when the desktop sent it this session (unknown otherwise).
+    pub mic: MicState,
+}
+
+impl DeskView {
+    /// A quiet acknowledgement (`FeedbackKind::Triggered`) is in force: the keycap press and a
+    /// label pulse, no badge and never a success look.
+    #[must_use]
+    pub fn quiet_ack(&self) -> bool {
+        self.feedback
+            .is_some_and(|f| f.kind == FeedbackKind::Triggered)
+    }
 }
 
 #[cfg(test)]
@@ -416,5 +477,13 @@ mod tests {
             FeedbackKind::Unverified.transient_ms() > FeedbackKind::StateConfirmed.transient_ms()
         );
         assert!(FeedbackKind::Error.transient_ms() > FeedbackKind::Unverified.transient_ms());
+    }
+
+    #[test]
+    fn the_quiet_acknowledgement_is_the_shortest_transient() {
+        assert_eq!(FeedbackKind::Triggered.transient_ms(), 400);
+        assert!(
+            FeedbackKind::Triggered.transient_ms() < FeedbackKind::StateConfirmed.transient_ms()
+        );
     }
 }

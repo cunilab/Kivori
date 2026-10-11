@@ -2,7 +2,7 @@
 //!
 //! Pure and allocation-free, shared by firmware and desktop preview. Every override comes from an
 //! observed fact (invariant 2): a confirmation face only follows a confirmed outcome (gate 1, so
-//! `Unverified` and `Processing` never celebrate), and the connection/sleep truth states are never
+//! `Unverified`, `Triggered` and `Processing` never celebrate), and the connection/sleep truth states are never
 //! overridden (invariant 21).
 
 use crate::desk::{ContextMood, DeskView, FeedbackKind, MediaStatus};
@@ -28,7 +28,7 @@ const fn face(expression: MascotExpression) -> Option<FaceOverride> {
 /// The face override for `state` and `view`, or `None` to keep the state's own face.
 ///
 /// First match wins: feedback error, confirmed-outcome celebration (both in Idle, Happy and Busy),
-/// then, in Idle only: high load, muted, media playing, meeting profile.
+/// then, in Idle only: mic muted, high load, master mute, media playing, meeting profile.
 #[must_use]
 pub fn buddy_face(state: CompanionState, view: &DeskView) -> Option<FaceOverride> {
     if !matches!(
@@ -45,13 +45,16 @@ pub fn buddy_face(state: CompanionState, view: &DeskView) -> Option<FaceOverride
                 press_q8: HAPPY_PRESS_Q8,
             })
         }
-        Some(FeedbackKind::Processing | FeedbackKind::Unverified) | None => {}
+        Some(FeedbackKind::Processing | FeedbackKind::Unverified | FeedbackKind::Triggered)
+        | None => {}
     }
     if state != CompanionState::Idle {
         return None;
     }
     let status = &view.status;
-    if status.high_load {
+    if view.mic.is_muted() {
+        face(MascotExpression::MicMuted)
+    } else if status.high_load {
         face(MascotExpression::Strained)
     } else if status.muted == Some(true) {
         face(MascotExpression::Muted)
@@ -139,7 +142,11 @@ mod tests {
 
     #[test]
     fn unverified_and_processing_never_celebrate() {
-        for kind in [FeedbackKind::Unverified, FeedbackKind::Processing] {
+        for kind in [
+            FeedbackKind::Unverified,
+            FeedbackKind::Triggered,
+            FeedbackKind::Processing,
+        ] {
             let view = with(|v| v.feedback = feedback(kind));
             for state in CompanionState::ALL {
                 assert_eq!(buddy_face(state, &view), None, "{kind:?} in {state:?}");
@@ -218,6 +225,51 @@ mod tests {
     }
 
     #[test]
+    fn mic_muted_has_its_own_face_and_outranks_the_status_cues() {
+        use crate::desk::MicState;
+        let idle = CompanionState::Idle;
+        let muted = MicState {
+            muted: Some(true),
+            in_use: None,
+        };
+        let mic = with(|v| v.mic = muted);
+        assert_eq!(expr(idle, &mic), Some(MascotExpression::MicMuted));
+        // Live or unknown never wears it: only a full mute does.
+        for mute in [Some(false), None] {
+            let view = with(|v| {
+                v.mic = MicState {
+                    muted: mute,
+                    in_use: Some(true),
+                }
+            });
+            assert_eq!(expr(idle, &view), None, "{mute:?}");
+        }
+        let all = with(|v| {
+            v.mic = muted;
+            v.status.high_load = true;
+            v.status.muted = Some(true);
+            v.status.media = Some(MediaStatus::Playing);
+        });
+        assert_eq!(expr(idle, &all), Some(MascotExpression::MicMuted));
+        // Feedback still outranks it, and only Idle shows it.
+        let mut v = all;
+        v.feedback = feedback(FeedbackKind::Error);
+        assert_eq!(expr(idle, &v), Some(MascotExpression::Error));
+        v.feedback = feedback(FeedbackKind::StateConfirmed);
+        assert_eq!(expr(idle, &v), Some(MascotExpression::Happy));
+        for state in [CompanionState::Happy, CompanionState::Busy] {
+            assert_eq!(buddy_face(state, &mic), None, "{state:?}");
+        }
+        for state in [
+            CompanionState::Booting,
+            CompanionState::Offline,
+            CompanionState::Sleeping,
+        ] {
+            assert_eq!(buddy_face(state, &mic), None, "{state:?}");
+        }
+    }
+
+    #[test]
     fn status_cues_apply_only_in_idle() {
         let view = with(|v| {
             v.status.high_load = true;
@@ -252,7 +304,7 @@ mod tests {
     fn override_faces_differ_from_every_state_and_each_other() {
         use MascotExpression::*;
         let pair = |e: MascotExpression| (e.eye_frame(), e.mouth_frame());
-        let new = [Error, Strained, Muted, Listening, Attentive];
+        let new = [Error, Strained, Muted, Listening, Attentive, MicMuted];
         for (i, a) in new.iter().enumerate() {
             for b in &new[i + 1..] {
                 assert_ne!(pair(*a), pair(*b), "{a:?} vs {b:?}");

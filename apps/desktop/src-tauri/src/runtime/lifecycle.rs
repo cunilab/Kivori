@@ -101,6 +101,10 @@ pub fn refresh_tray(app: &AppHandle, status: &ConnectionStatusDto) {
 /// Builder hook: a window close request hides the window (the device thread keeps running); the pure
 /// policy makes the decision.
 pub fn on_window_event(window: &Window, event: &WindowEvent) {
+    // Only the main window follows the policy; the startup splash is destroyed outright.
+    if window.label() != MAIN {
+        return;
+    }
     if let WindowEvent::CloseRequested { api, .. } = event {
         api.prevent_close();
         perform(window, LifecycleEvent::CloseRequested);

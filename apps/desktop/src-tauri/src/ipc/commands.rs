@@ -10,8 +10,8 @@ use tauri::{AppHandle, State};
 use crate::activity::ActivityEventKind;
 use crate::firmware::FirmwareStatus;
 use crate::ipc::dto::{
-    self, ActivityEventDto, AppInfoDto, ConfigDto, ConnectionStatusDto, DiagnosticsDto,
-    OnboardingDto, StartupSettingsDto,
+    self, ActivityEventDto, AppInfoDto, ConfigDto, ConnectionStatusDto, DeviceInternalsDto,
+    DiagnosticsDto, OnboardingDto, StartupSettingsDto,
 };
 use crate::ipc::events;
 use crate::runtime::state::{AppState, DeviceCommand};
@@ -21,6 +21,13 @@ use kivori_model::CompanionState;
 #[tauri::command]
 pub fn get_app_info(app: State<'_, AppState>) -> AppInfoDto {
     dto::app_info(app.device_studio_enabled)
+}
+
+/// The frontend has rendered: lets the startup watcher show the main window (all builds). A no-op
+/// on a login launch, which stays hidden.
+#[tauri::command]
+pub fn app_ready(readiness: State<'_, std::sync::Arc<crate::runtime::splash::Readiness>>) {
+    readiness.mark_ready();
 }
 
 /// The current three-axis connection snapshot (initial UI sync; all builds).
@@ -58,6 +65,16 @@ pub fn set_desired_state(app: State<'_, AppState>, state: String) -> Result<(), 
 #[tauri::command]
 pub fn get_diagnostics(app: State<'_, AppState>) -> DiagnosticsDto {
     app.diagnostics_snapshot()
+}
+
+/// The Device internals card (developer mode). Asks the device for a fresh snapshot and returns the
+/// latest one it has already answered with, so a card polling about once a second always shows the
+/// previous reply and the device is only ever asked while the card is visible.
+#[tauri::command]
+pub fn get_device_internals(app: State<'_, AppState>) -> DeviceInternalsDto {
+    // The device thread only stops at shutdown; a failed send just leaves the cached figures.
+    let _ = app.send_command(DeviceCommand::RequestInternals);
+    app.internals_snapshot()
 }
 
 /// Whether Kivori starts at login, read from the OS entry (all builds).
@@ -177,7 +194,31 @@ pub fn set_display_settings(
     let display = dto::display_settings_from_tokens(&default_view, &secondary_view)
         .map_err(str::to_string)?;
     commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
-        let next = store.edited(|file| file.display = display);
+        let next = store.edited(|file| {
+            file.display = crate::config::DisplaySettings {
+                brightness: file.display.brightness,
+                ..display
+            };
+        });
+        store.save(next)
+    })
+}
+
+/// Sets the backlight brightness step (`1..=5`); the device follows at once.
+///
+/// # Errors
+/// Returns an error for a step the device does not have or a failed save.
+#[tauri::command]
+pub fn set_brightness(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+    step: u8,
+) -> Result<ConfigDto, String> {
+    if !(1..=kivori_model::desk::BRIGHTNESS_STEPS).contains(&step) {
+        return Err("unknown brightness step".to_string());
+    }
+    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+        let next = store.edited(|file| file.display.brightness = step);
         store.save(next)
     })
 }
@@ -206,11 +247,12 @@ pub fn set_buddy_settings(
     })
 }
 
-fn profile_id(token: &str) -> Result<crate::config::ProfileId, String> {
-    crate::config::ProfileId::from_token(token).ok_or_else(|| "unknown profile".to_string())
+fn profile_ref(token: &str) -> Result<crate::config::ProfileRef, String> {
+    crate::config::ProfileRef::parse(token).ok_or_else(|| "unknown profile".to_string())
 }
 
-/// Rebinds one control of a built-in profile, or (`slot` = `null`) resets it to the built-in.
+/// Rebinds one control of a profile, or (`slot` = `null`) resets it to the built-in. A custom
+/// profile cannot reset a single control.
 ///
 /// # Errors
 /// Returns an error for an unknown profile or control, the middle button's Hold (reserved for
@@ -223,7 +265,7 @@ pub fn set_binding(
     control: String,
     slot: Option<crate::config::SlotSpec>,
 ) -> Result<ConfigDto, String> {
-    let profile = profile_id(&profile)?;
+    let profile = profile_ref(&profile)?;
     let control = crate::config::resolve::Control::from_token(&control).map_err(str::to_string)?;
     let macros = app
         .config
@@ -238,18 +280,18 @@ pub fn set_binding(
         .transpose()
         .map_err(str::to_string)?;
     commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
-        let next = store.edited(|file| {
-            let over = file.profiles.entry(profile).or_default();
+        let mut next = store.file().clone();
+        let resetting = slot.is_none();
+        crate::config::profiles::edit_bindings(&mut next, &profile, resetting, |over| {
             control.set(over, slot);
-            if over.is_empty() {
-                file.profiles.remove(&profile);
-            }
-        });
+        })
+        .map_err(crate::config::ConfigError::Invalid)?;
         store.save(next)
     })
 }
 
-/// Changes what the knob does in a built-in profile, or (`rotate` = `null`) resets it.
+/// Changes what the knob does in a profile, or (`rotate` = `null`) resets it. A custom profile
+/// cannot reset a single control.
 ///
 /// # Errors
 /// Returns an error for an unknown profile, an invalid shortcut or label, or a failed save.
@@ -260,22 +302,133 @@ pub fn set_rotate(
     profile: String,
     rotate: Option<crate::config::RotateSpec>,
 ) -> Result<ConfigDto, String> {
-    let profile = profile_id(&profile)?;
+    let profile = profile_ref(&profile)?;
     let rotate = rotate
         .as_ref()
         .map(crate::config::resolve::canonical_rotate)
         .transpose()
         .map_err(str::to_string)?;
     commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
-        let next = store.edited(|file| {
-            let over = file.profiles.entry(profile).or_default();
+        let mut next = store.file().clone();
+        let resetting = rotate.is_none();
+        crate::config::profiles::edit_bindings(&mut next, &profile, resetting, |over| {
             over.rotate = rotate;
-            if over.is_empty() {
-                file.profiles.remove(&profile);
-            }
-        });
+        })
+        .map_err(crate::config::ConfigError::Invalid)?;
         store.save(next)
     })
+}
+
+/// Creates a custom profile for an app, as a copy of General's bindings made now. `name` is the
+/// app's display name (empty = derived from `app`); the app moves out of any profile that held it.
+///
+/// # Errors
+/// Returns an error for an invalid app, 16 custom profiles already, or a failed save.
+#[tauri::command]
+pub fn add_custom_profile(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+    app_id: String,
+    name: String,
+) -> Result<ConfigDto, String> {
+    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+        store.add_custom_profile(&app_id, &name)
+    })
+}
+
+/// Moves one app into a profile (General = out of the profile that lists it), out of any other.
+///
+/// # Errors
+/// Returns an error for an unknown profile, an invalid app, a profile with 32 apps, or a failed
+/// save.
+#[tauri::command]
+pub fn assign_app(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+    profile: String,
+    app_id: String,
+) -> Result<ConfigDto, String> {
+    let profile = profile_ref(&profile)?;
+    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+        store.assign_app(&profile, &app_id)
+    })
+}
+
+/// Renames a custom profile.
+///
+/// # Errors
+/// Returns an error for an unknown or built-in profile, an empty or over-long name, or a failed
+/// save.
+#[tauri::command]
+pub fn rename_profile(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+    profile: String,
+    name: String,
+) -> Result<ConfigDto, String> {
+    let profile = profile_ref(&profile)?;
+    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+        store.rename_profile(&profile, &name)
+    })
+}
+
+/// Deletes a custom profile; its apps stop matching it.
+///
+/// # Errors
+/// Returns an error for an unknown or built-in profile, or a failed save.
+#[tauri::command]
+pub fn delete_profile(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+    profile: String,
+) -> Result<ConfigDto, String> {
+    let profile = profile_ref(&profile)?;
+    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+        store.delete_profile(&profile)
+    })
+}
+
+/// Puts a custom profile in or out of the middle button's pin cycle.
+///
+/// # Errors
+/// Returns an error for an unknown or built-in profile, or a failed save.
+#[tauri::command]
+pub fn set_profile_pin_cycle(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+    profile: String,
+    enabled: bool,
+) -> Result<ConfigDto, String> {
+    let profile = profile_ref(&profile)?;
+    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+        store.set_pin_cycle(&profile, enabled)
+    })
+}
+
+/// The apps with a window open right now, for "pick a running app". Runs off the UI thread.
+#[tauri::command]
+pub async fn list_running_apps() -> Vec<dto::RunningAppDto> {
+    tauri::async_runtime::spawn_blocking(|| {
+        crate::platform::apps::running_apps()
+            .into_iter()
+            .map(|a| dto::RunningAppDto {
+                id: a.id,
+                name: a.name,
+            })
+            .collect()
+    })
+    .await
+    .unwrap_or_default()
+}
+
+/// An app's icon as a PNG data URL, `null` when it cannot be read (the UI shows a letter). Runs
+/// off the UI thread and the focus poller; results are cached per app id.
+#[tauri::command]
+pub async fn get_app_icon(app_id: String) -> Option<String> {
+    tauri::async_runtime::spawn_blocking(move || crate::platform::apps::icon_data_url(&app_id))
+        .await
+        .ok()
+        .flatten()
 }
 
 /// Creates or replaces one macro (by its id). Bindings to it keep working and see the new steps.
@@ -309,7 +462,8 @@ pub fn delete_macro(
     })
 }
 
-/// Drops every override of one built-in profile.
+/// Resets one profile: a built-in goes back to its built-in bindings and app list, a custom one to
+/// a fresh copy of General's bindings (its name and apps stay).
 ///
 /// # Errors
 /// Returns an error for an unknown profile or a failed save.
@@ -319,12 +473,9 @@ pub fn reset_profile(
     app: State<'_, AppState>,
     profile: String,
 ) -> Result<ConfigDto, String> {
-    let profile = profile_id(&profile)?;
+    let profile = profile_ref(&profile)?;
     commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
-        let next = store.edited(|file| {
-            file.profiles.remove(&profile);
-        });
-        store.save(next)
+        store.reset_profile(&profile)
     })
 }
 

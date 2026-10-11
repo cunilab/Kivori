@@ -73,6 +73,7 @@ fn main() {
         ("muted", MascotExpression::Muted),
         ("listening", MascotExpression::Listening),
         ("attentive", MascotExpression::Attentive),
+        ("mic_muted", MascotExpression::MicMuted),
     ] {
         let mut pose = MascotPose::for_state(CompanionState::Idle);
         pose.expression = expression;

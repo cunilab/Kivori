@@ -7,6 +7,8 @@ import {
   LayoutGrid,
   LoaderCircle,
   MemoryStick,
+  Mic,
+  MicOff,
   Music2,
   Pause,
   Play,
@@ -341,6 +343,63 @@ function NowPlaying({ desk }: { desk: DeskStatusDto }): ReactElement {
   );
 }
 
+function Microphone({ desk }: { desk: DeskStatusDto }): ReactElement {
+  const { mic } = desk;
+  const Icon = mic.muted === 'yes' ? MicOff : Mic;
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardDescription className="flex items-center gap-2 text-sm">
+          <Icon className="size-4" aria-hidden="true" />
+          {t.microphone}
+        </CardDescription>
+        <CardAction className="flex gap-1.5">
+          {mic.live ? (
+            <Badge variant="destructive" className="h-6 px-2.5" data-testid="mic-live">
+              {t.micLive}
+            </Badge>
+          ) : null}
+          <Badge variant="secondary" className="h-6 px-2.5" data-testid="mic-muted">
+            {t.micMutedStates[mic.muted]}
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {mic.devices.length === 0 ? (
+          <p className="text-sm text-muted-foreground" data-testid="mic-none">
+            {mic.muted === 'unknown' ? strings.why.mic : t.micNone}
+          </p>
+        ) : (
+          <ul className="space-y-1 text-sm" data-testid="mic-devices">
+            {mic.devices.map((device, index) => (
+              <li
+                key={`${device.name}-${index}`}
+                className="flex items-center justify-between gap-3"
+              >
+                <span className="truncate">{device.name}</span>
+                <span
+                  className={cn(
+                    'shrink-0 text-xs',
+                    device.state === 'live' || device.state === 'cannotMuteLive'
+                      ? 'font-medium text-destructive'
+                      : device.state === 'cannotMuteUnknown'
+                        ? 'font-medium text-warning'
+                        : 'text-muted-foreground',
+                  )}
+                >
+                  {t.micDeviceStates[device.state]}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {mic.live ? <p className="text-xs text-muted-foreground">{t.micLiveHint}</p> : null}
+        <p className="text-xs text-muted-foreground">{t.micScope}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
 function LastAction({ desk }: { desk: DeskStatusDto }): ReactElement {
   const last = desk.lastAction;
   return (
@@ -457,8 +516,9 @@ export function HomePage({
                 }
               />
             </div>
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-4 lg:grid-cols-3">
               <NowPlaying desk={desk} />
+              <Microphone desk={desk} />
               <LastAction desk={desk} />
             </div>
           </>

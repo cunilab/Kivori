@@ -9,12 +9,14 @@
 //! machine fact the UI needs, "this OS cannot do it", is `ActionAvailability::Unsupported`,
 //! decided by the action catalog (`desk::catalog`), not by a probe.
 
+pub mod apps;
 pub mod foreground;
 pub mod host_events;
 pub mod launch;
 #[cfg(target_os = "macos")]
 pub mod macos;
 pub mod permissions;
+pub mod png;
 pub mod shortcut;
 #[cfg(any(windows, target_os = "macos"))]
 pub mod synth;
@@ -26,7 +28,7 @@ pub mod windows;
 use std::collections::VecDeque;
 use std::sync::Mutex;
 
-use kivori_model::desk::{ClockTime, MediaStatus};
+use kivori_model::desk::{ClockTime, MediaStatus, MicState};
 
 pub use shortcut::{Shortcut, ShortcutKey};
 
@@ -116,6 +118,93 @@ pub trait VolumeBackend: Send + Sync {
     /// that cannot observe changes return `None`.
     fn try_recv_change(&self) -> Option<VolumeChange> {
         None
+    }
+}
+
+/// What the OS says about one capture device's mute, after a read (or a write and its read-back).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MicMute {
+    /// Read back muted.
+    Muted,
+    /// Read back unmuted.
+    Live,
+    /// The mute could not be read (the write may or may not have landed).
+    Unreadable,
+    /// The device has no settable mute at all (macOS: no `kAudioDevicePropertyMute` on the input
+    /// scope, e.g. a phone's Continuity microphone). Kivori never substitutes input volume 0
+    /// (invariant 19), so it counts as muted only while it is observed not capturing.
+    Unsettable,
+}
+
+/// One active capture device. The name is user data: shown in the app, never logged (ADR-0005).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MicDevice {
+    pub name: String,
+    pub mute: MicMute,
+    /// Whether some process is recording from this device: `Some(true)` capturing, `Some(false)`
+    /// observed idle, `None` unknown (never read as idle). Only an `Unsettable` device's value
+    /// matters for the muted state.
+    pub capturing: Option<bool>,
+}
+
+/// Whether the microphones are muted: `Some(true)` only when at least one device reads muted and
+/// every other one is muted or has no mute control while observed idle, `Some(false)` when any is
+/// (or must be treated as) live, `None` when that cannot be told. A device with no mute control
+/// that is capturing, or whose capture is unknown, is live. Never claims muted while any
+/// microphone may be live.
+#[must_use]
+pub fn mics_muted(devices: &[MicDevice]) -> Option<bool> {
+    let mut any_muted = false;
+    let mut any_unreadable = false;
+    for d in devices {
+        match d.mute {
+            MicMute::Muted => any_muted = true,
+            MicMute::Live => return Some(false),
+            MicMute::Unsettable if d.capturing != Some(false) => return Some(false),
+            MicMute::Unsettable => {}
+            MicMute::Unreadable => any_unreadable = true,
+        }
+    }
+    if devices.is_empty() || any_unreadable {
+        None
+    } else {
+        Some(any_muted)
+    }
+}
+
+/// One change to the capture devices the backend observed: every value in it was read from the OS.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MicChange {
+    pub devices: Vec<MicDevice>,
+    /// `External` for a user toggling mute in the OS, `EndpointRebind` when the set of devices
+    /// changed (a device arrived or left), `Kivori` for the echo of its own write.
+    pub origin: ChangeOrigin,
+}
+
+/// Every active capture device (the OS microphones), muted and read back one by one (ADR-0011).
+pub trait MicBackend: Send + Sync {
+    fn availability(&self) -> ActionAvailability;
+    /// Every active capture device with its mute as the OS reports it now. An empty list is "no
+    /// microphone", not "muted".
+    fn devices(&self) -> Result<Vec<MicDevice>, BackendError>;
+    /// Mutes (or unmutes) every active capture device, reads each back and returns what it read.
+    /// While muted, a device that arrives later is muted and read back too; unmuting ends that.
+    fn set_mute(&self, muted: bool) -> Result<Vec<MicDevice>, BackendError>;
+    /// Whether an app is capturing audio right now, where the OS reports it; `None` = unknown
+    /// (never "not in use"). A device that is only playing audio does not count.
+    fn in_use(&self) -> Option<bool>;
+    /// One pending change observed by the OS since the last call, if any. Never blocks.
+    fn try_recv_change(&self) -> Option<MicChange> {
+        None
+    }
+}
+
+/// The wire state for what the backend reported: a mute that is `None` stays unknown.
+#[must_use]
+pub fn mic_state(devices: &[MicDevice], in_use: Option<bool>) -> MicState {
+    MicState {
+        muted: mics_muted(devices),
+        in_use,
     }
 }
 
@@ -304,6 +393,207 @@ impl VolumeBackend for FakeVolumeBackend {
 
     fn try_recv_change(&self) -> Option<VolumeChange> {
         self.changes.lock().expect("fake backend mutex").pop_front()
+    }
+}
+
+/// A scripted [`MicBackend`]: devices are registered up front, and each can be made to refuse
+/// the write, to stay live after it, or to be unreadable.
+#[derive(Debug)]
+pub struct FakeMicBackend {
+    devices: Mutex<Vec<(MicDevice, FakeMicQuirk)>>,
+    availability: ActionAvailability,
+    in_use: Mutex<Option<bool>>,
+    hold_muted: Mutex<bool>,
+    changes: Mutex<VecDeque<MicChange>>,
+}
+
+/// How a fake capture device answers a mute request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FakeMicQuirk {
+    /// Mute works and reads back.
+    Works,
+    /// The write is accepted but the device keeps reading live.
+    StaysLive,
+    /// The write lands but the read-back fails.
+    Unreadable,
+    /// No mute property at all, capture state unknown.
+    Unsettable,
+    /// No mute property, observed not capturing.
+    UnsettableIdle,
+    /// No mute property, and some process is recording from it.
+    UnsettableCapturing,
+}
+
+impl FakeMicQuirk {
+    fn unsettable(self) -> bool {
+        matches!(
+            self,
+            Self::Unsettable | Self::UnsettableIdle | Self::UnsettableCapturing
+        )
+    }
+
+    fn capturing(self) -> Option<bool> {
+        match self {
+            Self::UnsettableIdle => Some(false),
+            Self::UnsettableCapturing => Some(true),
+            _ => None,
+        }
+    }
+}
+
+impl FakeMicBackend {
+    pub fn new() -> Self {
+        Self {
+            devices: Mutex::new(Vec::new()),
+            availability: ActionAvailability::Available {
+                confirmation: ConfirmationClass::StateConfirmed,
+            },
+            in_use: Mutex::new(None),
+            hold_muted: Mutex::new(false),
+            changes: Mutex::new(VecDeque::new()),
+        }
+    }
+
+    pub fn with_availability(availability: ActionAvailability) -> Self {
+        Self {
+            availability,
+            ..Self::new()
+        }
+    }
+
+    /// A live device that behaves as `quirk` says.
+    #[must_use]
+    pub fn with_device(self, name: &str, quirk: FakeMicQuirk) -> Self {
+        self.add_device(name, quirk);
+        self
+    }
+
+    /// A device arrives: it is muted too while mic mute is on (and may fail to be).
+    pub fn add_device(&self, name: &str, quirk: FakeMicQuirk) {
+        let hold = *self.hold_muted.lock().expect("fake mic mutex");
+        let mut device = MicDevice {
+            name: name.to_string(),
+            mute: if quirk.unsettable() {
+                MicMute::Unsettable
+            } else {
+                MicMute::Live
+            },
+            capturing: quirk.capturing(),
+        };
+        if hold {
+            device.mute = Self::applied(quirk, true, device.mute);
+        }
+        let mut devices = self.devices.lock().expect("fake mic mutex");
+        devices.push((device, quirk));
+        let snapshot = devices.iter().map(|(d, _)| d.clone()).collect();
+        drop(devices);
+        self.changes
+            .lock()
+            .expect("fake mic mutex")
+            .push_back(MicChange {
+                devices: snapshot,
+                origin: ChangeOrigin::EndpointRebind,
+            });
+    }
+
+    pub fn set_in_use(&self, in_use: Option<bool>) {
+        *self.in_use.lock().expect("fake mic mutex") = in_use;
+    }
+
+    /// An app starts or stops recording from `name` (`None` = unknown); the change is observed.
+    pub fn set_capturing(&self, name: &str, capturing: Option<bool>) {
+        let mut devices = self.devices.lock().expect("fake mic mutex");
+        for (device, _) in devices.iter_mut().filter(|(d, _)| d.name == name) {
+            device.capturing = capturing;
+        }
+        let snapshot = devices.iter().map(|(d, _)| d.clone()).collect();
+        drop(devices);
+        self.changes
+            .lock()
+            .expect("fake mic mutex")
+            .push_back(MicChange {
+                devices: snapshot,
+                origin: ChangeOrigin::External,
+            });
+    }
+
+    /// The user mutes or unmutes `name` in the OS settings.
+    pub fn external_mute(&self, name: &str, muted: bool) {
+        let mut devices = self.devices.lock().expect("fake mic mutex");
+        for (device, _) in devices.iter_mut().filter(|(d, _)| d.name == name) {
+            device.mute = if muted { MicMute::Muted } else { MicMute::Live };
+        }
+        let snapshot = devices.iter().map(|(d, _)| d.clone()).collect();
+        drop(devices);
+        self.changes
+            .lock()
+            .expect("fake mic mutex")
+            .push_back(MicChange {
+                devices: snapshot,
+                origin: ChangeOrigin::External,
+            });
+    }
+
+    fn applied(quirk: FakeMicQuirk, muted: bool, before: MicMute) -> MicMute {
+        match (quirk, muted) {
+            (FakeMicQuirk::Works, true) => MicMute::Muted,
+            (FakeMicQuirk::Works, false) => MicMute::Live,
+            (FakeMicQuirk::StaysLive, _) => before,
+            (FakeMicQuirk::Unreadable, _) => MicMute::Unreadable,
+            (_, _) => MicMute::Unsettable,
+        }
+    }
+
+    fn available(&self) -> Result<(), BackendError> {
+        if matches!(self.availability, ActionAvailability::Available { .. }) {
+            Ok(())
+        } else {
+            Err(BackendError::NoEndpoint)
+        }
+    }
+}
+
+impl Default for FakeMicBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MicBackend for FakeMicBackend {
+    fn availability(&self) -> ActionAvailability {
+        self.availability.clone()
+    }
+
+    fn devices(&self) -> Result<Vec<MicDevice>, BackendError> {
+        self.available()?;
+        Ok(self
+            .devices
+            .lock()
+            .expect("fake mic mutex")
+            .iter()
+            .map(|(d, _)| d.clone())
+            .collect())
+    }
+
+    fn set_mute(&self, muted: bool) -> Result<Vec<MicDevice>, BackendError> {
+        self.available()?;
+        *self.hold_muted.lock().expect("fake mic mutex") = muted;
+        let mut devices = self.devices.lock().expect("fake mic mutex");
+        if devices.is_empty() {
+            return Err(BackendError::NoEndpoint);
+        }
+        for (device, quirk) in devices.iter_mut() {
+            device.mute = Self::applied(*quirk, muted, device.mute);
+        }
+        Ok(devices.iter().map(|(d, _)| d.clone()).collect())
+    }
+
+    fn in_use(&self) -> Option<bool> {
+        *self.in_use.lock().expect("fake mic mutex")
+    }
+
+    fn try_recv_change(&self) -> Option<MicChange> {
+        self.changes.lock().expect("fake mic mutex").pop_front()
     }
 }
 
@@ -506,6 +796,7 @@ impl ForegroundObserver for FakeForeground {
 pub struct OsServices {
     pub volume: std::sync::Arc<dyn VolumeBackend>,
     pub app_volume: std::sync::Arc<dyn AppVolumeBackend>,
+    pub mic: std::sync::Arc<dyn MicBackend>,
     pub synth: std::sync::Arc<dyn InputSynth>,
     pub media: std::sync::Arc<dyn MediaObserver>,
     pub system: Box<dyn system::SystemProbe>,
@@ -531,6 +822,7 @@ pub fn os_services(main: Option<MainThread>) -> OsServices {
         OsServices {
             volume: audio.clone(),
             app_volume: audio,
+            mic: Arc::new(windows::WindowsMicBackend::new()),
             synth: Arc::new(synth::EnigoInputSynth::new(main)),
             media: Arc::new(windows::WindowsMediaObserver::new()),
             system: Box::new(windows::WindowsSystemProbe),
@@ -543,6 +835,7 @@ pub fn os_services(main: Option<MainThread>) -> OsServices {
         OsServices {
             volume: Arc::new(macos::MacVolumeBackend::new()),
             app_volume: Arc::new(macos::MacAppVolumeBackend),
+            mic: Arc::new(macos::MacMicBackend::new()),
             synth: Arc::new(synth::EnigoInputSynth::new(main)),
             media: Arc::new(macos::MacMediaObserver::new()),
             system: Box::new(macos::MacSystemProbe),
@@ -557,6 +850,7 @@ pub fn os_services(main: Option<MainThread>) -> OsServices {
         OsServices {
             volume: Arc::new(unimplemented::UnimplementedVolumeBackend::new(target)),
             app_volume: Arc::new(unimplemented::UnimplementedAppVolumeBackend::new(target)),
+            mic: Arc::new(unimplemented::UnimplementedMicBackend::new(target)),
             synth: Arc::new(unimplemented::UnimplementedInputSynth { target }),
             media: Arc::new(unimplemented::NoMediaObserver),
             system: Box::new(system::NoSystemProbe),

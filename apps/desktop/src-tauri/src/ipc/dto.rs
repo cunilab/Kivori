@@ -6,6 +6,7 @@
 
 use std::time::Instant;
 
+use kivori_model::internals::{ChipModel, DeviceInternals, ResetReason};
 use kivori_model::{
     Capabilities, CompanionState, ConnectionState, MascotAction, MascotPersonality,
     ProtocolVersion, SendableState,
@@ -887,7 +888,8 @@ pub fn action_catalog(
                     Slot::Discrete => "discrete",
                 },
                 scope: match entry.scope {
-                    Scope::System => "system",
+                    // The OS microphones are system-wide too; the id says which action it is.
+                    Scope::System | Scope::Mic => "system",
                     Scope::App => "app",
                     Scope::Media => "media",
                     Scope::Keyboard => "keyboard",
@@ -1067,7 +1069,7 @@ pub struct DeskStatusDto {
     /// middle one is always `null`, it pins the profile).
     pub button_hold_actions: [Option<&'static str>; 3],
     /// The active profile's id token (what the config UI keys its tabs by).
-    pub profile_id: &'static str,
+    pub profile_id: String,
     /// The active profile's name, exactly as the device shows it (`null` = the General fallback).
     pub profile: Option<String>,
     /// The profile was pinned from the device instead of following the focused app.
@@ -1080,6 +1082,44 @@ pub struct DeskStatusDto {
     pub media_title: Option<String>,
     pub media_artist: Option<String>,
     pub last_action: Option<DeskActionDto>,
+    /// The computer's microphones: whether they are muted, whether one is in use, and each device.
+    pub mic: MicDto,
+    /// The last app in front that is not Kivori itself (`null` = none yet): what "add the app in
+    /// front of me" adds, since clicking in Kivori's window makes Kivori the foreground app.
+    pub recent_app: Option<RunningAppDto>,
+}
+
+/// The microphones for the UI. Names are shown here and never logged (ADR-0005).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MicDto {
+    /// `yes` (every microphone reads muted), `partial` (some do), `no` (none does) or `unknown`
+    /// (it could not be read, or there is no microphone). Never `yes` while any may be live.
+    pub muted: &'static str,
+    /// An app is using a microphone: `null` where the OS does not say (never read as "no").
+    pub in_use: Option<bool>,
+    /// The "Live" cue: in use AND unmuted. Unknown on either side is `false`.
+    pub live: bool,
+    pub devices: Vec<MicDeviceDto>,
+}
+
+/// One capture device.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MicDeviceDto {
+    pub name: String,
+    /// `muted`, `live`, `unknown` (could not be read), `cannotMuteIdle` (no mute control, observed
+    /// not in use), `cannotMuteLive` (no mute control, in use) or `cannotMuteUnknown` (no mute
+    /// control, use cannot be observed; counts as live for muting, but is never called "in use").
+    pub state: &'static str,
+}
+
+/// An app by foreground id and display name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunningAppDto {
+    pub id: String,
+    pub name: String,
 }
 
 /// One action outcome for the UI.
@@ -1121,7 +1161,8 @@ const fn feedback_token(kind: kivori_model::desk::FeedbackKind) -> &'static str 
         FeedbackKind::Processing => "processing",
         FeedbackKind::StateConfirmed => "stateConfirmed",
         FeedbackKind::ExecutionConfirmed => "executionConfirmed",
-        FeedbackKind::Unverified => "unverified",
+        // Both unverified cases read "Unverified" in words; only the device tells them apart.
+        FeedbackKind::Unverified | FeedbackKind::Triggered => "unverified",
         FeedbackKind::Error => "error",
     }
 }
@@ -1170,7 +1211,7 @@ pub fn initial_desk_status(config: &crate::config::ResolvedConfig) -> DeskStatus
         double_press_action: "nextView",
         button_actions: button_tokens(bindings),
         button_hold_actions: button_hold_tokens(bindings),
-        profile_id: context.profile().id.token(),
+        profile_id: context.profile().id.token().to_string(),
         profile: None,
         pinned: false,
         rotate_label: text(labels.rotate),
@@ -1178,6 +1219,13 @@ pub fn initial_desk_status(config: &crate::config::ResolvedConfig) -> DeskStatus
         media_title: None,
         media_artist: None,
         last_action: None,
+        mic: MicDto {
+            muted: "unknown",
+            in_use: None,
+            live: false,
+            devices: Vec::new(),
+        },
+        recent_app: None,
     }
 }
 
@@ -1199,7 +1247,7 @@ pub fn desk_status_dto(desk: &crate::desk::DeskRuntime) -> DeskStatusDto {
         double_press_action: "nextView",
         button_actions: button_tokens(desk.bindings()),
         button_hold_actions: button_hold_tokens(desk.bindings()),
-        profile_id: desk.context().profile().id.token(),
+        profile_id: desk.context().profile().id.token().to_string(),
         profile: Some(text(labels.profile)).filter(|name| !name.is_empty()),
         pinned: labels.pinned,
         rotate_label: text(labels.rotate),
@@ -1211,6 +1259,51 @@ pub fn desk_status_dto(desk: &crate::desk::DeskRuntime) -> DeskStatusDto {
             result: feedback_token(last.kind),
             permission_required: last.permission_required,
         }),
+        mic: mic_dto(desk),
+        recent_app: desk.context().recent_app().map(|(id, name)| RunningAppDto {
+            id: id.to_string(),
+            name: name.to_string(),
+        }),
+    }
+}
+
+fn mic_dto(desk: &crate::desk::DeskRuntime) -> MicDto {
+    use crate::platform::MicMute;
+    let (state, devices) = desk.mic();
+    let any_muted = devices.iter().any(|d| d.mute == MicMute::Muted);
+    MicDto {
+        muted: match state.muted {
+            Some(true) => "yes",
+            Some(false) if any_muted => "partial",
+            Some(false) => "no",
+            None => "unknown",
+        },
+        in_use: state.in_use,
+        live: state.is_live(),
+        devices: devices
+            .iter()
+            .map(|d| MicDeviceDto {
+                name: d.name.clone(),
+                state: mic_device_state(d),
+            })
+            .collect(),
+    }
+}
+
+/// The wire state of one capture device. One with no mute control is fine while observed idle;
+/// capturing, it is live. When its use cannot be observed it is reported as exactly that, never as
+/// "in use" (no state invention).
+fn mic_device_state(d: &crate::platform::MicDevice) -> &'static str {
+    use crate::platform::MicMute;
+    match d.mute {
+        MicMute::Muted => "muted",
+        MicMute::Live => "live",
+        MicMute::Unreadable => "unknown",
+        MicMute::Unsettable => match d.capturing {
+            Some(false) => "cannotMuteIdle",
+            Some(true) => "cannotMuteLive",
+            None => "cannotMuteUnknown",
+        },
     }
 }
 
@@ -1235,9 +1328,13 @@ pub struct ConfigDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileConfigDto {
-    /// `general`, `browser`, `code`, `media`, `zoom` or `teams`.
-    pub id: &'static str,
+    /// `general`, `browser`, `code`, `media`, `zoom`, `teams`, or a custom profile's `custom-<n>`.
+    pub id: String,
     pub name: String,
+    /// The user's own profile (renamable, deletable); built-ins are not.
+    pub custom: bool,
+    /// Whether the middle button's Hold cycle visits it (always for a built-in).
+    pub in_pin_cycle: bool,
     /// The foreground app ids that select this profile (empty for General).
     pub apps: Vec<String>,
     pub rotate: RotateDto,
@@ -1291,6 +1388,8 @@ pub struct DisplaySettingsDto {
     pub default_view: &'static str,
     /// A display-mode token, or `cycle` for the M1 behaviour (every view in turn).
     pub secondary_view: &'static str,
+    /// Backlight step, `1..=5`; 1 is the dimmest that is still clearly on.
+    pub brightness: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1330,7 +1429,8 @@ pub fn intensity_from_token(token: &str) -> Option<crate::config::Intensity> {
         .find(|intensity| intensity_token(*intensity) == token)
 }
 
-/// Parses a `defaultView`/`secondaryView` pair from the webview. `secondary` may be `cycle`.
+/// Parses a `defaultView`/`secondaryView` pair from the webview. `secondary` may be `cycle`. The
+/// brightness is not part of the pair: it comes back at the default and the caller keeps the saved one.
 ///
 /// # Errors
 /// A short reason naming the bad field or rule; never echoes the input.
@@ -1354,6 +1454,7 @@ pub fn display_settings_from_tokens(
     let settings = DisplaySettings {
         default_view,
         secondary_view,
+        ..DisplaySettings::default()
     };
     settings.validate()?;
     Ok(settings)
@@ -1376,6 +1477,7 @@ pub fn config_dto(store: &crate::config::ConfigStore) -> ConfigDto {
                 SecondaryView::Cycle => "cycle",
                 SecondaryView::View(view) => display_mode_token(view.mode()),
             },
+            brightness: file.display.brightness,
         },
         buddy: BuddySettingsDto {
             reactions: file.buddy.reactions,
@@ -1402,12 +1504,13 @@ fn profile_dtos(store: &crate::config::ConfigStore) -> Vec<ProfileConfigDto> {
         .profiles
         .iter()
         .map(|profile| {
-            let over = store
-                .file()
-                .profiles
-                .get(&profile.id)
-                .cloned()
-                .unwrap_or_default();
+            // A custom profile holds every slot, so none of them reads as changed.
+            let over = match &profile.id {
+                crate::config::ProfileRef::Builtin(id) => {
+                    store.file().profiles.get(id).cloned().unwrap_or_default()
+                }
+                crate::config::ProfileRef::Custom(_) => crate::config::ProfileOverride::default(),
+            };
             let b = &profile.bindings;
             let button = |i: usize| ButtonDto {
                 press: slot_dto(&b.buttons[i].press, over.buttons[i].press.is_some()),
@@ -1418,8 +1521,10 @@ fn profile_dtos(store: &crate::config::ConfigStore) -> Vec<ProfileConfigDto> {
                 },
             };
             ProfileConfigDto {
-                id: profile.id.token(),
+                id: profile.id.token().to_string(),
                 name: profile.name.clone(),
+                custom: matches!(profile.id, crate::config::ProfileRef::Custom(_)),
+                in_pin_cycle: profile.in_pin_cycle,
                 apps: profile.ids.clone(),
                 rotate: RotateDto {
                     spec: crate::config::resolve::rotate_spec(&profile.rotate),
@@ -1452,7 +1557,7 @@ pub const fn availability_token(
 }
 
 /// Every capability flag with the name the diagnostics page lists it by, in bit order.
-const CAPABILITY_TABLE: [(Capabilities, &str); 11] = [
+const CAPABILITY_TABLE: [(Capabilities, &str); 15] = [
     (Capabilities::MASCOT_INTERACTION, "mascotInteraction"),
     (Capabilities::PHYSICAL_INPUT_V1, "physicalInputV1"),
     (Capabilities::PRESENTATION_V1, "presentationV1"),
@@ -1464,6 +1569,10 @@ const CAPABILITY_TABLE: [(Capabilities, &str); 11] = [
     (Capabilities::CONTROL_LABELS_V1, "controlLabelsV1"),
     (Capabilities::CONTEXT_BUTTONS_V1, "contextButtonsV1"),
     (Capabilities::HOST_TAKEOVERS_V1, "hostTakeoversV1"),
+    (Capabilities::QUIET_ACK_V1, "quietAckV1"),
+    (Capabilities::DEVICE_INTERNALS_V1, "deviceInternalsV1"),
+    (Capabilities::IDLE_LIFE_V1, "idleLifeV1"),
+    (Capabilities::MIC_STATE_V1, "micStateV1"),
 ];
 
 /// The capability names the diagnostics page lists, in bit order.
@@ -1522,6 +1631,8 @@ pub struct DiagnosticsSnapshot {
     pub session: SessionDiagnostics,
     /// Host service status.
     pub host: HostServicesSnapshot,
+    /// The latest device internals snapshot of this connection (developer mode).
+    pub internals: Option<DeviceInternals>,
 }
 
 impl DiagnosticsSnapshot {
@@ -1545,6 +1656,7 @@ impl DiagnosticsSnapshot {
                 focus: "unknown",
                 input_permission: "unknown",
             },
+            internals: None,
         }
     }
 }
@@ -1693,17 +1805,144 @@ pub fn diagnostics_dto(
     }
 }
 
+pub const CHIP_MODEL_TOKENS: [&str; 1] = ["esp32c3"];
+pub const RESET_REASON_TOKENS: [&str; 6] = [
+    "powerOn",
+    "software",
+    "watchdog",
+    "brownout",
+    "deepSleep",
+    "other",
+];
+
+const fn chip_model_token(model: ChipModel) -> &'static str {
+    match model {
+        ChipModel::Esp32C3 => CHIP_MODEL_TOKENS[0],
+    }
+}
+
+const fn reset_reason_token(reason: ResetReason) -> &'static str {
+    match reason {
+        ResetReason::PowerOn => RESET_REASON_TOKENS[0],
+        ResetReason::Software => RESET_REASON_TOKENS[1],
+        ResetReason::Watchdog => RESET_REASON_TOKENS[2],
+        ResetReason::Brownout => RESET_REASON_TOKENS[3],
+        ResetReason::DeepSleep => RESET_REASON_TOKENS[4],
+        ResetReason::Other => RESET_REASON_TOKENS[5],
+    }
+}
+
+/// What the developer-mode Device internals card shows (ADR-0013).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceInternalsDto {
+    /// A device is connected.
+    pub connected: bool,
+    /// The connected device's firmware reports internals (it negotiated the capability).
+    pub supported: bool,
+    /// The latest snapshot of this connection; `None` until the device has answered.
+    pub snapshot: Option<InternalsSnapshotDto>,
+}
+
+/// The device's snapshot, field for field. `None` is "the device cannot measure it", never 0.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InternalsSnapshotDto {
+    pub app_image_bytes: Option<u32>,
+    pub app_partition_bytes: Option<u32>,
+    pub asset_blob_bytes: Option<u32>,
+    pub asset_blob_cap_bytes: Option<u32>,
+    pub flash_total_bytes: Option<u32>,
+    pub ram_total_bytes: Option<u32>,
+    pub ram_static_bytes: Option<u32>,
+    pub ram_free_bytes: Option<u32>,
+    pub stack_free_min_bytes: Option<u32>,
+    pub busy_percent: Option<u8>,
+    pub compose_ms: Option<u16>,
+    pub flush_ms: Option<u16>,
+    pub fps: Option<u8>,
+    pub chip_model: Option<&'static str>,
+    pub chip_revision: Option<ChipRevisionDto>,
+    /// Tenths of a degree Celsius.
+    pub temperature_deci_celsius: Option<i16>,
+    pub uptime_ms: Option<u32>,
+    pub reset_reason: Option<&'static str>,
+    pub edge_queue_high_water: Option<u16>,
+    pub dropped_edges: Option<u32>,
+    pub invalid_transitions: Option<u32>,
+    pub frames_in: Option<u32>,
+    pub frames_out: Option<u32>,
+    pub frames_rejected: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChipRevisionDto {
+    pub major: u8,
+    pub minor: u8,
+}
+
+/// Projects the internals card from the device thread's latest figures.
+#[must_use]
+pub fn device_internals_dto(snapshot: &DiagnosticsSnapshot) -> DeviceInternalsDto {
+    let supported = snapshot
+        .negotiated_caps
+        .contains(Capabilities::DEVICE_INTERNALS_V1);
+    DeviceInternalsDto {
+        connected: snapshot.connection == connection_token(ConnectionState::Connected),
+        supported,
+        snapshot: snapshot
+            .internals
+            .filter(|_| supported)
+            .map(|i| InternalsSnapshotDto {
+                app_image_bytes: i.app_image_bytes,
+                app_partition_bytes: i.app_partition_bytes,
+                asset_blob_bytes: i.asset_blob_bytes,
+                asset_blob_cap_bytes: i.asset_blob_cap_bytes,
+                flash_total_bytes: i.flash_total_bytes,
+                ram_total_bytes: i.ram_total_bytes,
+                ram_static_bytes: i.ram_static_bytes,
+                ram_free_bytes: i.ram_free_bytes,
+                stack_free_min_bytes: i.stack_free_min_bytes,
+                busy_percent: i.busy_percent,
+                compose_ms: i.compose_ms,
+                flush_ms: i.flush_ms,
+                fps: i.fps,
+                chip_model: i.chip_model.map(chip_model_token),
+                chip_revision: i
+                    .chip_revision
+                    .map(|(major, minor)| ChipRevisionDto { major, minor }),
+                temperature_deci_celsius: i.temperature_decicelsius,
+                uptime_ms: i.uptime_ms,
+                reset_reason: i.reset_reason.map(reset_reason_token),
+                edge_queue_high_water: i.edge_queue_high_water,
+                dropped_edges: i.dropped_edges,
+                invalid_transitions: i.invalid_transitions,
+                frames_in: i.frames_in,
+                frames_out: i.frames_out,
+                frames_rejected: i.frames_rejected,
+            }),
+    }
+}
+
 /// The closed `ProfileId` and `Control` vocabularies, for the Rust/TS drift check.
 #[must_use]
 pub fn vocabulary_json() -> serde_json::Value {
     serde_json::json!({
         "profileIds": crate::config::ProfileId::ALL.map(crate::config::ProfileId::token),
+        "profileLimits": {
+            "customProfiles": crate::config::MAX_CUSTOM_PROFILES,
+            "apps": crate::config::MAX_PROFILE_APPS,
+            "nameMax": crate::config::PROFILE_NAME_MAX,
+        },
         "controls": crate::config::resolve::CONTROL_TOKENS,
         "actionSpecKinds": crate::config::resolve::ACTION_SPEC_KINDS,
         "stepSpecKinds": crate::config::resolve::STEP_SPEC_KINDS,
         "rotateSpecKinds": crate::config::resolve::ROTATE_SPEC_KINDS,
         "deskActions": crate::desk::ActionToken::ALL.map(crate::desk::ActionToken::token),
         "capabilityNames": CAPABILITY_TABLE.map(|(_, name)| name),
+        "chipModels": CHIP_MODEL_TOKENS,
+        "resetReasons": RESET_REASON_TOKENS,
         "hostAvailability": HOST_AVAILABILITY_TOKENS,
         "hostMedia": HOST_MEDIA_TOKENS,
         "hostFocus": HOST_FOCUS_TOKENS,
@@ -1714,4 +1953,28 @@ pub fn vocabulary_json() -> serde_json::Value {
         "startupPlatform": STARTUP_PLATFORM_TOKENS,
         "accessibility": crate::platform::permissions::ACCESSIBILITY_TOKENS,
     })
+}
+
+#[cfg(test)]
+mod mic_tests {
+    use super::mic_device_state;
+    use crate::platform::{MicDevice, MicMute};
+
+    fn state(mute: MicMute, capturing: Option<bool>) -> &'static str {
+        mic_device_state(&MicDevice {
+            name: "Mic".into(),
+            mute,
+            capturing,
+        })
+    }
+
+    #[test]
+    fn a_device_with_no_mute_is_fine_only_while_observed_idle() {
+        assert_eq!(state(MicMute::Muted, None), "muted");
+        assert_eq!(state(MicMute::Live, Some(false)), "live");
+        assert_eq!(state(MicMute::Unreadable, None), "unknown");
+        assert_eq!(state(MicMute::Unsettable, Some(false)), "cannotMuteIdle");
+        assert_eq!(state(MicMute::Unsettable, Some(true)), "cannotMuteLive");
+        assert_eq!(state(MicMute::Unsettable, None), "cannotMuteUnknown");
+    }
 }

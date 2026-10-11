@@ -6,7 +6,7 @@
 
 use super::{
     ActionAvailability, ActionError, AppVolumeBackend, AppVolumeError, BackendError, InputSynth,
-    MediaObserver, Shortcut, VolumeBackend,
+    MediaObserver, MicBackend, MicDevice, Shortcut, VolumeBackend,
 };
 use kivori_model::desk::MediaStatus;
 
@@ -42,6 +42,38 @@ impl VolumeBackend for UnimplementedVolumeBackend {
 
     fn set_mute(&self, _muted: bool) -> Result<bool, BackendError> {
         Err(BackendError::NoEndpoint)
+    }
+}
+
+/// Microphone mute for a target with no implementation.
+#[derive(Debug, Clone, Copy)]
+pub struct UnimplementedMicBackend {
+    target: &'static str,
+}
+
+impl UnimplementedMicBackend {
+    pub const fn new(target: &'static str) -> Self {
+        Self { target }
+    }
+}
+
+impl MicBackend for UnimplementedMicBackend {
+    fn availability(&self) -> ActionAvailability {
+        ActionAvailability::NotImplementedYet {
+            target: self.target,
+        }
+    }
+
+    fn devices(&self) -> Result<Vec<MicDevice>, BackendError> {
+        Err(BackendError::NoEndpoint)
+    }
+
+    fn set_mute(&self, _muted: bool) -> Result<Vec<MicDevice>, BackendError> {
+        Err(BackendError::NoEndpoint)
+    }
+
+    fn in_use(&self) -> Option<bool> {
+        None
     }
 }
 

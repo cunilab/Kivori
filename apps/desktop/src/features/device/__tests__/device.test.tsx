@@ -20,6 +20,7 @@ vi.mock('../../../lib/ipc', () => ({
   getStartupSettings: () => new Promise(() => {}),
   onStartupChanged: () => Promise.resolve(() => {}),
   getDiagnostics: () => new Promise(() => {}),
+  getDeviceInternals: () => new Promise(() => {}),
 }));
 
 import { DevicePage } from '../DevicePage';
@@ -96,5 +97,13 @@ describe('DevicePage', () => {
     const { container } = render(view(status()));
     const results = await axe.run(container, { rules: { 'color-contrast': { enabled: false } } });
     expect(results.violations).toEqual([]);
+  });
+
+  it('shows the Device internals card only with developer mode on', () => {
+    render(view(status()));
+    expect(screen.getByRole('heading', { name: 'Device internals' })).toBeInTheDocument();
+    localStorage.removeItem('kivori.developerMode');
+    render(view(status()));
+    expect(screen.getAllByRole('heading', { name: 'Device internals' })).toHaveLength(1);
   });
 });

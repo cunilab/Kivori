@@ -45,6 +45,9 @@ static EDGES: Mutex<RefCell<Deque<(InputLevels, ElapsedMs), EDGE_QUEUE>>> =
 /// Edges dropped because `EDGES` was full (cumulative); shown by the `latency-probe` readout.
 static DROPPED: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
 
+/// The most edges `EDGES` has held at once (since boot).
+static HIGH_WATER: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
+
 fn read(pins: &Pins) -> InputLevels {
     InputLevels {
         a: pins.0.is_low(),
@@ -74,6 +77,8 @@ fn on_edge() {
             dropped.set(dropped.get().saturating_add(1));
         }
         let _ = edges.push_back((read(pins), EspClock::new().now_ms()));
+        let high_water = HIGH_WATER.borrow(cs);
+        high_water.set(high_water.get().max(edges.len() as u32));
     });
 }
 
@@ -122,6 +127,10 @@ impl InputSource for PhysicalRotary {
 
     fn dropped_edges(&self) -> u32 {
         critical_section::with(|cs| DROPPED.borrow(cs).get())
+    }
+
+    fn edge_high_water(&self) -> u32 {
+        critical_section::with(|cs| HIGH_WATER.borrow(cs).get())
     }
 
     fn drain(&mut self, now_ms: ElapsedMs, f: &mut dyn FnMut(InputLevels, ElapsedMs)) {

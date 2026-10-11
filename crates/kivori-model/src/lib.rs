@@ -18,6 +18,7 @@ pub mod desk;
 pub mod face;
 pub mod geometry;
 pub mod input;
+pub mod internals;
 pub mod mascot;
 pub mod presentation;
 pub mod profile;
@@ -32,8 +33,9 @@ pub use connection::{ConnectionEvent, ConnectionState};
 pub use face::{buddy_face, FaceOverride};
 pub use geometry::{Point, Rect, Size};
 pub use mascot::{
-    MascotAction, MascotAnimator, MascotExpression, MascotPersonality, MascotPose, MASCOT_ANCHOR,
-    MASCOT_SLEEP_TRANSITION_MS, MASCOT_TRANSITION_MS, SCALE_Q8_ONE,
+    IdleLife, LookTarget, MascotAction, MascotAnimator, MascotExpression, MascotPersonality,
+    MascotPose, SelfPlay, MASCOT_ANCHOR, MASCOT_SLEEP_TRANSITION_MS, MASCOT_TRANSITION_MS,
+    SCALE_Q8_ONE,
 };
 pub use profile::{ColorFormat, DeviceProfile, PanelController, ProfileError, TileConfig};
 pub use scene::{

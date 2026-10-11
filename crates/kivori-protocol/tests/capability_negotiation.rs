@@ -47,3 +47,43 @@ fn host_takeovers_needs_both_peers() {
     assert_eq!(minor, 4);
     assert!(!caps.contains(Capabilities::HOST_TAKEOVERS_V1));
 }
+
+#[test]
+fn quiet_ack_needs_both_peers() {
+    let both = Capabilities::QUIET_ACK_V1.union(Capabilities::MASCOT_INTERACTION);
+    let (_, caps) = negotiate(6, 6, both, both);
+    assert!(caps.contains(Capabilities::QUIET_ACK_V1));
+    // An older device (1.5, no bit 11) never negotiates it, so the desktop must keep sending
+    // `Unverified` to it.
+    let (minor, caps) = negotiate(6, 5, both, Capabilities::MASCOT_INTERACTION);
+    assert_eq!(minor, 5);
+    assert!(!caps.contains(Capabilities::QUIET_ACK_V1));
+}
+
+#[test]
+fn device_internals_needs_both_peers() {
+    let both = Capabilities::DEVICE_INTERNALS_V1.union(Capabilities::MASCOT_INTERACTION);
+    let (_, caps) = negotiate(6, 6, both, both);
+    assert!(caps.contains(Capabilities::DEVICE_INTERNALS_V1));
+    // A device without bit 12 never negotiates it, so the desktop must not send the request.
+    let (_, caps) = negotiate(6, 6, both, Capabilities::MASCOT_INTERACTION);
+    assert!(!caps.contains(Capabilities::DEVICE_INTERNALS_V1));
+}
+
+#[test]
+fn idle_life_needs_both_peers() {
+    let both = Capabilities::IDLE_LIFE_V1.union(Capabilities::MASCOT_INTERACTION);
+    let (_, caps) = negotiate(6, 6, both, both);
+    assert!(caps.contains(Capabilities::IDLE_LIFE_V1));
+    // Older firmware never negotiates bit 13, so the desktop keeps scheduling self-play itself.
+    let (_, caps) = negotiate(6, 6, both, Capabilities::MASCOT_INTERACTION);
+    assert!(!caps.contains(Capabilities::IDLE_LIFE_V1));
+}
+
+#[test]
+fn mic_state_needs_both_peers() {
+    let (_, caps) = negotiate(6, 6, Capabilities::MIC_STATE_V1, Capabilities::MIC_STATE_V1);
+    assert!(caps.contains(Capabilities::MIC_STATE_V1));
+    let (_, caps) = negotiate(6, 6, Capabilities::MIC_STATE_V1, Capabilities::NONE);
+    assert!(!caps.contains(Capabilities::MIC_STATE_V1));
+}

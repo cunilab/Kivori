@@ -47,7 +47,8 @@ use crate::presentation::{PresentationResolver, ProductSnapshot};
 use crate::runtime::lifecycle;
 use crate::runtime::state::DeviceCommand;
 use kivori_model::desk::{ActionFeedback, ActionKind, FeedbackKind};
-use kivori_model::{Capabilities, CompanionState, ConnectionState};
+use kivori_model::internals::DeviceInternals;
+use kivori_model::{Capabilities, CompanionState, ConnectionState, MascotPersonality};
 use kivori_protocol::ByeReason;
 use kivori_protocol::{ErrorCategory, InputEvent, PlayMascotAction, Presentation};
 
@@ -185,6 +186,7 @@ fn device_loop(
     let backend = Arc::clone(&services.volume);
     // The diagnostics page reads these without going through the desk runtime that owns them.
     let app_volume = Arc::clone(&services.app_volume);
+    let mic = Arc::clone(&services.mic);
     let media = Arc::clone(&services.media);
     let foreground = Arc::clone(&services.foreground);
     let mut diagnostics_publisher = DiagnosticsPublisher::default();
@@ -202,6 +204,9 @@ fn device_loop(
     // The configured reactions setting, and whether a locked screen is holding them off.
     let mut self_play_wanted = config.buddy.reactions;
     let mut self_play_paused = false;
+    // The brightness step to show, and the last buddy settings the device was sent (per session).
+    let mut brightness = config.display.brightness;
+    let mut buddy_sent: Option<(u32, u32, MascotPersonality, bool, u8)> = None;
     let mut flash = FlashWorkflow::new(
         firmware::bundled_image_available(),
         firmware::BUNDLED_FIRMWARE.len() as u64,
@@ -276,6 +281,7 @@ fn device_loop(
                     let (personality, self_play) =
                         (config.buddy.intensity.personality(), config.buddy.reactions);
                     self_play_wanted = self_play;
+                    brightness = config.display.brightness;
                     let running = self_play && !self_play_paused;
                     // Restarting the cadence on an unrelated save would delay the next reaction.
                     if (personality, running) != (companion.personality(), companion.self_play()) {
@@ -340,6 +346,13 @@ fn device_loop(
                     }
                 }
                 DeviceCommand::Refresh => {}
+                DeviceCommand::RequestInternals => {
+                    // A write failure here resurfaces through the next pump, so it is not handled
+                    // twice. Nothing is sent while the serial port is reserved for flashing.
+                    if let Some(link) = link.as_mut().filter(|_| !flash.is_busy()) {
+                        let _ = session.request_internals(link);
+                    }
+                }
                 DeviceCommand::SetDisplayMode(mode) => {
                     desk.set_mode(mode, &mut |observation| {
                         record_observations(&app, &activity_log, [observation]);
@@ -706,6 +719,9 @@ fn device_loop(
                 if let Some(labels) = desk_out.controls {
                     write_failed |= session.send_control_labels(open_link, labels).is_err();
                 }
+                if let Some(mic) = desk_out.mic {
+                    write_failed |= session.send_mic_state(open_link, mic).is_err();
+                }
                 if write_failed {
                     recover_link(
                         &mut activity_planner,
@@ -747,8 +763,47 @@ fn device_loop(
             }
         }
 
-        // Desktop owns ambient behavior. Suppressed/disconnected states consume due opportunities,
-        // preventing stale antics from firing immediately after focus work or reconnect.
+        // A device that runs idle life itself gets the settings (once per session, and again on any
+        // change) and no self-play from here: it keeps moving even when this loop stalls.
+        if !flash.is_busy() && manager.state().can_drive_device() && session.supports_idle_life() {
+            if let (Some(nonce), Some(open_link)) = (session.current_session(), link.as_mut()) {
+                let key = (
+                    session.connection_generation(),
+                    nonce,
+                    companion.personality(),
+                    companion.self_play(),
+                    brightness,
+                );
+                if buddy_sent != Some(key) {
+                    buddy_sent = Some(key);
+                    let write_failed = session
+                        .send_buddy_settings(open_link, key.2, key.3, key.4)
+                        .is_err();
+                    if write_failed {
+                        recover_link(
+                            &mut activity_planner,
+                            &mut manager,
+                            ManagerEvent::IoError,
+                            LinkRecovery::new(
+                                &mut link,
+                                &mut connected_port,
+                                &mut retry_at,
+                                &mut deadlines,
+                                &flash,
+                            )
+                            .with_rotator(&mut rotator, started.elapsed()),
+                            |observation| {
+                                record_observations(&app, &activity_log, [observation]);
+                            },
+                        );
+                    }
+                }
+            }
+        }
+
+        // The desktop owns ambient behavior only for a device without idle life. Suppressed or
+        // disconnected states consume due opportunities, preventing stale antics from firing
+        // immediately after focus work or reconnect.
         let companion_state = if manager.state().can_drive_device() {
             session
                 .reported()
@@ -756,7 +811,12 @@ fn device_loop(
         } else {
             CompanionState::Offline
         };
-        if let Some(cue) = companion.poll(elapsed_ms(started.elapsed()), companion_state) {
+        let cue = if session.supports_idle_life() {
+            None
+        } else {
+            companion.poll(elapsed_ms(started.elapsed()), companion_state)
+        };
+        if let Some(cue) = cue {
             record_observations(
                 &app,
                 &activity_log,
@@ -829,6 +889,7 @@ fn device_loop(
                 volume: system_volume.clone(),
                 input: Services::expected(Os::current()).input,
                 app_volume: app_volume_availability.clone(),
+                mic: mic.availability(),
             },
         );
         diagnostics_publisher.publish(
@@ -1272,6 +1333,7 @@ pub fn plan_device_request(
         DeviceCommand::FlashFirmware
         | DeviceCommand::RestoreFirmware
         | DeviceCommand::Refresh
+        | DeviceCommand::RequestInternals
         | DeviceCommand::SetDisplayMode(_)
         | DeviceCommand::TestAction(_)
         | DeviceCommand::ApplyConfig(_) => None,
@@ -1418,6 +1480,9 @@ pub fn observe_connection_transition(
 #[derive(Default)]
 struct DiagnosticsPublisher {
     last_published: Option<Instant>,
+    /// The internals snapshot in the last publish; a new one is published at once so the card
+    /// does not wait out the interval.
+    last_internals: Option<DeviceInternals>,
     connected_since: Option<Instant>,
     connections: u32,
 }
@@ -1441,13 +1506,16 @@ impl DiagnosticsPublisher {
         } else if !connected {
             self.connected_since = None;
         }
-        if self
-            .last_published
-            .is_some_and(|at| now.duration_since(at) < Self::INTERVAL)
+        let internals = session.internals();
+        if internals == self.last_internals
+            && self
+                .last_published
+                .is_some_and(|at| now.duration_since(at) < Self::INTERVAL)
         {
             return;
         }
         self.last_published = Some(now);
+        self.last_internals = internals;
         let device = manager.device().filter(|_| connected);
         *cell.lock().expect("diagnostics lock") = DiagnosticsSnapshot {
             connection: crate::ipc::dto::connection_token(manager.state()),
@@ -1469,6 +1537,7 @@ impl DiagnosticsPublisher {
             retry_count: manager.retry_count(),
             session: session.diagnostics(),
             host,
+            internals,
         };
     }
 }

@@ -55,7 +55,7 @@ import {
   testAction,
   testRotate,
 } from '@/lib/ipc';
-import { DESK_RESULTS, MACRO_LIMITS, PROFILE_IDS } from '@/lib/ipc/types';
+import { DESK_RESULTS, MACRO_LIMITS } from '@/lib/ipc/types';
 import type {
   ActionCatalogEntryDto,
   ActionSpec,
@@ -72,6 +72,7 @@ import { format, strings } from '@/lib/i18n/strings';
 import { errorText } from '@/lib/utils';
 import { ActionPicker, catalogId } from './ActionPicker';
 import { MacroEditor, describeStep } from './MacroEditor';
+import { ProfilesCard } from './ProfilesCard';
 import type { PickerTarget } from './ActionPicker';
 
 const t = strings.controls;
@@ -224,7 +225,10 @@ export function ControlsPage({
   };
   useEffect(() => () => stopCountdown(), []);
 
-  const selected = chosen ?? desk?.profileId ?? 'general';
+  const has = (id: ProfileId | null | undefined): id is ProfileId =>
+    !!id && !!config?.profiles.some((candidate) => candidate.id === id);
+  // A profile that was deleted (or not loaded yet) falls back to the active one, then General.
+  const selected = has(chosen) ? chosen : has(desk?.profileId) ? desk.profileId : 'general';
   const profile = config?.profiles.find((candidate) => candidate.id === selected) ?? null;
   const macros = config?.macros ?? [];
 
@@ -281,6 +285,10 @@ export function ControlsPage({
         </Alert>
       ) : null}
 
+      <p className="text-xs text-muted-foreground" data-testid="mic-scope-note">
+        {t.micScope}
+      </p>
+
       <Card data-testid="active-profile">
         <CardHeader>
           <div className="flex items-center gap-3">
@@ -309,19 +317,23 @@ export function ControlsPage({
       {config ? (
         <Tabs value={selected} onValueChange={(value) => setChosen(value as ProfileId)}>
           <TabsList aria-label={t.profilesLabel} className="h-auto flex-wrap">
-            {PROFILE_IDS.map((id) => {
-              const entry = config.profiles.find((candidate) => candidate.id === id);
-              return entry ? (
-                <TabsTrigger key={id} value={id} data-active-profile={desk?.profileId === id}>
-                  {entry.name}
-                </TabsTrigger>
-              ) : null;
-            })}
+            {config.profiles.map((entry) => (
+              <TabsTrigger
+                key={entry.id}
+                value={entry.id}
+                data-active-profile={desk?.profileId === entry.id}
+              >
+                {entry.name}
+              </TabsTrigger>
+            ))}
           </TabsList>
           {config.profiles
             .filter((entry) => entry.id === selected)
             .map((entry) => (
               <TabsContent key={entry.id} value={entry.id} className="space-y-4">
+                {entry.custom ? (
+                  <p className="text-xs text-muted-foreground">{t.customProfileNote}</p>
+                ) : null}
                 <ul className="grid gap-4 sm:grid-cols-2" aria-label={t.title}>
                   {rows(entry).map((row) => {
                     const rowId = `${entry.id}:${row.key}`;
@@ -449,6 +461,8 @@ export function ControlsPage({
 
       <p className="text-xs text-muted-foreground">{t.holdNote}</p>
 
+      {config ? <ProfilesCard config={config} desk={desk} onShow={setChosen} /> : null}
+
       <Card data-testid="macros">
         <CardHeader>
           <CardTitle>{strings.controls.macros.title}</CardTitle>
@@ -493,7 +507,7 @@ export function ControlsPage({
 
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" disabled={!profile} onClick={() => setConfirm('profile')}>
-          {t.resetProfile}
+          {profile?.custom ? t.resetCustomLabel : t.resetProfile}
         </Button>
         <Button variant="outline" disabled={!config} onClick={() => setConfirm('all')}>
           {t.resetEverything}
@@ -554,10 +568,16 @@ export function ControlsPage({
             <AlertDialogTitle>
               {confirm === 'all'
                 ? t.resetEverythingTitle
-                : format(t.resetProfileTitle, { profile: profile?.name ?? '' })}
+                : format(profile?.custom ? t.resetCustomTitle : t.resetProfileTitle, {
+                    profile: profile?.name ?? '',
+                  })}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {confirm === 'all' ? t.resetEverythingBody : t.resetProfileBody}
+              {confirm === 'all'
+                ? t.resetEverythingBody
+                : profile?.custom
+                  ? t.resetCustomBody
+                  : t.resetProfileBody}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

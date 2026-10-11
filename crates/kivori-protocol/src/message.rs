@@ -2,8 +2,11 @@
 //! the `postcard` variant index is the wire tag.
 
 use crate::error::{ByeReason, ErrorCategory};
-use kivori_model::desk::{ActionKind, ControlLabels, DeskStatus, FeedbackKind, MediaInfo};
+use kivori_model::desk::{
+    ActionKind, ControlLabels, DeskStatus, FeedbackKind, MediaInfo, MicState,
+};
 use kivori_model::input::Direction;
+use kivori_model::internals::DeviceInternals;
 use kivori_model::presentation::{PrimaryState, ValueDisplay};
 use kivori_model::{Capabilities, CompanionState, MascotAction, MascotPersonality, SendableState};
 use serde::{Deserialize, Serialize};
@@ -267,6 +270,50 @@ pub struct ControlLabelsUpdate {
     pub labels: ControlLabels,
 }
 
+/// Desktop -> device: asks for one `Internals` snapshot (capability `DEVICE_INTERNALS_V1`). Sent
+/// about once a second, and only while the developer-mode card is visible; a device that did not
+/// negotiate the capability ignores it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InternalsRequest {
+    /// The handshake nonce of the session this applies to.
+    pub session: Nonce,
+}
+
+/// Device -> desktop: the answer to an `InternalsRequest`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InternalsReport {
+    /// The handshake nonce of the session that asked.
+    pub session: Nonce,
+    /// What the device could measure; `None` fields are unavailable.
+    pub internals: DeviceInternals,
+}
+
+/// Desktop -> device: the buddy and display settings the device applies itself (capability
+/// `IDLE_LIFE_V1`). Sent on every session start and whenever one changes; the device keeps the
+/// last values until it restarts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BuddySettings {
+    /// The handshake nonce of the session this applies to.
+    pub session: Nonce,
+    /// Motion amplitude and cadence of the buddy's idle life.
+    pub personality: MascotPersonality,
+    /// Whether the buddy plays reactions on its own. Glances and blinks are not reactions.
+    pub self_play: bool,
+    /// Backlight step, `1..=BRIGHTNESS_STEPS` (1 is the dimmest that is still clearly on).
+    pub brightness: u8,
+}
+
+/// Desktop -> device: what the computer's microphones are doing (capability `MIC_STATE_V1`). Sent
+/// on every session start and whenever it changes; session scoped like `Status`, and the device
+/// forgets it when the session ends (unknown shows nothing).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MicStateUpdate {
+    /// The handshake nonce of the session this applies to.
+    pub session: Nonce,
+    /// Muted (only when every microphone reads muted) and in use, each possibly unknown.
+    pub mic: MicState,
+}
+
 /// The top-level wire message.
 ///
 /// **Append-only**: new variants are added at the end within a major version — the `postcard`
@@ -311,4 +358,13 @@ pub enum Message {
     MediaInfo(MediaInfoUpdate),
     /// Tag 18 — desktop -> device control labels (capability `CONTROL_LABELS_V1`).
     ControlLabels(ControlLabelsUpdate),
+    /// Tag 19 — desktop -> device request for the internals snapshot (capability
+    /// `DEVICE_INTERNALS_V1`).
+    InternalsRequest(InternalsRequest),
+    /// Tag 20 — device -> desktop internals snapshot (capability `DEVICE_INTERNALS_V1`).
+    Internals(InternalsReport),
+    /// Tag 21 — desktop -> device buddy and display settings (capability `IDLE_LIFE_V1`).
+    BuddySettings(BuddySettings),
+    /// Tag 22 — desktop -> device microphone state (capability `MIC_STATE_V1`).
+    MicState(MicStateUpdate),
 }

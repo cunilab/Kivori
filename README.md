@@ -12,6 +12,8 @@ Kivori is a desk buddy you control your computer with: the buddy is why you want
 
 **M2 and M2.5.** Three contextual buttons (Press and Hold each), the bindings config UI and foreground-app profiles are software complete and host-tested, awaiting hardware validation (Phase 5 and 6 rows).
 
+**M2.6 — Beta hero features (planned).** Truthful mic mute across every microphone, profiles for any app, a buddy that stays alive on its own, a brightness setting, quieter feedback for actions Kivori cannot confirm, device internals in developer mode, and a splash screen. See [`docs/roadmap.md`](docs/roadmap.md#m26-beta-hero-features).
+
 **M3 — Paid beta.** Software complete: host takeovers, sleep and lock handling, firmware update and recovery, launch at login with a tray, the installer and an unsigned release pipeline ([`docs/release.md`](docs/release.md)), first-run onboarding, and per-unit provisioning ([`docs/provisioning.md`](docs/provisioning.md)).
 
 Beta users start with the [user guide](docs/user-guide.md). Still open, and none of it is code: the hardware validation session (issue #38), signing the installer (needs certificates, #36), and the enclosure print (#33). See [`docs/roadmap.md`](docs/roadmap.md). Product behavior is defined in [`docs/product.md`](docs/product.md); durable technical choices are the ADRs in [`docs/architecture.md`](docs/architecture.md).

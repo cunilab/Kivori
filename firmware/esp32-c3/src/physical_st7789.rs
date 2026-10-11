@@ -16,23 +16,30 @@ use esp_hal::{
     delay::Delay,
     dma::{DmaRxBuf, DmaTxBuf},
     dma_buffers_chunk_size, efuse,
-    gpio::{Input, InputConfig, Io, Level, Output, OutputConfig, Pull},
+    gpio::{DriveMode, Input, InputConfig, Io, Level, Output, OutputConfig, Pull},
+    ledc::{
+        channel::{self, Channel, ChannelIFace},
+        timer::{self, TimerIFace},
+        LSGlobalClkSource, Ledc, LowSpeed,
+    },
     peripherals::Peripherals,
     spi::master::{Config, Spi},
     time::Rate,
 };
 
 use kivori_assets::AssetBlob;
-use kivori_model::{Capabilities, Rgb565};
+use kivori_model::desk::BRIGHTNESS_DEFAULT;
+use kivori_model::{Capabilities, Rect, Rgb565};
 use kivori_protocol::FirmwareVersion;
 
 use mipidsi::{interface::SpiInterface, Builder};
 
 use crate::{
+    chip_probe,
     device_id::derive_device_id,
     display::MipidsiSink,
     physical_rotary::PhysicalRotary,
-    ports::Clock,
+    ports::{Clock, DisplaySink},
     profile::physical_st7789 as hw,
     proto::DeviceIdentity,
     render::FRAME_PIXELS,
@@ -86,6 +93,33 @@ const SPI_DMA_RX_BUFFER_BYTES: usize = 1;
 static FRAME_BUFFER: static_cell::ConstStaticCell<[Rgb565; FRAME_PIXELS]> =
     static_cell::ConstStaticCell::new([Rgb565::from_raw(0); FRAME_PIXELS]);
 
+/// The PWM timer behind the backlight channel, which borrows it for as long as the firmware runs.
+static BACKLIGHT_TIMER: static_cell::StaticCell<esp_hal::ledc::timer::Timer<'static, LowSpeed>> =
+    static_cell::StaticCell::new();
+
+/// The panel sink plus its backlight PWM channel: pixels go to the panel, brightness to the pin.
+struct Backlit<S> {
+    panel: S,
+    channel: Channel<'static, LowSpeed>,
+}
+
+impl<S: DisplaySink> DisplaySink for Backlit<S> {
+    type Error = S::Error;
+
+    fn blit_tile(&mut self, rect: Rect, pixels: &[Rgb565]) -> Result<(), Self::Error> {
+        self.panel.blit_tile(rect, pixels)
+    }
+
+    fn blit_tiles(&mut self, rect: Rect, tiles: &[Rgb565], cols: u16) -> Result<(), Self::Error> {
+        self.panel.blit_tiles(rect, tiles, cols)
+    }
+
+    fn set_brightness(&mut self, step: u8) {
+        // A failed duty write leaves the previous brightness: harmless, and the next setting retries.
+        let _ = self.channel.set_duty(hw::backlight_duty_pct(step));
+    }
+}
+
 /// Keep the typed `esp-hal` GPIO field selections below synchronized with the
 /// numeric hardware profile.
 ///
@@ -117,6 +151,10 @@ pub fn run_mode(
     assets: &'static [u8],
 ) -> ! {
     esp_println::println!("KIVORI physical ST7789 runtime");
+
+    // Paint the unused stack now, while little of it is in use, so the device internals snapshot
+    // can report how deep it has ever gone.
+    chip_probe::paint_stack();
 
     // -------------------------------------------------------------------------
     // USB Serial/JTAG transport
@@ -174,8 +212,9 @@ pub fn run_mode(
 
     let rst = Output::new(peripherals.GPIO3, Level::High, OutputConfig::default());
 
-    // Keep the verified backlight enabled for the lifetime of the runtime.
-    let _backlight = Output::new(
+    // The backlight is plainly on while the panel initialises. GPIO8 is a strapping pin, sampled
+    // only at reset, so it is handed to the LEDC PWM below, after boot, once the panel is up.
+    let backlight = Output::new(
         peripherals.GPIO8,
         hw::backlight_level(),
         OutputConfig::default(),
@@ -221,7 +260,41 @@ pub fn run_mode(
     // DisplaySink. The renderer will send change-driven 40x40 RGB565 tiles.
     // -------------------------------------------------------------------------
 
-    let mut display = MipidsiSink::new(display, hw::geometry());
+    let display = MipidsiSink::new(display, hw::geometry());
+
+    // -------------------------------------------------------------------------
+    // Backlight PWM (GPIO8, LEDC low-speed channel 0)
+    //
+    // Starts at full brightness, exactly what the plain output gave, and follows the desktop's
+    // brightness setting from then on. 24 kHz is above hearing; 8-bit duty is far finer than the
+    // five steps need.
+    // -------------------------------------------------------------------------
+
+    let mut ledc = Ledc::new(peripherals.LEDC);
+    ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
+    let backlight_timer = BACKLIGHT_TIMER.init(ledc.timer::<LowSpeed>(timer::Number::Timer0));
+    backlight_timer
+        .configure(timer::config::Config {
+            duty: timer::config::Duty::Duty8Bit,
+            clock_source: timer::LSClockSource::APBClk,
+            frequency: Rate::from_khz(24),
+        })
+        .expect("backlight PWM timer");
+    let mut backlight_channel = ledc.channel::<LowSpeed>(
+        channel::Number::Channel0,
+        backlight.into_peripheral_output(),
+    );
+    backlight_channel
+        .configure(channel::config::Config {
+            timer: &*backlight_timer,
+            duty_pct: hw::backlight_duty_pct(BRIGHTNESS_DEFAULT),
+            drive_mode: DriveMode::PushPull,
+        })
+        .expect("backlight PWM channel");
+    let mut display = Backlit {
+        panel: display,
+        channel: backlight_channel,
+    };
 
     // -------------------------------------------------------------------------
     // Rotary encoder input
@@ -256,6 +329,7 @@ pub fn run_mode(
     // -------------------------------------------------------------------------
 
     let blob = AssetBlob::parse(assets).expect("Kivori asset blob");
+    chip_probe::init(peripherals.TSENS, assets.len());
 
     esp_println::println!("KIVORI assets loaded");
 
@@ -274,7 +348,7 @@ pub fn run_mode(
                 .expect("6-byte base MAC"),
         ),
 
-        // 1.3: host takeovers (Sleeping, Updating, silence timeout) on top of M2; protocol 1.5.
+        // 1.3: host takeovers (Sleeping, Updating, silence timeout) on top of M2; protocol 1.6 (quiet acknowledgement, device internals).
         firmware_version: FIRMWARE_VERSION,
 
         capabilities: Capabilities::MASCOT_INTERACTION
@@ -287,7 +361,11 @@ pub fn run_mode(
             .union(Capabilities::MEDIA_INFO_V1)
             .union(Capabilities::CONTROL_LABELS_V1)
             .union(Capabilities::CONTEXT_BUTTONS_V1)
-            .union(Capabilities::HOST_TAKEOVERS_V1),
+            .union(Capabilities::HOST_TAKEOVERS_V1)
+            .union(Capabilities::QUIET_ACK_V1)
+            .union(Capabilities::DEVICE_INTERNALS_V1)
+            .union(Capabilities::IDLE_LIFE_V1)
+            .union(Capabilities::MIC_STATE_V1),
     };
 
     // Keeps `FW_VERSION_MARKER` (and so the version text) in the linked image.
@@ -327,6 +405,7 @@ pub fn run_mode(
         &mut display,
         &blob,
         frame_buffer,
+        chip_probe::probe,
         |tick, transport| {
             if tick.reboot {
                 // Give the queued `Bye` a bounded moment to reach the host, then reboot. The

@@ -89,7 +89,7 @@ pub(super) unsafe fn image_path(process: HANDLE) -> Option<String> {
 }
 
 /// `TokenElevation` of `process`; `None` when the token can't be opened or read.
-unsafe fn elevation(process: HANDLE) -> Option<bool> {
+pub(super) unsafe fn elevation(process: HANDLE) -> Option<bool> {
     let mut token = HANDLE::default();
     OpenProcessToken(process, TOKEN_QUERY, &mut token).ok()?;
     let token = Owned(token);

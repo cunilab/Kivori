@@ -33,6 +33,7 @@ describe('display and buddy settings through the browser mock', () => {
       expect((await getConfig()).display).toEqual({
         defaultView: 'buddy',
         secondaryView: 'media',
+        brightness: 5,
       }),
     );
 
@@ -40,6 +41,26 @@ describe('display and buddy settings through the browser mock', () => {
     await user.click(within(defaults).getByRole('button', { name: 'Clock' }));
     await waitFor(async () => expect((await getConfig()).display.defaultView).toBe('clock'));
     expect(screen.getByTestId('on-device').closest('label')).toHaveAttribute('data-mode', 'clock');
+  });
+
+  it('persists the brightness across a remount and keeps it when a view is changed', async () => {
+    const user = userEvent.setup();
+    const first = render(<Page />);
+    const group = await screen.findByRole('group', { name: 'Brightness' });
+    await user.click(within(group).getByRole('button', { name: 'Step 2' }));
+    await waitFor(async () => expect((await getConfig()).display.brightness).toBe(2));
+    first.unmount();
+
+    render(<Page />);
+    const defaults = await screen.findByRole('group', { name: 'Default view' });
+    await user.click(within(defaults).getByRole('button', { name: 'Clock' }));
+    await waitFor(async () => expect((await getConfig()).display.defaultView).toBe('clock'));
+    expect((await getConfig()).display.brightness).toBe(2);
+    expect(
+      within(screen.getByRole('group', { name: 'Brightness' })).getByRole('button', {
+        name: 'Step 2',
+      }),
+    ).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('persist the buddy settings across a remount', async () => {

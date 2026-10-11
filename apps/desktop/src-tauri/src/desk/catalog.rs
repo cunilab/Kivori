@@ -16,6 +16,7 @@ pub enum ActionToken {
     Volume,
     PlayPause,
     Mute,
+    MicMute,
     Shortcut,
     Launch,
     PreviousTrack,
@@ -27,10 +28,11 @@ pub enum ActionToken {
 
 impl ActionToken {
     /// Every token, in the order of `DESK_ACTIONS` in `lib/ipc/types.ts`.
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::Volume,
         Self::PlayPause,
         Self::Mute,
+        Self::MicMute,
         Self::Shortcut,
         Self::Launch,
         Self::PreviousTrack,
@@ -47,6 +49,7 @@ impl ActionToken {
             Self::Volume => "volume",
             Self::PlayPause => "playPause",
             Self::Mute => "mute",
+            Self::MicMute => "micMute",
             Self::Shortcut => "shortcut",
             Self::Launch => "launch",
             Self::PreviousTrack => "previousTrack",
@@ -65,7 +68,7 @@ impl ActionToken {
         match self {
             Self::Volume | Self::AppVolume => ActionKind::Volume,
             Self::PlayPause => ActionKind::PlayPause,
-            Self::Mute | Self::AppMute => ActionKind::Mute,
+            Self::Mute | Self::MicMute | Self::AppMute => ActionKind::Mute,
             Self::Shortcut | Self::Macro => ActionKind::Shortcut,
             Self::Launch => ActionKind::Launch,
             Self::PreviousTrack => ActionKind::PreviousTrack,
@@ -106,6 +109,8 @@ pub struct Services {
     pub input: ActionAvailability,
     /// The per-app volume backend's availability (App Volume and App Mute).
     pub app_volume: ActionAvailability,
+    /// The microphone backend's availability (Mic Mute).
+    pub mic: ActionAvailability,
 }
 
 /// The device thread's latest [`Services`], shared with the IPC command that lists the catalog
@@ -142,6 +147,7 @@ impl Services {
                 volume: state(ConfirmationClass::StateConfirmed),
                 input: state(ConfirmationClass::TriggeredUnverified),
                 app_volume: state(ConfirmationClass::StateConfirmed),
+                mic: state(ConfirmationClass::StateConfirmed),
             },
             Os::MacOs => Self {
                 volume: state(ConfirmationClass::StateConfirmed),
@@ -149,6 +155,7 @@ impl Services {
                 app_volume: ActionAvailability::Unsupported {
                     reason: APP_VOLUME_UNSUPPORTED_ON_MAC.to_string(),
                 },
+                mic: state(ConfirmationClass::StateConfirmed),
             },
             Os::Other => {
                 let target = std::env::consts::OS;
@@ -156,6 +163,7 @@ impl Services {
                     volume: ActionAvailability::NotImplementedYet { target },
                     input: ActionAvailability::NotImplementedYet { target },
                     app_volume: ActionAvailability::NotImplementedYet { target },
+                    mic: ActionAvailability::NotImplementedYet { target },
                 }
             }
         }
@@ -175,6 +183,7 @@ pub enum Slot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
     System,
+    Mic,
     App,
     Media,
     Keyboard,
@@ -265,7 +274,7 @@ const fn entry(
 /// Every action, in the order the picker shows them.
 ///
 /// App Volume and App Mute are unsupported on macOS: the config UI shows them disabled with a reason rather than hiding them.
-pub const CATALOG: [CatalogEntry; 11] = {
+pub const CATALOG: [CatalogEntry; 12] = {
     use ActionToken as T;
     use Verification::{Confirmed, LeastOfSteps, Started, Unverified};
     [
@@ -333,6 +342,15 @@ pub const CATALOG: [CatalogEntry; 11] = {
             true,
         ),
         entry(
+            "micMute",
+            T::MicMute,
+            Slot::Discrete,
+            Scope::Mic,
+            Confirmed,
+            Params::None,
+            true,
+        ),
+        entry(
             "appMute",
             T::AppMute,
             Slot::Discrete,
@@ -383,6 +401,7 @@ impl CatalogEntry {
         }
         let backend = match self.scope {
             Scope::System => &services.volume,
+            Scope::Mic => &services.mic,
             Scope::Media | Scope::Keyboard => &services.input,
             Scope::App => &services.app_volume,
             // A launch needs no synthesized input.
@@ -415,8 +434,8 @@ mod tests {
     use super::*;
     use crate::desk::actions::{execute, Action, Macro, Platform, Step};
     use crate::platform::{
-        FakeAppVolumeBackend, FakeForeground, FakeInputSynth, FakeMediaObserver, FakeVolumeBackend,
-        Shortcut, VolumeBackend,
+        FakeAppVolumeBackend, FakeForeground, FakeInputSynth, FakeMediaObserver, FakeMicBackend,
+        FakeMicQuirk, FakeVolumeBackend, Shortcut, VolumeBackend,
     };
     use kivori_model::desk::FeedbackKind;
     use kivori_model::input::Direction;
@@ -426,6 +445,7 @@ mod tests {
         Platform {
             volume: Arc::new(FakeVolumeBackend::new(50)),
             app_volume: Arc::new(FakeAppVolumeBackend::new().with_session("spotify.exe", 50)),
+            mic: Arc::new(FakeMicBackend::new().with_device("Built-in", FakeMicQuirk::Works)),
             synth: Arc::new(FakeInputSynth::new(Ok(()))),
             media: Arc::new(FakeMediaObserver::default()),
             foreground: Arc::new(FakeForeground::default()),
@@ -444,6 +464,7 @@ mod tests {
             "previousTrack" => Action::PreviousTrack,
             "nextTrack" => Action::NextTrack,
             "systemMute" => Action::ToggleMute,
+            "micMute" => Action::ToggleMicMute,
             "shortcut" | "knobShortcuts" => Action::Shortcut("Ctrl+M".parse::<Shortcut>().unwrap()),
             "launch" => Action::Launch("Calculator".into()),
             "appMute" => Action::AppMute {
@@ -476,14 +497,16 @@ mod tests {
             let class = match execute(&action, &fakes()).kind {
                 FeedbackKind::StateConfirmed => ConfirmationClass::StateConfirmed,
                 FeedbackKind::ExecutionConfirmed => ConfirmationClass::ExecutionConfirmed,
-                FeedbackKind::Unverified => ConfirmationClass::TriggeredUnverified,
+                FeedbackKind::Unverified | FeedbackKind::Triggered => {
+                    ConfirmationClass::TriggeredUnverified
+                }
                 other => panic!("{}: the fakes should succeed, got {other:?}", entry.id),
             };
             assert_eq!(entry.verification, Verification::of(class), "{}", entry.id);
             assert_eq!(entry.token, action.token(), "{}", entry.id);
             checked += 1;
         }
-        assert_eq!(checked, 9, "every entry with a backend is checked");
+        assert_eq!(checked, 10, "every entry with a backend is checked");
     }
 
     #[test]
@@ -519,9 +542,9 @@ mod tests {
         let entry = entry_named("macro");
         assert_eq!(entry.verification, Verification::LeastOfSteps);
         assert_eq!(entry.token, ActionToken::Macro);
-        // Mute is state-confirmed, play/pause unverified: the macro shows the lesser.
+        // Mute is state-confirmed, play/pause trigger-only: the macro shows the lesser.
         let action = example("macro").unwrap();
-        assert_eq!(execute(&action, &fakes()).kind, FeedbackKind::Unverified);
+        assert_eq!(execute(&action, &fakes()).kind, FeedbackKind::Triggered);
         assert_eq!(action.token(), entry.token);
     }
 

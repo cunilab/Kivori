@@ -10,10 +10,11 @@ use crate::state::{DeviceEvent, DeviceState};
 use heapless::Vec;
 use kivori_model::{Capabilities, ProtocolVersion};
 use kivori_protocol::{
-    decode_message, encode_message, ByeReason, ControlId, ControlLabelsUpdate, DeviceId, Feedback,
-    FirmwareVersion, HelloAck, InputEvent, InputKind, MascotActionApplied, MediaInfoUpdate,
-    Message, Nonce, PlayMascotAction, Presentation, ProtoError, SeqClass, SequenceTracker,
-    StateReport, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
+    decode_message, encode_message, BuddySettings, ByeReason, ControlId, ControlLabelsUpdate,
+    DeviceId, Feedback, FirmwareVersion, HelloAck, InputEvent, InputKind, MascotActionApplied,
+    MediaInfoUpdate, Message, MicStateUpdate, Nonce, PlayMascotAction, Presentation, ProtoError,
+    SeqClass, SequenceTracker, StateReport, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR,
+    PROTOCOL_MINOR,
 };
 
 /// Inbound accumulation capacity: room for a partial packet plus one full wire packet.
@@ -99,10 +100,18 @@ pub struct Dispatcher {
     /// The latest negotiated `MediaInfo`, awaiting [`Self::take_media_info`].
     pending_media_info: Option<MediaInfoUpdate>,
     pending_controls: Option<ControlLabelsUpdate>,
+    /// The latest accepted `BuddySettings`, awaiting [`Self::take_buddy_settings`].
+    pending_buddy: Option<BuddySettings>,
+    /// The latest accepted `MicState`, awaiting [`Self::take_mic_state`].
+    pending_mic: Option<MicStateUpdate>,
     /// The latest takeover announced by a negotiated `Bye`, awaiting [`Self::take_host_takeover`].
     pending_takeover: Option<HostTakeover>,
     /// Frames decoded since boot (wrapping): the runtime watches it move to notice a silent host.
     inbound_frames: u32,
+    /// Frames fully written to the transport since boot (wrapping).
+    outbound_frames: u32,
+    /// The session of a negotiated `InternalsRequest`, awaiting [`Self::take_internals_request`].
+    pending_internals: Option<Nonce>,
 }
 
 impl Dispatcher {
@@ -130,8 +139,12 @@ impl Dispatcher {
             pending_feedback: None,
             pending_media_info: None,
             pending_controls: None,
+            pending_buddy: None,
+            pending_mic: None,
             pending_takeover: None,
             inbound_frames: 0,
+            outbound_frames: 0,
+            pending_internals: None,
         }
     }
 
@@ -140,6 +153,17 @@ impl Dispatcher {
     #[must_use]
     pub const fn inbound_frames(&self) -> u32 {
         self.inbound_frames
+    }
+
+    /// Frames written to the transport since boot (wrapping).
+    #[must_use]
+    pub const fn outbound_frames(&self) -> u32 {
+        self.outbound_frames
+    }
+
+    /// Takes the session of a pending `InternalsRequest`, if one was accepted.
+    pub fn take_internals_request(&mut self) -> Option<Nonce> {
+        self.pending_internals.take()
     }
 
     /// Takes the pending host takeover announced by a `Bye`, if any.
@@ -265,6 +289,16 @@ impl Dispatcher {
     /// Takes the pending accepted `ControlLabels`, if any.
     pub fn take_control_labels(&mut self) -> Option<ControlLabelsUpdate> {
         self.pending_controls.take()
+    }
+
+    /// Takes the pending accepted `MicState`, if any.
+    pub fn take_mic_state(&mut self) -> Option<MicStateUpdate> {
+        self.pending_mic.take()
+    }
+
+    /// Takes the pending accepted `BuddySettings`, if any.
+    pub fn take_buddy_settings(&mut self) -> Option<BuddySettings> {
+        self.pending_buddy.take()
     }
 
     /// Whether the session negotiated double-press detection.
@@ -519,6 +553,28 @@ impl Dispatcher {
             {
                 self.pending_controls = Some(update);
             }
+            // Settings only count from the accepted session, with the capability negotiated.
+            Message::BuddySettings(settings)
+                if self.negotiated_caps.contains(Capabilities::IDLE_LIFE_V1)
+                    && self.accepted_session == Some(settings.session) =>
+            {
+                self.pending_buddy = Some(settings);
+            }
+            // Same inertness rule as `Status`: unnegotiated means dropped, unseen.
+            Message::MicState(update)
+                if self.negotiated_caps.contains(Capabilities::MIC_STATE_V1) =>
+            {
+                self.pending_mic = Some(update);
+            }
+            // Only the accepted session may ask, and only with the capability negotiated.
+            Message::InternalsRequest(request)
+                if self
+                    .negotiated_caps
+                    .contains(Capabilities::DEVICE_INTERNALS_V1)
+                    && self.accepted_session == Some(request.session) =>
+            {
+                self.pending_internals = Some(request.session);
+            }
             Message::Feedback(feedback)
                 if self
                     .negotiated_caps
@@ -593,6 +649,7 @@ impl Dispatcher {
             written += n;
         }
         self.tx_seq = self.tx_seq.wrapping_add(1);
+        self.outbound_frames = self.outbound_frames.wrapping_add(1);
         Ok(())
     }
 }

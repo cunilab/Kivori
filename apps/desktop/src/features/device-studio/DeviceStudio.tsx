@@ -25,7 +25,13 @@ export function DeviceStudio(): ReactElement {
   const events = useStudioStore((s) => s.events);
   const actionEvents = useStudioStore((s) => s.actionEvents);
   const animation = useMemo<AnimationTimeline>(
-    () => ({ initialState: 'idle', events, actionEvents }),
+    () => ({
+      initialState: 'idle',
+      events,
+      actionEvents,
+      // Glances and looks run as on the device; reactions here are the ones the user plays.
+      idleLife: { personality: 'cozy', selfPlay: false },
+    }),
     [events, actionEvents],
   );
   const advance = useStudioStore((s) => s.advance);

@@ -3,7 +3,10 @@
 
 import {
   ACTION_SPEC_KINDS,
+  BRIGHTNESS_STEPS,
   CAPABILITY_NAMES,
+  CHIP_MODELS,
+  RESET_REASONS,
   HOST_AVAILABILITIES,
   HOST_FOCUS,
   HOST_INPUT_PERMISSIONS,
@@ -18,6 +21,8 @@ import {
   CATALOG_VERIFICATIONS,
   CONFIG_NOTICES,
   DESK_ACTIONS,
+  MIC_DEVICE_STATES,
+  MIC_MUTED_STATES,
   DESK_RESULTS,
   DISPLAY_MODES,
   DOUBLE_PRESS_ACTIONS,
@@ -29,16 +34,19 @@ import {
   INTENSITIES,
   MASCOT_ACTIONS,
   MEDIA_STATUSES,
+  CUSTOM_PROFILE_ID,
   PROFILE_IDS,
   ROTATE_SPEC_KINDS,
 } from './types';
 import type {
+  MicDto,
   ActionCatalogEntryDto,
   ConnectionStatusDto,
   ActionSpec,
   ActivityEventDto,
   ButtonDto,
   ConfigDto,
+  DeviceInternalsDto,
   DiagnosticsDto,
   FirmwareStatusDto,
   AccessibilityState,
@@ -47,7 +55,9 @@ import type {
   MacroSpec,
   StepSpec,
   DeskStatusDto,
+  AppRefDto,
   ProfileConfigDto,
+  ProfileId,
   RotateSpec,
   SlotDto,
 } from './types';
@@ -58,11 +68,28 @@ function oneOf<T extends string>(name: string, allowed: readonly T[], value: unk
   throw new Error(`Kivori: unexpected ${name} token.`);
 }
 
+function brightness(value: unknown): number {
+  if (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= BRIGHTNESS_STEPS
+  ) {
+    return value;
+  }
+  throw new Error('Kivori: invalid brightness.');
+}
+
 function percentOrNull(name: string, value: unknown): number | null {
   if (value === null) return null;
   if (typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 100) {
     return value;
   }
+  throw new Error(`Kivori: invalid ${name}.`);
+}
+
+function bool(name: string, value: unknown): boolean {
+  if (typeof value === 'boolean') return value;
   throw new Error(`Kivori: invalid ${name}.`);
 }
 
@@ -224,6 +251,58 @@ export function parseDiagnostics(raw: unknown): DiagnosticsDto {
   };
 }
 
+/** Validates a `DeviceInternalsDto`: unknown tokens and non-count figures are rejected. */
+export function parseDeviceInternals(raw: unknown): DeviceInternalsDto {
+  const r = record('device internals', raw);
+  if (typeof r.connected !== 'boolean' || typeof r.supported !== 'boolean') {
+    throw new Error('Kivori: invalid device internals.');
+  }
+  if (r.snapshot === null)
+    return { connected: r.connected, supported: r.supported, snapshot: null };
+  const s = record('internals snapshot', r.snapshot);
+  const n = (name: string): number | null => countOrNull(name, s[name]);
+  let chipRevision: { major: number; minor: number } | null = null;
+  if (s.chipRevision !== null) {
+    const rev = record('chip revision', s.chipRevision);
+    chipRevision = { major: count('chip major', rev.major), minor: count('chip minor', rev.minor) };
+  }
+  const temperature = s.temperatureDeciCelsius;
+  if (temperature !== null && !Number.isInteger(temperature)) {
+    throw new Error('Kivori: invalid temperatureDeciCelsius.');
+  }
+  return {
+    connected: r.connected,
+    supported: r.supported,
+    snapshot: {
+      appImageBytes: n('appImageBytes'),
+      appPartitionBytes: n('appPartitionBytes'),
+      assetBlobBytes: n('assetBlobBytes'),
+      assetBlobCapBytes: n('assetBlobCapBytes'),
+      flashTotalBytes: n('flashTotalBytes'),
+      ramTotalBytes: n('ramTotalBytes'),
+      ramStaticBytes: n('ramStaticBytes'),
+      ramFreeBytes: n('ramFreeBytes'),
+      stackFreeMinBytes: n('stackFreeMinBytes'),
+      busyPercent: percentOrNull('busyPercent', s.busyPercent),
+      composeMs: n('composeMs'),
+      flushMs: n('flushMs'),
+      fps: n('fps'),
+      chipModel: s.chipModel === null ? null : oneOf('chip model', CHIP_MODELS, s.chipModel),
+      chipRevision,
+      temperatureDeciCelsius: temperature as number | null,
+      uptimeMs: n('uptimeMs'),
+      resetReason:
+        s.resetReason === null ? null : oneOf('reset reason', RESET_REASONS, s.resetReason),
+      edgeQueueHighWater: n('edgeQueueHighWater'),
+      droppedEdges: n('droppedEdges'),
+      invalidTransitions: n('invalidTransitions'),
+      framesIn: n('framesIn'),
+      framesOut: n('framesOut'),
+      framesRejected: n('framesRejected'),
+    },
+  };
+}
+
 /** Validates a `DeskStatusDto`, throwing on any unknown token or malformed value. */
 export function parseDeskStatus(raw: unknown): DeskStatusDto {
   if (typeof raw !== 'object' || raw === null) throw new Error('Kivori: invalid desk status.');
@@ -255,7 +334,7 @@ export function parseDeskStatus(raw: unknown): DeskStatusDto {
     doublePressAction: oneOf('double-press action', DOUBLE_PRESS_ACTIONS, r.doublePressAction),
     buttonActions: buttonActions('buttonActions', r.buttonActions),
     buttonHoldActions: buttonActions('buttonHoldActions', r.buttonHoldActions),
-    profileId: oneOf('profile', PROFILE_IDS, r.profileId),
+    profileId: profileId(r.profileId),
     profile: textOrNull('profile', r.profile),
     pinned: r.pinned,
     rotateLabel: label('rotateLabel', r.rotateLabel),
@@ -263,7 +342,40 @@ export function parseDeskStatus(raw: unknown): DeskStatusDto {
     mediaTitle: textOrNull('mediaTitle', r.mediaTitle),
     mediaArtist: textOrNull('mediaArtist', r.mediaArtist),
     lastAction,
+    mic: parseMic(r.mic),
+    recentApp: r.recentApp === null ? null : appRef(r.recentApp),
   };
+}
+
+function parseMic(raw: unknown): MicDto {
+  const r = record('mic', raw);
+  if (r.inUse !== null && typeof r.inUse !== 'boolean') throw new Error('Kivori: invalid mic.');
+  if (typeof r.live !== 'boolean' || !Array.isArray(r.devices))
+    throw new Error('Kivori: invalid mic.');
+  return {
+    muted: oneOf('mic muted', MIC_MUTED_STATES, r.muted),
+    inUse: r.inUse,
+    live: r.live,
+    devices: r.devices.map((raw) => {
+      const d = record('mic device', raw);
+      return {
+        name: text('mic device name', d.name, 256),
+        state: oneOf('mic device state', MIC_DEVICE_STATES, d.state),
+      };
+    }),
+  };
+}
+
+/** A built-in profile token or a well-formed custom profile id. */
+function profileId(value: unknown): ProfileId {
+  if (typeof value === 'string' && CUSTOM_PROFILE_ID.test(value)) return value as ProfileId;
+  return oneOf('profile', PROFILE_IDS, value);
+}
+
+/** Validates an app reference (`recentApp`, a running app). */
+export function appRef(raw: unknown): AppRefDto {
+  const r = record('app', raw);
+  return { id: text('app id', r.id, MAX_APP_ID), name: text('app name', r.name) };
 }
 
 function record(name: string, value: unknown): Record<string, unknown> {
@@ -369,9 +481,11 @@ function profileDto(raw: unknown): ProfileConfigDto {
     throw new Error('Kivori: invalid buttons.');
   }
   return {
-    id: oneOf('profile', PROFILE_IDS, r.id),
+    id: profileId(r.id),
     name: text('profile name', r.name),
-    apps: r.apps.map((app) => text('app id', app)),
+    custom: bool('custom', r.custom),
+    inPinCycle: bool('inPinCycle', r.inPinCycle),
+    apps: r.apps.map((app) => text('app id', app, MAX_APP_ID)),
     rotate: {
       spec: rotateSpec(rotate.spec),
       deviceLabel: text('device label', rotate.deviceLabel),
@@ -431,6 +545,7 @@ export function parseConfig(raw: unknown): ConfigDto {
     display: {
       defaultView: oneOf('display mode', DISPLAY_MODES, display.defaultView),
       secondaryView: oneOf('display mode', [...DISPLAY_MODES, 'cycle'], display.secondaryView),
+      brightness: brightness(display.brightness),
     },
     buddy: {
       reactions: buddy.reactions,

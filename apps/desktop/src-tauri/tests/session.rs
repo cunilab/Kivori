@@ -780,3 +780,211 @@ fn takeover_byes_are_sent_only_to_a_device_that_negotiated_them() {
         .iter()
         .any(|m| matches!(m, Message::Bye(bye) if bye.reason == ByeReason::FirmwareUpdate)));
 }
+
+fn feedback_kinds(msgs: &[Message]) -> Vec<kivori_model::desk::FeedbackKind> {
+    msgs.iter()
+        .filter_map(|m| match m {
+            Message::Feedback(f) => Some(f.kind),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn triggered_feedback_goes_out_as_unverified_unless_quiet_ack_was_negotiated() {
+    use kivori_model::desk::{ActionFeedback, ActionKind, FeedbackKind};
+    let triggered = ActionFeedback {
+        action: ActionKind::PlayPause,
+        kind: FeedbackKind::Triggered,
+    };
+
+    let base = Capabilities::MASCOT_INTERACTION.union(Capabilities::ACTION_FEEDBACK_V1);
+    let (mut link, mut session, _manager, _orch) = connect_with_caps(SendableState::Idle, base);
+    let _ = desktop_drain(&mut link);
+    assert!(session.send_feedback(&mut link, triggered).expect("send"));
+    assert_eq!(
+        feedback_kinds(&desktop_drain(&mut link)),
+        [FeedbackKind::Unverified],
+        "a device without bit 11 keeps today's Unverified"
+    );
+
+    let caps = base.union(Capabilities::QUIET_ACK_V1);
+    let (mut link, mut session, _manager, _orch) = connect_with_caps(SendableState::Idle, caps);
+    let _ = desktop_drain(&mut link);
+    assert!(session.send_feedback(&mut link, triggered).expect("send"));
+    assert_eq!(
+        feedback_kinds(&desktop_drain(&mut link)),
+        [FeedbackKind::Triggered]
+    );
+}
+
+fn internals_request_session(msgs: &[Message]) -> Option<u32> {
+    msgs.iter().find_map(|m| match m {
+        Message::InternalsRequest(request) => Some(request.session),
+        _ => None,
+    })
+}
+
+fn sample_internals() -> kivori_model::internals::DeviceInternals {
+    kivori_model::internals::DeviceInternals {
+        app_image_bytes: Some(700_000),
+        fps: Some(30),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn internals_are_requested_only_from_a_device_that_negotiated_them() {
+    let (mut link, mut session, _manager, _orch) = connect(SendableState::Idle);
+    let _ = desktop_drain(&mut link);
+    assert!(!session.request_internals(&mut link).expect("request"));
+    assert!(desktop_drain(&mut link).is_empty(), "nothing sent");
+
+    let (mut link, mut session, _manager, _orch) = connect_with_caps(
+        SendableState::Idle,
+        Capabilities::MASCOT_INTERACTION.union(Capabilities::DEVICE_INTERNALS_V1),
+    );
+    let _ = desktop_drain(&mut link);
+    assert!(session.request_internals(&mut link).expect("request"));
+    assert!(internals_request_session(&desktop_drain(&mut link)).is_some());
+}
+
+#[test]
+fn the_latest_internals_reply_is_cached_and_forgotten_with_the_connection() {
+    let (mut link, mut session, mut manager, mut orch) = connect_with_caps(
+        SendableState::Idle,
+        Capabilities::MASCOT_INTERACTION.union(Capabilities::DEVICE_INTERNALS_V1),
+    );
+    let _ = desktop_drain(&mut link);
+    assert_eq!(session.internals(), None);
+    assert!(session.request_internals(&mut link).expect("request"));
+    let nonce = internals_request_session(&desktop_drain(&mut link)).expect("request sent");
+
+    // A snapshot for some other session is dropped unseen.
+    device_push(
+        &mut link,
+        &Message::Internals(kivori_protocol::InternalsReport {
+            session: nonce.wrapping_add(1),
+            internals: sample_internals(),
+        }),
+        wire_version(),
+        1,
+    );
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+    assert_eq!(session.internals(), None);
+
+    device_push(
+        &mut link,
+        &Message::Internals(kivori_protocol::InternalsReport {
+            session: nonce,
+            internals: sample_internals(),
+        }),
+        wire_version(),
+        2,
+    );
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+    assert_eq!(session.internals(), Some(sample_internals()));
+
+    // The device ends the session: the snapshot describes a connection that is gone.
+    device_push(
+        &mut link,
+        &Message::Bye(Bye {
+            reason: ByeReason::Shutdown,
+        }),
+        wire_version(),
+        3,
+    );
+    let _ = session.pump(&mut link, &mut manager, &mut orch);
+    assert_eq!(session.internals(), None);
+}
+
+#[test]
+fn an_unnegotiated_internals_reply_is_ignored() {
+    let (mut link, mut session, mut manager, mut orch) = connect(SendableState::Idle);
+    let _ = desktop_drain(&mut link);
+    device_push(
+        &mut link,
+        &Message::Internals(kivori_protocol::InternalsReport {
+            session: 1,
+            internals: sample_internals(),
+        }),
+        wire_version(),
+        1,
+    );
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+    assert_eq!(session.internals(), None);
+}
+
+fn buddy_settings(msgs: &[Message]) -> Vec<kivori_protocol::BuddySettings> {
+    msgs.iter()
+        .filter_map(|m| match m {
+            Message::BuddySettings(settings) => Some(*settings),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn buddy_settings_go_only_to_a_device_that_runs_idle_life() {
+    let (mut link, mut session, _manager, _orch) = connect(SendableState::Idle);
+    let _ = desktop_drain(&mut link);
+    assert!(!session.supports_idle_life());
+    assert!(!session
+        .send_buddy_settings(&mut link, MascotPersonality::Calm, true, 3)
+        .expect("send"));
+    assert!(desktop_drain(&mut link).is_empty(), "nothing sent");
+
+    let (mut link, mut session, _manager, _orch) = connect_with_caps(
+        SendableState::Idle,
+        Capabilities::MASCOT_INTERACTION.union(Capabilities::IDLE_LIFE_V1),
+    );
+    let _ = desktop_drain(&mut link);
+    assert!(session.supports_idle_life());
+    assert!(session
+        .send_buddy_settings(&mut link, MascotPersonality::Calm, false, 2)
+        .expect("send"));
+    let sent = buddy_settings(&desktop_drain(&mut link));
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].session, session.current_session().unwrap());
+    assert_eq!(sent[0].personality, MascotPersonality::Calm);
+    assert!(!sent[0].self_play);
+    assert_eq!(sent[0].brightness, 2);
+}
+
+#[test]
+fn mic_state_goes_only_to_a_device_that_negotiated_it() {
+    use kivori_model::desk::MicState;
+    let state = MicState {
+        muted: Some(true),
+        in_use: None,
+    };
+    let mics = |msgs: &[Message]| -> Vec<kivori_protocol::MicStateUpdate> {
+        msgs.iter()
+            .filter_map(|m| match m {
+                Message::MicState(update) => Some(*update),
+                _ => None,
+            })
+            .collect()
+    };
+    let (mut link, mut session, _manager, _orch) = connect(SendableState::Idle);
+    let _ = desktop_drain(&mut link);
+    assert!(!session.send_mic_state(&mut link, state).expect("send"));
+    assert!(desktop_drain(&mut link).is_empty(), "nothing sent");
+
+    let (mut link, mut session, _manager, _orch) = connect_with_caps(
+        SendableState::Idle,
+        Capabilities::MASCOT_INTERACTION.union(Capabilities::MIC_STATE_V1),
+    );
+    let _ = desktop_drain(&mut link);
+    assert!(session.send_mic_state(&mut link, state).expect("send"));
+    let sent = mics(&desktop_drain(&mut link));
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].session, session.current_session().unwrap());
+    assert_eq!(sent[0].mic, state);
+}

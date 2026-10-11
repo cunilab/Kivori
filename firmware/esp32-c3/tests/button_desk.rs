@@ -56,7 +56,13 @@ impl Rig {
     fn new() -> Self {
         let bytes: &'static [u8] = Box::leak(compile_default_blob().into_boxed_slice());
         let identity = DeviceIdentity {
-            device_id: [0x42; 16],
+            // Folds to the default idle seed: these tests compare faces at different times, so they
+            // keep the one idle schedule they were written against.
+            device_id: {
+                let mut id = [0; 16];
+                id[..4].copy_from_slice(&kivori_model::mascot::DEFAULT_IDLE_SEED.to_le_bytes());
+                id
+            },
             firmware_version: FirmwareVersion {
                 major: 1,
                 minor: 0,

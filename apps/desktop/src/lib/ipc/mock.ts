@@ -12,12 +12,14 @@ import type {
   AppInfoDto,
   CompanionState,
   ConfigDto,
+  DeviceInternalsDto,
   DiagnosticsDto,
   FirmwareStatusDto,
   OnboardingDto,
   StartupSettingsDto,
   MacroSpec,
   StepSpec,
+  AppRefDto,
   ConnectionStatusDto,
   ControlRef,
   DeskActionToken,
@@ -30,7 +32,7 @@ import type {
   SlotDto,
   SlotSpec,
 } from './types';
-import { COMPANION_STATES, MACRO_LIMITS, PREVIEW_DIM } from './types';
+import { COMPANION_STATES, MACRO_LIMITS, PREVIEW_DIM, PROFILE_LIMITS } from './types';
 
 /// A unique marker string; `scripts/check-mock-excluded.mjs` fails if it appears in a prod bundle.
 export const MOCK_BUILD_SENTINEL = 'kivori-ipc-browser-mock-must-not-ship';
@@ -285,6 +287,7 @@ const connectedDesk: Partial<DeskStatusDto> = connectedScenario()
       cpuPercent: 87,
       highLoad: true,
       lastAction: { action: 'playPause', result: 'unverified', permissionRequired: false },
+      recentApp: { id: 'figma.exe', name: 'Figma' },
     }
   : {};
 
@@ -309,6 +312,13 @@ let deskStatus: DeskStatusDto = {
   mediaTitle: null,
   mediaArtist: null,
   lastAction: null,
+  mic: {
+    muted: 'no',
+    inUse: null,
+    live: false,
+    devices: [{ name: 'Built-in Microphone', state: 'live' }],
+  },
+  recentApp: null,
   ...connectedDesk,
 };
 const deskListeners = new Set<(status: DeskStatusDto) => void>();
@@ -320,6 +330,11 @@ function updateDesk(next: Partial<DeskStatusDto>): void {
 
 export function mockDeskStatus(): DeskStatusDto {
   return deskStatus;
+}
+
+/** Stands in for the person switching to another app: what "add the app in front of me" adds. */
+export function mockSetRecentApp(app: AppRefDto | null): void {
+  updateDesk({ recentApp: app });
 }
 
 /** Stands in for the person using the device: a knob turn, or a press that runs an action. */
@@ -341,6 +356,7 @@ const ACTION_TOKENS: Record<ActionSpec['kind'], DeskActionToken> = {
   previousTrack: 'previousTrack',
   nextTrack: 'nextTrack',
   systemMute: 'mute',
+  micMute: 'micMute',
   appMute: 'appMute',
   shortcut: 'shortcut',
   launch: 'launch',
@@ -363,11 +379,26 @@ export function mockTestAction(action: ActionSpec): void {
   const unsupported = action.kind === 'appMute' && scenario() === 'mac';
   const result = unsupported
     ? 'error'
-    : action.kind === 'systemMute' || action.kind === 'appMute'
+    : action.kind === 'systemMute' || action.kind === 'micMute' || action.kind === 'appMute'
       ? 'stateConfirmed'
       : action.kind === 'launch'
         ? 'executionConfirmed'
         : 'unverified';
+  if (action.kind === 'micMute') {
+    const muted = deskStatus.mic.muted !== 'yes';
+    const devices = deskStatus.mic.devices.map((d) => ({
+      ...d,
+      state: muted ? ('muted' as const) : ('live' as const),
+    }));
+    updateDesk({
+      mic: {
+        ...deskStatus.mic,
+        muted: muted ? 'yes' : 'no',
+        live: !muted && deskStatus.mic.inUse === true,
+        devices,
+      },
+    });
+  }
   updateDesk({
     muted: action.kind === 'systemMute' ? !deskStatus.muted : deskStatus.muted,
     lastAction: { action: ACTION_TOKENS[action.kind], result, permissionRequired: false },
@@ -425,6 +456,7 @@ export function mockListActionCatalog(): ActionCatalogEntryDto[] {
     catalogEntry('previousTrack', 'discrete', 'media', 'unverified', 'none', true),
     catalogEntry('nextTrack', 'discrete', 'media', 'unverified', 'none', true),
     catalogEntry('systemMute', 'discrete', 'system', 'confirmed', 'none', true),
+    catalogEntry('micMute', 'discrete', 'system', 'confirmed', 'none', true),
     catalogEntry('appMute', 'discrete', 'app', 'confirmed', 'app', true, appUnsupported),
     catalogEntry('shortcut', 'discrete', 'keyboard', 'unverified', 'shortcut', false),
     catalogEntry('launch', 'discrete', 'launch', 'started', 'target', false),
@@ -445,6 +477,8 @@ function actionLabel(action: ActionSpec | null): string {
     case 'systemMute':
     case 'appMute':
       return 'Mute';
+    case 'micMute':
+      return 'Mic';
     case 'shortcut':
       return action.keys;
     case 'launch':
@@ -476,6 +510,14 @@ const mediaButtons: ProfileConfigDto['buttons'] = [
   { press: slot(media), hold: 'pin' },
   { press: slot({ kind: 'nextTrack' }), hold: slot(null) },
 ];
+/** The meeting profiles: the left button mutes the OS microphones, the others are the app's keys. */
+const meetingButtons = (
+  buttons: [[string, string], [string, string]],
+): ProfileConfigDto['buttons'] => [
+  { press: slot({ kind: 'micMute' }), hold: slot(null) },
+  { press: slot(key(buttons[0][1]), buttons[0][0]), hold: 'pin' },
+  { press: slot(key(buttons[1][1]), buttons[1][0]), hold: slot(null) },
+];
 const shortcutButtons = (
   buttons: [[string, string], [string, string], [string, string]],
 ): ProfileConfigDto['buttons'] => [
@@ -493,6 +535,8 @@ function builtin(
   return {
     id,
     name,
+    custom: false,
+    inPinCycle: true,
     apps,
     rotate: {
       spec: rotate,
@@ -523,7 +567,18 @@ function builtinProfiles(): ProfileConfigDto[] {
     builtin(
       'code',
       'Code',
-      ['code.exe'],
+      [
+        'code.exe',
+        'cursor.exe',
+        'devenv.exe',
+        'idea64.exe',
+        'pycharm64.exe',
+        'webstorm64.exe',
+        'goland64.exe',
+        'clion64.exe',
+        'rider64.exe',
+        'rustrover64.exe',
+      ],
       shortcutButtons([
         ['Terminal', 'Ctrl+`'],
         ['Run', 'F5'],
@@ -535,8 +590,7 @@ function builtinProfiles(): ProfileConfigDto[] {
       'zoom',
       'Zoom',
       ['zoom.exe'],
-      shortcutButtons([
-        ['Mic', 'Alt+A'],
+      meetingButtons([
         ['Video', 'Alt+V'],
         ['Leave', 'Alt+Q'],
       ]),
@@ -545,8 +599,7 @@ function builtinProfiles(): ProfileConfigDto[] {
       'teams',
       'Teams',
       ['ms-teams.exe', 'teams.exe'],
-      shortcutButtons([
-        ['Mic', 'Ctrl+Shift+M'],
+      meetingButtons([
         ['Video', 'Ctrl+Shift+O'],
         ['Leave', 'Ctrl+Shift+H'],
       ]),
@@ -561,7 +614,7 @@ function defaultConfig(): ConfigDto {
     notice: null,
     profiles: builtinProfiles(),
     macros: [],
-    display: { defaultView: 'buddy', secondaryView: 'system' },
+    display: { defaultView: 'buddy', secondaryView: 'system', brightness: 5 },
     buddy: { reactions: true, intensity: 'normal' },
   };
 }
@@ -654,6 +707,44 @@ export function mockGetDiagnostics(): DiagnosticsDto {
   };
 }
 
+/** Under `?mock=connected`, a plausible snapshot with the temperature left unavailable. */
+export function mockGetDeviceInternals(): DeviceInternalsDto {
+  const connected = connectedScenario();
+  const seconds = Math.floor((Date.now() - mockStartedAt) / 1000);
+  return {
+    connected,
+    supported: connected,
+    snapshot: connected
+      ? {
+          appImageBytes: 742_880,
+          appPartitionBytes: 4_128_768,
+          assetBlobBytes: 61_440,
+          assetBlobCapBytes: 131_072,
+          flashTotalBytes: 4_194_304,
+          ramTotalBytes: 320_512,
+          ramStaticBytes: 125_600,
+          ramFreeBytes: 188_000,
+          stackFreeMinBytes: 190_400,
+          busyPercent: 12 + (seconds % 5),
+          composeMs: 6,
+          flushMs: 21,
+          fps: 30,
+          chipModel: 'esp32c3',
+          chipRevision: { major: 0, minor: 4 },
+          temperatureDeciCelsius: null,
+          uptimeMs: 3_723_000 + seconds * 1000,
+          resetReason: 'powerOn',
+          edgeQueueHighWater: 6,
+          droppedEdges: 0,
+          invalidTransitions: 0,
+          framesIn: 3_910 + seconds,
+          framesOut: 7_802 + seconds * 2,
+          framesRejected: 0,
+        }
+      : null,
+  };
+}
+
 export function mockGetConfig(): ConfigDto {
   return config;
 }
@@ -669,11 +760,29 @@ export function mockSetDisplaySettings(
   }
   const moved = defaultView !== config.display.defaultView;
   const saved = saveConfig(
-    { display: { defaultView, secondaryView }, buddy: config.buddy, profiles: config.profiles },
+    {
+      display: { defaultView, secondaryView, brightness: config.display.brightness },
+      buddy: config.buddy,
+      profiles: config.profiles,
+    },
     null,
   );
   if (moved) updateDesk({ mode: defaultView });
   return saved;
+}
+
+export function mockSetBrightness(step: number): ConfigDto {
+  if (!Number.isInteger(step) || step < 1 || step > 5) {
+    throw new Error('unknown brightness step');
+  }
+  return saveConfig(
+    {
+      display: { ...config.display, brightness: step },
+      buddy: config.buddy,
+      profiles: config.profiles,
+    },
+    null,
+  );
 }
 
 export function mockSetBuddySettings(reactions: boolean, intensity: Intensity): ConfigDto {
@@ -686,7 +795,7 @@ export function mockSetBuddySettings(reactions: boolean, intensity: Intensity): 
 export function mockResetConfig(): ConfigDto {
   const fresh = defaultConfig();
   const saved = saveConfig(fresh, null);
-  updateDesk({ mode: fresh.display.defaultView });
+  updateDesk({ mode: fresh.display.defaultView, profileId: 'general', profile: null });
   syncDesk();
   return saved;
 }
@@ -737,14 +846,19 @@ function mockAction(action: ActionSpec): ActionSpec {
 
 function editProfile(
   id: ProfileId,
+  resetting: boolean,
   edit: (profile: ProfileConfigDto, builtin: ProfileConfigDto) => void,
 ): ConfigDto {
-  const original = builtinProfiles().find((p) => p.id === id);
-  if (!original) throw new Error('unknown profile');
   const profiles = structuredClone(config.profiles);
   const profile = profiles.find((p) => p.id === id);
   if (!profile) throw new Error('unknown profile');
+  const original = builtinProfiles().find((p) => p.id === id) ?? profile;
+  if (profile.custom && resetting) {
+    throw new Error('a custom profile is reset as a whole, back to General');
+  }
   edit(profile, original);
+  // A custom profile holds every slot, so none of them reads as changed.
+  if (profile.custom) clearOverridden(profile);
   const saved = saveConfig({ display: config.display, buddy: config.buddy, profiles }, null);
   syncDesk();
   return saved;
@@ -761,7 +875,7 @@ export function mockSetBinding(
     action: slot.action && mockAction(slot.action),
     label: slot.action && slot.label ? mockLabel(slot.label) : null,
   };
-  return editProfile(profile, (target, builtin) => {
+  return editProfile(profile, !next, (target, builtin) => {
     const place = (get: (p: ProfileConfigDto) => SlotDto, put: (d: SlotDto) => void) => {
       put(
         next
@@ -810,7 +924,7 @@ function slotOf(action: ActionSpec | null, label: string | null): SlotDto {
 }
 
 export function mockSetRotate(profile: ProfileId, rotate: RotateSpec | null): ConfigDto {
-  return editProfile(profile, (target, builtin) => {
+  return editProfile(profile, !rotate, (target, builtin) => {
     if (!rotate) {
       target.rotate = structuredClone(builtin.rotate);
       return;
@@ -925,10 +1039,175 @@ export function mockDeleteMacro(id: string): ConfigDto {
   );
 }
 
+function clearOverridden(profile: ProfileConfigDto): void {
+  const slots = [profile.press, profile.hold];
+  for (const b of profile.buttons) slots.push(b.press, ...(b.hold === 'pin' ? [] : [b.hold]));
+  for (const slot of slots) slot.overridden = false;
+  profile.rotate.overridden = false;
+}
+
+/** The bindings a custom profile starts with: General's as they are now. */
+function copyOfGeneral(): Pick<ProfileConfigDto, 'rotate' | 'press' | 'hold' | 'buttons'> {
+  const { rotate, press, hold, buttons } = structuredClone(config.profiles[0]);
+  const copy = { rotate, press, hold, buttons };
+  clearOverridden({ ...config.profiles[0], ...copy });
+  return copy;
+}
+
+/** A built-in goes back to its built-in bindings and app list (apps another profile holds stay
+ *  there; apps it had been given return to where they would match); a custom profile goes back to
+ *  a fresh copy of General's bindings, keeping its name and apps. */
 export function mockResetProfile(profile: ProfileId): ConfigDto {
-  return editProfile(profile, (target, builtin) => {
-    Object.assign(target, structuredClone(builtin));
+  const target = config.profiles.find((p) => p.id === profile);
+  if (!target) throw new Error('unknown profile');
+  if (target.custom) {
+    const profiles = structuredClone(config.profiles);
+    const fresh = copyOfGeneral();
+    Object.assign(profiles.find((p) => p.id === profile) ?? {}, fresh);
+    return saveConfig({ display: config.display, buddy: config.buddy, profiles }, null);
+  }
+  const profiles = structuredClone(config.profiles);
+  const mine = profiles.find((p) => p.id === profile) as ProfileConfigDto;
+  const original = builtinProfiles().find((p) => p.id === profile) as ProfileConfigDto;
+  const given = mine.apps.filter((app) => !original.apps.includes(app));
+  const heldElsewhere = (app: string): boolean =>
+    profiles.some((p) => p.id !== profile && p.apps.includes(app));
+  Object.assign(mine, {
+    ...structuredClone(original),
+    apps: original.apps.filter((app) => !heldElsewhere(app)),
   });
+  returnApps(profiles, given);
+  const saved = saveConfig({ display: config.display, buddy: config.buddy, profiles }, null);
+  syncDesk();
+  return saved;
+}
+
+/** Apps no profile holds any more go back to the built-in profile that lists them. */
+function returnApps(profiles: ProfileConfigDto[], apps: string[]): void {
+  for (const app of apps) {
+    if (profiles.some((p) => p.apps.includes(app))) continue;
+    const owner = builtinProfiles().find((p) => p.apps.includes(app));
+    profiles.find((p) => p.id === owner?.id)?.apps.push(app);
+  }
+}
+
+function mockProfileName(name: string): string {
+  const text = name.trim();
+  if (!text) throw new Error('a profile name cannot be empty');
+  if ([...text].length > PROFILE_LIMITS.nameMax) {
+    throw new Error('a profile name is at most 32 characters');
+  }
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(text)) {
+    throw new Error('a profile name cannot hold control characters');
+  }
+  return text;
+}
+
+/** A profile name for an app: its display name cut to the panel's limit with an ellipsis, or the
+ *  app id without `.exe`. */
+function nameForApp(name: string, app: string): string {
+  const flat = (text: string): string => text.split(/\s+/).filter(Boolean).join(' ');
+  const chosen = flat(name) || flat(app.replace(/\.exe$/, ''));
+  const chars = [...chosen];
+  return chars.length > PROFILE_LIMITS.nameMax
+    ? `${chars.slice(0, PROFILE_LIMITS.nameMax - 1).join('')}\u2026`
+    : chosen;
+}
+
+function mockAppKey(app: string): string {
+  const id = app.trim().toLowerCase();
+  if (!id) throw new Error('an app cannot be empty');
+  if (id.length > 128) throw new Error('an app is at most 128 characters');
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f/\\]/.test(id)) throw new Error('an app is a name, not a path');
+  return id;
+}
+
+/** Moves `app` into `profiles[target]`, out of every other; General simply holds what no one does,
+ *  and a built-in app moved to General leaves its built-in profile. */
+function moveApp(profiles: ProfileConfigDto[], target: ProfileId, app: string): void {
+  const into = profiles.find((p) => p.id === target);
+  if (!into) throw new Error('unknown profile');
+  for (const p of profiles) p.apps = p.apps.filter((a) => a !== app);
+  if (target === 'general') return;
+  if (into.apps.length >= PROFILE_LIMITS.apps) throw new Error('a profile lists at most 32 apps');
+  into.apps.push(app);
+}
+
+export function mockAssignApp(profile: ProfileId, appId: string): ConfigDto {
+  const profiles = structuredClone(config.profiles);
+  moveApp(profiles, profile, mockAppKey(appId));
+  return saveConfig({ display: config.display, buddy: config.buddy, profiles }, null);
+}
+
+export function mockAddCustomProfile(appId: string, name: string): ConfigDto {
+  const app = mockAppKey(appId);
+  const profiles = structuredClone(config.profiles);
+  if (profiles.filter((p) => p.custom).length >= PROFILE_LIMITS.customProfiles) {
+    throw new Error('at most 16 custom profiles');
+  }
+  let n = 1;
+  while (profiles.some((p) => p.id === `custom-${n}`)) n += 1;
+  const id: ProfileId = `custom-${n}`;
+  profiles.push({
+    id,
+    name: mockProfileName(nameForApp(name, app)),
+    custom: true,
+    inPinCycle: false,
+    apps: [],
+    ...copyOfGeneral(),
+  });
+  moveApp(profiles, id, app);
+  return saveConfig({ display: config.display, buddy: config.buddy, profiles }, null);
+}
+
+function mockCustom(profiles: ProfileConfigDto[], id: ProfileId, what: string): ProfileConfigDto {
+  const found = profiles.find((p) => p.id === id);
+  if (!found) throw new Error('unknown profile');
+  if (!found.custom) throw new Error(what);
+  return found;
+}
+
+export function mockRenameProfile(profile: ProfileId, name: string): ConfigDto {
+  const profiles = structuredClone(config.profiles);
+  const target = mockCustom(profiles, profile, 'a built-in profile keeps its name');
+  target.name = mockProfileName(name);
+  return saveConfig({ display: config.display, buddy: config.buddy, profiles }, null);
+}
+
+export function mockSetProfilePinCycle(profile: ProfileId, enabled: boolean): ConfigDto {
+  const profiles = structuredClone(config.profiles);
+  mockCustom(profiles, profile, 'a built-in profile is always in the pin cycle').inPinCycle =
+    enabled;
+  return saveConfig({ display: config.display, buddy: config.buddy, profiles }, null);
+}
+
+export function mockDeleteProfile(profile: ProfileId): ConfigDto {
+  const profiles = structuredClone(config.profiles);
+  const target = mockCustom(profiles, profile, 'a built-in profile cannot be deleted');
+  const rest = profiles.filter((p) => p !== target);
+  returnApps(rest, target.apps);
+  const saved = saveConfig({ display: config.display, buddy: config.buddy, profiles: rest }, null);
+  if (deskStatus.profileId === profile) updateDesk({ profileId: 'general', profile: null });
+  syncDesk();
+  return saved;
+}
+
+/** The apps with a window open in the browser preview. */
+export function mockListRunningApps(): AppRefDto[] {
+  return [
+    { id: 'chrome.exe', name: 'Chrome' },
+    { id: 'figma.exe', name: 'Figma' },
+    { id: 'idea64.exe', name: 'IntelliJ IDEA' },
+    { id: 'obs64.exe', name: 'OBS Studio' },
+  ];
+}
+
+/** The preview has no icons: every app shows its letter. */
+export function mockGetAppIcon(appId: string): string | null {
+  void appId;
+  return null;
 }
 
 export function mockOnConfigChanged(handler: (config: ConfigDto) => void): () => void {
