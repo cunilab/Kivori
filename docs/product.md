@@ -49,7 +49,7 @@ evidence (see [roadmap.md](roadmap.md#m4-v1)).
 - macOS support (including Accessibility permission handling) and parity with Windows.
 - Call indicators; GPU temperature and custom sources.
 - App-free basic controls (volume, media) on the v1 controller, when no Kivori Desktop session
-  exists ([ADR-0010](architecture.md#7-decisions), proposed).
+  exists ([ADR-0010](./adr/0010-v1-controller-with-native-usb.md), proposed).
 - Display idle and burn-in protection beyond the basics.
 - `Update All` in one step; update channels; rollback-safe (A/B) firmware install; macOS
   auto-update.
