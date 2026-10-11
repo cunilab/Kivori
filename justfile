@@ -149,10 +149,11 @@ app:
 # DEV ONLY (M3 S7; docs/provisioning.md): flash the freshly built firmware onto the ONE plugged-in
 # unit, check the link and controls, print PASS/FAIL and append to provisioning-log.csv.
 
-# Provision and QA one Kivori unit (builds the firmware first).
-provision:
+# Provision and QA one Kivori unit (builds the firmware first). Optional identity record:
+# `just provision --product desk-buddy --board c3-supermini --rev 1 [--burn-identity]` (docs/provisioning.md).
+provision *args:
     just fw-build
-    KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/desk-buddy/target/riscv32imc-unknown-none-elf/release/kivori-firmware" cargo run -p kivori-desktop --example provision
+    KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/desk-buddy/target/riscv32imc-unknown-none-elf/release/kivori-firmware" cargo run -p kivori-desktop --example provision -- {{args}}
 
 # ---- website (apps/web; Next.js on Cloudflare Workers via OpenNext) ----
 
