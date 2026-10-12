@@ -289,6 +289,7 @@ The webview may call only these commands and listen to these events. No command 
 | `get_diagnostics` | None; returns `DiagnosticsDto` (see Diagnostics) | all |
 | `get_device_internals` | None; asks the device for a snapshot and returns `DeviceInternalsDto` (see Device internals) | all |
 | `get_firmware_status`, `flash_firmware`, `restore_firmware` | Firmware update status, update request and recovery request (no port or path; `restore_firmware` takes an optional product id, only after the status asked the user to choose) | all |
+| `get_firmware_offer`, `accept_firmware_offer`, `dismiss_firmware_offer` | The firmware update offer (`FirmwareOfferDto`, `firmware://offer`), "Update now" (queues the same flash as `flash_firmware`) and "Later" (optional offers only); see Firmware flashing from the app | all |
 | `render_preview_frame`, `open_preview_stream`, `update_preview_stream`, `ack_preview_frame`, `close_preview_stream` | Native-rendered RGBA frames for Device Studio | `device-studio` only |
 | `mirror_state` | Dev-labelled `set_desired_state` | `device-studio` only |
 | `get_desk_status` | Display mode, monitored values (`null` = unknown), Press/Hold bindings, last action outcome | all |
@@ -306,6 +307,8 @@ The webview may call only these commands and listen to these events. No command 
 | `startup://changed` | `StartupSettingsDto` | After launch at login changes, from the tray item or `set_launch_at_login` (the OS entry's state) |
 | `updater://status` | `UpdateStatusDto` | Any updater state change (throttled to about 7 per second while downloading) |
 | `updater://show` | none | The tray's "Update to vX.Y.Z…" was clicked: show the update dialog |
+| `firmware://offer` | `FirmwareOfferDto` | The firmware update offer changed |
+| `firmware://show-offer` | none | The tray's "Update Kivori firmware…" was clicked: show the firmware offer dialog |
 
 - Events are small JSON. Frame bytes travel as raw RGBA8888 (240x240, no JSON or base64) through a `tauri::ipc::Response` or a `Channel<ArrayBuffer>`. The canvas only blits. RGB565 to RGBA happens in Rust.
 - Dev-only commands are compiled out of release builds, and so is the Device Studio route.
@@ -489,6 +492,13 @@ On a normal launch the main window stays hidden and `setup` starts a watcher thr
 - `FirmwareStatusDto`: `available`, `phase` (`idle, preparing, flashing, reconnecting, succeeded, failed`), `message`, `imageSize`. The UI polls it every 750 ms. Timeouts: flash 90 s, reconnect 20 s.
 - Embedding: `scripts/build-desktop-firmware.ps1` builds the firmware release ELF with `physical-st7789`, then builds the desktop with it embedded. For other pipelines set `KIVORI_FIRMWARE_PATH`. The build rejects a non-RISC-V or non-ELF32 image. A host build without the variable disables the action, so a stale artifact cannot slip in.
 - `espflash` is the pinned sidecar shipped in the installer (dev builds may use one on `PATH`). Mirror to device sends a state command only. It does not install anything.
+- The offer (M2.7, `src/firmware_offer.rs`, pure): the device thread evaluates it every tick from the connection, the session identity, the bundled image's identity record, the updater state and whether a flash or knob gesture runs, and publishes `FirmwareOfferDto` (`kind`: `none | offerOptional | required | updateApp | deferredForAppUpdate`; product name, `from` and `to` versions, required `reason`: `protocolTooOld | missingCapabilities`, and an opaque `key`) on `firmware://offer`. Rules:
+  - Only the bundled image whose record names the device's product and board counts, compared with `update_advice`. An unknown or foreign product, or an identity not yet reported, gets `none`; the flash guard (`wrongProduct`) still decides what may be written.
+  - The question (`offerOptional`, `required`) appears only after the connection has been idle (no gesture, no flash) for 5 s; once shown, a gesture does not take it away. A flash always makes it `none`.
+  - App first: while the updater holds, offers, downloads or is about to install an app update (`Machine::app_update_due`), a question becomes `deferredForAppUpdate`; the new app may bundle newer firmware. The tray then shows only the app item, and the dialog never opens by itself while an app update is offered.
+  - Keyed by short device hash, bundled version and connection generation. "Later" (`dismiss_firmware_offer`, optional offers only) hides that key; the next connect is a new key and asks again. The memory is per run, not stored: a restart is a new connect, so "Later" never skips for good.
+  - `required`: an incompatible handshake with an older (or unknown) protocol major, or a connected device older than the bundled firmware that lacks a capability the catalog requires of its product. It has "Update now" and "Not now", which only closes the dialog. An incompatible device's "Update now" takes the restore path, like Flash firmware does. A device newer than the app (newer firmware, or a newer protocol major) is `updateApp`: the Device page says to update the app and, when an app update is offered, links to its dialog.
+  - "Update now" (`accept_firmware_offer`) queues the ordinary `FlashFirmware` (takeover screen, phases, verification); `features/updates/FirmwareOfferDialog.tsx` follows `get_firmware_status` until `succeeded` or `failed`. The tray shows "Update Kivori firmware…" while a question is open and no app update is offered; it opens the window on the dialog (`firmware://show-offer`). Activity: `firmwareOfferShown` (once per key), `firmwareOfferAccepted`, `firmwareOfferLater`, all without metadata.
 
 ### Release pipeline (M3 S5)
 

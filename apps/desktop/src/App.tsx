@@ -51,6 +51,7 @@ import { DisplayPage } from './features/display/DisplayPage';
 import { migrateLegacyBuddy } from './features/display/legacy-buddy';
 import { HomePage } from './features/home/HomePage';
 import { Onboarding } from './features/onboarding/Onboarding';
+import { FirmwareOfferDialog } from './features/updates/FirmwareOfferDialog';
 import { UpdateDialog } from './features/updates/UpdateDialog';
 import { useOnboarding } from './features/onboarding/use-onboarding';
 import {
@@ -244,6 +245,7 @@ export function App(): ReactElement {
           onComplete={onboarding.complete}
         />
         <UpdateDialog />
+        <FirmwareOfferDialog />
         <Toaster theme={resolvedTheme} position="bottom-right" richColors closeButton />
       </TooltipProvider>
     );
@@ -339,6 +341,7 @@ export function App(): ReactElement {
         </SidebarInset>
       </SidebarProvider>
       <UpdateDialog />
+      <FirmwareOfferDialog />
       <Toaster theme={resolvedTheme} position="bottom-right" richColors closeButton />
     </TooltipProvider>
   );

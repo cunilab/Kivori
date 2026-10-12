@@ -134,6 +134,12 @@ pub enum ActivityEventKind {
     AppUpdateInstallStarted,
     /// The update could not be downloaded, verified or started; nothing was installed.
     AppUpdateInstallFailed,
+    /// The firmware update offer (optional or required) was shown for the connected device.
+    FirmwareOfferShown,
+    /// The user chose "Update now" on the firmware offer; the ordinary flash follows.
+    FirmwareOfferAccepted,
+    /// The user chose "Later" on the firmware offer; it is asked again on the next connect.
+    FirmwareOfferLater,
 }
 
 /// Closed severity vocabulary for native activity.
@@ -468,6 +474,21 @@ impl ActivityEventKind {
                 severity: ActivitySeverity::Error,
                 source: ActivitySource::Update,
                 outcome: ActivityOutcome::Failed,
+            },
+            Self::FirmwareOfferShown => ActivityClassification {
+                severity: ActivitySeverity::Info,
+                source: ActivitySource::Firmware,
+                outcome: ActivityOutcome::Available,
+            },
+            Self::FirmwareOfferAccepted => ActivityClassification {
+                severity: ActivitySeverity::Info,
+                source: ActivitySource::Firmware,
+                outcome: ActivityOutcome::Started,
+            },
+            Self::FirmwareOfferLater => ActivityClassification {
+                severity: ActivitySeverity::Info,
+                source: ActivitySource::Firmware,
+                outcome: ActivityOutcome::Observed,
             },
         }
     }
@@ -975,6 +996,13 @@ fn summary_for(kind: ActivityEventKind, metadata: Option<&ActivityMetadata>) -> 
         }
         (ActivityEventKind::AppUpdateInstallFailed, _) => {
             "The app update failed; nothing was installed.".to_string()
+        }
+        (ActivityEventKind::FirmwareOfferShown, _) => "Offered a firmware update.".to_string(),
+        (ActivityEventKind::FirmwareOfferAccepted, _) => {
+            "Firmware update accepted.".to_string()
+        }
+        (ActivityEventKind::FirmwareOfferLater, _) => {
+            "Firmware update postponed until the next connect.".to_string()
         }
     }
 }

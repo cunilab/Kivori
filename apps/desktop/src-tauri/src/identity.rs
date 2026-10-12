@@ -5,6 +5,7 @@
 //! Numbers resolve only through [`Catalog::by_wire`]; an unknown number is shown as such and never
 //! guessed into a known product.
 
+use kivori_model::Capabilities;
 use kivori_protocol::{Identity, IdentitySource as WireSource};
 
 use crate::catalog::{Board, Catalog, Product, UsbId};
@@ -139,6 +140,37 @@ fn names(catalog: &Catalog, product: u16, board: u16) -> (String, String) {
 fn label(catalog: &Catalog, product: u16, board: u16) -> String {
     let (product, board) = names(catalog, product, board);
     format!("{product} on {board}")
+}
+
+/// Every capability name the catalog may require, with its flag.
+pub const CAPABILITY_NAMES: [(&str, Capabilities); 11] = [
+    ("MASCOT_INTERACTION", Capabilities::MASCOT_INTERACTION),
+    ("PHYSICAL_INPUT_V1", Capabilities::PHYSICAL_INPUT_V1),
+    ("PRESENTATION_V1", Capabilities::PRESENTATION_V1),
+    ("BUTTON_INPUT_V1", Capabilities::BUTTON_INPUT_V1),
+    ("DESK_STATUS_V1", Capabilities::DESK_STATUS_V1),
+    ("ACTION_FEEDBACK_V1", Capabilities::ACTION_FEEDBACK_V1),
+    ("DOUBLE_PRESS_V1", Capabilities::DOUBLE_PRESS_V1),
+    ("MEDIA_INFO_V1", Capabilities::MEDIA_INFO_V1),
+    ("CONTROL_LABELS_V1", Capabilities::CONTROL_LABELS_V1),
+    ("CONTEXT_BUTTONS_V1", Capabilities::CONTEXT_BUTTONS_V1),
+    ("HOST_TAKEOVERS_V1", Capabilities::HOST_TAKEOVERS_V1),
+];
+
+/// Whether a device lacks a capability the catalog requires of its product. Such a device cannot
+/// work fully with this app, so its firmware update is a required one. A product the catalog does
+/// not know requires nothing here (it is never offered firmware anyway).
+#[must_use]
+pub fn missing_required_capabilities(identity: &DeviceIdentity, negotiated: Capabilities) -> bool {
+    let Some((product, _)) = identity.resolve() else {
+        return false;
+    };
+    product.required_capabilities.iter().any(|name| {
+        CAPABILITY_NAMES
+            .iter()
+            .find(|(known, _)| known == name)
+            .is_some_and(|(_, flag)| !negotiated.contains(*flag))
+    })
 }
 
 /// Why an image was refused for a device: both names, for the UI.

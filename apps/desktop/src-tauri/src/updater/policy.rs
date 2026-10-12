@@ -407,6 +407,14 @@ impl Machine {
         self.held.is_some()
     }
 
+    /// Whether an app update comes before any firmware offer: one is offered (or failed and
+    /// waiting for "Try again" or "Later"), downloading, about to restart, or held until the device
+    /// is idle. The new app may bundle newer firmware, so the firmware offer waits for it.
+    #[must_use]
+    pub const fn app_update_due(&self) -> bool {
+        self.held.is_some() || self.state.release().is_some()
+    }
+
     /// Starts a check. Only from `idle`: an open offer or a running install is left alone.
     pub fn begin_check(&mut self) -> bool {
         if self.state != UpdateState::Idle {

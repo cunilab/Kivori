@@ -13,6 +13,7 @@ pub mod desk;
 pub mod device;
 pub mod firmware;
 pub mod firmware_marker;
+pub mod firmware_offer;
 pub mod identity;
 pub mod input;
 pub mod ipc;
@@ -84,6 +85,8 @@ pub fn run() {
             ));
             let services = desk::catalog::ServicesCell::default();
             let knob_gesture = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let firmware_offer =
+                std::sync::Arc::new(std::sync::Mutex::new(firmware_offer::OfferTracker::new()));
             let auto_update_check = config_store.file().updates.auto_check;
             let device_thread = runtime::device_task::spawn(
                 app.handle().clone(),
@@ -98,6 +101,7 @@ pub fn run() {
                 std::sync::Arc::clone(&cancel),
                 resolved,
                 std::sync::Arc::clone(&knob_gesture),
+                std::sync::Arc::clone(&firmware_offer),
             );
             app.manage(
                 runtime::state::AppState::new_with_firmware(
@@ -112,6 +116,7 @@ pub fn run() {
                 .with_desk_status(desk_status)
                 .with_diagnostics(diagnostics)
                 .with_services(services)
+                .with_firmware_offer(firmware_offer)
                 .with_config(std::sync::Arc::new(std::sync::Mutex::new(config_store))),
             );
             // After the device thread exists, so the first lock or sleep notice has a reader.
@@ -187,6 +192,9 @@ pub fn run() {
         ipc::commands::snooze_update,
         ipc::commands::skip_update_version,
         ipc::commands::set_auto_update_check,
+        ipc::commands::get_firmware_offer,
+        ipc::commands::accept_firmware_offer,
+        ipc::commands::dismiss_firmware_offer,
         ipc::channels::open_preview_stream,
         ipc::channels::close_preview_stream,
         ipc::channels::ack_preview_frame,
@@ -242,6 +250,9 @@ pub fn run() {
         ipc::commands::snooze_update,
         ipc::commands::skip_update_version,
         ipc::commands::set_auto_update_check,
+        ipc::commands::get_firmware_offer,
+        ipc::commands::accept_firmware_offer,
+        ipc::commands::dismiss_firmware_offer,
     ]);
 
     updater::register(builder, updates)

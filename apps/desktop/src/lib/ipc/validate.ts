@@ -34,6 +34,8 @@ import {
   STARTUP_PLATFORMS,
   UPDATE_DISABLED_REASONS,
   UPDATE_STATES,
+  FIRMWARE_OFFER_KINDS,
+  FIRMWARE_REQUIRED_REASONS,
   INTENSITIES,
   MASCOT_ACTIONS,
   MEDIA_STATUSES,
@@ -57,6 +59,7 @@ import type {
   OnboardingDto,
   StartupSettingsDto,
   UpdateStatusDto,
+  FirmwareOfferDto,
   MacroSpec,
   StepSpec,
   DeskStatusDto,
@@ -235,6 +238,27 @@ export function parseUpdateStatus(raw: unknown): UpdateStatusDto {
             total: countOrNull('total', progress.total ?? null),
           }
         : null,
+  };
+}
+
+/**
+ * Validates a `FirmwareOfferDto`. Unknown kinds or reasons are rejected, and a question
+ * (`offerOptional`, `required`) must carry its key and versions.
+ */
+export function parseFirmwareOffer(raw: unknown): FirmwareOfferDto {
+  const r = record('firmware offer', raw);
+  const kind = oneOf('firmware offer kind', FIRMWARE_OFFER_KINDS, r.kind);
+  const asks = kind === 'offerOptional' || kind === 'required';
+  return {
+    kind,
+    product: asks ? textOrNull('offer product', r.product ?? null) : null,
+    from: kind === 'offerOptional' ? text('offer from', r.from, 64) : null,
+    to: asks ? text('offer to', r.to, 64) : null,
+    reason:
+      kind === 'required'
+        ? oneOf('firmware required reason', FIRMWARE_REQUIRED_REASONS, r.reason)
+        : null,
+    key: asks ? text('offer key', r.key, 256) : null,
   };
 }
 

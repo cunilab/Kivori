@@ -16,8 +16,10 @@ use crate::activity::{ActivityEvent, ActivityEventKind, ActivityLog};
 use crate::config::{ConfigStore, ResolvedConfig};
 use crate::desk::catalog::ServicesCell;
 use crate::firmware::{self, FirmwarePhase, FirmwareStatus};
+use crate::firmware_offer::OfferTracker;
 use crate::ipc::dto::{
     self, ConfigDto, ConnectionStatusDto, DeskStatusDto, DiagnosticsDto, DiagnosticsSnapshot,
+    FirmwareOfferDto,
 };
 use crate::platform;
 use crate::platform::host_events::{HostEventsGuard, HostSignal};
@@ -90,6 +92,8 @@ pub struct AppState {
     pub config: Arc<Mutex<ConfigStore>>,
     /// Latest safe firmware-update status, written only by the device thread.
     pub firmware_status: Arc<Mutex<FirmwareStatus>>,
+    /// The firmware update offer: decided by the device thread each tick, answered by commands.
+    pub firmware_offer: Arc<Mutex<OfferTracker>>,
     /// Latest raw diagnostics figures, written by the device thread about once a second.
     pub diagnostics: Arc<Mutex<DiagnosticsSnapshot>>,
     /// Latest host-service availability for the action catalog, written by the device thread.
@@ -146,6 +150,7 @@ impl AppState {
             activity_log,
             config: Arc::new(Mutex::new(ConfigStore::detached())),
             firmware_status,
+            firmware_offer: Arc::new(Mutex::new(OfferTracker::new())),
             diagnostics: Arc::new(Mutex::new(DiagnosticsSnapshot::initial())),
             services: ServicesCell::default(),
             lifecycle: Mutex::new(WindowLifecycle::new()),
@@ -168,6 +173,13 @@ impl AppState {
     #[must_use]
     pub fn with_diagnostics(mut self, diagnostics: Arc<Mutex<DiagnosticsSnapshot>>) -> Self {
         self.diagnostics = diagnostics;
+        self
+    }
+
+    /// Shares the firmware offer tracker the device thread evaluates.
+    #[must_use]
+    pub fn with_firmware_offer(mut self, firmware_offer: Arc<Mutex<OfferTracker>>) -> Self {
+        self.firmware_offer = firmware_offer;
         self
     }
 
@@ -275,6 +287,50 @@ impl AppState {
             status.bundled_version.as_deref(),
         );
         status
+    }
+
+    /// The firmware update offer as the dialog, the Device page and the tray show it.
+    #[must_use]
+    pub fn firmware_offer_snapshot(&self) -> FirmwareOfferDto {
+        let product = self
+            .status_snapshot()
+            .device
+            .and_then(|device| device.identity)
+            .map(|identity| identity.product);
+        let tracker = self.firmware_offer.lock().expect("firmware offer lock");
+        dto::firmware_offer_dto(tracker.current(), product)
+    }
+
+    /// "Update now" on the firmware offer: the ordinary flash of the bundled image (an
+    /// incompatible device takes the restore path, as with "Flash firmware").
+    ///
+    /// # Errors
+    /// When nothing is offered, or the flash cannot be queued.
+    pub fn accept_firmware_offer(&self) -> Result<ActivityEvent, String> {
+        self.firmware_offer
+            .lock()
+            .expect("firmware offer lock")
+            .accept()
+            .map_err(|refused| refused.message().to_string())?;
+        self.queue_firmware_flash()?;
+        Ok(self
+            .activity_log
+            .record(ActivityEventKind::FirmwareOfferAccepted, None))
+    }
+
+    /// "Later" on an optional firmware offer: asked again when the device next connects.
+    ///
+    /// # Errors
+    /// When no optional offer is shown.
+    pub fn postpone_firmware_offer(&self) -> Result<ActivityEvent, String> {
+        self.firmware_offer
+            .lock()
+            .expect("firmware offer lock")
+            .later()
+            .map_err(|refused| refused.message().to_string())?;
+        Ok(self
+            .activity_log
+            .record(ActivityEventKind::FirmwareOfferLater, None))
     }
 
     /// Whether a requested update owns the device session. State changes must not be queued behind it.

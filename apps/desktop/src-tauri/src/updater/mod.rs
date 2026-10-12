@@ -130,6 +130,19 @@ pub fn tray_offer(app: &AppHandle) -> Option<String> {
     machine.offered().map(Version::to_string)
 }
 
+/// Whether an app update is due, so the firmware offer waits for it (see
+/// [`Machine::app_update_due`]). `false` when the updater is off.
+#[must_use]
+pub fn app_update_due(app: &AppHandle) -> bool {
+    app.try_state::<Updates>().is_some_and(|updates| {
+        updates
+            .machine
+            .lock()
+            .expect("updater lock")
+            .app_update_due()
+    })
+}
+
 /// The version currently offered, for "Later" and "Skip this version".
 ///
 /// # Errors

@@ -221,6 +221,57 @@ pub fn update_status_dto(
     }
 }
 
+/// The firmware update offer (ADR-0015, step 6) for the offer dialog, the Device page and the
+/// tray. Carries only versions and names; nothing in it can start a flash.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirmwareOfferDto {
+    /// One of [`crate::firmware_offer::FirmwareOffer::TOKENS`].
+    pub kind: &'static str,
+    /// The device's product name, when its identity is known.
+    pub product: Option<String>,
+    /// The device's firmware version, with `offerOptional`.
+    pub from: Option<String>,
+    /// The bundled firmware version, with `offerOptional` and `required`.
+    pub to: Option<String>,
+    /// Why the update is required, with `required`.
+    pub reason: Option<&'static str>,
+    /// Changes per device, bundled version and connection: the dialog opens by itself once per key.
+    pub key: Option<String>,
+}
+
+/// Projects an offer decision. `product` is the connected device's product name, if known.
+#[must_use]
+pub fn firmware_offer_dto(
+    decision: &crate::firmware_offer::Decision,
+    product: Option<String>,
+) -> FirmwareOfferDto {
+    use crate::firmware_offer::FirmwareOffer;
+    let offer = &decision.offer;
+    FirmwareOfferDto {
+        kind: offer.token(),
+        product: product.filter(|_| offer.asks()),
+        from: match offer {
+            FirmwareOffer::OfferOptional { from, .. } => Some(from.clone()),
+            _ => None,
+        },
+        to: match offer {
+            FirmwareOffer::OfferOptional { to, .. } => Some(to.clone()),
+            FirmwareOffer::Required { .. } => decision.key.as_ref().map(|key| key.version.clone()),
+            _ => None,
+        },
+        reason: match offer {
+            FirmwareOffer::Required { reason } => Some(reason.token()),
+            _ => None,
+        },
+        key: decision
+            .key
+            .as_ref()
+            .filter(|_| offer.asks())
+            .map(crate::firmware_offer::OfferKey::token),
+    }
+}
+
 /// Which product and board a connected device is (ADR-0014): names for the UI, the hardware
 /// revision (`null` until provisioning burned one) and where the identity came from. Product and
 /// board names are not personal data (ADR-0005).
@@ -473,6 +524,9 @@ pub enum ActivityEventTypeDto {
     AppUpdateAvailable,
     AppUpdateInstallStarted,
     AppUpdateInstallFailed,
+    FirmwareOfferShown,
+    FirmwareOfferAccepted,
+    FirmwareOfferLater,
 }
 
 /// Closed connection-state token serialized in activity metadata.
@@ -725,6 +779,9 @@ fn activity_kind_token(kind: ActivityEventKind) -> ActivityEventTypeDto {
         ActivityEventKind::AppUpdateAvailable => ActivityEventTypeDto::AppUpdateAvailable,
         ActivityEventKind::AppUpdateInstallStarted => ActivityEventTypeDto::AppUpdateInstallStarted,
         ActivityEventKind::AppUpdateInstallFailed => ActivityEventTypeDto::AppUpdateInstallFailed,
+        ActivityEventKind::FirmwareOfferShown => ActivityEventTypeDto::FirmwareOfferShown,
+        ActivityEventKind::FirmwareOfferAccepted => ActivityEventTypeDto::FirmwareOfferAccepted,
+        ActivityEventKind::FirmwareOfferLater => ActivityEventTypeDto::FirmwareOfferLater,
     }
 }
 
@@ -2090,6 +2147,8 @@ pub fn vocabulary_json() -> serde_json::Value {
         "accessibility": crate::platform::permissions::ACCESSIBILITY_TOKENS,
         "updateStates": crate::updater::policy::UpdateState::TOKENS,
         "updateDisabledReasons": crate::updater::policy::DisabledReason::ALL.map(crate::updater::policy::DisabledReason::token),
+        "firmwareOfferKinds": crate::firmware_offer::FirmwareOffer::TOKENS,
+        "firmwareRequiredReasons": crate::firmware_offer::RequiredReason::ALL.map(crate::firmware_offer::RequiredReason::token),
     })
 }
 

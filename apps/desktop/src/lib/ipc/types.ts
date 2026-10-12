@@ -125,6 +125,36 @@ export interface UpdateStatusDto {
   progress: { downloaded: number; total: number | null } | null;
 }
 
+/**
+ * What the app says about the connected device's firmware (ADR-0015, step 6): an optional update,
+ * a required one, "update the app", waiting for an app update first, or nothing.
+ */
+export const FIRMWARE_OFFER_KINDS = [
+  'none',
+  'offerOptional',
+  'required',
+  'updateApp',
+  'deferredForAppUpdate',
+] as const;
+export type FirmwareOfferKind = (typeof FIRMWARE_OFFER_KINDS)[number];
+/** Why an update is required: an older protocol, or a capability the product needs is missing. */
+export const FIRMWARE_REQUIRED_REASONS = ['protocolTooOld', 'missingCapabilities'] as const;
+export type FirmwareRequiredReason = (typeof FIRMWARE_REQUIRED_REASONS)[number];
+
+export interface FirmwareOfferDto {
+  kind: FirmwareOfferKind;
+  /** The device's product name, when known (only with `offerOptional` or `required`). */
+  product: string | null;
+  /** The device's firmware version, with `offerOptional`. */
+  from: string | null;
+  /** The bundled firmware version, with `offerOptional` and `required`. */
+  to: string | null;
+  /** Set only with `required`. */
+  reason: FirmwareRequiredReason | null;
+  /** Changes per device, bundled version and connection: the dialog opens by itself once per key. */
+  key: string | null;
+}
+
 export interface FirmwareStatusDto {
   available: boolean;
   phase: (typeof FIRMWARE_PHASES)[number];
@@ -368,6 +398,9 @@ export const ACTIVITY_EVENT_TYPES = [
   'appUpdateAvailable',
   'appUpdateInstallStarted',
   'appUpdateInstallFailed',
+  'firmwareOfferShown',
+  'firmwareOfferAccepted',
+  'firmwareOfferLater',
 ] as const;
 export type ActivityEventType = (typeof ACTIVITY_EVENT_TYPES)[number];
 

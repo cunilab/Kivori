@@ -56,6 +56,11 @@ import {
   snoozeUpdate,
   skipUpdateVersion,
   setAutoUpdateCheck,
+  getFirmwareOffer,
+  onFirmwareOffer,
+  onFirmwareOfferRequested,
+  acceptFirmwareOffer,
+  dismissFirmwareOffer,
 } from '../index';
 import { mockGetConfig } from '../mock';
 import vocabulary from './vocabulary.json';
@@ -83,6 +88,8 @@ import {
   UPDATE_ADVICE,
   UPDATE_DISABLED_REASONS,
   UPDATE_STATES,
+  FIRMWARE_OFFER_KINDS,
+  FIRMWARE_REQUIRED_REASONS,
 } from '../types';
 import type { MacroSpec } from '../types';
 import {
@@ -93,6 +100,7 @@ import {
   parseDiagnostics,
   parseFirmwareStatus,
   parseUpdateStatus,
+  parseFirmwareOffer,
 } from '../validate';
 
 afterEach(() => {
@@ -314,6 +322,9 @@ describe('desk ipc (Tauri)', () => {
       'hostResumed',
       'hostLocked',
       'hostUnlocked',
+      'firmwareOfferShown',
+      'firmwareOfferAccepted',
+      'firmwareOfferLater',
     ].map((type, i) => ({
       ...base,
       id: i,
@@ -712,6 +723,8 @@ describe('Rust/TS token vocabulary', () => {
     expect([...ACCESSIBILITY_STATES]).toEqual(vocabulary.accessibility);
     expect([...UPDATE_STATES]).toEqual(vocabulary.updateStates);
     expect([...UPDATE_DISABLED_REASONS]).toEqual(vocabulary.updateDisabledReasons);
+    expect([...FIRMWARE_OFFER_KINDS]).toEqual(vocabulary.firmwareOfferKinds);
+    expect([...FIRMWARE_REQUIRED_REASONS]).toEqual(vocabulary.firmwareRequiredReasons);
     expect(PROFILE_LIMITS).toEqual(vocabulary.profileLimits);
   });
 });
@@ -935,5 +948,77 @@ describe('app updater', () => {
   it('shows a development build as disabled in the browser mock', async () => {
     const status = await getUpdateStatus();
     expect(status).toMatchObject({ state: 'disabled', reason: 'devBuild', update: null });
+  });
+});
+
+describe('firmware offer', () => {
+  const enterTauri = (): void => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} });
+  };
+  const optional = {
+    kind: 'offerOptional',
+    product: 'Kivori Desk Buddy',
+    from: '1.3.0',
+    to: '1.4.0',
+    reason: null,
+    key: '1:abcd1234:1.4.0',
+  };
+  const none = { kind: 'none', product: null, from: null, to: null, reason: null, key: null };
+
+  it('validates the offer and rejects unknown or incomplete shapes', () => {
+    expect(parseFirmwareOffer(optional)).toEqual(optional);
+    expect(parseFirmwareOffer(none)).toEqual(none);
+    expect(() => parseFirmwareOffer({ ...optional, kind: 'forceFlash' })).toThrow();
+    // A question needs its versions and key.
+    expect(() => parseFirmwareOffer({ ...optional, to: null })).toThrow();
+    expect(() => parseFirmwareOffer({ ...optional, from: null })).toThrow();
+    expect(() => parseFirmwareOffer({ ...optional, key: null })).toThrow();
+    const required = { ...none, kind: 'required', to: '1.4.0', reason: 'protocolTooOld', key: 'k' };
+    expect(parseFirmwareOffer(required)).toEqual(required);
+    expect(() => parseFirmwareOffer({ ...required, reason: 'because' })).toThrow();
+    // Fields that mean nothing for a kind are dropped.
+    expect(parseFirmwareOffer({ ...optional, kind: 'updateApp' })).toEqual({
+      ...none,
+      kind: 'updateApp',
+    });
+    expect(parseFirmwareOffer({ ...optional, reason: 'protocolTooOld' }).reason).toBeNull();
+  });
+
+  it('calls the typed native commands and validates what they return', async () => {
+    enterTauri();
+    tauri.invoke.mockResolvedValue(optional);
+    await expect(getFirmwareOffer()).resolves.toEqual(optional);
+    expect(tauri.invoke).toHaveBeenLastCalledWith('get_firmware_offer', undefined);
+    tauri.invoke.mockResolvedValue(undefined);
+    await acceptFirmwareOffer();
+    expect(tauri.invoke).toHaveBeenLastCalledWith('accept_firmware_offer', undefined);
+    tauri.invoke.mockResolvedValue(none);
+    await expect(dismissFirmwareOffer()).resolves.toEqual(none);
+    expect(tauri.invoke).toHaveBeenLastCalledWith('dismiss_firmware_offer', undefined);
+    tauri.invoke.mockResolvedValue({ ...optional, kind: 'bogus' });
+    await expect(getFirmwareOffer()).rejects.toThrow();
+  });
+
+  it('drops an invalid firmware://offer payload and forwards the tray request', async () => {
+    enterTauri();
+    const listeners: Record<string, (event: { payload: unknown }) => void> = {};
+    tauri.listen.mockImplementation((name: string, cb: (event: { payload: unknown }) => void) => {
+      listeners[name] = cb;
+      return Promise.resolve(() => {});
+    });
+    const handler = vi.fn();
+    await onFirmwareOffer(handler);
+    listeners['firmware://offer']!({ payload: { ...optional, kind: 'nope' } });
+    expect(handler).not.toHaveBeenCalled();
+    listeners['firmware://offer']!({ payload: optional });
+    expect(handler).toHaveBeenCalledWith(optional);
+    const show = vi.fn();
+    await onFirmwareOfferRequested(show);
+    listeners['firmware://show-offer']!({ payload: null });
+    expect(show).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers nothing in the plain browser mock', async () => {
+    await expect(getFirmwareOffer()).resolves.toMatchObject({ kind: 'none', key: null });
   });
 });

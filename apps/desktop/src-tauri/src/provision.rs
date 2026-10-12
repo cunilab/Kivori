@@ -6,6 +6,8 @@
 
 use crate::catalog::Catalog;
 use crate::firmware_marker::ImageIdentity;
+// Every capability name the catalog may require, with its flag.
+use crate::identity::CAPABILITY_NAMES as KNOWN_CAPABILITIES;
 use crate::identity::{check_image_for_device, DeviceIdentity, IdentitySource, WrongProduct};
 use kivori_model::input::Direction;
 use kivori_model::Capabilities;
@@ -20,21 +22,6 @@ pub const BANNER: &str = "KIVORI-PROVISION per-unit QA";
 pub const HEARTBEAT_HOLD_SECS: u64 = 5;
 /// How many detents each turn check needs.
 pub const DETENTS_REQUIRED: u32 = 3;
-
-/// Every capability name the catalog may require, with its flag.
-const KNOWN_CAPABILITIES: [(&str, Capabilities); 11] = [
-    ("MASCOT_INTERACTION", Capabilities::MASCOT_INTERACTION),
-    ("PHYSICAL_INPUT_V1", Capabilities::PHYSICAL_INPUT_V1),
-    ("PRESENTATION_V1", Capabilities::PRESENTATION_V1),
-    ("BUTTON_INPUT_V1", Capabilities::BUTTON_INPUT_V1),
-    ("DESK_STATUS_V1", Capabilities::DESK_STATUS_V1),
-    ("ACTION_FEEDBACK_V1", Capabilities::ACTION_FEEDBACK_V1),
-    ("DOUBLE_PRESS_V1", Capabilities::DOUBLE_PRESS_V1),
-    ("MEDIA_INFO_V1", Capabilities::MEDIA_INFO_V1),
-    ("CONTROL_LABELS_V1", Capabilities::CONTROL_LABELS_V1),
-    ("CONTEXT_BUTTONS_V1", Capabilities::CONTEXT_BUTTONS_V1),
-    ("HOST_TAKEOVERS_V1", Capabilities::HOST_TAKEOVERS_V1),
-];
 
 /// The product this QA helper checks (the only one that exists so far).
 const PRODUCT_ID: &str = "desk-buddy";

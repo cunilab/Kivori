@@ -52,6 +52,8 @@
     "appMute",
     "macro"
   ],
+  "firmwareOfferKinds": ["none", "offerOptional", "required", "updateApp", "deferredForAppUpdate"],
+  "firmwareRequiredReasons": ["protocolTooOld", "missingCapabilities"],
   "flashFailures": [
     "toolMissing",
     "portBusy",

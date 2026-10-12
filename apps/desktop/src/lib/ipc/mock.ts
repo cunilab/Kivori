@@ -15,6 +15,7 @@ import type {
   DeviceInternalsDto,
   DiagnosticsDto,
   DeviceIdentityDto,
+  FirmwareOfferDto,
   FirmwareStatusDto,
   OnboardingDto,
   StartupSettingsDto,
@@ -198,6 +199,67 @@ export function mockDismissUpdate(): UpdateStatusDto {
 
 export function mockSetAutoUpdateCheck(enabled: boolean): UpdateStatusDto {
   return setUpdateStatus({ ...mockGetUpdateStatus(), autoCheck: enabled });
+}
+
+// The firmware update offer (ADR-0015, step 6). `?mock=update` offers an update to the connected
+// older device; `?mock=incompatible` asks for the required one. "Update now" cannot flash in a
+// browser, so it fails like Flash firmware does.
+const offerListeners = new Set<(offer: FirmwareOfferDto) => void>();
+let firmwareOffer: FirmwareOfferDto | null = null;
+
+function initialFirmwareOffer(): FirmwareOfferDto {
+  const none: FirmwareOfferDto = {
+    kind: 'none',
+    product: null,
+    from: null,
+    to: null,
+    reason: null,
+    key: null,
+  };
+  if (scenario() === 'update') {
+    return {
+      ...none,
+      kind: 'offerOptional',
+      product: 'Kivori Desk Buddy',
+      from: '1.2.0',
+      to: '1.3.0',
+      key: '1:mock:1.3.0',
+    };
+  }
+  if (scenario() === 'incompatible') {
+    return { ...none, kind: 'required', to: '1.3.0', reason: 'protocolTooOld', key: '1::1.3.0' };
+  }
+  return none;
+}
+
+export function mockGetFirmwareOffer(): FirmwareOfferDto {
+  firmwareOffer ??= initialFirmwareOffer();
+  return firmwareOffer;
+}
+
+export function mockOnFirmwareOffer(handler: (offer: FirmwareOfferDto) => void): () => void {
+  offerListeners.add(handler);
+  return () => {
+    offerListeners.delete(handler);
+  };
+}
+
+export function mockAcceptFirmwareOffer(): never {
+  throw new Error('Open the native Kivori app to flash firmware.');
+}
+
+export function mockDismissFirmwareOffer(): FirmwareOfferDto {
+  const next: FirmwareOfferDto = {
+    kind: 'none',
+    product: null,
+    from: null,
+    to: null,
+    reason: null,
+    key: null,
+  };
+  firmwareOffer = next;
+  for (const listener of offerListeners) listener(next);
+  return next;
 }
 
 /** What a device that reports no identity looks like: the original Desk Buddy. */

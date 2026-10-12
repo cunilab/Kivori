@@ -516,6 +516,29 @@ export const strings = {
       failed: 'The update could not be installed. Nothing was changed.',
       retry: 'Try again',
     },
+    firmwareOffer: {
+      title: 'Update your Kivori?',
+      requiredTitle: 'Your Kivori needs a firmware update',
+      versions: 'Firmware {from} → {to}',
+      requiredVersion: 'Firmware {to}',
+      required: {
+        protocolTooOld: 'Its firmware is too old to work with this app.',
+        missingCapabilities: 'Its firmware is missing features this app needs.',
+      },
+      duration: 'About 30 seconds. Keep it plugged in.',
+      update: 'Update now',
+      later: 'Later',
+      notNow: 'Not now',
+      close: 'Close',
+      progress: 'Firmware update progress',
+      phases: {
+        preparing: 'Getting ready…',
+        flashing: 'Updating your Kivori… Keep it plugged in.',
+        reconnecting: 'Restarting your Kivori…',
+      },
+      succeeded: 'Your Kivori is up to date.',
+      startFailed: 'The update could not start. Nothing was changed.',
+    },
   },
   diagnostics: {
     heading: 'Diagnostics',
@@ -653,7 +676,7 @@ export const strings = {
     advice: {
       upToDate: 'Your Kivori is up to date.',
       updateAvailable: 'Update available. This app includes newer firmware than your Kivori runs.',
-      deviceNewer: 'Your Kivori has newer firmware than this app includes. No update is needed.',
+      deviceNewer: 'This Kivori has newer firmware than this app — update the Kivori app.',
       unknown: '',
     },
     failures: {

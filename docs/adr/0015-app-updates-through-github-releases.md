@@ -31,7 +31,16 @@ Key custody: losing the updater key means installed apps can never auto-update a
 - An update found during a firmware flash or a knob gesture (an open gesture in `InputIngress`, published by the device thread) is offered when both are over; a downloaded update waits the same way before the installer starts.
 - The dialog opens by itself once per version per window session; the tray item ("Update to vX.Y.Z…") and the Device page reopen it. Release notes are plain text.
 - One command beyond the planned five: `set_auto_update_check` saves the setting. The last check time is per session, not stored.
-- The firmware offer ordering ("app update first") is not wired yet; the two offers are independent.
+- The firmware offer ordering ("app update first") is wired in step 6, below.
+
+**As built (step 6).** The firmware offer is a pure decision in `src/firmware_offer.rs`, evaluated by the device thread every tick and published as `FirmwareOfferDto` on `firmware://offer` (`get_firmware_offer`, `accept_firmware_offer`, `dismiss_firmware_offer`). Choices:
+
+- The bundled firmware "for its product and board" is the embedded image whose identity record names the device's product and board; there is one image per build, so any other product, an unknown one, or a device whose `Identity` has not arrived is offered nothing. The `wrongProduct` guard in the flash path is unchanged and still decides.
+- "Idle for a few seconds" is 5 s connected with no knob gesture and no flash; a gesture restarts the wait, but does not withdraw an offer already shown.
+- App first: `Machine::app_update_due` (an offer, a failed install waiting for "Try again" or "Later", a download, a pending restart, or a release held for an idle device) turns the question into `deferredForAppUpdate`. The tray then shows only "Update to vX.Y.Z…" and the dialog does not open by itself; answering the app update ("Later", "Skip") releases the firmware offer on the next tick. After "Install & restart" the new app decides afresh (validation 14.7).
+- "Later" is kept in memory per run, keyed by short device hash, bundled firmware version and connection generation, so it lasts until the device next connects (an app restart is a new connect). Nothing is persisted, so nothing can skip an update for good.
+- Required: an incompatible handshake with an older protocol major (or one not read), or a connected device older than the bundled firmware that lacks a capability the catalog requires. Its dialog has "Update now" and "Not now" (closes only; asked again from the tray, and by itself on the next connect). "Update now" for an incompatible device takes the existing restore path. A newer protocol major, like newer firmware, is `updateApp`.
+- The dialog auto-opens once per key per window session, like the app update dialog; if an app update takes over while it asks, it closes and opens again after. "Update now" queues the ordinary flash and the dialog follows the firmware status to success or failure. Activity gains `firmwareOfferShown`, `firmwareOfferAccepted` and `firmwareOfferLater` with no metadata (no versions).
 
 ## Alternatives considered
 

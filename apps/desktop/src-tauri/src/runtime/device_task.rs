@@ -35,7 +35,11 @@ use crate::device::serial::{enumerate, SerialPortLink};
 use crate::device::session::{Session, SessionConfig, SessionError};
 use crate::device::transport::SerialLink;
 use crate::firmware::{self, FirmwareStatus, FlashFailure, FlashWorkflow, ResumeTarget};
-use crate::identity::{check_image_for_device, decide_recovery, DeviceIdentity, RecoveryDecision};
+use crate::firmware_offer::{OfferDevice, OfferInputs, OfferTracker};
+use crate::identity::{
+    check_image_for_device, decide_recovery, missing_required_capabilities, DeviceIdentity,
+    RecoveryDecision,
+};
 use crate::input::{Freshness, InputIngress, LogicalInput, RejectReason};
 use crate::ipc::dto::{
     availability_token, connection_status, desk_status_dto, ConnectionStatusDto, DeskStatusDto,
@@ -136,6 +140,7 @@ pub fn spawn(
     cancel: Arc<AtomicBool>,
     config: Arc<ResolvedConfig>,
     knob_gesture: Arc<AtomicBool>,
+    firmware_offer: Arc<Mutex<OfferTracker>>,
 ) -> JoinHandle<()> {
     std::thread::Builder::new()
         .name("kivori-device".to_string())
@@ -153,6 +158,7 @@ pub fn spawn(
                 cancel,
                 config,
                 knob_gesture,
+                firmware_offer,
             );
         })
         .expect("spawn kivori-device thread")
@@ -172,6 +178,7 @@ fn device_loop(
     cancel: Arc<AtomicBool>,
     config: Arc<ResolvedConfig>,
     knob_gesture: Arc<AtomicBool>,
+    firmware_offer: Arc<Mutex<OfferTracker>>,
 ) {
     let mut manager = ConnectionManager::new();
     let mut orchestrator = Orchestrator::new();
@@ -929,6 +936,49 @@ fn device_loop(
             last = snapshot;
         }
 
+        // 3b. The firmware update offer (ADR-0015, step 6), decided after the snapshot so the
+        // dialog and the tray read the same status. Nothing here flashes; "Update now" queues the
+        // ordinary `FlashFirmware`.
+        let offer_device = offer_device(&manager, &session);
+        let app_update_due = crate::updater::app_update_due(&app);
+        let (evaluation, offer) = {
+            let mut tracker = firmware_offer.lock().expect("firmware offer lock");
+            let evaluation = tracker.evaluate(
+                started.elapsed(),
+                &OfferInputs {
+                    device: &offer_device,
+                    generation: session.connection_generation(),
+                    image: firmware::bundled_image_identity()
+                        .filter(|_| firmware::bundled_image_available()),
+                    host_major: kivori_protocol::PROTOCOL_MAJOR,
+                    app_update_due,
+                    flashing: flash.is_busy(),
+                    gesture: rotary.gesture_open(),
+                },
+            );
+            let product = last
+                .device
+                .as_ref()
+                .and_then(|device| device.identity.as_ref())
+                .map(|identity| identity.product.clone());
+            (
+                evaluation,
+                crate::ipc::dto::firmware_offer_dto(tracker.current(), product),
+            )
+        };
+        if evaluation.shown {
+            record_with_metadata(
+                &app,
+                &activity_log,
+                ActivityEventKind::FirmwareOfferShown,
+                None,
+            );
+        }
+        if evaluation.changed {
+            events::emit_firmware_offer(&app, &offer);
+            lifecycle::refresh_tray(&app, &last);
+        }
+
         let system_volume = backend.availability();
         let app_volume_availability = app_volume.availability();
         // The action catalog reads this instead of guessing from the OS. Input synthesis reports no
@@ -1602,6 +1652,29 @@ impl DiagnosticsPublisher {
             internals,
             identity: session.identity().filter(|_| connected),
         };
+    }
+}
+
+/// What the firmware offer needs to know about the device: its hash, version, identity and
+/// whether it lacks a capability its product requires; or the major of an incompatible one.
+fn offer_device(manager: &ConnectionManager, session: &Session) -> OfferDevice {
+    match (manager.state(), manager.device()) {
+        (ConnectionState::Connected, Some(device)) => {
+            let identity = session.identity();
+            let version = &device.firmware_version;
+            OfferDevice::Connected {
+                hash: device.device_id_hash_short.clone(),
+                firmware: format!("{}.{}.{}", version.major, version.minor, version.patch),
+                identity,
+                missing_capabilities: identity.is_some_and(|identity| {
+                    missing_required_capabilities(&identity, session.negotiated_caps())
+                }),
+            }
+        }
+        (ConnectionState::Incompatible, _) => OfferDevice::Incompatible {
+            device_major: manager.incompatible_major(),
+        },
+        _ => OfferDevice::Absent,
     }
 }
 

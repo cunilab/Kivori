@@ -11,7 +11,7 @@ use crate::activity::ActivityEventKind;
 use crate::firmware::FirmwareStatus;
 use crate::ipc::dto::{
     self, ActivityEventDto, AppInfoDto, ConfigDto, ConnectionStatusDto, DeviceInternalsDto,
-    DiagnosticsDto, OnboardingDto, StartupSettingsDto, UpdateStatusDto,
+    DiagnosticsDto, FirmwareOfferDto, OnboardingDto, StartupSettingsDto, UpdateStatusDto,
 };
 use crate::ipc::events;
 use crate::runtime::state::{AppState, DeviceCommand};
@@ -615,6 +615,43 @@ pub fn get_firmware_status(app: State<'_, AppState>) -> FirmwareStatus {
 #[tauri::command]
 pub fn flash_firmware(app: State<'_, AppState>) -> Result<(), String> {
     app.queue_firmware_flash()
+}
+
+/// The firmware update offer (ADR-0015, step 6): optional, required, "update the app", waiting for
+/// an app update, or nothing. `firmware://offer` carries changes.
+#[tauri::command]
+pub fn get_firmware_offer(app: State<'_, AppState>) -> FirmwareOfferDto {
+    app.firmware_offer_snapshot()
+}
+
+/// "Update now" on the firmware offer: queues the same flash as [`flash_firmware`] (an incompatible
+/// device is restored). Progress is read with `get_firmware_status`.
+///
+/// # Errors
+/// Returns an error when nothing is offered or the flash cannot be queued.
+#[tauri::command]
+pub fn accept_firmware_offer(handle: AppHandle, app: State<'_, AppState>) -> Result<(), String> {
+    let accepted = app.accept_firmware_offer()?;
+    events::emit_activity_log(&handle, &accepted);
+    Ok(())
+}
+
+/// "Later" on an optional firmware offer: asked again when this device next connects (per run,
+/// never a permanent skip). A required update has no "Later".
+///
+/// # Errors
+/// Returns an error when no optional offer is shown.
+#[tauri::command]
+pub fn dismiss_firmware_offer(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+) -> Result<FirmwareOfferDto, String> {
+    let later = app.postpone_firmware_offer()?;
+    events::emit_activity_log(&handle, &later);
+    let offer = app.firmware_offer_snapshot();
+    events::emit_firmware_offer(&handle, &offer);
+    crate::runtime::lifecycle::refresh_tray(&handle, &app.status_snapshot());
+    Ok(offer)
 }
 
 /// Queues recovery of this application's fixed bundled firmware on the one Kivori device present,

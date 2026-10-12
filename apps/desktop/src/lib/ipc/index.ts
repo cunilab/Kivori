@@ -15,6 +15,7 @@ import type {
   ActivityEventDto,
   SendableState,
   AnimationTimeline,
+  FirmwareOfferDto,
   FirmwareStatusDto,
   StartupSettingsDto,
   UpdateStatusDto,
@@ -42,6 +43,7 @@ import {
   parseDeskStatus,
   parseDeviceInternals,
   parseDiagnostics,
+  parseFirmwareOffer,
   parseFirmwareStatus,
   parseStartupSettings,
   parseUpdateStatus,
@@ -262,6 +264,55 @@ export async function requestAccessibility(): Promise<AccessibilityState> {
 export async function openAccessibilitySettings(): Promise<void> {
   if (isTauri()) return invoke<void>('open_accessibility_settings');
   if (import.meta.env.DEV) return;
+  return unavailable();
+}
+
+/** The firmware update offer (ADR-0015, step 6). */
+export async function getFirmwareOffer(): Promise<FirmwareOfferDto> {
+  if (isTauri()) return parseFirmwareOffer(await invoke<unknown>('get_firmware_offer'));
+  if (import.meta.env.DEV) return (await devMock()).mockGetFirmwareOffer();
+  return unavailable();
+}
+
+/** Subscribes to offer changes (`firmware://offer`); an invalid payload is dropped. */
+export async function onFirmwareOffer(
+  handler: (offer: FirmwareOfferDto) => void,
+): Promise<Unlisten> {
+  if (isTauri()) {
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen<unknown>('firmware://offer', (event) => {
+      try {
+        handler(parseFirmwareOffer(event.payload));
+      } catch {
+        // Invalid payloads never reach the UI.
+      }
+    });
+  }
+  if (import.meta.env.DEV) return (await devMock()).mockOnFirmwareOffer(handler);
+  return unavailable();
+}
+
+/** The tray's "Update Kivori firmware…" asks the window to show the firmware offer dialog. */
+export async function onFirmwareOfferRequested(handler: () => void): Promise<Unlisten> {
+  if (isTauri()) {
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen<unknown>('firmware://show-offer', () => handler());
+  }
+  if (import.meta.env.DEV) return () => {};
+  return unavailable();
+}
+
+/** "Update now" on the offer: the same flash as `flashFirmware`; progress is in the firmware status. */
+export async function acceptFirmwareOffer(): Promise<void> {
+  if (isTauri()) return invoke<void>('accept_firmware_offer');
+  if (import.meta.env.DEV) return (await devMock()).mockAcceptFirmwareOffer();
+  return unavailable();
+}
+
+/** "Later" on an optional offer: asked again when the device next connects. */
+export async function dismissFirmwareOffer(): Promise<FirmwareOfferDto> {
+  if (isTauri()) return parseFirmwareOffer(await invoke<unknown>('dismiss_firmware_offer'));
+  if (import.meta.env.DEV) return (await devMock()).mockDismissFirmwareOffer();
   return unavailable();
 }
 
