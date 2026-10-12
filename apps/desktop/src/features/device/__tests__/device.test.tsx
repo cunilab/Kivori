@@ -88,7 +88,7 @@ describe('DevicePage', () => {
             protocolVersion: { major: 1, minor: 6 },
             deviceIdHashShort: 'deadbeef',
             identity: {
-              product: 'Kivori Desk Buddy',
+              product: 'Kivori Pip',
               board: 'C3 SuperMini',
               hwRev: null,
               source: 'build',
@@ -98,7 +98,7 @@ describe('DevicePage', () => {
         }),
       ),
     );
-    expect(screen.getByTestId('device-product')).toHaveTextContent('Kivori Desk Buddy');
+    expect(screen.getByTestId('device-product')).toHaveTextContent('Kivori Pip');
     expect(screen.getByTestId('device-board')).toHaveTextContent('C3 SuperMini');
     expect(screen.getByTestId('device-hw-rev')).toHaveTextContent(/^—$/);
     expect(screen.getByTestId('device-identity-source')).toHaveTextContent('Firmware build');

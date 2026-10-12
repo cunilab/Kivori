@@ -141,8 +141,8 @@ fn the_spi_probe_scenario_matches_the_firmware_markers() {
     let root = repo_root();
     let yaml = fs::read_to_string(root.join("sim/wokwi/scenarios/spi-display-probe.yaml"))
         .expect("spi-display-probe.yaml");
-    let source = fs::read_to_string(root.join("firmware/desk-buddy/src/spi_probe.rs"))
-        .expect("spi_probe.rs");
+    let source =
+        fs::read_to_string(root.join("firmware/pala/src/spi_probe.rs")).expect("spi_probe.rs");
 
     let markers = awaited_markers(&yaml);
     assert!(
@@ -157,7 +157,7 @@ fn the_spi_probe_scenario_matches_the_firmware_markers() {
         if let Some(stage) = marker.strip_prefix("KIVORI-SPI PASS ") {
             assert!(
                 source.contains(&format!("\"{stage}\"")),
-                "scenario waits on stage `{stage}`, which firmware/desk-buddy/src/spi_probe.rs never emits"
+                "scenario waits on stage `{stage}`, which firmware/pala/src/spi_probe.rs never emits"
             );
             stages += 1;
         }
@@ -199,7 +199,7 @@ fn the_spi_probe_scenario_matches_the_firmware_markers() {
 #[test]
 fn the_marker_coupling_detector_is_not_vacuous() {
     // Negative control: a fabricated stage name must NOT be found in the firmware source.
-    let source = fs::read_to_string(repo_root().join("firmware/desk-buddy/src/spi_probe.rs"))
+    let source = fs::read_to_string(repo_root().join("firmware/pala/src/spi_probe.rs"))
         .expect("spi_probe.rs");
     assert!(
         !source.contains("\"stage-that-does-not-exist\""),
@@ -228,7 +228,7 @@ fn the_production_runtime_scenario_matches_the_firmware_markers() {
     let root = repo_root();
     let yaml = fs::read_to_string(root.join("sim/wokwi/generated/production-runtime.yaml"))
         .expect("production-runtime.yaml");
-    let source = fs::read_to_string(root.join("firmware/desk-buddy/src/wokwi_runtime.rs"))
+    let source = fs::read_to_string(root.join("firmware/pala/src/wokwi_runtime.rs"))
         .expect("wokwi_runtime.rs");
 
     let markers = awaited_markers(&yaml);
@@ -254,8 +254,7 @@ fn the_production_runtime_scenario_matches_the_firmware_markers() {
     );
     // Marker text lives in the runtime mode; diagnostic LABELS live in the allowlist in health.rs. Both
     // must genuinely contain what the scenario waits for.
-    let health =
-        fs::read_to_string(root.join("firmware/desk-buddy/src/health.rs")).expect("health.rs");
+    let health = fs::read_to_string(root.join("firmware/pala/src/health.rs")).expect("health.rs");
     for stage in &stages {
         if let Some(label) = stage.strip_prefix("diagnostic label=") {
             assert!(

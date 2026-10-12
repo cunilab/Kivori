@@ -47,7 +47,7 @@ Encoder COM to **GND**, VCC to **3V3**. **Not 5V — ESP32-C3 GPIOs are not 5 V 
 
 **The display pins are measured evidence; the encoder pins are not.** The display profile was physically verified on 2026-08-11 and is recorded in [`docs/validation.md`](docs/validation.md) (rows 1.9, 1.24, 1.25). The encoder pin map is a *specification* wired to on request, pending physical confirmation — row 3.15 of the same checklist. Do not treat the two as equally settled.
 
-Both live in one place, [`firmware/desk-buddy/src/profile.rs`](firmware/desk-buddy/src/profile.rs), so a rewire is a single constant change.
+Both live in one place, [`firmware/pala/src/profile.rs`](firmware/pala/src/profile.rs), so a rewire is a single constant change.
 
 ## Getting started
 

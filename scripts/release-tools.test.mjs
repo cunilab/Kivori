@@ -13,6 +13,7 @@ import {
 import {
   groupCommits,
   isAppCommit,
+  isFirmwareCommit,
   packageVersion,
   parseConventional,
   parseGitLog,
@@ -54,12 +55,12 @@ test('the release plan names both tags and refuses existing ones', () => {
   const base = {
     appCurrent: '0.1.0',
     firmwareCurrent: '1.4.0',
-    product: 'desk-buddy',
+    product: 'pala',
     appBump: 'minor',
     appExact: '',
     firmwareBump: 'none',
     firmwareExact: '',
-    tagExists: (t) => t === 'v0.1.0' || t === 'fw-desk-buddy-v1.4.0',
+    tagExists: (t) => t === 'v0.1.0' || t === 'fw-pala-v1.4.0',
   };
   const same = planRelease(base);
   assert.deepEqual(same, {
@@ -71,14 +72,11 @@ test('the release plan names both tags and refuses existing ones', () => {
     firmwareChanged: false,
     firmwareTag: '',
   });
-  assert.equal(commitBody(same, 'Desk Buddy'), 'Desk Buddy firmware 1.4.0, unchanged.');
+  assert.equal(commitBody(same, 'Pip'), 'Pip firmware 1.4.0, unchanged.');
 
   const fw = planRelease({ ...base, firmwareBump: 'patch' });
-  assert.equal(fw.firmwareTag, 'fw-desk-buddy-v1.4.1');
-  assert.equal(
-    commitBody(fw, 'Desk Buddy'),
-    'Desk Buddy firmware 1.4.1 (was 1.4.0), tag fw-desk-buddy-v1.4.1.',
-  );
+  assert.equal(fw.firmwareTag, 'fw-pala-v1.4.1');
+  assert.equal(commitBody(fw, 'Pip'), 'Pip firmware 1.4.1 (was 1.4.0), tag fw-pala-v1.4.1.');
 
   assert.throws(() => planRelease({ ...base, appExact: '0.1.0' }), /not greater/);
   assert.throws(
@@ -87,7 +85,7 @@ test('the release plan names both tags and refuses existing ones', () => {
   );
   assert.throws(
     () => planRelease({ ...base, firmwareBump: 'patch', tagExists: (t) => t.startsWith('fw-') }),
-    /fw-desk-buddy-v1\.4\.1 already exists/,
+    /fw-pala-v1\.4\.1 already exists/,
   );
   assert.throws(() => planRelease({ ...base, appBump: 'none' }), /app bump/);
 });
@@ -132,7 +130,7 @@ const log = fakeLog([
   ['a2', 'fix(mic): say "can\'t tell"', 'Longer body.\n\nCo-Authored-By: x', ['crates/x.rs']],
   ['a3', 'docs: roadmap', '', ['docs/roadmap.md']],
   ['a4', 'chore(release): v0.1.0', '', ['Cargo.toml', 'Cargo.lock']],
-  ['a5', 'feat(firmware): idle life', '', ['firmware/desk-buddy/src/idle.rs']],
+  ['a5', 'feat(firmware): idle life', '', ['firmware/pala/src/idle.rs']],
   ['a6', 'fix(firmware): marker log', '', ['firmware/esp32-c3/src/log.rs']],
   ['a7', 'perf(desktop): batch detents', '', ['apps/desktop/src-tauri/src/volume.rs']],
   ['a8', 'feat(web): new home page', '', ['apps/web/app/page.tsx', 'bun.lock']],
@@ -145,7 +143,7 @@ const log = fakeLog([
     'b5',
     'feat(protocol): mic state on the wire',
     'BREAKING CHANGE: none really',
-    ['crates/kivori-protocol/src/m.rs', 'firmware/desk-buddy/src/m.rs'],
+    ['crates/kivori-protocol/src/m.rs', 'firmware/pala/src/m.rs'],
   ],
 ]);
 
@@ -169,6 +167,10 @@ test('git log records parse with body and files', () => {
   assert.ok(!isAppCommit(commits[7]), 'website commit');
   assert.ok(isAppCommit(commits[13]), 'shared commit counts for both');
   assert.ok(isAppCommit({ subject: 'feat: x', files: [] }));
+  for (const dir of ['firmware/pala', 'firmware/desk-buddy', 'firmware/esp32-c3']) {
+    assert.ok(isFirmwareCommit({ files: [`${dir}/src/a.rs`] }, 'pala'), `${dir} is pala firmware`);
+  }
+  assert.ok(!isFirmwareCommit({ files: ['firmware/lada/src/a.rs'] }, 'pala'));
 });
 
 test('notes group like a changelog and skip chores', () => {
@@ -202,8 +204,8 @@ test('release notes: app sections, then the firmware, unchanged or with its comm
   const commits = parseGitLog(log);
   const base = {
     commits,
-    product: 'desk-buddy',
-    productDisplay: 'Desk Buddy',
+    product: 'pala',
+    productDisplay: 'Pip',
     prevVersion: '0.1.0',
   };
 
@@ -214,7 +216,7 @@ test('release notes: app sections, then the firmware, unchanged or with its comm
   assert.ok(!unchanged.short.includes('new home page'), 'website commits stay out');
   assert.ok(
     unchanged.short.endsWith(
-      '### Firmware\n\nDesk Buddy firmware 1.4.0 is bundled with this release, unchanged since Kivori 0.1.0.\n',
+      '### Firmware\n\nPip firmware 1.4.0 is bundled with this release, unchanged since Kivori 0.1.0.\n',
     ),
   );
 
@@ -229,7 +231,7 @@ test('release notes: app sections, then the firmware, unchanged or with its comm
     firmware,
     `### Firmware
 
-Desk Buddy firmware 1.5.0 is bundled with this release (was 1.4.0).
+Pip firmware 1.5.0 is bundled with this release (was 1.4.0).
 
 #### Breaking changes
 
@@ -261,7 +263,7 @@ Desk Buddy firmware 1.5.0 is bundled with this release (was 1.4.0).
 
 ### Firmware
 
-Desk Buddy firmware 1.4.1 is bundled with this release (was 1.4.0).
+Pip firmware 1.4.1 is bundled with this release (was 1.4.0).
 
 No firmware features or fixes are listed since Kivori 0.1.0.
 `,
@@ -273,11 +275,13 @@ test('title and names come from the files', () => {
     packageVersion('[package]\nname = "x"\nversion = "1.4.0"\n[dependencies]\n'),
     '1.4.0',
   );
-  assert.equal(productName('display_name = "Kivori Desk Buddy"\n'), 'Desk Buddy');
   assert.equal(
-    releaseTitle('0.2.0', 'Desk Buddy', '1.4.0'),
-    'Kivori 0.2.0 · Desk Buddy firmware 1.4.0',
+    productName('display_name = "Kivori Pip"\nshort_name = "Pip"\nmodel = "KV-P1"\n'),
+    'Pip',
   );
+  assert.throws(() => productName('display_name = "Kivori Pip"\n'), /short_name/);
+  assert.throws(() => productName('short_name = ""\n'), /short_name/);
+  assert.equal(releaseTitle('0.2.0', 'Pip', '1.4.0'), 'Kivori 0.2.0 · Pip firmware 1.4.0');
 });
 
 // --- updater-manifest.mjs -----------------------------------------------------------------------

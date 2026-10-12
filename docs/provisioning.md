@@ -18,12 +18,12 @@ an installer: the release-surface guard fails if it leaks into a release build.
 
 Before it flashes, the tool connects to the unit and applies the app's image-versus-device identity
 guard: a unit that is a different product or board than the bundled firmware is refused (a unit with
-no identity message counts as the Desk Buddy on the C3 SuperMini; a unit that does not answer at
+no identity message counts as the Kivori Pip on the C3 SuperMini; a unit that does not answer at
 all, such as a blank board, cannot be checked and is flashed).
 
 ## Burning the identity into the chip
 
-`just provision --product desk-buddy --board c3-supermini --rev 1` resolves the ids through the
+`just provision --product pala --board c3-supermini --rev 1` resolves the ids through the
 product catalog (an unknown id is an error that lists the valid ones; all three options go together,
 `--rev` is 1 to 255). **Without `--burn-identity` this is a dry run**: it prints the exact record
 (fields, the 12 bytes in hex, the CRC-32) and carries on with the normal provisioning. Nothing is
@@ -36,7 +36,7 @@ Prerequisite (developer machine only, never part of an installer): Espressif's `
 `esptool`, pinned to **`esptool==4.7.0`** (`pip install esptool==4.7.0`; it installs `espefuse.py`).
 The tool runs `espefuse --help` and refuses any major version other than 4.
 
-To burn, add `--burn-identity`: `just provision --product desk-buddy --board c3-supermini --rev 1
+To burn, add `--burn-identity`: `just provision --product pala --board c3-supermini --rev 1
 --burn-identity`. Checks, in order; any failure stops before anything is written:
 
 1. The bundled firmware must be for that product and board (otherwise the unit would show the
@@ -46,7 +46,7 @@ To burn, add `--burn-identity`: `just provision --product desk-buddy --board c3-
    tool refuses. If it already holds exactly this record it says "already provisioned" and goes on
    without writing. Any other content (another record, a damaged one, stray bits) is an error.
 4. The record and the port are shown, and you must **type the product id** (for example
-   `desk-buddy`) exactly. Anything else aborts. There is no flag or environment variable that
+   `pala`) exactly. Anything else aborts. There is no flag or environment variable that
    confirms for you.
 5. It runs `espefuse --chip esp32c3 --port <port> --do-not-confirm burn_block_data BLOCK_USR_DATA
    <file>`; `--do-not-confirm` is passed only now, after your typed confirmation. The file is the 12

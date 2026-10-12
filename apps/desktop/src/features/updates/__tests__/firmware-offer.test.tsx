@@ -45,7 +45,7 @@ const none: FirmwareOfferDto = {
 };
 const optional: FirmwareOfferDto = {
   kind: 'offerOptional',
-  product: 'Kivori Desk Buddy',
+  product: 'Kivori Pip',
   from: '1.3.0',
   to: '1.4.0',
   reason: null,
@@ -125,7 +125,7 @@ describe('firmware offer dialog', () => {
     expect(
       await screen.findByRole('alertdialog', { name: 'Update your Kivori?' }),
     ).toBeInTheDocument();
-    expect(screen.getByTestId('offer-product')).toHaveTextContent('Kivori Desk Buddy');
+    expect(screen.getByTestId('offer-product')).toHaveTextContent('Kivori Pip');
     expect(screen.getByTestId('offer-versions')).toHaveTextContent('Firmware 1.3.0 → 1.4.0');
     expect(screen.getByText('About 30 seconds. Keep it plugged in.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Update now' })).toBeEnabled();

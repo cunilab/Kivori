@@ -20,7 +20,7 @@ export interface AppInfoDto {
   deviceStudioEnabled: boolean;
 }
 
-/** Where a device's identity came from: `legacy` means it reported none (the original Desk Buddy). */
+/** Where a device's identity came from: `legacy` means it reported none (the original Kivori Pip). */
 export const IDENTITY_SOURCES = ['legacy', 'build', 'chip'] as const;
 export type IdentitySource = (typeof IDENTITY_SOURCES)[number];
 

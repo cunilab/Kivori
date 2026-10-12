@@ -220,7 +220,7 @@ function initialFirmwareOffer(): FirmwareOfferDto {
     return {
       ...none,
       kind: 'offerOptional',
-      product: 'Kivori Desk Buddy',
+      product: 'Kivori Pip',
       from: '1.2.0',
       to: '1.3.0',
       key: '1:mock:1.3.0',
@@ -262,9 +262,9 @@ export function mockDismissFirmwareOffer(): FirmwareOfferDto {
   return next;
 }
 
-/** What a device that reports no identity looks like: the original Desk Buddy. */
+/** What a device that reports no identity looks like: the original Kivori Pip. */
 const mockIdentity: DeviceIdentityDto = {
-  product: 'Kivori Desk Buddy',
+  product: 'Kivori Pip',
   board: 'C3 SuperMini',
   hwRev: null,
   source: 'legacy',

@@ -957,7 +957,7 @@ describe('firmware offer', () => {
   };
   const optional = {
     kind: 'offerOptional',
-    product: 'Kivori Desk Buddy',
+    product: 'Kivori Pip',
     from: '1.3.0',
     to: '1.4.0',
     reason: null,

@@ -4,7 +4,7 @@ param([switch]$Release)
 
 $ErrorActionPreference = 'Stop'
 $kivoriRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$kivoriFirmwareRoot = Join-Path $kivoriRoot 'firmware/desk-buddy'
+$kivoriFirmwareRoot = Join-Path $kivoriRoot 'firmware/pala'
 $kivoriPreviousFirmware = $env:KIVORI_FIRMWARE_PATH
 $kivoriPreviousTarget = $env:CARGO_TARGET_DIR
 try {

@@ -257,7 +257,7 @@ impl Session {
 
     /// Which product and board the connected device is. `None` with no session, and while a device
     /// that negotiated `PRODUCT_IDENTITY_V1` has not sent its `Identity` yet; a device that did not
-    /// negotiate it is the legacy Desk Buddy on the C3 SuperMini (revision unknown).
+    /// negotiate it is the legacy Kivori Pip on the C3 SuperMini (revision unknown).
     #[must_use]
     pub fn identity(&self) -> Option<DeviceIdentity> {
         self.current_session?;

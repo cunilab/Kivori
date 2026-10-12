@@ -1000,14 +1000,14 @@ fn identity_message(session: u32, product: u16, board: u16) -> Message {
 }
 
 #[test]
-fn a_device_without_the_identity_capability_is_the_legacy_desk_buddy() {
+fn a_device_without_the_identity_capability_is_the_legacy_pala() {
     use kivori_desktop::identity::{DeviceIdentity, IdentitySource};
     let (_link, session, _manager, _orch) = connect(SendableState::Idle);
     let identity = session.identity().expect("legacy identity");
     assert_eq!(identity, DeviceIdentity::legacy());
     assert_eq!(identity.source, IdentitySource::Legacy);
     assert_eq!(identity.hw_rev, None);
-    assert_eq!(identity.label(), "Kivori Desk Buddy on C3 SuperMini");
+    assert_eq!(identity.label(), "Kivori Pip on C3 SuperMini");
 }
 
 #[test]

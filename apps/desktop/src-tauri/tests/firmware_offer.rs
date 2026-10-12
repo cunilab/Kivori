@@ -549,9 +549,9 @@ fn the_dto_carries_versions_and_names_only_for_a_question() {
         offer: optional("1.3.0", "1.4.0"),
         key: Some(key(3)),
     };
-    let dto = firmware_offer_dto(&decision, Some("Kivori Desk Buddy".into()));
+    let dto = firmware_offer_dto(&decision, Some("Kivori Pip".into()));
     assert_eq!(dto.kind, "offerOptional");
-    assert_eq!(dto.product.as_deref(), Some("Kivori Desk Buddy"));
+    assert_eq!(dto.product.as_deref(), Some("Kivori Pip"));
     assert_eq!(
         (dto.from.as_deref(), dto.to.as_deref()),
         (Some("1.3.0"), Some("1.4.0"))
@@ -579,7 +579,7 @@ fn the_dto_carries_versions_and_names_only_for_a_question() {
         offer: FirmwareOffer::UpdateApp,
         key: None,
     };
-    let dto = firmware_offer_dto(&notice, Some("Kivori Desk Buddy".into()));
+    let dto = firmware_offer_dto(&notice, Some("Kivori Pip".into()));
     assert_eq!(
         (dto.kind, dto.product.as_deref(), dto.key.as_deref()),
         ("updateApp", None, None)

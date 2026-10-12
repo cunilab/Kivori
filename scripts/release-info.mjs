@@ -4,12 +4,12 @@
 // .github/workflows/release-start.yml.
 //
 //   node scripts/release-info.mjs --version 0.2.0 [--prev-tag v0.1.0] [--to HEAD] \
-//        [--product desk-buddy] [--firmware-version 1.5.0] [--repo cunilab/Kivori] [--out-dir DIR]
+//        [--product pala] [--firmware-version 1.5.0] [--repo cunilab/Kivori] [--out-dir DIR]
 //
 // Writes DIR/title.txt, DIR/notes.md (the release body) and DIR/notes-short.md (the same without the
 // compare link, for latest.json); without --out-dir it prints title and notes. The firmware version
 // comes from firmware/<product>/Cargo.toml (or --firmware-version, for a preview before the bump is
-// written) and the display name from products/<product>/product.toml; nothing is hardcoded.
+// written) and the short name from products/<product>/product.toml; nothing is hardcoded.
 //
 // Grouping: feat -> Features, fix -> Fixes, perf -> Performance, `!` or a BREAKING CHANGE footer ->
 // Breaking changes; other types (chore, docs, test, refactor, ci, build, style, revert) and non
@@ -42,7 +42,7 @@ export const APP_IGNORED_PATHS = [
 export const APP_IGNORED_SCOPES = ['web'];
 
 /** Earlier homes of a product's firmware crate, so history before a folder move still counts. */
-export const LEGACY_FIRMWARE_DIRS = { 'desk-buddy': ['firmware/esp32-c3/'] };
+export const LEGACY_FIRMWARE_DIRS = { pala: ['firmware/desk-buddy/', 'firmware/esp32-c3/'] };
 
 export const firmwareDirs = (product) => [
   `firmware/${product}/`,
@@ -142,11 +142,11 @@ export function packageVersion(cargoToml) {
   return m[1];
 }
 
-/** `display_name` without the brand prefix ("Kivori Desk Buddy" -> "Desk Buddy"). */
+/** The product's `short_name` ("Pip"), the customer name without the brand. */
 export function productName(productToml) {
-  const m = /^display_name\s*=\s*"([^"]+)"/m.exec(productToml);
-  if (!m) throw new Error('no display_name found');
-  return m[1].replace(/^Kivori\s+/, '');
+  const m = /^short_name\s*=\s*"([^"]*)"/m.exec(productToml);
+  if (!m || !m[1].trim()) throw new Error('no short_name found');
+  return m[1].trim();
 }
 
 export function releaseTitle(appVersion, productDisplay, firmwareVersion) {
@@ -217,7 +217,7 @@ function main(argv) {
       version: { type: 'string' },
       'prev-tag': { type: 'string', default: '' },
       to: { type: 'string', default: 'HEAD' },
-      product: { type: 'string', default: 'desk-buddy' },
+      product: { type: 'string', default: 'pala' },
       'firmware-version': { type: 'string', default: '' },
       repo: { type: 'string', default: '' },
       'out-dir': { type: 'string' },

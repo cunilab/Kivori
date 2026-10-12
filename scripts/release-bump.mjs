@@ -3,7 +3,7 @@
 // (the Release button); safe to run locally, where it only prints unless --write is given.
 //
 //   node scripts/release-bump.mjs --app patch|minor|major [--app-version X.Y.Z] \
-//        [--firmware none|patch|minor|major] [--firmware-version A.B.C] [--product desk-buddy] \
+//        [--firmware none|patch|minor|major] [--firmware-version A.B.C] [--product pala] \
 //        [--dry-run | --write] [--outputs FILE]
 //
 // The app version is `[workspace.package] version` in Cargo.toml, the firmware version `[package]
@@ -17,6 +17,8 @@ import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+
+import { productName } from './release-info.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -166,7 +168,7 @@ function main(argv) {
       'app-version': { type: 'string', default: '' },
       firmware: { type: 'string', default: 'none' },
       'firmware-version': { type: 'string', default: '' },
-      product: { type: 'string', default: 'desk-buddy' },
+      product: { type: 'string', default: 'pala' },
       'dry-run': { type: 'boolean', default: false },
       write: { type: 'boolean', default: false },
       outputs: { type: 'string' },
@@ -178,10 +180,9 @@ function main(argv) {
   const fwToml = join(root, 'firmware', opt.product, 'Cargo.toml');
   const appText = readFileSync(appToml, 'utf8');
   const fwText = readFileSync(fwToml, 'utf8');
-  const display = /^display_name\s*=\s*"([^"]+)"/m
-    .exec(readFileSync(join(root, 'products', opt.product, 'product.toml'), 'utf8'))?.[1]
-    ?.replace(/^Kivori\s+/, '');
-  if (!display) throw new Error(`no display_name in products/${opt.product}/product.toml`);
+  const display = productName(
+    readFileSync(join(root, 'products', opt.product, 'product.toml'), 'utf8'),
+  );
 
   const plan = planRelease({
     appCurrent: tomlVersion(appText, 'workspace.package'),

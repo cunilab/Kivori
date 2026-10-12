@@ -86,7 +86,7 @@ if [ "${1:-}" = "--desktop-artifact" ]; then
 fi
 
 DESKTOP_BIN="target/debug/kivori-desktop"
-FIRMWARE_LIB="firmware/desk-buddy/target/riscv32imc-unknown-none-elf/debug/libkivori_firmware.rlib"
+FIRMWARE_LIB="firmware/pala/target/riscv32imc-unknown-none-elf/debug/libkivori_firmware.rlib"
 
 echo "[1/8] desktop, production features (Device Studio + debug-payloads OFF)…"
 cargo build -q -p kivori-desktop --no-default-features
@@ -103,41 +103,41 @@ cargo build -q -p kivori-desktop --example provision
 present "the provision example" "target/debug/examples/provision" KIVORI-PROVISION
 
 echo "[3/8] firmware, production features (host-sim OFF, riscv target)…"
-(cd firmware/desk-buddy && cargo build -q --lib)
+(cd firmware/pala && cargo build -q --lib)
 [ -f "$FIRMWARE_LIB" ] || { echo "error: $FIRMWARE_LIB not found" >&2; exit 2; }
 absent "the production firmware library" "$FIRMWARE_LIB" "${FIRMWARE_SIM_SURFACE[@]}"
 present "the production firmware library" "$FIRMWARE_LIB" "${FIRMWARE_PRODUCTION_SURFACE[@]}"
 
 echo "[4/8] firmware positive controls (host-sim ON, then wokwi ON)…"
-(cd firmware/desk-buddy && cargo build -q --lib --features host-sim)
+(cd firmware/pala && cargo build -q --lib --features host-sim)
 present "the host-sim firmware library" "$FIRMWARE_LIB" SimPipe CaptureDisplay
-(cd firmware/desk-buddy && cargo build -q --lib --features wokwi)
+(cd firmware/pala && cargo build -q --lib --features wokwi)
 present "the wokwi firmware library" "$FIRMWARE_LIB" LoopbackTransport TileProbe KIVORI-SIM
 
 echo "[5/8] firmware SPI-probe positive control (wokwi-spi ON)…"
-(cd firmware/desk-buddy && cargo build -q --lib --features wokwi-spi)
+(cd firmware/pala && cargo build -q --lib --features wokwi-spi)
 present "the wokwi-spi firmware library" "$FIRMWARE_LIB" KIVORI-SPI WokwiSpiPins BusCounters CountedSpi
 # …and the ordinary host-sim configuration must NOT drag the probe in.
-(cd firmware/desk-buddy && cargo build -q --lib --features host-sim)
+(cd firmware/pala && cargo build -q --lib --features host-sim)
 absent "the host-sim firmware library" "$FIRMWARE_LIB" KIVORI-SPI WokwiSpiPins BusCounters
 echo "[6/8] firmware production-runtime positive control (wokwi-runtime ON)…"
-(cd firmware/desk-buddy && cargo build -q --lib --features wokwi-runtime)
+(cd firmware/pala && cargo build -q --lib --features wokwi-runtime)
 present "the wokwi-runtime firmware library" "$FIRMWARE_LIB" KIVORI-RUN WokwiSpiPins
 
 echo "[7/8] firmware raw-payload gate (T102): absent in production, present with debug-payloads…"
 # The production `embedded` build is what ships; prove the raw path is not in it.
-(cd firmware/desk-buddy && cargo build -q --lib --features embedded)
+(cd firmware/pala && cargo build -q --lib --features embedded)
 absent "the production embedded firmware library" "$FIRMWARE_LIB" "${FIRMWARE_DEBUG_SURFACE[@]}"
-(cd firmware/desk-buddy && cargo build -q --lib --features embedded,debug-payloads)
+(cd firmware/pala && cargo build -q --lib --features embedded,debug-payloads)
 present "the debug-payloads firmware library" "$FIRMWARE_LIB" "${FIRMWARE_DEBUG_SURFACE[@]}"
 echo "[8/8] firmware latency-probe gate: absent from the product build, present with latency-probe…"
 # `physical-st7789` is the product firmware (`just fw-build`); the probe is a dev-only readout.
-(cd firmware/desk-buddy && cargo build -q --lib --features physical-st7789)
+(cd firmware/pala && cargo build -q --lib --features physical-st7789)
 absent "the product physical-st7789 firmware library" "$FIRMWARE_LIB" LatencyProbe
-(cd firmware/desk-buddy && cargo build -q --lib --features physical-st7789,latency-probe)
+(cd firmware/pala && cargo build -q --lib --features physical-st7789,latency-probe)
 present "the latency-probe firmware library" "$FIRMWARE_LIB" LatencyProbe
 # Leave the firmware artifact in its production configuration.
-(cd firmware/desk-buddy && cargo build -q --lib)
+(cd firmware/pala && cargo build -q --lib)
 
 if [ "$fail" -ne 0 ]; then
   echo "Release feature-surface check FAILED." >&2

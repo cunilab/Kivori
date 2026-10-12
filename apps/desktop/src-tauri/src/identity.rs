@@ -12,7 +12,7 @@ use crate::catalog::{Board, Catalog, Product, UsbId};
 use crate::firmware_marker::ImageIdentity;
 
 /// The product a device that sends no `Identity` is (every unit shipped before `PRODUCT_IDENTITY_V1`).
-const LEGACY_PRODUCT: &str = "desk-buddy";
+const LEGACY_PRODUCT: &str = "pala";
 /// The board a device that sends no `Identity` is.
 const LEGACY_BOARD: &str = "c3-supermini";
 
@@ -20,7 +20,7 @@ const LEGACY_BOARD: &str = "c3-supermini";
 /// a device that did not negotiate `PRODUCT_IDENTITY_V1`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IdentitySource {
-    /// The device sent no identity; assumed the original Desk Buddy on the C3 SuperMini.
+    /// The device sent no identity; assumed the original Kivori Pip on the C3 SuperMini.
     Legacy,
     /// Compiled into the device's firmware.
     Build,
@@ -57,7 +57,7 @@ pub struct DeviceIdentity {
 }
 
 impl DeviceIdentity {
-    /// The identity of a device that reported none: `desk-buddy` on `c3-supermini`, revision unknown.
+    /// The identity of a device that reported none: `pala` on `c3-supermini`, revision unknown.
     ///
     /// # Panics
     /// If the embedded catalog lacks the legacy product or board (the catalog tests rule that out).
@@ -183,7 +183,7 @@ pub struct WrongProduct {
 }
 
 /// Tier A of ADR-0016: the image's identity record must name the connected device's product and
-/// board. The legacy identity counts as `desk-buddy` / `c3-supermini`.
+/// board. The legacy identity counts as `pala` / `c3-supermini`.
 ///
 /// # Errors
 /// [`WrongProduct`] naming both sides when they differ (including a device whose numbers the
@@ -293,13 +293,13 @@ mod tests {
         }
     }
 
-    /// A two-product catalog: `desk-buddy` and a pretend second product sharing the C3 SuperMini USB ids.
+    /// A two-product catalog: `pala` and a pretend second product sharing the C3 SuperMini USB ids.
     fn two_products() -> Catalog {
-        let registry =
-            "[products]\ndesk-buddy = 1\nlamp = 2\n[boards]\nc3-supermini = 1\nrp2350 = 2\n";
+        let registry = "[products]\npala = 1\nlamp = 2\n[boards]\nc3-supermini = 1\nrp2350 = 2\n";
         let product = |name: &str, board: &str, usb: &str| {
             format!(
-                "display_name = \"{name}\"\nrequired_capabilities = []\n[boards.{board}]\n\
+                "display_name = \"{name}\"\nshort_name = \"{name}\"\nmodel = \"KV-X1\"\n\
+                 required_capabilities = []\n[boards.{board}]\n\
                  display_name = \"B\"\nflash = \"espflash\"\nusb = [\"{usb}\"]\n\
                  [boards.{board}.firmware]\ncrate = \"fw\"\nartifact = \"a\"\nmin_protocol = \"1.6\"\n"
             )
@@ -307,10 +307,7 @@ mod tests {
         Catalog::parse(
             registry,
             &[
-                (
-                    "desk-buddy",
-                    &product("Desk Buddy", "c3-supermini", "303A:1001"),
-                ),
+                ("pala", &product("Kivori Pip", "c3-supermini", "303A:1001")),
                 ("lamp", &product("Lamp", "c3-supermini", "303A:1001")),
             ],
         )
@@ -318,7 +315,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_is_desk_buddy_on_the_c3_supermini_with_unknown_revision() {
+    fn legacy_is_pala_on_the_c3_supermini_with_unknown_revision() {
         let legacy = DeviceIdentity::legacy();
         assert_eq!((legacy.product, legacy.board), (1, 1));
         assert_eq!(legacy.hw_rev, None);
@@ -326,9 +323,9 @@ mod tests {
         let (product, board) = legacy.resolve().expect("known");
         assert_eq!(
             (product.id.as_str(), board.id.as_str()),
-            ("desk-buddy", "c3-supermini")
+            ("pala", "c3-supermini")
         );
-        assert_eq!(legacy.label(), "Kivori Desk Buddy on C3 SuperMini");
+        assert_eq!(legacy.label(), "Kivori Pip on C3 SuperMini");
     }
 
     #[test]
@@ -352,7 +349,7 @@ mod tests {
         assert_eq!(unknown.product_name(), "Unknown product (9)");
         let board = device(1, 7);
         assert!(board.resolve().is_none());
-        assert_eq!(board.product_name(), "Kivori Desk Buddy");
+        assert_eq!(board.product_name(), "Kivori Pip");
         assert_eq!(board.board_name(), "Unknown board (7)");
     }
 
@@ -369,13 +366,13 @@ mod tests {
     fn the_guard_refuses_another_product_board_or_unknown_device_naming_both() {
         for (other, device_label) in [
             (device(2, 1), "Unknown product (2) on Unknown board (1)"),
-            (device(1, 2), "Kivori Desk Buddy on Unknown board (2)"),
+            (device(1, 2), "Kivori Pip on Unknown board (2)"),
         ] {
             assert_eq!(
                 check_image_for_device(&image(1, 1), &other),
                 Err(WrongProduct {
                     device: device_label.into(),
-                    image: "Kivori Desk Buddy on C3 SuperMini".into(),
+                    image: "Kivori Pip on C3 SuperMini".into(),
                 })
             );
         }
@@ -405,8 +402,8 @@ mod tests {
             decision,
             RecoveryDecision::Choose(vec![
                 RestoreOption {
-                    id: "desk-buddy".into(),
-                    name: "Desk Buddy".into()
+                    id: "pala".into(),
+                    name: "Kivori Pip".into()
                 },
                 RestoreOption {
                     id: "lamp".into(),
@@ -421,7 +418,7 @@ mod tests {
         let catalog = two_products();
         let usb = Some((0x303A, 0x1001));
         assert_eq!(
-            decide_recovery(&catalog, usb, Some("desk-buddy"), Some(&image(1, 1))),
+            decide_recovery(&catalog, usb, Some("pala"), Some(&image(1, 1))),
             RecoveryDecision::Proceed
         );
         let RecoveryDecision::Refuse(refusal) =
@@ -430,6 +427,6 @@ mod tests {
             panic!("the bundled image is not the lamp's");
         };
         assert_eq!(refusal.device, "Lamp on B");
-        assert_eq!(refusal.image, "Desk Buddy on B");
+        assert_eq!(refusal.image, "Kivori Pip on B");
     }
 }

@@ -192,7 +192,7 @@ fn identity_shows_names_revision_and_source_and_never_guesses_unknown_numbers() 
         serde_json::to_value(&dto).unwrap()["versions"]["identity"].clone()
     };
     let legacy = identity(&snapshot);
-    assert_eq!(legacy["product"], "Kivori Desk Buddy");
+    assert_eq!(legacy["product"], "Kivori Pip");
     assert_eq!(legacy["board"], "C3 SuperMini");
     assert_eq!(legacy["hwRev"], serde_json::Value::Null);
     assert_eq!(legacy["source"], "legacy");

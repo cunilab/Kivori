@@ -88,7 +88,7 @@ impl Capabilities {
     pub const MIC_STATE_V1: Capabilities = Capabilities(1 << 14);
 
     /// Bit 15 — the device sends one `Identity` message (product, board, hardware revision and its
-    /// source) right after the handshake. Without it the device is the legacy Desk Buddy on the
+    /// source) right after the handshake. Without it the device is the legacy Kivori Pip on the
     /// C3 SuperMini (ADR-0014).
     pub const PRODUCT_IDENTITY_V1: Capabilities = Capabilities(1 << 15);
 

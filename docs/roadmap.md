@@ -221,10 +221,10 @@ Software done and host-tested (#72); owner key and hardware rows remain.
 
 - [x] **Product identity** (ADR-0014):
   - `products/registry.toml` hands out fixed machine ids and wire numbers for products and boards
-    (`desk-buddy` = 1, `c3-supermini` = 1); never reused, never renamed; display names live in the
+    (`pala` = 1, `c3-supermini` = 1); never reused, never renamed; display names live in the
     catalog
   - the device reports product, board and hardware revision in a new `Identity` message after the
-    handshake (capability `PRODUCT_IDENTITY_V1`); a device without it is the legacy Desk Buddy on
+    handshake (capability `PRODUCT_IDENTITY_V1`); a device without it is the legacy Kivori Pip on
     the C3 SuperMini, revision unknown
   - each firmware image carries an identity record (product, board, firmware version, minimum
     protocol) next to its version marker; the app refuses to flash an image onto a different
@@ -234,12 +234,13 @@ Software done and host-tested (#72); owner key and hardware rows remain.
 - [x] **Product catalog in the app:** `products/<id>/product.toml` per product (display name, image,
   boards, flash method per board, bundled firmware with version, SHA-256 and minimum protocol,
   required capabilities); the app's device code reads the catalog instead of assuming one board.
-  `firmware/esp32-c3` moves to `firmware/desk-buddy` (done)
+  `firmware/esp32-c3` moves to `firmware/desk-buddy` (done), renamed `firmware/pala` with the
+  product codename (2026-10-12)
 - [x] **Release tooling:** a Release button (manual workflow, run only when the owner wants a
   release) bumps the app version and, when asked, the firmware version, and builds a draft whose
   notes come from the conventional commits since the last release; the app tags `vX.Y.Z` and gets
-  a normal (not pre-release) GitHub Release titled with its firmware ("Kivori 0.2.0 · Desk Buddy
-  firmware 1.4.0"); firmware tags `fw-<product>-vX.Y.Z` with no GitHub Release of its own
+  a normal (not pre-release) GitHub Release titled with its firmware ("Kivori 0.2.0 · Pip firmware
+  1.4.0"); firmware tags `fw-<product>-vX.Y.Z` with no GitHub Release of its own
 - [x] **App updates** (ADR-0015): Tauri updater against the latest GitHub Release's `latest.json`,
   every update verified with the updater key built into the app; checked at start and daily, on by
   default, a setting to turn it off; tray badge, then a dialog when the window opens ("Install &

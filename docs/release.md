@@ -45,23 +45,23 @@ updatable" and no `.sig` or `latest.json` is produced.
      becomes 1.0.0). `app_version`: an exact `X.Y.Z` instead, which must
      be greater than the current version;
    - `firmware_bump`: `none` (default, the firmware keeps its version), `patch`, `minor` or `major`;
-     `firmware_version`: an exact `A.B.C` instead. Bump it when the Desk Buddy firmware changed since
-     the last release (look for commits touching `firmware/desk-buddy/` or a shared crate it uses);
+     `firmware_version`: an exact `A.B.C` instead. Bump it when the Kivori Pip firmware changed since
+     the last release (look for commits touching `firmware/pala/` or a shared crate it uses);
    - `dry_run`: tick it first to see the versions and the notes without changing anything. The run's
      summary page shows both.
 3. The `start` job then:
    - refuses to run anywhere but `main`, and refuses a version that is not greater or whose tag
-     (`vX.Y.Z`, `fw-desk-buddy-vA.B.C`) already exists (`scripts/release-bump.mjs`);
+     (`vX.Y.Z`, `fw-pala-vA.B.C`) already exists (`scripts/release-bump.mjs`);
    - writes `[workspace.package] version` in `Cargo.toml` (and `version` in
-     `firmware/desk-buddy/Cargo.toml` when bumped), refreshes both `Cargo.lock` files with
+     `firmware/pala/Cargo.toml` when bumped), refreshes both `Cargo.lock` files with
      `cargo update --workspace`, and fails if anything else changed;
    - commits `chore(release): vX.Y.Z` (the body names the firmware version) as `github-actions[bot]`,
-     tags `vX.Y.Z` (and `fw-desk-buddy-vA.B.C`, which gets no GitHub Release), and pushes commit and
+     tags `vX.Y.Z` (and `fw-pala-vA.B.C`, which gets no GitHub Release), and pushes commit and
      tags to `main` in one atomic push. If `main` moved after you pressed the button, the push is
      rejected and nothing lands: run it again.
 4. It then calls `release.yml` with the tag, which builds the firmware, builds the installer, installs
    and uninstalls it on a clean runner, and creates the **draft** release (never a pre-release): title
-   `Kivori X.Y.Z · Desk Buddy firmware A.B.C`, notes, and the files `Kivori_X.Y.Z_x64-setup.exe`, its
+   `Kivori X.Y.Z · Pip firmware A.B.C`, notes, and the files `Kivori_X.Y.Z_x64-setup.exe`, its
    `.sig`, `latest.json` and `SHA256SUMS`.
 5. Open Releases on GitHub, check the draft (edit the notes if a line reads badly), and publish it as a
    normal release (never tick pre-release; the updater ignores pre-releases). Installed apps see it
@@ -75,14 +75,15 @@ updatable" and no `.sig` or `latest.json` is produced.
 merge commits. The app list skips commits that only touch `firmware/`, `hardware/`, `sim/`,
 `apps/web/`, the Wokwi tools, `docs/` or `.github/`, and `web`-scoped commits. A Firmware section
 follows: the bundled version and "unchanged", or, when the version changed, the firmware commits
-(those touching `firmware/desk-buddy/`) grouped the same way. The release body ends with a compare
+(those touching `firmware/pala/`, or its earlier homes `firmware/desk-buddy/` and
+`firmware/esp32-c3/`) grouped the same way. The release body ends with a compare
 link; `latest.json` (shown in the app's update dialog) carries the same notes without it.
 
 **First time:** v0.1.0 has no updater, so nobody gets the first updatable release automatically.
 Install that release by hand from its installer; every release after it reaches it by itself.
 
 A `v*` tag pushed by hand still works (a hotfix from a branch, for example): bump `version` in
-`Cargo.toml` under `[workspace.package]`, update `Cargo.lock` (and `firmware/desk-buddy/Cargo.lock`,
+`Cargo.toml` under `[workspace.package]`, update `Cargo.lock` (and `firmware/pala/Cargo.lock`,
 which records the shared crates' version), commit, then tag `vX.Y.Z` and push the tag. `release.yml`
 fails at the first step if the tag and the workspace version differ, creates the draft itself and fills
 it the same way. A re-run for the same tag updates the draft; a published release is never changed.

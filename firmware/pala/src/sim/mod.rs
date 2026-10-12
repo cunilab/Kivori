@@ -336,7 +336,7 @@ pub fn drive_rotary(levels: Vec<InputLevels, SCRIPT_CAPACITY>) -> Vec<SeenInput,
 
 /// Drives Hello -> HelloAck -> Ready over a fresh in-memory pipe with the given session `nonce`,
 /// mirroring the same encode/[`SimPipe`]/[`Dispatcher::poll`] pattern
-/// `firmware/desk-buddy/tests/host_sim.rs` already exercises, and returns the resulting
+/// `firmware/pala/tests/host_sim.rs` already exercises, and returns the resulting
 /// [`Dispatcher`] with the session accepted and both Slice 002 capabilities negotiated.
 ///
 /// A test fixture, not a second handshake implementation: `tests/` integration files are separate

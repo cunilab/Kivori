@@ -32,7 +32,7 @@ const GUARDED: [&str; 6] = [
     "crates/kivori-protocol/Cargo.toml",
     "crates/kivori-framebuffer/Cargo.toml",
     "crates/kivori-renderer/Cargo.toml",
-    "firmware/desk-buddy/Cargo.toml",
+    "firmware/pala/Cargo.toml",
 ];
 
 fn repo_root() -> PathBuf {

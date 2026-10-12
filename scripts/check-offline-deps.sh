@@ -27,7 +27,7 @@ TARGETS=(x86_64-pc-windows-msvc aarch64-apple-darwin x86_64-apple-darwin x86_64-
 # The one module allowed to use the network, and the first-party sources that ship.
 ALLOWED_DIR="apps/desktop/src-tauri/src/updater/"
 SOURCE_ROOTS=(apps/desktop/src-tauri/src apps/desktop/src-tauri/build.rs apps/desktop/src-tauri/examples
-  crates tools firmware/desk-buddy/src)
+  crates tools firmware/pala/src)
 NET_SOURCE='tauri_plugin_updater|UpdaterExt|reqwest|ureq|hyper::|std::net|TcpStream|TcpListener|UdpSocket'
 
 if ! command -v jq >/dev/null 2>&1; then
@@ -70,7 +70,7 @@ check_workspace() {
 }
 
 check_workspace "."
-check_workspace "firmware/desk-buddy"
+check_workspace "firmware/pala"
 
 prune=()
 for p in "${NET_PRUNE[@]}"; do prune+=(--prune "$p"); done

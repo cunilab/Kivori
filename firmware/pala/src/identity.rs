@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn build_identity_matches_the_registry_numbers() {
-        // desk-buddy 1 on c3-supermini 1 (products/registry.toml); `build.rs` generates them.
+        // pala 1 on c3-supermini 1 (products/registry.toml); `build.rs` generates them.
         assert_eq!((BUILD_PRODUCT, BUILD_BOARD), (1, 1));
         assert_ne!(BUILD_PRODUCT, 0);
         assert_ne!(BUILD_BOARD, 0);

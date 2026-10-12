@@ -416,7 +416,7 @@ fn a_reversal_stays_in_one_gesture_and_reports_both_directions() {
 #[test]
 fn the_dispatcher_records_the_accepted_session_nonce() {
     // Uses the existing host-sim handshake helper pattern from
-    // `firmware/desk-buddy/tests/host_sim.rs`: drive Hello -> HelloAck -> Ready, then assert
+    // `firmware/pala/tests/host_sim.rs`: drive Hello -> HelloAck -> Ready, then assert
     // the dispatcher retained the nonce it accepted.
     let d = kivori_firmware::sim::handshaken_dispatcher(0x1234_5678);
     assert_eq!(d.accepted_session(), Some(0x1234_5678));

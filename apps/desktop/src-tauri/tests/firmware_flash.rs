@@ -552,7 +552,7 @@ fn a_wrong_product_refusal_writes_nothing_and_carries_both_names() {
     assert_eq!(status.failure, Some(FlashFailure::WrongProduct));
     let names = status.wrong_product.as_ref().expect("both names");
     assert_eq!(names.device, "Unknown product (7) on Unknown board (1)");
-    assert_eq!(names.image, "Kivori Desk Buddy on C3 SuperMini");
+    assert_eq!(names.image, "Kivori Pip on C3 SuperMini");
     // The flasher was never reserved: nothing owns the port.
     assert!(!flash.is_busy());
     let kinds: Vec<_> = flash.drain_activity().iter().map(|a| a.kind).collect();
@@ -571,8 +571,8 @@ fn a_restore_that_needs_a_pick_lists_the_products_and_clears_on_the_next_attempt
     let mut flash = FlashWorkflow::new(true, 512);
     flash.ask_restore_choice(vec![
         RestoreOption {
-            id: "desk-buddy".into(),
-            name: "Kivori Desk Buddy".into(),
+            id: "pala".into(),
+            name: "Kivori Pip".into(),
         },
         RestoreOption {
             id: "lamp".into(),
@@ -591,12 +591,10 @@ fn a_restore_that_needs_a_pick_lists_the_products_and_clears_on_the_next_attempt
 #[test]
 fn a_restore_for_a_picked_product_is_queued_with_its_id() {
     let (state, rx) = app_state_with_connection("disconnected");
-    assert!(state
-        .queue_firmware_restore_for("desk-buddy".into())
-        .is_ok());
+    assert!(state.queue_firmware_restore_for("pala".into()).is_ok());
     assert_eq!(
         rx.recv().unwrap(),
-        DeviceCommand::RestoreFirmwareFor("desk-buddy".into())
+        DeviceCommand::RestoreFirmwareFor("pala".into())
     );
     state.shutdown();
 }

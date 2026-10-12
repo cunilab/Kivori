@@ -35,13 +35,13 @@ accepts a **byte array**, so real binary frames can be injected as serial **inpu
 vocabulary was verified against the CLI's own validator (v0.26.1): `wait-serial`, `write-serial`, `delay`,
 `set-control`, `expect-pin` are accepted; `wait-pin`, `screenshot`, `wait-text` are not.
 
-* The **internal** self-test ([`selftest.rs`](../../firmware/desk-buddy/src/selftest.rs)) drives the core
-  from inside via [`LoopbackTransport`](../../firmware/desk-buddy/src/sim_probe.rs), printing one
+* The **internal** self-test ([`selftest.rs`](../../firmware/pala/src/selftest.rs)) drives the core
+  from inside via [`LoopbackTransport`](../../firmware/pala/src/sim_probe.rs), printing one
   `KIVORI-SIM …` line per check. Useful, but it is an on-target *integration* self-test — it does not
   exercise the serial peripheral.
-* The **external** mode ([`external.rs`](../../firmware/desk-buddy/src/external.rs)) is the real thing:
+* The **external** mode ([`external.rs`](../../firmware/pala/src/external.rs)) is the real thing:
   injected bytes arrive through the USB Serial/JTAG peripheral via
-  [`transport.rs`](../../firmware/desk-buddy/src/transport.rs) (the same adapter the hardware run loop will
+  [`transport.rs`](../../firmware/pala/src/transport.rs) (the same adapter the hardware run loop will
   use), pass through the real decoder + sequence policy + `Dispatcher`, and the device's real response
   frames go back out over the same peripheral. Redacted `KIVORI-EXT …` markers report the semantics.
 
@@ -177,7 +177,7 @@ without asserting anything about a controller.
 
 **Stage 2 (implemented — T131).** [`diagram-spi.json`](diagram-spi.json) adds Wokwi's built-in
 `wokwi-ili9341` and the `wokwi-spi` firmware drives it through the real T072 adapter
-([`display.rs`](../../firmware/desk-buddy/src/display.rs)), so genuine SPI traffic exists to observe. Three
+([`display.rs`](../../firmware/pala/src/display.rs)), so genuine SPI traffic exists to observe. Three
 scopes, and only the first two are claimed:
 
 | Scope | Claimed? | Content |
@@ -195,7 +195,7 @@ The pin numbers in `diagram-spi.json` (`SCK=4, MOSI=5, CS=6, D/C=7, RST=10`) are
 profile (`WokwiSpiPins`). They were chosen from the board part's valid pins as reported by
 `wokwi-cli lint` — `0–10, 18, 19, RST, RX, TX` — excluding `18`/`19` (USB Serial/JTAG on this SoC) and
 `2`/`8`/`9` (ESP32-C3 strapping pins). They are **not** the Kivori hardware pin map (SCK 6, MOSI 7, D/C 2, RST 3, backlight 8, see
-[`profile.rs`](../../firmware/desk-buddy/src/profile.rs)).
+[`profile.rs`](../../firmware/pala/src/profile.rs)).
 
 **Custom ST7789 chip: deliberately not created.** The physical controller is confirmed as an ST7789
 (validation rows 1.9, 1.24, 1.25), but no chip model is needed yet. If one is, implement only the command subset Kivori uses — `SWRESET`, `SLPOUT`, `COLMOD`, `MADCTL`, `CASET`,

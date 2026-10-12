@@ -56,7 +56,7 @@ const connected: DiagnosticsDto = {
     capabilities: ['mascotInteraction', 'deskStatusV1'],
     deviceHash: '3fa9c1d2',
     identity: {
-      product: 'Kivori Desk Buddy',
+      product: 'Kivori Pip',
       board: 'C3 SuperMini',
       hwRev: null,
       source: 'legacy',
@@ -102,7 +102,7 @@ describe('Diagnostics card', () => {
     bridge.get.mockResolvedValue(connected);
     view();
     await screen.findByText('3fa9c1d2');
-    expect(screen.getByTestId('diag-product')).toHaveTextContent('Kivori Desk Buddy');
+    expect(screen.getByTestId('diag-product')).toHaveTextContent('Kivori Pip');
     expect(screen.getByTestId('diag-board')).toHaveTextContent('C3 SuperMini');
     expect(screen.getByTestId('diag-identity-source')).toHaveTextContent('Not reported');
     expect(screen.getByTestId('diag-hw-rev')).toHaveTextContent('—');

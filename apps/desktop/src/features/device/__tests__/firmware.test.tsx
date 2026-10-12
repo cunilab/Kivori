@@ -198,12 +198,12 @@ describe('firmware update', () => {
       ...ready,
       phase: 'failed',
       failure: 'wrongProduct',
-      wrongProduct: { device: 'Kivori Lamp on RP2350', image: 'Kivori Desk Buddy on C3 SuperMini' },
+      wrongProduct: { device: 'Kivori Lamp on RP2350', image: 'Kivori Pip on C3 SuperMini' },
     });
     render(<FirmwareUpdate connected />);
     const text = await screen.findByText(/nothing was changed/);
     expect(text).toHaveTextContent('Kivori Lamp on RP2350');
-    expect(text).toHaveTextContent('Kivori Desk Buddy on C3 SuperMini');
+    expect(text).toHaveTextContent('Kivori Pip on C3 SuperMini');
   });
 
   it('lists the products to pick from and restores the one chosen', async () => {
@@ -212,7 +212,7 @@ describe('firmware update', () => {
       phase: 'failed',
       failure: 'chooseProduct',
       restoreChoices: [
-        { id: 'desk-buddy', name: 'Kivori Desk Buddy' },
+        { id: 'pala', name: 'Kivori Pip' },
         { id: 'lamp', name: 'Kivori Lamp' },
       ],
     });
@@ -220,7 +220,7 @@ describe('firmware update', () => {
     render(<FirmwareUpdate connected />);
     await user.click(await screen.findByRole('button', { name: 'Restore Kivori Lamp' }));
     expect(bridge.restore).toHaveBeenCalledWith('lamp');
-    expect(screen.getByRole('button', { name: 'Restore Kivori Desk Buddy' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Restore Kivori Pip' })).toBeInTheDocument();
   });
 
   it('shows Restore when the connection is incompatible and keeps flashing available', async () => {

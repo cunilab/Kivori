@@ -1,6 +1,7 @@
 //! The product catalog (ADR-0014): which products and boards this app knows, read from
 //! `products/registry.toml` (machine ids and wire numbers) and `products/<id>/product.toml`
-//! (display names, flash method, discovery hints, bundled firmware, required capabilities).
+//! (customer name, short name, model code, flash method, discovery hints, bundled firmware,
+//! required capabilities).
 //!
 //! Both are compiled into the app. This file is also compiled by `build.rs` (via `#[path]`), which
 //! validates the catalog and checks the bundled firmware against it, so it stays free of
@@ -20,8 +21,8 @@ const REGISTRY: &str = include_str!("../../../../products/registry.toml");
 /// Every product file, as embedded: `(machine id, file contents)`. A test checks that each
 /// directory under `products/` is listed.
 const PRODUCT_FILES: &[(&str, &str)] = &[(
-    "desk-buddy",
-    include_str!("../../../../products/desk-buddy/product.toml"),
+    "pala",
+    include_str!("../../../../products/pala/product.toml"),
 )];
 
 /// How a board is flashed.
@@ -67,8 +68,12 @@ pub struct Product {
     pub id: String,
     /// Wire number from the registry.
     pub number: u16,
-    /// Name shown to the user.
+    /// Customer name shown to the user ("Kivori Pip").
     pub display_name: String,
+    /// Short customer name, without the brand ("Pip").
+    pub short_name: String,
+    /// Model code printed on the unit and its box ("KV-P1").
+    pub model: String,
     /// Product picture, relative to the product directory (none yet when empty).
     pub image: Option<String>,
     /// Names of the capabilities every unit must negotiate.
@@ -110,6 +115,8 @@ struct RawRegistry {
 #[serde(deny_unknown_fields)]
 struct RawProduct {
     display_name: String,
+    short_name: String,
+    model: String,
     #[serde(default)]
     image: String,
     required_capabilities: Vec<String>,
@@ -165,6 +172,18 @@ fn check_table(kind: &str, table: &BTreeMap<String, u16>) -> Result<(), CatalogE
     Ok(())
 }
 
+/// Model codes are two uppercase letters, a dash, then uppercase letters or digits (`KV-P1`).
+fn valid_model(model: &str) -> bool {
+    model.split_once('-').is_some_and(|(prefix, rest)| {
+        prefix.len() == 2
+            && prefix.chars().all(|c| c.is_ascii_uppercase())
+            && !rest.is_empty()
+            && rest
+                .chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+    })
+}
+
 fn parse_usb(text: &str) -> Result<UsbId, CatalogError> {
     let parsed = text.split_once(':').and_then(|(vid, pid)| {
         Some((
@@ -193,7 +212,8 @@ impl Catalog {
     ///
     /// # Errors
     /// Malformed TOML, an invalid or reused id or number, a product missing from the registry, a
-    /// board missing from the registry, or a malformed USB id or protocol version.
+    /// board missing from the registry, an empty name or short name, a malformed model code, or a
+    /// malformed USB id or protocol version.
     pub fn parse(registry: &str, products: &[(&str, &str)]) -> Result<Self, CatalogError> {
         let registry: RawRegistry =
             toml::from_str(registry).map_err(|e| CatalogError(format!("registry.toml: {e}")))?;
@@ -207,6 +227,17 @@ impl Catalog {
             };
             let raw: RawProduct = toml::from_str(source)
                 .map_err(|e| CatalogError(format!("products/{id}/product.toml: {e}")))?;
+            if raw.display_name.trim().is_empty() || raw.short_name.trim().is_empty() {
+                return err(format!(
+                    "product `{id}` has an empty display_name or short_name"
+                ));
+            }
+            if !valid_model(&raw.model) {
+                return err(format!(
+                    "product `{id}` model `{}` is not like `KV-P1` (two capitals, a dash, capitals or digits)",
+                    raw.model
+                ));
+            }
             let mut boards = Vec::new();
             for (board_id, board) in raw.boards {
                 let Some(&board_number) = registry.boards.get(&board_id) else {
@@ -239,6 +270,8 @@ impl Catalog {
                 id: id.to_string(),
                 number,
                 display_name: raw.display_name,
+                short_name: raw.short_name,
+                model: raw.model,
                 image: (!raw.image.is_empty()).then_some(raw.image),
                 required_capabilities: raw.required_capabilities,
                 boards,
@@ -308,32 +341,34 @@ pub fn crate_version(cargo_toml: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    const REG: &str = "[products]\ndesk-buddy = 1\n[boards]\nc3-supermini = 1\n";
+    const REG: &str = "[products]\npala = 1\n[boards]\nc3-supermini = 1\n";
 
     fn product(board: &str) -> String {
         format!(
-            "display_name = \"X\"\nrequired_capabilities = []\n[boards.{board}]\ndisplay_name = \"B\"\n\
+            "display_name = \"X\"\nshort_name = \"X\"\nmodel = \"KV-X1\"\nrequired_capabilities = []\n[boards.{board}]\ndisplay_name = \"B\"\n\
              flash = \"espflash\"\nusb = [\"303A:1001\"]\n[boards.{board}.firmware]\ncrate = \"fw\"\n\
              artifact = \"a\"\nmin_protocol = \"1.2\"\n"
         )
     }
 
     fn parse(reg: &str, product_src: &str) -> Result<Catalog, CatalogError> {
-        Catalog::parse(reg, &[("desk-buddy", product_src)])
+        Catalog::parse(reg, &[("pala", product_src)])
     }
 
     #[test]
-    fn embedded_catalog_is_valid_and_has_desk_buddy_on_c3_supermini() {
+    fn embedded_catalog_is_valid_and_has_pala_on_c3_supermini() {
         let catalog = Catalog::embedded();
-        let (product, board) = catalog.by_wire(1, 1).expect("desk-buddy on c3-supermini");
-        assert_eq!(product.id, "desk-buddy");
-        assert_eq!(product.display_name, "Kivori Desk Buddy");
+        let (product, board) = catalog.by_wire(1, 1).expect("pala on c3-supermini");
+        assert_eq!(product.id, "pala");
+        assert_eq!(product.display_name, "Kivori Pip");
+        assert_eq!(product.short_name, "Pip");
+        assert_eq!(product.model, "KV-P1");
         assert_eq!(board.id, "c3-supermini");
         assert_eq!(board.flash, FlashMethod::Espflash);
         assert_eq!(catalog.usb_ids(), vec![(0x303A, 0x1001)]);
         assert_eq!(catalog.by_wire(1, 2), None);
         assert_eq!(catalog.by_wire(0, 0), None);
-        assert!(catalog.product("desk-buddy").is_some());
+        assert!(catalog.product("pala").is_some());
         assert!(catalog.product("nope").is_none());
     }
 
@@ -371,7 +406,7 @@ mod tests {
     fn rejects_reused_or_zero_numbers_and_bad_ids() {
         let dup = "[products]\na = 1\nb = 1\n[boards]\nc3-supermini = 1\n";
         assert!(Catalog::parse(dup, &[]).is_err());
-        let zero = "[products]\ndesk-buddy = 0\n[boards]\nc3-supermini = 1\n";
+        let zero = "[products]\npala = 0\n[boards]\nc3-supermini = 1\n";
         assert!(Catalog::parse(zero, &[]).is_err());
         let bad = "[products]\nDesk = 1\n[boards]\nc3-supermini = 1\n";
         assert!(Catalog::parse(bad, &[]).is_err());
@@ -384,6 +419,23 @@ mod tests {
         let proto = product("c3-supermini").replace("1.2", "x");
         assert!(parse(REG, &proto).is_err());
         assert!(parse(REG, &product("c3-supermini")).is_ok());
+    }
+
+    #[test]
+    fn requires_names_and_a_well_formed_model_code() {
+        let ok = product("c3-supermini");
+        let empty_short = ok.replace("short_name = \"X\"", "short_name = \" \"");
+        assert!(parse(REG, &empty_short).is_err());
+        let no_model = ok.replace("model = \"KV-X1\"\n", "");
+        assert!(parse(REG, &no_model).is_err());
+        for bad in ["kv-p1", "KVP1", "K-P1", "KVX-P1", "KV-", "KV-p1", "KV-P 1"] {
+            let src = ok.replace("KV-X1", bad);
+            assert!(parse(REG, &src).is_err(), "{bad} should be rejected");
+        }
+        for good in ["KV-P1", "KV-1", "AB-XYZ9"] {
+            let src = ok.replace("KV-X1", good);
+            assert!(parse(REG, &src).is_ok(), "{good} should be accepted");
+        }
     }
 
     #[test]

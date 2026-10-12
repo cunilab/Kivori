@@ -417,7 +417,7 @@ fn device_loop(
                         }
                     } else {
                         // Tier A (ADR-0016): the image's identity record must match the connected
-                        // device (legacy counts as desk-buddy on c3-supermini), checked before
+                        // device (legacy counts as pala on c3-supermini), checked before
                         // anything is reserved, let alone written. A device whose identity has not
                         // arrived yet cannot be verified and is refused by `request` below.
                         let mismatch = session.identity().zip(image).and_then(|(device, image)| {
