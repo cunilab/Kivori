@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   bumpVersion,
   commitBody,
+  latestTagVersion,
   nextVersion,
   parseSemver,
   planRelease,
@@ -11,12 +12,14 @@ import {
   tomlVersion,
 } from './release-bump.mjs';
 import {
+  firstReleaseNotes,
   groupCommits,
   isAppCommit,
   isFirmwareCommit,
   packageVersion,
   parseConventional,
   parseGitLog,
+  productDisplayName,
   productName,
   releaseNotes,
   releaseTitle,
@@ -30,8 +33,8 @@ test('semver bumps, including a real major below 1.0.0', () => {
   assert.equal(bumpVersion('0.1.3', 'minor'), '0.2.0');
   assert.equal(bumpVersion('0.4.2', 'major'), '1.0.0');
   assert.equal(bumpVersion('1.4.0', 'major'), '2.0.0');
-  assert.equal(bumpVersion('1.4.0', 'none'), '1.4.0');
-  assert.throws(() => bumpVersion('1.4.0', 'huge'), /unknown bump/);
+  assert.equal(bumpVersion('0.1.0', 'none'), '0.1.0');
+  assert.throws(() => bumpVersion('0.1.0', 'huge'), /unknown bump/);
 });
 
 test('versions must be plain X.Y.Z', () => {
@@ -41,53 +44,167 @@ test('versions must be plain X.Y.Z', () => {
   }
 });
 
-test('an exact version overrides the bump and must be greater', () => {
-  assert.equal(nextVersion('0.1.0', { bump: 'minor', exact: '' }), '0.2.0');
-  assert.equal(nextVersion('0.1.0', { bump: 'minor', exact: ' 0.1.5 ' }), '0.1.5');
-  assert.equal(nextVersion('0.1.0', { bump: 'patch', exact: 'v1.0.0' }), '1.0.0');
-  assert.equal(nextVersion('1.4.0', { bump: 'none', exact: '1.4.1' }), '1.4.1');
-  assert.throws(() => nextVersion('0.2.0', { bump: 'minor', exact: '0.2.0' }), /not greater/);
-  assert.throws(() => nextVersion('0.2.0', { bump: 'minor', exact: '0.1.9' }), /not greater/);
-  assert.throws(() => nextVersion('0.2.0', { bump: 'minor', exact: '0.3' }), /X\.Y\.Z/);
+test('the latest tag of a component is the highest X.Y.Z with its prefix', () => {
+  const tags = [
+    'v0.1.0',
+    'v0.10.0',
+    'v0.9.3',
+    'fw-pala-v0.3.0',
+    'fw-lamp-v9.0.0',
+    'v1.0.0-rc1',
+    'x',
+  ];
+  assert.equal(latestTagVersion(tags, 'v'), '0.10.0');
+  assert.equal(latestTagVersion(tags, 'fw-pala-v'), '0.3.0');
+  assert.equal(latestTagVersion(tags, 'fw-desk-v'), '');
+  assert.equal(latestTagVersion([], 'v'), '');
+  assert.equal(latestTagVersion(['pre-hardware-sim-green'], 'v'), '');
 });
 
-test('the release plan names both tags and refuses existing ones', () => {
-  const base = {
+test('a new version must be greater than the latest tag, and never below Cargo.toml', () => {
+  // No tag yet: the Cargo version itself may be released, as a bump or an exact version may be.
+  assert.equal(nextVersion('0.1.0', { bump: 'none', exact: '' }), '0.1.0');
+  assert.equal(nextVersion('0.1.0', { bump: 'minor', exact: '' }), '0.2.0');
+  assert.equal(nextVersion('0.1.0', { bump: 'minor', exact: ' 0.1.0 ' }), '0.1.0');
+  assert.equal(nextVersion('0.1.0', { bump: 'minor', exact: ' 0.1.5 ' }), '0.1.5');
+  assert.equal(nextVersion('0.1.0', { bump: 'patch', exact: 'v1.0.0' }), '1.0.0');
+  assert.throws(() => nextVersion('0.2.0', { bump: 'none', exact: '0.1.9' }), /below the current/);
+  assert.throws(() => nextVersion('0.2.0', { bump: 'minor', exact: '0.3' }), /X\.Y\.Z/);
+  // With a tag, the version must pass it.
+  const latest = '0.2.0';
+  assert.equal(nextVersion('0.2.0', { bump: 'patch', exact: '', latest }), '0.2.1');
+  assert.equal(nextVersion('0.2.0', { bump: 'none', exact: '0.3.0', latest }), '0.3.0');
+  assert.throws(() => nextVersion('0.2.0', { bump: 'none', exact: '', latest }), /not greater/);
+  assert.throws(
+    () => nextVersion('0.2.0', { bump: 'none', exact: '0.2.0', latest }),
+    /not greater/,
+  );
+  // Cargo.toml bumped by hand past the tag: releasing it as it is is fine.
+  assert.equal(nextVersion('0.3.0', { bump: 'none', exact: '', latest }), '0.3.0');
+  assert.throws(() => nextVersion('0.1.0', { bump: 'patch', exact: '', latest }), /not greater/);
+});
+
+const first = {
+  appCurrent: '0.1.0',
+  firmwareCurrent: '0.1.0',
+  product: 'pala',
+  appBump: 'none',
+  appExact: '',
+  firmwareBump: 'none',
+  firmwareExact: '',
+  tags: ['pre-hardware-sim-green'],
+};
+
+test('the first release ships the current versions as they are and starts both tag lineages', () => {
+  const plan = planRelease(first);
+  assert.deepEqual(plan, {
     appCurrent: '0.1.0',
-    firmwareCurrent: '1.4.0',
-    product: 'pala',
-    appBump: 'minor',
-    appExact: '',
-    firmwareBump: 'none',
-    firmwareExact: '',
-    tagExists: (t) => t === 'v0.1.0' || t === 'fw-pala-v1.4.0',
-  };
-  const same = planRelease(base);
+    appPrevious: '',
+    app: '0.1.0',
+    appChanged: false,
+    appTag: 'v0.1.0',
+    firmwareCurrent: '0.1.0',
+    firmwarePrevious: '',
+    firmware: '0.1.0',
+    firmwareChanged: false,
+    firmwareTag: 'fw-pala-v0.1.0',
+    commitNeeded: false,
+  });
+  assert.equal(commitBody(plan, 'Pip'), 'Pip firmware 0.1.0, first tagged as fw-pala-v0.1.0.');
+
+  // A bump on the first release works from the Cargo versions, and needs a version commit.
+  const bumped = planRelease({ ...first, appBump: 'minor', firmwareBump: 'patch' });
+  assert.deepEqual(bumped, {
+    appCurrent: '0.1.0',
+    appPrevious: '',
+    app: '0.2.0',
+    appChanged: true,
+    appTag: 'v0.2.0',
+    firmwareCurrent: '0.1.0',
+    firmwarePrevious: '',
+    firmware: '0.1.1',
+    firmwareChanged: true,
+    firmwareTag: 'fw-pala-v0.1.1',
+    commitNeeded: true,
+  });
+  assert.equal(commitBody(bumped, 'Pip'), 'Pip firmware 0.1.1 (was 0.1.0), tag fw-pala-v0.1.1.');
+
+  // Only the firmware moves: still a commit, and the app keeps its first, untagged version.
+  const fwOnly = planRelease({ ...first, firmwareExact: '0.2.0' });
+  assert.equal(fwOnly.app, '0.1.0');
+  assert.equal(fwOnly.firmwareTag, 'fw-pala-v0.2.0');
+  assert.equal(fwOnly.commitNeeded, true);
+});
+
+test('after the first release, none is refused and every version must pass the latest tag', () => {
+  const later = { ...first, tags: ['v0.1.0', 'fw-pala-v0.1.0'] };
+  assert.throws(
+    () => planRelease(later),
+    /tag v0\.1\.0 already exists; pick patch, minor or major/,
+  );
+  assert.throws(() => planRelease({ ...later, appExact: '0.1.0' }), /tag v0\.1\.0 already exists/);
+
+  const same = planRelease({ ...later, appBump: 'minor' });
   assert.deepEqual(same, {
     appCurrent: '0.1.0',
+    appPrevious: '0.1.0',
     app: '0.2.0',
+    appChanged: true,
     appTag: 'v0.2.0',
-    firmwareCurrent: '1.4.0',
-    firmware: '1.4.0',
+    firmwareCurrent: '0.1.0',
+    firmwarePrevious: '0.1.0',
+    firmware: '0.1.0',
     firmwareChanged: false,
     firmwareTag: '',
+    commitNeeded: true,
   });
-  assert.equal(commitBody(same, 'Pip'), 'Pip firmware 1.4.0, unchanged.');
+  assert.equal(commitBody(same, 'Pip'), 'Pip firmware 0.1.0, unchanged.');
+  // The firmware tag already there: an exact firmware version equal to it is just unchanged.
+  assert.equal(planRelease({ ...later, appBump: 'patch', firmwareExact: '0.1.0' }).firmwareTag, '');
 
-  const fw = planRelease({ ...base, firmwareBump: 'patch' });
-  assert.equal(fw.firmwareTag, 'fw-pala-v1.4.1');
-  assert.equal(commitBody(fw, 'Pip'), 'Pip firmware 1.4.1 (was 1.4.0), tag fw-pala-v1.4.1.');
+  const fw = planRelease({ ...later, appBump: 'minor', firmwareBump: 'patch' });
+  assert.equal(fw.firmwareTag, 'fw-pala-v0.1.1');
+  assert.equal(commitBody(fw, 'Pip'), 'Pip firmware 0.1.1 (was 0.1.0), tag fw-pala-v0.1.1.');
 
-  assert.throws(() => planRelease({ ...base, appExact: '0.1.0' }), /not greater/);
+  // The latest tag wins over a stale Cargo.toml, and an existing tag is never reused.
+  const ahead = { ...later, tags: ['v0.1.0', 'v0.3.0', 'fw-pala-v0.1.0'] };
   assert.throws(
-    () => planRelease({ ...base, tagExists: (t) => t === 'v0.2.0' }),
+    () => planRelease({ ...ahead, appBump: 'minor' }),
+    /0\.2\.0 is not greater than .* 0\.3\.0/,
+  );
+  assert.equal(planRelease({ ...ahead, appBump: 'minor', appExact: '0.4.0' }).app, '0.4.0');
+  assert.throws(
+    () => planRelease({ ...later, appBump: 'minor', tags: [...later.tags, 'v0.2.0'] }),
     /tag v0\.2\.0 already exists/,
   );
   assert.throws(
-    () => planRelease({ ...base, firmwareBump: 'patch', tagExists: (t) => t.startsWith('fw-') }),
-    /fw-pala-v1\.4\.1 already exists/,
+    () =>
+      planRelease({
+        ...later,
+        appBump: 'minor',
+        firmwareBump: 'patch',
+        tags: [...later.tags, 'fw-pala-v0.1.1'],
+      }),
+    /fw-pala-v0\.1\.1 already exists/,
   );
-  assert.throws(() => planRelease({ ...base, appBump: 'none' }), /app bump/);
+  // Firmware that was bumped by hand past its tag gets released and tagged under `none`.
+  const handBumped = planRelease({ ...later, appBump: 'patch', firmwareCurrent: '0.2.0' });
+  assert.equal(handBumped.firmwareTag, 'fw-pala-v0.2.0');
+  assert.equal(handBumped.firmwareChanged, false);
+  assert.equal(commitBody(handBumped, 'Pip'), 'Pip firmware 0.2.0, tag fw-pala-v0.2.0.');
+  // ...but never an untagged one below its latest tag.
+  assert.throws(
+    () =>
+      planRelease({
+        ...later,
+        appBump: 'patch',
+        firmwareCurrent: '0.2.0',
+        tags: [...later.tags, 'fw-pala-v0.4.0'],
+      }),
+    /0\.2\.0 is not greater than .* 0\.4\.0/,
+  );
+  assert.throws(() => planRelease({ ...later, appBump: 'huge' }), /app bump must be none/);
+  assert.throws(() => planRelease({ ...later, firmwareBump: '' }), /firmware bump must be none/);
 });
 
 test('only the version line of the named table changes', () => {
@@ -107,9 +224,9 @@ serde = { version = "1.0.0" }
   assert.ok(bumped.includes('serde = { version = "1.0.0" }'));
 
   const fw =
-    '[workspace]\nresolver = "2"\n\n[package]\nname = "kivori-firmware"\nversion = "1.4.0"\n';
-  assert.equal(tomlVersion(fw, 'package'), '1.4.0');
-  assert.equal(tomlVersion(setTomlVersion(fw, 'package', '1.5.0'), 'package'), '1.5.0');
+    '[workspace]\nresolver = "2"\n\n[package]\nname = "kivori-firmware"\nversion = "0.1.0"\n';
+  assert.equal(tomlVersion(fw, 'package'), '0.1.0');
+  assert.equal(tomlVersion(setTomlVersion(fw, 'package', '0.2.0'), 'package'), '0.2.0');
   assert.throws(() => tomlVersion(fw, 'workspace.package'), /no \[workspace\.package\]/);
 });
 
@@ -209,21 +326,21 @@ test('release notes: app sections, then the firmware, unchanged or with its comm
     prevVersion: '0.1.0',
   };
 
-  const unchanged = releaseNotes({ ...base, firmwareVersion: '1.4.0', previousFirmware: '1.4.0' });
+  const unchanged = releaseNotes({ ...base, firmwareVersion: '0.1.0', previousFirmware: '0.1.0' });
   assert.equal(unchanged.notes, unchanged.short);
   assert.ok(unchanged.short.startsWith('### Breaking changes\n'));
   assert.ok(!unchanged.short.includes('idle life'), 'firmware-only commits stay out of the app');
   assert.ok(!unchanged.short.includes('new home page'), 'website commits stay out');
   assert.ok(
     unchanged.short.endsWith(
-      '### Firmware\n\nPip firmware 1.4.0 is bundled with this release, unchanged since Kivori 0.1.0.\n',
+      '### Firmware\n\nPip firmware 0.1.0 is bundled with this release, unchanged since Kivori 0.1.0.\n',
     ),
   );
 
   const changed = releaseNotes({
     ...base,
-    firmwareVersion: '1.5.0',
-    previousFirmware: '1.4.0',
+    firmwareVersion: '0.2.0',
+    previousFirmware: '0.1.0',
     compareUrl: 'https://github.com/cunilab/Kivori/compare/v0.1.0...v0.2.0',
   });
   const firmware = changed.short.slice(changed.short.indexOf('### Firmware'));
@@ -231,7 +348,7 @@ test('release notes: app sections, then the firmware, unchanged or with its comm
     firmware,
     `### Firmware
 
-Pip firmware 1.5.0 is bundled with this release (was 1.4.0).
+Pip firmware 0.2.0 is bundled with this release (was 0.1.0).
 
 #### Breaking changes
 
@@ -254,8 +371,8 @@ Pip firmware 1.5.0 is bundled with this release (was 1.4.0).
   const quiet = releaseNotes({
     ...base,
     commits: parseGitLog(fakeLog([['c', 'chore: x', '', ['Cargo.toml']]])),
-    firmwareVersion: '1.4.1',
-    previousFirmware: '1.4.0',
+    firmwareVersion: '0.1.1',
+    previousFirmware: '0.1.0',
   });
   assert.equal(
     quiet.short,
@@ -263,25 +380,55 @@ Pip firmware 1.5.0 is bundled with this release (was 1.4.0).
 
 ### Firmware
 
-Pip firmware 1.4.1 is bundled with this release (was 1.4.0).
+Pip firmware 0.1.1 is bundled with this release (was 0.1.0).
 
 No firmware features or fixes are listed since Kivori 0.1.0.
 `,
   );
 });
 
+test('a first release gets a short note, not the whole history', () => {
+  const first = firstReleaseNotes({
+    version: '0.1.0',
+    productFullName: 'Kivori Pip',
+    firmwareVersion: '0.1.0',
+    repo: 'cunilab/Kivori',
+  });
+  assert.equal(
+    first.short,
+    `### First release
+
+Kivori 0.1.0, with Kivori Pip firmware 0.1.0.
+
+See the [README](https://github.com/cunilab/Kivori/blob/v0.1.0/README.md) for what Kivori does.
+`,
+  );
+  assert.equal(first.notes, first.short, 'no compare link without a previous tag');
+  const local = firstReleaseNotes({
+    version: '0.1.0',
+    productFullName: 'Kivori Pip',
+    firmwareVersion: '0.1.0',
+  });
+  assert.ok(local.short.includes('See the README for what Kivori does.'));
+});
+
 test('title and names come from the files', () => {
   assert.equal(
-    packageVersion('[package]\nname = "x"\nversion = "1.4.0"\n[dependencies]\n'),
-    '1.4.0',
+    packageVersion('[package]\nname = "x"\nversion = "0.1.0"\n[dependencies]\n'),
+    '0.1.0',
   );
   assert.equal(
     productName('display_name = "Kivori Pip"\nshort_name = "Pip"\nmodel = "KV-P1"\n'),
     'Pip',
   );
   assert.throws(() => productName('display_name = "Kivori Pip"\n'), /short_name/);
+  assert.equal(
+    productDisplayName('display_name = "Kivori Pip"\nshort_name = "Pip"\n'),
+    'Kivori Pip',
+  );
+  assert.throws(() => productDisplayName('short_name = "Pip"\n'), /display_name/);
   assert.throws(() => productName('short_name = ""\n'), /short_name/);
-  assert.equal(releaseTitle('0.2.0', 'Pip', '1.4.0'), 'Kivori 0.2.0 · Pip firmware 1.4.0');
+  assert.equal(releaseTitle('0.2.0', 'Pip', '0.1.0'), 'Kivori 0.2.0 · Pip firmware 0.1.0');
 });
 
 // --- updater-manifest.mjs -----------------------------------------------------------------------

@@ -166,9 +166,11 @@ rewire is a single constant change. The case and its printed carrier plate are i
 - **Version numbers.** The app has one version (the `vX.Y.Z` tag, the only thing users install).
   Each product's firmware has its own version, bumped only when it changes (tag `fw-pala-vA.B.C`).
   Compatibility is decided by the protocol version and capabilities alone, never by pairing app
-  and firmware numbers.
+  and firmware numbers. Before the first release the app and the Kivori Pip firmware are 0.1.0 and
+  the protocol is 0.1.
 - **Releasing.** Actions, **Release**, Run workflow on `main`: pick the app bump and, if the
-  firmware changed, a firmware bump (try a dry run first). It builds a **draft** titled
+  firmware changed, a firmware bump (try a dry run first; app bump `none` ships the current version,
+  as the first release does). It builds a **draft** titled
   `Kivori X.Y.Z · Pip firmware A.B.C` with notes from the conventional commits; check it and
   publish it. Full steps in [`docs/release.md`](docs/release.md).
 
