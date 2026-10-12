@@ -1,15 +1,16 @@
 # Release pipeline (M3 S5; docs/release.md). Builds the product firmware, then the unsigned Windows NSIS
 # installer with the pinned espflash sidecar, installs it silently on the runner and smoke-tests it.
-# A `v*` tag, or a call from release-please.yml with `tag`, also fills the DRAFT GitHub release (creating it
-# when release-please has not); nothing is published automatically.
+# A release tag also fills the DRAFT GitHub release, creating it when there is none: a call from the
+# Release button (release-start.yml) with `tag`, or a `v*` tag pushed by hand. Nothing is published
+# automatically, a release is never marked pre-release, and a published release is never changed.
 # The installer is signed for the updater (ADR-0015) when the TAURI_SIGNING_PRIVATE_KEY secret exists, and
 # latest.json is attached. Windows code signing is a placeholder that waits on owner certificates (#36).
 name: release
 on:
   push:
     tags: ['v*']
-  # Called by release-please.yml after the release PR merges (a tag created with GITHUB_TOKEN does not
-  # trigger the push event above). `tag` is the vX.Y.Z tag release-please created.
+  # Called by release-start.yml (the Release button) after it pushed the release commit and tags (a tag
+  # pushed with GITHUB_TOKEN does not trigger the push event above). `tag` is the new vX.Y.Z tag.
   workflow_call:
     inputs:
       tag:
@@ -68,6 +69,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # When called, github.ref is the commit the Release button started from, before its bump.
+          ref: ${{ inputs.tag || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: riscv32imc-unknown-none-elf
@@ -251,7 +255,9 @@ jobs:
           set -euo pipefail
           tag='${{ steps.release.outputs.tag }}'
           prev="$(git describe --tags --abbrev=0 --match 'v[0-9]*' "${tag}^" 2>/dev/null || true)"
-          node scripts/release-info.mjs --version "${tag#v}" ${prev:+--prev-tag "$prev"} --out-dir "$RUNNER_TEMP/release-info"
+          # Notes come from the conventional commits since the previous app tag (scripts/release-info.mjs).
+          node scripts/release-info.mjs --version "${tag#v}" ${prev:+--prev-tag "$prev"} \
+            --repo '${{ github.repository }}' --out-dir "$RUNNER_TEMP/release-info"
           cat "$RUNNER_TEMP/release-info/title.txt"; echo; cat "$RUNNER_TEMP/release-info/notes.md"
       - name: Write latest.json (updater manifest)
         if: steps.release.outputs.tag != '' && steps.updater.outputs.enabled == 'true'
@@ -260,7 +266,7 @@ jobs:
           set -euo pipefail
           tag='${{ steps.release.outputs.tag }}'
           node scripts/updater-manifest.mjs --version "${tag#v}" --installer '${{ steps.installer.outputs.path }}' \
-            --notes "$RUNNER_TEMP/release-info/notes.md" --repo '${{ github.repository }}' \
+            --notes "$RUNNER_TEMP/release-info/notes-short.md" --repo '${{ github.repository }}' \
             --out target/release/bundle/nsis/latest.json
           cat target/release/bundle/nsis/latest.json
       - uses: actions/upload-artifact@v4
@@ -272,9 +278,9 @@ jobs:
             target/release/bundle/nsis/SHA256SUMS
             target/release/bundle/nsis/latest.json
           if-no-files-found: error
-      # One draft per version: release-please already created the draft (and the tag) when it ran, a
-      # manual `v*` tag push has none yet. Either way this step sets the title and notes and uploads the
-      # assets. It never publishes and never marks a pre-release (the updater ignores pre-releases).
+      # One draft per version: the first run for a tag creates it, a re-run updates it. Either way this
+      # step sets the title and notes and uploads the assets. It never publishes, never marks a
+      # pre-release (the updater ignores pre-releases) and refuses to touch a published release.
       - name: Fill the draft release
         if: steps.release.outputs.tag != ''
         shell: bash

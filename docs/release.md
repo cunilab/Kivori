@@ -1,10 +1,11 @@
 # Cutting a release
 
-Releases are driven by conventional commits (`feat:`, `fix:`, `perf:`, scoped like `feat(mic): ...`).
-Two workflows do the work: `.github/workflows/release-please.yml` (version, changelog, tag, draft) and
-`.github/workflows/release.yml` (build, smoke test, sign for the updater, attach files). Nothing is
-published until you publish the draft. Windows code signing still waits on owner certificates (#36);
-see [architecture.md](./architecture.md#release-pipeline-m3-s5) and ADR-0014/0015.
+Releases start only when you decide: there is no standing release PR and nothing happens on a merge.
+Two workflows do the work: `.github/workflows/release-start.yml` (the **Release** button: versions,
+lockfiles, release commit, tags) and `.github/workflows/release.yml` (build, smoke test, sign for the
+updater, attach files to a draft). Nothing is published until you publish the draft. Windows code
+signing still waits on owner certificates (#36); see
+[architecture.md](./architecture.md#release-pipeline-m3-s5) and ADR-0014/0015.
 
 ## One-time owner setup
 
@@ -30,46 +31,66 @@ updatable" and no `.sig` or `latest.json` is produced.
    (key id `B53242CE79304D17`). With the `TAURI_SIGNING_PRIVATE_KEY` secret set, `release.yml` refuses to
    build a release while that key is empty ("Updater public key missing"), so a rotated key and its
    secret always change together.
-5. Settings, Actions, General: tick "Allow GitHub Actions to create and approve pull requests" (release-please
-   needs it to open the release PR). The cunilab organization must allow it first (organization
-   Settings, Actions, General, Workflow permissions). Done on 2026-10-12.
+5. The Release button pushes a commit and tags to `main` as `github-actions[bot]`. Nothing protects
+   `main` today; if you add a branch protection rule or ruleset later, let GitHub Actions bypass it,
+   or the push step fails with "Push to main rejected". The "Allow GitHub Actions to create and
+   approve pull requests" setting is no longer needed (leaving it on is harmless).
 
 ## Windows
 
-1. Merge pull requests with conventional commit titles. release-please keeps **one release PR** open
-   ("chore: release ...") with the next app version, the next firmware version if firmware changed,
-   and both changelogs (`CHANGELOG.md`, `firmware/desk-buddy/CHANGELOG.md`). Which commits count:
-   - app: everything except `firmware/`, `hardware/`, `sim/` and the Wokwi tools; shared `crates/`
-     count for the app only;
-   - firmware: only `firmware/desk-buddy/`. A change to a shared crate that really alters the
-     firmware needs a `fix(firmware): ...` (or `feat(firmware): ...`) commit touching the firmware
-     folder, or a manual `Release-As` / version bump, to bump the firmware.
-2. Merge the release PR when you want a release. The `release-please` workflow then:
-   - tags `vX.Y.Z` and creates the app's **draft** release (not a pre-release);
-   - tags `fw-desk-buddy-vA.B.C` if the firmware version changed (no GitHub Release for it);
-   - calls `release.yml` with the tag.
-3. `release.yml` builds the firmware, builds the installer, installs and uninstalls it on a clean
-   runner, then fills the draft: title `Kivori X.Y.Z · Desk Buddy firmware A.B.C`, notes (the app
-   changelog section plus a Firmware section), and the files `Kivori_X.Y.Z_x64-setup.exe`, its `.sig`,
-   `latest.json` and `SHA256SUMS`.
-4. The release PR branch gets a `chore: sync Cargo.lock ...` commit from CI (the lockfile holds the
-   workspace versions). Its checks do not start by themselves: close and reopen the PR to run them
-   before merging.
-5. Open Releases on GitHub, check the draft, and publish it as a normal release (never tick
-   pre-release; the updater ignores pre-releases). Installed apps see it within a day. Do the
-   [validation.md](./validation.md) Phase 10 rows on a real machine first for a beta build.
+1. Merge pull requests with conventional commit titles (`feat:`, `fix:`, `perf:`, scoped like
+   `feat(mic): ...`); they become the release notes.
+2. When you want a release: Actions, **Release**, Run workflow, on `main`. Pick:
+   - `app_bump`: `patch`, `minor` (default) or `major`. Below 1.0.0 a major is a real major (0.4.2
+     becomes 1.0.0). `app_version`: an exact `X.Y.Z` instead, which must
+     be greater than the current version;
+   - `firmware_bump`: `none` (default, the firmware keeps its version), `patch`, `minor` or `major`;
+     `firmware_version`: an exact `A.B.C` instead. Bump it when the Desk Buddy firmware changed since
+     the last release (look for commits touching `firmware/desk-buddy/` or a shared crate it uses);
+   - `dry_run`: tick it first to see the versions and the notes without changing anything. The run's
+     summary page shows both.
+3. The `start` job then:
+   - refuses to run anywhere but `main`, and refuses a version that is not greater or whose tag
+     (`vX.Y.Z`, `fw-desk-buddy-vA.B.C`) already exists (`scripts/release-bump.mjs`);
+   - writes `[workspace.package] version` in `Cargo.toml` (and `version` in
+     `firmware/desk-buddy/Cargo.toml` when bumped), refreshes both `Cargo.lock` files with
+     `cargo update --workspace`, and fails if anything else changed;
+   - commits `chore(release): vX.Y.Z` (the body names the firmware version) as `github-actions[bot]`,
+     tags `vX.Y.Z` (and `fw-desk-buddy-vA.B.C`, which gets no GitHub Release), and pushes commit and
+     tags to `main` in one atomic push. If `main` moved after you pressed the button, the push is
+     rejected and nothing lands: run it again.
+4. It then calls `release.yml` with the tag, which builds the firmware, builds the installer, installs
+   and uninstalls it on a clean runner, and creates the **draft** release (never a pre-release): title
+   `Kivori X.Y.Z · Desk Buddy firmware A.B.C`, notes, and the files `Kivori_X.Y.Z_x64-setup.exe`, its
+   `.sig`, `latest.json` and `SHA256SUMS`.
+5. Open Releases on GitHub, check the draft (edit the notes if a line reads badly), and publish it as a
+   normal release (never tick pre-release; the updater ignores pre-releases). Installed apps see it
+   within a day. Do the [validation.md](./validation.md) Phase 10 rows on a real machine first for a
+   beta build.
 
-Without release-please (hotfix by hand): bump `version` in `Cargo.toml` under `[workspace.package]` and
-`.release-please-manifest.json`, update `Cargo.lock`, merge, tag `vX.Y.Z` and push the tag. The
-workflow fails at the first step if the tag and the workspace version differ, creates the draft itself
-and fills it the same way.
+**Release notes** come from `git log` between the previous `v*` tag and the new one
+(`scripts/release-info.mjs`; no changelog files): `feat` commits under Features, `fix` under Fixes,
+`perf` under Performance, and `!` or a `BREAKING CHANGE:` footer under Breaking changes; `chore`,
+`docs`, `test`, `refactor`, `ci` and commits that are not conventional are left out, and so are
+merge commits. The app list skips commits that only touch `firmware/`, `hardware/`, `sim/`,
+`apps/web/`, the Wokwi tools, `docs/` or `.github/`, and `web`-scoped commits. A Firmware section
+follows: the bundled version and "unchanged", or, when the version changed, the firmware commits
+(those touching `firmware/desk-buddy/`) grouped the same way. The release body ends with a compare
+link; `latest.json` (shown in the app's update dialog) carries the same notes without it.
+
+**First time:** v0.1.0 has no updater, so nobody gets the first updatable release automatically.
+Install that release by hand from its installer; every release after it reaches it by itself.
+
+A `v*` tag pushed by hand still works (a hotfix from a branch, for example): bump `version` in
+`Cargo.toml` under `[workspace.package]`, update `Cargo.lock` (and `firmware/desk-buddy/Cargo.lock`,
+which records the shared crates' version), commit, then tag `vX.Y.Z` and push the tag. `release.yml`
+fails at the first step if the tag and the workspace version differ, creates the draft itself and fills
+it the same way. A re-run for the same tag updates the draft; a published release is never changed.
 
 To try the pipeline without a tag, run the `release` workflow by hand (Actions, Run workflow); it
 uploads the installer as a workflow artifact and creates no release. Pull requests that touch
-packaging files run it too, and never read the signing secrets.
-
-The first release PR only looks at history after `bootstrap-sha` in `release-please-config.json`;
-remove that key after the first release PR is merged.
+packaging files run it too, and never read the signing secrets. The release scripts' tests:
+`node --test scripts/release-tools.test.mjs` (the Release button runs them first).
 
 ## Verifying an app update end to end
 

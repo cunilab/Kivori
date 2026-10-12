@@ -217,7 +217,7 @@ supported. Design: ADR-0014 to ADR-0016 in [architecture.md](./architecture.md);
 [product.md](./product.md#updates-us10-us11); hardware rows are Phase 14 in
 [validation.md](./validation.md).
 
-Software done and host-tested (#72); owner key, GitHub setting and hardware rows remain.
+Software done and host-tested (#72); owner key and hardware rows remain.
 
 - [x] **Product identity** (ADR-0014):
   - `products/registry.toml` hands out fixed machine ids and wire numbers for products and boards
@@ -235,10 +235,11 @@ Software done and host-tested (#72); owner key, GitHub setting and hardware rows
   boards, flash method per board, bundled firmware with version, SHA-256 and minimum protocol,
   required capabilities); the app's device code reads the catalog instead of assuming one board.
   `firmware/esp32-c3` moves to `firmware/desk-buddy` (done)
-- [x] **Release tooling:** release-please reads the conventional commits and opens one release PR
-  with a version and changelog per component; the app tags `vX.Y.Z` and gets a normal (not
-  pre-release) GitHub Release titled with its firmware ("Kivori 0.2.0 · Desk Buddy firmware
-  1.4.0"); firmware tags `fw-<product>-vX.Y.Z` with no GitHub Release of its own
+- [x] **Release tooling:** a Release button (manual workflow, run only when the owner wants a
+  release) bumps the app version and, when asked, the firmware version, and builds a draft whose
+  notes come from the conventional commits since the last release; the app tags `vX.Y.Z` and gets
+  a normal (not pre-release) GitHub Release titled with its firmware ("Kivori 0.2.0 · Desk Buddy
+  firmware 1.4.0"); firmware tags `fw-<product>-vX.Y.Z` with no GitHub Release of its own
 - [x] **App updates** (ADR-0015): Tauri updater against the latest GitHub Release's `latest.json`,
   every update verified with the updater key built into the app; checked at start and daily, on by
   default, a setting to turn it off; tray badge, then a dialog when the window opens ("Install &

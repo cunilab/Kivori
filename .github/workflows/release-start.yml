@@ -1,0 +1,159 @@
+# The Release button (docs/release.md, ADR-0014). Releases start only when the owner runs this by hand:
+# Actions, Release, Run workflow. It bumps the app (and optionally the firmware) version on main,
+# refreshes both Cargo.lock files, commits `chore(release): vX.Y.Z` as github-actions[bot], tags
+# `vX.Y.Z` (and `fw-desk-buddy-vA.B.C` when the firmware moved), pushes commit and tags together, then
+# calls release.yml, which builds the installer and fills a DRAFT release. Nothing is published.
+# Tags pushed with GITHUB_TOKEN start no workflows, hence the direct call. A dry run only prints the
+# plan and the release notes it would produce.
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      app_bump:
+        description: 'App version bump. Below 1.0.0 a major is still a real major (0.x -> 1.0.0).'
+        type: choice
+        options: [patch, minor, major]
+        default: minor
+      app_version:
+        description: 'Exact app version X.Y.Z instead of the bump (optional, must be greater)'
+        type: string
+        required: false
+        default: ''
+      firmware_bump:
+        description: 'Desk Buddy firmware version bump (none keeps it). A major of 0.x gives 1.0.0.'
+        type: choice
+        options: [none, patch, minor, major]
+        default: none
+      firmware_version:
+        description: 'Exact firmware version A.B.C instead of the bump (optional, must be greater)'
+        type: string
+        required: false
+        default: ''
+      dry_run:
+        description: 'Dry run: compute and print the versions and notes, change nothing'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# One release at a time, start to draft; a second run waits instead of racing for the same version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  start:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the release commit and tags to main
+    env:
+      PRODUCT: desk-buddy
+    outputs:
+      tag: ${{ steps.plan.outputs.app_tag }}
+    steps:
+      - name: Only from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error title=Release only from main::Run the Release workflow on the main branch (it was started on ${GITHUB_REF})."
+          exit 1
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # all history and tags: tag checks and the release notes need them
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Test the release scripts
+        run: node --test scripts/release-tools.test.mjs
+      - name: Compute the versions
+        id: plan
+        env:
+          APP_BUMP: ${{ inputs.app_bump }}
+          APP_VERSION: ${{ inputs.app_version }}
+          FIRMWARE_BUMP: ${{ inputs.firmware_bump }}
+          FIRMWARE_VERSION: ${{ inputs.firmware_version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          mode=--write
+          if [ "$DRY_RUN" = true ]; then mode=--dry-run; fi
+          node scripts/release-bump.mjs --product "$PRODUCT" \
+            --app "$APP_BUMP" --app-version="$APP_VERSION" \
+            --firmware "$FIRMWARE_BUMP" --firmware-version="$FIRMWARE_VERSION" \
+            "$mode" --outputs "$GITHUB_OUTPUT" | tee "$RUNNER_TEMP/plan.txt"
+      - name: Release notes preview
+        env:
+          APP_VERSION: ${{ steps.plan.outputs.app_version }}
+          FIRMWARE_VERSION: ${{ steps.plan.outputs.firmware_version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          prev="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD 2>/dev/null || true)"
+          node scripts/release-info.mjs --version "$APP_VERSION" --firmware-version "$FIRMWARE_VERSION" \
+            --product "$PRODUCT" --repo "$GITHUB_REPOSITORY" ${prev:+--prev-tag "$prev"} \
+            --out-dir "$RUNNER_TEMP/release-info"
+          {
+            if [ "$DRY_RUN" = true ]; then echo '## Release dry run: nothing was changed'; else echo '## Release'; fi
+            echo; echo '```'; cat "$RUNNER_TEMP/plan.txt"; echo '```'; echo
+            echo "Notes since ${prev:-the first commit} (the draft gets the same, generated again from the tag):"; echo
+            echo "# $(cat "$RUNNER_TEMP/release-info/title.txt")"; echo
+            cat "$RUNNER_TEMP/release-info/notes.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/release-info/title.txt"; echo; cat "$RUNNER_TEMP/release-info/notes.md"
+      - uses: dtolnay/rust-toolchain@stable
+        if: ${{ !inputs.dry_run }}
+        with:
+          targets: riscv32imc-unknown-none-elf # firmware/desk-buddy/rust-toolchain.toml asks for it
+      # Cargo.lock records every workspace member's version, and the firmware lockfile also records the
+      # shared crates (path dependencies that inherit the app version). `--workspace` touches only those.
+      - name: Refresh both Cargo.lock files
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          cargo update --workspace
+          (cd "firmware/$PRODUCT" && cargo update --workspace)
+          cargo metadata --locked --format-version 1 > /dev/null
+          (cd "firmware/$PRODUCT" && cargo metadata --locked --format-version 1 > /dev/null)
+          git status --porcelain | while read -r _ path; do
+            case "$path" in
+              Cargo.toml | Cargo.lock | "firmware/$PRODUCT/Cargo.toml" | "firmware/$PRODUCT/Cargo.lock") ;;
+              *) echo "::error::Unexpected change in ${path}; a release commit only changes versions." >&2; exit 1 ;;
+            esac
+          done
+          git diff --stat
+      - name: Commit, tag and push
+        if: ${{ !inputs.dry_run }}
+        env:
+          APP_VERSION: ${{ steps.plan.outputs.app_version }}
+          APP_TAG: ${{ steps.plan.outputs.app_tag }}
+          FIRMWARE_VERSION: ${{ steps.plan.outputs.firmware_version }}
+          FIRMWARE_TAG: ${{ steps.plan.outputs.firmware_tag }}
+          COMMIT_BODY: ${{ steps.plan.outputs.commit_body }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- Cargo.toml Cargo.lock "firmware/$PRODUCT/Cargo.toml" "firmware/$PRODUCT/Cargo.lock"
+          git commit -m "chore(release): ${APP_TAG}" -m "$COMMIT_BODY"
+          git tag -a "$APP_TAG" -m "Kivori ${APP_VERSION}"
+          refs=("HEAD:refs/heads/main" "refs/tags/${APP_TAG}")
+          if [ -n "$FIRMWARE_TAG" ]; then
+            git tag -a "$FIRMWARE_TAG" -m "${PRODUCT} firmware ${FIRMWARE_VERSION}"
+            refs+=("refs/tags/${FIRMWARE_TAG}")
+          fi
+          # Atomic: the commit and the tags land together or not at all.
+          if ! git push --atomic origin "${refs[@]}"; then
+            echo "::error title=Push to main rejected::Could not push the release commit and tags to main. If main moved since this run started, run the workflow again. If a branch protection rule or ruleset blocks it, allow github-actions[bot] (GitHub Actions) to push to main, or remove the rule. If a tag was rejected, it already exists on GitHub." >&2
+            exit 1
+          fi
+          echo "Pushed $(git rev-parse --short HEAD) to main with ${refs[*]:1}."
+
+  release:
+    needs: start
+    if: ${{ !inputs.dry_run }}
+    permissions:
+      contents: write # the draft release
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.start.outputs.tag }}
+    secrets: inherit
