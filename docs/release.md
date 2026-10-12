@@ -25,14 +25,14 @@ updatable" and no `.sig` or `latest.json` is produced.
 3. In GitHub, Settings, Secrets and variables, Actions, add two repository secrets:
    - `TAURI_SIGNING_PRIVATE_KEY`: the full contents of `~/.tauri/kivori-updater.key`;
    - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: the password.
-4. Give Claude the **public** key (contents of `~/.tauri/kivori-updater.key.pub`).
-   TODO(owner): the public key goes into `plugins.updater.pubkey` in
-   `apps/desktop/src-tauri/tauri.release.conf.json`, which is still `""`. Until then every build's
-   updater is off (Device page: "it cannot verify them yet") and no installed build can install an
-   update. Once the `TAURI_SIGNING_PRIVATE_KEY` secret exists, `release.yml` refuses to build a release
-   while that key is empty ("Updater public key missing"), so add both together.
+4. Put the **public** key (contents of `~/.tauri/kivori-updater.key.pub`) into
+   `plugins.updater.pubkey` in `apps/desktop/src-tauri/tauri.release.conf.json`. Done on 2026-10-12
+   (key id `B53242CE79304D17`). With the `TAURI_SIGNING_PRIVATE_KEY` secret set, `release.yml` refuses to
+   build a release while that key is empty ("Updater public key missing"), so a rotated key and its
+   secret always change together.
 5. Settings, Actions, General: tick "Allow GitHub Actions to create and approve pull requests" (release-please
-   needs it to open the release PR).
+   needs it to open the release PR). The cunilab organization must allow it first (organization
+   Settings, Actions, General, Workflow permissions). Done on 2026-10-12.
 
 ## Windows
 
