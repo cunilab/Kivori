@@ -5,16 +5,16 @@ use kivori_desktop::device::fsm::{ConnectionManager, ManagerEvent};
 use kivori_desktop::device::reconnect::{base_delay_ms, with_jitter, Backoff, BASE_MS, MAX_MS};
 use kivori_desktop::orchestrator::Orchestrator;
 use kivori_model::{ConnectionState, ProtocolVersion, SendableState};
-use kivori_protocol::FirmwareVersion;
+use kivori_protocol::{FirmwareVersion, PROTOCOL_MAJOR, PROTOCOL_MINOR};
 
 fn device() -> ConnectedDevice {
     ConnectedDevice {
         firmware_version: FirmwareVersion {
-            major: 1,
-            minor: 0,
+            major: 0,
+            minor: 1,
             patch: 0,
         },
-        protocol_version: ProtocolVersion::new(1, 0),
+        protocol_version: ProtocolVersion::new(PROTOCOL_MAJOR, PROTOCOL_MINOR),
         device_id_hash_short: "abcd1234".to_string(),
     }
 }

@@ -121,7 +121,9 @@ describe('ipc wrappers (browser mock fallback)', () => {
   it('reports Device Studio enabled in the dev mock', async () => {
     const info = await getAppInfo();
     expect(info.deviceStudioEnabled).toBe(true);
-    expect(info.protocolVersion.major).toBeGreaterThanOrEqual(1);
+    // The protocol restarted at 0.1 before the first release; the mock speaks the same version.
+    expect(info.protocolVersion).toEqual({ major: 0, minor: 1 });
+    expect(info.supportedMajors).toEqual([info.protocolVersion.major]);
   });
 
   it('renders a full 240x240 opaque RGBA frame', async () => {
@@ -777,7 +779,7 @@ describe('parseFirmwareStatus', () => {
     message: 'x',
     imageSize: 10,
     failure: 'portBusy',
-    bundledVersion: '1.3.0',
+    bundledVersion: '0.1.0',
     advice: 'updateAvailable',
   };
 
@@ -958,10 +960,10 @@ describe('firmware offer', () => {
   const optional = {
     kind: 'offerOptional',
     product: 'Kivori Pip',
-    from: '1.3.0',
-    to: '1.4.0',
+    from: '0.1.0',
+    to: '0.2.0',
     reason: null,
-    key: '1:abcd1234:1.4.0',
+    key: '1:abcd1234:0.2.0',
   };
   const none = { kind: 'none', product: null, from: null, to: null, reason: null, key: null };
 
@@ -973,7 +975,7 @@ describe('firmware offer', () => {
     expect(() => parseFirmwareOffer({ ...optional, to: null })).toThrow();
     expect(() => parseFirmwareOffer({ ...optional, from: null })).toThrow();
     expect(() => parseFirmwareOffer({ ...optional, key: null })).toThrow();
-    const required = { ...none, kind: 'required', to: '1.4.0', reason: 'protocolTooOld', key: 'k' };
+    const required = { ...none, kind: 'required', to: '0.2.0', reason: 'protocolTooOld', key: 'k' };
     expect(parseFirmwareOffer(required)).toEqual(required);
     expect(() => parseFirmwareOffer({ ...required, reason: 'because' })).toThrow();
     // Fields that mean nothing for a kind are dropped.

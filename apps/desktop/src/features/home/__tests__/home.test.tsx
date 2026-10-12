@@ -44,8 +44,8 @@ function connection(overrides: Partial<ConnectionStatusDto> = {}): ConnectionSta
     desired: 'idle',
     reported: 'idle',
     device: {
-      firmwareVersion: '0.4.0',
-      protocolVersion: { major: 1, minor: 3 },
+      firmwareVersion: '0.1.0',
+      protocolVersion: { major: 0, minor: 1 },
       deviceIdHashShort: 'deadbeef',
       identity: null,
     },
@@ -249,12 +249,12 @@ describe('HomePage', () => {
         desk(),
         connection({
           connection: 'incompatible',
-          incompatibleReason: 'protocol v2 is unsupported',
+          incompatibleReason: 'protocol v1 is unsupported',
         }),
       ),
     );
     expect(screen.getByText('Kivori needs a firmware update')).toBeInTheDocument();
-    expect(screen.getByText('protocol v2 is unsupported')).toBeInTheDocument();
+    expect(screen.getByText('protocol v1 is unsupported')).toBeInTheDocument();
   });
 
   it('shows skeletons, not values, while loading', () => {

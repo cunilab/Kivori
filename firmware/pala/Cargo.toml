@@ -5,7 +5,7 @@ resolver = "2"
 
 [package]
 name = "kivori-firmware"
-version = "1.4.0"
+version = "0.1.0"
 edition = "2021"
 rust-version = "1.90"
 license = "UNLICENSED"

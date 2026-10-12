@@ -3,7 +3,7 @@
 use heapless::Vec;
 use kivori_protocol::frame::cobs_encode;
 use kivori_protocol::{
-    crc32, decode_frame, decode_message, ProtoError, MAGIC, MAX_FRAME, MAX_WIRE,
+    crc32, decode_frame, decode_message, ProtoError, MAGIC, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR,
 };
 
 fn raw_frame(magic: u16, major: u16, minor: u16, seq: u16, payload: &[u8]) -> Vec<u8, MAX_FRAME> {
@@ -50,12 +50,13 @@ fn truncated_header_is_rejected() {
 
 #[test]
 fn unsupported_major_is_rejected() {
-    // Well-formed frame carrying major=2; desktop supports only major 1.
-    let frame = raw_frame(MAGIC, 2, 0, 1, &[]);
+    // Well-formed frame carrying major 1 (a board flashed before the version reset); this side
+    // supports only the current major, 0.
+    let frame = raw_frame(MAGIC, PROTOCOL_MAJOR + 1, 6, 1, &[]);
     let packet = cobs(frame.as_slice());
     let mut scratch: Vec<u8, MAX_FRAME> = Vec::new();
     assert_eq!(
-        decode_message(&packet, &mut scratch, &[1]).unwrap_err(),
+        decode_message(&packet, &mut scratch, &[PROTOCOL_MAJOR]).unwrap_err(),
         ProtoError::UnsupportedVersion
     );
 }

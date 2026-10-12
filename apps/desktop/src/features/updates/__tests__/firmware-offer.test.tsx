@@ -46,18 +46,18 @@ const none: FirmwareOfferDto = {
 const optional: FirmwareOfferDto = {
   kind: 'offerOptional',
   product: 'Kivori Pip',
-  from: '1.3.0',
-  to: '1.4.0',
+  from: '0.1.0',
+  to: '0.2.0',
   reason: null,
-  key: '1:abcd1234:1.4.0',
+  key: '1:abcd1234:0.2.0',
 };
 const required: FirmwareOfferDto = {
   kind: 'required',
   product: null,
   from: null,
-  to: '1.4.0',
+  to: '0.2.0',
   reason: 'protocolTooOld',
-  key: '1::1.4.0',
+  key: '1::0.2.0',
 };
 const deferred: FirmwareOfferDto = { ...none, kind: 'deferredForAppUpdate' };
 
@@ -82,7 +82,7 @@ const flashStatus = (phase: FirmwareStatusDto['phase']): FirmwareStatusDto => ({
   message: '',
   imageSize: 1024,
   failure: phase === 'failed' ? 'portBusy' : null,
-  bundledVersion: '1.4.0',
+  bundledVersion: '0.2.0',
   advice: 'updateAvailable',
   wrongProduct: null,
   restoreChoices: [],
@@ -126,7 +126,7 @@ describe('firmware offer dialog', () => {
       await screen.findByRole('alertdialog', { name: 'Update your Kivori?' }),
     ).toBeInTheDocument();
     expect(screen.getByTestId('offer-product')).toHaveTextContent('Kivori Pip');
-    expect(screen.getByTestId('offer-versions')).toHaveTextContent('Firmware 1.3.0 → 1.4.0');
+    expect(screen.getByTestId('offer-versions')).toHaveTextContent('Firmware 0.1.0 → 0.2.0');
     expect(screen.getByText('About 30 seconds. Keep it plugged in.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Update now' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Later' })).toBeEnabled();
@@ -166,7 +166,7 @@ describe('firmware offer dialog', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
     act(() => emitOffer(none));
     // A new connection is a new key.
-    act(() => emitOffer({ ...optional, key: '2:abcd1234:1.4.0' }));
+    act(() => emitOffer({ ...optional, key: '2:abcd1234:0.2.0' }));
     expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
   });
 

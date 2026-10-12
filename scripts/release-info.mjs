@@ -4,12 +4,14 @@
 // .github/workflows/release-start.yml.
 //
 //   node scripts/release-info.mjs --version 0.2.0 [--prev-tag v0.1.0] [--to HEAD] \
-//        [--product pala] [--firmware-version 1.5.0] [--repo cunilab/Kivori] [--out-dir DIR]
+//        [--product pala] [--firmware-version 0.2.0] [--repo cunilab/Kivori] [--out-dir DIR]
 //
 // Writes DIR/title.txt, DIR/notes.md (the release body) and DIR/notes-short.md (the same without the
 // compare link, for latest.json); without --out-dir it prints title and notes. The firmware version
 // comes from firmware/<product>/Cargo.toml (or --firmware-version, for a preview before the bump is
-// written) and the short name from products/<product>/product.toml; nothing is hardcoded.
+// written) and the names from products/<product>/product.toml; nothing is hardcoded. Without a
+// previous app tag (the first release) the body is a short "First release" note naming both versions
+// and pointing to the README, not the whole history.
 //
 // Grouping: feat -> Features, fix -> Fixes, perf -> Performance, `!` or a BREAKING CHANGE footer ->
 // Breaking changes; other types (chore, docs, test, refactor, ci, build, style, revert) and non
@@ -146,14 +148,39 @@ export function productName(productToml) {
   return m[1].trim();
 }
 
+/** The product's `display_name` ("Kivori Pip"), the full customer name. */
+export function productDisplayName(productToml) {
+  const m = /^display_name\s*=\s*"([^"]*)"/m.exec(productToml);
+  if (!m || !m[1].trim()) throw new Error('no display_name found');
+  return m[1].trim();
+}
+
 export function releaseTitle(appVersion, productDisplay, firmwareVersion) {
   return `Kivori ${appVersion} · ${productDisplay} firmware ${firmwareVersion}`;
 }
 
 /**
+ * The body of the first release (no previous app tag): both versions and a pointer to the README,
+ * which describes the features, instead of every commit since the repository began.
+ */
+export function firstReleaseNotes({ version, productFullName, firmwareVersion, repo = '' }) {
+  const readme = repo
+    ? `the [README](https://github.com/${repo}/blob/v${version}/README.md)`
+    : 'the README';
+  const short = `### First release
+
+Kivori ${version}, with ${productFullName} firmware ${firmwareVersion}.
+
+See ${readme} for what Kivori does.
+`;
+  return { notes: short, short };
+}
+
+/**
  * The release body. `previousFirmware` is the firmware version at the previous app tag ('' when
- * unknown, which counts as changed); `prevVersion` the previous app version ('' for a first release).
- * Returns { notes, short }: `short` leaves out the compare link.
+ * unknown, which counts as changed); `prevVersion` the previous app version (a first release, with
+ * none, uses [`firstReleaseNotes`] instead). Returns { notes, short }: `short` leaves out the compare
+ * link.
  */
 export function releaseNotes({
   commits,
@@ -225,27 +252,43 @@ function main(argv) {
   const firmwareVersion =
     opt['firmware-version'] ||
     packageVersion(readFileSync(join(root, 'firmware', product, 'Cargo.toml'), 'utf8'));
-  const productDisplay = productName(
-    readFileSync(join(root, 'products', product, 'product.toml'), 'utf8'),
-  );
+  const productToml = readFileSync(join(root, 'products', product, 'product.toml'), 'utf8');
+  const productDisplay = productName(productToml);
 
   const prev = opt['prev-tag'];
-  const range = prev ? `${prev}..${opt.to}` : opt.to;
-  const commits = parseGitLog(
-    git('log', '--no-merges', '--reverse', `--format=${GIT_LOG_FORMAT}`, '--name-only', range),
-  );
+  // A first release lists no commits, so the history is read only when there is a previous tag.
+  const commits = prev
+    ? parseGitLog(
+        git(
+          'log',
+          '--no-merges',
+          '--reverse',
+          `--format=${GIT_LOG_FORMAT}`,
+          '--name-only',
+          `${prev}..${opt.to}`,
+        ),
+      )
+    : [];
 
   const title = releaseTitle(opt.version, productDisplay, firmwareVersion);
-  const { notes, short } = releaseNotes({
-    commits,
-    product,
-    productDisplay,
-    firmwareVersion,
-    previousFirmware: prev ? firmwareVersionAt(prev, product) : '',
-    prevVersion: prev.replace(/^v/, ''),
-    compareUrl:
-      opt.repo && prev ? `https://github.com/${opt.repo}/compare/${prev}...v${opt.version}` : '',
-  });
+  const { notes, short } = prev
+    ? releaseNotes({
+        commits,
+        product,
+        productDisplay,
+        firmwareVersion,
+        previousFirmware: firmwareVersionAt(prev, product),
+        prevVersion: prev.replace(/^v/, ''),
+        compareUrl: opt.repo
+          ? `https://github.com/${opt.repo}/compare/${prev}...v${opt.version}`
+          : '',
+      })
+    : firstReleaseNotes({
+        version: opt.version,
+        productFullName: productDisplayName(productToml),
+        firmwareVersion,
+        repo: opt.repo,
+      });
 
   if (opt['out-dir']) {
     mkdirSync(opt['out-dir'], { recursive: true });

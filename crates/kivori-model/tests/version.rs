@@ -1,7 +1,7 @@
 //! T019 — protocol version compatibility matrix and capability negotiation (FR-003).
 
 use kivori_model::capabilities::Capabilities;
-use kivori_model::version::{ProtocolVersion, VersionError};
+use kivori_model::version::ProtocolVersion;
 
 #[test]
 fn matching_major_is_compatible() {
@@ -27,12 +27,12 @@ fn minor_negotiation_takes_the_lower() {
 }
 
 #[test]
-fn zero_major_is_rejected_by_validation() {
-    assert_eq!(
-        ProtocolVersion::new(0, 9).validate(),
-        Err(VersionError::ZeroMajor)
-    );
-    assert_eq!(ProtocolVersion::new(1, 0).validate(), Ok(()));
+fn major_zero_is_an_ordinary_major() {
+    // The protocol restarted at 0.1 before the first release (ADR-0014): 0 is the current major,
+    // and boards flashed before the reset (major 1) are a different, incompatible major.
+    assert!(ProtocolVersion::new(0, 1).is_compatible_with(&[0]));
+    assert!(!ProtocolVersion::new(0, 1).is_compatible_with(&[1]));
+    assert!(!ProtocolVersion::new(1, 6).is_compatible_with(&[0]));
 }
 
 #[test]

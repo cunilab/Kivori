@@ -63,8 +63,8 @@ describe('DevicePage', () => {
           desired: 'busy',
           reported: 'happy',
           device: {
-            firmwareVersion: '1.4.2',
-            protocolVersion: { major: 1, minor: 0 },
+            firmwareVersion: '0.1.2',
+            protocolVersion: { major: 0, minor: 1 },
             deviceIdHashShort: 'deadbeef',
             identity: null,
           },
@@ -72,7 +72,7 @@ describe('DevicePage', () => {
       ),
     );
     expect(screen.getByRole('status')).toHaveTextContent('Connected');
-    expect(screen.getByTestId('device-firmware')).toHaveTextContent('1.4.2');
+    expect(screen.getByTestId('device-firmware')).toHaveTextContent('0.1.2');
     expect(screen.getByTestId('desired')).toHaveTextContent('Busy');
     expect(screen.getByTestId('reported')).toHaveTextContent('Happy');
     expect(screen.getByText('deadbeef')).toBeInTheDocument();
@@ -84,8 +84,8 @@ describe('DevicePage', () => {
         status({
           connection: 'connected',
           device: {
-            firmwareVersion: '1.4.2',
-            protocolVersion: { major: 1, minor: 6 },
+            firmwareVersion: '0.1.2',
+            protocolVersion: { major: 0, minor: 1 },
             deviceIdHashShort: 'deadbeef',
             identity: {
               product: 'Kivori Pip',
@@ -110,8 +110,8 @@ describe('DevicePage', () => {
         status({
           connection: 'connected',
           device: {
-            firmwareVersion: '1.4.2',
-            protocolVersion: { major: 1, minor: 6 },
+            firmwareVersion: '0.1.2',
+            protocolVersion: { major: 0, minor: 1 },
             deviceIdHashShort: 'deadbeef',
             identity: {
               product: 'Unknown product (9)',

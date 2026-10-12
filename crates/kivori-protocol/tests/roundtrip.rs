@@ -7,11 +7,11 @@ use kivori_model::{
 use kivori_protocol::{
     decode_message, encode_message, Bye, ByeReason, Diagnostic, ErrorCategory, ErrorReport,
     FirmwareVersion, Health, Hello, HelloAck, MascotActionApplied, Message, Ping, PlayMascotAction,
-    Pong, Ready, SetState, StateReport, MAX_FRAME, MAX_WIRE,
+    Pong, Ready, SetState, StateReport, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 fn roundtrip(msg: &Message) -> Message {
-    let v = ProtocolVersion::new(1, 0);
+    let v = ProtocolVersion::new(PROTOCOL_MAJOR, PROTOCOL_MINOR);
     let mut wire: Vec<u8, MAX_WIRE> = Vec::new();
     encode_message(msg, v, 7, &mut wire).unwrap();
     assert_eq!(
@@ -21,7 +21,7 @@ fn roundtrip(msg: &Message) -> Message {
     );
     let packet = &wire[..wire.len() - 1];
     let mut scratch: Vec<u8, MAX_FRAME> = Vec::new();
-    let (header, decoded) = decode_message(packet, &mut scratch, &[1]).unwrap();
+    let (header, decoded) = decode_message(packet, &mut scratch, &[PROTOCOL_MAJOR]).unwrap();
     assert_eq!(header.seq, 7);
     assert_eq!(header.version, v);
     decoded

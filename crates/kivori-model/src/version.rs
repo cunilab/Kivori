@@ -9,17 +9,10 @@ use serde::{Deserialize, Serialize};
 /// minor differences are backward-compatible and capability-negotiated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ProtocolVersion {
-    /// Major version. A change is backward-incompatible; valid shipped majors are `>= 1`.
+    /// Major version. A change is backward-incompatible. The protocol started at `0.1` (ADR-0014).
     pub major: u16,
     /// Minor version. Additive, backward-compatible changes bump the minor.
     pub minor: u16,
-}
-
-/// Reason a [`ProtocolVersion`] is structurally invalid.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VersionError {
-    /// `major` was `0` (reserved; shipped protocol versions start at major `1`).
-    ZeroMajor,
 }
 
 impl ProtocolVersion {
@@ -27,17 +20,6 @@ impl ProtocolVersion {
     #[must_use]
     pub const fn new(major: u16, minor: u16) -> Self {
         Self { major, minor }
-    }
-
-    /// Validates structural invariants (currently: `major >= 1`).
-    ///
-    /// # Errors
-    /// Returns [`VersionError::ZeroMajor`] if `major == 0`.
-    pub const fn validate(self) -> Result<(), VersionError> {
-        if self.major == 0 {
-            return Err(VersionError::ZeroMajor);
-        }
-        Ok(())
     }
 
     /// Returns `true` if a peer advertising `self` is compatible with a peer that supports the given

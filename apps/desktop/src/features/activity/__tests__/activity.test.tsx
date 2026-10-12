@@ -227,8 +227,8 @@ describe('Activity view', { timeout: 15_000 }, () => {
           elapsedMs: 120,
           diagnosticCategory: 'checksum',
           diagnosticCode: 7,
-          firmwareVersion: '1.2.3',
-          protocolVersion: { major: 1, minor: 0 },
+          firmwareVersion: '0.1.3',
+          protocolVersion: { major: 0, minor: 1 },
           deviceIdHashShort: 'deadbeef',
           identity: null,
           capabilities: 3,
@@ -260,7 +260,7 @@ describe('Activity view', { timeout: 15_000 }, () => {
     await waitFor(() => expect(screen.getByText(/deadbeef/)).toBeInTheDocument());
     const text = view.container.textContent ?? '';
     expect(text).toContain('checksum');
-    expect(text).toContain('1.2.3');
+    expect(text).toContain('0.1.3');
     expect(text).not.toMatch(
       /0xdeadbeef|0123456789abcdef|COM9|C:\\Users|\/home\/secret|super-secret|esptool/i,
     );

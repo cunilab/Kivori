@@ -279,8 +279,8 @@ mod tests {
         ImageIdentity {
             product,
             board,
-            version: "1.4.0".into(),
-            min_protocol: (1, 6),
+            version: "0.1.0".into(),
+            min_protocol: (0, 1),
         }
     }
 
@@ -301,7 +301,7 @@ mod tests {
                 "display_name = \"{name}\"\nshort_name = \"{name}\"\nmodel = \"KV-X1\"\n\
                  required_capabilities = []\n[boards.{board}]\n\
                  display_name = \"B\"\nflash = \"espflash\"\nusb = [\"{usb}\"]\n\
-                 [boards.{board}.firmware]\ncrate = \"fw\"\nartifact = \"a\"\nmin_protocol = \"1.6\"\n"
+                 [boards.{board}.firmware]\ncrate = \"fw\"\nartifact = \"a\"\nmin_protocol = \"0.1\"\n"
             )
         };
         Catalog::parse(

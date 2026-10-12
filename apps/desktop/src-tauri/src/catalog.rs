@@ -347,7 +347,7 @@ mod tests {
         format!(
             "display_name = \"X\"\nshort_name = \"X\"\nmodel = \"KV-X1\"\nrequired_capabilities = []\n[boards.{board}]\ndisplay_name = \"B\"\n\
              flash = \"espflash\"\nusb = [\"303A:1001\"]\n[boards.{board}.firmware]\ncrate = \"fw\"\n\
-             artifact = \"a\"\nmin_protocol = \"1.2\"\n"
+             artifact = \"a\"\nmin_protocol = \"0.1\"\n"
         )
     }
 
@@ -365,6 +365,10 @@ mod tests {
         assert_eq!(product.model, "KV-P1");
         assert_eq!(board.id, "c3-supermini");
         assert_eq!(board.flash, FlashMethod::Espflash);
+        // The bundled firmware speaks this app's protocol major, at a minor it has.
+        let (major, minor) = board.firmware.min_protocol;
+        assert_eq!(major, kivori_protocol::PROTOCOL_MAJOR);
+        assert!(minor <= kivori_protocol::PROTOCOL_MINOR);
         assert_eq!(catalog.usb_ids(), vec![(0x303A, 0x1001)]);
         assert_eq!(catalog.by_wire(1, 2), None);
         assert_eq!(catalog.by_wire(0, 0), None);
@@ -416,7 +420,7 @@ mod tests {
     fn rejects_malformed_usb_and_protocol() {
         let usb = product("c3-supermini").replace("303A:1001", "nope");
         assert!(parse(REG, &usb).is_err());
-        let proto = product("c3-supermini").replace("1.2", "x");
+        let proto = product("c3-supermini").replace("0.1", "x");
         assert!(parse(REG, &proto).is_err());
         assert!(parse(REG, &product("c3-supermini")).is_ok());
     }
@@ -440,8 +444,8 @@ mod tests {
 
     #[test]
     fn reads_a_crate_version() {
-        let text = "[package]\nname = \"x\"\nversion = \"1.4.0\"\n";
-        assert_eq!(crate_version(text).as_deref(), Some("1.4.0"));
+        let text = "[package]\nname = \"x\"\nversion = \"0.1.0\"\n";
+        assert_eq!(crate_version(text).as_deref(), Some("0.1.0"));
         assert_eq!(crate_version("[package]\nname = \"x\"\n"), None);
     }
 }
