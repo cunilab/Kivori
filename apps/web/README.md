@@ -21,7 +21,8 @@ Run from the repo root (or `cd apps/web`).
 ## One-time Cloudflare setup (owner)
 
 1. Create a Cloudflare account and run `bunx wrangler login` once for local deploys.
-2. Add GitHub repository secrets `CLOUDFLARE_API_TOKEN` (Workers edit permission) and `CLOUDFLARE_ACCOUNT_ID`.
+2. Add the GitHub repository secret `CLOUDFLARE_API_TOKEN` (Workers edit permission) and the repository
+   variable `CLOUDFLARE_ACCOUNT_ID` (not secret). Both are set (2026-10-12).
 3. Push to `main`: `.github/workflows/web.yml` deploys to `https://kivori-web.<your-subdomain>.workers.dev`.
    Without the secrets the workflow still builds and reports the Worker size, then skips deploy.
 4. PR previews use `wrangler versions upload`, which requires the Worker to exist, so the first `main` deploy comes first.
