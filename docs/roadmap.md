@@ -151,7 +151,7 @@ Software done and host-tested (#12); macOS works the same way for daily testing.
 even when nothing is happening. Moved before the paid beta for the same reason as M2.5: a beta that
 only proves volume control cannot tell us whether people pay.
 
-Software done and host-tested (#70, firmware 1.4.0, protocol minor 6); macOS works too. The
+Software done and host-tested (#70; `MIC_STATE_V1`, `IDLE_LIFE_V1`, `DEVICE_INTERNALS_V1`); macOS works too. The
 hardware rows below remain. Rules in [product.md](./product.md), design
 in [architecture.md](./architecture.md) (ADR-0011 to ADR-0013); hardware rows are Phase 13 in
 [validation.md](./validation.md).
@@ -239,8 +239,8 @@ Software done and host-tested (#72); owner key and hardware rows remain.
 - [x] **Release tooling:** a Release button (manual workflow, run only when the owner wants a
   release) bumps the app version and, when asked, the firmware version, and builds a draft whose
   notes come from the conventional commits since the last release; the app tags `vX.Y.Z` and gets
-  a normal (not pre-release) GitHub Release titled with its firmware ("Kivori 0.2.0 · Pip firmware
-  1.4.0"); firmware tags `fw-<product>-vX.Y.Z` with no GitHub Release of its own
+  a normal (not pre-release) GitHub Release titled with its firmware ("Kivori 0.1.0 · Pip firmware
+  0.1.0"); firmware tags `fw-<product>-vX.Y.Z` with no GitHub Release of its own
 - [x] **App updates** (ADR-0015): Tauri updater against the latest GitHub Release's `latest.json`,
   every update verified with the updater key built into the app; checked at start and daily, on by
   default, a setting to turn it off; tray badge, then a dialog when the window opens ("Install &

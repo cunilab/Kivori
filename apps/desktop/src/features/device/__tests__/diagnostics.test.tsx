@@ -16,7 +16,7 @@ const disconnected: DiagnosticsDto = {
   versions: {
     app: '0.1.0',
     firmware: null,
-    protocol: '1.4',
+    protocol: '0.1',
     negotiatedMinor: null,
     capabilities: [],
     deviceHash: null,
@@ -51,8 +51,8 @@ const connected: DiagnosticsDto = {
   ...disconnected,
   versions: {
     ...disconnected.versions,
-    firmware: '0.4.0',
-    negotiatedMinor: 3,
+    firmware: '0.1.0',
+    negotiatedMinor: 1,
     capabilities: ['mascotInteraction', 'deskStatusV1'],
     deviceHash: '3fa9c1d2',
     identity: {

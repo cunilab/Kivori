@@ -25,13 +25,13 @@ fn status_line_table() {
     let cases = [
         ("disconnected", "active", None, "Not connected"),
         ("connecting", "active", None, "Not connected"),
-        ("incompatible", "active", Some("0.9.0"), "Not connected"),
-        ("connected", "active", Some("1.3.0"), "Connected"),
-        ("connected", "locked", Some("1.3.0"), "Paused while locked"),
+        ("incompatible", "active", Some("1.4.0"), "Not connected"),
+        ("connected", "active", Some("0.1.0"), "Connected"),
+        ("connected", "locked", Some("0.1.0"), "Paused while locked"),
         (
             "connected",
             "sleeping",
-            Some("1.3.0"),
+            Some("0.1.0"),
             "Paused while locked",
         ),
         ("disconnected", "locked", None, "Paused while locked"),
@@ -51,14 +51,14 @@ fn status_line_table() {
 fn tooltip_names_desktop_and_firmware_versions() {
     let desktop = env!("CARGO_PKG_VERSION");
     let connected = tray_model(
-        &status("connected", "active", Some("1.3.0")),
+        &status("connected", "active", Some("0.1.0")),
         UpdateAdvice::UpToDate,
         None,
         false,
     );
     assert_eq!(
         connected.tooltip,
-        format!("Kivori \u{b7} Desktop {desktop} \u{b7} Firmware 1.3.0")
+        format!("Kivori \u{b7} Desktop {desktop} \u{b7} Firmware 0.1.0")
     );
     let absent = tray_model(
         &status("disconnected", "active", None),
@@ -73,7 +73,7 @@ fn tooltip_names_desktop_and_firmware_versions() {
 fn tooltip_flags_an_available_update_only() {
     for advice in UpdateAdvice::ALL {
         let model = tray_model(
-            &status("connected", "active", Some("1.2.0")),
+            &status("connected", "active", Some("0.1.0")),
             advice,
             None,
             false,
@@ -90,14 +90,14 @@ fn tooltip_flags_an_available_update_only() {
 fn an_offered_app_update_adds_the_menu_item_and_tooltip() {
     let desktop = env!("CARGO_PKG_VERSION");
     let none = tray_model(
-        &status("connected", "active", Some("1.3.0")),
+        &status("connected", "active", Some("0.1.0")),
         UpdateAdvice::UpToDate,
         None,
         false,
     );
     assert_eq!(none.app_update, None);
     let offered = tray_model(
-        &status("connected", "active", Some("1.3.0")),
+        &status("connected", "active", Some("0.1.0")),
         UpdateAdvice::UpToDate,
         Some("0.4.0"),
         false,
@@ -109,7 +109,7 @@ fn an_offered_app_update_adds_the_menu_item_and_tooltip() {
     assert_eq!(
         offered.tooltip,
         format!(
-            "Kivori \u{b7} Desktop {desktop} \u{b7} Firmware 1.3.0 \u{b7} Kivori 0.4.0 is ready"
+            "Kivori \u{b7} Desktop {desktop} \u{b7} Firmware 0.1.0 \u{b7} Kivori 0.4.0 is ready"
         )
     );
     // The app update is offered whether or not a device is connected.
@@ -125,7 +125,7 @@ fn an_offered_app_update_adds_the_menu_item_and_tooltip() {
 
 #[test]
 fn a_firmware_offer_adds_its_item_only_while_no_app_update_is_offered() {
-    let connected = status("connected", "active", Some("1.2.0"));
+    let connected = status("connected", "active", Some("0.1.0"));
     let none = tray_model(&connected, UpdateAdvice::UpdateAvailable, None, false);
     assert_eq!(none.firmware_update, None);
     let offered = tray_model(&connected, UpdateAdvice::UpdateAvailable, None, true);

@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use kivori_model::{Capabilities, ProtocolVersion};
 use kivori_protocol::{
     decode_message, encode_message, FirmwareVersion, Hello, Message, MAX_FRAME, MAX_WIRE,
+    PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -37,7 +38,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         nonce,
     });
     let mut wire = heapless::Vec::<u8, MAX_WIRE>::new();
-    encode_message(&hello, ProtocolVersion::new(1, 0), 0, &mut wire).unwrap();
+    encode_message(
+        &hello,
+        ProtocolVersion::new(PROTOCOL_MAJOR, PROTOCOL_MINOR),
+        0,
+        &mut wire,
+    )
+    .unwrap();
     port.write_all(&wire)?;
     println!("Hello sent; waiting up to 5 seconds (serial timeout {timeout_ms} ms).");
     let started = Instant::now();
@@ -55,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for &byte in &bytes[..count] {
             if byte == 0 {
                 let mut scratch = heapless::Vec::<u8, MAX_FRAME>::new();
-                match decode_message(&packet, &mut scratch, &[1]) {
+                match decode_message(&packet, &mut scratch, &[PROTOCOL_MAJOR]) {
                     Ok((_, Message::HelloAck(ack))) if ack.nonce_echo == nonce => {
                         println!(
                             "Verified HelloAck: firmware {}.{}.{}, after {} ms.",
@@ -136,7 +143,7 @@ fn probe_session(port: &str) -> Result<(), Box<dyn std::error::Error>> {
             for &byte in &bytes[..count] {
                 if byte == 0 {
                     let mut scratch = heapless::Vec::<u8, MAX_FRAME>::new();
-                    match decode_message(&self.1, &mut scratch, &[1]) {
+                    match decode_message(&self.1, &mut scratch, &[PROTOCOL_MAJOR]) {
                         Ok((header, Message::HelloAck(ack))) => {
                             println!("HelloAck seq {}, nonce {}", header.seq, ack.nonce_echo)
                         }

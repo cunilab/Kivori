@@ -17,16 +17,16 @@ use kivori_model::{
     CompanionState, ConnectionState, MascotAction, MascotPersonality, ProtocolVersion,
     SendableState,
 };
-use kivori_protocol::FirmwareVersion;
+use kivori_protocol::{FirmwareVersion, PROTOCOL_MAJOR, PROTOCOL_MINOR};
 
 fn connected_device() -> ConnectedDevice {
     ConnectedDevice {
         firmware_version: FirmwareVersion {
-            major: 1,
-            minor: 4,
+            major: 0,
+            minor: 1,
             patch: 2,
         },
-        protocol_version: ProtocolVersion::new(1, 0),
+        protocol_version: ProtocolVersion::new(PROTOCOL_MAJOR, PROTOCOL_MINOR),
         device_id_hash_short: "deadbeef".to_string(),
     }
 }
@@ -65,9 +65,9 @@ fn connected_status_projects_all_three_axes() {
     assert!(dto.mascot_interaction);
     assert_eq!(dto.connection_generation, 7);
     let device = dto.device.expect("device present when connected");
-    assert_eq!(device.firmware_version, "1.4.2");
+    assert_eq!(device.firmware_version, "0.1.2");
     assert_eq!(device.device_id_hash_short, "deadbeef");
-    assert_eq!(device.protocol_version.major, 1);
+    assert_eq!(device.protocol_version.major, PROTOCOL_MAJOR);
 }
 
 #[test]
@@ -93,7 +93,8 @@ fn host_presence_projects_and_the_override_does_not_change_the_users_choice() {
 fn incompatible_status_carries_reason() {
     let mut manager = ConnectionManager::new();
     manager.apply(ManagerEvent::PortOpened);
-    manager.apply(ManagerEvent::HandshakeIncompatible { device_major: 2 });
+    // A board flashed before the version reset speaks protocol major 1.
+    manager.apply(ManagerEvent::HandshakeIncompatible { device_major: 1 });
     let dto = dto::connection_status(
         &manager,
         &Orchestrator::new(),
@@ -104,7 +105,9 @@ fn incompatible_status_carries_reason() {
         HostPresence::Active,
     );
     assert_eq!(dto.connection, "incompatible");
-    assert!(dto.incompatible_reason.unwrap().contains("v2"));
+    let reason = dto.incompatible_reason.unwrap();
+    assert!(reason.contains("major v1"), "{reason}");
+    assert!(reason.contains("host supports v0"), "{reason}");
     assert!(dto.device.is_none());
 }
 
@@ -112,8 +115,12 @@ fn incompatible_status_carries_reason() {
 fn app_info_reports_supported_protocol_and_studio_flag() {
     let dev = dto::app_info(true);
     assert!(dev.device_studio_enabled);
-    assert_eq!(dev.supported_majors, vec![1]);
-    assert_eq!(dev.protocol_version.major, 1);
+    // The protocol restarted at 0.1 before the first release.
+    assert_eq!(dev.supported_majors, vec![0]);
+    assert_eq!(
+        (dev.protocol_version.major, dev.protocol_version.minor),
+        (0, 1)
+    );
     assert!(!dto::app_info(false).device_studio_enabled);
 }
 

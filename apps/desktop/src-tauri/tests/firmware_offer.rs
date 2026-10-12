@@ -14,14 +14,18 @@ use kivori_desktop::identity::{
 use kivori_desktop::ipc::dto::firmware_offer_dto;
 use kivori_model::Capabilities;
 
-const HOST_MAJOR: u16 = 1;
+/// The protocol major this app speaks.
+const HOST_MAJOR: u16 = kivori_protocol::PROTOCOL_MAJOR;
+/// The major after it. No major is older than 0, so the "device on an older major" rule is checked
+/// the way an app on the next major will meet a device still on this one.
+const NEXT_MAJOR: u16 = HOST_MAJOR + 1;
 
 fn image(version: &str) -> ImageIdentity {
     ImageIdentity {
         product: 1,
         board: 1,
         version: version.into(),
-        min_protocol: (1, 6),
+        min_protocol: (0, 1),
     }
 }
 
@@ -55,6 +59,24 @@ fn inputs<'a>(device: &'a OfferDevice, image: Option<&'a ImageIdentity>) -> Offe
     }
 }
 
+/// A device on [`HOST_MAJOR`], seen by an app that speaks [`NEXT_MAJOR`]: its major is older.
+fn older_major() -> OfferDevice {
+    OfferDevice::Incompatible {
+        device_major: Some(HOST_MAJOR),
+    }
+}
+
+/// [`inputs`] for an app on [`NEXT_MAJOR`].
+fn next_major_inputs<'a>(
+    device: &'a OfferDevice,
+    image: Option<&'a ImageIdentity>,
+) -> OfferInputs<'a> {
+    OfferInputs {
+        host_major: NEXT_MAJOR,
+        ..inputs(device, image)
+    }
+}
+
 fn optional(from: &str, to: &str) -> FirmwareOffer {
     FirmwareOffer::OfferOptional {
         from: from.into(),
@@ -65,7 +87,7 @@ fn optional(from: &str, to: &str) -> FirmwareOffer {
 fn key(generation: u32) -> OfferKey {
     OfferKey {
         hash: Some("abcd1234".into()),
-        version: "1.4.0".into(),
+        version: "0.2.0".into(),
         generation,
     }
 }
@@ -102,7 +124,7 @@ fn secs(n: u64) -> Duration {
 fn the_tokens_list_every_kind_and_reason() {
     let decisions = [
         FirmwareOffer::None,
-        optional("1.3.0", "1.4.0"),
+        optional("0.1.0", "0.2.0"),
         FirmwareOffer::Required {
             reason: RequiredReason::ProtocolTooOld,
         },
@@ -118,40 +140,39 @@ fn the_tokens_list_every_kind_and_reason() {
 
 #[test]
 fn the_decision_table() {
-    let bundled = image("1.4.0");
+    let bundled = image("0.2.0");
     let foreign = OfferDevice::Connected {
         hash: "abcd1234".into(),
-        firmware: "1.3.0".into(),
+        firmware: "0.1.0".into(),
         identity: Some(identity(2, 1)),
         missing_capabilities: false,
     };
     let other_board = OfferDevice::Connected {
         hash: "abcd1234".into(),
-        firmware: "1.3.0".into(),
+        firmware: "0.1.0".into(),
         identity: Some(identity(1, 9)),
         missing_capabilities: false,
     };
     let pending = OfferDevice::Connected {
         hash: "abcd1234".into(),
-        firmware: "1.3.0".into(),
+        firmware: "0.1.0".into(),
         identity: None,
         missing_capabilities: false,
     };
     let lacking = OfferDevice::Connected {
         hash: "abcd1234".into(),
-        firmware: "1.3.0".into(),
+        firmware: "0.1.0".into(),
         identity: Some(identity(1, 1)),
         missing_capabilities: true,
     };
-    let older = connected("1.3.0");
-    let same = connected("1.4.0");
-    let newer = connected("1.5.0");
+    let older = connected("0.1.0");
+    let same = connected("0.2.0");
+    let newer = connected("0.3.0");
     let garbled = connected("1.x");
-    let old_major = OfferDevice::Incompatible {
-        device_major: Some(0),
-    };
+    let old_major = older_major();
+    // A board flashed before the version reset speaks major 1: newer than this app's 0.
     let new_major = OfferDevice::Incompatible {
-        device_major: Some(2),
+        device_major: Some(NEXT_MAJOR),
     };
     let unknown_major = OfferDevice::Incompatible { device_major: None };
     let required = |reason| FirmwareOffer::Required { reason };
@@ -177,7 +198,7 @@ fn the_decision_table() {
             &older,
             b,
             IDLE,
-            optional("1.3.0", "1.4.0"),
+            optional("0.1.0", "0.2.0"),
         ),
         (
             "older, not idle long enough",
@@ -305,30 +326,55 @@ fn the_decision_table() {
         ),
     ];
     for (case, device, image, when, expected) in table {
+        let base = if *device == old_major {
+            next_major_inputs(device, image)
+        } else {
+            inputs(device, image)
+        };
         let inputs = OfferInputs {
             app_update_due: when.due,
             flashing: when.flash,
-            ..inputs(device, image)
+            ..base
         };
         assert_eq!(decide(&inputs, when.idle, None).offer, expected, "{case}");
     }
 }
 
 #[test]
+fn a_board_flashed_before_the_reset_is_told_to_update_the_app_and_never_offered_a_flash() {
+    // Boards flashed before the version reset speak protocol major 1; this app speaks 0. The
+    // general rule (newer major: update the app) holds, and nothing is offered automatically: the
+    // developer reflashes such a board with `just fw-flash` or the manual Flash firmware button.
+    assert_eq!(HOST_MAJOR, 0);
+    let bundled = image("0.1.0");
+    let pre_reset = OfferDevice::Incompatible {
+        device_major: Some(1),
+    };
+    for (settled, due) in [(false, false), (true, false), (true, true)] {
+        let inputs = OfferInputs {
+            app_update_due: due,
+            ..inputs(&pre_reset, Some(&bundled))
+        };
+        let decision = decide(&inputs, settled, None);
+        assert_eq!(decision.offer, FirmwareOffer::UpdateApp);
+        assert_eq!(decision.key, None);
+        assert!(!decision.offer.asks());
+    }
+}
+
+#[test]
 fn an_offer_is_keyed_by_device_bundled_version_and_connection() {
-    let bundled = image("1.4.0");
-    let older = connected("1.3.0");
+    let bundled = image("0.2.0");
+    let older = connected("0.1.0");
     let decision = decide(&inputs(&older, Some(&bundled)), true, None);
     assert_eq!(decision.key, Some(key(1)));
-    assert_eq!(decision.key.unwrap().token(), "1:abcd1234:1.4.0");
+    assert_eq!(decision.key.unwrap().token(), "1:abcd1234:0.2.0");
     // An incompatible device has no hash yet.
-    let old_major = OfferDevice::Incompatible {
-        device_major: Some(0),
-    };
-    let required = decide(&inputs(&old_major, Some(&bundled)), true, None);
-    assert_eq!(required.key.unwrap().token(), "1::1.4.0");
+    let old_major = older_major();
+    let required = decide(&next_major_inputs(&old_major, Some(&bundled)), true, None);
+    assert_eq!(required.key.unwrap().token(), "1::0.2.0");
     // Nothing that is not a question carries a key.
-    let newer = connected("1.5.0");
+    let newer = connected("0.3.0");
     assert_eq!(
         decide(&inputs(&newer, Some(&bundled)), true, None).key,
         None
@@ -337,8 +383,8 @@ fn an_offer_is_keyed_by_device_bundled_version_and_connection() {
 
 #[test]
 fn later_hides_only_the_same_device_version_and_connection() {
-    let bundled = image("1.4.0");
-    let older = connected("1.3.0");
+    let bundled = image("0.2.0");
+    let older = connected("0.1.0");
     let at = |generation| OfferInputs {
         generation,
         ..inputs(&older, Some(&bundled))
@@ -350,35 +396,35 @@ fn later_hides_only_the_same_device_version_and_connection() {
     // The next connect asks again.
     assert_eq!(
         decide(&at(2), true, Some(&key(1))).offer,
-        optional("1.3.0", "1.4.0")
+        optional("0.1.0", "0.2.0")
     );
     // A newer bundled version is a different offer.
-    let newer_bundle = image("1.5.0");
+    let newer_bundle = image("0.3.0");
     let other_version = OfferInputs {
         image: Some(&newer_bundle),
         ..at(1)
     };
     assert_eq!(
         decide(&other_version, true, Some(&key(1))).offer,
-        optional("1.3.0", "1.5.0")
+        optional("0.1.0", "0.3.0")
     );
     // Another device is a different offer.
     let other_device = OfferDevice::Connected {
         hash: "ffff0000".into(),
-        firmware: "1.3.0".into(),
+        firmware: "0.1.0".into(),
         identity: Some(DeviceIdentity::legacy()),
         missing_capabilities: false,
     };
     assert_eq!(
         decide(&inputs(&other_device, Some(&bundled)), true, Some(&key(1))).offer,
-        optional("1.3.0", "1.4.0")
+        optional("0.1.0", "0.2.0")
     );
 }
 
 #[test]
 fn the_offer_waits_for_five_idle_seconds_after_connecting() {
-    let bundled = image("1.4.0");
-    let older = connected("1.3.0");
+    let bundled = image("0.2.0");
+    let older = connected("0.1.0");
     let mut tracker = OfferTracker::new();
     let idle = inputs(&older, Some(&bundled));
     assert_eq!(IDLE_BEFORE_OFFER, secs(5));
@@ -391,15 +437,15 @@ fn the_offer_waits_for_five_idle_seconds_after_connecting() {
             shown: true
         }
     );
-    assert_eq!(tracker.current().offer, optional("1.3.0", "1.4.0"));
+    assert_eq!(tracker.current().offer, optional("0.1.0", "0.2.0"));
     // Nothing changes while it stays.
     assert_eq!(tracker.evaluate(secs(16), &idle), Evaluation::default());
 }
 
 #[test]
 fn a_gesture_or_flash_restarts_the_idle_wait_but_does_not_withdraw_a_shown_offer() {
-    let bundled = image("1.4.0");
-    let older = connected("1.3.0");
+    let bundled = image("0.2.0");
+    let older = connected("0.1.0");
     let mut tracker = OfferTracker::new();
     let idle = inputs(&older, Some(&bundled));
     let turning = OfferInputs {
@@ -413,10 +459,10 @@ fn a_gesture_or_flash_restarts_the_idle_wait_but_does_not_withdraw_a_shown_offer
     tracker.evaluate(secs(9), &idle);
     assert_eq!(tracker.current().offer, FirmwareOffer::None);
     tracker.evaluate(secs(10), &idle);
-    assert_eq!(tracker.current().offer, optional("1.3.0", "1.4.0"));
+    assert_eq!(tracker.current().offer, optional("0.1.0", "0.2.0"));
     // Once shown, turning the knob leaves it.
     tracker.evaluate(secs(11), &turning);
-    assert_eq!(tracker.current().offer, optional("1.3.0", "1.4.0"));
+    assert_eq!(tracker.current().offer, optional("0.1.0", "0.2.0"));
     // A flash owns the device: no offer while it runs.
     let flashing = OfferInputs {
         flashing: true,
@@ -428,8 +474,8 @@ fn a_gesture_or_flash_restarts_the_idle_wait_but_does_not_withdraw_a_shown_offer
 
 #[test]
 fn a_new_connection_waits_again_and_unplugging_forgets_the_wait() {
-    let bundled = image("1.4.0");
-    let older = connected("1.3.0");
+    let bundled = image("0.2.0");
+    let older = connected("0.1.0");
     let mut tracker = OfferTracker::new();
     let first = inputs(&older, Some(&bundled));
     tracker.evaluate(secs(0), &first);
@@ -444,13 +490,13 @@ fn a_new_connection_waits_again_and_unplugging_forgets_the_wait() {
     tracker.evaluate(secs(7), &second);
     assert_eq!(tracker.current().offer, FirmwareOffer::None);
     tracker.evaluate(secs(12), &second);
-    assert_eq!(tracker.current().offer, optional("1.3.0", "1.4.0"));
+    assert_eq!(tracker.current().offer, optional("0.1.0", "0.2.0"));
 }
 
 #[test]
 fn later_suppresses_until_the_next_connect_and_is_never_permanent() {
-    let bundled = image("1.4.0");
-    let older = connected("1.3.0");
+    let bundled = image("0.2.0");
+    let older = connected("0.1.0");
     let mut tracker = OfferTracker::new();
     let first = inputs(&older, Some(&bundled));
     tracker.evaluate(secs(0), &first);
@@ -474,19 +520,17 @@ fn later_suppresses_until_the_next_connect_and_is_never_permanent() {
             shown: true
         }
     );
-    assert_eq!(tracker.current().offer, optional("1.3.0", "1.4.0"));
+    assert_eq!(tracker.current().offer, optional("0.1.0", "0.2.0"));
 }
 
 #[test]
 fn later_and_accept_need_an_offer_and_a_required_update_has_no_later() {
-    let bundled = image("1.4.0");
+    let bundled = image("0.2.0");
     let mut tracker = OfferTracker::new();
     assert_eq!(tracker.later(), Err(Refused::NothingOffered));
     assert_eq!(tracker.accept(), Err(Refused::NothingOffered));
-    let old_major = OfferDevice::Incompatible {
-        device_major: Some(0),
-    };
-    let incompatible = inputs(&old_major, Some(&bundled));
+    let old_major = older_major();
+    let incompatible = next_major_inputs(&old_major, Some(&bundled));
     tracker.evaluate(secs(0), &incompatible);
     tracker.evaluate(secs(5), &incompatible);
     assert_eq!(
@@ -507,8 +551,8 @@ fn later_and_accept_need_an_offer_and_a_required_update_has_no_later() {
 
 #[test]
 fn the_app_update_goes_first_and_the_offer_follows_when_it_is_answered() {
-    let bundled = image("1.4.0");
-    let older = connected("1.3.0");
+    let bundled = image("0.2.0");
+    let older = connected("0.1.0");
     let mut tracker = OfferTracker::new();
     let due = OfferInputs {
         app_update_due: true,
@@ -529,7 +573,7 @@ fn the_app_update_goes_first_and_the_offer_follows_when_it_is_answered() {
             shown: true
         }
     );
-    assert_eq!(tracker.current().offer, optional("1.3.0", "1.4.0"));
+    assert_eq!(tracker.current().offer, optional("0.1.0", "0.2.0"));
     // An app update found while the offer is open takes over; the same offer comes back after
     // without being recorded twice.
     assert!(tracker.evaluate(secs(12), &due).changed);
@@ -546,7 +590,7 @@ fn the_app_update_goes_first_and_the_offer_follows_when_it_is_answered() {
 #[test]
 fn the_dto_carries_versions_and_names_only_for_a_question() {
     let decision = Decision {
-        offer: optional("1.3.0", "1.4.0"),
+        offer: optional("0.1.0", "0.2.0"),
         key: Some(key(3)),
     };
     let dto = firmware_offer_dto(&decision, Some("Kivori Pip".into()));
@@ -554,10 +598,10 @@ fn the_dto_carries_versions_and_names_only_for_a_question() {
     assert_eq!(dto.product.as_deref(), Some("Kivori Pip"));
     assert_eq!(
         (dto.from.as_deref(), dto.to.as_deref()),
-        (Some("1.3.0"), Some("1.4.0"))
+        (Some("0.1.0"), Some("0.2.0"))
     );
     assert_eq!(dto.reason, None);
-    assert_eq!(dto.key.as_deref(), Some("3:abcd1234:1.4.0"));
+    assert_eq!(dto.key.as_deref(), Some("3:abcd1234:0.2.0"));
 
     let required = Decision {
         offer: FirmwareOffer::Required {
@@ -565,14 +609,14 @@ fn the_dto_carries_versions_and_names_only_for_a_question() {
         },
         key: Some(OfferKey {
             hash: None,
-            version: "1.4.0".into(),
+            version: "0.2.0".into(),
             generation: 4,
         }),
     };
     let dto = firmware_offer_dto(&required, None);
     assert_eq!(
         (dto.kind, dto.reason, dto.from, dto.to.as_deref()),
-        ("required", Some("protocolTooOld"), None, Some("1.4.0"))
+        ("required", Some("protocolTooOld"), None, Some("0.2.0"))
     );
 
     let notice = Decision {

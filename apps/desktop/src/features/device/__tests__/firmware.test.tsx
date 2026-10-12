@@ -31,7 +31,7 @@ const ready: FirmwareStatusDto = {
   message: 'Ready to install.',
   imageSize: 1024,
   failure: null,
-  bundledVersion: '1.3.0',
+  bundledVersion: '0.1.0',
   advice: 'unknown',
   wrongProduct: null,
   restoreChoices: [],
@@ -148,7 +148,7 @@ describe('firmware update', () => {
   it('shows the bundled version and the update advice', async () => {
     bridge.get.mockResolvedValue({ ...ready, advice: 'updateAvailable' });
     render(<FirmwareUpdate connected />);
-    expect(await screen.findByTestId('bundled-version')).toHaveTextContent('1.3.0');
+    expect(await screen.findByTestId('bundled-version')).toHaveTextContent('0.1.0');
     expect(screen.getByTestId('update-advice')).toHaveTextContent('Update available');
   });
 
@@ -272,6 +272,27 @@ describe('a device newer than this app', () => {
     expect(await screen.findByTestId('update-advice')).toHaveTextContent(
       'This Kivori has newer firmware than this app — update the Kivori app.',
     );
+  });
+
+  it('still lets a developer reflash it by hand, only after confirming', async () => {
+    // A board flashed before the version reset speaks protocol major 1, newer than this app's 0.
+    bridge.offer.mockResolvedValue({
+      kind: 'updateApp',
+      product: null,
+      from: null,
+      to: null,
+      reason: null,
+      key: null,
+    });
+    const user = userEvent.setup();
+    render(<FirmwareUpdate connected={false} incompatible />);
+    await screen.findByTestId('update-advice');
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Flash firmware' }));
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent('Flash Kivori firmware?');
+    expect(bridge.flash).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Flash now' }));
+    expect(bridge.flash).toHaveBeenCalledTimes(1);
   });
 
   it('opens the app update dialog when an app update is available', async () => {

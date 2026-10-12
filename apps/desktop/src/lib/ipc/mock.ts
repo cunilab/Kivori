@@ -43,8 +43,8 @@ export const MOCK_BUILD_SENTINEL = 'kivori-ipc-browser-mock-must-not-ship';
 export function mockAppInfo(): AppInfoDto {
   return {
     appVersion: '0.0.0-dev',
-    protocolVersion: { major: 1, minor: 0 },
-    supportedMajors: [1],
+    protocolVersion: { major: 0, minor: 1 },
+    supportedMajors: [0],
     deviceStudioEnabled: true,
   };
 }
@@ -221,13 +221,13 @@ function initialFirmwareOffer(): FirmwareOfferDto {
       ...none,
       kind: 'offerOptional',
       product: 'Kivori Pip',
-      from: '1.2.0',
-      to: '1.3.0',
-      key: '1:mock:1.3.0',
+      from: '0.1.0',
+      to: '0.2.0',
+      key: '1:mock:0.2.0',
     };
   }
   if (scenario() === 'incompatible') {
-    return { ...none, kind: 'required', to: '1.3.0', reason: 'protocolTooOld', key: '1::1.3.0' };
+    return { ...none, kind: 'required', to: '0.2.0', reason: 'protocolTooOld', key: '1::0.2.0' };
   }
   return none;
 }
@@ -278,7 +278,7 @@ export function mockFirmwareStatus(): FirmwareStatusDto {
     message: 'Firmware ready to flash.',
     imageSize: 786432,
     failure: null,
-    bundledVersion: '1.3.0',
+    bundledVersion: '0.2.0',
     advice: 'unknown',
     wrongProduct: null,
     restoreChoices: [],
@@ -297,7 +297,7 @@ export function mockFirmwareStatus(): FirmwareStatusDto {
         advice: 'updateAvailable',
       };
     case 'connected':
-      return { ...base, bundledVersion: '0.4.0', advice: 'upToDate' };
+      return { ...base, bundledVersion: '0.1.0', advice: 'upToDate' };
     default:
       return {
         ...base,
@@ -331,8 +331,8 @@ export function mockConnectionStatus(): ConnectionStatusDto {
         connection: 'connected',
         reported: 'idle',
         device: {
-          firmwareVersion: '0.4.0',
-          protocolVersion: { major: 1, minor: 3 },
+          firmwareVersion: '0.1.0',
+          protocolVersion: { major: 0, minor: 1 },
           deviceIdHashShort: '3fa9c1d2',
           identity: mockIdentity,
         },
@@ -343,7 +343,7 @@ export function mockConnectionStatus(): ConnectionStatusDto {
       return {
         ...base,
         connection: 'incompatible',
-        incompatibleReason: 'This Kivori runs protocol v2, which this app does not support yet.',
+        incompatibleReason: 'This Kivori speaks a protocol version this app does not support.',
       };
     case 'connecting':
       return { ...base, connection: 'connecting', retryCount: 2 };
@@ -381,7 +381,7 @@ export function mockActivityLog(): ActivityEventDto[] {
       severity: 'info',
       source: 'connection',
       outcome: 'succeeded',
-      metadata: { ...meta, firmwareVersion: '0.4.0', protocolVersion: { major: 1, minor: 3 } },
+      metadata: { ...meta, firmwareVersion: '0.1.0', protocolVersion: { major: 0, minor: 1 } },
     },
     {
       id: 3,
@@ -824,9 +824,9 @@ export function mockGetDiagnostics(): DiagnosticsDto {
   return {
     versions: {
       app: '0.1.0',
-      firmware: connected ? '0.4.0' : null,
-      protocol: '1.4',
-      negotiatedMinor: connected ? 3 : null,
+      firmware: connected ? '0.1.0' : null,
+      protocol: '0.1',
+      negotiatedMinor: connected ? 1 : null,
       capabilities: connected
         ? ['mascotInteraction', 'physicalInputV1', 'presentationV1', 'deskStatusV1', 'mediaInfoV1']
         : [],

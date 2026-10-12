@@ -119,32 +119,32 @@ mod tests {
         ImageIdentity {
             product,
             board,
-            version: "1.4.0".into(),
-            min_protocol: (1, 6),
+            version: "0.1.0".into(),
+            min_protocol: (0, 1),
         }
     }
 
     #[test]
     fn finds_the_identity_record_beside_the_version_marker() {
-        let mut image = b"KIVORI-FW-VERSION:1.4.0\0".to_vec();
-        image.extend_from_slice(b"\x01\x02KIVORI-FW-IDENTITY:p=1;b=1;v=1.4.0;m=1.6\0\x03");
+        let mut image = b"KIVORI-FW-VERSION:0.1.0\0".to_vec();
+        image.extend_from_slice(b"\x01\x02KIVORI-FW-IDENTITY:p=1;b=1;v=0.1.0;m=0.1\0\x03");
         assert_eq!(scan_image_identity(&image), Some(identity(1, 1)));
-        assert_eq!(scan_firmware_version(&image).as_deref(), Some("1.4.0"));
+        assert_eq!(scan_firmware_version(&image).as_deref(), Some("0.1.0"));
     }
 
     #[test]
     fn absent_or_malformed_identity_records_are_none() {
         assert_eq!(scan_image_identity(b""), None);
-        assert_eq!(scan_image_identity(b"KIVORI-FW-VERSION:1.4.0\0"), None);
+        assert_eq!(scan_image_identity(b"KIVORI-FW-VERSION:0.1.0\0"), None);
         for bad in [
-            &b"KIVORI-FW-IDENTITY:p=1;b=1;v=1.4.0;m=1.6"[..], // no terminator
+            &b"KIVORI-FW-IDENTITY:p=1;b=1;v=0.1.0;m=0.1"[..], // no terminator
             b"KIVORI-FW-IDENTITY:\0",
-            b"KIVORI-FW-IDENTITY:p=1;b=1;v=1.4;m=1.6\0",
-            b"KIVORI-FW-IDENTITY:p=x;b=1;v=1.4.0;m=1.6\0",
-            b"KIVORI-FW-IDENTITY:p=1;b=1;v=1.4.0\0",
-            b"KIVORI-FW-IDENTITY:p=1;b=1;v=1.4.0;m=16\0",
-            b"KIVORI-FW-IDENTITY:p=70000;b=1;v=1.4.0;m=1.6\0",
-            b"KIVORI-FW-IDENTITY:p=1;b=1;v=1.4.0;m=1.6;x=1\0",
+            b"KIVORI-FW-IDENTITY:p=1;b=1;v=0.1;m=0.1\0",
+            b"KIVORI-FW-IDENTITY:p=x;b=1;v=0.1.0;m=0.1\0",
+            b"KIVORI-FW-IDENTITY:p=1;b=1;v=0.1.0\0",
+            b"KIVORI-FW-IDENTITY:p=1;b=1;v=0.1.0;m=01\0",
+            b"KIVORI-FW-IDENTITY:p=70000;b=1;v=0.1.0;m=0.1\0",
+            b"KIVORI-FW-IDENTITY:p=1;b=1;v=0.1.0;m=0.1;x=1\0",
         ] {
             assert_eq!(scan_image_identity(bad), None, "{bad:?}");
         }

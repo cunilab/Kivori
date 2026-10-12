@@ -43,4 +43,4 @@ pub use scene::{
 };
 pub use state::{CompanionState, LifecycleState, NotSendable, SendableState};
 pub use timeline::{frame_step_ms, scene_frame, ElapsedMs, FrameRate, StudioTimeline, PREVIEW_FPS};
-pub use version::{ProtocolVersion, VersionError};
+pub use version::ProtocolVersion;

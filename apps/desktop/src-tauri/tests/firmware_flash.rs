@@ -483,6 +483,8 @@ fn update_advice_table() {
         (Some("1.3.1"), Some("1.3.0"), DeviceNewer),
         (Some("1.10.0"), Some("1.9.0"), DeviceNewer),
         (Some("0.9.9"), Some("1.0.0"), UpdateAvailable),
+        // A board flashed before the 0.1.0 reset reports 1.x: newer than the bundled 0.1.0.
+        (Some("1.4.0"), Some("0.1.0"), DeviceNewer),
         (None, Some("1.3.0"), Unknown),
         (Some("1.3.0"), None, Unknown),
         (Some("1.3"), Some("1.3.0"), Unknown),
@@ -535,8 +537,8 @@ fn a_wrong_product_refusal_writes_nothing_and_carries_both_names() {
     let image = kivori_desktop::firmware_marker::ImageIdentity {
         product: 1,
         board: 1,
-        version: "1.4.0".into(),
-        min_protocol: (1, 6),
+        version: "0.1.0".into(),
+        min_protocol: (0, 1),
     };
     let device = DeviceIdentity {
         product: 7,

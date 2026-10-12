@@ -9,16 +9,22 @@ use kivori_desktop::device::discovery::{
 use kivori_desktop::device::fsm::{ConnectionManager, ManagerEvent};
 use kivori_desktop::device::heartbeat::HeartbeatMonitor;
 use kivori_model::{Capabilities, ConnectionState, ProtocolVersion};
-use kivori_protocol::{FirmwareVersion, HandshakeOutcome, HelloAck};
+use kivori_protocol::{
+    FirmwareVersion, HandshakeOutcome, HelloAck, PROTOCOL_MAJOR, PROTOCOL_MINOR,
+};
+
+const CURRENT: ProtocolVersion = ProtocolVersion::new(PROTOCOL_MAJOR, PROTOCOL_MINOR);
+/// A device on a higher, still compatible minor.
+const NEWER_MINOR: ProtocolVersion = ProtocolVersion::new(PROTOCOL_MAJOR, PROTOCOL_MINOR + 1);
 
 fn device() -> ConnectedDevice {
     ConnectedDevice {
         firmware_version: FirmwareVersion {
-            major: 1,
-            minor: 2,
+            major: 0,
+            minor: 1,
             patch: 0,
         },
-        protocol_version: ProtocolVersion::new(1, 0),
+        protocol_version: CURRENT,
         device_id_hash_short: "deadbeef".to_string(),
     }
 }
@@ -40,9 +46,10 @@ fn happy_path_reaches_connected_and_can_drive() {
 fn incompatible_is_terminal_with_a_reason() {
     let mut m = ConnectionManager::new();
     m.apply(ManagerEvent::PortOpened);
-    assert!(m.apply(ManagerEvent::HandshakeIncompatible { device_major: 2 }));
+    // A board flashed before the version reset speaks protocol major 1.
+    assert!(m.apply(ManagerEvent::HandshakeIncompatible { device_major: 1 }));
     assert_eq!(m.state(), ConnectionState::Incompatible);
-    assert!(m.incompatible_reason().unwrap().contains("v2"));
+    assert!(m.incompatible_reason().unwrap().contains("v1"));
     assert!(m.device().is_none());
     // Terminal except for port removal.
     assert!(!m.apply(ManagerEvent::BackoffElapsed));
@@ -56,7 +63,7 @@ fn incompatible_is_terminal_with_a_reason() {
 fn incompatible_is_left_by_opening_another_port_and_clears_the_reason() {
     let mut m = ConnectionManager::new();
     m.apply(ManagerEvent::PortOpened);
-    m.apply(ManagerEvent::HandshakeIncompatible { device_major: 2 });
+    m.apply(ManagerEvent::HandshakeIncompatible { device_major: 1 });
     assert!(m.incompatible_reason().is_some());
     assert!(m.apply(ManagerEvent::PortOpened));
     assert_eq!(m.state(), ConnectionState::Connecting);
@@ -143,18 +150,12 @@ fn handshake_verify_accepts_good_nonce_and_supported_major() {
         },
         nonce_echo: 0x1234,
     };
-    let outcome = verify_handshake(
-        &sent,
-        &ack,
-        ProtocolVersion::new(1, 2),
-        ProtocolVersion::new(1, 0),
-        &[1],
-    );
+    let outcome = verify_handshake(&sent, &ack, NEWER_MINOR, CURRENT, &[PROTOCOL_MAJOR]);
     assert!(matches!(outcome, HandshakeOutcome::Compatible(_)));
 
-    let summary = summarize(&ack, ProtocolVersion::new(1, 2));
+    let summary = summarize(&ack, NEWER_MINOR);
     assert_eq!(summary.firmware_version.major, 1);
-    assert_eq!(summary.protocol_version, ProtocolVersion::new(1, 2));
+    assert_eq!(summary.protocol_version, NEWER_MINOR);
     assert_eq!(summary.device_id_hash_short.len(), 8);
 }
 
@@ -180,13 +181,7 @@ fn handshake_verify_rejects_bad_nonce_and_incompatible_major() {
         nonce_echo: 0x9999,
     };
     assert!(matches!(
-        verify_handshake(
-            &sent,
-            &ack_bad_nonce,
-            ProtocolVersion::new(1, 0),
-            ProtocolVersion::new(1, 0),
-            &[1]
-        ),
+        verify_handshake(&sent, &ack_bad_nonce, CURRENT, CURRENT, &[PROTOCOL_MAJOR]),
         HandshakeOutcome::BadNonce
     ));
 
@@ -198,11 +193,12 @@ fn handshake_verify_rejects_bad_nonce_and_incompatible_major() {
         verify_handshake(
             &sent,
             &ack_incompatible,
-            ProtocolVersion::new(2, 0),
-            ProtocolVersion::new(1, 0),
-            &[1]
+            // A board flashed before the version reset: protocol major 1.
+            ProtocolVersion::new(PROTOCOL_MAJOR + 1, 6),
+            CURRENT,
+            &[PROTOCOL_MAJOR]
         ),
-        HandshakeOutcome::Incompatible { device_major: 2 }
+        HandshakeOutcome::Incompatible { device_major: 1 }
     ));
 }
 

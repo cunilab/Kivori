@@ -29,7 +29,8 @@ specification until row 3.15 is ticked.
 3. Start the app: `just desktop` (one command: builds the firmware, starts the UI dev server, runs the
    app with the firmware embedded so Flash firmware works, and stops the UI server when the app quits).
    Plain `cargo run -p kivori-desktop` bundles no firmware and logs `firmwareUnavailable`.
-   Discovery is automatic; there is no port picker. Expect **Connected**, firmware 1.3.0, protocol 1.5.
+   Discovery is automatic; there is no port picker. Expect **Connected**, firmware 0.1.0, protocol 0.1. A board flashed before the version reset
+   (2026-10-12) speaks protocol 1.x and shows as incompatible until this step reflashes it.
    On macOS, shortcuts and media keys need Accessibility permission for the app that runs Kivori
    (during development, the terminal running `cargo run`): System Settings > Privacy & Security >
    Accessibility.

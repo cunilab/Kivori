@@ -694,8 +694,8 @@ mod tests {
             flash_failure: None,
             handshake: true,
             negotiated_caps: all_caps(),
-            device_version: Some("1.3.0".into()),
-            bundled_version: Some("1.3.0".into()),
+            device_version: Some("0.1.0".into()),
+            bundled_version: Some("0.1.0".into()),
             heartbeat_ok: true,
             state_report_seen: true,
             health_seen: true,
@@ -727,7 +727,7 @@ mod tests {
     #[test]
     fn a_version_mismatch_fails() {
         let mut obs = good();
-        obs.device_version = Some("1.2.0".into());
+        obs.device_version = Some("0.0.9".into());
         assert_eq!(evaluate(&obs).failed, vec![FailedCheck::FirmwareVersion]);
     }
 
@@ -821,7 +821,7 @@ mod tests {
         );
         assert_eq!(row.lines().count(), 1);
         assert_eq!(row.matches(',').count(), CSV_HEADER.matches(',').count());
-        assert!(row.starts_with("2026-10-09T10:00:00Z,ab12cd34,1.3.0,1.3.0,FAIL,input:turn_right;"));
+        assert!(row.starts_with("2026-10-09T10:00:00Z,ab12cd34,0.1.0,0.1.0,FAIL,input:turn_right;"));
         let none = csv_row("t", None, &obs, &verdict, &none_log);
         assert!(none.starts_with("t,unknown,"));
         assert!(none.ends_with(",unknown,unknown,unknown,unknown"));
@@ -976,8 +976,8 @@ mod tests {
         let image = |p, b| ImageIdentity {
             product: p,
             board: b,
-            version: "1.4.0".into(),
-            min_protocol: (1, 6),
+            version: "0.1.0".into(),
+            min_protocol: (0, 1),
         };
         assert!(check_image_matches_plan(Some(&image(1, 1)), &plan).is_ok());
         assert!(check_image_matches_plan(Some(&image(1, 2)), &plan).is_err());
@@ -990,8 +990,8 @@ mod tests {
         let image = ImageIdentity {
             product: 1,
             board: 1,
-            version: "1.4.0".into(),
-            min_protocol: (1, 6),
+            version: "0.1.0".into(),
+            min_protocol: (0, 1),
         };
         assert!(guard_before_flash(Some(&image), Some(&DeviceIdentity::legacy())).is_ok());
         assert!(guard_before_flash(Some(&image), None).is_ok());

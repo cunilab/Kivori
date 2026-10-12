@@ -124,7 +124,7 @@ mod tests {
             concat!(
                 "KIVORI-FW-IDENTITY:p=1;b=1;v=",
                 env!("CARGO_PKG_VERSION"),
-                ";m=1.6\0"
+                ";m=0.1\0"
             )
         );
     }

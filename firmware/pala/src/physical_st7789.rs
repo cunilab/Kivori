@@ -365,7 +365,6 @@ pub fn run_mode(
                 .expect("6-byte base MAC"),
         ),
 
-        // 1.3: host takeovers (Sleeping, Updating, silence timeout) on top of M2; protocol 1.6 (quiet acknowledgement, device internals).
         firmware_version: FIRMWARE_VERSION,
 
         capabilities: Capabilities::MASCOT_INTERACTION

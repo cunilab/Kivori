@@ -5,7 +5,7 @@
 # Customer name, shown in the app (Diagnostics, firmware dialogs) and the docs.
 display_name = "Kivori Pip"
 # Short customer name without the brand, used where "Kivori" is already said (release titles such
-# as "Kivori 0.2.0 · Pip firmware 1.5.0"). Must not be empty.
+# as "Kivori 0.1.0 · Pip firmware 0.1.0"). Must not be empty.
 short_name = "Pip"
 # Model code printed on the unit and its box: two capitals, a dash, capitals or digits (`KV-P1`).
 model = "KV-P1"
@@ -46,4 +46,4 @@ crate = "firmware/pala"
 # Release build output, relative to the crate directory (what KIVORI_FIRMWARE_PATH points at).
 artifact = "target/riscv32imc-unknown-none-elf/release/kivori-firmware"
 # Oldest wire protocol (major.minor) this firmware speaks.
-min_protocol = "1.6"
+min_protocol = "0.1"
