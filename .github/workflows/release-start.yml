@@ -16,7 +16,9 @@ on:
         description: 'App version bump; none releases the Cargo.toml version as it is (only while it has no tag, e.g. the first release). Below 1.0.0 a major is still a real major (0.x -> 1.0.0).'
         type: choice
         options: [none, patch, minor, major]
-        default: minor
+        # none, so a careless click never skips a version: once the current version is tagged, none
+        # is refused and the bump has to be chosen on purpose.
+        default: none
       app_version:
         description: 'Exact app version X.Y.Z instead of the bump (optional, must be greater than the latest v* tag)'
         type: string

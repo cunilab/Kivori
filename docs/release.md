@@ -41,10 +41,11 @@ updatable" and no `.sig` or `latest.json` is produced.
 1. Merge pull requests with conventional commit titles (`feat:`, `fix:`, `perf:`, scoped like
    `feat(mic): ...`); they become the release notes.
 2. When you want a release: Actions, **Release**, Run workflow, on `main`. Pick:
-   - `app_bump`: `none`, `patch`, `minor` (default) or `major`. A bump starts from the version in
+   - `app_bump`: `none` (default), `patch`, `minor` or `major`. A bump starts from the version in
      `Cargo.toml`; below 1.0.0 a major is a real major (0.4.2 becomes 1.0.0). `none` releases the
      `Cargo.toml` version as it is, which is only possible while it has no `v` tag: that is how the
-     first release ships 0.1.0. `app_version`: an exact `X.Y.Z` instead. Whatever you pick must be
+     first release ships 0.1.0. After that, `none` is refused, so every later release needs a bump
+     you chose on purpose. `app_version`: an exact `X.Y.Z` instead. Whatever you pick must be
      greater than the latest `v*` tag (with no tag yet, the current version itself is allowed) and is
      never below the version in `Cargo.toml`;
    - `firmware_bump`: `none` (default, the firmware keeps its version), `patch`, `minor` or `major`;
