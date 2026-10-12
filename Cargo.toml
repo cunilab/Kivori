@@ -1,5 +1,5 @@
 # Root Cargo workspace — HOST targets only (see ADR-0001 in docs/architecture.md).
-# The ESP32-C3 firmware lives in its OWN workspace at firmware/esp32-c3/ (feature-unification firewall).
+# The ESP32-C3 firmware lives in its OWN workspace at firmware/pala/ (feature-unification firewall).
 [workspace]
 resolver = "2"
 members = [
@@ -12,8 +12,6 @@ members = [
     "tools/asset-compiler",
     "tests/golden-frames",
     "tests/e2e-host-sim",
-    "tools/wokwi-vectors",
-    "tools/wokwi-vcd",
 ]
 # Defensive: the firmware workspace is separate (ADR-0001). It already declares its own [workspace],
 # but excluding it here makes the boundary explicit and prevents accidental absorption.

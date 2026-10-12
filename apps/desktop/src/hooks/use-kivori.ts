@@ -4,13 +4,24 @@ import {
   getConfig,
   getConnectionStatus,
   getDeskStatus,
+  getFirmwareOffer,
   getFirmwareStatus,
+  getUpdateStatus,
   onConfigChanged,
   onConnectionStatus,
   onDeskStatus,
+  onFirmwareOffer,
+  onUpdateStatus,
   type Unlisten,
 } from '@/lib/ipc';
-import type { AppInfoDto, ConfigDto, ConnectionStatusDto, DeskStatusDto } from '@/lib/ipc/types';
+import type {
+  AppInfoDto,
+  ConfigDto,
+  ConnectionStatusDto,
+  DeskStatusDto,
+  FirmwareOfferDto,
+  UpdateStatusDto,
+} from '@/lib/ipc/types';
 
 /**
  * Seeds from a snapshot, then follows the native event. A pushed event always wins over a late
@@ -75,6 +86,16 @@ export function useUpdateAvailable(connection: ConnectionStatusDto | null): bool
 
 export function useDeskStatus(): DeskStatusDto | null {
   return useNative(getDeskStatus, onDeskStatus);
+}
+
+/** The app updater's status (ADR-0015), following `updater://status`. */
+export function useUpdateStatus(): UpdateStatusDto | null {
+  return useNative(getUpdateStatus, onUpdateStatus);
+}
+
+/** The firmware update offer (ADR-0015, step 6), following `firmware://offer`. */
+export function useFirmwareOffer(): FirmwareOfferDto | null {
+  return useNative(getFirmwareOffer, onFirmwareOffer);
 }
 
 /** The saved settings; a stale (lower-revision) copy never replaces a newer one. */

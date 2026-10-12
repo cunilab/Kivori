@@ -98,6 +98,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Message::Internals(_) => "Internals",
                             Message::BuddySettings(_) => "BuddySettings",
                             Message::MicState(_) => "MicState",
+                            Message::Identity(_) => "Identity",
                         }
                     ),
                     Err(_) if !packet.is_empty() => invalid += 1,

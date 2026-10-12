@@ -31,6 +31,7 @@ impl Capabilities {
     //   bit 12 DEVICE_INTERNALS_V1 `InternalsRequest` / `Internals`: the developer-mode device internals snapshot
     //   bit 13 IDLE_LIFE_V1        `BuddySettings`: the device runs the buddy's idle life itself; carries brightness
     //   bit 14 MIC_STATE_V1        `MicStateUpdate`: whether every microphone is muted, and whether one is in use
+    //   bit 15 PRODUCT_IDENTITY_V1 `Identity`: the device reports its product, board, hardware revision and where they came from
 
     /// Bit 0 — device accepts deterministic social mascot actions and returns applied-time
     /// acknowledgments.
@@ -85,6 +86,11 @@ impl Capabilities {
     /// Bit 14 — the device renders `MicStateUpdate`: the mic indicator (muted or live) in the top
     /// indicator slot and the covered-mouth buddy face. Without it the desktop sends no mic state.
     pub const MIC_STATE_V1: Capabilities = Capabilities(1 << 14);
+
+    /// Bit 15 — the device sends one `Identity` message (product, board, hardware revision and its
+    /// source) right after the handshake. Without it the device is the legacy Kivori Pip on the
+    /// C3 SuperMini (ADR-0014).
+    pub const PRODUCT_IDENTITY_V1: Capabilities = Capabilities(1 << 15);
 
     /// Creates a capability set from a raw bitmask.
     #[must_use]

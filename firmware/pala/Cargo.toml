@@ -1,0 +1,89 @@
+# Isolated firmware Cargo workspace — feature-unification firewall (see ADR-0001).
+# NOT a member of the root workspace; consumes the shared crates via path dependencies.
+[workspace]
+resolver = "2"
+
+[package]
+name = "kivori-firmware"
+version = "1.4.0"
+edition = "2021"
+rust-version = "1.90"
+license = "UNLICENSED"
+description = "Kivori ESP32-C3 firmware (no_std). Device core, board runtime and hardware adapters."
+
+# Hardware-neutral device core lives in the library so it is testable on the host (constraint 4).
+[lib]
+name = "kivori_firmware"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kivori-firmware"
+path = "src/main.rs"
+# The flashable binary needs the esp-hal entry point; gate it behind `embedded` so host
+# `cargo test` skips it and builds only the hardware-neutral library + host-sim tests.
+required-features = ["embedded"]
+
+[features]
+default = []
+# esp-hal runtime + flashable entry point: boot, the monotonic clock and serial output. The board
+# peripherals (USB Serial/JTAG transport, SPI display, rotary and buttons) come from `physical-st7789`.
+embedded = [
+  "dep:esp-hal",
+  "dep:esp-println",
+  "dep:esp-backtrace",
+  "dep:critical-section",
+]
+# Host simulation adapters (in-memory transport, capture display, virtual clock) for testing the
+# device core with no hardware.
+host-sim = []
+# The shipping product firmware: the verified ESP32-C3 + ST7789 240x240 board, rotary and buttons.
+physical-st7789 = ["embedded", "dep:static_cell", "dep:embedded-hal-bus"]
+# DEVELOPMENT ONLY (T102; ADR-0005 §3): raw wire-byte tracing. Compiled out of every release artifact;
+# `scripts/check-release-surface.sh` proves both its absence and, with the feature on, its presence.
+debug-payloads = []
+# DEVELOPMENT ONLY: on-panel detent -> flushed-frame latency readout (Slice 002 checklist row 14).
+# Never in `default` or a release/product profile; flash with `just fw-flash-latency`.
+latency-probe = []
+
+# Path-linked shared crates (single source of truth, no publishing). Declared here to lock the
+# isolated cross-workspace path-linking per ADR-0001; consumed by the production runtime.
+[dependencies]
+kivori-model = { path = "../../crates/kivori-model" }
+kivori-protocol = { path = "../../crates/kivori-protocol" }
+kivori-framebuffer = { path = "../../crates/kivori-framebuffer" }
+kivori-renderer = { path = "../../crates/kivori-renderer" }
+kivori-assets = { path = "../../crates/kivori-assets" }
+heapless = "0.8"
+# Domain-separated hash of the factory eFuse ID (`device_id`); no_std, no alloc, pure software.
+sha2 = { version = "0.10", default-features = false }
+static_cell = { version = "2.1", optional = true }
+# Shares the edge-capture queue between the GPIO interrupt and the run loop (`physical_rotary`).
+critical-section = { version = "1", optional = true }
+# `rt` provides the runtime entry point (`#[esp_hal::main]`) and `init()`; `unstable` is required by
+# the peripheral drivers the hardware adapters use.
+esp-hal = { version = "1.1.1", default-features = false, features = ["esp32c3", "rt", "unstable"], optional = true }
+esp-println = { version = "0.17", default-features = false, features = ["esp32c3", "uart"], optional = true }
+esp-backtrace = { version = "0.19", default-features = false, features = ["esp32c3", "panic-handler", "println"], optional = true }
+# T072 display adapter. These are PRODUCTION dependencies and are deliberately
+# hardware-neutral: `display.rs` speaks only embedded-hal + mipidsi, so it compiles for the host as well
+# as riscv and is unit-testable with a recording SPI device. `batch` (default) is dropped — it is not
+# needed for windowed writes and pulls in `heapless` inside mipidsi.
+mipidsi = { version = "0.10", default-features = false }
+embedded-hal = "1.0"
+embedded-graphics-core = "0.4"
+# Only the physical board wiring needs the bus/CS wrapper, so it rides on `physical-st7789`.
+embedded-hal-bus = { version = "0.3", default-features = false, optional = true }
+esp-bootloader-esp-idf = { version = "0.5", features = ["esp32c3"] }
+
+[build-dependencies]
+# Host-side, build-time only: compiles the canonical asset blob every `embedded` build renders (see build.rs).
+# Never linked into the device binary — the firmware reads the compiled bytes, never source art.
+kivori-asset-compiler = { path = "../../tools/asset-compiler" }
+
+[dev-dependencies]
+# Host-only: compiles the canonical asset blob for the render-parity test. Never in the riscv build.
+kivori-asset-compiler = { path = "../../tools/asset-compiler" }
+
+[profile.release]
+opt-level = "s"
+lto = true

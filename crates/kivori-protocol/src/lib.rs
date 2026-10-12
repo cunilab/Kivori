@@ -11,6 +11,7 @@ pub mod codec;
 pub mod error;
 pub mod frame;
 pub mod handshake;
+pub mod identity;
 pub mod message;
 pub mod negotiate;
 
@@ -20,9 +21,10 @@ pub use frame::{crc32, decode_frame, encode_frame, Header};
 pub use handshake::{evaluate_hello_ack, HandshakeOutcome};
 pub use message::{
     BuddySettings, Bye, ControlId, ControlLabelsUpdate, DeviceId, Diagnostic, ErrorReport,
-    Feedback, FirmwareVersion, Health, Hello, HelloAck, InputEvent, InputKind, InternalsReport,
-    InternalsRequest, MascotActionApplied, MediaInfoUpdate, Message, MicStateUpdate, Nonce, Ping,
-    PlayMascotAction, Pong, Presentation, Ready, SetState, StateReport, Status, CONTEXT_BUTTONS,
+    Feedback, FirmwareVersion, Health, Hello, HelloAck, Identity, IdentitySource, InputEvent,
+    InputKind, InternalsReport, InternalsRequest, MascotActionApplied, MediaInfoUpdate, Message,
+    MicStateUpdate, Nonce, Ping, PlayMascotAction, Pong, Presentation, Ready, SetState,
+    StateReport, Status, CONTEXT_BUTTONS,
 };
 pub use negotiate::negotiate;
 

@@ -4,24 +4,36 @@
 //!
 //! Run it with `just provision` (which builds the firmware and bundles it). The port name is shown
 //! on the terminal for the operator but is never written to the log.
-use std::io::Write;
+//!
+//! With `--product/--board/--rev` it shows the chip identity record it would write (a dry run); with
+//! `--burn-identity` it writes it into the one-time eFuses through `espefuse`, after checking the
+//! block is blank and the operator typed the product id. All decisions are in `provision.rs`.
+use std::io::{BufRead, Write};
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use kivori_desktop::catalog::Catalog;
 use kivori_desktop::device::{
-    discovery::{filter_candidates, PortCandidate, DEFAULT_ALLOWLIST},
+    discovery::{default_allowlist, filter_candidates, PortCandidate},
     fsm::{ConnectionManager, ManagerEvent},
     serial::{enumerate, SerialPortLink},
     session::{Session, SessionConfig},
 };
 use kivori_desktop::firmware::{
-    bundled_image_available, flash_bundled, BUNDLED_FIRMWARE, RECONNECT_TIMEOUT,
+    bundled_image_available, bundled_image_identity, flash_bundled, BUNDLED_FIRMWARE,
+    RECONNECT_TIMEOUT,
 };
 use kivori_desktop::firmware_marker::scan_firmware_version;
+use kivori_desktop::identity::DeviceIdentity;
 use kivori_desktop::orchestrator::Orchestrator;
 use kivori_desktop::provision::{
-    csv_row, evaluate, format_utc, InputCheck, InputProgress, Observations, BANNER, CSV_HEADER,
-    HEARTBEAT_HOLD_SECS,
+    block_file, check_block, check_image_matches_plan, confirmation_matches, csv_row,
+    describe_record, espefuse_version_accepted, evaluate, format_utc, guard_before_flash,
+    parse_args, parse_espefuse_version, resolve_plan, verify_identity, BlockCheck, IdentityLog,
+    IdentityPlan, InputCheck, InputProgress, Observations, BANNER, CSV_HEADER, ESPEFUSE_MAJOR,
+    HEARTBEAT_HOLD_SECS, USAGE,
 };
 use kivori_model::Capabilities;
 
@@ -31,16 +43,22 @@ const INPUT_TIMEOUT: Duration = Duration::from_secs(20);
 
 fn main() {
     println!("{BANNER}");
-    if let Some(arg) = std::env::args().nth(1) {
-        // The app's espflash invocation is `flash` only; it has no whole-chip erase option, so a
-        // first-time `--erase` is not offered. Say so instead of silently ignoring the flag.
-        let note = if arg == "--erase" {
-            "--erase is not supported: the bundled flashing path has no erase option."
-        } else {
-            "this tool takes no arguments."
-        };
-        eprintln!("{note}\nusage: cargo run -p kivori-desktop --example provision");
-        std::process::exit(2);
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let plan = match parse_args(&args)
+        .and_then(|a| Ok((resolve_plan(Catalog::embedded(), &a)?, a.burn)))
+    {
+        Ok(parsed) => parsed,
+        Err(message) => {
+            eprintln!("{message}\n{USAGE}");
+            std::process::exit(2);
+        }
+    };
+    let (plan, burn) = plan;
+    if let Some(plan) = &plan {
+        println!("Identity record:\n{}", describe_record(plan));
+        if !burn {
+            println!("DRY RUN: nothing is written to the chip. Add --burn-identity to burn it.");
+        }
     }
     let mut obs = Observations {
         flash_failure: None,
@@ -52,9 +70,16 @@ fn main() {
         state_report_seen: false,
         health_seen: false,
         inputs_done: Vec::new(),
+        identity_check: None,
     };
     let mut hash = None;
-    let outcome = run(&mut obs, &mut hash);
+    let mut identity = None;
+    let outcome = run(
+        &mut obs,
+        &mut hash,
+        &mut identity,
+        plan.as_ref().filter(|_| burn),
+    );
     if let Err(message) = outcome {
         println!("Stopped: {message}");
     }
@@ -65,6 +90,16 @@ fn main() {
         println!("  failed checks: {}", verdict.failed_tokens());
     }
     println!("  device hash:   {}", hash.as_deref().unwrap_or("unknown"));
+    if let Some(passed) = obs.identity_check {
+        println!(
+            "  identity:      {}",
+            if passed {
+                "PASS (reported from the chip)"
+            } else {
+                "FAIL"
+            }
+        );
+    }
     println!(
         "  firmware:      unit {} / bundled {}",
         obs.device_version.as_deref().unwrap_or("unknown"),
@@ -73,7 +108,13 @@ fn main() {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    let row = csv_row(&format_utc(now), hash.as_deref(), &obs, &verdict);
+    let row = csv_row(
+        &format_utc(now),
+        hash.as_deref(),
+        &obs,
+        &verdict,
+        &IdentityLog::from_device(identity.as_ref()),
+    );
     match append_log(&row) {
         Ok(()) => println!("  logged to {LOG_FILE}"),
         Err(e) => println!("  could not write {LOG_FILE}: {e}"),
@@ -96,7 +137,7 @@ fn append_log(row: &str) -> std::io::Result<()> {
 /// Exactly one allowlisted port, or a message for the operator.
 fn single_port() -> Result<PortCandidate, String> {
     let ports = enumerate();
-    let found = filter_candidates(&ports, DEFAULT_ALLOWLIST);
+    let found = filter_candidates(&ports, default_allowlist());
     match found.as_slice() {
         [only] => Ok((*only).clone()),
         [] => Err("no Kivori unit found: plug in one unit and retry.".into()),
@@ -106,12 +147,103 @@ fn single_port() -> Result<PortCandidate, String> {
     }
 }
 
-fn run(obs: &mut Observations, hash: &mut Option<String>) -> Result<(), String> {
+/// A connected session on one port.
+struct Conn {
+    link: SerialPortLink,
+    session: Session,
+    manager: ConnectionManager,
+    orchestrator: Orchestrator,
+}
+
+/// Opens the port and completes the handshake within `timeout`.
+fn connect(port: &str, timeout: Duration) -> Result<Conn, String> {
+    let mut link = SerialPortLink::open(port).map_err(|e| format!("open: {e}"))?;
+    let mut session = Session::new(SessionConfig::default());
+    let mut manager = ConnectionManager::new();
+    let mut orchestrator = Orchestrator::new();
+    session
+        .open(&mut link, &mut manager)
+        .map_err(|e| format!("open session: {e:?}"))?;
+
+    let start = Instant::now();
+    let mut retry_at = Duration::from_secs(4);
+    while !manager.state().can_drive_device() {
+        if start.elapsed() >= timeout {
+            return Err("the unit did not complete the handshake.".into());
+        }
+        session
+            .pump(&mut link, &mut manager, &mut orchestrator)
+            .map_err(|e| format!("pump: {e:?}"))?;
+        if start.elapsed() >= retry_at && !manager.state().can_drive_device() {
+            manager.apply(ManagerEvent::HandshakeTimeout);
+            manager.apply(ManagerEvent::BackoffElapsed);
+            session
+                .open(&mut link, &mut manager)
+                .map_err(|e| format!("retry: {e:?}"))?;
+            retry_at = start.elapsed() + Duration::from_secs(4);
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    Ok(Conn {
+        link,
+        session,
+        manager,
+        orchestrator,
+    })
+}
+
+/// Pumps until the device's identity is known (a device that negotiated `PRODUCT_IDENTITY_V1`
+/// sends it right after the handshake), or `wait` passes.
+fn await_identity(conn: &mut Conn, wait: Duration) -> Result<Option<DeviceIdentity>, String> {
+    let start = Instant::now();
+    while conn.session.identity().is_none() && start.elapsed() < wait {
+        conn.session
+            .pump(&mut conn.link, &mut conn.manager, &mut conn.orchestrator)
+            .map_err(|e| format!("pump: {e:?}"))?;
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    Ok(conn.session.identity())
+}
+
+/// Before flashing: what the unit currently running is, so the image can be checked against it.
+/// `None` when it does not handshake (blank or recovering). The port is released on return.
+fn probe_identity(port: &str) -> Result<Option<DeviceIdentity>, String> {
+    let Ok(mut conn) = connect(port, Duration::from_secs(8)) else {
+        println!(
+            "The unit did not answer a handshake (blank or recovering): no identity to check."
+        );
+        return Ok(None);
+    };
+    match await_identity(&mut conn, Duration::from_secs(3))? {
+        Some(identity) => Ok(Some(identity)),
+        None => Err("the unit connected but did not report its identity.".into()),
+    }
+}
+
+fn run(
+    obs: &mut Observations,
+    hash: &mut Option<String>,
+    identity: &mut Option<DeviceIdentity>,
+    burn: Option<&IdentityPlan>,
+) -> Result<(), String> {
     if !bundled_image_available() {
         obs.flash_failure = Some("image_unavailable");
         return Err("no firmware is bundled (run through `just provision`).".into());
     }
     let port = single_port().inspect_err(|_| obs.flash_failure = Some("port"))?;
+    // The same image-vs-device guard as the app's flashing path, before anything is written.
+    let current =
+        probe_identity(&port.port_name).inspect_err(|_| obs.flash_failure = Some("port"))?;
+    if let Err(wrong) = guard_before_flash(bundled_image_identity(), current.as_ref()) {
+        obs.flash_failure = Some("wrongProduct");
+        return Err(format!(
+            "this unit is {} but the bundled firmware is for {}: refusing to flash.",
+            wrong.device, wrong.image
+        ));
+    }
+    if let Some(plan) = burn {
+        burn_identity(obs, &port.port_name, plan)?;
+    }
     println!(
         "Found one unit on {}. Flashing the bundled firmware...",
         port.port_name
@@ -132,32 +264,25 @@ fn run(obs: &mut Observations, hash: &mut Option<String>) -> Result<(), String> 
             Err(_) => {}
         }
     };
-    let mut link = SerialPortLink::open(&port.port_name).map_err(|e| format!("open: {e}"))?;
-    let mut session = Session::new(SessionConfig::default());
-    let mut manager = ConnectionManager::new();
-    let mut orchestrator = Orchestrator::new();
-    session
-        .open(&mut link, &mut manager)
-        .map_err(|e| format!("open session: {e:?}"))?;
-
-    let start = Instant::now();
-    let mut retry_at = Duration::from_secs(4);
-    while !manager.state().can_drive_device() {
-        if start.elapsed() >= HANDSHAKE_TIMEOUT {
-            return Err("the unit did not complete the handshake.".into());
-        }
-        session
-            .pump(&mut link, &mut manager, &mut orchestrator)
-            .map_err(|e| format!("pump: {e:?}"))?;
-        if start.elapsed() >= retry_at && !manager.state().can_drive_device() {
-            manager.apply(ManagerEvent::HandshakeTimeout);
-            manager.apply(ManagerEvent::BackoffElapsed);
-            session
-                .open(&mut link, &mut manager)
-                .map_err(|e| format!("retry: {e:?}"))?;
-            retry_at = start.elapsed() + Duration::from_secs(4);
-        }
-        std::thread::sleep(Duration::from_millis(20));
+    let mut conn = connect(&port.port_name, HANDSHAKE_TIMEOUT)?;
+    *identity = await_identity(&mut conn, Duration::from_secs(5))?;
+    let Conn {
+        mut link,
+        mut session,
+        mut manager,
+        mut orchestrator,
+    } = conn;
+    if let Some(plan) = burn {
+        let ok = verify_identity(plan, identity.as_ref());
+        obs.identity_check = Some(ok);
+        println!(
+            "Identity after the burn: {}.",
+            if ok {
+                "PASS"
+            } else {
+                "FAIL (the unit does not report the burned record from the chip)"
+            }
+        );
     }
     obs.handshake = true;
     obs.negotiated_caps = session.negotiated_caps();
@@ -220,6 +345,121 @@ fn run(obs: &mut Observations, hash: &mut Option<String>) -> Result<(), String> 
             println!("     not seen");
         }
     }
+    Ok(())
+}
+
+/// The espefuse executable on `PATH` (4.x installs it as `espefuse.py`, newer ones as `espefuse`).
+fn find_espefuse() -> Option<&'static str> {
+    ["espefuse", "espefuse.py"].into_iter().find(|name| {
+        Command::new(name).arg("--help").output().is_ok_and(|out| {
+            parse_espefuse_version(&String::from_utf8_lossy(&out.stdout)).is_some()
+        })
+    })
+}
+
+/// A fresh scratch directory for the dump and the block file.
+fn scratch_dir() -> Result<PathBuf, String> {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let dir = std::env::temp_dir().join(format!("kivori-provision-{}-{nanos}", std::process::id()));
+    std::fs::create_dir(&dir).map_err(|e| format!("scratch directory: {e}"))?;
+    Ok(dir)
+}
+
+/// Reads `BLOCK_USR_DATA` (read only: `espefuse dump`).
+fn read_user_block(tool: &str, port: &str, dir: &Path) -> Result<Vec<u8>, String> {
+    let out = Command::new(tool)
+        .args(["--chip", "esp32c3", "--port", port, "dump", "--file_name"])
+        .arg(dir.join("blk.bin"))
+        .output()
+        .map_err(|e| format!("could not run {tool}: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "{tool} dump failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    // espefuse names the files blk0.bin, blk1.bin, ...; block 3 is BLOCK_USR_DATA.
+    std::fs::read(dir.join("blk3.bin")).map_err(|e| format!("could not read the eFuse dump: {e}"))
+}
+
+/// Writes the record: the ONLY place anything is burned, reached only after the typed confirmation.
+fn burn_block(tool: &str, port: &str, file: &Path) -> Result<(), String> {
+    let status = Command::new(tool)
+        .args(["--chip", "esp32c3", "--port", port, "--do-not-confirm"])
+        .args(["burn_block_data", "BLOCK_USR_DATA"])
+        .arg(file)
+        .status()
+        .map_err(|e| format!("could not run {tool}: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "{tool} burn_block_data failed ({status}); check the chip before retrying."
+        ))
+    }
+}
+
+/// The checks, in order, then the burn: image matches the record, espefuse version, block blank,
+/// typed confirmation. The port is free here (no session is open).
+fn burn_identity(obs: &mut Observations, port: &str, plan: &IdentityPlan) -> Result<(), String> {
+    check_image_matches_plan(bundled_image_identity(), plan)?;
+    let tool = find_espefuse().ok_or(
+        "espefuse not found: install it with `pip install esptool==4.7.0` (docs/provisioning.md).",
+    )?;
+    let output = Command::new(tool)
+        .arg("--help")
+        .output()
+        .map_err(|e| e.to_string())?;
+    let version = parse_espefuse_version(&String::from_utf8_lossy(&output.stdout))
+        .ok_or("could not read the espefuse version.")?;
+    if !espefuse_version_accepted(version) {
+        return Err(format!(
+            "espefuse {}.{}.{} is not supported: this tool needs major {ESPEFUSE_MAJOR} (esptool==4.7.0).",
+            version.0, version.1, version.2
+        ));
+    }
+    let dir = scratch_dir()?;
+    let result = burn_checked(tool, port, plan, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    if result.is_err() {
+        obs.flash_failure = Some("identity_burn");
+    }
+    result
+}
+
+fn burn_checked(tool: &str, port: &str, plan: &IdentityPlan, dir: &Path) -> Result<(), String> {
+    println!("Reading the chip's user data block (read only)...");
+    let block = read_user_block(tool, port, dir)?;
+    match check_block(&block, plan) {
+        BlockCheck::AlreadyProvisioned => {
+            println!("Already provisioned with this identity: nothing to burn.");
+            return Ok(());
+        }
+        BlockCheck::Refuse(reason) => return Err(reason),
+        BlockCheck::Blank => {}
+    }
+    println!("\nABOUT TO BURN, PERMANENTLY, into the ESP32-C3 on {port}:");
+    println!("{}", describe_record(plan));
+    println!("eFuses are one-time programmable: this can never be undone or changed.");
+    print!(
+        "Type the product id `{}` to burn, anything else aborts: ",
+        plan.product_id
+    );
+    let _ = std::io::stdout().flush();
+    let mut line = String::new();
+    std::io::stdin()
+        .lock()
+        .read_line(&mut line)
+        .map_err(|e| format!("could not read the confirmation: {e}"))?;
+    if !confirmation_matches(&line, plan) {
+        return Err("not confirmed: nothing was burned.".into());
+    }
+    let file = dir.join("identity.bin");
+    std::fs::write(&file, block_file(plan)).map_err(|e| format!("block file: {e}"))?;
+    burn_block(tool, port, &file)?;
+    println!("Burned. The unit restarts into the new firmware next; reconnecting to verify...");
     Ok(())
 }
 

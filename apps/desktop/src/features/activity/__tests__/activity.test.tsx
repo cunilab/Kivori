@@ -230,6 +230,7 @@ describe('Activity view', { timeout: 15_000 }, () => {
           firmwareVersion: '1.2.3',
           protocolVersion: { major: 1, minor: 0 },
           deviceIdHashShort: 'deadbeef',
+          identity: null,
           capabilities: 3,
           state: 'happy',
           personality: 'cozy',

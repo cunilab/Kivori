@@ -10,7 +10,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::activity::{ActivityEventKind, SessionActivity};
-use crate::device::discovery::{filter_candidates, PortCandidate, DEFAULT_ALLOWLIST};
+use crate::device::discovery::{default_allowlist, filter_candidates, PortCandidate};
+use crate::firmware_marker::{scan_image_identity, ImageIdentity};
+use crate::identity::{RestoreOption, WrongProduct};
 use serde::Serialize;
 
 /// Maximum time allowed for one `espflash` process before it is terminated.
@@ -64,13 +66,19 @@ pub enum FlashFailure {
     ImageUnavailable,
     /// Flashing finished but the device did not come back and verify.
     ReconnectTimedOut,
+    /// The bundled image is for another product or board than the connected device; nothing was
+    /// written. Both names ride in [`FirmwareStatus::wrong_product`].
+    WrongProduct,
+    /// More than one product could be on this port; the user picks one in
+    /// [`FirmwareStatus::restore_choices`] and restores again. Nothing was written.
+    ChooseProduct,
     /// Anything not recognized.
     Unknown,
 }
 
 impl FlashFailure {
     /// Every class, in declaration order.
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 10] = [
         Self::ToolMissing,
         Self::PortBusy,
         Self::NoDownloadMode,
@@ -78,6 +86,8 @@ impl FlashFailure {
         Self::Cancelled,
         Self::ImageUnavailable,
         Self::ReconnectTimedOut,
+        Self::WrongProduct,
+        Self::ChooseProduct,
         Self::Unknown,
     ];
 
@@ -92,6 +102,8 @@ impl FlashFailure {
             Self::Cancelled => "cancelled",
             Self::ImageUnavailable => "imageUnavailable",
             Self::ReconnectTimedOut => "reconnectTimedOut",
+            Self::WrongProduct => "wrongProduct",
+            Self::ChooseProduct => "chooseProduct",
             Self::Unknown => "unknown",
         }
     }
@@ -109,6 +121,8 @@ impl FlashFailure {
             Self::ReconnectTimedOut => {
                 "Firmware flashed, but the device could not be verified after reconnecting."
             }
+            Self::WrongProduct => "This firmware is for a different Kivori product.",
+            Self::ChooseProduct => "Choose which Kivori product this is.",
             Self::Unknown => "Firmware flashing failed.",
         }
     }
@@ -285,6 +299,30 @@ pub struct FirmwareStatus {
     pub bundled_version: Option<String>,
     /// Whether the connected device should be updated. Filled when the status is read.
     pub advice: UpdateAdvice,
+    /// Both names, set only with [`FlashFailure::WrongProduct`].
+    pub wrong_product: Option<WrongProductInfo>,
+    /// The products to pick from, set only with [`FlashFailure::ChooseProduct`].
+    pub restore_choices: Vec<RestoreChoice>,
+}
+
+/// The two names shown when an image was refused for a device.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WrongProductInfo {
+    /// What the connected device is.
+    pub device: String,
+    /// What the bundled image is for.
+    pub image: String,
+}
+
+/// One product the user may pick for a restore.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreChoice {
+    /// Machine id passed back with the restore request.
+    pub id: String,
+    /// Name shown to the user.
+    pub name: String,
 }
 
 /// Result of a completed programming attempt, consumed by the device runtime.
@@ -325,6 +363,8 @@ impl FlashWorkflow {
                 bundled_version: (available && !BUNDLED_FIRMWARE_VERSION.is_empty())
                     .then(|| BUNDLED_FIRMWARE_VERSION.to_string()),
                 advice: UpdateAdvice::Unknown,
+                wrong_product: None,
+                restore_choices: Vec::new(),
             },
             target: None,
             recovered_hash: None,
@@ -409,7 +449,7 @@ impl FlashWorkflow {
         if self.is_busy() {
             return Err("A firmware update is already in progress.".to_string());
         }
-        let found = filter_candidates(candidates, DEFAULT_ALLOWLIST);
+        let found = filter_candidates(candidates, default_allowlist());
         let [only] = found.as_slice() else {
             return Err(if found.is_empty() {
                 "No Kivori device was found to restore.".to_string()
@@ -429,6 +469,8 @@ impl FlashWorkflow {
         self.status.phase = FirmwarePhase::Preparing;
         self.status.message = "Preparing firmware update.".to_string();
         self.status.failure = None;
+        self.status.wrong_product = None;
+        self.status.restore_choices.clear();
         self.observe(ActivityEventKind::FirmwareFlashRequested);
         self.observe(ActivityEventKind::FirmwarePreparing);
     }
@@ -459,6 +501,28 @@ impl FlashWorkflow {
         self.status.failure = Some(failure);
         self.target = None;
         self.observe(ActivityEventKind::FirmwarePreparationRejected);
+    }
+
+    /// Refuses an image for a device it is not for (tier A). Nothing was written; the status
+    /// carries both names so the UI can say what the device is and what the image is for.
+    pub fn fail_wrong_product(&mut self, refusal: WrongProduct) {
+        self.fail_preparation_with(FlashFailure::WrongProduct);
+        self.status.wrong_product = Some(WrongProductInfo {
+            device: refusal.device,
+            image: refusal.image,
+        });
+    }
+
+    /// Stops a recovery that needs the user to say which product is on the port.
+    pub fn ask_restore_choice(&mut self, options: Vec<RestoreOption>) {
+        self.fail_preparation_with(FlashFailure::ChooseProduct);
+        self.status.restore_choices = options
+            .into_iter()
+            .map(|o| RestoreChoice {
+                id: o.id,
+                name: o.name,
+            })
+            .collect();
     }
 
     /// Completes process execution and selects the safe connection-resume mode.
@@ -517,6 +581,15 @@ impl FlashWorkflow {
     fn observe(&mut self, kind: ActivityEventKind) {
         self.activity.push(SessionActivity::new(kind, None));
     }
+}
+
+/// The identity record of the bundled image (`None` when no firmware is embedded, or it has none).
+#[must_use]
+pub fn bundled_image_identity() -> Option<&'static ImageIdentity> {
+    static IDENTITY: std::sync::OnceLock<Option<ImageIdentity>> = std::sync::OnceLock::new();
+    IDENTITY
+        .get_or_init(|| scan_image_identity(BUNDLED_FIRMWARE))
+        .as_ref()
 }
 
 /// Returns whether the bundled artifact is an ELF32 little-endian RISC-V executable.

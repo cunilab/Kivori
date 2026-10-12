@@ -1,7 +1,7 @@
 # Hardware validation
 
 The one checklist for everything CI cannot prove: real ESP32-C3 + ST7789 + HW-040 hardware, real
-OS behavior, real timing. Simulation and host tests are never promoted to physical evidence.
+OS behavior, real timing. Host-sim and other host tests are never promoted to physical evidence.
 
 Row numbers: `1.N` is row N of the old Phase 1 (device connection) checklist, `3.N` is row N of the old
 rotary checklist, `2.N` are new Phase 2 rows, `G` rows are PRD gates. Tick a row only with a date and a
@@ -12,7 +12,7 @@ measurement or observation on the same line. A phase closes only when all its ro
 **You need:** the board, a Windows PC and a Mac, one unrelated USB-serial device (Arduino or UART
 adapter), and a phone that films slow motion (backup for latency only).
 
-Pins (source of truth: `firmware/esp32-c3/src/profile.rs`). Display pins are measured; encoder pins are a
+Pins (source of truth: `firmware/pala/src/profile.rs`). Display pins are measured; encoder pins are a
 specification until row 3.15 is ticked.
 
 | Signal | GPIO | Signal | GPIO |
@@ -322,11 +322,11 @@ Software rules in [product.md](./product.md); design in ADR-0011 and ADR-0012. W
 
 Rules in [product.md](./product.md#updates-us10-us11); design in ADR-0014 to ADR-0016.
 
-- [ ] 14.1 Plug in a unit with M2.7 firmware, open Diagnostics | product "Kivori Desk Buddy", board "C3 SuperMini", revision shown (or "unknown" before provisioning)
-- [ ] 14.2 Plug in a unit with older firmware | the app treats it as Desk Buddy on the C3 SuperMini and offers the firmware update a few seconds after it connects
+- [ ] 14.1 Plug in a unit with M2.7 firmware, open Diagnostics | product "Kivori Pip", board "C3 SuperMini", revision shown (or "unknown" before provisioning)
+- [ ] 14.2 Plug in a unit with older firmware | the app treats it as Kivori Pip on the C3 SuperMini and offers the firmware update a few seconds after it connects
 - [ ] 14.3 Choose "Later", unplug and replug | the offer comes back; choose "Update now" | "Updating" on the panel, then the buddy; Device page shows the new firmware
 - [ ] 14.4 Try to flash an image built for another board (developer build with a test image) | the app refuses and names the mismatch; nothing is written
-- [ ] 14.5 Provisioning with `--product desk-buddy --board c3-supermini --rev 1` on a spare unit | the record is shown and needs typing to confirm; afterwards Diagnostics shows the identity from the chip
+- [ ] 14.5 Provisioning with `--product pala --board c3-supermini --rev 1` on a spare unit: first without, then with `--burn-identity` (permanent; [provisioning.md](./provisioning.md)) | without it only the record is printed; with it the record is shown and the product id must be typed; the run prints identity PASS and the log row says `chip`; afterwards Diagnostics shows the identity from the chip; a second burn attempt on the same unit says "already provisioned"
 - [ ] 14.6 Install an older release, publish a newer one | within a day, or at the next start, a tray badge; opening the window shows the update dialog with the new version and notes
 - [ ] 14.7 "Install & restart" | the installer runs without questions, Kivori restarts on the new version, the device reconnects; the firmware offer follows if the new app bundles newer firmware
 - [ ] 14.8 "Skip this version", restart | no offer for that version; a newer one is offered again

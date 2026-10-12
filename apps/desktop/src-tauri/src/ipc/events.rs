@@ -8,7 +8,8 @@ use tauri::{AppHandle, Emitter};
 
 use crate::activity::ActivityEvent;
 use crate::ipc::dto::{
-    self, ActivityEventDto, ConfigDto, ConnectionStatusDto, DeskStatusDto, StartupSettingsDto,
+    self, ActivityEventDto, ConfigDto, ConnectionStatusDto, DeskStatusDto, FirmwareOfferDto,
+    StartupSettingsDto,
 };
 
 /// Event name for connection-snapshot changes.
@@ -19,6 +20,11 @@ pub const DESK_STATUS: &str = "desk://status";
 pub const CONFIG_CHANGED: &str = "config://changed";
 /// Event name for a changed launch-at-login entry (from the tray or the Device page).
 pub const STARTUP_CHANGED: &str = "startup://changed";
+/// Event name for a changed firmware update offer (ADR-0015, step 6).
+pub const FIRMWARE_OFFER: &str = "firmware://offer";
+/// Event name asking the window to show the firmware offer dialog (the tray's "Update Kivori
+/// firmware…").
+pub const FIRMWARE_OFFER_SHOW: &str = "firmware://show-offer";
 /// Event name for typed session activity records.
 pub const ACTIVITY_LOG_EVENT: &str = "activity-log://event";
 
@@ -62,6 +68,11 @@ pub fn emit_config_changed(app: &AppHandle, config: &ConfigDto) {
 /// Broadcasts the launch-at-login state the OS now reports, whoever changed it.
 pub fn emit_startup_changed(app: &AppHandle, settings: &StartupSettingsDto) {
     let _ = app.emit(STARTUP_CHANGED, settings);
+}
+
+/// Broadcasts the firmware update offer whenever it changes.
+pub fn emit_firmware_offer(app: &AppHandle, offer: &FirmwareOfferDto) {
+    let _ = app.emit(FIRMWARE_OFFER, offer);
 }
 
 #[cfg(test)]

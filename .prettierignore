@@ -5,9 +5,6 @@ pnpm-lock.yaml
 **/*.md
 # Tauri-generated capability schemas (build artifacts)
 **/src-tauri/gen/
-# Generated Wokwi automation scenarios/vectors — byte-exact output of `cargo run -p kivori-wokwi-vectors`.
-# Reformatting them would fight the generator and break the CI staleness check.
-sim/wokwi/generated/
 
 # Local Claude Code state and agent worktrees
 .claude/

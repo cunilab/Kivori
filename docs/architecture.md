@@ -40,11 +40,12 @@ Two Cargo workspaces. Shared crates are `no_std`, no-alloc, and the single sourc
 | `crates/kivori-framebuffer` | RGB565 tile bands and content hashing (change detection). |
 | `crates/kivori-renderer` | Deterministic scene compositor and volume overlay (`embedded-graphics` `DrawTarget`). |
 | `crates/kivori-assets` | Zero-copy reader for the compiled asset blob. |
-| `apps/desktop/src-tauri` | `kivori-desktop`: `device/` (discovery, session, reconnect, heartbeat, nonce), `runtime/` (device task), `orchestrator/`, `input/`, `action/`, `platform/`, `presentation/`, `desk/` (profiles, bindings, catalog, actions), `config/` (store, schema, resolve, migrate), `companion.rs`, `activity/`, `firmware.rs`, `firmware_marker.rs`, `window_lifecycle.rs`, `provision.rs` (dev-only `just provision`), `ipc/`, `render/`. |
+| `apps/desktop/src-tauri` | `kivori-desktop`: `device/` (discovery, session, reconnect, heartbeat, nonce), `runtime/` (device task), `orchestrator/`, `input/`, `action/`, `platform/`, `presentation/`, `desk/` (profiles, bindings, catalog, actions), `config/` (store, schema, resolve, migrate), `companion.rs`, `activity/`, `catalog.rs` (product registry and catalog, ADR-0014), `firmware.rs`, `firmware_marker.rs`, `window_lifecycle.rs`, `provision.rs` (dev-only `just provision`), `ipc/`, `render/`. |
 | `apps/desktop/src` | React frontend and typed IPC wrappers. |
-| `firmware/esp32-c3` | Separate workspace: `ports.rs`, `input/` (quadrature, gesture), `physical_st7789.rs`, `physical_rotary.rs`, `runtime.rs`, `proto.rs`, plus host simulation adapters in `sim/`. |
+| `products/` | `registry.toml` (machine ids and wire numbers for products and boards) and `<id>/product.toml` (customer name, short name, model code, boards, flash method, USB hints, bundled firmware crate and artifact, required capabilities); compiled into the app, see ADR-0014. |
+| `firmware/pala` | The Kivori Pip firmware (crate `kivori-firmware`); separate workspace: `ports.rs`, `input/` (quadrature, gesture), `physical_st7789.rs`, `physical_rotary.rs`, `runtime.rs`, `proto.rs`, plus host simulation adapters in `sim/`. |
 | `tools/asset-compiler` | SVG to deterministic RGB565 blob (host build tool). |
-| `tools/wokwi-*`, `tests/e2e-host-sim`, `tests/golden-frames` | Simulation vectors, host-sim end-to-end tests, cross-OS frame-hash harness. |
+| `tests/e2e-host-sim`, `tests/golden-frames` | Host-sim end-to-end tests, cross-OS frame-hash harness. |
 | `.github/workflows/` | CI, see below. |
 | `scripts/` | Boundary guards (`check-crate-boundaries.sh`, `check-offline-deps.sh`, `check-frontend-offline.mjs`) and firmware/desktop build scripts. |
 
@@ -55,8 +56,8 @@ CI workflows (`.github/workflows/`):
 | `host` | Rust on Ubuntu and Windows, the frontend, and the Windows Device Studio startup smoke test: format, clippy, tests, the boundary, offline and release-surface guards. |
 | `firmware` | no_std isolation proof, firmware host-sim tests and RISC-V builds and clippy per feature set. |
 | `determinism` | Golden-frame hashes across operating systems and the byte-reproducible asset blob. |
-| `wokwi` | The Wokwi simulation gate. Path-filtered (`firmware/**`, `crates/**`, `sim/**`, Wokwi tools and scripts) because its minutes are metered. |
 | `release` | The unsigned Windows installer and draft release on a `v*` tag, manually with an optional macOS build; also on pull requests that touch packaging files ([release.md](./release.md)). |
+| `Release` (`release-start.yml`) | Manual only, from `main`: the owner's Release button. Bumps the app (and optionally firmware) version, refreshes the lockfiles, commits and tags, then calls `release` with the tag; a dry run only prints the plan and notes ([release.md](./release.md)). |
 
 `scripts/check-crate-boundaries.sh` fails CI if a shared crate gains a std, host or OS dependency. Compiling the shared crates for RISC-V is the hard backstop.
 
@@ -83,7 +84,7 @@ Desktop state is in memory only. `desired` defaults to `idle` and is re-sent aft
 - Sleep, wake, lock and console changes: Windows `PowerRegisterSuspendResumeNotification` (callback) plus `WTSRegisterSessionNotification` on a message-only window thread; macOS IOKit `IORegisterForSystemPower` on a CFRunLoop thread (hand-declared FFI) plus a 4 Hz poll of the session lock flag. See Host presence.
 - Flashing: a pinned `espflash` sidecar, driven by the native core (see Firmware update and recovery).
 - Not built yet: a Linux backend, desktop self-update, a factory-provisioned device id.
-- Device id (#24): the firmware derives its 16-byte `device_id` from the chip's factory eFuse unique ID, falling back to the base MAC, through a domain-separated SHA-256 (`kivori-device-id-v1`); raw eFuse bytes never go on the wire. The raw id stays in the transport layer; UI and logs only show the short hash (ADR-0005). Simulator and Wokwi images keep fixed ids.
+- Device id (#24): the firmware derives its 16-byte `device_id` from the chip's factory eFuse unique ID, falling back to the base MAC, through a domain-separated SHA-256 (`kivori-device-id-v1`); raw eFuse bytes never go on the wire. The raw id stays in the transport layer; UI and logs only show the short hash (ADR-0005).
 
 ## 2. Wire protocol
 
@@ -117,6 +118,7 @@ Desktop                                   Device
   | SetState { desired } ->  <- StateReport { reported, elapsed_ms }    |
 ```
 
+- After `Ready`, a device that negotiated `PRODUCT_IDENTITY_V1` sends one `Identity` (product, board, revision, source); one that did not is the legacy Kivori Pip on the C3 SuperMini (see Product identity).
 - A device counts as Kivori only after a well-formed `HelloAck` with the matching nonce. VID:PID alone is not identity.
 - The desktop gives up on a missing `HelloAck` after 5 s, closes the link, and retries with backoff.
 - After connecting, the desktop pings every 1 s and treats 3 misses as a lost link. `Pong.t_ms_echo` matches a ping.
@@ -149,9 +151,19 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 - The webview only ever asks for "flash the bundled image" (`flash_firmware`) or "restore" (`restore_firmware`). Ports, paths and `espflash` output never leave the native process. `FirmwareStatus` carries a phase, a safe message, the image size, a `failure` token, the bundled version and an update `advice` token; the UI owns all wording.
 - Sidecar lookup (`find_espflash`): `espflash[.exe]` beside the application executable first (where the installer puts it). `PATH` and `~/.cargo/bin` are searched only when built with the `device-studio` feature (the dev default). Release builds use `--no-default-features`, so they never run whatever `espflash` sits on `PATH`. A missing tool is `ToolMissing`. The installer bundles the pinned binary (see Release pipeline).
 - Flash: on `FlashFirmware` the device task sends `Bye(FirmwareUpdate)` (only when `supports_host_takeovers()`, so the panel shows Updating), drops the serial handle, runs `espflash` and then waits up to 20 s for the same port to handshake. The device identity must match (`FlashTarget::Verified { port, hash }`), so a swapped board is not reported as success.
-- Failures: stderr is captured in-process through a reader thread, bounded to the last 8 KiB, classified by the pure `classify_espflash(exit, stderr)` and dropped; it is never logged or emitted. Classes: `ToolMissing`, `PortBusy`, `NoDownloadMode`, `Timeout`, `Cancelled`, `ImageUnavailable`, `ReconnectTimedOut`, `Unknown`. Matching is conservative (case-insensitive fragments of known `espflash` 4.x and OS messages); anything else is `Unknown`. Refresh the fixtures from real output in the hardware session.
+- Failures: stderr is captured in-process through a reader thread, bounded to the last 8 KiB, classified by the pure `classify_espflash(exit, stderr)` and dropped; it is never logged or emitted. Classes: `ToolMissing`, `PortBusy`, `NoDownloadMode`, `Timeout`, `Cancelled`, `ImageUnavailable`, `ReconnectTimedOut`, `WrongProduct`, `ChooseProduct`, `Unknown`. `WrongProduct` and `ChooseProduct` are decided before `espflash` runs, so nothing is written (see Product identity). Matching is conservative (case-insensitive fragments of known `espflash` 4.x and OS messages); anything else is `Unknown`. Refresh the fixtures from real output in the hardware session.
 - Recovery: a unit that cannot handshake (wrong-major firmware, or held in ROM download mode with BOOT) is restored with `FlashTarget::Recovery { port }`. `request_recovery` refuses unless exactly one allowlisted (`DEFAULT_ALLOWLIST`) port is present, so the flasher cannot be pointed at the wrong board. After the flash, any compatible device on that port is accepted and its new short hash recorded. A flash requested while the connection is `incompatible` takes this path too. A verified flash still rejects a different hash.
 - Version advice: `build.rs` scans the embedded firmware image (`KIVORI_FIRMWARE_PATH`) for `KIVORI-FW-VERSION:<x.y.z>\0` with the pure `scan_firmware_version` and sets `KIVORI_BUNDLED_FIRMWARE_VERSION` (empty with no firmware). `update_advice(device, bundled)` returns `UpToDate`, `UpdateAvailable`, `DeviceNewer` or `Unknown`. It is advice only: nothing flashes without an explicit request.
+
+### Product identity (protocol 1.6, `PRODUCT_IDENTITY_V1`, ADR-0014)
+
+- One appended message: tag 23 `Identity { session, product, board, hw_rev, source }` (device to desktop). The device sends it once, right after the `Ready` that negotiated the capability, from the accepted session. `HelloAck` is unchanged (a fixed struct, ADR-0002) and `PROTOCOL_MINOR` stays 6: this capability rides the same minor as the rest of the 1.6 additions, which is what negotiation by capability is for. `product` and `board` are the `u16` numbers of `products/registry.toml` (never 0); `hw_rev` is `None` until provisioning burned one; `source` is `Build` (compiled into the firmware) or `Chip` (read from the chip identity record).
+- The desktop (`Session::identity`) keeps it for the connection only and clears it at every session boundary. A device that did not negotiate the capability is the legacy identity: product `pala`, board `c3-supermini`, revision unknown, source "legacy" (a desktop-side value, never on the wire). Numbers resolve through `catalog::by_wire`; one the catalog does not know is shown as "Unknown product (n)" or "Unknown board (n)" and never guessed: the session negotiates nothing else for that device and the flashing guard refuses it.
+- Firmware build identity: `firmware/<product>/build.rs` reads the product and board numbers from `products/registry.toml` (and the image's minimum protocol from `product.toml`) into compile-time `env!` values, so no number is typed twice. The physical build advertises the capability.
+- Chip identity record (`kivori_protocol::identity`, `no_std`): 12 bytes, little-endian: format version (1), product (`u16`), board (`u16`), hardware revision (`u8`, 0 = unspecified), 2 reserved zero bytes, CRC-32 (the frame CRC) over the first 8. A region of all zeros is "not provisioned" (fresh eFuses read zero). Firmware reads it from the C3 user eFuse block (BLOCK3, `BLOCK_USR_DATA`) with `esp_hal::efuse::read_field_le`; this step never writes eFuses. An unprovisioned or invalid record means source `Build` with no revision.
+- Wrong-board boot check (tier A, ADR-0016): a valid record whose product or board differs from the build identity makes the firmware run no product. It shows the static "Wrong firmware for this Kivori" screen (`render_wrong_board`; only the recovery hold is drawn above it), advertises only `PRODUCT_IDENTITY_V1`, and reports the chip's identity with source `Chip`, so the app can see what the unit is and reflash it. The recovery hold still reboots it (invariant 24).
+- Image identity record: the firmware image carries `KIVORI-FW-IDENTITY:p=<product>;b=<board>;v=<x.y.z>;m=<major.minor>\0` next to its version marker (`firmware_marker::scan_image_identity`). The desktop `build.rs` fails the build if the embedded image's record differs from the catalog (product, board, firmware crate version, minimum protocol).
+- Flashing guard (tier A): before `flash_firmware` reserves the port, the image record is compared with the connected device's identity (legacy counts as `pala` on `c3-supermini`); a mismatch, or a device whose numbers the catalog does not know, is refused with `FlashFailure::WrongProduct` and both names in `FirmwareStatus.wrong_product`, and nothing is written. Recovery has no handshake, so `decide_recovery` picks from the catalog entries listing the port's USB ids: one product is used; several end in `FlashFailure::ChooseProduct` with `restore_choices`, and `restore_firmware(product)` is sent again with the user's pick, which must be the bundled image's product or it is refused as `WrongProduct`.
 
 ### Quiet Unverified (protocol 1.6, `QUIET_ACK_V1`)
 
@@ -180,7 +192,7 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 
 - Two appended messages: tag 19 `InternalsRequest { session }` (desktop to device) and tag 20 `Internals { session, DeviceInternals }` (device to desktop). The device answers a request from the accepted session with one reply, only when the capability was negotiated; anything else is dropped unseen. `Health` is unchanged.
 - `DeviceInternals` (`kivori-model::internals`) is fixed-size and every field is an `Option`, so a value the device cannot measure is `None` on the wire and "Unavailable" in the card, never 0. Fields: flash (`app_image_bytes`, `app_partition_bytes`, `asset_blob_bytes`, `asset_blob_cap_bytes`, `flash_total_bytes`), RAM (`ram_total_bytes`, `ram_static_bytes`, `ram_free_bytes`, `stack_free_min_bytes`), load and display (`busy_percent`, `compose_ms`, `flush_ms`, `fps`), chip (`chip_model`, `chip_revision`, `temperature_decicelsius`, `uptime_ms`, `reset_reason`) and input and link (`edge_queue_high_water`, `dropped_edges`, `invalid_transitions`, `frames_in`, `frames_out`, `frames_rejected`). Counters are `u32`, wrap, and reset at boot. `ChipModel` and `ResetReason` are append-only enums.
-- Firmware (`internals.rs` holds the pure parts, `chip_probe.rs` the physical-only reads). The run loop owns busy %, fps, compose and flush time (`LoadMeter`, one-second windows) and the counters; the board fills the rest through a `ChipProbe` that `run_buffered` installs. The Wokwi runtime installs none and does not advertise the capability.
+- Firmware (`internals.rs` holds the pure parts, `chip_probe.rs` the physical-only reads). The run loop owns busy %, fps, compose and flush time (`LoadMeter`, one-second windows) and the counters; the board fills the rest through a `ChipProbe` that `run_buffered` installs.
 - The desktop asks with `Session::request_internals` (nothing is sent without the capability), caches the latest reply in `Session` (connection-scoped: cleared by `open` and by any session boundary), and the device thread publishes it with the diagnostics snapshot (at once when it changes). `get_device_internals` asks for a fresh snapshot and returns the cached `DeviceInternalsDto`; the card polls it every 1 s while mounted (developer mode on, window visible), so the device is asked only then.
 
 ### Host takeovers (protocol 1.5, `HOST_TAKEOVERS_V1`)
@@ -218,6 +230,7 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 | 20 | `Internals` | V to D | session, `DeviceInternals` (every field optional) | `DEVICE_INTERNALS_V1` |
 | 21 | `BuddySettings` | D to V | session, personality, self-play on/off, brightness step (1 to 5) | `IDLE_LIFE_V1` |
 | 22 | `MicState` | D to V | session, `MicState` (muted and in use, each optional) | `MIC_STATE_V1` |
+| 23 | `Identity` | V to D | session, product (`u16`), board (`u16`), hw_rev (optional `u8`), source (`Build`, `Chip`) | `PRODUCT_IDENTITY_V1` |
 
 `InputEvent.control` is `Rotary`, `Button` or `ContextButton(0..3)` (the three contextual buttons, left to right; needs `CONTEXT_BUTTONS_V1`; `Press` and `Hold` only, an index of 3 or more is rejected). With `Rotary`, `kind` is `GestureStarted`, `Detent(Cw|Ccw)` or `GestureEnded`; with `Button` (needs `BUTTON_INPUT_V1` too), it is `Press`, `Hold` or `DoublePress` (needs `DOUBLE_PRESS_V1`), sent once per gesture. The desktop rejects a kind that does not belong to its control. `Presentation.primary` is `Idle, Active, Error, Unknown`. `value` is `{ kind: Volume, current_percent, confidence, at_boundary }`.
 
@@ -240,6 +253,7 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 | 12 | `DEVICE_INTERNALS_V1` |
 | 13 | `IDLE_LIFE_V1` |
 | 14 | `MIC_STATE_V1` |
+| 15 | `PRODUCT_IDENTITY_V1` |
 
 `Capabilities` is a `u32` set in `kivori-model`. Bits are allocated centrally and never reused.
 
@@ -256,6 +270,7 @@ The webview may call only these commands and listen to these events. No command 
 | `get_onboarding`, `complete_onboarding`, `restart_onboarding` | First-run state (`completed`), finish it, reopen it ("Run setup again"); see First-run onboarding | all |
 | `get_accessibility`, `request_accessibility`, `open_accessibility_settings` | macOS Accessibility status (`granted, missing, notApplicable`), the system prompt, and the settings pane; see First-run onboarding | all |
 | `get_startup_settings`, `set_launch_at_login` | Launch-at-login state and switch (`startup://changed`); see Launch at login and tray | all |
+| `get_update_status`, `check_for_updates`, `install_update`, `snooze_update`, `skip_update_version`, `set_auto_update_check` | App updater status (`UpdateStatusDto`, `updater://status`), "Check now", "Install & restart" / "Try again", "Later", "Skip this version", and the automatic-check switch (`enabled`); see App updates. No URL crosses IPC | all |
 | `get_config` | Saved settings: `version`, `revision`, `notice`, `profiles` (every profile as resolved, each slot with `deviceLabel` and `overridden`), `display`, `buddy` | all |
 | `set_display_settings` | `defaultView`, `secondaryView` (a view, or `cycle`); returns the config | all |
 | `set_buddy_settings` | `reactions`, `intensity` (`low, normal, high`); returns the config | all |
@@ -273,7 +288,8 @@ The webview may call only these commands and listen to these events. No command 
 | `get_activity_log` | Newest N activity records | all |
 | `get_diagnostics` | None; returns `DiagnosticsDto` (see Diagnostics) | all |
 | `get_device_internals` | None; asks the device for a snapshot and returns `DeviceInternalsDto` (see Device internals) | all |
-| `get_firmware_status`, `flash_firmware`, `restore_firmware` | Firmware update status, update request and recovery request (no arguments, no port or path) | all |
+| `get_firmware_status`, `flash_firmware`, `restore_firmware` | Firmware update status, update request and recovery request (no port or path; `restore_firmware` takes an optional product id, only after the status asked the user to choose) | all |
+| `get_firmware_offer`, `accept_firmware_offer`, `dismiss_firmware_offer` | The firmware update offer (`FirmwareOfferDto`, `firmware://offer`), "Update now" (queues the same flash as `flash_firmware`) and "Later" (optional offers only); see Firmware flashing from the app | all |
 | `render_preview_frame`, `open_preview_stream`, `update_preview_stream`, `ack_preview_frame`, `close_preview_stream` | Native-rendered RGBA frames for Device Studio | `device-studio` only |
 | `mirror_state` | Dev-labelled `set_desired_state` | `device-studio` only |
 | `get_desk_status` | Display mode, monitored values (`null` = unknown), Press/Hold bindings, last action outcome | all |
@@ -289,6 +305,10 @@ The webview may call only these commands and listen to these events. No command 
 | `desk://status` | `DeskStatusDto` | Any change to the desk projection |
 | `config://changed` | `ConfigDto` | After every successful save or reset |
 | `startup://changed` | `StartupSettingsDto` | After launch at login changes, from the tray item or `set_launch_at_login` (the OS entry's state) |
+| `updater://status` | `UpdateStatusDto` | Any updater state change (throttled to about 7 per second while downloading) |
+| `updater://show` | none | The tray's "Update to vX.Y.Z…" was clicked: show the update dialog |
+| `firmware://offer` | `FirmwareOfferDto` | The firmware update offer changed |
+| `firmware://show-offer` | none | The tray's "Update Kivori firmware…" was clicked: show the firmware offer dialog |
 
 - Events are small JSON. Frame bytes travel as raw RGBA8888 (240x240, no JSON or base64) through a `tauri::ipc::Response` or a `Channel<ArrayBuffer>`. The canvas only blits. RGB565 to RGBA happens in Rust.
 - Dev-only commands are compiled out of release builds, and so is the Device Studio route.
@@ -307,7 +327,7 @@ The webview may call only these commands and listen to these events. No command 
 ### Rendering path
 
 - `render_scene(blob, scene, elapsed_ms, tile)` composites into an RGB565 tile with integer math only. Stitched tiles must equal the full-frame output.
-- In simulation firmware can render through small tile buffers. On the physical ST7789 it stages one full RGB565 pose (115,200 bytes, 112.5 KiB) in static SRAM, then sends only changed 40x40 tiles by SPI DMA. Composing and hashing never overlap the transfer. Tile hashes (`kivori-framebuffer`) skip unchanged tiles.
+- Without a frame buffer (the host-sim `Runtime::new` path) the firmware renders through a small tile buffer. On the physical ST7789 it stages one full RGB565 pose (115,200 bytes, 112.5 KiB) in static SRAM, then sends only changed 40x40 tiles by SPI DMA. Composing and hashing never overlap the transfer. Tile hashes (`kivori-framebuffer`) skip unchanged tiles.
 - The unwired TE pin means no refresh sync, and this is not panel double buffering.
 - Golden frames (`tests/golden-frames`) pin frame hashes across OSes. An intentional pixel change updates the goldens in the same change.
 
@@ -408,7 +428,7 @@ desktop 1 Hz: CPU/RAM, volume/mute, media, local time -> StatusPublisher -> Stat
 
 The typed session activity log is the only runtime log.
 
-- Every record is an `ActivityEventDto`: native-issued `id`, ISO-8601 `at`, `summary`, and closed `type`, `severity` (`info, warning, error`), `source` (`connection, action, device, protocol, firmware`), `outcome` tokens.
+- Every record is an `ActivityEventDto`: native-issued `id`, ISO-8601 `at`, `summary`, and closed `type`, `severity` (`info, warning, error`), `source` (`connection, action, device, protocol, firmware, config, update`), `outcome` tokens.
 - Optional `metadata` is a fixed allowlist: connection state, retry and elapsed counters, diagnostic category and code, versions, short device hash, capability mask, state, personality, action, seed, protocol counters, reported state. There is no free-form map.
 - Never logged: raw payload bytes, raw device id, port or file paths, usernames, tokens, secrets, flasher output, raw error text. The UI reads only the fixed fields.
 - Delivery: the webview subscribes to `activity-log://event` first, then calls `get_activity_log(limit)`. It dedupes by id (live copy wins), sorts by id, and keeps the newest 256. Nothing is persisted or uploaded.
@@ -431,7 +451,7 @@ The typed session activity log is the only runtime log.
 
 - `tauri-plugin-autostart` is used from Rust only: `init(MacosLauncher::LaunchAgent, Some(["--autostart"]))` and `app.autolaunch()`. There is no JS package and no permission in `capabilities/default.json`, so the webview reaches it only through `get_startup_settings` and `set_launch_at_login(enabled)`. The OS entry (Windows `Run` key, macOS LaunchAgent) is the source of truth: nothing is stored in `config.json`, and each command returns what the OS reports after the change. Its own dependencies (`auto-launch`, `dirs`, `os_info`, registry and `smappservice` bindings) have no network crate.
 - Hidden start: `tauri.conf.json` creates the window with `visible: false`. `setup` shows it unless `std::env::args()` contains `--autostart` (`window_lifecycle::launched_at_login`); a login launch starts `WindowLifecycle::hidden()` (tray only, a close request is a no-op, `Reactivated` shows the window). The device task runs either way.
-- Tray (`runtime/lifecycle.rs`, id `kivori`): a disabled status line (`Connected`, `Not connected`, `Paused while locked`), `Open Kivori`, a `Launch at login` check item and `Quit`. The tooltip reads `Kivori · Desktop x.y.z · Firmware a.b.c` (firmware only while a device is connected, plus `Update available` when the advice says so). `tray_model(&ConnectionStatusDto, UpdateAdvice)` is pure; `refresh_tray` applies it from the device thread next to `emit_status`, so the tray follows the same snapshot as the UI. The check item is re-read from the OS after each toggle.
+- Tray (`runtime/lifecycle.rs`, id `kivori`): a disabled status line (`Connected`, `Not connected`, `Paused while locked`), `Open Kivori`, a `Launch at login` check item and `Quit`. While an app update is offered, `Update to vX.Y.Z…` sits below the status line (it opens the window and emits `updater://show`) and the tooltip ends `· Kivori X.Y.Z is ready`. The tooltip reads `Kivori · Desktop x.y.z · Firmware a.b.c` (firmware only while a device is connected, plus `Update available` when the advice says so). `tray_model(&ConnectionStatusDto, UpdateAdvice, Option<&str>)` is pure; `refresh_tray` applies it from the device thread next to `emit_status`, so the tray follows the same snapshot as the UI. The check item is re-read from the OS after each toggle.
 - A second launch while Kivori runs still goes to single-instance and surfaces the window.
 
 ### First-run onboarding (M3 S6)
@@ -458,7 +478,7 @@ On a normal launch the main window stays hidden and `setup` starts a watcher thr
 
 ### Diagnostics
 
-- `get_diagnostics` returns `DiagnosticsDto`, shown as a card on the Device page (polled every 1 s while visible) and copied as JSON by "Copy diagnostics". Groups: `versions` (app, firmware, protocol, negotiated minor, capability names, short device hash), `connection` (state, connected-for, reconnects, retry count, last pong age, round trip), `health` (device uptime, free SRAM, malformed frames, sequence gaps, device errors), `host` (system volume, app volume, media observation, focus detection, input permission) and `config` (status, schema version, custom bindings, macros). Unknown values are `null`.
+- `get_diagnostics` returns `DiagnosticsDto`, shown as a card on the Device page (polled every 1 s while visible) and copied as JSON by "Copy diagnostics". Groups: `versions` (app, firmware, protocol, negotiated minor, capability names, short device hash, and `identity`: product and board display names, hardware revision or `null`, identity source `legacy`, `build` or `chip`, and whether the catalog knows it; product and board names are not personal data), `connection` (state, connected-for, reconnects, retry count, last pong age, round trip), `health` (device uptime, free SRAM, malformed frames, sequence gaps, device errors), `host` (system volume, app volume, media observation, focus detection, input permission) and `config` (status, schema version, custom bindings, macros). Unknown values are `null`.
 - Privacy: no ports, paths or raw device ids. The device appears only as its short hash. A DTO allowlist test pins the serialised keys.
 - With developer mode on, the Device page adds a Device internals card (see Device internals), and "Copy diagnostics" adds an `internals` group from its latest reply; with developer mode off neither exists.
 - Sources: `Session` keeps `Health.free_bytes`, `Pong.uptime_ms` with its receive instant, and counters for malformed frames, sequence gaps and device `Error`s. All of it is connection-scoped and reset by `Session::open` (the free-memory and uptime figures also clear when the link drops). The round trip comes from `HeartbeatMonitor` (`on_ping_sent(t_ms)`, `on_pong(t_ms_echo, now_ms)`), taken only from the echo of the latest ping.
@@ -472,15 +492,32 @@ On a normal launch the main window stays hidden and `setup` starts a watcher thr
 - `FirmwareStatusDto`: `available`, `phase` (`idle, preparing, flashing, reconnecting, succeeded, failed`), `message`, `imageSize`. The UI polls it every 750 ms. Timeouts: flash 90 s, reconnect 20 s.
 - Embedding: `scripts/build-desktop-firmware.ps1` builds the firmware release ELF with `physical-st7789`, then builds the desktop with it embedded. For other pipelines set `KIVORI_FIRMWARE_PATH`. The build rejects a non-RISC-V or non-ELF32 image. A host build without the variable disables the action, so a stale artifact cannot slip in.
 - `espflash` is the pinned sidecar shipped in the installer (dev builds may use one on `PATH`). Mirror to device sends a state command only. It does not install anything.
+- The offer (M2.7, `src/firmware_offer.rs`, pure): the device thread evaluates it every tick from the connection, the session identity, the bundled image's identity record, the updater state and whether a flash or knob gesture runs, and publishes `FirmwareOfferDto` (`kind`: `none | offerOptional | required | updateApp | deferredForAppUpdate`; product name, `from` and `to` versions, required `reason`: `protocolTooOld | missingCapabilities`, and an opaque `key`) on `firmware://offer`. Rules:
+  - Only the bundled image whose record names the device's product and board counts, compared with `update_advice`. An unknown or foreign product, or an identity not yet reported, gets `none`; the flash guard (`wrongProduct`) still decides what may be written.
+  - The question (`offerOptional`, `required`) appears only after the connection has been idle (no gesture, no flash) for 5 s; once shown, a gesture does not take it away. A flash always makes it `none`.
+  - App first: while the updater holds, offers, downloads or is about to install an app update (`Machine::app_update_due`), a question becomes `deferredForAppUpdate`; the new app may bundle newer firmware. The tray then shows only the app item, and the dialog never opens by itself while an app update is offered.
+  - Keyed by short device hash, bundled version and connection generation. "Later" (`dismiss_firmware_offer`, optional offers only) hides that key; the next connect is a new key and asks again. The memory is per run, not stored: a restart is a new connect, so "Later" never skips for good.
+  - `required`: an incompatible handshake with an older (or unknown) protocol major, or a connected device older than the bundled firmware that lacks a capability the catalog requires of its product. It has "Update now" and "Not now", which only closes the dialog. An incompatible device's "Update now" takes the restore path, like Flash firmware does. A device newer than the app (newer firmware, or a newer protocol major) is `updateApp`: the Device page says to update the app and, when an app update is offered, links to its dialog.
+  - "Update now" (`accept_firmware_offer`) queues the ordinary `FlashFirmware` (takeover screen, phases, verification); `features/updates/FirmwareOfferDialog.tsx` follows `get_firmware_status` until `succeeded` or `failed`. The tray shows "Update Kivori firmware…" while a question is open and no app update is offered; it opens the window on the dialog (`firmware://show-offer`). Activity: `firmwareOfferShown` (once per key), `firmwareOfferAccepted`, `firmwareOfferLater`, all without metadata.
 
 ### Release pipeline (M3 S5)
 
 - Versions: the Cargo workspace version is the only app version. `tauri.conf.json` has no `version`, so Tauri takes it from `kivori-desktop`; the installer name, `CFBundleShortVersionString` and the tag check all follow it.
 - Config split: the base `tauri.conf.json` stays dev-safe (`bundle.active: false`, no `externalBin` or `resources`), because Tauri's build script checks those paths at compile time and would break every dev and CI `cargo build`. Packaging lives in `tauri.release.conf.json` (NSIS, per-user install, embedded WebView2 bootstrapper, the `espflash` sidecar, `THIRD_PARTY_NOTICES.md`) and `tauri.release.macos.conf.json` (app and dmg, the adapter resource, `Info.plist`, `Entitlements.plist`, hardened runtime), merged with `tauri build --config`. Release builds pass `-- --no-default-features`, so Device Studio and the PATH fallback are compiled out.
 - Sidecar: `scripts/fetch-espflash.{sh,ps1}` download espflash 4.6.0 from the official GitHub release, check a pinned SHA-256 and write `src-tauri/binaries/espflash-<triple>[.exe]` (gitignored). Tauri installs it as `espflash[.exe]` next to the app, which is where `find_espflash` looks first. Bump the version and hashes together, in both scripts and `release.yml`.
-- Windows: `.github/workflows/release.yml` builds the firmware ELF on Ubuntu, then on Windows builds the NSIS installer with `KIVORI_FIRMWARE_PATH`, runs `check-release-surface.sh --desktop-artifact` (dev symbols absent, firmware version marker present), silently installs, checks the exe and `espflash --version`, runs the startup smoke test with `--autostart`, and silently uninstalls. `nsis/hooks.nsh` removes the HKCU `Run\Kivori` value that `tauri-plugin-autostart` writes; the workflow plants that value before uninstalling to prove it. A `v*` tag (which must equal the workspace version) uploads the installer and `SHA256SUMS` to a draft GitHub release. Nothing is published automatically.
+- Windows: `.github/workflows/release.yml` builds the firmware ELF on Ubuntu, then on Windows builds the NSIS installer with `KIVORI_FIRMWARE_PATH`, runs `check-release-surface.sh --desktop-artifact` (dev symbols absent, firmware version marker present), silently installs, checks the exe and `espflash --version`, runs the startup smoke test with `--autostart`, and silently uninstalls. `nsis/hooks.nsh` removes the HKCU `Run\Kivori` value that `tauri-plugin-autostart` writes; the workflow plants that value before uninstalling to prove it. A release tag (which must equal the workspace version), from the Release button's call or a `v*` tag pushed by hand, uploads the installer and `SHA256SUMS` to a draft GitHub release. Nothing is published automatically.
 - Signing is not implemented: the installer is unsigned and a placeholder step (repository variable `WINDOWS_SIGNING`) fails closed until owner certificates exist (#36). Unsigned binaries trigger SmartScreen, and Defender may flag `espflash.exe`.
 - macOS (ADR-0009): `scripts/bundle-macos.sh` is the main path; CI only builds it on a manual dispatch. The adapter is staged by `build.rs` in `target/release/mediaremote-adapter/` and bundled to `Contents/Resources/mediaremote-adapter`, which is what `adapter_dir()` resolves. With `APPLE_SIGNING_IDENTITY` set the script signs the two Mach-O helpers, then the app, with hardened runtime. Notarization is not done.
+
+### App updates (M2.7, ADR-0015)
+
+- Native only: `tauri-plugin-updater` (no `zip` feature) is used from `src/updater/` alone. There is no JS package and no permission in `capabilities/`; the webview gets the typed commands and events above.
+- Availability (`updater::policy::availability`, read from the merged Tauri config at startup): Windows, `plugins.updater` with exactly the endpoint `https://github.com/cunilab/Kivori/releases/latest/download/latest.json` and a non-empty `pubkey`. Only then is the plugin registered and the `kivori-updater` thread started. Otherwise the status is `disabled` (`devBuild`: the base `tauri.conf.json` has no updater section; `noKey`: the release config's key is still empty; `badEndpoint`) or `unsupported` (macOS), and no request is ever made. The plugin needs its config at init, so not registering it is also what keeps a dev build from failing to start.
+- Schedule (pure `Schedule`): first check 30 s after start, then every 24 h while the app runs, if "Check for updates automatically" is on. "Check now" checks whatever the setting. A check that fails (offline, server error, unreadable answer) changes nothing on screen, records `appUpdateCheckFailed` (source `update`, no URL or version) and waits for the next interval.
+- Decisions (pure `decide`, `Machine`): `disabled | unsupported | idle | checking | available | downloading | readyToRestart | failed`. Only a version newer than the running one (semver) is offered; a skipped version never is; a snoozed one ("Later") is not offered for 3 days, unless the user presses "Check now". A check runs only from `idle`, so an open offer or an install is never replaced. An update found while a firmware flash or a knob gesture runs is held and offered when both are over (polled every second); the install downloads and verifies, then waits the same way before the installer starts.
+- Install: the plugin downloads the installer named by `latest.json`, verifies its minisign signature against the compiled-in `pubkey` (`requireSignedVersion` also binds it to the announced version), then runs the NSIS installer with `/P /R` (passive, restart) and exits. Before it exits, `AppState::shutdown` stops the device thread so the serial port is released. A failure is `failed` with "Try again" and "Later".
+- Config: `config.json` gains `updates: { autoCheck, skippedVersion, snoozed: { version, at } }` (`#[serde(default)]`, still schema v1, `autoCheck` defaults to true). "Later", "Skip this version" and the switch save through the normal config path. The last check time is per session only.
+- UI: `features/updates/UpdateDialog.tsx` at the app root opens by itself once per version when an offer appears (the window is often hidden at login, so it is there when the window opens), and on `updater://show` or the Device page's "View update". Release notes are plain text (`whitespace-pre-wrap`), never HTML. `AppUpdates.tsx` on the Device page shows the last check, the switch and "Check now".
 
 ### Offline-first rule
 
@@ -489,8 +526,8 @@ Core function needs no internet, cloud, CDN, telemetry or licence check. Discove
 - No first-party crate may depend on a network client. Firmware, shared crates and the webview never get network access.
 - The webview loads no remote scripts, styles, fonts, images, fetches or sockets (localhost in dev is the exception).
 - No telemetry, and no startup wait on the network.
-- Update discovery is the one exception (ADR-0015): the updater module alone may reach the network, only to the release endpoint, and the guards allow that module and nothing else.
-- Guards: `scripts/check-offline-deps.sh`, `scripts/check-frontend-offline.mjs`, `apps/desktop/src-tauri/tests/offline_smoke.rs`.
+- Update discovery is the one exception (ADR-0015): `apps/desktop/src-tauri/src/updater/` alone may reach the network, only to the release endpoint, only in a Windows release build with a public key, and the guards allow that module and nothing else (see App updates).
+- Guards: `scripts/check-offline-deps.sh` (direct deps of both workspaces: no network client, and no network-capable Tauri plugin except `kivori-desktop` → `tauri-plugin-updater`; transitive deps on every desktop target with that plugin pruned: no network client left; sources: no network API outside `src/updater/`), `scripts/check-frontend-offline.mjs` (also: no network plugin JS package, import or capability permission), `apps/desktop/src-tauri/tests/offline_smoke.rs` (also: the same source rule, and a development build never starts the updater).
 
 ## 7. Decisions
 
@@ -502,7 +539,7 @@ lists them all with their status and says how to add one.
 1. Observable truth first. An acknowledgement is not confirmation, unknown stays unknown, stale input is never replayed.
 2. One visual model. Preview and device use the same scenes, assets, timing and renderer. The frontend never re-implements device pixels.
 3. Deterministic rendering. Same inputs give byte-identical RGB565. No wall clock, unseeded randomness or platform floats. Intentional pixel changes update the goldens in the same change.
-4. Hardware limits are design inputs (RAM, flash, SPI, USB, boot straps, recovery). Shared crates stay `no_std` and no-alloc. Hardware claims need hardware evidence, and simulation is labelled as simulation.
+4. Hardware limits are design inputs (RAM, flash, SPI, USB, boot straps, recovery). Shared crates stay `no_std` and no-alloc. Hardware claims need hardware evidence, and host-sim results are labelled as host-sim.
 5. Desktop owns desktop meaning (OS integration, bindings, actions, config, updates). Firmware owns what must work without a healthy desktop (input conditioning, gestures, local rendering, device health, recovery).
 6. Send meaning across boundaries (state, input, presentation), not drawing commands or streamed frames.
 7. Offline-first core. Network features are isolated, explicit, and never block startup or device operation.

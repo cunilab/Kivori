@@ -26,7 +26,8 @@
     "quietAckV1",
     "deviceInternalsV1",
     "idleLifeV1",
-    "micStateV1"
+    "micStateV1",
+    "productIdentityV1"
   ],
   "chipModels": ["esp32c3"],
   "controls": [
@@ -51,6 +52,8 @@
     "appMute",
     "macro"
   ],
+  "firmwareOfferKinds": ["none", "offerOptional", "required", "updateApp", "deferredForAppUpdate"],
+  "firmwareRequiredReasons": ["protocolTooOld", "missingCapabilities"],
   "flashFailures": [
     "toolMissing",
     "portBusy",
@@ -59,6 +62,8 @@
     "cancelled",
     "imageUnavailable",
     "reconnectTimedOut",
+    "wrongProduct",
+    "chooseProduct",
     "unknown"
   ],
   "hostAvailability": ["available", "unsupported", "unavailable"],
@@ -66,6 +71,7 @@
   "hostInputPermission": ["required", "granted", "notNeeded", "unknown"],
   "hostMedia": ["observable", "notObservable"],
   "hostPresence": ["active", "locked", "sleeping"],
+  "identitySources": ["legacy", "build", "chip"],
   "profileIds": ["general", "browser", "code", "media", "zoom", "teams"],
   "profileLimits": {
     "apps": 32,
@@ -76,5 +82,16 @@
   "rotateSpecKinds": ["systemVolume", "shortcuts", "appVolume"],
   "startupPlatform": ["windows", "macos", "other"],
   "stepSpecKinds": ["action", "delay"],
-  "updateAdvice": ["upToDate", "updateAvailable", "deviceNewer", "unknown"]
+  "updateAdvice": ["upToDate", "updateAvailable", "deviceNewer", "unknown"],
+  "updateDisabledReasons": ["devBuild", "noKey", "badEndpoint"],
+  "updateStates": [
+    "disabled",
+    "unsupported",
+    "idle",
+    "checking",
+    "available",
+    "downloading",
+    "readyToRestart",
+    "failed"
+  ]
 }

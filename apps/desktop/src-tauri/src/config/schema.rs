@@ -38,6 +38,9 @@ pub struct ConfigFile {
     /// treats a pre-existing valid file without it as an existing user who has already set up.
     #[serde(default)]
     pub onboarding: OnboardingState,
+    /// App updates (ADR-0015): the automatic check and what the user said about an offer.
+    #[serde(default)]
+    pub updates: UpdateSettings,
 }
 
 impl Default for ConfigFile {
@@ -50,6 +53,7 @@ impl Default for ConfigFile {
             display: DisplaySettings::default(),
             buddy: BuddySettings::default(),
             onboarding: OnboardingState::default(),
+            updates: UpdateSettings::default(),
         }
     }
 }
@@ -60,6 +64,43 @@ impl Default for ConfigFile {
 pub struct OnboardingState {
     #[serde(default)]
     pub completed: bool,
+}
+
+/// App update settings (ADR-0015). Every field has a default, so older files load unchanged.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdateSettings {
+    /// "Check for updates automatically": at start and once a day. On by default.
+    #[serde(default = "default_true")]
+    pub auto_check: bool,
+    /// "Skip this version": that version is never offered again (a newer one is).
+    #[serde(default)]
+    pub skipped_version: Option<String>,
+    /// "Later": that version is not offered again until 3 days after `at`.
+    #[serde(default)]
+    pub snoozed: Option<UpdateSnooze>,
+}
+
+impl Default for UpdateSettings {
+    fn default() -> Self {
+        Self {
+            auto_check: true,
+            skipped_version: None,
+            snoozed: None,
+        }
+    }
+}
+
+/// One "Later": the version and when it was pressed (Unix seconds).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdateSnooze {
+    pub version: String,
+    pub at: u64,
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 impl ConfigFile {

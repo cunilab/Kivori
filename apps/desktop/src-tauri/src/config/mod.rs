@@ -16,8 +16,8 @@ use crate::desk::profile::{builtins, Profile};
 pub use schema::{
     ActionSpec, BuddySettings, ButtonOverride, ConfigFile, CustomProfile, DisplaySettings,
     Intensity, MacroSpec, ProfileId, ProfileOverride, ProfileRef, RotateSpec, SecondaryView,
-    SlotSpec, StepSpec, View, CONFIG_VERSION, MAX_CUSTOM_PROFILES, MAX_PROFILE_APPS,
-    PROFILE_NAME_MAX,
+    SlotSpec, StepSpec, UpdateSettings, UpdateSnooze, View, CONFIG_VERSION, MAX_CUSTOM_PROFILES,
+    MAX_PROFILE_APPS, PROFILE_NAME_MAX,
 };
 pub use store::{ConfigError, ConfigNotice, ConfigStore};
 

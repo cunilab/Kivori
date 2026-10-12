@@ -124,6 +124,12 @@ impl InputIngress {
         self.open_gestures.clear();
     }
 
+    /// Whether a knob gesture has started and not ended in this session.
+    #[must_use]
+    pub fn gesture_open(&self) -> bool {
+        !self.open_gestures.is_empty()
+    }
+
     /// Validates one wire `InputEvent` against the current session and open-gesture state.
     pub fn accept(&mut self, event: &InputEvent) -> Result<Option<LogicalInput>, RejectReason> {
         let Some(current) = self.session else {

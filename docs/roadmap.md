@@ -16,7 +16,7 @@ long-term concern. Engineering rigor stays; only the order changes.
 ## Rules
 
 1. A milestone is done only when every box is ticked, including its hardware rows in
-   [validation.md](./validation.md). Simulation and host tests never replace a physical check.
+   [validation.md](./validation.md). Host-sim and other host tests never replace a physical check.
 2. Don't start the next milestone while the current one has open hardware rows. Code may run ahead,
    but it doesn't count as done.
 3. Every milestone keeps all [product acceptance gates](./product.md#product-acceptance-gates) intact.
@@ -33,7 +33,7 @@ Software for the device link, mascot, rotary volume and flashing is built and gr
 
 - [x] ESP32-C3 ↔ desktop protocol: postcard + CRC frames, handshake, version and capability negotiation, nonce as session identity
 - [x] Automatic discovery, reconnect state machine, heartbeat, offline-first boundary
-- [x] ST7789 rendering: deterministic renderer, 36-tile DMA path, Device Studio preview, golden-frame and Wokwi tests
+- [x] ST7789 rendering: deterministic renderer, 36-tile DMA path, Device Studio preview, golden-frame tests
 - [x] Rotary input: HW-040 decoder (detent only on return to rest), 250 ms gesture boundary
 - [x] Windows volume control: Core Audio backend, fixed-step volume, preview → confirmed overlay
 - [x] Mascot: keycap buddy, social reactions, companion personality, typed session-only activity log
@@ -217,35 +217,39 @@ supported. Design: ADR-0014 to ADR-0016 in [architecture.md](./architecture.md);
 [product.md](./product.md#updates-us10-us11); hardware rows are Phase 14 in
 [validation.md](./validation.md).
 
-- [ ] **Product identity** (ADR-0014):
+Software done and host-tested (#72); owner key and hardware rows remain.
+
+- [x] **Product identity** (ADR-0014):
   - `products/registry.toml` hands out fixed machine ids and wire numbers for products and boards
-    (`desk-buddy` = 1, `c3-supermini` = 1); never reused, never renamed; display names live in the
+    (`pala` = 1, `c3-supermini` = 1); never reused, never renamed; display names live in the
     catalog
   - the device reports product, board and hardware revision in a new `Identity` message after the
-    handshake (capability `PRODUCT_IDENTITY_V1`); a device without it is the legacy Desk Buddy on
+    handshake (capability `PRODUCT_IDENTITY_V1`); a device without it is the legacy Kivori Pip on
     the C3 SuperMini, revision unknown
   - each firmware image carries an identity record (product, board, firmware version, minimum
     protocol) next to its version marker; the app refuses to flash an image onto a different
     product or board, and the firmware shows an error screen if it boots on the wrong one
   - `just provision --product --board --rev` writes the identity into chip one-time memory (C3 user
     eFuse block) for units that are sold; it shows the record and needs a typed confirmation
-- [ ] **Product catalog in the app:** `products/<id>/product.toml` per product (display name, image,
+- [x] **Product catalog in the app:** `products/<id>/product.toml` per product (display name, image,
   boards, flash method per board, bundled firmware with version, SHA-256 and minimum protocol,
   required capabilities); the app's device code reads the catalog instead of assuming one board.
-  `firmware/esp32-c3` moves to `firmware/desk-buddy`
-- [ ] **Release tooling:** release-please reads the conventional commits and opens one release PR
-  with a version and changelog per component; the app tags `vX.Y.Z` and gets a normal (not
-  pre-release) GitHub Release titled with its firmware ("Kivori 0.2.0 · Desk Buddy firmware
+  `firmware/esp32-c3` moves to `firmware/desk-buddy` (done), renamed `firmware/pala` with the
+  product codename (2026-10-12)
+- [x] **Release tooling:** a Release button (manual workflow, run only when the owner wants a
+  release) bumps the app version and, when asked, the firmware version, and builds a draft whose
+  notes come from the conventional commits since the last release; the app tags `vX.Y.Z` and gets
+  a normal (not pre-release) GitHub Release titled with its firmware ("Kivori 0.2.0 · Pip firmware
   1.4.0"); firmware tags `fw-<product>-vX.Y.Z` with no GitHub Release of its own
-- [ ] **App updates** (ADR-0015): Tauri updater against the latest GitHub Release's `latest.json`,
+- [x] **App updates** (ADR-0015): Tauri updater against the latest GitHub Release's `latest.json`,
   every update verified with the updater key built into the app; checked at start and daily, on by
   default, a setting to turn it off; tray badge, then a dialog when the window opens ("Install &
   restart", "Later" for 3 days, "Skip this version"); never during a flash or a gesture
-- [ ] **Firmware update offer:** a few seconds after a device connects and is idle, if its firmware is
+- [x] **Firmware update offer:** a few seconds after a device connects and is idle, if its firmware is
   older than the bundled one for its product: "Update now" or "Later" (asked again on the next
   connect; never skipped for good); app update first when both are due; an incompatible device gets
   the required update; a device newer than the app gets "Update the Kivori app"
-- [ ] **Locking, first tier** (ADR-0016): wrong-product guard in the app and the firmware boot check
+- [x] **Locking, first tier** (ADR-0016): wrong-product guard in the app and the firmware boot check
   (above); secure boot waits for v1
 - [ ] Owner, once: create the updater signing key, back it up in two places, add the two GitHub
   secrets; publish beta releases as normal releases

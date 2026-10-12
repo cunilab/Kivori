@@ -14,9 +14,12 @@ import type {
   ConfigDto,
   DeviceInternalsDto,
   DiagnosticsDto,
+  DeviceIdentityDto,
+  FirmwareOfferDto,
   FirmwareStatusDto,
   OnboardingDto,
   StartupSettingsDto,
+  UpdateStatusDto,
   MacroSpec,
   StepSpec,
   AppRefDto,
@@ -117,6 +120,157 @@ export function mockOnStartupChanged(handler: (settings: StartupSettingsDto) => 
   };
 }
 
+// App updates (ADR-0015). A development build has no updater, so the preview is `disabled`;
+// `?mock=appupdate` shows an offered update (and the dialog), `?mock=mac` shows macOS.
+const updateListeners = new Set<(status: UpdateStatusDto) => void>();
+let updateStatus: UpdateStatusDto | null = null;
+
+function initialUpdateStatus(): UpdateStatusDto {
+  const base: UpdateStatusDto = {
+    state: 'disabled',
+    reason: 'devBuild',
+    currentVersion: '0.0.0-dev',
+    lastChecked: null,
+    autoCheck: true,
+    update: null,
+    progress: null,
+  };
+  if (scenario() === 'mac') return { ...base, state: 'unsupported', reason: null };
+  if (scenario() !== 'appupdate') return base;
+  return {
+    ...base,
+    state: 'available',
+    reason: null,
+    lastChecked: new Date().toISOString(),
+    update: {
+      version: '0.2.0',
+      notes:
+        '### Features\n\n* Volume knob feels smoother\n* New clock face\n\n### Fixes\n\n* Reconnects faster after sleep',
+      date: '2026-10-12T00:00:00Z',
+    },
+  };
+}
+
+function setUpdateStatus(next: UpdateStatusDto): UpdateStatusDto {
+  updateStatus = next;
+  for (const listener of updateListeners) listener(next);
+  return next;
+}
+
+export function mockGetUpdateStatus(): UpdateStatusDto {
+  updateStatus ??= initialUpdateStatus();
+  return updateStatus;
+}
+
+export function mockOnUpdateStatus(handler: (status: UpdateStatusDto) => void): () => void {
+  updateListeners.add(handler);
+  return () => {
+    updateListeners.delete(handler);
+  };
+}
+
+export function mockCheckForUpdates(): UpdateStatusDto {
+  const current = mockGetUpdateStatus();
+  if (current.state !== 'idle') return current;
+  return setUpdateStatus({ ...current, lastChecked: new Date().toISOString() });
+}
+
+/** The preview "downloads" (with no size) and then fails, to show the retry path. */
+export function mockInstallUpdate(): UpdateStatusDto {
+  const current = mockGetUpdateStatus();
+  if (!current.update) return current;
+  setTimeout(() => setUpdateStatus({ ...current, state: 'failed', progress: null }), 1500);
+  return setUpdateStatus({
+    ...current,
+    state: 'downloading',
+    progress: { downloaded: 0, total: null },
+  });
+}
+
+export function mockDismissUpdate(): UpdateStatusDto {
+  const current = mockGetUpdateStatus();
+  return setUpdateStatus({
+    ...current,
+    state: current.state === 'disabled' || current.state === 'unsupported' ? current.state : 'idle',
+    update: null,
+    progress: null,
+  });
+}
+
+export function mockSetAutoUpdateCheck(enabled: boolean): UpdateStatusDto {
+  return setUpdateStatus({ ...mockGetUpdateStatus(), autoCheck: enabled });
+}
+
+// The firmware update offer (ADR-0015, step 6). `?mock=update` offers an update to the connected
+// older device; `?mock=incompatible` asks for the required one. "Update now" cannot flash in a
+// browser, so it fails like Flash firmware does.
+const offerListeners = new Set<(offer: FirmwareOfferDto) => void>();
+let firmwareOffer: FirmwareOfferDto | null = null;
+
+function initialFirmwareOffer(): FirmwareOfferDto {
+  const none: FirmwareOfferDto = {
+    kind: 'none',
+    product: null,
+    from: null,
+    to: null,
+    reason: null,
+    key: null,
+  };
+  if (scenario() === 'update') {
+    return {
+      ...none,
+      kind: 'offerOptional',
+      product: 'Kivori Pip',
+      from: '1.2.0',
+      to: '1.3.0',
+      key: '1:mock:1.3.0',
+    };
+  }
+  if (scenario() === 'incompatible') {
+    return { ...none, kind: 'required', to: '1.3.0', reason: 'protocolTooOld', key: '1::1.3.0' };
+  }
+  return none;
+}
+
+export function mockGetFirmwareOffer(): FirmwareOfferDto {
+  firmwareOffer ??= initialFirmwareOffer();
+  return firmwareOffer;
+}
+
+export function mockOnFirmwareOffer(handler: (offer: FirmwareOfferDto) => void): () => void {
+  offerListeners.add(handler);
+  return () => {
+    offerListeners.delete(handler);
+  };
+}
+
+export function mockAcceptFirmwareOffer(): never {
+  throw new Error('Open the native Kivori app to flash firmware.');
+}
+
+export function mockDismissFirmwareOffer(): FirmwareOfferDto {
+  const next: FirmwareOfferDto = {
+    kind: 'none',
+    product: null,
+    from: null,
+    to: null,
+    reason: null,
+    key: null,
+  };
+  firmwareOffer = next;
+  for (const listener of offerListeners) listener(next);
+  return next;
+}
+
+/** What a device that reports no identity looks like: the original Kivori Pip. */
+const mockIdentity: DeviceIdentityDto = {
+  product: 'Kivori Pip',
+  board: 'C3 SuperMini',
+  hwRev: null,
+  source: 'legacy',
+  known: true,
+};
+
 export function mockFirmwareStatus(): FirmwareStatusDto {
   const base: FirmwareStatusDto = {
     available: true,
@@ -126,6 +280,8 @@ export function mockFirmwareStatus(): FirmwareStatusDto {
     failure: null,
     bundledVersion: '1.3.0',
     advice: 'unknown',
+    wrongProduct: null,
+    restoreChoices: [],
   };
   switch (scenario()) {
     case 'incompatible':
@@ -178,6 +334,7 @@ export function mockConnectionStatus(): ConnectionStatusDto {
           firmwareVersion: '0.4.0',
           protocolVersion: { major: 1, minor: 3 },
           deviceIdHashShort: '3fa9c1d2',
+          identity: mockIdentity,
         },
         connectionGeneration: 1,
         mascotInteraction: true,
@@ -674,6 +831,7 @@ export function mockGetDiagnostics(): DiagnosticsDto {
         ? ['mascotInteraction', 'physicalInputV1', 'presentationV1', 'deskStatusV1', 'mediaInfoV1']
         : [],
       deviceHash: connected ? '3fa9c1d2' : null,
+      identity: connected ? mockIdentity : null,
     },
     connection: {
       state: connected ? 'connected' : 'disconnected',

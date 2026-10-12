@@ -20,10 +20,27 @@ export interface AppInfoDto {
   deviceStudioEnabled: boolean;
 }
 
+/** Where a device's identity came from: `legacy` means it reported none (the original Kivori Pip). */
+export const IDENTITY_SOURCES = ['legacy', 'build', 'chip'] as const;
+export type IdentitySource = (typeof IDENTITY_SOURCES)[number];
+
+/** Which product and board a connected device is. Names are display names, never ids. */
+export interface DeviceIdentityDto {
+  product: string;
+  board: string;
+  /** `null` until provisioning burned a revision. */
+  hwRev: number | null;
+  source: IdentitySource;
+  /** Whether this app knows both the product and the board. */
+  known: boolean;
+}
+
 export interface DeviceInfoDto {
   firmwareVersion: string;
   protocolVersion: ProtocolVersion;
   deviceIdHashShort: string;
+  /** `null` while a device that reports its identity has not yet. */
+  identity: DeviceIdentityDto | null;
 }
 
 export const FIRMWARE_PHASES = [
@@ -43,6 +60,8 @@ export const FLASH_FAILURES = [
   'cancelled',
   'imageUnavailable',
   'reconnectTimedOut',
+  'wrongProduct',
+  'chooseProduct',
   'unknown',
 ] as const;
 export type FlashFailure = (typeof FLASH_FAILURES)[number];
@@ -69,6 +88,73 @@ export interface StartupSettingsDto {
   platform: StartupPlatform;
 }
 
+/** The app updater's states (ADR-0015). `disabled` and `unsupported` never make a request. */
+export const UPDATE_STATES = [
+  'disabled',
+  'unsupported',
+  'idle',
+  'checking',
+  'available',
+  'downloading',
+  'readyToRestart',
+  'failed',
+] as const;
+export type UpdateState = (typeof UPDATE_STATES)[number];
+/** Why the updater is off: a development build, no public key yet, or a wrong endpoint. */
+export const UPDATE_DISABLED_REASONS = ['devBuild', 'noKey', 'badEndpoint'] as const;
+export type UpdateDisabledReason = (typeof UPDATE_DISABLED_REASONS)[number];
+
+/** An offered release. `notes` is plain text: render it as text, never as HTML. */
+export interface UpdateReleaseDto {
+  version: string;
+  notes: string;
+  date: string | null;
+}
+
+export interface UpdateStatusDto {
+  state: UpdateState;
+  /** Set only while `state` is `disabled`. */
+  reason: UpdateDisabledReason | null;
+  currentVersion: string;
+  /** The last check that got an answer this session (UTC ISO-8601). */
+  lastChecked: string | null;
+  autoCheck: boolean;
+  /** Set while `available`, `downloading`, `readyToRestart` or `failed`. */
+  update: UpdateReleaseDto | null;
+  /** Set while `downloading`; `total` is `null` when the size is unknown. */
+  progress: { downloaded: number; total: number | null } | null;
+}
+
+/**
+ * What the app says about the connected device's firmware (ADR-0015, step 6): an optional update,
+ * a required one, "update the app", waiting for an app update first, or nothing.
+ */
+export const FIRMWARE_OFFER_KINDS = [
+  'none',
+  'offerOptional',
+  'required',
+  'updateApp',
+  'deferredForAppUpdate',
+] as const;
+export type FirmwareOfferKind = (typeof FIRMWARE_OFFER_KINDS)[number];
+/** Why an update is required: an older protocol, or a capability the product needs is missing. */
+export const FIRMWARE_REQUIRED_REASONS = ['protocolTooOld', 'missingCapabilities'] as const;
+export type FirmwareRequiredReason = (typeof FIRMWARE_REQUIRED_REASONS)[number];
+
+export interface FirmwareOfferDto {
+  kind: FirmwareOfferKind;
+  /** The device's product name, when known (only with `offerOptional` or `required`). */
+  product: string | null;
+  /** The device's firmware version, with `offerOptional`. */
+  from: string | null;
+  /** The bundled firmware version, with `offerOptional` and `required`. */
+  to: string | null;
+  /** Set only with `required`. */
+  reason: FirmwareRequiredReason | null;
+  /** Changes per device, bundled version and connection: the dialog opens by itself once per key. */
+  key: string | null;
+}
+
 export interface FirmwareStatusDto {
   available: boolean;
   phase: (typeof FIRMWARE_PHASES)[number];
@@ -79,6 +165,10 @@ export interface FirmwareStatusDto {
   /** Firmware version bundled in this app, when known. */
   bundledVersion: string | null;
   advice: UpdateAdvice;
+  /** Both names; set only with the `wrongProduct` failure. */
+  wrongProduct: { device: string; image: string } | null;
+  /** The products to pick from; set only with the `chooseProduct` failure. */
+  restoreChoices: { id: string; name: string }[];
 }
 
 export const CAPABILITY_NAMES = [
@@ -97,6 +187,7 @@ export const CAPABILITY_NAMES = [
   'deviceInternalsV1',
   'idleLifeV1',
   'micStateV1',
+  'productIdentityV1',
 ] as const;
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
 
@@ -122,6 +213,8 @@ export interface DiagnosticsDto {
     negotiatedMinor: number | null;
     capabilities: CapabilityName[];
     deviceHash: string | null;
+    /** Which product and board the connected device is. */
+    identity: DeviceIdentityDto | null;
   };
   connection: {
     state: ConnectionState;
@@ -301,6 +394,13 @@ export const ACTIVITY_EVENT_TYPES = [
   'hostResumed',
   'hostLocked',
   'hostUnlocked',
+  'appUpdateCheckFailed',
+  'appUpdateAvailable',
+  'appUpdateInstallStarted',
+  'appUpdateInstallFailed',
+  'firmwareOfferShown',
+  'firmwareOfferAccepted',
+  'firmwareOfferLater',
 ] as const;
 export type ActivityEventType = (typeof ACTIVITY_EVENT_TYPES)[number];
 
@@ -589,7 +689,7 @@ export interface ActionCatalogEntryDto {
 
 export type ActivitySeverity = 'info' | 'warning' | 'error';
 export type ActivitySource =
-  'connection' | 'action' | 'device' | 'protocol' | 'firmware' | 'config';
+  'connection' | 'action' | 'device' | 'protocol' | 'firmware' | 'config' | 'update';
 export type ActivityOutcome =
   | 'observed'
   | 'started'

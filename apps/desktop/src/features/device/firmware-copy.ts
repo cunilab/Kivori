@@ -1,12 +1,24 @@
 import type { FirmwareStatusDto, FlashFailure } from '@/lib/ipc/types';
-import { strings } from '@/lib/i18n/strings';
+import { format, strings } from '@/lib/i18n/strings';
 
 /** Failures where the device itself likely needs the BOOT-button restore. */
 const NEEDS_RESTORE: readonly FlashFailure[] = ['noDownloadMode', 'unknown'];
 
-/** The plain-language message for a failed attempt; an unrecognized or missing token reads as unknown. */
-export function failureMessage(failure: FlashFailure | null): string {
-  return strings.firmwareUpdate.failures[failure ?? 'unknown'];
+/**
+ * The plain-language message for a failed attempt; an unrecognized or missing token reads as
+ * unknown. A wrong-product refusal names the device and the image it was refused for.
+ */
+export function failureMessage(
+  failure: FlashFailure | null,
+  wrongProduct: FirmwareStatusDto['wrongProduct'] = null,
+): string {
+  const message = strings.firmwareUpdate.failures[failure ?? 'unknown'];
+  return failure === 'wrongProduct'
+    ? format(message, {
+        device: wrongProduct?.device ?? strings.unknown,
+        image: wrongProduct?.image ?? strings.unknown,
+      })
+    : message;
 }
 
 /** Whether a status asks for the BOOT-button restore call to action. */

@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use kivori_desktop::config::ConfigStore;
 use kivori_desktop::device::session::SessionDiagnostics;
+use kivori_desktop::identity::{DeviceIdentity, IdentitySource};
 use kivori_desktop::ipc::dto::{capability_names, diagnostics_dto, DiagnosticsSnapshot};
 use kivori_model::Capabilities;
 
@@ -30,6 +31,7 @@ fn connected_snapshot(now: Instant) -> DiagnosticsSnapshot {
     snapshot.device_hash = Some("a1b2c3d4".to_string());
     snapshot.negotiated_caps = Capabilities::MASCOT_INTERACTION.union(Capabilities::DESK_STATUS_V1);
     snapshot.negotiated_minor = Some(4);
+    snapshot.identity = Some(DeviceIdentity::legacy());
     snapshot.connected_since = Some(now - Duration::from_secs(90));
     snapshot.session = SessionDiagnostics {
         free_bytes: Some(200_000),
@@ -57,6 +59,12 @@ fn the_serialised_keys_are_exactly_the_allowlist() {
         "versions.negotiatedMinor",
         "versions.capabilities",
         "versions.deviceHash",
+        "versions.identity",
+        "versions.identity.product",
+        "versions.identity.board",
+        "versions.identity.hwRev",
+        "versions.identity.source",
+        "versions.identity.known",
         "connection",
         "connection.state",
         "connection.connectedForSecs",
@@ -173,4 +181,36 @@ fn internals_dto_keeps_unavailable_as_null_and_hides_a_stale_snapshot() {
     // No answer yet on this connection.
     snapshot.internals = None;
     assert!(device_internals_dto(&snapshot).snapshot.is_none());
+}
+
+#[test]
+fn identity_shows_names_revision_and_source_and_never_guesses_unknown_numbers() {
+    let now = Instant::now();
+    let mut snapshot = connected_snapshot(now);
+    let identity = |snapshot: &DiagnosticsSnapshot| {
+        let dto = diagnostics_dto(snapshot, &ConfigStore::detached(), now);
+        serde_json::to_value(&dto).unwrap()["versions"]["identity"].clone()
+    };
+    let legacy = identity(&snapshot);
+    assert_eq!(legacy["product"], "Kivori Pip");
+    assert_eq!(legacy["board"], "C3 SuperMini");
+    assert_eq!(legacy["hwRev"], serde_json::Value::Null);
+    assert_eq!(legacy["source"], "legacy");
+    assert_eq!(legacy["known"], true);
+
+    snapshot.identity = Some(DeviceIdentity {
+        product: 9,
+        board: 4,
+        hw_rev: Some(2),
+        source: IdentitySource::Chip,
+    });
+    let unknown = identity(&snapshot);
+    assert_eq!(unknown["product"], "Unknown product (9)");
+    assert_eq!(unknown["board"], "Unknown board (4)");
+    assert_eq!(unknown["hwRev"], 2);
+    assert_eq!(unknown["source"], "chip");
+    assert_eq!(unknown["known"], false);
+
+    snapshot.identity = None;
+    assert_eq!(identity(&snapshot), serde_json::Value::Null);
 }

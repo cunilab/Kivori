@@ -12,6 +12,7 @@ import {
   HOST_INPUT_PERMISSIONS,
   HOST_MEDIA,
   HOST_PRESENCES,
+  IDENTITY_SOURCES,
   STEP_SPEC_KINDS,
   ACTIVITY_EVENT_TYPES,
   CATALOG_AVAILABILITIES,
@@ -31,6 +32,10 @@ import {
   UPDATE_ADVICE,
   ACCESSIBILITY_STATES,
   STARTUP_PLATFORMS,
+  UPDATE_DISABLED_REASONS,
+  UPDATE_STATES,
+  FIRMWARE_OFFER_KINDS,
+  FIRMWARE_REQUIRED_REASONS,
   INTENSITIES,
   MASCOT_ACTIONS,
   MEDIA_STATUSES,
@@ -42,6 +47,7 @@ import type {
   MicDto,
   ActionCatalogEntryDto,
   ConnectionStatusDto,
+  DeviceIdentityDto,
   ActionSpec,
   ActivityEventDto,
   ButtonDto,
@@ -52,6 +58,8 @@ import type {
   AccessibilityState,
   OnboardingDto,
   StartupSettingsDto,
+  UpdateStatusDto,
+  FirmwareOfferDto,
   MacroSpec,
   StepSpec,
   DeskStatusDto,
@@ -157,9 +165,26 @@ function countOrNull(name: string, value: unknown): number | null {
  */
 export function parseConnectionStatus(raw: unknown): ConnectionStatusDto {
   const r = record('connection status', raw);
+  const status = r as unknown as ConnectionStatusDto;
   return {
-    ...(r as unknown as ConnectionStatusDto),
+    ...status,
+    device: status.device
+      ? { ...status.device, identity: parseIdentity(record('device', status.device).identity) }
+      : status.device,
     host: oneOf('host presence', HOST_PRESENCES, r.host),
+  };
+}
+
+/** A device identity, or `null` while the device has not reported one. An unknown source is rejected. */
+function parseIdentity(raw: unknown): DeviceIdentityDto | null {
+  if (raw === null || raw === undefined) return null;
+  const r = record('device identity', raw);
+  return {
+    product: text('product name', r.product, 96),
+    board: text('board name', r.board, 96),
+    hwRev: countOrNull('hardware revision', r.hwRev ?? null),
+    source: oneOf('identity source', IDENTITY_SOURCES, r.source),
+    known: r.known === true,
   };
 }
 
@@ -170,6 +195,70 @@ export function parseStartupSettings(raw: unknown): StartupSettingsDto {
   return {
     launchAtLogin: r.launchAtLogin,
     platform: oneOf('startup platform', STARTUP_PLATFORMS, r.platform),
+  };
+}
+
+/** Release notes longer than this are cut (the native side already bounds them). */
+const MAX_UPDATE_NOTES = 16 * 1024;
+
+/**
+ * Validates an `UpdateStatusDto`. Unknown tokens are rejected; the notes stay plain text, and a
+ * release is required exactly in the states that are about one.
+ */
+export function parseUpdateStatus(raw: unknown): UpdateStatusDto {
+  const r = record('update status', raw);
+  const state = oneOf('update state', UPDATE_STATES, r.state);
+  const release = r.update === null || r.update === undefined ? null : record('update', r.update);
+  const needsRelease = ['available', 'downloading', 'readyToRestart', 'failed'].includes(state);
+  if (needsRelease !== (release !== null)) throw new Error('Kivori: invalid update.');
+  const progress =
+    r.progress === null || r.progress === undefined ? null : record('progress', r.progress);
+  return {
+    state,
+    reason:
+      state === 'disabled'
+        ? oneOf('update disabled reason', UPDATE_DISABLED_REASONS, r.reason)
+        : null,
+    currentVersion: text('current version', r.currentVersion, 64),
+    lastChecked: r.lastChecked === null ? null : text('last checked', r.lastChecked, 40),
+    autoCheck: bool('autoCheck', r.autoCheck),
+    update: release
+      ? {
+          version: text('update version', release.version, 64),
+          notes: [...text('release notes', release.notes, MAX_UPDATE_NOTES * 4)]
+            .slice(0, MAX_UPDATE_NOTES)
+            .join(''),
+          date: release.date === null ? null : text('release date', release.date, 40),
+        }
+      : null,
+    progress:
+      state === 'downloading' && progress
+        ? {
+            downloaded: count('downloaded', progress.downloaded),
+            total: countOrNull('total', progress.total ?? null),
+          }
+        : null,
+  };
+}
+
+/**
+ * Validates a `FirmwareOfferDto`. Unknown kinds or reasons are rejected, and a question
+ * (`offerOptional`, `required`) must carry its key and versions.
+ */
+export function parseFirmwareOffer(raw: unknown): FirmwareOfferDto {
+  const r = record('firmware offer', raw);
+  const kind = oneOf('firmware offer kind', FIRMWARE_OFFER_KINDS, r.kind);
+  const asks = kind === 'offerOptional' || kind === 'required';
+  return {
+    kind,
+    product: asks ? textOrNull('offer product', r.product ?? null) : null,
+    from: kind === 'offerOptional' ? text('offer from', r.from, 64) : null,
+    to: asks ? text('offer to', r.to, 64) : null,
+    reason:
+      kind === 'required'
+        ? oneOf('firmware required reason', FIRMWARE_REQUIRED_REASONS, r.reason)
+        : null,
+    key: asks ? text('offer key', r.key, 256) : null,
   };
 }
 
@@ -196,6 +285,26 @@ export function parseFirmwareStatus(raw: unknown): FirmwareStatusDto {
     failure: r.failure === null ? null : oneOf('firmware failure', FLASH_FAILURES, r.failure),
     bundledVersion: textOrNull('bundled firmware version', r.bundledVersion),
     advice: oneOf('update advice', UPDATE_ADVICE, r.advice),
+    wrongProduct:
+      r.wrongProduct === null || r.wrongProduct === undefined
+        ? null
+        : {
+            device: text(
+              'wrong product device',
+              record('wrong product', r.wrongProduct).device,
+              192,
+            ),
+            image: text('wrong product image', record('wrong product', r.wrongProduct).image, 192),
+          },
+    restoreChoices: Array.isArray(r.restoreChoices)
+      ? r.restoreChoices.map((raw) => {
+          const choice = record('restore choice', raw);
+          return {
+            id: text('product id', choice.id, 64),
+            name: text('product name', choice.name, 96),
+          };
+        })
+      : [],
   };
 }
 
@@ -219,6 +328,7 @@ export function parseDiagnostics(raw: unknown): DiagnosticsDto {
       ),
       deviceHash:
         versions.deviceHash === null ? null : text('device hash', versions.deviceHash, 32),
+      identity: parseIdentity(versions.identity),
     },
     connection: {
       state: oneOf('connection state', CONNECTION_STATES, connection.state),

@@ -24,6 +24,7 @@ import { Diagnostics } from './Diagnostics';
 import { DeviceInternals } from './DeviceInternals';
 import { FirmwareUpdate } from './FirmwareUpdate';
 import { StartupCard } from './StartupCard';
+import { AppUpdates } from '../updates/AppUpdates';
 
 const t = strings.device;
 
@@ -93,6 +94,29 @@ export function DevicePage({
               </Alert>
             ) : null}
             <dl className="divide-y">
+              <Row label={t.product} testId="device-product">
+                <Known value={device?.identity?.product} why={t.identity.why}>
+                  {(name) => name}
+                </Known>
+              </Row>
+              <Row label={t.board} testId="device-board">
+                <Known value={device?.identity?.board} why={t.identity.why}>
+                  {(name) => name}
+                </Known>
+              </Row>
+              <Row label={t.hardwareRevision} testId="device-hw-rev">
+                <Known
+                  value={device?.identity?.hwRev}
+                  why={device ? t.identity.revisionWhy : t.identity.why}
+                >
+                  {(rev) => rev}
+                </Known>
+              </Row>
+              <Row label={t.identitySource} testId="device-identity-source">
+                <Known value={device?.identity?.source} why={t.identity.why}>
+                  {(source) => t.identity.sources[source]}
+                </Known>
+              </Row>
               <Row label={t.firmware} testId="device-firmware">
                 <Known value={device?.firmwareVersion} why={strings.why.firmware}>
                   {(v) => v}
@@ -159,6 +183,7 @@ export function DevicePage({
                   </Row>
                 ) : null}
               </dl>
+              <AppUpdates />
             </CardContent>
           </Card>
           <Card size="sm">

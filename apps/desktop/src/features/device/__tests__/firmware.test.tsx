@@ -1,19 +1,29 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { strings } from '../../../lib/i18n/strings';
 import { FLASH_FAILURES } from '../../../lib/ipc/types';
 import type { FirmwareStatusDto } from '../../../lib/ipc/types';
-import { needsRestore } from '../firmware-copy';
+import { failureMessage, needsRestore } from '../firmware-copy';
 
-const bridge = vi.hoisted(() => ({ get: vi.fn(), flash: vi.fn(), restore: vi.fn() }));
+const bridge = vi.hoisted(() => ({
+  get: vi.fn(),
+  flash: vi.fn(),
+  restore: vi.fn(),
+  updates: vi.fn(),
+  offer: vi.fn(),
+}));
 vi.mock('../../../lib/ipc', () => ({
   getFirmwareStatus: bridge.get,
   flashFirmware: bridge.flash,
   restoreFirmware: bridge.restore,
+  getUpdateStatus: bridge.updates,
+  onUpdateStatus: () => Promise.resolve(() => {}),
+  getFirmwareOffer: bridge.offer,
+  onFirmwareOffer: () => Promise.resolve(() => {}),
 }));
 
 import { FirmwareUpdate } from '../FirmwareUpdate';
+import { onUpdateDialogRequest } from '../../updates/dialog-request';
 
 const ready: FirmwareStatusDto = {
   available: true,
@@ -23,12 +33,31 @@ const ready: FirmwareStatusDto = {
   failure: null,
   bundledVersion: '1.3.0',
   advice: 'unknown',
+  wrongProduct: null,
+  restoreChoices: [],
 };
 
 beforeEach(() => {
   bridge.get.mockReset().mockResolvedValue(ready);
   bridge.flash.mockReset().mockResolvedValue(undefined);
   bridge.restore.mockReset().mockResolvedValue(undefined);
+  bridge.offer.mockReset().mockResolvedValue({
+    kind: 'none',
+    product: null,
+    from: null,
+    to: null,
+    reason: null,
+    key: null,
+  });
+  bridge.updates.mockReset().mockResolvedValue({
+    state: 'idle',
+    reason: null,
+    currentVersion: '0.1.0',
+    lastChecked: null,
+    autoCheck: true,
+    update: null,
+    progress: null,
+  });
 });
 
 describe('firmware update', () => {
@@ -136,9 +165,14 @@ describe('firmware update', () => {
         phase: 'failed',
         failure,
         message: 'NATIVE-TEXT',
+        wrongProduct: { device: 'Device name', image: 'Image name' },
       });
       const { unmount } = render(<FirmwareUpdate connected />);
-      expect(await screen.findByText(strings.firmwareUpdate.failures[failure])).toBeVisible();
+      expect(
+        await screen.findByText(
+          failureMessage(failure, { device: 'Device name', image: 'Image name' }),
+        ),
+      ).toBeVisible();
       expect(screen.queryByText('NATIVE-TEXT')).not.toBeInTheDocument();
       unmount();
     }
@@ -149,7 +183,7 @@ describe('firmware update', () => {
     for (const failure of FLASH_FAILURES) {
       bridge.get.mockResolvedValue({ ...ready, phase: 'failed', failure });
       const { unmount } = render(<FirmwareUpdate connected />);
-      await screen.findByText(strings.firmwareUpdate.failures[failure]);
+      await screen.findByText(failureMessage(failure));
       const expected = needsRestore({ phase: 'failed', failure });
       expect(needsRestore({ phase: 'failed', failure })).toBe(
         failure === 'noDownloadMode' || failure === 'unknown',
@@ -157,6 +191,36 @@ describe('firmware update', () => {
       expect(screen.queryByRole('button', { name: restoreName }) !== null).toBe(expected);
       unmount();
     }
+  });
+
+  it('names both the device and the firmware when an image was refused for the wrong product', async () => {
+    bridge.get.mockResolvedValue({
+      ...ready,
+      phase: 'failed',
+      failure: 'wrongProduct',
+      wrongProduct: { device: 'Kivori Lamp on RP2350', image: 'Kivori Pip on C3 SuperMini' },
+    });
+    render(<FirmwareUpdate connected />);
+    const text = await screen.findByText(/nothing was changed/);
+    expect(text).toHaveTextContent('Kivori Lamp on RP2350');
+    expect(text).toHaveTextContent('Kivori Pip on C3 SuperMini');
+  });
+
+  it('lists the products to pick from and restores the one chosen', async () => {
+    bridge.get.mockResolvedValue({
+      ...ready,
+      phase: 'failed',
+      failure: 'chooseProduct',
+      restoreChoices: [
+        { id: 'pala', name: 'Kivori Pip' },
+        { id: 'lamp', name: 'Kivori Lamp' },
+      ],
+    });
+    const user = userEvent.setup();
+    render(<FirmwareUpdate connected />);
+    await user.click(await screen.findByRole('button', { name: 'Restore Kivori Lamp' }));
+    expect(bridge.restore).toHaveBeenCalledWith('lamp');
+    expect(screen.getByRole('button', { name: 'Restore Kivori Pip' })).toBeInTheDocument();
   });
 
   it('shows Restore when the connection is incompatible and keeps flashing available', async () => {
@@ -180,5 +244,53 @@ describe('firmware update', () => {
     expect(bridge.restore).not.toHaveBeenCalled();
     await user.click(await screen.findByRole('button', { name: 'Restore now' }));
     expect(bridge.restore).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a device newer than this app', () => {
+  const newer: FirmwareStatusDto = { ...ready, advice: 'deviceNewer' };
+
+  it('says calmly to update the app, with no button while no app update is offered', async () => {
+    bridge.get.mockResolvedValue(newer);
+    render(<FirmwareUpdate connected />);
+    expect(await screen.findByTestId('update-advice')).toHaveTextContent(
+      'This Kivori has newer firmware than this app — update the Kivori app.',
+    );
+    expect(screen.queryByRole('button', { name: 'View update' })).toBeNull();
+  });
+
+  it('also covers an incompatible device with a newer protocol major', async () => {
+    bridge.offer.mockResolvedValue({
+      kind: 'updateApp',
+      product: null,
+      from: null,
+      to: null,
+      reason: null,
+      key: null,
+    });
+    render(<FirmwareUpdate connected={false} incompatible />);
+    expect(await screen.findByTestId('update-advice')).toHaveTextContent(
+      'This Kivori has newer firmware than this app — update the Kivori app.',
+    );
+  });
+
+  it('opens the app update dialog when an app update is available', async () => {
+    const user = userEvent.setup();
+    bridge.get.mockResolvedValue(newer);
+    bridge.updates.mockResolvedValue({
+      state: 'available',
+      reason: null,
+      currentVersion: '0.1.0',
+      lastChecked: null,
+      autoCheck: true,
+      update: { version: '0.2.0', notes: '', date: null },
+      progress: null,
+    });
+    const opened = vi.fn();
+    const stop = onUpdateDialogRequest(opened);
+    render(<FirmwareUpdate connected />);
+    await user.click(await screen.findByRole('button', { name: 'View update' }));
+    expect(opened).toHaveBeenCalledTimes(1);
+    stop();
   });
 });

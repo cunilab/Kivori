@@ -52,6 +52,7 @@ pub struct ConnectionManager {
     device: Option<ConnectedDevice>,
     retry_count: u32,
     incompatible_reason: Option<String>,
+    incompatible_major: Option<u16>,
 }
 
 impl ConnectionManager {
@@ -85,6 +86,13 @@ impl ConnectionManager {
         self.incompatible_reason.as_deref()
     }
 
+    /// The protocol major the device reported, present only in the `Incompatible` state (the
+    /// firmware offer tells an older device from a newer one by it).
+    #[must_use]
+    pub fn incompatible_major(&self) -> Option<u16> {
+        self.incompatible_major
+    }
+
     /// Applies `event`. Returns `true` if it caused a legal transition; `false` if the event was not
     /// legal in the current state (it is then ignored).
     pub fn apply(&mut self, event: ManagerEvent) -> bool {
@@ -96,6 +104,7 @@ impl ConnectionManager {
             ManagerEvent::HandshakeOk(device) => {
                 self.device = Some(device.clone());
                 self.incompatible_reason = None;
+                self.incompatible_major = None;
                 self.retry_count = 0;
             }
             ManagerEvent::HandshakeIncompatible { device_major } => {
@@ -104,9 +113,13 @@ impl ConnectionManager {
                     "device protocol major v{device_major} is unsupported \
                      (host supports v{PROTOCOL_MAJOR})"
                 ));
+                self.incompatible_major = Some(*device_major);
             }
             // Leaving `Incompatible` for another candidate port.
-            ManagerEvent::PortOpened => self.incompatible_reason = None,
+            ManagerEvent::PortOpened => {
+                self.incompatible_reason = None;
+                self.incompatible_major = None;
+            }
             _ => {}
         }
 
@@ -115,6 +128,7 @@ impl ConnectionManager {
             ConnectionState::Disconnected => {
                 self.device = None;
                 self.incompatible_reason = None;
+                self.incompatible_major = None;
                 // A removed/absent port is a fresh start; a backoff-elapsed retry keeps the count so
                 // the next attempt's backoff keeps escalating.
                 if matches!(event, ManagerEvent::PortRemoved) {

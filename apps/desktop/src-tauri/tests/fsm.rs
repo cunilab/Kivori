@@ -4,7 +4,7 @@ use kivori_desktop::device::connection::{
     build_hello, hash_device_id_short, summarize, verify_handshake, ConnectedDevice,
 };
 use kivori_desktop::device::discovery::{
-    filter_candidates, is_candidate, PortCandidate, DEFAULT_ALLOWLIST, KIVORI_PID, KIVORI_VID,
+    default_allowlist, filter_candidates, is_candidate, PortCandidate,
 };
 use kivori_desktop::device::fsm::{ConnectionManager, ManagerEvent};
 use kivori_desktop::device::heartbeat::HeartbeatMonitor;
@@ -235,14 +235,18 @@ fn heartbeat_times_out_after_threshold_and_resets_on_pong() {
 #[test]
 fn discovery_filters_by_vid_pid_allowlist() {
     let ports = vec![
-        PortCandidate::new("/dev/ttyACM0", Some(KIVORI_VID), Some(KIVORI_PID)),
+        PortCandidate::new(
+            "/dev/ttyACM0",
+            Some(default_allowlist()[0].0),
+            Some(default_allowlist()[0].1),
+        ),
         PortCandidate::new("COM3", Some(0x1234), Some(0x5678)),
         PortCandidate::new("/dev/ttyS0", None, None),
     ];
-    let hits = filter_candidates(&ports, DEFAULT_ALLOWLIST);
+    let hits = filter_candidates(&ports, default_allowlist());
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].port_name, "/dev/ttyACM0");
-    assert!(is_candidate(&ports[0], DEFAULT_ALLOWLIST));
-    assert!(!is_candidate(&ports[1], DEFAULT_ALLOWLIST));
-    assert!(!is_candidate(&ports[2], DEFAULT_ALLOWLIST));
+    assert!(is_candidate(&ports[0], default_allowlist()));
+    assert!(!is_candidate(&ports[1], default_allowlist()));
+    assert!(!is_candidate(&ports[2], default_allowlist()));
 }

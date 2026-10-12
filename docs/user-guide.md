@@ -1,12 +1,12 @@
 # Kivori user guide
 
-A short guide for beta customers. Kivori is a desk buddy with a knob, three buttons and a small
-screen. It controls your computer and shows what is going on. It is written for Windows; the few
+A short guide for beta customers. Kivori Pip (model KV-P1) is a desk buddy with a knob, three
+buttons and a small screen. It controls your computer and shows what is going on. It is written for Windows; the few
 macOS differences are called out.
 
 ## What's in the box
 
-- Kivori unit (knob, three buttons, screen) _(to be confirmed)_
+- Kivori Pip unit (knob, three buttons, screen) _(to be confirmed)_
 - USB-C data cable _(to be confirmed)_
 - Installer download link or USB stick _(to be confirmed)_
 - Quick-start card _(to be confirmed)_

@@ -314,6 +314,32 @@ pub struct MicStateUpdate {
     pub mic: MicState,
 }
 
+/// Where an `Identity` came from. Append-only. "Legacy" (a device that sent no identity at all) is
+/// a desktop-side notion and never on the wire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum IdentitySource {
+    /// Compiled into the running firmware build.
+    Build,
+    /// Read from the chip's one-time identity record (ADR-0014).
+    Chip,
+}
+
+/// Device -> desktop: which product and board this is (capability `PRODUCT_IDENTITY_V1`). Sent once,
+/// right after the handshake; connection scoped. The numbers come from `products/registry.toml`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Identity {
+    /// The handshake nonce of the session this applies to.
+    pub session: Nonce,
+    /// Product wire number (registry `[products]`), never 0.
+    pub product: u16,
+    /// Board wire number (registry `[boards]`), never 0.
+    pub board: u16,
+    /// Hardware revision, `None` until provisioning burned one.
+    pub hw_rev: Option<u8>,
+    /// Where the numbers came from.
+    pub source: IdentitySource,
+}
+
 /// The top-level wire message.
 ///
 /// **Append-only**: new variants are added at the end within a major version — the `postcard`
@@ -367,4 +393,6 @@ pub enum Message {
     BuddySettings(BuddySettings),
     /// Tag 22 — desktop -> device microphone state (capability `MIC_STATE_V1`).
     MicState(MicStateUpdate),
+    /// Tag 23 — device -> desktop product identity (capability `PRODUCT_IDENTITY_V1`).
+    Identity(Identity),
 }

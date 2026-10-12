@@ -116,6 +116,29 @@ export function Diagnostics(): ReactElement {
         {failed ? <p className="text-sm text-destructive">{t.loadFailed}</p> : null}
         <Group title={t.groups.versions}>
           <Row label={t.rows.app}>{d?.versions.app ?? unknown}</Row>
+          <Row label={t.rows.product} testId="diag-product">
+            <Known value={d?.versions.identity?.product} why={t.why.device}>
+              {(x) => x}
+            </Known>
+          </Row>
+          <Row label={t.rows.board} testId="diag-board">
+            <Known value={d?.versions.identity?.board} why={t.why.device}>
+              {(x) => x}
+            </Known>
+          </Row>
+          <Row label={t.rows.hardwareRevision} testId="diag-hw-rev">
+            <Known
+              value={d?.versions.identity?.hwRev}
+              why={d?.versions.identity ? t.why.revision : t.why.device}
+            >
+              {(x) => x}
+            </Known>
+          </Row>
+          <Row label={t.rows.identitySource} testId="diag-identity-source">
+            <Known value={d?.versions.identity?.source} why={t.why.device}>
+              {(x) => strings.device.identity.sources[x]}
+            </Known>
+          </Row>
           <Row label={t.rows.firmware}>
             <Known value={d?.versions.firmware} why={t.why.device}>
               {(x) => x}

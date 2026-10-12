@@ -20,6 +20,7 @@ use crate::activity::{
 };
 use crate::device::fsm::ConnectionManager;
 use crate::device::session::SessionDiagnostics;
+use crate::identity::DeviceIdentity;
 use crate::orchestrator::Orchestrator;
 use crate::platform::host_events::{HostPresence, HOST_PRESENCE_TOKENS};
 
@@ -148,6 +149,159 @@ impl StartupSettingsDto {
     }
 }
 
+/// The app updater's status (ADR-0015) for the Device page, the update dialog and the tray.
+/// Never carries a URL: only versions, the release notes and times.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateStatusDto {
+    /// One of [`crate::updater::policy::UpdateState::TOKENS`].
+    pub state: &'static str,
+    /// Why the updater is off, while `state` is `disabled`.
+    pub reason: Option<&'static str>,
+    /// The running app version.
+    pub current_version: String,
+    /// The last check that got an answer, this session (UTC ISO-8601), or `null`.
+    pub last_checked: Option<String>,
+    /// "Check for updates automatically".
+    pub auto_check: bool,
+    /// The release, while `available`, `downloading`, `readyToRestart` or `failed`.
+    pub update: Option<UpdateReleaseDto>,
+    /// Download progress, while `downloading`.
+    pub progress: Option<UpdateProgressDto>,
+}
+
+/// An offered release: its version, plain-text notes and publication time as announced.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateReleaseDto {
+    pub version: String,
+    pub notes: String,
+    pub date: Option<String>,
+}
+
+/// Bytes downloaded so far, and the size when the server announced one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateProgressDto {
+    pub downloaded: u64,
+    pub total: Option<u64>,
+}
+
+/// Projects the updater state machine for the webview.
+#[must_use]
+pub fn update_status_dto(
+    machine: &crate::updater::policy::Machine,
+    auto_check: bool,
+) -> UpdateStatusDto {
+    use crate::updater::policy::UpdateState;
+    let state = machine.state();
+    UpdateStatusDto {
+        state: state.token(),
+        reason: match state {
+            UpdateState::Disabled(reason) => Some(reason.token()),
+            _ => None,
+        },
+        current_version: env!("CARGO_PKG_VERSION").to_string(),
+        last_checked: machine.last_checked().map(crate::activity::iso_from_unix),
+        auto_check,
+        update: state.release().map(|release| UpdateReleaseDto {
+            version: release.version.to_string(),
+            notes: release.notes.clone(),
+            date: release.date.clone(),
+        }),
+        progress: match state {
+            UpdateState::Downloading {
+                downloaded, total, ..
+            } => Some(UpdateProgressDto {
+                downloaded: *downloaded,
+                total: *total,
+            }),
+            _ => None,
+        },
+    }
+}
+
+/// The firmware update offer (ADR-0015, step 6) for the offer dialog, the Device page and the
+/// tray. Carries only versions and names; nothing in it can start a flash.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirmwareOfferDto {
+    /// One of [`crate::firmware_offer::FirmwareOffer::TOKENS`].
+    pub kind: &'static str,
+    /// The device's product name, when its identity is known.
+    pub product: Option<String>,
+    /// The device's firmware version, with `offerOptional`.
+    pub from: Option<String>,
+    /// The bundled firmware version, with `offerOptional` and `required`.
+    pub to: Option<String>,
+    /// Why the update is required, with `required`.
+    pub reason: Option<&'static str>,
+    /// Changes per device, bundled version and connection: the dialog opens by itself once per key.
+    pub key: Option<String>,
+}
+
+/// Projects an offer decision. `product` is the connected device's product name, if known.
+#[must_use]
+pub fn firmware_offer_dto(
+    decision: &crate::firmware_offer::Decision,
+    product: Option<String>,
+) -> FirmwareOfferDto {
+    use crate::firmware_offer::FirmwareOffer;
+    let offer = &decision.offer;
+    FirmwareOfferDto {
+        kind: offer.token(),
+        product: product.filter(|_| offer.asks()),
+        from: match offer {
+            FirmwareOffer::OfferOptional { from, .. } => Some(from.clone()),
+            _ => None,
+        },
+        to: match offer {
+            FirmwareOffer::OfferOptional { to, .. } => Some(to.clone()),
+            FirmwareOffer::Required { .. } => decision.key.as_ref().map(|key| key.version.clone()),
+            _ => None,
+        },
+        reason: match offer {
+            FirmwareOffer::Required { reason } => Some(reason.token()),
+            _ => None,
+        },
+        key: decision
+            .key
+            .as_ref()
+            .filter(|_| offer.asks())
+            .map(crate::firmware_offer::OfferKey::token),
+    }
+}
+
+/// Which product and board a connected device is (ADR-0014): names for the UI, the hardware
+/// revision (`null` until provisioning burned one) and where the identity came from. Product and
+/// board names are not personal data (ADR-0005).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceIdentityDto {
+    /// Product display name, or "Unknown product (n)".
+    pub product: String,
+    /// Board display name, or "Unknown board (n)".
+    pub board: String,
+    /// Hardware revision, if known.
+    pub hw_rev: Option<u8>,
+    /// `legacy` (the device reported none), `build` or `chip`.
+    pub source: &'static str,
+    /// Whether the catalog knows both the product and the board.
+    pub known: bool,
+}
+
+/// Projects a device identity for the UI.
+#[must_use]
+pub fn identity_dto(identity: &DeviceIdentity) -> DeviceIdentityDto {
+    DeviceIdentityDto {
+        product: identity.product_name(),
+        board: identity.board_name(),
+        hw_rev: identity.hw_rev,
+        source: identity.source.token(),
+        known: identity.resolve().is_some(),
+    }
+}
+
 /// Safe connected-device summary (never the raw identity).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -158,6 +312,20 @@ pub struct DeviceInfoDto {
     pub protocol_version: ProtocolVersionDto,
     /// Short, non-reversible hash of the device identity.
     pub device_id_hash_short: String,
+    /// Which product and board this is; `null` while a device that reports one has not yet.
+    pub identity: Option<DeviceIdentityDto>,
+}
+
+impl ConnectionStatusDto {
+    /// Adds which product and board the connected device is (known to the session, not to the
+    /// connection manager). Without a device there is nothing to add it to.
+    #[must_use]
+    pub fn with_identity(mut self, identity: Option<DeviceIdentity>) -> Self {
+        if let Some(device) = self.device.as_mut() {
+            device.identity = identity.as_ref().map(identity_dto);
+        }
+        self
+    }
 }
 
 /// The three-axis connection snapshot surfaced to the UI (ipc.md §4).
@@ -352,6 +520,13 @@ pub enum ActivityEventTypeDto {
     HostResumed,
     HostLocked,
     HostUnlocked,
+    AppUpdateCheckFailed,
+    AppUpdateAvailable,
+    AppUpdateInstallStarted,
+    AppUpdateInstallFailed,
+    FirmwareOfferShown,
+    FirmwareOfferAccepted,
+    FirmwareOfferLater,
 }
 
 /// Closed connection-state token serialized in activity metadata.
@@ -384,6 +559,7 @@ pub enum ActivitySourceDto {
     Protocol,
     Firmware,
     Config,
+    Update,
 }
 
 /// Closed outcome token serialized to the webview.
@@ -456,6 +632,7 @@ pub fn connection_status(
         ),
         protocol_version: d.protocol_version.into(),
         device_id_hash_short: d.device_id_hash_short.clone(),
+        identity: None,
     });
     ConnectionStatusDto {
         connection: connection_token(manager.state()).to_string(),
@@ -598,6 +775,13 @@ fn activity_kind_token(kind: ActivityEventKind) -> ActivityEventTypeDto {
         ActivityEventKind::HostResumed => ActivityEventTypeDto::HostResumed,
         ActivityEventKind::HostLocked => ActivityEventTypeDto::HostLocked,
         ActivityEventKind::HostUnlocked => ActivityEventTypeDto::HostUnlocked,
+        ActivityEventKind::AppUpdateCheckFailed => ActivityEventTypeDto::AppUpdateCheckFailed,
+        ActivityEventKind::AppUpdateAvailable => ActivityEventTypeDto::AppUpdateAvailable,
+        ActivityEventKind::AppUpdateInstallStarted => ActivityEventTypeDto::AppUpdateInstallStarted,
+        ActivityEventKind::AppUpdateInstallFailed => ActivityEventTypeDto::AppUpdateInstallFailed,
+        ActivityEventKind::FirmwareOfferShown => ActivityEventTypeDto::FirmwareOfferShown,
+        ActivityEventKind::FirmwareOfferAccepted => ActivityEventTypeDto::FirmwareOfferAccepted,
+        ActivityEventKind::FirmwareOfferLater => ActivityEventTypeDto::FirmwareOfferLater,
     }
 }
 
@@ -617,6 +801,7 @@ fn activity_source(source: ActivitySource) -> ActivitySourceDto {
         ActivitySource::Protocol => ActivitySourceDto::Protocol,
         ActivitySource::Firmware => ActivitySourceDto::Firmware,
         ActivitySource::Config => ActivitySourceDto::Config,
+        ActivitySource::Update => ActivitySourceDto::Update,
     }
 }
 
@@ -1557,7 +1742,7 @@ pub const fn availability_token(
 }
 
 /// Every capability flag with the name the diagnostics page lists it by, in bit order.
-const CAPABILITY_TABLE: [(Capabilities, &str); 15] = [
+const CAPABILITY_TABLE: [(Capabilities, &str); 16] = [
     (Capabilities::MASCOT_INTERACTION, "mascotInteraction"),
     (Capabilities::PHYSICAL_INPUT_V1, "physicalInputV1"),
     (Capabilities::PRESENTATION_V1, "presentationV1"),
@@ -1573,6 +1758,7 @@ const CAPABILITY_TABLE: [(Capabilities, &str); 15] = [
     (Capabilities::DEVICE_INTERNALS_V1, "deviceInternalsV1"),
     (Capabilities::IDLE_LIFE_V1, "idleLifeV1"),
     (Capabilities::MIC_STATE_V1, "micStateV1"),
+    (Capabilities::PRODUCT_IDENTITY_V1, "productIdentityV1"),
 ];
 
 /// The capability names the diagnostics page lists, in bit order.
@@ -1633,6 +1819,8 @@ pub struct DiagnosticsSnapshot {
     pub host: HostServicesSnapshot,
     /// The latest device internals snapshot of this connection (developer mode).
     pub internals: Option<DeviceInternals>,
+    /// Which product and board the connected device is.
+    pub identity: Option<DeviceIdentity>,
 }
 
 impl DiagnosticsSnapshot {
@@ -1657,6 +1845,7 @@ impl DiagnosticsSnapshot {
                 input_permission: "unknown",
             },
             internals: None,
+            identity: None,
         }
     }
 }
@@ -1685,6 +1874,8 @@ pub struct VersionsDto {
     pub negotiated_minor: Option<u16>,
     pub capabilities: Vec<&'static str>,
     pub device_hash: Option<String>,
+    /// Which product and board the connected device is.
+    pub identity: Option<DeviceIdentityDto>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1768,6 +1959,7 @@ pub fn diagnostics_dto(
             negotiated_minor: snapshot.negotiated_minor,
             capabilities: capability_names(snapshot.negotiated_caps),
             device_hash: snapshot.device_hash.clone(),
+            identity: snapshot.identity.as_ref().map(identity_dto),
         },
         connection: ConnectionDiagnosticsDto {
             state: snapshot.connection,
@@ -1949,9 +2141,14 @@ pub fn vocabulary_json() -> serde_json::Value {
         "hostInputPermission": HOST_INPUT_PERMISSION_TOKENS,
         "hostPresence": HOST_PRESENCE_TOKENS,
         "flashFailures": crate::firmware::FlashFailure::ALL.map(crate::firmware::FlashFailure::token),
+        "identitySources": crate::identity::IdentitySource::ALL.map(crate::identity::IdentitySource::token),
         "updateAdvice": crate::firmware::UpdateAdvice::ALL.map(crate::firmware::UpdateAdvice::token),
         "startupPlatform": STARTUP_PLATFORM_TOKENS,
         "accessibility": crate::platform::permissions::ACCESSIBILITY_TOKENS,
+        "updateStates": crate::updater::policy::UpdateState::TOKENS,
+        "updateDisabledReasons": crate::updater::policy::DisabledReason::ALL.map(crate::updater::policy::DisabledReason::token),
+        "firmwareOfferKinds": crate::firmware_offer::FirmwareOffer::TOKENS,
+        "firmwareRequiredReasons": crate::firmware_offer::RequiredReason::ALL.map(crate::firmware_offer::RequiredReason::token),
     })
 }
 

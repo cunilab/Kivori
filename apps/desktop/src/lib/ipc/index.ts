@@ -15,8 +15,10 @@ import type {
   ActivityEventDto,
   SendableState,
   AnimationTimeline,
+  FirmwareOfferDto,
   FirmwareStatusDto,
   StartupSettingsDto,
+  UpdateStatusDto,
   OnboardingDto,
   AccessibilityState,
   MascotAction,
@@ -41,8 +43,10 @@ import {
   parseDeskStatus,
   parseDeviceInternals,
   parseDiagnostics,
+  parseFirmwareOffer,
   parseFirmwareStatus,
   parseStartupSettings,
+  parseUpdateStatus,
   parseOnboarding,
   parseAccessibility,
   appRef,
@@ -149,6 +153,78 @@ export async function setLaunchAtLogin(enabled: boolean): Promise<StartupSetting
   return unavailable();
 }
 
+/** The app updater's status (ADR-0015). */
+export async function getUpdateStatus(): Promise<UpdateStatusDto> {
+  if (isTauri()) return parseUpdateStatus(await invoke<unknown>('get_update_status'));
+  if (import.meta.env.DEV) return (await devMock()).mockGetUpdateStatus();
+  return unavailable();
+}
+
+/** Subscribes to updater changes (`updater://status`); an invalid payload is dropped. */
+export async function onUpdateStatus(
+  handler: (status: UpdateStatusDto) => void,
+): Promise<Unlisten> {
+  if (isTauri()) {
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen<unknown>('updater://status', (event) => {
+      try {
+        handler(parseUpdateStatus(event.payload));
+      } catch {
+        // Invalid payloads never reach the UI.
+      }
+    });
+  }
+  if (import.meta.env.DEV) return (await devMock()).mockOnUpdateStatus(handler);
+  return unavailable();
+}
+
+/** The tray's "Update to vX.Y.Z…" asks the window to show the update dialog. */
+export async function onUpdateDialogRequested(handler: () => void): Promise<Unlisten> {
+  if (isTauri()) {
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen<unknown>('updater://show', () => handler());
+  }
+  if (import.meta.env.DEV) return () => {};
+  return unavailable();
+}
+
+async function updateCommand(
+  command: string,
+  mock: (m: typeof import('./mock')) => UpdateStatusDto,
+  args?: Record<string, unknown>,
+): Promise<UpdateStatusDto> {
+  if (isTauri()) return parseUpdateStatus(await invoke<unknown>(command, args));
+  if (import.meta.env.DEV) return mock(await devMock());
+  return unavailable();
+}
+
+/** "Check now"; the result arrives as `updater://status`. Offline says nothing. */
+export function checkForUpdates(): Promise<UpdateStatusDto> {
+  return updateCommand('check_for_updates', (m) => m.mockCheckForUpdates());
+}
+
+/** "Install & restart" (and "Try again"). */
+export function installUpdate(): Promise<UpdateStatusDto> {
+  return updateCommand('install_update', (m) => m.mockInstallUpdate());
+}
+
+/** "Later": asks again in 3 days. */
+export function snoozeUpdate(): Promise<UpdateStatusDto> {
+  return updateCommand('snooze_update', (m) => m.mockDismissUpdate());
+}
+
+/** "Skip this version". */
+export function skipUpdateVersion(): Promise<UpdateStatusDto> {
+  return updateCommand('skip_update_version', (m) => m.mockDismissUpdate());
+}
+
+/** "Check for updates automatically". */
+export function setAutoUpdateCheck(enabled: boolean): Promise<UpdateStatusDto> {
+  return updateCommand('set_auto_update_check', (m) => m.mockSetAutoUpdateCheck(enabled), {
+    enabled,
+  });
+}
+
 /** Whether first-run setup is finished. */
 export async function getOnboarding(): Promise<OnboardingDto> {
   if (isTauri()) return parseOnboarding(await invoke<unknown>('get_onboarding'));
@@ -191,6 +267,55 @@ export async function openAccessibilitySettings(): Promise<void> {
   return unavailable();
 }
 
+/** The firmware update offer (ADR-0015, step 6). */
+export async function getFirmwareOffer(): Promise<FirmwareOfferDto> {
+  if (isTauri()) return parseFirmwareOffer(await invoke<unknown>('get_firmware_offer'));
+  if (import.meta.env.DEV) return (await devMock()).mockGetFirmwareOffer();
+  return unavailable();
+}
+
+/** Subscribes to offer changes (`firmware://offer`); an invalid payload is dropped. */
+export async function onFirmwareOffer(
+  handler: (offer: FirmwareOfferDto) => void,
+): Promise<Unlisten> {
+  if (isTauri()) {
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen<unknown>('firmware://offer', (event) => {
+      try {
+        handler(parseFirmwareOffer(event.payload));
+      } catch {
+        // Invalid payloads never reach the UI.
+      }
+    });
+  }
+  if (import.meta.env.DEV) return (await devMock()).mockOnFirmwareOffer(handler);
+  return unavailable();
+}
+
+/** The tray's "Update Kivori firmware…" asks the window to show the firmware offer dialog. */
+export async function onFirmwareOfferRequested(handler: () => void): Promise<Unlisten> {
+  if (isTauri()) {
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen<unknown>('firmware://show-offer', () => handler());
+  }
+  if (import.meta.env.DEV) return () => {};
+  return unavailable();
+}
+
+/** "Update now" on the offer: the same flash as `flashFirmware`; progress is in the firmware status. */
+export async function acceptFirmwareOffer(): Promise<void> {
+  if (isTauri()) return invoke<void>('accept_firmware_offer');
+  if (import.meta.env.DEV) return (await devMock()).mockAcceptFirmwareOffer();
+  return unavailable();
+}
+
+/** "Later" on an optional offer: asked again when the device next connects. */
+export async function dismissFirmwareOffer(): Promise<FirmwareOfferDto> {
+  if (isTauri()) return parseFirmwareOffer(await invoke<unknown>('dismiss_firmware_offer'));
+  if (import.meta.env.DEV) return (await devMock()).mockDismissFirmwareOffer();
+  return unavailable();
+}
+
 /** Installs only the bundled firmware on the already-connected device. */
 export async function flashFirmware(): Promise<void> {
   if (isTauri()) return invoke<void>('flash_firmware');
@@ -199,10 +324,11 @@ export async function flashFirmware(): Promise<void> {
 
 /**
  * Restores the bundled firmware on the one Kivori device present, even one that cannot connect
- * (wrong firmware, or held in download mode with the BOOT button). Takes no port.
+ * (wrong firmware, or held in download mode with the BOOT button). Takes no port. `product` is a
+ * restore choice's id, sent only after the app asked which product the device is.
  */
-export async function restoreFirmware(): Promise<void> {
-  if (isTauri()) return invoke<void>('restore_firmware');
+export async function restoreFirmware(product?: string): Promise<void> {
+  if (isTauri()) return invoke<void>('restore_firmware', { product: product ?? null });
   return unavailable();
 }
 

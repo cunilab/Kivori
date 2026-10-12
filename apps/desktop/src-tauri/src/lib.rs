@@ -6,12 +6,15 @@
 
 pub mod action;
 pub mod activity;
+pub mod catalog;
 pub mod companion;
 pub mod config;
 pub mod desk;
 pub mod device;
 pub mod firmware;
 pub mod firmware_marker;
+pub mod firmware_offer;
+pub mod identity;
 pub mod input;
 pub mod ipc;
 pub mod orchestrator;
@@ -22,6 +25,7 @@ pub mod provision;
 pub mod render;
 pub mod runtime;
 pub mod startup;
+pub mod updater;
 pub mod window_lifecycle;
 
 /// Launches the Tauri application runtime. Called by the thin `main.rs` binary.
@@ -30,6 +34,11 @@ pub fn run() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .try_init();
+
+    let context = tauri::generate_context!();
+    // App updates (ADR-0015): only a Windows release build with the endpoint and public key in its
+    // config registers the updater plugin; any other build makes no request at all.
+    let updates = updater::availability(context.config());
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -40,7 +49,7 @@ pub fn run() {
             Some(vec![window_lifecycle::AUTOSTART_ARG]),
         ))
         .on_window_event(runtime::lifecycle::on_window_event)
-        .setup(|app| {
+        .setup(move |app| {
             use tauri::Manager;
             let (commands_tx, commands_rx) = std::sync::mpsc::channel();
             let (host_tx, host_rx) = std::sync::mpsc::channel();
@@ -75,6 +84,10 @@ pub fn run() {
                 ipc::dto::DiagnosticsSnapshot::initial(),
             ));
             let services = desk::catalog::ServicesCell::default();
+            let knob_gesture = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let firmware_offer =
+                std::sync::Arc::new(std::sync::Mutex::new(firmware_offer::OfferTracker::new()));
+            let auto_update_check = config_store.file().updates.auto_check;
             let device_thread = runtime::device_task::spawn(
                 app.handle().clone(),
                 std::sync::Arc::clone(&status),
@@ -87,6 +100,8 @@ pub fn run() {
                 host_rx,
                 std::sync::Arc::clone(&cancel),
                 resolved,
+                std::sync::Arc::clone(&knob_gesture),
+                std::sync::Arc::clone(&firmware_offer),
             );
             app.manage(
                 runtime::state::AppState::new_with_firmware(
@@ -101,10 +116,13 @@ pub fn run() {
                 .with_desk_status(desk_status)
                 .with_diagnostics(diagnostics)
                 .with_services(services)
+                .with_firmware_offer(firmware_offer)
                 .with_config(std::sync::Arc::new(std::sync::Mutex::new(config_store))),
             );
             // After the device thread exists, so the first lock or sleep notice has a reader.
             app.manage(runtime::state::HostEventsHandle::start(host_tx));
+            // The first check is 30 s away: startup never waits on the network.
+            updater::start(app.handle(), updates, knob_gesture, auto_update_check);
             runtime::lifecycle::build_tray(app.handle())?;
             // The window is configured hidden. A login launch keeps it that way (tray only). Any
             // other launch shows it once the frontend calls `app_ready`, behind a splash if that
@@ -168,6 +186,15 @@ pub fn run() {
         ipc::commands::list_action_catalog,
         ipc::commands::test_action,
         ipc::commands::test_rotate,
+        ipc::commands::get_update_status,
+        ipc::commands::check_for_updates,
+        ipc::commands::install_update,
+        ipc::commands::snooze_update,
+        ipc::commands::skip_update_version,
+        ipc::commands::set_auto_update_check,
+        ipc::commands::get_firmware_offer,
+        ipc::commands::accept_firmware_offer,
+        ipc::commands::dismiss_firmware_offer,
         ipc::channels::open_preview_stream,
         ipc::channels::close_preview_stream,
         ipc::channels::ack_preview_frame,
@@ -217,10 +244,19 @@ pub fn run() {
         ipc::commands::list_action_catalog,
         ipc::commands::test_action,
         ipc::commands::test_rotate,
+        ipc::commands::get_update_status,
+        ipc::commands::check_for_updates,
+        ipc::commands::install_update,
+        ipc::commands::snooze_update,
+        ipc::commands::skip_update_version,
+        ipc::commands::set_auto_update_check,
+        ipc::commands::get_firmware_offer,
+        ipc::commands::accept_firmware_offer,
+        ipc::commands::dismiss_firmware_offer,
     ]);
 
-    builder
-        .build(tauri::generate_context!())
+    updater::register(builder, updates)
+        .build(context)
         .expect("error while building the Kivori application")
         .run(|app_handle, event| match event {
             tauri::RunEvent::ExitRequested { .. } => {

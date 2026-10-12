@@ -1,0 +1,1145 @@
+//! The production device runtime (T074): the real run loop, written against the four ports.
+//!
+//! This is **the** firmware behaviour, not a test harness: the physical binary runs [`run_buffered`] and the
+//! host-sim tests step the same [`Runtime`], differing only in which [`Clock`], [`Transport`],
+//! [`InputSource`], and [`DisplaySink`] instances they hand it. There is deliberately no second loop
+//! implementation to drift.
+//!
+//! Each tick, in order:
+//!
+//! 1. finish boot once — `booting` → `offline`, the device-originated transition (FR-014/015);
+//! 2. drain inbound bytes through the real decoder, sequence policy, and [`Dispatcher`], which answers
+//!    `Hello`/`Ping`/`SetState` and drops malformed frames without side effects (SC-008); any session
+//!    boundary — `Bye`, a transport failure, or a fresh `Hello` with no prior `Bye` — also resets the
+//!    rotary decoder/gesture state so no gesture survives into a new (or recovered) session;
+//! 3. sample physical input once, decode validated detents, and emit semantic `InputEvent`s — gated by
+//!    the negotiated `PHYSICAL_INPUT_V1` capability and an accepted session inside the dispatcher;
+//! 4. render the current state through the shared renderer, flushing only changed tiles (FR-013);
+//! 5. emit at most one safe `Diagnostic` (allowlisted category + code — never payload bytes);
+//! 6. emit `Health` on a fixed interval, and one `Internals` snapshot when the host asked for it.
+//!
+//! The loop never returns and never panics on bad input: a transport failure is reported as a diagnostic
+//! and the link drops to `offline`, from which a new `Hello` can bring the session back up.
+//!
+//! # What the host tests prove, and what they do not
+//!
+//! Stepping it on the host exercises the real protocol, lifecycle, renderer, and tile-output paths. It
+//! says nothing about the physical panel — its controller, offsets, orientation, colour order, and
+//! backlight are supplied from outside this module and are validated on hardware.
+
+use crate::health::{build_diagnostic, build_health, DeviceDiagnostic};
+use crate::identity::BootCheck;
+use crate::input::button::{ButtonEvent, ButtonGesture};
+use crate::input::gesture::{RotaryEvent, RotaryGesture};
+use crate::input::quadrature::QuadratureDecoder;
+use crate::internals::{ChipProbe, LoadMeter, ASSET_BLOB_CAP_BYTES};
+use crate::ports::{Clock, DisplaySink, InputSource, Transport};
+use crate::proto::{DeviceIdentity, Dispatcher, HostTakeover};
+use crate::render::TileRenderer;
+use crate::state::{DeviceEvent, DeviceState};
+use kivori_assets::AssetBlob;
+use kivori_model::desk::{
+    ActionFeedback, ControlLabels, CpuHistory, DeskStatus, DeskView, DisplayMode, MediaInfo,
+    MicState, BRIGHTNESS_STEPS, VIEW_TRANSITION_MS,
+};
+use kivori_model::input::InputLevels;
+use kivori_model::internals::DeviceInternals;
+use kivori_model::presentation::{PrimaryState, ValueDisplay};
+use kivori_model::Capabilities;
+use kivori_model::{
+    CompanionState, ElapsedMs, IdleLife, LookTarget, MascotAnimator, MascotPersonality,
+};
+use kivori_protocol::{
+    Bye, ByeReason, ControlId, ControlLabelsUpdate, Feedback, InputKind, InternalsReport,
+    MediaInfoUpdate, Message, MicStateUpdate, Nonce, Presentation, Status,
+};
+
+/// Inactivity window, in milliseconds, after which an open rotary gesture ends
+/// (docs/product.md, gesture boundary). Firmware-wide: both the production runtime and the host-sim
+/// scenario helper (`sim::drive_rotary`) commit to this same boundary.
+pub const GESTURE_END_MS: u32 = 250;
+
+/// With an accepted session and no inbound frame for this long, the host is gone (a killed or
+/// crashed desktop, a sleeping PC) and the link is dropped. The desktop pings every second, so
+/// four missed pings; without this the panel would keep a frozen "connected" frame.
+pub const HOST_SILENCE_MS: u32 = 4_000;
+
+/// The Updating takeover lapses after this long, so it cannot stick if the host dies mid-flash.
+pub const UPDATING_MAX_MS: u32 = 120_000;
+
+/// Input snapshots processed per tick: the physical edge queue plus the closing current sample.
+const INPUT_SAMPLES: usize = 129;
+
+/// How far the keycap sinks while the switch is held or a quiet acknowledgement shows: the
+/// device's own instant acknowledgement, shallower than Happy's 16 px press so it never reads as
+/// that state (Q8 pixels).
+const PRESS_ACK_Q8: i32 = 8 * 256;
+
+/// Loop timings. Both are integer milliseconds, so behaviour is deterministic (ADR-0003).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RuntimeConfig {
+    /// Minimum gap between render passes. A pass still flushes nothing when no tile changed.
+    pub frame_interval_ms: ElapsedMs,
+    /// Gap between `Health` reports.
+    pub health_interval_ms: ElapsedMs,
+}
+
+impl Default for RuntimeConfig {
+    fn default() -> Self {
+        // 30 fps is the canonical animation rate (ADR-0003); health once a second is enough for a
+        // heartbeat without competing with frames for the FIFO.
+        Self {
+            frame_interval_ms: 33,
+            health_interval_ms: 1000,
+        }
+    }
+}
+
+/// What one [`Runtime::step`] observed. Returned so the run loop's observer and the tests can act on real
+/// work instead of guessing from side effects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Tick {
+    /// The state the device holds after this tick.
+    pub state: Option<CompanionState>,
+    /// A frame was composed on this tick, even if every tile matched the previous frame.
+    pub frame_rendered: bool,
+    /// Tiles flushed to the display this tick (a merged window counts every tile it carries).
+    pub tiles_flushed: u32,
+    /// Panel windows (address-window + pixel writes) used to flush those tiles this tick.
+    pub windows_flushed: u32,
+    /// A safe diagnostic was transmitted.
+    pub diagnostic: Option<DeviceDiagnostic>,
+    /// A `Health` report was transmitted.
+    pub health_sent: bool,
+    /// The transport reported a failure and the link was dropped.
+    pub link_dropped: bool,
+    /// The recovery hold completed: the caller must reboot the MCU now. Set once; the runtime
+    /// already rendered the final frame and queued a `Bye` for an accepted session.
+    pub reboot: bool,
+    /// Frames the decoder has rejected since boot (cumulative).
+    pub rejected_frames: u32,
+}
+
+/// A [`DisplaySink`] decorator counting flushes, so the runtime can report tile activity without the sink
+/// having to.
+struct CountingSink<'s, S> {
+    inner: &'s mut S,
+    flushes: u32,
+    windows: u32,
+    failed: bool,
+}
+
+impl<S: DisplaySink> DisplaySink for CountingSink<'_, S> {
+    type Error = S::Error;
+
+    fn blit_tile(
+        &mut self,
+        rect: kivori_model::Rect,
+        pixels: &[kivori_model::Rgb565],
+    ) -> Result<(), Self::Error> {
+        match self.inner.blit_tile(rect, pixels) {
+            Ok(()) => {
+                self.flushes += 1;
+                self.windows += 1;
+                Ok(())
+            }
+            Err(error) => {
+                self.failed = true;
+                Err(error)
+            }
+        }
+    }
+
+    fn blit_tiles(
+        &mut self,
+        rect: kivori_model::Rect,
+        tiles: &[kivori_model::Rgb565],
+        cols: u16,
+    ) -> Result<(), Self::Error> {
+        match self.inner.blit_tiles(rect, tiles, cols) {
+            Ok(()) => {
+                self.flushes += (tiles.len() / crate::render::TILE_PIXELS) as u32;
+                self.windows += 1;
+                Ok(())
+            }
+            Err(error) => {
+                self.failed = true;
+                Err(error)
+            }
+        }
+    }
+}
+
+/// Device-side presentation acceptance and local transient expiry.
+///
+/// Firmware expires the overlay itself so it cannot stick if the host disappears mid-transient,
+/// restoring the underlying `primary` (product invariant 50).
+#[derive(Debug)]
+pub struct PresentationState {
+    session: Option<Nonce>,
+    last_revision: u32,
+    primary: PrimaryState,
+    value: Option<ValueDisplay>,
+    /// The device-ms timestamp `value` was applied at. Meaningless when `transient_ms == 0`
+    /// (persistent) or `value` is `None`.
+    applied_at_ms: u32,
+    /// `0` = persistent; otherwise `value` expires this many ms after `applied_at_ms`, compared
+    /// via `wrapping_sub` (the same idiom `RotaryGesture`'s inactivity window uses) rather than a
+    /// precomputed absolute deadline — a precomputed `applied_at_ms + transient_ms` can itself
+    /// wrap past `u32::MAX` (~49.7 days of device uptime) while `now_ms` has not yet wrapped,
+    /// which would make a plain `now_ms >= deadline` comparison see a small deadline and a huge
+    /// `now_ms` and report the overlay expired instantly.
+    transient_ms: u16,
+}
+
+impl PresentationState {
+    /// A fresh presentation state, before any session is accepted.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            session: None,
+            last_revision: 0,
+            primary: PrimaryState::Idle,
+            value: None,
+            applied_at_ms: 0,
+            transient_ms: 0,
+        }
+    }
+
+    /// A new compatible host session: rebind identity and reset revision scoping.
+    pub fn begin_session(&mut self, session: Nonce) {
+        self.session = Some(session);
+        self.last_revision = 0;
+        self.value = None;
+        self.transient_ms = 0;
+    }
+
+    /// Ends the current session: no session, no lingering overlay.
+    pub fn end_session(&mut self) {
+        self.session = None;
+        self.last_revision = 0;
+        self.value = None;
+        self.transient_ms = 0;
+    }
+
+    /// Returns true when the presentation was accepted and applied.
+    pub fn apply(&mut self, p: &Presentation, now_ms: u32) -> bool {
+        if self.session != Some(p.session) {
+            return false;
+        }
+        if p.revision <= self.last_revision {
+            return false;
+        }
+        self.last_revision = p.revision;
+        self.primary = p.primary;
+        self.value = p.value;
+        self.applied_at_ms = now_ms;
+        self.transient_ms = if p.value.is_some() { p.transient_ms } else { 0 };
+        true
+    }
+
+    /// The overlay still in force at `now_ms`, if any.
+    #[must_use]
+    pub fn value_at(&self, now_ms: u32) -> Option<ValueDisplay> {
+        if self.transient_ms == 0 {
+            return self.value;
+        }
+        // Wrap-aware elapsed time (see the `transient_ms` field doc): correct across a device
+        // uptime rollover, unlike comparing `now_ms` against a precomputed absolute deadline.
+        if now_ms.wrapping_sub(self.applied_at_ms) >= u32::from(self.transient_ms) {
+            None
+        } else {
+            self.value
+        }
+    }
+
+    /// The underlying truth beneath any transient overlay.
+    #[must_use]
+    pub const fn primary(&self) -> PrimaryState {
+        self.primary
+    }
+}
+
+impl Default for PresentationState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Device-side desk status and action feedback for the current session (M1).
+///
+/// Session-scoped like [`PresentationState`]: anything from another session is dropped, and a
+/// session boundary forgets everything, so the device falls back to the Buddy view with every
+/// value unknown rather than showing stale desktop state.
+#[derive(Debug, Default)]
+pub struct DeskState {
+    session: Option<Nonce>,
+    status: DeskStatus,
+    /// Device-ms the status arrived, to keep its clock running locally.
+    status_at_ms: u32,
+    feedback: Option<(ActionFeedback, u32)>,
+    media_info: Option<MediaInfo>,
+    controls: Option<ControlLabels>,
+    mic: MicState,
+    cpu_history: CpuHistory,
+    /// The view before the latest switch, and when the switch happened.
+    previous_mode: Option<DisplayMode>,
+    mode_since_ms: u32,
+}
+
+impl DeskState {
+    /// A new compatible host session: nothing known yet.
+    pub fn begin_session(&mut self, session: Nonce) {
+        *self = Self {
+            session: Some(session),
+            ..Self::default()
+        };
+    }
+
+    /// The session ended: forget everything.
+    pub fn end_session(&mut self) {
+        *self = Self::default();
+    }
+
+    /// Applies a status of the current session. Returns whether it was accepted.
+    pub fn apply_status(&mut self, status: &Status, now_ms: u32) -> bool {
+        if self.session != Some(status.session) {
+            return false;
+        }
+        if status.status.mode != self.status.mode {
+            self.previous_mode = Some(self.status.mode);
+            self.mode_since_ms = now_ms;
+        }
+        if let Some(cpu) = status.status.cpu_percent {
+            self.cpu_history.push(cpu);
+        }
+        self.status = status.status;
+        self.status_at_ms = now_ms;
+        true
+    }
+
+    /// Applies now-playing text of the current session (`None` clears it).
+    pub fn apply_media_info(&mut self, update: &MediaInfoUpdate) -> bool {
+        if self.session != Some(update.session) {
+            return false;
+        }
+        self.media_info = update.info;
+        true
+    }
+
+    /// Applies the control labels of the current session.
+    pub fn apply_control_labels(&mut self, update: &ControlLabelsUpdate) -> bool {
+        if self.session != Some(update.session) {
+            return false;
+        }
+        self.controls = Some(update.labels);
+        true
+    }
+
+    /// Applies the microphone state of the current session.
+    pub fn apply_mic_state(&mut self, update: &MicStateUpdate) -> bool {
+        if self.session != Some(update.session) {
+            return false;
+        }
+        self.mic = update.mic;
+        true
+    }
+
+    /// Shows a feedback of the current session, replacing any older one at once.
+    pub fn apply_feedback(&mut self, feedback: &Feedback, now_ms: u32) -> bool {
+        if self.session != Some(feedback.session) {
+            return false;
+        }
+        self.feedback = Some((
+            ActionFeedback {
+                action: feedback.action,
+                kind: feedback.kind,
+            },
+            now_ms,
+        ));
+        true
+    }
+
+    /// Whether the desktop's local clock, kept running here, says it is late in the evening. With
+    /// no clock (nothing sent yet, or no session) it never is.
+    #[must_use]
+    pub fn late_evening_at(&self, now_ms: u32) -> bool {
+        self.status.clock.is_some_and(|clock| {
+            clock
+                .advanced_by(now_ms.wrapping_sub(self.status_at_ms))
+                .is_late_evening()
+        })
+    }
+
+    /// What to render at `now_ms`: the clock advanced locally, expired feedback dropped
+    /// (wrap-safe elapsed comparison, as in [`PresentationState::value_at`]).
+    #[must_use]
+    pub fn view_at(
+        &self,
+        now_ms: u32,
+        (button_down, switch_down): (bool, bool),
+        recovery: Option<u8>,
+        updating: bool,
+    ) -> DeskView {
+        let mut status = self.status;
+        status.clock = status
+            .clock
+            .map(|clock| clock.advanced_by(now_ms.wrapping_sub(self.status_at_ms)));
+        let feedback = self
+            .feedback
+            .filter(|(f, at)| now_ms.wrapping_sub(*at) < f.kind.transient_ms())
+            .map(|(f, _)| f);
+        let mode_age_ms = now_ms.wrapping_sub(self.mode_since_ms);
+        DeskView {
+            status,
+            feedback,
+            button_down,
+            switch_down,
+            recovery_percent: recovery,
+            updating,
+            elapsed_ms: now_ms,
+            media_info: self.media_info,
+            cpu_history: self.cpu_history,
+            previous_mode: self
+                .previous_mode
+                .filter(|_| mode_age_ms < VIEW_TRANSITION_MS),
+            mode_age_ms,
+            controls: self.controls,
+            mic: self.mic,
+        }
+    }
+}
+
+/// The production device runtime: lifecycle, protocol, rendering, and diagnostics.
+pub struct Runtime<'a> {
+    dispatcher: Dispatcher,
+    device: DeviceState,
+    renderer: TileRenderer<'a>,
+    config: RuntimeConfig,
+    booted: bool,
+    next_frame_ms: ElapsedMs,
+    next_health_ms: ElapsedMs,
+    last_rendered: Option<CompanionState>,
+    animator: MascotAnimator,
+    /// The buddy's idle life: its own reactions and glances, seeded from the device id.
+    idle: IdleLife,
+    /// Turns raw quadrature levels into validated logical detents (never raw electrical edges).
+    decoder: QuadratureDecoder,
+    /// Groups validated detents into gestures (identity + the 250 ms inactivity boundary).
+    gesture: RotaryGesture,
+    /// Session-scoped acceptance and local expiry of the device-rendered `Presentation` overlay.
+    presentation: PresentationState,
+    /// Push-switch debounce, Press / Hold and the recovery hold.
+    button: ButtonGesture,
+    /// The three contextual buttons: Press / Hold only, never recovery.
+    keys: [ButtonGesture; 3],
+    /// Identifier of the last push-switch event sent; session-unique, never 0.
+    button_id: u16,
+    /// Session-scoped desk status and feedback.
+    desk: DeskState,
+    /// A switch edge or recovery step wants the panel redrawn on this tick.
+    redraw: bool,
+    reboot: bool,
+    /// What the host last announced with a `Bye`, and when. Cleared by the next accepted session;
+    /// `Updating` also lapses after [`UPDATING_MAX_MS`].
+    host_takeover: Option<(HostTakeover, ElapsedMs)>,
+    /// [`Dispatcher::inbound_frames`] at the last tick, and the time it last moved.
+    seen_inbound: u32,
+    last_inbound_ms: ElapsedMs,
+    /// Run-loop load and frame timing for the device internals snapshot.
+    load: LoadMeter,
+    /// The board's contribution to the internals snapshot, if it has one.
+    chip_probe: Option<ChipProbe>,
+    #[cfg(feature = "latency-probe")]
+    latency: crate::latency_probe::LatencyProbe,
+}
+
+impl<'a> Runtime<'a> {
+    /// Creates the runtime for a device advertising `identity`.
+    #[must_use]
+    pub fn new(identity: DeviceIdentity, config: RuntimeConfig) -> Self {
+        // Units differ by their id hash; no hardware random source is ever read.
+        let seed = crate::device_id::idle_seed(&identity.device_id);
+        Self {
+            dispatcher: Dispatcher::new(identity),
+            device: DeviceState::new(),
+            renderer: TileRenderer::new(),
+            config,
+            booted: false,
+            next_frame_ms: 0,
+            next_health_ms: 0,
+            last_rendered: None,
+            animator: MascotAnimator::new_seeded(CompanionState::Booting, 0, seed),
+            // Reactions wait for the desktop's settings: a host that did not negotiate idle life
+            // schedules them itself, and two schedulers would double up.
+            idle: IdleLife::new(MascotPersonality::Cozy, false, seed, 0),
+            decoder: QuadratureDecoder::new(),
+            gesture: RotaryGesture::new(GESTURE_END_MS),
+            presentation: PresentationState::new(),
+            button: ButtonGesture::new(),
+            keys: [
+                ButtonGesture::new(),
+                ButtonGesture::new(),
+                ButtonGesture::new(),
+            ],
+            button_id: 0,
+            desk: DeskState::default(),
+            redraw: false,
+            reboot: false,
+            host_takeover: None,
+            seen_inbound: 0,
+            last_inbound_ms: 0,
+            load: LoadMeter::new(),
+            chip_probe: None,
+            #[cfg(feature = "latency-probe")]
+            latency: crate::latency_probe::LatencyProbe::new(),
+        }
+    }
+
+    /// Creates a runtime that composes a complete frame before starting display transfers.
+    pub fn with_frame_buffer(
+        identity: DeviceIdentity,
+        config: RuntimeConfig,
+        frame_buffer: &'a mut [kivori_model::Rgb565; crate::render::FRAME_PIXELS],
+    ) -> Self {
+        Self {
+            renderer: TileRenderer::with_frame_buffer(frame_buffer),
+            ..Self::new(identity, config)
+        }
+    }
+
+    /// Lets the board fill the device internals snapshot fields only it can measure.
+    pub fn set_chip_probe(&mut self, probe: ChipProbe) {
+        self.chip_probe = Some(probe);
+    }
+
+    /// Applies the boot identity check (tier A). A wrong board runs no product: the panel shows
+    /// the wrong-board notice, the link only offers `PRODUCT_IDENTITY_V1` (so the app can read the
+    /// chip's identity and reflash), and the recovery hold keeps working (invariant 24).
+    pub fn set_boot_check(&mut self, check: BootCheck) {
+        match check {
+            BootCheck::Run(identity) => self.dispatcher.set_product_identity(identity),
+            BootCheck::WrongBoard(identity) => {
+                self.dispatcher.set_product_identity(identity);
+                self.dispatcher
+                    .restrict_capabilities(Capabilities::PRODUCT_IDENTITY_V1);
+                self.renderer.set_wrong_board(true);
+            }
+        }
+    }
+
+    /// The companion state the device currently holds.
+    #[must_use]
+    pub const fn state(&self) -> CompanionState {
+        self.device.current()
+    }
+
+    /// Frames the decoder has rejected this session.
+    #[must_use]
+    pub const fn rejected_frames(&self) -> u32 {
+        self.dispatcher.rejected_frames()
+    }
+
+    /// The on-panel latency readout (development-only `latency-probe`).
+    #[cfg(feature = "latency-probe")]
+    #[must_use]
+    pub const fn latency_readout(&self) -> crate::latency_probe::Readout {
+        self.latency.readout()
+    }
+
+    /// Runs one tick of the production loop.
+    ///
+    /// Never fails: a transport error becomes a `LinkLost` diagnostic and an `offline` transition, because a
+    /// device that gives up on a bad cable is worse than one that waits for the host to come back.
+    pub fn step<C, T, I, D>(
+        &mut self,
+        clock: &C,
+        transport: &mut T,
+        input: &mut I,
+        display: &mut D,
+        blob: &AssetBlob,
+    ) -> Tick
+    where
+        C: Clock,
+        T: Transport,
+        I: InputSource,
+        D: DisplaySink,
+    {
+        let mut tick = Tick::default();
+        let now = clock.now_ms();
+        let mut worked = false;
+
+        // 1. The device owns `booting` at power-on and falls back to `offline` with no host present.
+        if !self.booted {
+            self.booted = true;
+            tick.state = self.device.apply(DeviceEvent::BootComplete);
+        }
+
+        // 2. Inbound: real framing, CRC, sequence policy, and dispatch. Malformed frames are dropped
+        //    inside the dispatcher and surface below as a diagnostic.
+        if transport.drain_pending().is_err()
+            || self
+                .dispatcher
+                .poll(transport, &mut self.device, now)
+                .is_err()
+        {
+            transport.discard_unsent();
+            let _ = self.device.apply(DeviceEvent::LinkDown);
+            self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
+            // A transport failure is a session boundary too, even with no `Bye`: clear the
+            // accepted session/negotiated capability so a stale gesture cannot keep emitting
+            // once the link recovers.
+            self.dispatcher.link_lost();
+            tick.link_dropped = true;
+        }
+        // A silent host: nothing valid arrived for a while on an accepted session.
+        let inbound = self.dispatcher.inbound_frames();
+        if inbound != self.seen_inbound {
+            worked = true;
+            self.seen_inbound = inbound;
+            self.last_inbound_ms = now;
+        }
+        if self.dispatcher.accepted_session().is_some()
+            && now.wrapping_sub(self.last_inbound_ms) >= HOST_SILENCE_MS
+        {
+            self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
+            self.dispatcher.link_lost();
+            tick.link_dropped = true;
+        }
+        if let Some(takeover) = self.dispatcher.take_host_takeover() {
+            self.host_takeover = Some((takeover, now));
+            self.redraw = true;
+        }
+        if matches!(self.host_takeover, Some((HostTakeover::Updating, since))
+            if now.wrapping_sub(since) >= UPDATING_MAX_MS)
+        {
+            self.host_takeover = None;
+            self.redraw = true;
+        }
+        // A `Bye`, a transport failure, or a new `Hello` this poll closed/opened a session: a
+        // gesture (or partial motion) from the old session must never complete in a new one
+        // (no-stale-replay invariant).
+        self.apply_session_boundary();
+        if let Some(status) = self.dispatcher.take_status() {
+            self.redraw |= self.desk.apply_status(&status, now);
+        }
+        if let Some(feedback) = self.dispatcher.take_feedback() {
+            self.redraw |= self.desk.apply_feedback(&feedback, now);
+        }
+        if let Some(update) = self.dispatcher.take_control_labels() {
+            self.redraw |= self.desk.apply_control_labels(&update);
+        }
+        if let Some(update) = self.dispatcher.take_media_info() {
+            self.redraw |= self.desk.apply_media_info(&update);
+        }
+        if let Some(update) = self.dispatcher.take_mic_state() {
+            self.redraw |= self.desk.apply_mic_state(&update);
+        }
+        if let Some(settings) = self.dispatcher.take_buddy_settings() {
+            self.idle
+                .configure(settings.personality, settings.self_play, now);
+            display.set_brightness(settings.brightness.clamp(1, BRIGHTNESS_STEPS));
+        }
+
+        // Apply any `Presentation` the dispatcher accepted this poll. Capability negotiation and
+        // session/revision freshness are already enforced by the dispatcher and `PresentationState`
+        // themselves, so this is unconditional.
+        let mut presentation_applied = false;
+        if let Some(presentation) = self.dispatcher.take_presentation() {
+            presentation_applied = self.presentation.apply(&presentation, now);
+            #[cfg(feature = "latency-probe")]
+            if presentation_applied {
+                self.latency.on_presentation(now);
+            }
+        }
+
+        // 3. Physical input: sample once per tick, turn validated detents into gestures, and emit
+        //    semantic `InputEvent`s. `send_input_event` itself gates on capability/session, so this
+        //    stays silent until the desktop has negotiated `PHYSICAL_INPUT_V1`.
+        //    Each snapshot first closes the idle boundary at its own capture time, so a loop that
+        //    got back late neither splits a gesture whose detents were inside the window nor
+        //    extends one that had already gone quiet; the boundary is closed at `now` last.
+        // Only wait for a second press when the host understands `DoublePress`.
+        self.button
+            .set_double_press(self.dispatcher.double_press_enabled());
+        self.pump_input(now, transport, input);
+        if self.apply_session_boundary() {
+            self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
+            tick.link_dropped = true;
+        }
+
+        // Resolve changes immediately after protocol handling. Reporting remains semantic and does
+        // not wait for the visual transition. Pixel hashes still detect which bands changed.
+        let state = self.device.current();
+        if self.animator.target() != state {
+            self.animator.set_state(state, now);
+        }
+        if let Some(action) = self.dispatcher.take_mascot_action() {
+            self.animator
+                .trigger_action(action.action, action.personality, action.seed, now);
+        }
+        // Idle life runs here, on the device, so it goes on while the host is busy or gone.
+        self.animator.set_evening(self.desk.late_evening_at(now));
+        self.idle.poll(&mut self.animator, now);
+        // 4. Render on the frame cadence, or at once when fresh feedback arrived, so detent ->
+        //    panel latency does not wait out the frame interval (validation row 3.14). Only changed
+        //    tiles reach the panel (FR-013).
+        // A switch edge also renders at once: the press acknowledgement is the device's own
+        // < 50 ms feedback and must not wait out the frame interval.
+        if let Some(event) = self.button.poll(now) {
+            self.on_button(transport, event, now);
+        }
+        for index in 0..self.keys.len() {
+            if let Some(event) = self.keys[index].poll(now) {
+                self.on_key(transport, index, event, now);
+            }
+        }
+        if self.apply_session_boundary() {
+            self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
+            tick.link_dropped = true;
+            self.animator.set_state(self.device.current(), now);
+        }
+        let redraw = core::mem::take(&mut self.redraw);
+        if reached(now, self.next_frame_ms) || presentation_applied || redraw {
+            if reached(now, self.next_frame_ms) {
+                self.next_frame_ms =
+                    next_frame_deadline(self.next_frame_ms, now, self.config.frame_interval_ms);
+            }
+            tick.frame_rendered = true;
+            let state = self.device.current();
+            if self.last_rendered != Some(state) {
+                self.last_rendered = Some(state);
+            }
+            let mut counting = CountingSink {
+                inner: display,
+                flushes: 0,
+                windows: 0,
+                failed: false,
+            };
+            let view = self.desk.view_at(
+                now,
+                (
+                    self.button.is_down() || self.keys.iter().any(ButtonGesture::is_down),
+                    self.button.is_down(),
+                ),
+                self.button.recovery_percent(now),
+                matches!(self.host_takeover, Some((HostTakeover::Updating, _))),
+            );
+            let mut pose = self.animator.pose_at(now);
+            if (view.button_down || view.quiet_ack()) && view.status.mode == DisplayMode::Buddy {
+                pose.press_q8 = pose.press_q8.max(PRESS_ACK_Q8);
+            }
+            // Observed desk facts pick the buddy's face; the recovery takeover owns the screen.
+            if view.status.mode == DisplayMode::Buddy && view.recovery_percent.is_none() {
+                if let Some(face) = kivori_model::buddy_face(state, &view) {
+                    // ponytail: instant face swap; hide it inside a blink like state transitions if it reads as a pop on the panel
+                    pose.expression = face.expression;
+                    pose.press_q8 = pose.press_q8.max(face.press_q8);
+                }
+            }
+            // The transient overlay, if still in force, is composited on top of the mascot pose;
+            // it expires locally back to `None` so the panel shows the plain pose once it lapses,
+            // with no host timer or round trip needed.
+            let overlay = self.presentation.value_at(now);
+            #[cfg(feature = "latency-probe")]
+            {
+                self.latency.on_frame_start(now);
+                self.renderer.set_latency_readout(self.latency.readout());
+                self.renderer.set_probe_stats(
+                    self.latency
+                        .stats(input.dropped_edges(), self.decoder.invalid_transitions()),
+                );
+            }
+            // Compose the whole frame, then transfer it window by window. Between windows the loop
+            // drains input, so a detent waits for at most one window, not the whole frame.
+            let compose_started = clock.now_ms();
+            let mut outcome =
+                self.renderer
+                    .prepare_frame(blob, state, &pose, overlay, &view, &mut counting);
+            let composed_at = clock.now_ms();
+            while outcome.is_ok() {
+                match self.renderer.flush_next_window(&mut counting) {
+                    Ok(true) => {
+                        self.pump_input(clock.now_ms(), transport, input);
+                        // Push the event toward the host now; a failure resurfaces next tick.
+                        let _ = transport.drain_pending();
+                    }
+                    Ok(false) => break,
+                    Err(error) => outcome = Err(error),
+                }
+            }
+            self.load.on_frame(
+                composed_at.wrapping_sub(compose_started),
+                clock.now_ms().wrapping_sub(composed_at),
+            );
+            tick.tiles_flushed = counting.flushes;
+            tick.windows_flushed = counting.windows;
+            #[cfg(feature = "latency-probe")]
+            self.latency.on_tiles_flushed(counting.flushes);
+            // Tile writes block until the SPI DMA transfer completes, so this clock read is
+            // "frame fully flushed", not "presentation received".
+            #[cfg(feature = "latency-probe")]
+            if outcome.is_ok() {
+                self.latency.on_frame_flushed(clock.now_ms());
+            }
+            let failed = counting.failed;
+            if outcome.is_err() {
+                // A sink failure is reportable; a missing scene is a build-time bug that must not spin.
+                if failed {
+                    self.dispatcher
+                        .note_diagnostic(DeviceDiagnostic::DisplayFault);
+                }
+                self.renderer.invalidate();
+            }
+        }
+
+        // 5. At most one safe diagnostic per tick, category + code only (ADR-0005).
+        let mut outbound_failed = false;
+        if let Some(diagnostic) = self.dispatcher.take_diagnostic() {
+            let message = Message::Diagnostic(build_diagnostic(diagnostic));
+            if self.dispatcher.emit(transport, &message).is_ok() {
+                tick.diagnostic = Some(diagnostic);
+            } else {
+                outbound_failed = true;
+            }
+        }
+
+        // 6. Heartbeat health on a fixed cadence.
+        if !outbound_failed && reached(now, self.next_health_ms) {
+            self.next_health_ms = now.wrapping_add(self.config.health_interval_ms);
+            let message = Message::Health(build_health(free_bytes()));
+            if self.dispatcher.emit(transport, &message).is_ok() {
+                tick.health_sent = true;
+            } else {
+                outbound_failed = true;
+            }
+        }
+        // 6b. One snapshot for an accepted `InternalsRequest` (the dispatcher already checked the
+        //     capability and the session). Dropped if the link failed this tick; the host asks again.
+        if let Some(session) = self.dispatcher.take_internals_request() {
+            if !outbound_failed && self.dispatcher.accepted_session() == Some(session) {
+                let message = Message::Internals(InternalsReport {
+                    session,
+                    internals: self.internals_snapshot(now, input),
+                });
+                worked = true;
+                if self.dispatcher.emit(transport, &message).is_err() {
+                    outbound_failed = true;
+                }
+            }
+        }
+        if outbound_failed {
+            self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
+            self.dispatcher.link_lost();
+            self.apply_session_boundary();
+            let state = self.device.current();
+            if self.animator.target() != state {
+                self.animator.set_state(state, now);
+            }
+            tick.state = Some(state);
+            tick.link_dropped = true;
+        }
+
+        if tick.state.is_none() {
+            tick.state = Some(self.device.current());
+        }
+        tick.reboot = self.reboot;
+        tick.rejected_frames = self.dispatcher.rejected_frames();
+        // The loop never sleeps, so only ticks that did something count as busy.
+        let end = clock.now_ms();
+        worked |= tick.frame_rendered || tick.diagnostic.is_some() || tick.health_sent;
+        self.load.on_tick(
+            end,
+            if worked { end.wrapping_sub(now) } else { 0 },
+            tick.frame_rendered,
+        );
+        tick
+    }
+
+    /// The device internals snapshot at `now`: the board's figures first, then the loop's own.
+    fn internals_snapshot<I: InputSource>(&self, now: ElapsedMs, input: &I) -> DeviceInternals {
+        let mut out = DeviceInternals::default();
+        if let Some(probe) = self.chip_probe {
+            probe(&mut out);
+        }
+        out.asset_blob_cap_bytes = out.asset_blob_bytes.map(|_| ASSET_BLOB_CAP_BYTES);
+        self.load.fill(&mut out);
+        out.uptime_ms = Some(now);
+        out.edge_queue_high_water = Some(input.edge_high_water().min(u32::from(u16::MAX)) as u16);
+        out.dropped_edges = Some(input.dropped_edges());
+        out.invalid_transitions = Some(self.decoder.invalid_transitions());
+        out.frames_in = Some(self.dispatcher.inbound_frames());
+        out.frames_out = Some(self.dispatcher.outbound_frames());
+        out.frames_rejected = Some(self.dispatcher.rejected_frames());
+        out
+    }
+
+    /// Drains the input source up to `now`: each snapshot first closes the idle gesture boundary at
+    /// its own capture time, then is decoded into semantic `InputEvent`s; the boundary is closed at
+    /// `now` last. Called once per tick and between display windows of a long frame; the events
+    /// themselves are sent by `on_levels`, and anything a transport failure here ends is picked up
+    /// by the next tick's session-boundary check.
+    fn pump_input<T: Transport, I: InputSource>(
+        &mut self,
+        now: ElapsedMs,
+        transport: &mut T,
+        input: &mut I,
+    ) {
+        let mut samples = heapless::Vec::<(InputLevels, ElapsedMs), INPUT_SAMPLES>::new();
+        input.drain(now, &mut |levels, at_ms| {
+            // Overflow drops the OLDEST levels, so the latest edges (a switch release) keep their
+            // timing; the decoder counts the gap as one invalid transition, which can lose a
+            // detent but never invents one.
+            if samples.is_full() {
+                samples.remove(0);
+            }
+            let _ = samples.push((levels, at_ms));
+        });
+        for (levels, at_ms) in samples {
+            self.close_idle_gesture(transport, at_ms);
+            self.on_levels(transport, levels, at_ms);
+        }
+        self.close_idle_gesture(transport, now);
+    }
+
+    /// Applies one pending session boundary and returns whether it closed the active session.
+    fn apply_session_boundary(&mut self) -> bool {
+        if !self.dispatcher.take_session_ended() {
+            return false;
+        }
+        self.decoder.reset();
+        self.gesture.reset();
+        let session = self.dispatcher.accepted_session();
+        match session {
+            Some(session) => {
+                // A host is back: whatever it announced before is over.
+                self.host_takeover = None;
+                let _ = self.device.apply(DeviceEvent::LinkUp);
+                self.presentation.begin_session(session);
+                self.desk.begin_session(session);
+            }
+            None => {
+                let _ = self.device.apply(DeviceEvent::LinkDown);
+                self.presentation.end_session();
+                self.desk.end_session();
+            }
+        }
+        // A half-done press must not fire into the next session; a running recovery hold is
+        // not session-scoped and keeps going (invariant 24).
+        self.button.reset();
+        for key in &mut self.keys {
+            key.reset();
+        }
+        self.button_id = 0;
+        self.redraw = true;
+        session.is_none()
+    }
+
+    /// Ends the open rotary gesture if its inactivity window has passed by `at_ms`.
+    fn close_idle_gesture<T: Transport>(&mut self, transport: &mut T, at_ms: ElapsedMs) {
+        if let Some(RotaryEvent::GestureEnded { gesture_id }) = self.gesture.poll(at_ms) {
+            self.dispatcher
+                .send_input_event(transport, gesture_id, InputKind::GestureEnded, at_ms);
+        }
+    }
+
+    /// Decodes one level snapshot captured at `at_ms` and emits the semantic events it completes.
+    fn on_levels<T: Transport>(
+        &mut self,
+        transport: &mut T,
+        levels: InputLevels,
+        at_ms: ElapsedMs,
+    ) {
+        let rotary_open = self.gesture.is_open();
+        // One gesture owns all input: a switch that goes down while any other control is busy
+        // (raw or debounced) can never fire, so two buttons at once never make a chord.
+        let key_busy = |keys: &[ButtonGesture; 3], i: usize| keys[i].is_down() || levels.keys[i];
+        let keys_busy = (0..3).any(|i| key_busy(&self.keys, i));
+        for event in self
+            .button
+            .update(levels.sw, at_ms, rotary_open || keys_busy)
+            .into_iter()
+            .flatten()
+        {
+            self.on_button(transport, event, at_ms);
+        }
+        let switch_busy = levels.sw || self.button.is_down();
+        for index in 0..self.keys.len() {
+            let others = (0..3).any(|i| i != index && key_busy(&self.keys, i));
+            let events = self.keys[index].update(
+                levels.keys[index],
+                at_ms,
+                rotary_open || switch_busy || others,
+            );
+            for event in events.into_iter().flatten() {
+                self.on_key(transport, index, event, at_ms);
+            }
+        }
+        // The decoder always tracks the phase, but while the switch is down its detents are
+        // swallowed: one gesture owns input, and rotation never cancels or acts during a hold
+        // (invariant 33).
+        let Some(direction) = self.decoder.update(levels.a, levels.b) else {
+            return;
+        };
+        // The raw level counts too: a knob wobbles as it is pressed, and a detent inside the
+        // switch's debounce window must not change the volume either.
+        if levels.sw || self.button.is_down() || keys_busy {
+            return;
+        }
+        // The look is the device's own reaction to the touch: it needs no round trip and does not
+        // wait for whatever the action shows.
+        self.animator.look_at(LookTarget::Knob, at_ms);
+        let (started, detent) = self.gesture.on_detent(direction, at_ms);
+        if let Some(RotaryEvent::GestureStarted { gesture_id }) = started {
+            self.dispatcher.send_input_event(
+                transport,
+                gesture_id,
+                InputKind::GestureStarted,
+                at_ms,
+            );
+        }
+        if let RotaryEvent::Detent {
+            gesture_id,
+            direction,
+        } = detent
+        {
+            let _sent = self.dispatcher.send_input_event(
+                transport,
+                gesture_id,
+                InputKind::Detent(direction),
+                at_ms,
+            );
+            #[cfg(feature = "latency-probe")]
+            if _sent {
+                self.latency.on_detent(at_ms);
+            }
+        }
+    }
+
+    /// Acts on one push-switch event. Press / Hold go to the desktop (and only there: the
+    /// desktop owns action meaning); everything else is local.
+    fn on_button<T: Transport>(&mut self, transport: &mut T, event: ButtonEvent, at_ms: ElapsedMs) {
+        self.redraw = true;
+        if event == ButtonEvent::Down {
+            self.animator.look_at(LookTarget::Knob, at_ms);
+        }
+        let kind = match event {
+            ButtonEvent::Press => InputKind::Press,
+            ButtonEvent::Hold => InputKind::Hold,
+            ButtonEvent::DoublePress => InputKind::DoublePress,
+            ButtonEvent::Reboot => {
+                if !self.reboot {
+                    self.reboot = true;
+                    // Tell an accepted session it is ending on purpose; the link drop follows.
+                    if self.dispatcher.accepted_session().is_some() {
+                        let bye = Message::Bye(Bye {
+                            reason: ByeReason::Shutdown,
+                        });
+                        let _ = self.dispatcher.emit(transport, &bye);
+                    }
+                }
+                return;
+            }
+            ButtonEvent::Down | ButtonEvent::Released | ButtonEvent::RecoveryStarted => return,
+        };
+        self.button_id = self.button_id.wrapping_add(1).max(1);
+        self.dispatcher.send_button_event(
+            transport,
+            ControlId::Button,
+            self.button_id,
+            kind,
+            at_ms,
+        );
+    }
+
+    /// Acts on one contextual-button event: Press / Hold go to the desktop. These buttons never
+    /// run recovery, so a hold past ~2 s simply fires nothing (`ButtonGesture` reports it as
+    /// recovery, which is ignored here, and its `Reboot` never reaches `on_button`).
+    fn on_key<T: Transport>(
+        &mut self,
+        transport: &mut T,
+        index: usize,
+        event: ButtonEvent,
+        at_ms: ElapsedMs,
+    ) {
+        self.redraw = true;
+        if event == ButtonEvent::Down {
+            self.animator
+                .look_at(LookTarget::Button(index as u8), at_ms);
+        }
+        let kind = match event {
+            ButtonEvent::Press => InputKind::Press,
+            ButtonEvent::Hold => InputKind::Hold,
+            _ => return,
+        };
+        self.button_id = self.button_id.wrapping_add(1).max(1);
+        self.dispatcher.send_button_event(
+            transport,
+            ControlId::ContextButton(index as u8),
+            self.button_id,
+            kind,
+            at_ms,
+        );
+    }
+}
+
+fn next_frame_deadline(
+    previous_deadline_ms: ElapsedMs,
+    now_ms: ElapsedMs,
+    interval_ms: ElapsedMs,
+) -> ElapsedMs {
+    let interval_ms = interval_ms.max(1);
+    let elapsed_intervals = now_ms.wrapping_sub(previous_deadline_ms) / interval_ms;
+    previous_deadline_ms.wrapping_add(elapsed_intervals.wrapping_add(1).wrapping_mul(interval_ms))
+}
+
+/// `now` is at or past `deadline` on the wrapping millisecond clock (deadlines are always less
+/// than ~24 days ahead, so the signed difference is exact).
+const fn reached(now: ElapsedMs, deadline: ElapsedMs) -> bool {
+    now.wrapping_sub(deadline) as i32 >= 0
+}
+
+/// Free SRAM in bytes.
+///
+/// Measuring genuine heap/stack headroom needs linker symbols and a stack-watermark scheme that only means
+/// anything on real silicon, so this reports `0` — "not measured" — rather than a fabricated number that
+/// would read as a real measurement on a dashboard. Producing a true figure is part of the on-device
+/// validation work (T116/T119), not something the host tests can establish.
+const fn free_bytes() -> u32 {
+    0
+}
+
+/// Runs the production loop forever, with caller-owned frame staging memory.
+///
+/// `observe` sees every [`Tick`] together with the transport; the physical binary uses it to flush the
+/// final `Bye` and reboot when the recovery hold completes.
+// One argument per port/config/observer — bundling them would obscure which port is which at every
+// call site for no real benefit here.
+#[allow(clippy::too_many_arguments)]
+pub fn run_buffered<C, T, I, D>(
+    identity: DeviceIdentity,
+    config: RuntimeConfig,
+    clock: &C,
+    transport: &mut T,
+    input: &mut I,
+    display: &mut D,
+    blob: &AssetBlob,
+    frame_buffer: &mut [kivori_model::Rgb565; crate::render::FRAME_PIXELS],
+    chip_probe: ChipProbe,
+    boot: BootCheck,
+    mut observe: impl FnMut(&Tick, &mut T),
+) -> !
+where
+    C: Clock,
+    T: Transport,
+    I: InputSource,
+    D: DisplaySink,
+{
+    let mut runtime = Runtime::with_frame_buffer(identity, config, frame_buffer);
+    runtime.set_chip_probe(chip_probe);
+    runtime.set_boot_check(boot);
+    loop {
+        let tick = runtime.step(clock, transport, input, display, blob);
+        observe(&tick, transport);
+    }
+}

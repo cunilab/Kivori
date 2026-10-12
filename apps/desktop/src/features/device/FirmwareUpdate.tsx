@@ -21,11 +21,13 @@ import {
   CardHeader,
   CardTitle,
 } from '@kivori/ui/components/card';
+import { useFirmwareOffer, useUpdateStatus } from '@/hooks/use-kivori';
 import { flashFirmware, getFirmwareStatus, restoreFirmware } from '@/lib/ipc';
 import type { FirmwareStatusDto } from '@/lib/ipc/types';
 import { failureMessage, needsRestore } from './firmware-copy';
 import { RecoveryDialog } from './RecoveryDialog';
-import { strings } from '@/lib/i18n/strings';
+import { requestUpdateDialog } from '../updates/dialog-request';
+import { format, strings } from '@/lib/i18n/strings';
 import { cn } from '@kivori/ui/lib/utils';
 
 const PHASES = ['preparing', 'flashing', 'reconnecting', 'succeeded'] as const;
@@ -46,6 +48,8 @@ export function FirmwareUpdate({
   const [pollError, setPollError] = useState<string | null>(null);
   const pending = useRef(false);
   const mounted = useRef(false);
+  const appUpdate = useUpdateStatus()?.update ?? null;
+  const offerKind = useFirmwareOffer()?.kind ?? null;
   const t = strings.firmwareUpdate;
 
   useEffect(() => {
@@ -102,13 +106,13 @@ export function FirmwareUpdate({
     }
   };
 
-  const restore = async (): Promise<void> => {
+  const restore = async (product?: string): Promise<void> => {
     if (!canRestore || pending.current) return;
     pending.current = true;
     setRequesting(true);
     setRequestError(null);
     try {
-      await restoreFirmware();
+      await restoreFirmware(product);
       const snapshot = await getFirmwareStatus();
       if (mounted.current) setStatus(snapshot);
     } catch (failure) {
@@ -120,6 +124,12 @@ export function FirmwareUpdate({
       if (mounted.current) setRequesting(false);
     }
   };
+
+  // A device newer than this app, by firmware version or (incompatible) by protocol major.
+  const advice =
+    status?.advice === 'deviceNewer' || offerKind === 'updateApp'
+      ? 'deviceNewer'
+      : (status?.advice ?? null);
 
   const phase = status?.phase ?? 'idle';
   const stepIndex = PHASES.indexOf(phase as (typeof PHASES)[number]);
@@ -172,7 +182,7 @@ export function FirmwareUpdate({
           {requesting
             ? t.preparing
             : phase === 'failed'
-              ? failureMessage(status?.failure ?? null)
+              ? failureMessage(status?.failure ?? null, status?.wrongProduct ?? null)
               : (status?.message ?? t.checking)}
         </p>
         {status ? (
@@ -185,16 +195,22 @@ export function FirmwareUpdate({
             </div>
           </dl>
         ) : null}
-        {status?.advice && t.advice[status.advice] ? (
+        {advice && t.advice[advice] ? (
           <p
             className={cn(
               'text-sm',
-              status.advice === 'updateAvailable' ? 'font-medium' : 'text-muted-foreground',
+              advice === 'updateAvailable' ? 'font-medium' : 'text-muted-foreground',
             )}
             data-testid="update-advice"
           >
-            {t.advice[status.advice]}
+            {t.advice[advice]}
           </p>
+        ) : null}
+        {/* A device newer than this app is told to update the app, and can go straight to it. */}
+        {advice === 'deviceNewer' && appUpdate ? (
+          <Button size="sm" variant="outline" onClick={requestUpdateDialog}>
+            {strings.updates.view}
+          </Button>
         ) : null}
         {!connected && !incompatible && !busy ? (
           <p className="text-sm text-muted-foreground">{t.connect}</p>
@@ -233,6 +249,22 @@ export function FirmwareUpdate({
           <Plug className="mt-px size-3.5 shrink-0" aria-hidden="true" />
           {t.caution}
         </p>
+        {phase === 'failed' && status?.failure === 'chooseProduct' ? (
+          <ul className="space-y-2" aria-label={t.failures.chooseProduct}>
+            {status.restoreChoices.map((choice) => (
+              <li key={choice.id}>
+                <Button
+                  variant="outline"
+                  disabled={!canRestore}
+                  onClick={() => void restore(choice.id)}
+                >
+                  <LifeBuoy aria-hidden="true" />
+                  {format(t.chooseProductAction, { product: choice.name })}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         {showRestore ? (
           <div className="space-y-2">
             <Button
