@@ -1,10 +1,9 @@
 //! The production device runtime (T074): the real run loop, written against the four ports.
 //!
-//! This is **the** firmware behaviour. It is not a harness, not a self-test, and not simulation-specific:
-//! the physical binary and the Wokwi `wokwi-runtime` mode call the same [`run`] with the same [`Runtime`],
-//! differing only in which [`Clock`], [`Transport`], [`InputSource`], and [`DisplaySink`] instances they
-//! hand it and which panel profile built the sink. There is deliberately no second loop implementation to
-//! drift.
+//! This is **the** firmware behaviour, not a test harness: the physical binary runs [`run_buffered`] and the
+//! host-sim tests step the same [`Runtime`], differing only in which [`Clock`], [`Transport`],
+//! [`InputSource`], and [`DisplaySink`] instances they hand it. There is deliberately no second loop
+//! implementation to drift.
 //!
 //! Each tick, in order:
 //!
@@ -22,11 +21,11 @@
 //! The loop never returns and never panics on bad input: a transport failure is reported as a diagnostic
 //! and the link drops to `offline`, from which a new `Hello` can bring the session back up.
 //!
-//! # What running this proves, and what it does not
+//! # What the host tests prove, and what they do not
 //!
-//! Executing it in a simulator exercises the real protocol, lifecycle, renderer, and tile-output paths on
-//! the target ISA. It says nothing about the physical panel — its controller, offsets, orientation, colour
-//! order, and backlight are supplied from outside this module and remain unconfirmed.
+//! Stepping it on the host exercises the real protocol, lifecycle, renderer, and tile-output paths. It
+//! says nothing about the physical panel — its controller, offsets, orientation, colour order, and
+//! backlight are supplied from outside this module and are validated on hardware.
 
 use crate::health::{build_diagnostic, build_health, DeviceDiagnostic};
 use crate::identity::BootCheck;
@@ -96,8 +95,8 @@ impl Default for RuntimeConfig {
     }
 }
 
-/// What one [`Runtime::step`] observed. Returned so tests and the Wokwi mode can assert on real work
-/// instead of guessing from side effects.
+/// What one [`Runtime::step`] observed. Returned so the run loop's observer and the tests can act on real
+/// work instead of guessing from side effects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Tick {
     /// The state the device holds after this tick.
@@ -119,12 +118,6 @@ pub struct Tick {
     pub reboot: bool,
     /// Frames the decoder has rejected since boot (cumulative).
     pub rejected_frames: u32,
-    /// `HelloAck` replies transmitted since boot (cumulative).
-    pub hello_acks: u32,
-    /// `Pong` replies transmitted since boot (cumulative).
-    pub pongs: u32,
-    /// `StateReport` messages transmitted since boot (cumulative).
-    pub state_reports: u32,
 }
 
 /// A [`DisplaySink`] decorator counting flushes, so the runtime can report tile activity without the sink
@@ -852,9 +845,6 @@ impl<'a> Runtime<'a> {
         }
         tick.reboot = self.reboot;
         tick.rejected_frames = self.dispatcher.rejected_frames();
-        tick.hello_acks = self.dispatcher.hello_acks();
-        tick.pongs = self.dispatcher.pongs();
-        tick.state_reports = self.dispatcher.state_reports();
         // The loop never sleeps, so only ticks that did something count as busy.
         let end = clock.now_ms();
         worked |= tick.frame_rendered || tick.diagnostic.is_some() || tick.health_sent;
@@ -1114,46 +1104,17 @@ const fn reached(now: ElapsedMs, deadline: ElapsedMs) -> bool {
 /// Measuring genuine heap/stack headroom needs linker symbols and a stack-watermark scheme that only means
 /// anything on real silicon, so this reports `0` — "not measured" — rather than a fabricated number that
 /// would read as a real measurement on a dashboard. Producing a true figure is part of the on-device
-/// validation work (T116/T119), not something simulation can establish.
+/// validation work (T116/T119), not something the host tests can establish.
 const fn free_bytes() -> u32 {
     0
 }
 
-/// Runs the production loop forever.
+/// Runs the production loop forever, with caller-owned frame staging memory.
 ///
-/// The physical binary and the Wokwi runtime mode both call this; only the injected ports differ.
+/// `observe` sees every [`Tick`] together with the transport; the physical binary uses it to flush the
+/// final `Bye` and reboot when the recovery hold completes.
 // One argument per port/config/observer — bundling them would obscure which port is which at every
 // call site for no real benefit here.
-#[allow(clippy::too_many_arguments)]
-pub fn run<C, T, I, D>(
-    identity: DeviceIdentity,
-    config: RuntimeConfig,
-    clock: &C,
-    transport: &mut T,
-    input: &mut I,
-    display: &mut D,
-    blob: &AssetBlob,
-    observe: impl FnMut(&Tick, &mut T),
-) -> !
-where
-    C: Clock,
-    T: Transport,
-    I: InputSource,
-    D: DisplaySink,
-{
-    let mut runtime = Runtime::new(identity, config);
-    run_loop(
-        &mut runtime,
-        clock,
-        transport,
-        input,
-        display,
-        blob,
-        observe,
-    )
-}
-
-/// Runs the same production loop with caller-owned frame staging memory.
 #[allow(clippy::too_many_arguments)]
 pub fn run_buffered<C, T, I, D>(
     identity: DeviceIdentity,
@@ -1166,7 +1127,7 @@ pub fn run_buffered<C, T, I, D>(
     frame_buffer: &mut [kivori_model::Rgb565; crate::render::FRAME_PIXELS],
     chip_probe: ChipProbe,
     boot: BootCheck,
-    observe: impl FnMut(&Tick, &mut T),
+    mut observe: impl FnMut(&Tick, &mut T),
 ) -> !
 where
     C: Clock,
@@ -1177,36 +1138,8 @@ where
     let mut runtime = Runtime::with_frame_buffer(identity, config, frame_buffer);
     runtime.set_chip_probe(chip_probe);
     runtime.set_boot_check(boot);
-    run_loop(
-        &mut runtime,
-        clock,
-        transport,
-        input,
-        display,
-        blob,
-        observe,
-    )
-}
-
-fn run_loop<C, T, I, D>(
-    runtime: &mut Runtime<'_>,
-    clock: &C,
-    transport: &mut T,
-    input: &mut I,
-    display: &mut D,
-    blob: &AssetBlob,
-    mut observe: impl FnMut(&Tick, &mut T),
-) -> !
-where
-    C: Clock,
-    T: Transport,
-    I: InputSource,
-    D: DisplaySink,
-{
     loop {
         let tick = runtime.step(clock, transport, input, display, blob);
-        // The observer receives the transport so a simulation mode can emit text markers over the same
-        // link the protocol uses. The production binary passes a closure that does nothing.
         observe(&tick, transport);
     }
 }

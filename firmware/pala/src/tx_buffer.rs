@@ -37,7 +37,7 @@ impl<T: Transport> TxBuffered<T> {
         self.queue.len()
     }
 
-    /// Borrows the wrapped transport (for adapter-specific calls such as blocking marker writes).
+    /// Borrows the wrapped transport (for adapter-specific calls on the inner transport).
     pub fn inner_mut(&mut self) -> &mut T {
         &mut self.inner
     }

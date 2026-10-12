@@ -16,7 +16,7 @@ long-term concern. Engineering rigor stays; only the order changes.
 ## Rules
 
 1. A milestone is done only when every box is ticked, including its hardware rows in
-   [validation.md](./validation.md). Simulation and host tests never replace a physical check.
+   [validation.md](./validation.md). Host-sim and other host tests never replace a physical check.
 2. Don't start the next milestone while the current one has open hardware rows. Code may run ahead,
    but it doesn't count as done.
 3. Every milestone keeps all [product acceptance gates](./product.md#product-acceptance-gates) intact.
@@ -33,7 +33,7 @@ Software for the device link, mascot, rotary volume and flashing is built and gr
 
 - [x] ESP32-C3 ↔ desktop protocol: postcard + CRC frames, handshake, version and capability negotiation, nonce as session identity
 - [x] Automatic discovery, reconnect state machine, heartbeat, offline-first boundary
-- [x] ST7789 rendering: deterministic renderer, 36-tile DMA path, Device Studio preview, golden-frame and Wokwi tests
+- [x] ST7789 rendering: deterministic renderer, 36-tile DMA path, Device Studio preview, golden-frame tests
 - [x] Rotary input: HW-040 decoder (detent only on return to rest), 250 ms gesture boundary
 - [x] Windows volume control: Core Audio backend, fixed-step volume, preview → confirmed overlay
 - [x] Mascot: keycap buddy, social reactions, companion personality, typed session-only activity log

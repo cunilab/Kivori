@@ -79,7 +79,6 @@ The paid beta (M3) also waits on items that are not code. Details in
 - **[espflash](https://github.com/esp-rs/espflash)** only if you are flashing hardware:
   `cargo install espflash`
 - **jq** for the dependency guard scripts
-- A `WOKWI_CLI_TOKEN` only if you intend to run the Wokwi simulation gate
 
 ### Run the desktop app
 
@@ -108,11 +107,10 @@ bare fallback with no display and no input; worth knowing if you invoke cargo di
 just test                      # host workspace + frontend
 just fw-test                   # firmware core against host-sim adapters
 just golden                    # deterministic rendering, frame-hash goldens
-just sim-test                  # Wokwi scenarios (needs a token)
 ```
 
-Host-sim, Wokwi simulation and physical hardware are **separate classes of evidence** here, and
-simulation is never promoted to physical proof. Hardware results are recorded in
+Host-sim tests and physical hardware are **separate classes of evidence** here, and a host-sim
+result is never promoted to physical proof. Hardware results are recorded in
 [`docs/validation.md`](docs/validation.md).
 
 ## Hardware and pin map
@@ -186,9 +184,8 @@ Kivori/
 ├── firmware/pala/   Kivori Pip firmware (ESP32-C3, its own Cargo workspace)
 ├── products/        product registry and catalog (registry.toml, <id>/product.toml)
 ├── hardware/        3D-printable enclosure and printed carrier plate (FreeCAD, parametric)
-├── sim/             Wokwi simulation
 ├── tests/           golden frames and cross-crate tests
-├── tools/           asset compiler and Wokwi generators
+├── tools/           asset compiler
 ├── scripts/         guard, build and release scripts
 └── docs/            product, architecture, ADRs, roadmap, validation, release, guides
 ```
@@ -210,8 +207,7 @@ One file per topic:
 | [`docs/user-guide.md`](docs/user-guide.md) | Short guide for a beta customer: install, setup, controls, recovery |
 | [`docs/bom.md`](docs/bom.md) | Draft bill of materials (prices still to fill in) |
 
-Wokwi simulation setup lives in [`sim/wokwi/README.md`](sim/wokwi/README.md). If the docs
-disagree, `product.md` wins on behavior and the code wins on facts. Older plans, specs and research
+If the docs disagree, `product.md` wins on behavior and the code wins on facts. Older plans, specs and research
 are in Git history.
 
 ## Common commands
@@ -227,7 +223,6 @@ just fw-check          # shared no_std crates compiled for RISC-V (isolation pro
 just fw-test           # firmware core against host-sim adapters
 just fw-build          # build the product ESP32-C3 firmware (physical-st7789)
 just fw-flash          # flash + monitor the product firmware over USB
-just sim-test          # Wokwi integration scenarios (needs WOKWI_CLI_TOKEN)
 just provision         # flash and check one new unit (docs/provisioning.md)
 just bundle-windows    # build the unsigned Windows installer (docs/release.md)
 just bundle-macos      # build the macOS .app/.dmg (docs/release.md)
@@ -246,8 +241,8 @@ just web-dev           # website dev server on :3000
   the person reading the release.
 - CI runs on pull requests and on `main`: `host` (Rust workspace on Linux and Windows, frontend,
   Windows startup smoke), `firmware` (no_std isolation, RISC-V clippy, host-sim tests),
-  `determinism` (golden frames, asset reproducibility), `wokwi` (simulation, firmware and sim
-  changes only), `web` (website changes only) and, for packaging changes, `release`.
+  `determinism` (golden frames, asset reproducibility), `web` (website changes only) and, for
+  packaging changes, `release`.
 - Three guard scripts run in CI and are worth running locally before pushing; they fail for
   reasons ordinary tests do not catch:
 

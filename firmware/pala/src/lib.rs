@@ -8,8 +8,7 @@
 //! keeps every device decision host-testable against the shared golden frames (constitution
 //! Principle IV, constraint 4).
 
-/// Board bring-up: clocks, USB Serial/JTAG, and the display SPI bus (T070). No physical pin, panel
-/// controller, or offset is chosen here — every board fact is a parameter.
+/// Board bring-up shared by every `embedded` mode: the monotonic clock and USB Serial/JTAG (T070).
 #[cfg(feature = "embedded")]
 pub mod bsp;
 #[cfg(feature = "embedded")]
@@ -30,38 +29,23 @@ pub mod internals;
 #[cfg(feature = "latency-probe")]
 pub mod latency_probe;
 pub mod ports;
-/// Board profiles. The only concrete profile is simulation-only; no physical panel is described anywhere.
+/// Board profiles: the verified physical pin map and panel facts.
 pub mod profile;
 pub mod proto;
 pub mod render;
-/// The production device runtime (T074): the single run loop shared by physical firmware and simulation.
+/// The production device runtime (T074): the single run loop the physical firmware runs and the host-sim
+/// tests drive.
 pub mod runtime;
 pub mod state;
 
 #[cfg(feature = "host-sim")]
 pub mod sim;
 
-/// Wokwi pre-hardware simulation: probe adapters + the in-firmware self-test harness. Simulation is an
-/// additional gate; it never replaces the host-sim tests or physical validation.
-#[cfg(feature = "wokwi")]
-pub mod selftest;
-
-/// External serial test mode: the real USB Serial/JTAG receive/transmit loop under Wokwi automation.
-#[cfg(feature = "wokwi-serial")]
-pub mod external;
-#[cfg(feature = "wokwi")]
-pub mod sim_probe;
-/// Wokwi stage-2 GENERIC SPI/RGB565 tile-transfer probe (T131). Never a controller validation.
-#[cfg(feature = "wokwi-spi")]
-pub mod spi_probe;
 /// Real USB Serial/JTAG transport (also the hardware adapter core, T071).
-#[cfg(any(feature = "wokwi-serial", feature = "embedded"))]
+#[cfg(feature = "embedded")]
 pub mod transport;
 /// Whole-frame outbound queue (hardware-neutral).
 pub mod tx_buffer;
-/// Wokwi PRODUCTION-RUNTIME mode: constructs ports for the real [`runtime::run`] loop (T074).
-#[cfg(feature = "wokwi-runtime")]
-pub mod wokwi_runtime;
 
 /// Board measurements for the device internals snapshot (flash, RAM, stack, chip, temperature).
 #[cfg(feature = "physical-st7789")]

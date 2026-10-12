@@ -31,33 +31,13 @@ embedded = [
   "dep:esp-hal",
   "dep:esp-println",
   "dep:esp-backtrace",
-  "dep:embedded-hal-bus",
   "dep:critical-section",
 ]
 # Host simulation adapters (in-memory transport, capture display, virtual clock) for testing the
 # device core with no hardware.
 host-sim = []
-# Wokwi pre-hardware simulation: the embedded runtime plus an in-firmware self-test harness that
-# drives the REAL dispatcher/lifecycle/renderer and asserts over serial (see sim/wokwi/README.md).
-# Simulation is an extra gate — it never replaces the host-sim tests or physical validation.
-
-physical-st7789 = ["embedded", "dep:static_cell"]
-
-
-wokwi = ["embedded"]
-# Wokwi EXTERNAL serial test: the real USB Serial/JTAG receive/transmit loop, driven by Wokwi
-# `write-serial` automation injecting real wire frames (see sim/wokwi/generated/*.yaml).
-wokwi-serial = ["embedded"]
-# Wokwi STAGE-2 GENERIC SPI/RGB565 tile-transfer probe: drives the real T072 `mipidsi` DisplaySink over
-# the real esp-hal SPI peripheral against Wokwi's built-in `wokwi-ili9341` part, used ONLY as a generic
-# SPI/RGB565/tile-transfer probe. It validates bus activity, command/data phases, tile geometry, byte
-# volume, and change-driven refresh. It does NOT validate the Kivori panel's controller, init sequence,
-# offsets, colour order, orientation, or backlight — the physical controller is unconfirmed (see
-# sim/wokwi/README.md "What this does not prove").
-wokwi-spi = ["embedded"]
-# Wokwi PRODUCTION-RUNTIME mode: executes the genuine `runtime::run` loop (T074) with the simulation-only
-# board profile. Same runtime function the physical firmware calls — only the injected ports differ.
-wokwi-runtime = ["embedded"]
+# The shipping product firmware: the verified ESP32-C3 + ST7789 240x240 board, rotary and buttons.
+physical-st7789 = ["embedded", "dep:static_cell", "dep:embedded-hal-bus"]
 # DEVELOPMENT ONLY (T102; ADR-0005 §3): raw wire-byte tracing. Compiled out of every release artifact;
 # `scripts/check-release-surface.sh` proves both its absence and, with the feature on, its presence.
 debug-payloads = []
@@ -84,19 +64,19 @@ critical-section = { version = "1", optional = true }
 esp-hal = { version = "1.1.1", default-features = false, features = ["esp32c3", "rt", "unstable"], optional = true }
 esp-println = { version = "0.17", default-features = false, features = ["esp32c3", "uart"], optional = true }
 esp-backtrace = { version = "0.19", default-features = false, features = ["esp32c3", "panic-handler", "println"], optional = true }
-# T072 display adapter. These are PRODUCTION dependencies (not simulation-only) and are deliberately
+# T072 display adapter. These are PRODUCTION dependencies and are deliberately
 # hardware-neutral: `display.rs` speaks only embedded-hal + mipidsi, so it compiles for the host as well
 # as riscv and is unit-testable with a recording SPI device. `batch` (default) is dropped — it is not
 # needed for windowed writes and pulls in `heapless` inside mipidsi.
 mipidsi = { version = "0.10", default-features = false }
 embedded-hal = "1.0"
 embedded-graphics-core = "0.4"
-# Only the esp-hal board wiring needs the bus/CS wrapper, so it rides on `embedded`.
+# Only the physical board wiring needs the bus/CS wrapper, so it rides on `physical-st7789`.
 embedded-hal-bus = { version = "0.3", default-features = false, optional = true }
 esp-bootloader-esp-idf = { version = "0.5", features = ["esp32c3"] }
 
 [build-dependencies]
-# Host-side, build-time only: compiles the canonical asset blob for the `wokwi` self-test (see build.rs).
+# Host-side, build-time only: compiles the canonical asset blob every `embedded` build renders (see build.rs).
 # Never linked into the device binary — the firmware reads the compiled bytes, never source art.
 kivori-asset-compiler = { path = "../../tools/asset-compiler" }
 

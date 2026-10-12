@@ -45,7 +45,7 @@ Two Cargo workspaces. Shared crates are `no_std`, no-alloc, and the single sourc
 | `products/` | `registry.toml` (machine ids and wire numbers for products and boards) and `<id>/product.toml` (customer name, short name, model code, boards, flash method, USB hints, bundled firmware crate and artifact, required capabilities); compiled into the app, see ADR-0014. |
 | `firmware/pala` | The Kivori Pip firmware (crate `kivori-firmware`); separate workspace: `ports.rs`, `input/` (quadrature, gesture), `physical_st7789.rs`, `physical_rotary.rs`, `runtime.rs`, `proto.rs`, plus host simulation adapters in `sim/`. |
 | `tools/asset-compiler` | SVG to deterministic RGB565 blob (host build tool). |
-| `tools/wokwi-*`, `tests/e2e-host-sim`, `tests/golden-frames` | Simulation vectors, host-sim end-to-end tests, cross-OS frame-hash harness. |
+| `tests/e2e-host-sim`, `tests/golden-frames` | Host-sim end-to-end tests, cross-OS frame-hash harness. |
 | `.github/workflows/` | CI, see below. |
 | `scripts/` | Boundary guards (`check-crate-boundaries.sh`, `check-offline-deps.sh`, `check-frontend-offline.mjs`) and firmware/desktop build scripts. |
 
@@ -56,7 +56,6 @@ CI workflows (`.github/workflows/`):
 | `host` | Rust on Ubuntu and Windows, the frontend, and the Windows Device Studio startup smoke test: format, clippy, tests, the boundary, offline and release-surface guards. |
 | `firmware` | no_std isolation proof, firmware host-sim tests and RISC-V builds and clippy per feature set. |
 | `determinism` | Golden-frame hashes across operating systems and the byte-reproducible asset blob. |
-| `wokwi` | The Wokwi simulation gate. Path-filtered (`firmware/**`, `crates/**`, `sim/**`, Wokwi tools and scripts) because its minutes are metered. |
 | `release` | The unsigned Windows installer and draft release on a `v*` tag, manually with an optional macOS build; also on pull requests that touch packaging files ([release.md](./release.md)). |
 | `Release` (`release-start.yml`) | Manual only, from `main`: the owner's Release button. Bumps the app (and optionally firmware) version, refreshes the lockfiles, commits and tags, then calls `release` with the tag; a dry run only prints the plan and notes ([release.md](./release.md)). |
 
@@ -85,7 +84,7 @@ Desktop state is in memory only. `desired` defaults to `idle` and is re-sent aft
 - Sleep, wake, lock and console changes: Windows `PowerRegisterSuspendResumeNotification` (callback) plus `WTSRegisterSessionNotification` on a message-only window thread; macOS IOKit `IORegisterForSystemPower` on a CFRunLoop thread (hand-declared FFI) plus a 4 Hz poll of the session lock flag. See Host presence.
 - Flashing: a pinned `espflash` sidecar, driven by the native core (see Firmware update and recovery).
 - Not built yet: a Linux backend, desktop self-update, a factory-provisioned device id.
-- Device id (#24): the firmware derives its 16-byte `device_id` from the chip's factory eFuse unique ID, falling back to the base MAC, through a domain-separated SHA-256 (`kivori-device-id-v1`); raw eFuse bytes never go on the wire. The raw id stays in the transport layer; UI and logs only show the short hash (ADR-0005). Simulator and Wokwi images keep fixed ids.
+- Device id (#24): the firmware derives its 16-byte `device_id` from the chip's factory eFuse unique ID, falling back to the base MAC, through a domain-separated SHA-256 (`kivori-device-id-v1`); raw eFuse bytes never go on the wire. The raw id stays in the transport layer; UI and logs only show the short hash (ADR-0005).
 
 ## 2. Wire protocol
 
@@ -160,7 +159,7 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 
 - One appended message: tag 23 `Identity { session, product, board, hw_rev, source }` (device to desktop). The device sends it once, right after the `Ready` that negotiated the capability, from the accepted session. `HelloAck` is unchanged (a fixed struct, ADR-0002) and `PROTOCOL_MINOR` stays 6: this capability rides the same minor as the rest of the 1.6 additions, which is what negotiation by capability is for. `product` and `board` are the `u16` numbers of `products/registry.toml` (never 0); `hw_rev` is `None` until provisioning burned one; `source` is `Build` (compiled into the firmware) or `Chip` (read from the chip identity record).
 - The desktop (`Session::identity`) keeps it for the connection only and clears it at every session boundary. A device that did not negotiate the capability is the legacy identity: product `pala`, board `c3-supermini`, revision unknown, source "legacy" (a desktop-side value, never on the wire). Numbers resolve through `catalog::by_wire`; one the catalog does not know is shown as "Unknown product (n)" or "Unknown board (n)" and never guessed: the session negotiates nothing else for that device and the flashing guard refuses it.
-- Firmware build identity: `firmware/<product>/build.rs` reads the product and board numbers from `products/registry.toml` (and the image's minimum protocol from `product.toml`) into compile-time `env!` values, so no number is typed twice. The physical build advertises the capability; the Wokwi builds do not (they advertise a fixed older subset).
+- Firmware build identity: `firmware/<product>/build.rs` reads the product and board numbers from `products/registry.toml` (and the image's minimum protocol from `product.toml`) into compile-time `env!` values, so no number is typed twice. The physical build advertises the capability.
 - Chip identity record (`kivori_protocol::identity`, `no_std`): 12 bytes, little-endian: format version (1), product (`u16`), board (`u16`), hardware revision (`u8`, 0 = unspecified), 2 reserved zero bytes, CRC-32 (the frame CRC) over the first 8. A region of all zeros is "not provisioned" (fresh eFuses read zero). Firmware reads it from the C3 user eFuse block (BLOCK3, `BLOCK_USR_DATA`) with `esp_hal::efuse::read_field_le`; this step never writes eFuses. An unprovisioned or invalid record means source `Build` with no revision.
 - Wrong-board boot check (tier A, ADR-0016): a valid record whose product or board differs from the build identity makes the firmware run no product. It shows the static "Wrong firmware for this Kivori" screen (`render_wrong_board`; only the recovery hold is drawn above it), advertises only `PRODUCT_IDENTITY_V1`, and reports the chip's identity with source `Chip`, so the app can see what the unit is and reflash it. The recovery hold still reboots it (invariant 24).
 - Image identity record: the firmware image carries `KIVORI-FW-IDENTITY:p=<product>;b=<board>;v=<x.y.z>;m=<major.minor>\0` next to its version marker (`firmware_marker::scan_image_identity`). The desktop `build.rs` fails the build if the embedded image's record differs from the catalog (product, board, firmware crate version, minimum protocol).
@@ -193,7 +192,7 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 
 - Two appended messages: tag 19 `InternalsRequest { session }` (desktop to device) and tag 20 `Internals { session, DeviceInternals }` (device to desktop). The device answers a request from the accepted session with one reply, only when the capability was negotiated; anything else is dropped unseen. `Health` is unchanged.
 - `DeviceInternals` (`kivori-model::internals`) is fixed-size and every field is an `Option`, so a value the device cannot measure is `None` on the wire and "Unavailable" in the card, never 0. Fields: flash (`app_image_bytes`, `app_partition_bytes`, `asset_blob_bytes`, `asset_blob_cap_bytes`, `flash_total_bytes`), RAM (`ram_total_bytes`, `ram_static_bytes`, `ram_free_bytes`, `stack_free_min_bytes`), load and display (`busy_percent`, `compose_ms`, `flush_ms`, `fps`), chip (`chip_model`, `chip_revision`, `temperature_decicelsius`, `uptime_ms`, `reset_reason`) and input and link (`edge_queue_high_water`, `dropped_edges`, `invalid_transitions`, `frames_in`, `frames_out`, `frames_rejected`). Counters are `u32`, wrap, and reset at boot. `ChipModel` and `ResetReason` are append-only enums.
-- Firmware (`internals.rs` holds the pure parts, `chip_probe.rs` the physical-only reads). The run loop owns busy %, fps, compose and flush time (`LoadMeter`, one-second windows) and the counters; the board fills the rest through a `ChipProbe` that `run_buffered` installs. The Wokwi runtime installs none and does not advertise the capability.
+- Firmware (`internals.rs` holds the pure parts, `chip_probe.rs` the physical-only reads). The run loop owns busy %, fps, compose and flush time (`LoadMeter`, one-second windows) and the counters; the board fills the rest through a `ChipProbe` that `run_buffered` installs.
 - The desktop asks with `Session::request_internals` (nothing is sent without the capability), caches the latest reply in `Session` (connection-scoped: cleared by `open` and by any session boundary), and the device thread publishes it with the diagnostics snapshot (at once when it changes). `get_device_internals` asks for a fresh snapshot and returns the cached `DeviceInternalsDto`; the card polls it every 1 s while mounted (developer mode on, window visible), so the device is asked only then.
 
 ### Host takeovers (protocol 1.5, `HOST_TAKEOVERS_V1`)
@@ -328,7 +327,7 @@ The webview may call only these commands and listen to these events. No command 
 ### Rendering path
 
 - `render_scene(blob, scene, elapsed_ms, tile)` composites into an RGB565 tile with integer math only. Stitched tiles must equal the full-frame output.
-- In simulation firmware can render through small tile buffers. On the physical ST7789 it stages one full RGB565 pose (115,200 bytes, 112.5 KiB) in static SRAM, then sends only changed 40x40 tiles by SPI DMA. Composing and hashing never overlap the transfer. Tile hashes (`kivori-framebuffer`) skip unchanged tiles.
+- Without a frame buffer (the host-sim `Runtime::new` path) the firmware renders through a small tile buffer. On the physical ST7789 it stages one full RGB565 pose (115,200 bytes, 112.5 KiB) in static SRAM, then sends only changed 40x40 tiles by SPI DMA. Composing and hashing never overlap the transfer. Tile hashes (`kivori-framebuffer`) skip unchanged tiles.
 - The unwired TE pin means no refresh sync, and this is not panel double buffering.
 - Golden frames (`tests/golden-frames`) pin frame hashes across OSes. An intentional pixel change updates the goldens in the same change.
 
@@ -540,7 +539,7 @@ lists them all with their status and says how to add one.
 1. Observable truth first. An acknowledgement is not confirmation, unknown stays unknown, stale input is never replayed.
 2. One visual model. Preview and device use the same scenes, assets, timing and renderer. The frontend never re-implements device pixels.
 3. Deterministic rendering. Same inputs give byte-identical RGB565. No wall clock, unseeded randomness or platform floats. Intentional pixel changes update the goldens in the same change.
-4. Hardware limits are design inputs (RAM, flash, SPI, USB, boot straps, recovery). Shared crates stay `no_std` and no-alloc. Hardware claims need hardware evidence, and simulation is labelled as simulation.
+4. Hardware limits are design inputs (RAM, flash, SPI, USB, boot straps, recovery). Shared crates stay `no_std` and no-alloc. Hardware claims need hardware evidence, and host-sim results are labelled as host-sim.
 5. Desktop owns desktop meaning (OS integration, bindings, actions, config, updates). Firmware owns what must work without a healthy desktop (input conditioning, gestures, local rendering, device health, recovery).
 6. Send meaning across boundaries (state, input, presentation), not drawing commands or streamed frames.
 7. Offline-first core. Network features are isolated, explicit, and never block startup or device operation.

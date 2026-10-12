@@ -72,8 +72,8 @@ updatable" and no `.sig` or `latest.json` is produced.
 (`scripts/release-info.mjs`; no changelog files): `feat` commits under Features, `fix` under Fixes,
 `perf` under Performance, and `!` or a `BREAKING CHANGE:` footer under Breaking changes; `chore`,
 `docs`, `test`, `refactor`, `ci` and commits that are not conventional are left out, and so are
-merge commits. The app list skips commits that only touch `firmware/`, `hardware/`, `sim/`,
-`apps/web/`, the Wokwi tools, `docs/` or `.github/`, and `web`-scoped commits. A Firmware section
+merge commits. The app list skips commits that only touch `firmware/`, `hardware/`, `apps/web/`,
+`docs/` or `.github/`, and `web`-scoped commits. A Firmware section
 follows: the bundled version and "unchanged", or, when the version changed, the firmware commits
 (those touching `firmware/pala/`, or its earlier homes `firmware/desk-buddy/` and
 `firmware/esp32-c3/`) grouped the same way. The release body ends with a compare

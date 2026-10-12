@@ -12,8 +12,6 @@ members = [
     "tools/asset-compiler",
     "tests/golden-frames",
     "tests/e2e-host-sim",
-    "tools/wokwi-vectors",
-    "tools/wokwi-vcd",
 ]
 # Defensive: the firmware workspace is separate (ADR-0001). It already declares its own [workspace],
 # but excluding it here makes the boundary explicit and prevents accidental absorption.

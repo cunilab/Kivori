@@ -3,7 +3,7 @@
 //! These drive the *same* [`Runtime`] the device binary runs, through the host sim adapters. Every
 //! behaviour the firmware promises — the device-owned boot transition, handshake, heartbeat, state
 //! commands, change-driven tile output, malformed-frame survival, safe diagnostics, and health cadence —
-//! is asserted here, with no hardware and no simulator.
+//! is asserted here, with no hardware.
 //!
 //! Nothing here validates a physical panel: `CaptureDisplay` is a buffer, not glass.
 #![cfg(feature = "host-sim")]
@@ -586,40 +586,6 @@ fn the_loop_keeps_running_across_many_ticks() {
         0,
         "no valid frame was rejected"
     );
-}
-
-#[test]
-fn emission_order_is_stable() {
-    // The Wokwi production-runtime scenario awaits markers with `wait-serial`, which scans FORWARD ONLY —
-    // so the scenario's order must match the order the runtime genuinely emits its post-conditions. This
-    // test pins that order, because getting it wrong is exactly the T135 defect (a marker that already
-    // scrolled past can never match again, and the scenario hangs until timeout).
-    let mut h = Harness::new();
-
-    let first = h.step();
-    assert_eq!(
-        first.state,
-        Some(CompanionState::Offline),
-        "tick 1: booting -> offline"
-    );
-    assert_eq!(
-        first.tiles_flushed as usize, TILE_COUNT,
-        "tick 1: the first full frame"
-    );
-    assert!(
-        first.health_sent,
-        "tick 1: health goes out on the first tick, BEFORE any quiet frame can be observed"
-    );
-
-    let second = h.step();
-    assert_eq!(second.tiles_flushed, 0, "tick 2: no new frame is due yet");
-    assert!(
-        !second.health_sent,
-        "tick 2: health must not repeat inside its interval"
-    );
-
-    // Therefore the scenario order is: lifecycle -> first-frame -> health-report -> unchanged-frame.
-    // If a future change moves health off the first tick, this test fails before the simulator does.
 }
 
 /// docs/product.md, display and buddy: a reaction never masks Busy, and a refused reaction is never acknowledged.

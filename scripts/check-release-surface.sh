@@ -7,15 +7,14 @@
 #   1. desktop, production features (`--no-default-features`): the dev-only IPC commands
 #      (render_preview_frame, mirror_state, the preview-stream commands) and the raw-payload logging
 #      helper must not appear in the binary at all.
-#   2. firmware, production features (default, riscv target): the host-simulation adapters and the Wokwi
-#      SPI probe types/markers must not appear in the device library — while the T072 production display
-#      adapter MUST.
+#   2. firmware, production features (default, riscv target): the host-simulation adapters must not
+#      appear in the device library — while the T072 production display adapter MUST.
 #
 # Each check is paired with a POSITIVE CONTROL that rebuilds with the dev feature enabled and asserts
 # the same symbols ARE present, so the guard can never pass vacuously (e.g. from a renamed symbol).
 #
 # NOTE on grep targets: rustc's rlib metadata records `cfg`-disabled MODULE NAMES, so a module path such
-# as `spi_probe` appears even in a production build. Only concrete type names and string literals are
+# as `sim` appears even in a production build. Only concrete type names and string literals are
 # usable evidence here, and the positive controls below prove each one can actually be observed.
 set -euo pipefail
 
@@ -51,13 +50,12 @@ present() {
 
 DESKTOP_DEV_SURFACE=(render_preview_frame mirror_state open_preview_stream close_preview_stream
   ack_preview_frame debug_payload_hex KIVORI-PROVISION)
-# Host-sim adapters AND the Wokwi self-test harness/probes are development-only surface.
-FIRMWARE_SIM_SURFACE=(SimPipe CaptureDisplay VirtualClock LoopbackTransport TileProbe KIVORI-SIM
-  KIVORI-SPI WokwiSpiPins BusCounters CountedSpi KIVORI-RUN)
+# The host-sim adapters are development-only surface.
+FIRMWARE_SIM_SURFACE=(SimPipe CaptureDisplay VirtualClock)
 # Raw-payload tracing is DEVELOPMENT-ONLY surface (T102): the marker and the dump helper must not exist in
 # any release artifact, including the `embedded` production build.
 # Only the string literal is usable: `debug_payloads` is a module name, and rustc records cfg-disabled
-# module names in rlib metadata (same trap as `spi_probe`, noted above).
+# module names in rlib metadata (same trap as `sim`, noted above).
 FIRMWARE_DEBUG_SURFACE=(KIVORI-DEBUG-PAYLOAD)
 # The T072 SPI DisplaySink is PRODUCTION surface: it must be in the shipping library, not gated away.
 FIRMWARE_PRODUCTION_SURFACE=(MipidsiSink PanelGeometry)
@@ -88,49 +86,37 @@ fi
 DESKTOP_BIN="target/debug/kivori-desktop"
 FIRMWARE_LIB="firmware/pala/target/riscv32imc-unknown-none-elf/debug/libkivori_firmware.rlib"
 
-echo "[1/8] desktop, production features (Device Studio + debug-payloads OFF)…"
+echo "[1/6] desktop, production features (Device Studio + debug-payloads OFF)…"
 cargo build -q -p kivori-desktop --no-default-features
 [ -f "$DESKTOP_BIN" ] || { echo "error: $DESKTOP_BIN not found" >&2; exit 2; }
 absent "the production desktop binary" "$DESKTOP_BIN" "${DESKTOP_DEV_SURFACE[@]}"
 # Test Action is production surface (the Controls page's Test button), not Device Studio only.
 present "the production desktop binary" "$DESKTOP_BIN" test_action list_action_catalog
 
-echo "[2/8] desktop positive control (Device Studio ON)…"
+echo "[2/6] desktop positive control (Device Studio ON)…"
 cargo build -q -p kivori-desktop
 present "the dev desktop binary" "$DESKTOP_BIN" render_preview_frame mirror_state open_preview_stream
 # The per-unit QA helper (M3 S7) is its own example binary: its marker must be observable there.
 cargo build -q -p kivori-desktop --example provision
 present "the provision example" "target/debug/examples/provision" KIVORI-PROVISION
 
-echo "[3/8] firmware, production features (host-sim OFF, riscv target)…"
+echo "[3/6] firmware, production features (host-sim OFF, riscv target)…"
 (cd firmware/pala && cargo build -q --lib)
 [ -f "$FIRMWARE_LIB" ] || { echo "error: $FIRMWARE_LIB not found" >&2; exit 2; }
 absent "the production firmware library" "$FIRMWARE_LIB" "${FIRMWARE_SIM_SURFACE[@]}"
 present "the production firmware library" "$FIRMWARE_LIB" "${FIRMWARE_PRODUCTION_SURFACE[@]}"
 
-echo "[4/8] firmware positive controls (host-sim ON, then wokwi ON)…"
+echo "[4/6] firmware positive control (host-sim ON)…"
 (cd firmware/pala && cargo build -q --lib --features host-sim)
-present "the host-sim firmware library" "$FIRMWARE_LIB" SimPipe CaptureDisplay
-(cd firmware/pala && cargo build -q --lib --features wokwi)
-present "the wokwi firmware library" "$FIRMWARE_LIB" LoopbackTransport TileProbe KIVORI-SIM
+present "the host-sim firmware library" "$FIRMWARE_LIB" "${FIRMWARE_SIM_SURFACE[@]}"
 
-echo "[5/8] firmware SPI-probe positive control (wokwi-spi ON)…"
-(cd firmware/pala && cargo build -q --lib --features wokwi-spi)
-present "the wokwi-spi firmware library" "$FIRMWARE_LIB" KIVORI-SPI WokwiSpiPins BusCounters CountedSpi
-# …and the ordinary host-sim configuration must NOT drag the probe in.
-(cd firmware/pala && cargo build -q --lib --features host-sim)
-absent "the host-sim firmware library" "$FIRMWARE_LIB" KIVORI-SPI WokwiSpiPins BusCounters
-echo "[6/8] firmware production-runtime positive control (wokwi-runtime ON)…"
-(cd firmware/pala && cargo build -q --lib --features wokwi-runtime)
-present "the wokwi-runtime firmware library" "$FIRMWARE_LIB" KIVORI-RUN WokwiSpiPins
-
-echo "[7/8] firmware raw-payload gate (T102): absent in production, present with debug-payloads…"
+echo "[5/6] firmware raw-payload gate (T102): absent in production, present with debug-payloads…"
 # The production `embedded` build is what ships; prove the raw path is not in it.
 (cd firmware/pala && cargo build -q --lib --features embedded)
 absent "the production embedded firmware library" "$FIRMWARE_LIB" "${FIRMWARE_DEBUG_SURFACE[@]}"
 (cd firmware/pala && cargo build -q --lib --features embedded,debug-payloads)
 present "the debug-payloads firmware library" "$FIRMWARE_LIB" "${FIRMWARE_DEBUG_SURFACE[@]}"
-echo "[8/8] firmware latency-probe gate: absent from the product build, present with latency-probe…"
+echo "[6/6] firmware latency-probe gate: absent from the product build, present with latency-probe…"
 # `physical-st7789` is the product firmware (`just fw-build`); the probe is a dev-only readout.
 (cd firmware/pala && cargo build -q --lib --features physical-st7789)
 absent "the product physical-st7789 firmware library" "$FIRMWARE_LIB" LatencyProbe
@@ -145,5 +131,5 @@ if [ "$fail" -ne 0 ]; then
 fi
 
 echo "Release feature-surface OK: dev-only desktop commands, the raw-payload path, the firmware host-sim"
-echo "adapters, the Wokwi SPI/runtime markers, the raw-payload dump, and the latency probe are all absent from production"
-echo "builds, while the T072 display adapter is present (every positive control passed)."
+echo "adapters, the raw-payload dump, and the latency probe are all absent from production builds, while"
+echo "the T072 display adapter is present (every positive control passed)."

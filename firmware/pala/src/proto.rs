@@ -74,11 +74,6 @@ pub struct Dispatcher {
     pending: Option<DeviceDiagnostic>,
     /// Total frames the decoder rejected this session (observability for tests and the run loop).
     rejected: u32,
-    /// Replies actually transmitted, so the run loop can report protocol progress without re-parsing its
-    /// own output. Cumulative and monotonic.
-    hello_acks: u32,
-    pongs: u32,
-    state_reports: u32,
     pending_action: Option<PlayMascotAction>,
     /// The capability set negotiated for the current session (set from `Ready`; the protocol
     /// crate itself is capability-blind, so this is the dispatcher's own gate).
@@ -131,9 +126,6 @@ impl Dispatcher {
             version: ProtocolVersion::new(PROTOCOL_MAJOR, PROTOCOL_MINOR),
             pending: None,
             rejected: 0,
-            hello_acks: 0,
-            pongs: 0,
-            state_reports: 0,
             pending_action: None,
             negotiated_caps: Capabilities::NONE,
             hello_caps: None,
@@ -186,24 +178,6 @@ impl Dispatcher {
     /// Takes the pending host takeover announced by a `Bye`, if any.
     pub fn take_host_takeover(&mut self) -> Option<HostTakeover> {
         self.pending_takeover.take()
-    }
-
-    /// `HelloAck` replies transmitted this session.
-    #[must_use]
-    pub const fn hello_acks(&self) -> u32 {
-        self.hello_acks
-    }
-
-    /// `Pong` replies transmitted this session.
-    #[must_use]
-    pub const fn pongs(&self) -> u32 {
-        self.pongs
-    }
-
-    /// `StateReport` messages transmitted this session.
-    #[must_use]
-    pub const fn state_reports(&self) -> u32 {
-        self.state_reports
     }
 
     /// Number of frames the decoder has rejected since this dispatcher was created.
@@ -487,7 +461,6 @@ impl Dispatcher {
                     nonce_echo: hello.nonce,
                 };
                 self.send(transport, &Message::HelloAck(ack))?;
-                self.hello_acks = self.hello_acks.saturating_add(1);
                 // A new `Hello` always starts a fresh session, whether or not the previous one
                 // ended with a `Bye` (a reconnect after a desktop crash never sends one). Flag the
                 // boundary BEFORE recording the new nonce, so the caller resets input state (a
@@ -538,11 +511,9 @@ impl Dispatcher {
                     elapsed_ms: now_ms,
                 };
                 self.send(transport, &Message::StateReport(report))?;
-                self.state_reports = self.state_reports.saturating_add(1);
             }
             Message::Ping(ping) if self.accepted_session.is_some() => {
                 self.send(transport, &Message::Pong(build_pong(ping.t_ms, now_ms)))?;
-                self.pongs = self.pongs.saturating_add(1);
             }
             // Acknowledge only a reaction that will actually play (docs/product.md, display and buddy): over Busy, Booting or
             // Offline the request is dropped unacknowledged, so the desktop never believes it ran.

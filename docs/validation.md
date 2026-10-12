@@ -1,7 +1,7 @@
 # Hardware validation
 
 The one checklist for everything CI cannot prove: real ESP32-C3 + ST7789 + HW-040 hardware, real
-OS behavior, real timing. Simulation and host tests are never promoted to physical evidence.
+OS behavior, real timing. Host-sim and other host tests are never promoted to physical evidence.
 
 Row numbers: `1.N` is row N of the old Phase 1 (device connection) checklist, `3.N` is row N of the old
 rotary checklist, `2.N` are new Phase 2 rows, `G` rows are PRD gates. Tick a row only with a date and a

@@ -43,13 +43,12 @@ fw-check:
 fw-build:
     cd firmware/pala && cargo build --release --features physical-st7789
 
-# Host-side device-core tests (no hardware, no simulator).
+# Host-side device-core tests (no hardware).
 fw-test:
     cd firmware/pala && cargo test --features host-sim --target $(rustc -vV | sed -n 's/^host: //p')
 
 # Flashes and monitors via the `espflash` runner in .cargo/config.toml.
-# The physical ESP32-C3 + ST7789 profile is verified in docs/validation.md; simulator profiles
-# remain separate evidence and are not substitutes for physical wiring/controller validation.
+# The physical ESP32-C3 + ST7789 profile is verified in docs/validation.md.
 # `--features physical-st7789` is required to select that runtime; `embedded` alone builds only
 # main.rs's bare fallback (no display, no input) and would silently flash non-product firmware.
 
@@ -61,21 +60,6 @@ fw-flash:
 # checklist row 14). Never a product build.
 fw-flash-latency:
     cd firmware/pala && cargo run --release --features physical-st7789,latency-probe
-
-# ---- Wokwi pre-hardware simulation gate (sim/wokwi/README.md) ----
-
-# Build all four simulation artifacts (self-test, external serial, SPI probe, production runtime).
-sim-build:
-    bash scripts/build-wokwi-firmware.sh
-
-# Run every Wokwi scenario (needs wokwi-cli + a CI WOKWI_CLI_TOKEN; never false-passes).
-sim-test: sim-build
-    bash scripts/test-wokwi.sh
-
-# Offline checks for the simulator's own tooling (no token, no simulator).
-sim-check:
-    cargo test -p kivori-wokwi-vectors -p kivori-wokwi-vcd
-    bash scripts/test-wokwi-evidence.sh
 
 # ---- assets / golden frames ----
 

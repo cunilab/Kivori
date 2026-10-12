@@ -1,8 +1,7 @@
 //! The monotonic device clock (T073).
 //!
-//! Backed by esp-hal's system timer, so it is the same implementation on real hardware and in the
-//! Wokwi simulator — only the surrounding board bring-up differs. Time is exposed as canonical integer
-//! milliseconds ([`crate::ports::Clock`]), which is what the deterministic renderer consumes (ADR-0003).
+//! Backed by esp-hal's system timer. Time is exposed as canonical integer milliseconds
+//! ([`crate::ports::Clock`]), which is what the deterministic renderer consumes (ADR-0003).
 
 use crate::ports::Clock;
 use kivori_model::ElapsedMs;

@@ -1,8 +1,7 @@
 //! USB Serial/JTAG transport (T071).
 //!
 //! The real device transport: a **FIFO-aware, bounded, non-blocking** [`Transport`] over the ESP32-C3's
-//! USB Serial/JTAG peripheral. The production run loop and the Wokwi external-serial mode both drive this
-//! adapter, so the receive/transmit path under test is the shipping one, not a stand-in.
+//! USB Serial/JTAG peripheral, driven by the production run loop.
 //!
 //! # Why bounded and non-blocking matters
 //!
@@ -19,7 +18,7 @@
 //! queue toward the hardware every tick. Without it, a full FIFO would truncate a frame mid-flight.
 //!
 //! Physical USB behaviour (host enumeration as `0x303A:0x1001`, real throughput, genuine transmit stalls
-//! when the host stops draining) is NOT verified by simulation and remains a hardware task (T115/T116).
+//! when the host stops draining) is not covered by the host tests and remains a hardware task (T115/T116).
 
 use crate::ports::Transport;
 use esp_hal::peripherals::USB_DEVICE;
@@ -42,14 +41,6 @@ impl<'d> UsbJtagTransport<'d> {
     pub fn new(usb_device: USB_DEVICE<'d>) -> Self {
         let (rx, tx) = UsbSerialJtag::new(usb_device).split();
         Self { rx, tx }
-    }
-
-    /// Writes raw bytes, **blocking** until the FIFO drains. Used only for the simulation harnesses' text
-    /// markers, where a stalled marker is better than a lost one; protocol frames go through
-    /// [`Transport::write`], which never blocks.
-    pub fn write_all(&mut self, bytes: &[u8]) {
-        let _ = self.tx.write(bytes);
-        let _ = self.tx.flush_tx();
     }
 }
 

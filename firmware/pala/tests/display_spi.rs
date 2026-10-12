@@ -3,7 +3,7 @@
 //! The adapter speaks only `embedded-hal`, so the *real* `mipidsi` driver can be driven here against a
 //! recording `SpiDevice`. That makes the SPI byte stream itself the assertion target: reset sequencing,
 //! command-vs-data phases, address-window coordinates, panel offsets, RGB565 byte order, exact transfer
-//! volume, and change-driven refresh — all deterministic, all without a simulator or a board.
+//! volume, and change-driven refresh — all deterministic, all without a board.
 //!
 //! # Scope
 //!
@@ -18,7 +18,7 @@ use embedded_hal::digital::{ErrorType as DigitalErrorType, OutputPin};
 use embedded_hal::spi::{ErrorType as SpiErrorType, Operation, SpiDevice};
 use kivori_asset_compiler::compile_default_blob;
 use kivori_assets::AssetBlob;
-use kivori_firmware::display::{init_panel, DisplayError, MipidsiSink, PanelGeometry};
+use kivori_firmware::display::{DisplayError, MipidsiSink, PanelGeometry};
 use kivori_firmware::ports::DisplaySink;
 use kivori_firmware::render::{TileRenderer, TILE_COUNT, TILE_H, TILE_PIXELS, TILE_W};
 use kivori_model::{CompanionState, MascotAnimator, Rect, Rgb565};
@@ -178,7 +178,9 @@ type Sink = MipidsiSink<
     RecordingPin,
 >;
 
-/// Builds an initialised sink over a recording bus, plus the shared log.
+/// Builds an initialised sink over a recording bus, plus the shared log. The panel is brought up the
+/// way the physical runtime does it: `mipidsi::Builder` (which drives the reset pin during init), then
+/// [`MipidsiSink::new`].
 fn harness(geometry: PanelGeometry) -> (Sink, Log) {
     let log: Log = Rc::new(RefCell::new(Vec::new()));
     let spi = RecordingSpi {
@@ -195,9 +197,13 @@ fn harness(geometry: PanelGeometry) -> (Sink, Log) {
     // Leaked so the interface can hold a 'static buffer, as it would from a `static_cell` on device.
     let buffer: &'static mut [u8] = Box::leak(Box::new([0u8; 512]));
     let interface = mipidsi::interface::SpiInterface::new(spi, dc, buffer);
-    let sink =
-        init_panel(ILI9341Rgb565, interface, reset, &mut NoDelay, geometry).expect("panel init");
-    (sink, log)
+    let display = mipidsi::Builder::new(ILI9341Rgb565, interface)
+        .display_size(geometry.width, geometry.height)
+        .display_offset(geometry.offset_x, geometry.offset_y)
+        .reset_pin(reset)
+        .init(&mut NoDelay)
+        .expect("panel init");
+    (MipidsiSink::new(display, geometry), log)
 }
 
 fn full_panel() -> PanelGeometry {
@@ -351,7 +357,12 @@ fn a_failed_spi_write_is_surfaced_not_swallowed() {
     let buffer: &'static mut [u8] = Box::leak(Box::new([0u8; 512]));
     let interface = mipidsi::interface::SpiInterface::new(FailingSpi, dc, buffer);
     // Init itself must fail on a dead bus rather than pretend the panel is ready.
-    let result = init_panel(ILI9341Rgb565, interface, reset, &mut NoDelay, full_panel());
+    let geometry = full_panel();
+    let result = mipidsi::Builder::new(ILI9341Rgb565, interface)
+        .display_size(geometry.width, geometry.height)
+        .display_offset(geometry.offset_x, geometry.offset_y)
+        .reset_pin(reset)
+        .init(&mut NoDelay);
     assert!(
         matches!(result, Err(mipidsi::InitError::Interface(_))),
         "a dead SPI bus must fail init"

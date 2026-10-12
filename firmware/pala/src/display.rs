@@ -8,17 +8,17 @@
 //! # Deliberately controller-agnostic
 //!
 //! This module never names a panel controller. It is generic over `mipidsi`'s [`Model`], so the same
-//! adapter drives an ST7789, a GC9A01, or (in simulation only) an ILI9341, and the choice stays a
+//! adapter drives an ST7789, a GC9A01, or any other MIPI-DCS model, and the choice stays a
 //! [`kivori_model::DeviceProfile`] parameter exactly as R-3 requires. The Kivori panel is a verified ST7789
 //! (validation.md 1.23), but that choice lives in the board profile, so no controller is hard-coded and
 //! no initialisation sequence is asserted in this module.
 //!
 //! # Deliberately hardware-neutral
 //!
-//! Nothing here depends on `esp-hal`: the adapter speaks only `embedded-hal` (`SpiDevice`, `OutputPin`,
-//! `DelayNs`) through `mipidsi`. Consequences: it compiles for the host as well as `riscv32imc`, it is
-//! unit-testable against a recording SPI device (see `tests/display_spi.rs`), and board bring-up (which
-//! GPIO, which SPI peripheral, what clock) lives entirely outside it.
+//! Nothing here depends on `esp-hal`: the adapter speaks only `embedded-hal` (`SpiDevice`, `OutputPin`)
+//! through `mipidsi`. Consequences: it compiles for the host as well as `riscv32imc`, it is unit-testable
+//! against a recording SPI device (see `tests/display_spi.rs`), and board bring-up (which GPIO, which SPI
+//! peripheral, what clock, the `mipidsi::Builder` init) lives entirely outside it.
 //!
 //! # What this adapter does not decide
 //!
@@ -35,12 +35,11 @@ use crate::ports::DisplaySink;
 use crate::render::{TILE_H, TILE_PIXELS, TILE_W};
 use embedded_graphics_core::pixelcolor::raw::RawU16;
 use embedded_graphics_core::pixelcolor::Rgb565 as EgRgb565;
-use embedded_hal::delay::DelayNs;
-use embedded_hal::digital::{ErrorType as PinErrorType, OutputPin};
+use embedded_hal::digital::OutputPin;
 use kivori_model::{DeviceProfile, Rect, Rgb565};
 use mipidsi::interface::{Interface, InterfacePixelFormat};
 use mipidsi::models::Model;
-use mipidsi::{Builder, Display, InitError};
+use mipidsi::Display;
 
 /// The visible panel window inside the controller's framebuffer.
 ///
@@ -135,42 +134,6 @@ where
     pub fn into_display(self) -> Display<DI, M, RST> {
         self.display
     }
-}
-
-/// The result of [`init_panel`]: a ready sink, or the reason the panel could not be brought up.
-pub type InitResult<DI, M, RST> = Result<
-    MipidsiSink<DI, M, RST>,
-    InitError<<DI as Interface>::Error, <RST as PinErrorType>::Error>,
->;
-
-/// Builds and initialises a panel, then wraps it as a [`MipidsiSink`].
-///
-/// `model` is supplied by the caller, so this function commits to no controller. The reset pin is driven
-/// by `mipidsi` during init (low, then high) — a hardware reset the caller does not have to sequence.
-///
-/// # Errors
-/// [`InitError`] if the reset pin fails, the interface fails, or `geometry` does not fit inside the
-/// model's framebuffer.
-pub fn init_panel<DI, M, RST, D>(
-    model: M,
-    interface: DI,
-    reset: RST,
-    delay: &mut D,
-    geometry: PanelGeometry,
-) -> InitResult<DI, M, RST>
-where
-    DI: Interface,
-    M: Model<ColorFormat = EgRgb565>,
-    EgRgb565: InterfacePixelFormat<DI::Word>,
-    RST: OutputPin,
-    D: DelayNs,
-{
-    let display = Builder::new(model, interface)
-        .display_size(geometry.width, geometry.height)
-        .display_offset(geometry.offset_x, geometry.offset_y)
-        .reset_pin(reset)
-        .init(delay)?;
-    Ok(MipidsiSink::new(display, geometry))
 }
 
 impl<DI, M, RST> DisplaySink for MipidsiSink<DI, M, RST>

@@ -4,7 +4,8 @@
 //! each tile, and flushes only tiles whose content changed since the last frame — the bandwidth
 //! discipline the SPI panel needs. Physical mode supplies a static frame buffer: all tiles are
 //! composed and hashed first, then changed tiles are transferred without composition gaps.
-//! The small scratch buffer is used by the unbuffered simulation path.
+//! The small scratch buffer is used by the unbuffered path ([`crate::runtime::Runtime::new`], which the
+//! host-sim tests drive).
 //!
 //! Buffered transfers merge dirty tiles: a run of horizontally adjacent tiles goes out as one
 //! window, and fully dirty tile rows go out as a band of up to [`MAX_BAND_ROWS`] rows. Pixels are

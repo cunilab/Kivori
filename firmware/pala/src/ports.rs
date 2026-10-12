@@ -78,7 +78,7 @@ pub trait DisplaySink {
     }
 
     /// Sets the backlight to `step` (`1..=BRIGHTNESS_STEPS`, already clamped). Sinks without a
-    /// dimmable backlight (the simulator, a panel wired always-on) ignore it.
+    /// dimmable backlight (a bare panel sink, a panel wired always-on) ignore it.
     fn set_brightness(&mut self, _step: u8) {}
 }
 

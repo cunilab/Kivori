@@ -14,7 +14,7 @@
 // Grouping: feat -> Features, fix -> Fixes, perf -> Performance, `!` or a BREAKING CHANGE footer ->
 // Breaking changes; other types (chore, docs, test, refactor, ci, build, style, revert) and non
 // conventional subjects are left out. A commit is listed for the app when it touches a file outside
-// the firmware, hardware, simulator, website and docs folders and its scope is not `web`; it is listed
+// the firmware, hardware, website and docs folders and its scope is not `web`; it is listed
 // under Firmware when it touches firmware/<product>/ and the firmware version changed since the
 // previous app tag. The owner reviews (and can edit) the draft before publishing it.
 import { execFileSync } from 'node:child_process';
@@ -29,10 +29,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const APP_IGNORED_PATHS = [
   'firmware/',
   'hardware/',
-  'sim/',
   'apps/web/',
-  'tools/wokwi-vectors/',
-  'tools/wokwi-vcd/',
   'docs/',
   '.github/',
   'README.md',
