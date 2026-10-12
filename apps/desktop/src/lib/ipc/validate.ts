@@ -32,6 +32,8 @@ import {
   UPDATE_ADVICE,
   ACCESSIBILITY_STATES,
   STARTUP_PLATFORMS,
+  UPDATE_DISABLED_REASONS,
+  UPDATE_STATES,
   INTENSITIES,
   MASCOT_ACTIONS,
   MEDIA_STATUSES,
@@ -54,6 +56,7 @@ import type {
   AccessibilityState,
   OnboardingDto,
   StartupSettingsDto,
+  UpdateStatusDto,
   MacroSpec,
   StepSpec,
   DeskStatusDto,
@@ -189,6 +192,49 @@ export function parseStartupSettings(raw: unknown): StartupSettingsDto {
   return {
     launchAtLogin: r.launchAtLogin,
     platform: oneOf('startup platform', STARTUP_PLATFORMS, r.platform),
+  };
+}
+
+/** Release notes longer than this are cut (the native side already bounds them). */
+const MAX_UPDATE_NOTES = 16 * 1024;
+
+/**
+ * Validates an `UpdateStatusDto`. Unknown tokens are rejected; the notes stay plain text, and a
+ * release is required exactly in the states that are about one.
+ */
+export function parseUpdateStatus(raw: unknown): UpdateStatusDto {
+  const r = record('update status', raw);
+  const state = oneOf('update state', UPDATE_STATES, r.state);
+  const release = r.update === null || r.update === undefined ? null : record('update', r.update);
+  const needsRelease = ['available', 'downloading', 'readyToRestart', 'failed'].includes(state);
+  if (needsRelease !== (release !== null)) throw new Error('Kivori: invalid update.');
+  const progress =
+    r.progress === null || r.progress === undefined ? null : record('progress', r.progress);
+  return {
+    state,
+    reason:
+      state === 'disabled'
+        ? oneOf('update disabled reason', UPDATE_DISABLED_REASONS, r.reason)
+        : null,
+    currentVersion: text('current version', r.currentVersion, 64),
+    lastChecked: r.lastChecked === null ? null : text('last checked', r.lastChecked, 40),
+    autoCheck: bool('autoCheck', r.autoCheck),
+    update: release
+      ? {
+          version: text('update version', release.version, 64),
+          notes: [...text('release notes', release.notes, MAX_UPDATE_NOTES * 4)]
+            .slice(0, MAX_UPDATE_NOTES)
+            .join(''),
+          date: release.date === null ? null : text('release date', release.date, 40),
+        }
+      : null,
+    progress:
+      state === 'downloading' && progress
+        ? {
+            downloaded: count('downloaded', progress.downloaded),
+            total: countOrNull('total', progress.total ?? null),
+          }
+        : null,
   };
 }
 

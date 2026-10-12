@@ -25,9 +25,12 @@ updatable" and no `.sig` or `latest.json` is produced.
 3. In GitHub, Settings, Secrets and variables, Actions, add two repository secrets:
    - `TAURI_SIGNING_PRIVATE_KEY`: the full contents of `~/.tauri/kivori-updater.key`;
    - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: the password.
-4. Give Claude the **public** key (contents of `~/.tauri/kivori-updater.key.pub`) for step 5 of M2.7.
-   TODO(M2.7 step 5): the public key goes into the app's release config (`plugins.updater.pubkey`); it
-   is not in any config yet, so no installed build can verify or install an update until then.
+4. Give Claude the **public** key (contents of `~/.tauri/kivori-updater.key.pub`).
+   TODO(owner): the public key goes into `plugins.updater.pubkey` in
+   `apps/desktop/src-tauri/tauri.release.conf.json`, which is still `""`. Until then every build's
+   updater is off (Device page: "it cannot verify them yet") and no installed build can install an
+   update. Once the `TAURI_SIGNING_PRIVATE_KEY` secret exists, `release.yml` refuses to build a release
+   while that key is empty ("Updater public key missing"), so add both together.
 5. Settings, Actions, General: tick "Allow GitHub Actions to create and approve pull requests" (release-please
    needs it to open the release PR).
 
@@ -67,6 +70,30 @@ packaging files run it too, and never read the signing secrets.
 
 The first release PR only looks at history after `bootstrap-sha` in `release-please-config.json`;
 remove that key after the first release PR is merged.
+
+## Verifying an app update end to end
+
+Once the public key is in the release config and both secrets are set (validation.md rows 14.6 to
+14.10, on a real Windows machine):
+
+1. Release and publish version A (for example 0.2.0) as above, and install it from its draft's
+   installer. Device page: the Updates rows show "Last checked" within 30 seconds of start.
+2. Release and publish version B (0.2.1). Restart A, or press "Check now": the tray gains "Update to
+   v0.2.1…", and the window shows "Kivori 0.2.1 is ready" with B's notes.
+3. "Install & restart": the download bar, then the installer runs with a progress window only, and
+   Kivori comes back as B (Device page, App version) and reconnects the device.
+4. With A installed again: "Skip this version", restart, press "Check now": no offer. Publish C: it is
+   offered. "Later" hides an offer until 3 days have passed (or "Check now").
+5. Offline (or with "Check for updates automatically" off and a firewall log): no error, no wait, no
+   request to github.com except after "Check now".
+6. Developer test of the signature: the app only accepts the release endpoint, so build a test copy
+   with `ENDPOINT` in `src-tauri/src/updater/policy.rs` and the release config's `endpoints` pointed at
+   a server you control, then serve a `latest.json` whose `signature` belongs to another file (or edit
+   one byte of the installer behind it): the dialog says the update could not be installed, and
+   nothing changes.
+
+The updater reads only `https://github.com/cunilab/Kivori/releases/latest/download/latest.json`, which
+GitHub serves from the newest published, non-pre-release release; drafts are invisible to it.
 
 ## macOS
 

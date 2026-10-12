@@ -5,6 +5,11 @@
 //! update, and the reconnect/resync path. Everything runs in-process over an in-memory byte pipe and
 //! against the asset blob compiled into the binary, so nothing here can reach a socket. The test also
 //! asserts startup does not wait on a remote timeout, and that the frontend references no remote assets.
+//!
+//! The one network exception is app update discovery (ADR-0015): the `updater` module alone may use
+//! the network, and only in a Windows release build with the release endpoint and a public key. The
+//! last two tests pin that down: no other shipped source names a network API, and a development
+//! build (or one without a key, or macOS) never even starts the updater.
 
 use std::convert::Infallible;
 use std::path::{Path, PathBuf};
@@ -22,6 +27,7 @@ use kivori_desktop::orchestrator::Orchestrator;
 #[cfg(feature = "device-studio")]
 use kivori_desktop::render::render_preview_bundled;
 use kivori_desktop::runtime::state::{AppState, DeviceCommand};
+use kivori_desktop::updater::policy::{availability, Availability, DisabledReason, Machine};
 #[cfg(feature = "device-studio")]
 use kivori_model::CompanionState;
 use kivori_model::{Capabilities, ConnectionState, ProtocolVersion, SendableState};
@@ -281,4 +287,98 @@ fn frontend_assets_are_local_only() {
         offenders.is_empty(),
         "frontend must reference only local assets: {offenders:?}"
     );
+}
+
+#[test]
+fn network_access_is_confined_to_the_updater_module() {
+    // Mirrors the source check in scripts/check-offline-deps.sh (ADR-0015): only `src/updater/`
+    // may name the updater plugin, a network client or a socket API.
+    const NET: [&str; 9] = [
+        "tauri_plugin_updater",
+        "UpdaterExt",
+        "reqwest",
+        "ureq",
+        "hyper::",
+        "std::net",
+        "TcpStream",
+        "TcpListener",
+        "UdpSocket",
+    ];
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let allowed = manifest.join("src").join("updater");
+    let mut checked = 0usize;
+    let mut offenders = Vec::new();
+    let mut stack = vec![manifest.join("src"), manifest.join("examples")];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                let Ok(text) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                checked += 1;
+                if path.starts_with(&allowed) {
+                    continue;
+                }
+                for (lineno, line) in text.lines().enumerate() {
+                    if NET.iter().any(|api| line.contains(api)) {
+                        offenders.push(format!("{}:{}", path.display(), lineno + 1));
+                    }
+                }
+            }
+        }
+    }
+    assert!(checked > 0, "native sources were found and scanned");
+    assert!(
+        std::fs::read_to_string(allowed.join("mod.rs"))
+            .expect("updater module")
+            .contains("tauri_plugin_updater"),
+        "the scan can see a network API where it is allowed"
+    );
+    assert!(
+        offenders.is_empty(),
+        "network APIs outside src/updater/: {offenders:?}"
+    );
+}
+
+#[test]
+fn a_development_build_never_starts_the_updater() {
+    let config = |name: &str| -> serde_json::Value {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(name);
+        serde_json::from_slice(&std::fs::read(path).expect(name)).expect("json")
+    };
+    // `tauri.conf.json` alone (dev builds, `cargo test`) has no updater section: disabled, on
+    // every OS; macOS is unsupported whatever the config.
+    let dev = config("tauri.conf.json");
+    let section = dev.get("plugins").and_then(|p| p.get("updater"));
+    assert_eq!(
+        availability(section, true),
+        Availability::Disabled(DisabledReason::DevBuild)
+    );
+    assert_eq!(availability(section, false), Availability::Unsupported);
+    // The release config without its public key is disabled too.
+    let release = config("tauri.release.conf.json");
+    let section = &release["plugins"]["updater"];
+    if section["pubkey"]
+        .as_str()
+        .is_some_and(|key| key.trim().is_empty())
+    {
+        assert_eq!(
+            availability(Some(section), true),
+            Availability::Disabled(DisabledReason::NoKey)
+        );
+    }
+    // A disabled or unsupported updater never begins a check, so the worker never exists.
+    for off in [
+        Availability::Disabled(DisabledReason::DevBuild),
+        Availability::Disabled(DisabledReason::NoKey),
+        Availability::Unsupported,
+    ] {
+        assert!(!Machine::new(off).begin_check(), "{off:?}");
+    }
 }

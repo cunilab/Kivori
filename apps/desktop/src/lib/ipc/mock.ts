@@ -18,6 +18,7 @@ import type {
   FirmwareStatusDto,
   OnboardingDto,
   StartupSettingsDto,
+  UpdateStatusDto,
   MacroSpec,
   StepSpec,
   AppRefDto,
@@ -116,6 +117,87 @@ export function mockOnStartupChanged(handler: (settings: StartupSettingsDto) => 
   return () => {
     startupListeners.delete(handler);
   };
+}
+
+// App updates (ADR-0015). A development build has no updater, so the preview is `disabled`;
+// `?mock=appupdate` shows an offered update (and the dialog), `?mock=mac` shows macOS.
+const updateListeners = new Set<(status: UpdateStatusDto) => void>();
+let updateStatus: UpdateStatusDto | null = null;
+
+function initialUpdateStatus(): UpdateStatusDto {
+  const base: UpdateStatusDto = {
+    state: 'disabled',
+    reason: 'devBuild',
+    currentVersion: '0.0.0-dev',
+    lastChecked: null,
+    autoCheck: true,
+    update: null,
+    progress: null,
+  };
+  if (scenario() === 'mac') return { ...base, state: 'unsupported', reason: null };
+  if (scenario() !== 'appupdate') return base;
+  return {
+    ...base,
+    state: 'available',
+    reason: null,
+    lastChecked: new Date().toISOString(),
+    update: {
+      version: '0.2.0',
+      notes:
+        '### Features\n\n* Volume knob feels smoother\n* New clock face\n\n### Fixes\n\n* Reconnects faster after sleep',
+      date: '2026-10-12T00:00:00Z',
+    },
+  };
+}
+
+function setUpdateStatus(next: UpdateStatusDto): UpdateStatusDto {
+  updateStatus = next;
+  for (const listener of updateListeners) listener(next);
+  return next;
+}
+
+export function mockGetUpdateStatus(): UpdateStatusDto {
+  updateStatus ??= initialUpdateStatus();
+  return updateStatus;
+}
+
+export function mockOnUpdateStatus(handler: (status: UpdateStatusDto) => void): () => void {
+  updateListeners.add(handler);
+  return () => {
+    updateListeners.delete(handler);
+  };
+}
+
+export function mockCheckForUpdates(): UpdateStatusDto {
+  const current = mockGetUpdateStatus();
+  if (current.state !== 'idle') return current;
+  return setUpdateStatus({ ...current, lastChecked: new Date().toISOString() });
+}
+
+/** The preview "downloads" (with no size) and then fails, to show the retry path. */
+export function mockInstallUpdate(): UpdateStatusDto {
+  const current = mockGetUpdateStatus();
+  if (!current.update) return current;
+  setTimeout(() => setUpdateStatus({ ...current, state: 'failed', progress: null }), 1500);
+  return setUpdateStatus({
+    ...current,
+    state: 'downloading',
+    progress: { downloaded: 0, total: null },
+  });
+}
+
+export function mockDismissUpdate(): UpdateStatusDto {
+  const current = mockGetUpdateStatus();
+  return setUpdateStatus({
+    ...current,
+    state: current.state === 'disabled' || current.state === 'unsupported' ? current.state : 'idle',
+    update: null,
+    progress: null,
+  });
+}
+
+export function mockSetAutoUpdateCheck(enabled: boolean): UpdateStatusDto {
+  return setUpdateStatus({ ...mockGetUpdateStatus(), autoCheck: enabled });
 }
 
 /** What a device that reports no identity looks like: the original Desk Buddy. */

@@ -22,5 +22,15 @@
     "windows": {
       "staticVCRuntime": true
     }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/cunilab/Kivori/releases/latest/download/latest.json"],
+      "pubkey": "",
+      "requireSignedVersion": true,
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

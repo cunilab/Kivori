@@ -88,6 +88,43 @@ export interface StartupSettingsDto {
   platform: StartupPlatform;
 }
 
+/** The app updater's states (ADR-0015). `disabled` and `unsupported` never make a request. */
+export const UPDATE_STATES = [
+  'disabled',
+  'unsupported',
+  'idle',
+  'checking',
+  'available',
+  'downloading',
+  'readyToRestart',
+  'failed',
+] as const;
+export type UpdateState = (typeof UPDATE_STATES)[number];
+/** Why the updater is off: a development build, no public key yet, or a wrong endpoint. */
+export const UPDATE_DISABLED_REASONS = ['devBuild', 'noKey', 'badEndpoint'] as const;
+export type UpdateDisabledReason = (typeof UPDATE_DISABLED_REASONS)[number];
+
+/** An offered release. `notes` is plain text: render it as text, never as HTML. */
+export interface UpdateReleaseDto {
+  version: string;
+  notes: string;
+  date: string | null;
+}
+
+export interface UpdateStatusDto {
+  state: UpdateState;
+  /** Set only while `state` is `disabled`. */
+  reason: UpdateDisabledReason | null;
+  currentVersion: string;
+  /** The last check that got an answer this session (UTC ISO-8601). */
+  lastChecked: string | null;
+  autoCheck: boolean;
+  /** Set while `available`, `downloading`, `readyToRestart` or `failed`. */
+  update: UpdateReleaseDto | null;
+  /** Set while `downloading`; `total` is `null` when the size is unknown. */
+  progress: { downloaded: number; total: number | null } | null;
+}
+
 export interface FirmwareStatusDto {
   available: boolean;
   phase: (typeof FIRMWARE_PHASES)[number];
@@ -327,6 +364,10 @@ export const ACTIVITY_EVENT_TYPES = [
   'hostResumed',
   'hostLocked',
   'hostUnlocked',
+  'appUpdateCheckFailed',
+  'appUpdateAvailable',
+  'appUpdateInstallStarted',
+  'appUpdateInstallFailed',
 ] as const;
 export type ActivityEventType = (typeof ACTIVITY_EVENT_TYPES)[number];
 
@@ -615,7 +656,7 @@ export interface ActionCatalogEntryDto {
 
 export type ActivitySeverity = 'info' | 'warning' | 'error';
 export type ActivitySource =
-  'connection' | 'action' | 'device' | 'protocol' | 'firmware' | 'config';
+  'connection' | 'action' | 'device' | 'protocol' | 'firmware' | 'config' | 'update';
 export type ActivityOutcome =
   | 'observed'
   | 'started'

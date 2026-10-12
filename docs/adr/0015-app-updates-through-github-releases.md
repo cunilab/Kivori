@@ -23,6 +23,16 @@ Key custody: losing the updater key means installed apps can never auto-update a
 
 **As built (step 4).** `tauri.release.conf.json` sets `bundle.createUpdaterArtifacts: true`. `release.yml` checks for the `TAURI_SIGNING_PRIVATE_KEY` secret (never read on pull requests); without it the build merges `{"bundle":{"createUpdaterArtifacts":false}}`, prints a `::warning::` that the release is not updatable and skips `latest.json`. With it the installer gets a `.sig` and `scripts/updater-manifest.mjs` writes `latest.json` (`version`, `notes`, `pub_date`, `platforms."windows-x86_64"` with `signature` and the stable `releases/download/vX.Y.Z/<installer>` URL). The release is a draft, never a pre-release, and carries the installer, `.sig`, `latest.json` and `SHA256SUMS`. The public key is not in any config yet (step 5). The installed Tauri CLI also offers `requireSignedVersion` in the updater plugin; step 5 should enable it.
 
+**As built (step 5).** `tauri-plugin-updater` 2.13 (no `zip` feature) lives in `src/updater/`; `policy.rs` holds the pure schedule, offer rules and state machine, and `mod.rs` the worker thread, the only code that reaches the network. Deviations and choices:
+
+- `tauri.release.conf.json` carries `plugins.updater` (the endpoint, `pubkey: ""`, `requireSignedVersion: true`, `windows.installMode: "passive"`). The app checks only when it runs on Windows, the section names exactly that endpoint and the key is not empty; otherwise the status is `disabled` (`devBuild`, `noKey`, `badEndpoint`) or `unsupported` (macOS) and the plugin is not even registered, because it requires its config at init. Until the owner sends the public key, every build, release builds included, is `disabled` (`noKey`). `release.yml` fails a signed release whose release config has no key.
+- "At start" is 30 s after start, so startup never waits on the network; then every 24 h while running. A failed check is retried at the next interval, not sooner.
+- "Check now" ignores a snooze (the user is asking), never a skip. A scheduled check runs only while nothing is offered, so an unanswered offer is not replaced by a newer release until it is dismissed.
+- An update found during a firmware flash or a knob gesture (an open gesture in `InputIngress`, published by the device thread) is offered when both are over; a downloaded update waits the same way before the installer starts.
+- The dialog opens by itself once per version per window session; the tray item ("Update to vX.Y.Z…") and the Device page reopen it. Release notes are plain text.
+- One command beyond the planned five: `set_auto_update_check` saves the setting. The last check time is per session, not stored.
+- The firmware offer ordering ("app update first") is not wired yet; the two offers are independent.
+
 ## Alternatives considered
 
 - Our own update server now: rejected, GitHub already hosts the binaries.

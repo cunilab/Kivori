@@ -17,6 +17,7 @@ import type {
   AnimationTimeline,
   FirmwareStatusDto,
   StartupSettingsDto,
+  UpdateStatusDto,
   OnboardingDto,
   AccessibilityState,
   MascotAction,
@@ -43,6 +44,7 @@ import {
   parseDiagnostics,
   parseFirmwareStatus,
   parseStartupSettings,
+  parseUpdateStatus,
   parseOnboarding,
   parseAccessibility,
   appRef,
@@ -147,6 +149,78 @@ export async function setLaunchAtLogin(enabled: boolean): Promise<StartupSetting
   }
   if (import.meta.env.DEV) return (await devMock()).mockSetLaunchAtLogin(enabled);
   return unavailable();
+}
+
+/** The app updater's status (ADR-0015). */
+export async function getUpdateStatus(): Promise<UpdateStatusDto> {
+  if (isTauri()) return parseUpdateStatus(await invoke<unknown>('get_update_status'));
+  if (import.meta.env.DEV) return (await devMock()).mockGetUpdateStatus();
+  return unavailable();
+}
+
+/** Subscribes to updater changes (`updater://status`); an invalid payload is dropped. */
+export async function onUpdateStatus(
+  handler: (status: UpdateStatusDto) => void,
+): Promise<Unlisten> {
+  if (isTauri()) {
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen<unknown>('updater://status', (event) => {
+      try {
+        handler(parseUpdateStatus(event.payload));
+      } catch {
+        // Invalid payloads never reach the UI.
+      }
+    });
+  }
+  if (import.meta.env.DEV) return (await devMock()).mockOnUpdateStatus(handler);
+  return unavailable();
+}
+
+/** The tray's "Update to vX.Y.Z…" asks the window to show the update dialog. */
+export async function onUpdateDialogRequested(handler: () => void): Promise<Unlisten> {
+  if (isTauri()) {
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen<unknown>('updater://show', () => handler());
+  }
+  if (import.meta.env.DEV) return () => {};
+  return unavailable();
+}
+
+async function updateCommand(
+  command: string,
+  mock: (m: typeof import('./mock')) => UpdateStatusDto,
+  args?: Record<string, unknown>,
+): Promise<UpdateStatusDto> {
+  if (isTauri()) return parseUpdateStatus(await invoke<unknown>(command, args));
+  if (import.meta.env.DEV) return mock(await devMock());
+  return unavailable();
+}
+
+/** "Check now"; the result arrives as `updater://status`. Offline says nothing. */
+export function checkForUpdates(): Promise<UpdateStatusDto> {
+  return updateCommand('check_for_updates', (m) => m.mockCheckForUpdates());
+}
+
+/** "Install & restart" (and "Try again"). */
+export function installUpdate(): Promise<UpdateStatusDto> {
+  return updateCommand('install_update', (m) => m.mockInstallUpdate());
+}
+
+/** "Later": asks again in 3 days. */
+export function snoozeUpdate(): Promise<UpdateStatusDto> {
+  return updateCommand('snooze_update', (m) => m.mockDismissUpdate());
+}
+
+/** "Skip this version". */
+export function skipUpdateVersion(): Promise<UpdateStatusDto> {
+  return updateCommand('skip_update_version', (m) => m.mockDismissUpdate());
+}
+
+/** "Check for updates automatically". */
+export function setAutoUpdateCheck(enabled: boolean): Promise<UpdateStatusDto> {
+  return updateCommand('set_auto_update_check', (m) => m.mockSetAutoUpdateCheck(enabled), {
+    enabled,
+  });
 }
 
 /** Whether first-run setup is finished. */

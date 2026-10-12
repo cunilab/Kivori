@@ -26,4 +26,9 @@ export default tseslint.config(
       '@typescript-eslint/explicit-module-boundary-types': 'warn',
     },
   },
+  {
+    // Plain JavaScript (the release scripts) cannot carry type annotations.
+    files: ['**/*.{js,mjs,cjs}'],
+    rules: { '@typescript-eslint/explicit-module-boundary-types': 'off' },
+  },
 );

@@ -11,7 +11,7 @@ use crate::activity::ActivityEventKind;
 use crate::firmware::FirmwareStatus;
 use crate::ipc::dto::{
     self, ActivityEventDto, AppInfoDto, ConfigDto, ConnectionStatusDto, DeviceInternalsDto,
-    DiagnosticsDto, OnboardingDto, StartupSettingsDto,
+    DiagnosticsDto, OnboardingDto, StartupSettingsDto, UpdateStatusDto,
 };
 use crate::ipc::events;
 use crate::runtime::state::{AppState, DeviceCommand};
@@ -141,6 +141,91 @@ fn set_onboarding(
         store.save(next)
     })
     .map(|_| OnboardingDto { completed })
+}
+
+/// The app updater's status (all builds). A development build reports `disabled`, macOS
+/// `unsupported`; neither ever makes a request.
+#[tauri::command]
+pub fn get_update_status(app: AppHandle) -> UpdateStatusDto {
+    crate::updater::status(&app)
+}
+
+/// "Check now": starts a check and returns at once; `updater://status` carries the result. An
+/// offline or failed check changes nothing and reports nothing (ADR-0015).
+///
+/// # Errors
+/// Returns an error when this build does not check for updates.
+#[tauri::command]
+pub fn check_for_updates(app: AppHandle) -> Result<UpdateStatusDto, String> {
+    crate::updater::check_now(&app)
+}
+
+/// "Install & restart" (or "Try again"): downloads and verifies the offered update, then installs
+/// it and restarts as soon as no firmware flash or knob gesture is running.
+///
+/// # Errors
+/// Returns an error when nothing is offered or an install already runs.
+#[tauri::command]
+pub fn install_update(app: AppHandle) -> Result<UpdateStatusDto, String> {
+    crate::updater::install(&app)
+}
+
+/// "Later": the offered version is not offered again for 3 days (saved in the config).
+///
+/// # Errors
+/// Returns an error when nothing is offered or the setting cannot be saved.
+#[tauri::command]
+pub fn snooze_update(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+) -> Result<UpdateStatusDto, String> {
+    let version = crate::updater::offered(&handle)?;
+    let snooze = crate::updater::policy::snooze(&version, crate::activity::unix_now());
+    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+        let next = store.edited(|file| file.updates.snoozed = Some(snooze));
+        store.save(next)
+    })?;
+    Ok(crate::updater::dismissed(
+        &handle,
+        Some(crate::updater::policy::SNOOZE_SECS),
+    ))
+}
+
+/// "Skip this version": the offered version is never offered again; a newer one is.
+///
+/// # Errors
+/// Returns an error when nothing is offered or the setting cannot be saved.
+#[tauri::command]
+pub fn skip_update_version(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+) -> Result<UpdateStatusDto, String> {
+    let version = crate::updater::offered(&handle)?;
+    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+        let next = store.edited(|file| {
+            file.updates.skipped_version = Some(version.to_string());
+            file.updates.snoozed = None;
+        });
+        store.save(next)
+    })?;
+    Ok(crate::updater::dismissed(&handle, None))
+}
+
+/// "Check for updates automatically" (saved in the config).
+///
+/// # Errors
+/// Returns an error when the setting cannot be saved.
+#[tauri::command]
+pub fn set_auto_update_check(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+    enabled: bool,
+) -> Result<UpdateStatusDto, String> {
+    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+        let next = store.edited(|file| file.updates.auto_check = enabled);
+        store.save(next)
+    })?;
+    Ok(crate::updater::auto_check_changed(&handle, enabled))
 }
 
 /// The Accessibility permission as `granted`, `missing` or `notApplicable` (all builds). Never

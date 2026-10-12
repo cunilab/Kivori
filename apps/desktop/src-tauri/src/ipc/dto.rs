@@ -149,6 +149,78 @@ impl StartupSettingsDto {
     }
 }
 
+/// The app updater's status (ADR-0015) for the Device page, the update dialog and the tray.
+/// Never carries a URL: only versions, the release notes and times.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateStatusDto {
+    /// One of [`crate::updater::policy::UpdateState::TOKENS`].
+    pub state: &'static str,
+    /// Why the updater is off, while `state` is `disabled`.
+    pub reason: Option<&'static str>,
+    /// The running app version.
+    pub current_version: String,
+    /// The last check that got an answer, this session (UTC ISO-8601), or `null`.
+    pub last_checked: Option<String>,
+    /// "Check for updates automatically".
+    pub auto_check: bool,
+    /// The release, while `available`, `downloading`, `readyToRestart` or `failed`.
+    pub update: Option<UpdateReleaseDto>,
+    /// Download progress, while `downloading`.
+    pub progress: Option<UpdateProgressDto>,
+}
+
+/// An offered release: its version, plain-text notes and publication time as announced.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateReleaseDto {
+    pub version: String,
+    pub notes: String,
+    pub date: Option<String>,
+}
+
+/// Bytes downloaded so far, and the size when the server announced one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateProgressDto {
+    pub downloaded: u64,
+    pub total: Option<u64>,
+}
+
+/// Projects the updater state machine for the webview.
+#[must_use]
+pub fn update_status_dto(
+    machine: &crate::updater::policy::Machine,
+    auto_check: bool,
+) -> UpdateStatusDto {
+    use crate::updater::policy::UpdateState;
+    let state = machine.state();
+    UpdateStatusDto {
+        state: state.token(),
+        reason: match state {
+            UpdateState::Disabled(reason) => Some(reason.token()),
+            _ => None,
+        },
+        current_version: env!("CARGO_PKG_VERSION").to_string(),
+        last_checked: machine.last_checked().map(crate::activity::iso_from_unix),
+        auto_check,
+        update: state.release().map(|release| UpdateReleaseDto {
+            version: release.version.to_string(),
+            notes: release.notes.clone(),
+            date: release.date.clone(),
+        }),
+        progress: match state {
+            UpdateState::Downloading {
+                downloaded, total, ..
+            } => Some(UpdateProgressDto {
+                downloaded: *downloaded,
+                total: *total,
+            }),
+            _ => None,
+        },
+    }
+}
+
 /// Which product and board a connected device is (ADR-0014): names for the UI, the hardware
 /// revision (`null` until provisioning burned one) and where the identity came from. Product and
 /// board names are not personal data (ADR-0005).
@@ -397,6 +469,10 @@ pub enum ActivityEventTypeDto {
     HostResumed,
     HostLocked,
     HostUnlocked,
+    AppUpdateCheckFailed,
+    AppUpdateAvailable,
+    AppUpdateInstallStarted,
+    AppUpdateInstallFailed,
 }
 
 /// Closed connection-state token serialized in activity metadata.
@@ -429,6 +505,7 @@ pub enum ActivitySourceDto {
     Protocol,
     Firmware,
     Config,
+    Update,
 }
 
 /// Closed outcome token serialized to the webview.
@@ -644,6 +721,10 @@ fn activity_kind_token(kind: ActivityEventKind) -> ActivityEventTypeDto {
         ActivityEventKind::HostResumed => ActivityEventTypeDto::HostResumed,
         ActivityEventKind::HostLocked => ActivityEventTypeDto::HostLocked,
         ActivityEventKind::HostUnlocked => ActivityEventTypeDto::HostUnlocked,
+        ActivityEventKind::AppUpdateCheckFailed => ActivityEventTypeDto::AppUpdateCheckFailed,
+        ActivityEventKind::AppUpdateAvailable => ActivityEventTypeDto::AppUpdateAvailable,
+        ActivityEventKind::AppUpdateInstallStarted => ActivityEventTypeDto::AppUpdateInstallStarted,
+        ActivityEventKind::AppUpdateInstallFailed => ActivityEventTypeDto::AppUpdateInstallFailed,
     }
 }
 
@@ -663,6 +744,7 @@ fn activity_source(source: ActivitySource) -> ActivitySourceDto {
         ActivitySource::Protocol => ActivitySourceDto::Protocol,
         ActivitySource::Firmware => ActivitySourceDto::Firmware,
         ActivitySource::Config => ActivitySourceDto::Config,
+        ActivitySource::Update => ActivitySourceDto::Update,
     }
 }
 
@@ -2006,6 +2088,8 @@ pub fn vocabulary_json() -> serde_json::Value {
         "updateAdvice": crate::firmware::UpdateAdvice::ALL.map(crate::firmware::UpdateAdvice::token),
         "startupPlatform": STARTUP_PLATFORM_TOKENS,
         "accessibility": crate::platform::permissions::ACCESSIBILITY_TOKENS,
+        "updateStates": crate::updater::policy::UpdateState::TOKENS,
+        "updateDisabledReasons": crate::updater::policy::DisabledReason::ALL.map(crate::updater::policy::DisabledReason::token),
     })
 }
 

@@ -120,6 +120,13 @@ jobs:
           KEY: ${{ github.event_name != 'pull_request' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
         run: |
           if [ -n "$KEY" ]; then
+            # A signed release must be verifiable by the app: the matching public key has to be in
+            # the release config, or installed apps could never install it (ADR-0015).
+            pubkey="$(node -p "(require('./apps/desktop/src-tauri/tauri.release.conf.json').plugins?.updater?.pubkey ?? '').trim()")"
+            if [ -z "$pubkey" ]; then
+              echo "::error title=Updater public key missing::TAURI_SIGNING_PRIVATE_KEY is set but plugins.updater.pubkey in apps/desktop/src-tauri/tauri.release.conf.json is empty. Put the public key (~/.tauri/kivori-updater.key.pub) there first; see docs/release.md, One-time owner setup."
+              exit 1
+            fi
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"

@@ -21,6 +21,8 @@ vi.mock('../../../lib/ipc', () => ({
   onStartupChanged: () => Promise.resolve(() => {}),
   getDiagnostics: () => new Promise(() => {}),
   getDeviceInternals: () => new Promise(() => {}),
+  getUpdateStatus: () => new Promise(() => {}),
+  onUpdateStatus: () => Promise.resolve(() => {}),
 }));
 
 import { DevicePage } from '../DevicePage';

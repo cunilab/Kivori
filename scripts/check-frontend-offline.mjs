@@ -4,6 +4,9 @@
 // Fails if the desktop frontend references any remote URL (CDN script/style/font/image, or any
 // http(s) origin other than the local dev server). All assets must be bundled locally so the app
 // works with no internet. Scans apps/desktop/index.html, apps/desktop/src/** and packages/ui/src/** (shared source the desktop bundles).
+//
+// App updates (ADR-0015) are native only: the webview must never get a network-capable Tauri plugin,
+// so no such JS package may be a dependency or an import, and no capability may grant its permissions.
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, extname } from 'node:path';
@@ -16,6 +19,11 @@ const EXTS = new Set(['.ts', '.tsx', '.js', '.jsx', '.css', '.html']);
 // Only the local dev server is an allowed http(s) origin; everything else is a shipped remote ref.
 const ALLOWED = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i;
 const REMOTE = /\bhttps?:\/\/[^\s"'`)]+/gi;
+// Network-capable Tauri plugins: never in the webview (JS package or import) or a capability.
+const NET_PLUGINS = ['updater', 'http', 'websocket', 'upload'];
+const NET_IMPORT = new RegExp(`@tauri-apps/plugin-(${NET_PLUGINS.join('|')})\\b`);
+const NET_PERMISSION = new RegExp(`"(${NET_PLUGINS.join('|')}):`);
+const CAPABILITIES = join(ROOT, 'src-tauri', 'capabilities');
 
 function walk(dir) {
   if (!existsSync(dir)) return [];
@@ -43,8 +51,22 @@ for (const file of files) {
     });
 }
 
+for (const file of [...files, join(ROOT, 'package.json')].filter(existsSync)) {
+  readFileSync(file, 'utf8')
+    .split('\n')
+    .forEach((line, index) => {
+      if (NET_IMPORT.test(line)) violations.push(`${file}:${index + 1}: network plugin package`);
+    });
+}
+for (const name of existsSync(CAPABILITIES) ? readdirSync(CAPABILITIES) : []) {
+  const file = join(CAPABILITIES, name);
+  if (NET_PERMISSION.test(readFileSync(file, 'utf8'))) {
+    violations.push(`${file}: grants a network plugin permission to the webview`);
+  }
+}
+
 if (violations.length > 0) {
-  console.error('FRONTEND OFFLINE VIOLATION: remote asset/URL references found:');
+  console.error('FRONTEND OFFLINE VIOLATION: remote references or webview network access found:');
   for (const v of violations) console.error(`  ${v}`);
   console.error('All frontend assets must be bundled locally (FR-029, SC-006).');
   process.exit(1);

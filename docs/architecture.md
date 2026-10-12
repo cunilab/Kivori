@@ -270,6 +270,7 @@ The webview may call only these commands and listen to these events. No command 
 | `get_onboarding`, `complete_onboarding`, `restart_onboarding` | First-run state (`completed`), finish it, reopen it ("Run setup again"); see First-run onboarding | all |
 | `get_accessibility`, `request_accessibility`, `open_accessibility_settings` | macOS Accessibility status (`granted, missing, notApplicable`), the system prompt, and the settings pane; see First-run onboarding | all |
 | `get_startup_settings`, `set_launch_at_login` | Launch-at-login state and switch (`startup://changed`); see Launch at login and tray | all |
+| `get_update_status`, `check_for_updates`, `install_update`, `snooze_update`, `skip_update_version`, `set_auto_update_check` | App updater status (`UpdateStatusDto`, `updater://status`), "Check now", "Install & restart" / "Try again", "Later", "Skip this version", and the automatic-check switch (`enabled`); see App updates. No URL crosses IPC | all |
 | `get_config` | Saved settings: `version`, `revision`, `notice`, `profiles` (every profile as resolved, each slot with `deviceLabel` and `overridden`), `display`, `buddy` | all |
 | `set_display_settings` | `defaultView`, `secondaryView` (a view, or `cycle`); returns the config | all |
 | `set_buddy_settings` | `reactions`, `intensity` (`low, normal, high`); returns the config | all |
@@ -303,6 +304,8 @@ The webview may call only these commands and listen to these events. No command 
 | `desk://status` | `DeskStatusDto` | Any change to the desk projection |
 | `config://changed` | `ConfigDto` | After every successful save or reset |
 | `startup://changed` | `StartupSettingsDto` | After launch at login changes, from the tray item or `set_launch_at_login` (the OS entry's state) |
+| `updater://status` | `UpdateStatusDto` | Any updater state change (throttled to about 7 per second while downloading) |
+| `updater://show` | none | The tray's "Update to vX.Y.Z…" was clicked: show the update dialog |
 
 - Events are small JSON. Frame bytes travel as raw RGBA8888 (240x240, no JSON or base64) through a `tauri::ipc::Response` or a `Channel<ArrayBuffer>`. The canvas only blits. RGB565 to RGBA happens in Rust.
 - Dev-only commands are compiled out of release builds, and so is the Device Studio route.
@@ -422,7 +425,7 @@ desktop 1 Hz: CPU/RAM, volume/mute, media, local time -> StatusPublisher -> Stat
 
 The typed session activity log is the only runtime log.
 
-- Every record is an `ActivityEventDto`: native-issued `id`, ISO-8601 `at`, `summary`, and closed `type`, `severity` (`info, warning, error`), `source` (`connection, action, device, protocol, firmware`), `outcome` tokens.
+- Every record is an `ActivityEventDto`: native-issued `id`, ISO-8601 `at`, `summary`, and closed `type`, `severity` (`info, warning, error`), `source` (`connection, action, device, protocol, firmware, config, update`), `outcome` tokens.
 - Optional `metadata` is a fixed allowlist: connection state, retry and elapsed counters, diagnostic category and code, versions, short device hash, capability mask, state, personality, action, seed, protocol counters, reported state. There is no free-form map.
 - Never logged: raw payload bytes, raw device id, port or file paths, usernames, tokens, secrets, flasher output, raw error text. The UI reads only the fixed fields.
 - Delivery: the webview subscribes to `activity-log://event` first, then calls `get_activity_log(limit)`. It dedupes by id (live copy wins), sorts by id, and keeps the newest 256. Nothing is persisted or uploaded.
@@ -445,7 +448,7 @@ The typed session activity log is the only runtime log.
 
 - `tauri-plugin-autostart` is used from Rust only: `init(MacosLauncher::LaunchAgent, Some(["--autostart"]))` and `app.autolaunch()`. There is no JS package and no permission in `capabilities/default.json`, so the webview reaches it only through `get_startup_settings` and `set_launch_at_login(enabled)`. The OS entry (Windows `Run` key, macOS LaunchAgent) is the source of truth: nothing is stored in `config.json`, and each command returns what the OS reports after the change. Its own dependencies (`auto-launch`, `dirs`, `os_info`, registry and `smappservice` bindings) have no network crate.
 - Hidden start: `tauri.conf.json` creates the window with `visible: false`. `setup` shows it unless `std::env::args()` contains `--autostart` (`window_lifecycle::launched_at_login`); a login launch starts `WindowLifecycle::hidden()` (tray only, a close request is a no-op, `Reactivated` shows the window). The device task runs either way.
-- Tray (`runtime/lifecycle.rs`, id `kivori`): a disabled status line (`Connected`, `Not connected`, `Paused while locked`), `Open Kivori`, a `Launch at login` check item and `Quit`. The tooltip reads `Kivori · Desktop x.y.z · Firmware a.b.c` (firmware only while a device is connected, plus `Update available` when the advice says so). `tray_model(&ConnectionStatusDto, UpdateAdvice)` is pure; `refresh_tray` applies it from the device thread next to `emit_status`, so the tray follows the same snapshot as the UI. The check item is re-read from the OS after each toggle.
+- Tray (`runtime/lifecycle.rs`, id `kivori`): a disabled status line (`Connected`, `Not connected`, `Paused while locked`), `Open Kivori`, a `Launch at login` check item and `Quit`. While an app update is offered, `Update to vX.Y.Z…` sits below the status line (it opens the window and emits `updater://show`) and the tooltip ends `· Kivori X.Y.Z is ready`. The tooltip reads `Kivori · Desktop x.y.z · Firmware a.b.c` (firmware only while a device is connected, plus `Update available` when the advice says so). `tray_model(&ConnectionStatusDto, UpdateAdvice, Option<&str>)` is pure; `refresh_tray` applies it from the device thread next to `emit_status`, so the tray follows the same snapshot as the UI. The check item is re-read from the OS after each toggle.
 - A second launch while Kivori runs still goes to single-instance and surfaces the window.
 
 ### First-run onboarding (M3 S6)
@@ -496,6 +499,16 @@ On a normal launch the main window stays hidden and `setup` starts a watcher thr
 - Signing is not implemented: the installer is unsigned and a placeholder step (repository variable `WINDOWS_SIGNING`) fails closed until owner certificates exist (#36). Unsigned binaries trigger SmartScreen, and Defender may flag `espflash.exe`.
 - macOS (ADR-0009): `scripts/bundle-macos.sh` is the main path; CI only builds it on a manual dispatch. The adapter is staged by `build.rs` in `target/release/mediaremote-adapter/` and bundled to `Contents/Resources/mediaremote-adapter`, which is what `adapter_dir()` resolves. With `APPLE_SIGNING_IDENTITY` set the script signs the two Mach-O helpers, then the app, with hardened runtime. Notarization is not done.
 
+### App updates (M2.7, ADR-0015)
+
+- Native only: `tauri-plugin-updater` (no `zip` feature) is used from `src/updater/` alone. There is no JS package and no permission in `capabilities/`; the webview gets the typed commands and events above.
+- Availability (`updater::policy::availability`, read from the merged Tauri config at startup): Windows, `plugins.updater` with exactly the endpoint `https://github.com/cunilab/Kivori/releases/latest/download/latest.json` and a non-empty `pubkey`. Only then is the plugin registered and the `kivori-updater` thread started. Otherwise the status is `disabled` (`devBuild`: the base `tauri.conf.json` has no updater section; `noKey`: the release config's key is still empty; `badEndpoint`) or `unsupported` (macOS), and no request is ever made. The plugin needs its config at init, so not registering it is also what keeps a dev build from failing to start.
+- Schedule (pure `Schedule`): first check 30 s after start, then every 24 h while the app runs, if "Check for updates automatically" is on. "Check now" checks whatever the setting. A check that fails (offline, server error, unreadable answer) changes nothing on screen, records `appUpdateCheckFailed` (source `update`, no URL or version) and waits for the next interval.
+- Decisions (pure `decide`, `Machine`): `disabled | unsupported | idle | checking | available | downloading | readyToRestart | failed`. Only a version newer than the running one (semver) is offered; a skipped version never is; a snoozed one ("Later") is not offered for 3 days, unless the user presses "Check now". A check runs only from `idle`, so an open offer or an install is never replaced. An update found while a firmware flash or a knob gesture runs is held and offered when both are over (polled every second); the install downloads and verifies, then waits the same way before the installer starts.
+- Install: the plugin downloads the installer named by `latest.json`, verifies its minisign signature against the compiled-in `pubkey` (`requireSignedVersion` also binds it to the announced version), then runs the NSIS installer with `/P /R` (passive, restart) and exits. Before it exits, `AppState::shutdown` stops the device thread so the serial port is released. A failure is `failed` with "Try again" and "Later".
+- Config: `config.json` gains `updates: { autoCheck, skippedVersion, snoozed: { version, at } }` (`#[serde(default)]`, still schema v1, `autoCheck` defaults to true). "Later", "Skip this version" and the switch save through the normal config path. The last check time is per session only.
+- UI: `features/updates/UpdateDialog.tsx` at the app root opens by itself once per version when an offer appears (the window is often hidden at login, so it is there when the window opens), and on `updater://show` or the Device page's "View update". Release notes are plain text (`whitespace-pre-wrap`), never HTML. `AppUpdates.tsx` on the Device page shows the last check, the switch and "Check now".
+
 ### Offline-first rule
 
 Core function needs no internet, cloud, CDN, telemetry or licence check. Discovery, handshake, reconnect, rendering, Device Studio, state control, the activity log and app launch all work offline.
@@ -503,8 +516,8 @@ Core function needs no internet, cloud, CDN, telemetry or licence check. Discove
 - No first-party crate may depend on a network client. Firmware, shared crates and the webview never get network access.
 - The webview loads no remote scripts, styles, fonts, images, fetches or sockets (localhost in dev is the exception).
 - No telemetry, and no startup wait on the network.
-- Update discovery is the one exception (ADR-0015): the updater module alone may reach the network, only to the release endpoint, and the guards allow that module and nothing else.
-- Guards: `scripts/check-offline-deps.sh`, `scripts/check-frontend-offline.mjs`, `apps/desktop/src-tauri/tests/offline_smoke.rs`.
+- Update discovery is the one exception (ADR-0015): `apps/desktop/src-tauri/src/updater/` alone may reach the network, only to the release endpoint, only in a Windows release build with a public key, and the guards allow that module and nothing else (see App updates).
+- Guards: `scripts/check-offline-deps.sh` (direct deps of both workspaces: no network client, and no network-capable Tauri plugin except `kivori-desktop` → `tauri-plugin-updater`; transitive deps on every desktop target with that plugin pruned: no network client left; sources: no network API outside `src/updater/`), `scripts/check-frontend-offline.mjs` (also: no network plugin JS package, import or capability permission), `apps/desktop/src-tauri/tests/offline_smoke.rs` (also: the same source rule, and a development build never starts the updater).
 
 ## 7. Decisions
 

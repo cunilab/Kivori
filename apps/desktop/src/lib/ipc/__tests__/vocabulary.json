@@ -80,5 +80,16 @@
   "rotateSpecKinds": ["systemVolume", "shortcuts", "appVolume"],
   "startupPlatform": ["windows", "macos", "other"],
   "stepSpecKinds": ["action", "delay"],
-  "updateAdvice": ["upToDate", "updateAvailable", "deviceNewer", "unknown"]
+  "updateAdvice": ["upToDate", "updateAvailable", "deviceNewer", "unknown"],
+  "updateDisabledReasons": ["devBuild", "noKey", "badEndpoint"],
+  "updateStates": [
+    "disabled",
+    "unsupported",
+    "idle",
+    "checking",
+    "available",
+    "downloading",
+    "readyToRestart",
+    "failed"
+  ]
 }

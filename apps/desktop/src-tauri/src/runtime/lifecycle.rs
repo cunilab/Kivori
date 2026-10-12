@@ -4,7 +4,7 @@
 
 use tauri::menu::{CheckMenuItem, Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Manager, Window, WindowEvent, Wry};
+use tauri::{AppHandle, Emitter, Manager, Window, WindowEvent, Wry};
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::firmware::UpdateAdvice;
@@ -22,11 +22,18 @@ pub struct TrayModel {
     pub status: &'static str,
     /// The hover tooltip.
     pub tooltip: String,
+    /// The "Update to vX.Y.Z…" menu item, while an app update is offered (ADR-0015).
+    pub app_update: Option<String>,
 }
 
-/// Projects the tray's text from the connection snapshot and the firmware update advice. Pure.
+/// Projects the tray's text from the connection snapshot, the firmware update advice and the app
+/// version the updater offers, if any. Pure.
 #[must_use]
-pub fn tray_model(status: &ConnectionStatusDto, advice: UpdateAdvice) -> TrayModel {
+pub fn tray_model(
+    status: &ConnectionStatusDto,
+    advice: UpdateAdvice,
+    app_update: Option<&str>,
+) -> TrayModel {
     let line = if status.host != "active" {
         "Paused while locked"
     } else if status.connection == "connected" {
@@ -41,16 +48,24 @@ pub fn tray_model(status: &ConnectionStatusDto, advice: UpdateAdvice) -> TrayMod
             tooltip.push_str(" \u{b7} Update available");
         }
     }
+    if let Some(version) = app_update {
+        tooltip.push_str(&format!(" \u{b7} Kivori {version} is ready"));
+    }
     TrayModel {
         status: line,
         tooltip,
+        app_update: app_update.map(|version| format!("Update to v{version}\u{2026}")),
     }
 }
 
 /// The tray items that change after the tray is built (managed by Tauri).
 struct TrayHandles {
+    menu: Menu<Wry>,
     status: MenuItem<Wry>,
     launch: CheckMenuItem<Wry>,
+    /// In the menu (below the status line) only while an app update is offered.
+    update: MenuItem<Wry>,
+    update_shown: std::sync::Mutex<bool>,
 }
 
 /// Whether Kivori is registered to start at login. The OS entry is the source of truth.
@@ -89,9 +104,21 @@ pub fn refresh_tray(app: &AppHandle, status: &ConnectionStatusDto) {
         .map_or(UpdateAdvice::Unknown, |state| {
             state.firmware_status_snapshot().advice
         });
-    let model = tray_model(status, advice);
+    let offer = crate::updater::tray_offer(app);
+    let model = tray_model(status, advice, offer.as_deref());
     if let Some(handles) = app.try_state::<TrayHandles>() {
         let _ = handles.status.set_text(model.status);
+        let mut shown = handles.update_shown.lock().expect("tray lock");
+        match &model.app_update {
+            Some(text) => {
+                let _ = handles.update.set_text(text);
+                if !*shown && handles.menu.insert(&handles.update, 1).is_ok() {
+                    *shown = true;
+                }
+            }
+            None if *shown && handles.menu.remove(&handles.update).is_ok() => *shown = false,
+            None => {}
+        }
     }
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
         let _ = tray.set_tooltip(Some(model.tooltip));
@@ -111,7 +138,8 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
     }
 }
 
-/// Installs the tray icon: a status line, Open, the Launch at login switch and Quit.
+/// Installs the tray icon: a status line, Open, the Launch at login switch and Quit (and, while an
+/// app update is offered, "Update to vX.Y.Z…" below the status line).
 ///
 /// # Errors
 /// Propagates Tauri errors while building the menu or tray icon.
@@ -119,8 +147,10 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let model = tray_model(
         &app.state::<AppState>().status_snapshot(),
         UpdateAdvice::Unknown,
+        None,
     );
     let status = MenuItem::with_id(app, "status", model.status, false, None::<&str>)?;
+    let update = MenuItem::with_id(app, "update", "Update\u{2026}", true, None::<&str>)?;
     let open = MenuItem::with_id(app, "open", "Open Kivori", true, None::<&str>)?;
     let enabled = app.autolaunch().is_enabled().unwrap_or(false);
     let launch = CheckMenuItem::with_id(
@@ -150,6 +180,11 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => show_main(app),
+            // Opens the window on the update dialog.
+            "update" => {
+                show_main(app);
+                let _ = app.emit(crate::updater::SHOW_EVENT, ());
+            }
             "launch" => {
                 // The check item flips itself on click; the OS entry decides what it ends up as.
                 let wanted = !app.autolaunch().is_enabled().unwrap_or(false);
@@ -161,7 +196,15 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             _ => {}
         })
         .build(app)?;
-    app.manage(TrayHandles { status, launch });
+    app.manage(TrayHandles {
+        menu,
+        status,
+        launch,
+        update,
+        update_shown: std::sync::Mutex::new(false),
+    });
+    // The updater may already offer something (it starts before the tray).
+    refresh_tray(app, &app.state::<AppState>().status_snapshot());
     Ok(())
 }
 

@@ -125,6 +125,15 @@ pub enum ActivityEventKind {
     HostLocked,
     /// The screen unlocked; the buddy is back to what the user chose.
     HostUnlocked,
+    /// An app update check could not reach the release or read its answer (ADR-0015). Says
+    /// nothing in the UI; the next check is at the usual interval.
+    AppUpdateCheckFailed,
+    /// A newer app version is offered.
+    AppUpdateAvailable,
+    /// The user chose "Install & restart": the update is downloading.
+    AppUpdateInstallStarted,
+    /// The update could not be downloaded, verified or started; nothing was installed.
+    AppUpdateInstallFailed,
 }
 
 /// Closed severity vocabulary for native activity.
@@ -144,6 +153,8 @@ pub enum ActivitySource {
     Protocol,
     Firmware,
     Config,
+    /// App updates (ADR-0015).
+    Update,
 }
 
 /// Closed outcome vocabulary for native activity.
@@ -437,6 +448,27 @@ impl ActivityEventKind {
                     outcome: ActivityOutcome::Observed,
                 }
             }
+            // Offline is normal: a failed check is information, not a warning.
+            Self::AppUpdateCheckFailed => ActivityClassification {
+                severity: ActivitySeverity::Info,
+                source: ActivitySource::Update,
+                outcome: ActivityOutcome::Unavailable,
+            },
+            Self::AppUpdateAvailable => ActivityClassification {
+                severity: ActivitySeverity::Info,
+                source: ActivitySource::Update,
+                outcome: ActivityOutcome::Available,
+            },
+            Self::AppUpdateInstallStarted => ActivityClassification {
+                severity: ActivitySeverity::Info,
+                source: ActivitySource::Update,
+                outcome: ActivityOutcome::Started,
+            },
+            Self::AppUpdateInstallFailed => ActivityClassification {
+                severity: ActivitySeverity::Error,
+                source: ActivitySource::Update,
+                outcome: ActivityOutcome::Failed,
+            },
         }
     }
 }
@@ -934,6 +966,16 @@ fn summary_for(kind: ActivityEventKind, metadata: Option<&ActivityMetadata>) -> 
         (ActivityEventKind::HostResumed, _) => "Computer woke up.".to_string(),
         (ActivityEventKind::HostLocked, _) => "Screen locked.".to_string(),
         (ActivityEventKind::HostUnlocked, _) => "Screen unlocked.".to_string(),
+        (ActivityEventKind::AppUpdateCheckFailed, _) => {
+            "Could not check for app updates; will try again later.".to_string()
+        }
+        (ActivityEventKind::AppUpdateAvailable, _) => "An app update is available.".to_string(),
+        (ActivityEventKind::AppUpdateInstallStarted, _) => {
+            "Downloading the app update.".to_string()
+        }
+        (ActivityEventKind::AppUpdateInstallFailed, _) => {
+            "The app update failed; nothing was installed.".to_string()
+        }
     }
 }
 
@@ -952,10 +994,22 @@ pub fn connection_token(state: ConnectionState) -> &'static str {
 /// The current UTC time as an ISO-8601 second-precision string (`YYYY-MM-DDTHH:MM:SSZ`).
 #[must_use]
 pub fn now_iso() -> String {
-    let secs = std::time::SystemTime::now()
+    iso_from_unix(unix_now())
+}
+
+/// Seconds since the Unix epoch now (0 if the clock is before it).
+#[must_use]
+pub fn unix_now() -> u64 {
+    std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
-        .as_secs() as i64;
+        .as_secs()
+}
+
+/// `secs` since the Unix epoch as a UTC ISO-8601 second-precision string.
+#[must_use]
+pub fn iso_from_unix(secs: u64) -> String {
+    let secs = i64::try_from(secs).unwrap_or(i64::MAX);
     let days = secs.div_euclid(86_400);
     let tod = secs.rem_euclid(86_400);
     let (hh, mm, ss) = (tod / 3600, (tod % 3600) / 60, tod % 60);

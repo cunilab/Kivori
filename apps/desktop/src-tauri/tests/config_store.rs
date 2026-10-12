@@ -80,9 +80,67 @@ fn the_file_uses_the_documented_shape() {
             "macros": [],
             "display": { "defaultView": "clock", "secondaryView": "cycle", "brightness": 2 },
             "buddy": { "reactions": false, "intensity": "high" },
-            "onboarding": { "completed": false }
+            "onboarding": { "completed": false },
+            "updates": { "autoCheck": true, "skippedVersion": null, "snoozed": null }
         })
     );
+}
+
+#[test]
+fn update_settings_default_to_checking_and_round_trip() {
+    let dir = tempfile::tempdir().unwrap();
+    // A file from before the field existed: the automatic check is on, nothing skipped or snoozed.
+    fs::write(
+        dir.path().join("config.json"),
+        r#"{ "version": 1, "onboarding": { "completed": true } }"#,
+    )
+    .unwrap();
+    let mut store = ConfigStore::open(dir.path());
+    assert_eq!(store.notice(), None);
+    assert_eq!(
+        store.file().updates,
+        kivori_desktop::config::UpdateSettings::default()
+    );
+    assert!(store.file().updates.auto_check);
+    let next = store.edited(|file| {
+        file.updates.auto_check = false;
+        file.updates.skipped_version = Some("0.5.0".to_string());
+        file.updates.snoozed = Some(kivori_desktop::config::UpdateSnooze {
+            version: "0.6.0".to_string(),
+            at: 1_800_000_000,
+        });
+    });
+    store.save(next.clone()).unwrap();
+    let reopened = ConfigStore::open(dir.path());
+    assert_eq!(reopened.file().updates, next.updates);
+    // A partial section fills in the rest from the defaults.
+    fs::write(
+        dir.path().join("config.json"),
+        r#"{ "version": 1, "updates": { "skippedVersion": "0.5.0" } }"#,
+    )
+    .unwrap();
+    let partial = ConfigStore::open(dir.path());
+    assert!(partial.file().updates.auto_check);
+    assert_eq!(
+        partial.file().updates.skipped_version.as_deref(),
+        Some("0.5.0")
+    );
+}
+
+#[test]
+fn an_unknown_update_field_is_set_aside_like_any_other() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("config.json"),
+        r#"{ "version": 1, "updates": { "channel": "beta" } }"#,
+    )
+    .unwrap();
+    let store = ConfigStore::open(dir.path());
+    assert_eq!(
+        store.notice(),
+        Some(kivori_desktop::config::ConfigNotice::RecoveredCorrupt)
+    );
+    assert!(store.file().updates.auto_check);
 }
 
 #[test]

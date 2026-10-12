@@ -135,6 +135,7 @@ pub fn spawn(
     host_rx: Receiver<HostSignal>,
     cancel: Arc<AtomicBool>,
     config: Arc<ResolvedConfig>,
+    knob_gesture: Arc<AtomicBool>,
 ) -> JoinHandle<()> {
     std::thread::Builder::new()
         .name("kivori-device".to_string())
@@ -151,6 +152,7 @@ pub fn spawn(
                 host_rx,
                 cancel,
                 config,
+                knob_gesture,
             );
         })
         .expect("spawn kivori-device thread")
@@ -169,6 +171,7 @@ fn device_loop(
     host_rx: Receiver<HostSignal>,
     cancel: Arc<AtomicBool>,
     config: Arc<ResolvedConfig>,
+    knob_gesture: Arc<AtomicBool>,
 ) {
     let mut manager = ConnectionManager::new();
     let mut orchestrator = Orchestrator::new();
@@ -905,6 +908,8 @@ fn device_loop(
             &mut rotary,
             &mut desk,
         );
+        // The app updater never installs during a knob gesture (ADR-0015).
+        knob_gesture.store(rotary.gesture_open(), Ordering::Relaxed);
 
         // 3. Publish + emit the snapshot on change.
         let snapshot = connection_status(
@@ -1156,6 +1161,12 @@ impl RotaryPipeline {
             audio_available: is_available(backend),
             failure_started: false,
         }
+    }
+
+    /// Whether a knob gesture is open now (an app update never installs during one).
+    #[must_use]
+    pub fn gesture_open(&self) -> bool {
+        self.ingress.gesture_open()
     }
 
     /// Scopes input to the accepted nonce, including reconnects between observed state changes.

@@ -24,6 +24,7 @@ import { Diagnostics } from './Diagnostics';
 import { DeviceInternals } from './DeviceInternals';
 import { FirmwareUpdate } from './FirmwareUpdate';
 import { StartupCard } from './StartupCard';
+import { AppUpdates } from '../updates/AppUpdates';
 
 const t = strings.device;
 
@@ -182,6 +183,7 @@ export function DevicePage({
                   </Row>
                 ) : null}
               </dl>
+              <AppUpdates />
             </CardContent>
           </Card>
           <Card size="sm">

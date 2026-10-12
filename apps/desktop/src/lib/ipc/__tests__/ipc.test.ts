@@ -48,6 +48,14 @@ import {
   setProfilePinCycle,
   listRunningApps,
   getAppIcon,
+  getUpdateStatus,
+  onUpdateStatus,
+  onUpdateDialogRequested,
+  checkForUpdates,
+  installUpdate,
+  snoozeUpdate,
+  skipUpdateVersion,
+  setAutoUpdateCheck,
 } from '../index';
 import { mockGetConfig } from '../mock';
 import vocabulary from './vocabulary.json';
@@ -73,6 +81,8 @@ import {
   ACCESSIBILITY_STATES,
   STARTUP_PLATFORMS,
   UPDATE_ADVICE,
+  UPDATE_DISABLED_REASONS,
+  UPDATE_STATES,
 } from '../types';
 import type { MacroSpec } from '../types';
 import {
@@ -82,6 +92,7 @@ import {
   parseConnectionStatus,
   parseDiagnostics,
   parseFirmwareStatus,
+  parseUpdateStatus,
 } from '../validate';
 
 afterEach(() => {
@@ -699,6 +710,8 @@ describe('Rust/TS token vocabulary', () => {
     expect([...UPDATE_ADVICE]).toEqual(vocabulary.updateAdvice);
     expect([...STARTUP_PLATFORMS]).toEqual(vocabulary.startupPlatform);
     expect([...ACCESSIBILITY_STATES]).toEqual(vocabulary.accessibility);
+    expect([...UPDATE_STATES]).toEqual(vocabulary.updateStates);
+    expect([...UPDATE_DISABLED_REASONS]).toEqual(vocabulary.updateDisabledReasons);
     expect(PROFILE_LIMITS).toEqual(vocabulary.profileLimits);
   });
 });
@@ -839,5 +852,88 @@ describe('profile commands', () => {
     await expect(getDeskStatus()).rejects.toThrow();
     tauri.invoke.mockResolvedValue({ ...validDesk, recentApp: null });
     await expect(getDeskStatus()).resolves.toMatchObject({ recentApp: null });
+  });
+});
+
+describe('app updater', () => {
+  const enterTauri = (): void => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} });
+  };
+  const available = {
+    state: 'available',
+    reason: null,
+    currentVersion: '0.1.0',
+    lastChecked: '2026-10-12T08:00:00Z',
+    autoCheck: true,
+    update: { version: '0.2.0', notes: '<b>bold</b>', date: '2026-10-12T00:00:00Z' },
+    progress: null,
+  };
+
+  it('validates the status and rejects unknown or inconsistent shapes', () => {
+    expect(parseUpdateStatus(available)).toEqual(available);
+    expect(() => parseUpdateStatus({ ...available, state: 'exploding' })).toThrow();
+    // A release is required exactly in the states about one.
+    expect(() => parseUpdateStatus({ ...available, update: null })).toThrow();
+    expect(() => parseUpdateStatus({ ...available, state: 'idle' })).toThrow();
+    expect(() => parseUpdateStatus({ ...available, autoCheck: 'yes' })).toThrow();
+    const disabled = { ...available, state: 'disabled', reason: 'noKey', update: null };
+    expect(parseUpdateStatus(disabled).reason).toBe('noKey');
+    expect(() => parseUpdateStatus({ ...disabled, reason: 'whatever' })).toThrow();
+    // The reason only means something while disabled.
+    expect(parseUpdateStatus({ ...available, reason: 'noKey' }).reason).toBeNull();
+    const downloading = {
+      ...available,
+      state: 'downloading',
+      progress: { downloaded: 10, total: null },
+    };
+    expect(parseUpdateStatus(downloading).progress).toEqual({ downloaded: 10, total: null });
+    expect(() =>
+      parseUpdateStatus({ ...downloading, progress: { downloaded: -1, total: 5 } }),
+    ).toThrow();
+    // Notes stay plain text, untouched.
+    expect(parseUpdateStatus(available).update?.notes).toBe('<b>bold</b>');
+  });
+
+  it('calls the typed native commands and validates what they return', async () => {
+    enterTauri();
+    tauri.invoke.mockResolvedValue(available);
+    await expect(getUpdateStatus()).resolves.toEqual(available);
+    expect(tauri.invoke).toHaveBeenLastCalledWith('get_update_status', undefined);
+    await checkForUpdates();
+    expect(tauri.invoke).toHaveBeenLastCalledWith('check_for_updates', undefined);
+    await installUpdate();
+    expect(tauri.invoke).toHaveBeenLastCalledWith('install_update', undefined);
+    await snoozeUpdate();
+    expect(tauri.invoke).toHaveBeenLastCalledWith('snooze_update', undefined);
+    await skipUpdateVersion();
+    expect(tauri.invoke).toHaveBeenLastCalledWith('skip_update_version', undefined);
+    await setAutoUpdateCheck(false);
+    expect(tauri.invoke).toHaveBeenLastCalledWith('set_auto_update_check', { enabled: false });
+    tauri.invoke.mockResolvedValue({ ...available, state: 'bogus' });
+    await expect(getUpdateStatus()).rejects.toThrow();
+  });
+
+  it('drops an invalid updater://status payload and forwards the tray request', async () => {
+    enterTauri();
+    const listeners: Record<string, (event: { payload: unknown }) => void> = {};
+    tauri.listen.mockImplementation((name: string, cb: (event: { payload: unknown }) => void) => {
+      listeners[name] = cb;
+      return Promise.resolve(() => {});
+    });
+    const handler = vi.fn();
+    await onUpdateStatus(handler);
+    listeners['updater://status']!({ payload: { ...available, state: 'nope' } });
+    expect(handler).not.toHaveBeenCalled();
+    listeners['updater://status']!({ payload: available });
+    expect(handler).toHaveBeenCalledWith(available);
+    const show = vi.fn();
+    await onUpdateDialogRequested(show);
+    listeners['updater://show']!({ payload: null });
+    expect(show).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a development build as disabled in the browser mock', async () => {
+    const status = await getUpdateStatus();
+    expect(status).toMatchObject({ state: 'disabled', reason: 'devBuild', update: null });
   });
 });
