@@ -561,7 +561,7 @@ def copper_layout():
                 [[(xa, ys["GND"]), (ch[1], ys["GND"]), (ch[1], yj - P), (xe["GND"], yj - P), (xe["GND"], ye)],
                  # (at the front corners it steps round the screw through the switch's GND pad)
                  [(xa, ys["GND"]), (-k_, ys["GND"]), (-k_, k_), (-e, k_), (-e, leg(2, 0)[1]), (-k_, leg(2, 0)[1]),
-                  (-k_, -e), (k_, -e), (k_, leg(3, 1)[1]), (e, leg(3, 1)[1]), (e, k_)],
+                  (-k_, -e), (k_, -e), (k_, leg(3, 1)[1]), (e, leg(3, 1)[1]), (e, leg(1, 1)[1])],
                  [(-e, leg(0, 0)[1]), leg(0, 0)], [(e, leg(1, 1)[1]), leg(1, 1)],
                  [(dx, yd["GND"]), (e, yd["GND"])]]),
         "3V3": ([sm("3V3"), dd("VCC"), ep("+")],
