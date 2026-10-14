@@ -12,7 +12,7 @@ on. Like v1 it has no wires: everything connects through copper tape on one prin
 same GPIO map (issue #67) plus a fourth button.
 
 Experimental: checked only in CAD. The model has no interference, the gears mesh all the way
-round, and every copper net is a single piece with at least 0.94 mm between nets. Nothing has been
+round, and every copper net is a single piece with at least one 0.6 mm gap between nets. Nothing has been
 printed yet.
 
 ## The engineering problem, and how it is solved
@@ -74,27 +74,38 @@ One printed board (`Carrier`) carries everything:
 | Display | Stays as bought: its own short header plugs into **two standard 7-pin female headers (8.5 mm tall) stacked** on the board, the lower one soldered to the copper. Four posts with pegs through its corner holes hold it level. It pulls off for repair. |
 | Bezel hinge | Two posts on the board, braced to the display posts. |
 
-The copper is on the underside (the bed side when printing). Every trace and pad is flush with
-the surface, with a 1.0 mm wide, 0.6 mm deep gap along both sides, so taping is: lay the tape flat,
-cut along the gaps, peel off the rest. Traces are 1.2 mm wide and at least 0.94 mm apart. Where two
-gaps would leave less than 1 mm of plastic, that strip becomes gap too; islands of plastic under
-12 mm² become gap, and gaps thinner than 0.6 mm are filled in, so nothing small prints. The pin
-rows (SuperMini, display, encoder) stay solid copper bands: one short blade cut between
-neighbouring pins separates them, like a stripboard.
+The copper is on the underside (the bed side when printing), laid out by the same rules as v1.
+Every trace and pad is flush with the surface, with a 0.6 mm wide, 0.6 mm deep gap with straight
+walls along both sides, so taping is: lay the tape flat, cut along the gaps, peel off the rest.
+Every trace and pad has square corners and runs along x or y, so every cut is a straight knife
+line. Traces are as wide as the pin pads (1.94 mm), so a pad and its trace are one strip, and
+side-by-side traces sit on the 2.54 mm pin pitch, one gap apart, like the pins (a 0.6 mm cut line
+between neighbouring pins). The SuperMini pads are 1.94 mm square, so five traces fit between its
+rows; display pads 2.4 × 1.94, encoder pads 1.94 × 3.0, switch pads 2.8 mm square. Unused pins
+(5V, IO21) and unused switch legs get no copper. The gaps are kept narrow (the widest is 1.2 mm),
+so the layer over each is a short bridge. On a 0.05 mm grid of the underside, plastic left between
+two gaps narrower than 1 mm becomes gap, islands under 12 mm² become gap and gaps under 0.5 mm are
+filled in; every change is a rectangle snapped onto the traces' edges, and the plastic round the
+corner screws and unused holes stays whole.
 
-**One layer, no crossovers:**
+**One layer, one crossover** (DT over SW next to the SuperMini's left row, shown amber in the model,
+`Dummy_Kapton`: cut DT's copper off across SW's line, cover SW there with Kapton tape and join DT
+with a short strip of copper):
 
-- Display: its five signals (1.0 mm wide) leave its sockets to the west, step east above them,
-  run up beside the SuperMini's right row and turn into their pins from the east.
-- Encoder: DT, SW, 3V3 and GND run down between the SuperMini rows (stepping west twice to clear
-  the display's lanes and the encoder bushing), CLK and B1 down beside its left row. Under the
-  encoder pins they turn east and come up into them from the front.
-- B2 and B3 go straight into the back switches. B4 comes down between the rows too, passes north
-  of the encoder and drops into the front-right switch. B1 goes into the front-left switch.
-- GND runs round the edge of the board, past all four switches (their front pin pair) and over
-  to the display. VCC leaves the display to the east, runs down between the legs of the
-  front-right switch, under it and back up into the encoder's + pin, which is 3V3.
-- Each switch's second leg of a pair is joined to the first inside the switch.
+- Encoder: CLK, DT, SW and 3V3 leave the SuperMini to the west (SW, DT and CLK beside its left
+  row, 3V3 from between the rows), run down west of the encoder and come up into its pins from the
+  front, CLK outermost. GND drops into its pin from the back, beside the encoder hole.
+- Display: RES, SDA and SCL leave the right row east, step west above the display and come into
+  its pins from the west. BLK comes straight down between the rows into its pin, DC under it and
+  up the east side into its pin. GND and VCC leave it to the east.
+- B2 and B3 go straight into the back switches, B1 down the left into the front-left switch, B4
+  down between the rows, under the display and into the front-right switch.
+- GND runs round the board edge, stepping in round the corner screws (through the front
+  switches' GND pads), into one leg of each switch's front pin pair and over to the display. VCC
+  runs from the display down between the legs of the front-right switch, under it and back up
+  into the encoder's + pin, which is 3V3.
+- Each switch's second leg of a pair is joined to the first inside the switch; the unused legs
+  have no pad, so clip them short.
 
 ### Wiring (same map as v1, issue #67)
 
@@ -136,14 +147,17 @@ bridges (the copper gaps, the USB pocket, the hinge C holes open upward), nothin
 | 4 × 12×12 push switch, 10 mm tall, snap-fit stem | One more than v1. |
 | ESP32-C3 SuperMini with soldered header strips | On the printed PCB, USB-C to the back. |
 | Copper tape, 0.06 mm, a roll | All traces. |
+| Kapton (polyimide) tape, a few cm | The crossover patch. |
 | 3 × M2 × 6 self-tapping | Retainer to ring. |
 | 4 × M2 × 12 self-tapping | In the four corners: from under the floor, through the floor posts and the printed PCB into the shell's corner posts (deep counterbores at the back, where the wedge is thick). |
 | 4 × 10 mm stick-on rubber feet | In the marker rings. |
 
 ## Assembly
 
-1. Print the printed PCB in PETG. Lay copper tape over its underside, cut along the gaps, peel
-   off the rest, and make one cut between neighbouring pins of each pin row.
+1. Print the printed PCB in PETG. Lay copper tape over its underside, cut along the gaps
+   (including the cut lines between neighbouring pins) and peel off the rest. At the crossover,
+   cut DT's copper off across SW's line, stick Kapton over SW there and join DT's two ends with a
+   short strip of copper.
 2. Fit the switches, the SuperMini and the lower female header from the top; bend the switch
    legs over and solder every pin underneath. Plug the second header into the first and the
    display into that, onto its posts. Low-temperature solder (Sn42Bi58) and quick touches.

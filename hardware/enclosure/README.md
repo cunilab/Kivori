@@ -86,8 +86,9 @@ Checked for FDM in each part's print orientation:
   once the wall lean is added, the cap flanges slope 45° (the caps print top down), the plinth's
   sides are 45° to the bed, and the knob's grip grooves run out of the skirt edge.
 - **Thin features:** nothing thinner than 0.7 mm (about two nozzle widths). On the printed PCB's
-  copper side every gap is about 0.8-1 mm wide, plastic left between two gaps is at least 1 mm,
-  and the pin rows stay solid. Small text is gone from the bed sides; the wordmark is engraved.
+  copper side every gap is 0.6 mm wide (about 1.5 nozzle widths, also the cut lines between
+  neighbouring pins) with straight walls, so the layer over it is only a short bridge (the widest
+  gap is 1.1 mm), and plastic left between two gaps is at least 1 mm. Small text is gone from the bed sides; the wordmark is engraved.
 - **Fits:** FDM prints holes 0.1-0.2 mm small, so the fits allow for it: spigot 3.4 in 3.9, visor
   peg 1.8 in 2.3, knob bore 6.25 on the 6 mm shaft, cap 13.4 in a 14 mm opening.
 - **Small parts:** the caps' snap
@@ -155,16 +156,25 @@ carries the pin and button names next to their holes.
 
 Instead of hand wiring, the back of the printed PCB carries copper-tape traces, like a one-sided
 PCB: parts on the front, copper on the back. Each trace and pad is flush with the back, with a gap
-1.0 mm wide and 0.6 mm deep along both sides, so taping is: lay the tape flat, cut along the gaps,
-peel off the rest. Traces are 1.4 mm wide (1.0 mm for VCC, GND and B3 along the right and top
-edges), mostly 1.4 mm or more apart. Wherever two gaps would leave less than 1 mm of plastic
-between them (or to a hole or the edge), that strip becomes gap too, and so does any island of
-plastic under 12 mm² between the gaps; gaps thinner than 0.6 mm (crumbs where the gaps meet the
-pin rows) are filled in. So nothing small or thin prints.
-The gaps are on the bed side: gaps in the first layers with short bridges over them. The 2.54 mm
-pin rows (SuperMini, display, encoder) stay solid, because a gap between two pins would leave rings
-too thin to print: one short blade cut between neighbouring pins separates them, like a stripboard
-track.
+0.6 mm wide and 0.6 mm deep along both sides, so taping is: lay the tape flat, cut along the gaps, peel off the
+rest. Every trace and pad has square corners and runs along x or y, so every cut is a straight
+knife line. Traces are as wide as the pin pads (1.94 mm), so a pad and its trace are one strip, and
+side-by-side traces sit on the 2.54 mm pin pitch: one 0.6 mm gap apart, like the pins. B3 runs
+along the top edge, where the board edge trims its outer side, and keeps 1 mm of plastic to the
+post hole there. Wherever two gaps would leave less than 1 mm of plastic between them
+(or to a hole or the edge), that strip becomes gap too, and so does any island of plastic under
+12 mm² between the gaps; gaps thinner than 0.5 mm are filled in. The clean-up runs on a 0.05 mm
+grid of the back and every change is a rectangle snapped onto the traces' edges, so all corners
+stay square, and only plastic touching a gap changes. So nothing small or thin prints.
+The gaps are on the bed side with straight (90°) walls, so the blade has a square edge to follow;
+the layer over each gap bridges it, so every gap is kept narrow (0.6 mm, the widest 1.1 mm; the
+switch's facing GND and signal pads grow towards each other to one gap). The plastic round the post
+holes stays whole. In the 2.54 mm
+pin rows (SuperMini, display, encoder) each used pin has a 3.0 × 1.94 mm square pad with a 0.6 mm
+cut line to its neighbours (about 0.37 mm of plastic is left round each hole there). Pins and
+switch legs with no signal get no copper and no outline, and the plastic round their holes stays
+whole: SuperMini 5V, IO9 and IO21, and the leg of each switch next to the one that carries its
+button signal (internally joined). The switch legs have 2.8 mm square pads.
 
 The SuperMini stands on the front on its own soldered header strips (components towards the face,
 USB-C at the far edge), and its pins come through to the copper. On the back its left pin row
@@ -195,12 +205,13 @@ back plate lifts off and the encoder stays on its pins.
 1. Print the printed PCB in **PETG** (PLA softens under the iron).
 2. Lay copper tape flat over the back and rub it down so the gaps show through.
 3. Run a fresh blade along every gap (the gap guides it) and peel the copper off everything that is
-   not a trace or pad. Make one short cut between neighbouring pins of the pin rows. At the
+   not a trace or pad, including along the cut lines between neighbouring pins. At the
    crossover, cut VCC's copper off where it crosses the GND line.
 4. Stick a piece of Kapton tape over the GND line there, then lay a short strip of copper across it,
    joining VCC's copper on both sides; trim it to the trace width.
 5. Fit the display, the three switches and the SuperMini from the front; solder every pin on the
-   back. Bend the switch legs over onto their pads first.
+   back. Bend the switch legs over onto their pads first. One leg of each switch has no pad:
+   clip it short so it cannot touch a trace.
 6. Set the EC11 bushing into its round hole and the HW-040's straight pin tips into their holes
    (its board 8 mm off the printed PCB), then solder the pins to their pads; the iron goes into the
    5.5 mm gap above the header plastic from the header side. The back plate's pegs then locate it when the case closes.

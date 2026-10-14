@@ -196,21 +196,25 @@ SM_COL_B = ["IO5", "IO6", "IO7", "IO8", "IO9", "IO10", "IO20", "IO21"]
 
 # Printed PCB ("carrier"): copper-tape traces on its underside (the bed side), flush, with a gap
 # along both sides of every trace and pad: lay tape flat, cut along the gaps, peel off the rest.
+# Every trace and pad is square-cornered and runs along x or y (each cut is a straight knife
+# line), traces are as wide as the pin pads, and only pins that carry a signal get copper. One
+# crossover (copper_layout).
 C_T = 2.0
 C_INSET = 0.8               # outline inset from the inner walls
 HOLE_D = 1.2                # 2.54 mm header holes
-TRACE_W = 1.2
-DISP_TRACE_W = 1.0          # the display's five signals (they share a narrow strip)
-TRACE_GROOVE = (1.0, 0.6)   # gap along both sides: width, depth
-TRACE_PAD_D = 3.4           # round pads at the switch legs
-SM_PAD_D = 1.6
-PIN_PAD_D = 1.6             # display and encoder pins
+TRACE_GROOVE = (0.6, 0.6)   # gap along both sides of every trace and pad: width, depth (straight walls)
+PIN_GAP = TRACE_GROOVE[0]   # cut line between neighbouring pins of a 2.54 mm row
+TRACE_W = 2.54 - PIN_GAP    # trace width = pad width along a pin row: side by side traces sit one gap apart
+SM_PAD = (TRACE_W, TRACE_W)  # SuperMini pads (across, along the row): square, so five traces fit between the rows
+DISP_PAD = (2.4, TRACE_W)   # display pads
+ENC_PAD = (3.0, TRACE_W)    # encoder pads (its row runs along x)
+TRACE_PAD_D = 2.8           # square pads at the switch legs (0.5 mm of copper round the leg hole)
 TRACE_ISLAND_MIN = 12.0     # mm²: smaller islands of plastic between the gaps become gap (FDM)
-TRACE_GROOVE_MIN = 0.6      # gaps thinner than this (crumbs) are filled in
+TRACE_GROOVE_MIN = 0.5      # gaps thinner than this (crumbs) are filled in (the cut lines stay)
 TRACE_RIDGE_MIN = 1.0       # plastic left between two gaps: at least this wide, or it becomes gap
-PIN_ROW_BAND = 1.5          # half-width of the solid strip along each pin row (one cut per pin)
+GROOVE_GRID = 0.05          # pixel size of the grid the gaps are cleaned up on (copper_grooves)
 TAPE_T = 0.06               # copper tape (stand-in only)
-GAP_MIN = 0.94              # copper to copper, as v1
+KAPTON_T = 0.06             # insulating tape under the crossover (stand-in only)
 BTN_GPIO = ["IO4", "IO3", "IO5", "IO9"]  # back-left, front-left, back-right, front-right: B2 B1 B3 B4
 
 # Assembly: M2 x 12 self-tapping screws from under the floor, up through a floor post and the
@@ -496,123 +500,218 @@ def tilted(shape, m=None):
 
 
 def copper_layout():
-    """Nets as {name: (pads, traces)}, laid out by hand for these part positions; check_traces()
-    reports the clearance between nets after any change. One layer, no crossovers.
-    Pads: ("round", x, y, d) or ("rect", x, y, length, width). Traces: point lists, or
-    ("w", width, points).
+    """Nets as {name: (pads, traces)} plus the crossovers, laid out by hand for these part
+    positions; check_traces() reports the clearance between nets after any change.
+    Pads: ("rect", x, y, size_x, size_y), square-cornered. Traces: point lists, every segment
+    along x or y. Crossovers: [(x0, y0, x1, y1), [nets on top]].
 
     Pin map as v1 (issue #67): display SCL 6, SDA 7, RES 8, DC 10, BLK 20; encoder CLK 2, DT 0,
-    SW 1; buttons B1 3, B2 4, B3 5, and the fourth B4 on GPIO9.
-    - Display: its five signals leave its pins to the west, step east above them, run up beside
-      the SuperMini's right row and turn into their pins from the east.
-    - Encoder: DT, SW, 3V3 and GND run down between the SuperMini rows, CLK and B1 down beside its
-      left row; under the encoder pins they turn east and come up into them from the front.
-    - B2 and B3 go straight into the back switches. B4 comes down between the rows too, passes
-      north of the encoder and drops into the front-right switch. B1 into the front-left switch.
-    - GND runs round the edge of the board, past all four switches (their front pin pair), and
-      over to the display. VCC leaves the display to the east, runs down between the legs of the
-      front-right switch, under it and back up into the encoder's + pin, which is 3V3."""
+    SW 1; buttons B1 3, B2 4, B3 5, and the fourth B4 on GPIO9. Unused pins (5V, IO21) and the
+    unused legs of each switch get no copper.
+    - Encoder: CLK, DT, SW and 3V3 leave the SuperMini to the west, run down west of the encoder
+      and come up into its pins from the front (U turns, outermost CLK); DT crosses SW once
+      (crossover) next to the left row. GND drops into its pin from the back, beside the encoder
+      hole.
+    - Display: RES, SDA and SCL leave the right row east, step west above the display and come
+      into its pins from the west; BLK comes straight down between the rows into its pin, DC
+      under it and up into its pin from the east. GND and VCC leave it to the east.
+    - B2, B3 go straight into the back switches, B1 down the left into the front-left switch, B4
+      down between the rows, under the display and into the front-right switch.
+    - GND runs round the board edge (stepping in round the corner screws), into one leg of each
+      switch's front pin pair, and over to the display. VCC runs from the display down between the
+      legs of the front-right switch, under it and back up into the encoder's + pin (3V3)."""
     xa, xb = sm_rows
     ys = {n: p[1] for n, p in sm_pins.items()}
     yd = {n: p[1] for n, p in disp_pins.items()}
     xe = {n: p[0] for n, p in enc_pins.items()}
     ye = enc_pins["SW"][1]
-    dx = disp_hdr_x
-    sm = lambda n: ("round", sm_pins[n][0], sm_pins[n][1], SM_PAD_D)
-    dd = lambda n: ("rect", disp_pins[n][0], disp_pins[n][1], 2.6, 1.5)
-    ep = lambda n: ("round", enc_pins[n][0], enc_pins[n][1], PIN_PAD_D)
-    sw = lambda i, k: ("round", btn_pin(i, k)[0], btn_pin(i, k)[1], TRACE_PAD_D)
-    leg = btn_pin
-    W, DW, G = TRACE_W, DISP_TRACE_W, GAP_MIN
-
-    def lanes(x0, x1, n, w):
-        g = (x1 - x0 - n * w) / (n + 1)
-        return [x0 + g + w / 2 + k * (w + g) for k in range(n)]
-
-    # between the SuperMini rows: DT SW 3V3 GND B4
-    ch = lanes(xa + PIN_ROW_BAND, xb - PIN_ROW_BAND, 5, W)
-    # the display's five signals (BLK DC RES SDA SCL): up west of its pins, east above them, up
-    # beside the right row
-    p = DW + G
-    d1 = [dx - PIN_ROW_BAND - G - DW / 2 - (4 - k) * p for k in range(5)]
-    yj = [disp_pins["GND"][1] + PIN_ROW_BAND + G + DW / 2 + (4 - k) * p for k in range(5)]
-    d2 = [xb + PIN_ROW_BAND + G + DW / 2 + k * p for k in range(5)]
-    # below the SuperMini the channel lanes step west: first clear of the display's lanes ...
-    s1 = (d1[0] - DW / 2 - G - W / 2) - ch[4]
-    y1 = [ys["IO0"] - PIN_ROW_BAND - 0.12 - k * 0.85 for k in range(5)]
-    # ... then (all but B4) on to the west of the encoder
-    x_clk = xa - PIN_ROW_BAND - G - W / 2 - 4.0
-    x_b1 = x_clk - W - 1.0
-    fin = [x_clk + (W + G) * (k + 1) for k in range(4)]       # DT SW 3V3 GND
-    y2 = [12.0 - k * 0.85 for k in range(4)]
-    lane = lambda k: ([(ch[k], y1[k]), (ch[k] + s1, y1[k] + s1)] +
-                      ([(ch[k] + s1, y2[k]), (fin[k], y2[k] - (ch[k] + s1 - fin[k]))] if k < 4 else []))
-    yh = [ye - 3.1 - k * 2.4 for k in range(4)]                # under the encoder pins: 3V3 SW DT CLK
-    y_b4 = -10.6                                               # B4 between the display pins and the encoder
-    edge = INNER - C_INSET - 1.9                               # GND round the edge
-    c45 = 10.0                                                 # its 45° corners, clear of the corner screws
-    y_vcc_lo, x_vcc_up, y_vcc_in = -37.2, 10.0, -25.1
-    x_vcc = (leg(3, 0)[0] + leg(3, 1)[0]) / 2                  # down between the front-right switch legs
-    gnd_in = fin[3]
+    dx, leg = disp_hdr_x, btn_pin
+    W, G = TRACE_W, TRACE_GROOVE[0]
+    P = W + G                                          # pitch of side-by-side traces: one gap apart
+    sm = lambda n: ("rect", sm_pins[n][0], sm_pins[n][1], SM_PAD[0], SM_PAD[1])
+    dd = lambda n: ("rect", dx, yd[n], DISP_PAD[0], DISP_PAD[1])
+    ep = lambda n: ("rect", xe[n], ye, ENC_PAD[1], ENC_PAD[0])  # the encoder row runs along x
+    sw = lambda i, k: ("rect", leg(i, k)[0], leg(i, k)[1], TRACE_PAD_D, TRACE_PAD_D)
+    off = lambda pad_w: pad_w / 2 + G + W / 2          # pad centre to the centre of a trace one gap away
+    keep = lambda d: d / 2 + TRACE_RIDGE_MIN + G + W / 2  # hole centre to a trace keeping 1 mm of plastic
+    # five lanes between the SuperMini rows: 3V3 GND (from the left) B4 DC BLK (from the right)
+    ch = [xa + off(SM_PAD[0]) + k * P for k in range(5)]
+    # west of the left row, outwards: SW DT CLK B1 (U turns into the encoder: SW 0, DT 1, CLK 2)
+    wl = [xa - off(SM_PAD[0]) - k * P for k in range(4)]
+    u3 = xe["+"] - off(ENC_PAD[1]) - P                 # 3V3's U column, one pitch west of GND's drop
+    yu = [ye - off(ENC_PAD[0]) - k * P for k in range(4)]  # U bottoms: 3V3 SW DT CLK
+    yj = sm_pins["IO0"][1] - off(SM_PAD[1])            # 3V3 steps west below the left row ...
+    # display: RES SDA SCL east of the right row, then west above the display (RES first, under
+    # IO21's hole with 1 mm of plastic) into columns west of the display pads
+    fe = [xb + off(SM_PAD[0]) + k * P for k in range(3)]
+    ff = [ch[4] + P + k * P for k in range(3)]
+    fj = [ys["IO21"] - keep(HOLE_D) - k * P for k in range(3)]
+    y_dc = yd["BLK"] - off(DISP_PAD[1])                # DC under the BLK pad ...
+    x_dc = dx + off(DISP_PAD[0])                       # ... and up the east side of the display pads
+    y_b4 = y_dc - P                                    # B4 under DC, east to the front-right switch
+    # GND round the edge, clear of the corner screws
+    e = INNER - C_INSET - G - W / 2                    # one gap in from the board edge
+    k_ = abs(SCREWS[0][0]) - keep(SPIGOT_HOLE_D)       # stepping in round each corner screw
+    x_vcc = (leg(3, 0)[0] + leg(3, 1)[0]) / 2          # VCC down between the front-right switch legs
+    y_vcc = leg(3, 0)[1] - keep(SW_LEG_HOLE_D)         # under its unused leg
+    x_vup = xe["CLK"] + off(ENC_PAD[1])                # up east of the encoder pins
+    y_vin = ye + off(ENC_PAD[0])                       # in over them, one gap above the pads
     nets = {
-        "GND": ([sm("GND"), dd("GND"), ep("GND")] + [sw(i, k) for i in range(4) for k in (0, 1)],
-                [[(xa, ys["GND"]), (ch[3], ys["GND"])] + lane(3) + [(gnd_in, ye + 1.0), (xe["GND"], ye)],
-                 [(xa, ys["GND"]), (-edge + c45, ys["GND"]), (-edge, ys["GND"] - c45), (-edge, -edge + c45),  # 45° past the back-left screw
-                  (-edge + c45, -edge), (edge - c45, -edge), (edge, -edge + c45), (edge, leg(1, 1)[1])],
-                 [(-edge, leg(0, 0)[1]), leg(0, 0)], [(-edge, leg(2, 0)[1]), leg(2, 0)],
-                 [(edge, leg(1, 1)[1]), leg(1, 1)], [(edge, leg(3, 1)[1]), leg(3, 1)],
-                 [(dx, yd["GND"]), (edge, yd["GND"])]]),
+        "GND": ([sm("GND"), dd("GND"), ep("GND"), sw(0, 0), sw(2, 0), sw(1, 1), sw(3, 1)],
+                [[(xa, ys["GND"]), (ch[1], ys["GND"]), (ch[1], yj - P), (xe["GND"], yj - P), (xe["GND"], ye)],
+                 # (at the front corners it steps round the screw through the switch's GND pad)
+                 [(xa, ys["GND"]), (-k_, ys["GND"]), (-k_, k_), (-e, k_), (-e, leg(2, 0)[1]), (-k_, leg(2, 0)[1]),
+                  (-k_, -e), (k_, -e), (k_, leg(3, 1)[1]), (e, leg(3, 1)[1]), (e, k_)],
+                 [(-e, leg(0, 0)[1]), leg(0, 0)], [(e, leg(1, 1)[1]), leg(1, 1)],
+                 [(dx, yd["GND"]), (e, yd["GND"])]]),
         "3V3": ([sm("3V3"), dd("VCC"), ep("+")],
-                [[(xa, ys["3V3"]), (ch[2], ys["3V3"])] + lane(2) + [(fin[2], yh[0]), (xe["+"], yh[0]), (xe["+"], ye)],
-                 [(dx, yd["VCC"]), (x_vcc, yd["VCC"]), (x_vcc, y_vcc_lo), (x_vcc_up, y_vcc_lo),
-                  (x_vcc_up, y_vcc_in), (xe["+"], y_vcc_in), (xe["+"], ye)]]),
-        "SW": ([sm("IO1"), ep("SW")], [[(xa, ys["IO1"]), (ch[1], ys["IO1"])] + lane(1) +
-                                       [(fin[1], yh[1]), (xe["SW"], yh[1]), (xe["SW"], ye)]]),
-        "DT": ([sm("IO0"), ep("DT")], [[(xa, ys["IO0"]), (ch[0], ys["IO0"])] + lane(0) +
-                                       [(fin[0], yh[2]), (xe["DT"], yh[2]), (xe["DT"], ye)]]),
-        "CLK": ([sm("IO2"), ep("CLK")], [[(xa, ys["IO2"]), (x_clk, ys["IO2"]), (x_clk, yh[3]), (xe["CLK"], yh[3]), (xe["CLK"], ye)]]),
-        "B1": ([sm("IO3"), sw(2, 2), sw(2, 3)], [[(xa, ys["IO3"]), (x_b1, ys["IO3"]), (x_b1, leg(2, 3)[1]), leg(2, 3)]]),
-        "B2": ([sm("IO4"), sw(0, 2), sw(0, 3)], [[(xa, ys["IO4"]), (leg(0, 3)[0], ys["IO4"]), leg(0, 3)]]),
-        "B3": ([sm("IO5"), sw(1, 2), sw(1, 3)], [[(xb, ys["IO5"]), (leg(1, 2)[0], ys["IO5"]), leg(1, 2)]]),
-        "B4": ([sm("IO9"), sw(3, 2), sw(3, 3)],
-               [[(xb, ys["IO9"]), (ch[4], ys["IO9"])] + lane(4) + [(ch[4] + s1, y_b4), (leg(3, 2)[0], y_b4), leg(3, 2)]]),
-        "nc5V": ([sm("5V")], []), "ncIO21": ([sm("IO21")], []),
+                [[(xa, ys["3V3"]), (ch[0], ys["3V3"]), (ch[0], yj), (u3, yj), (u3, yu[0]), (xe["+"], yu[0]), (xe["+"], ye)],
+                 [(dx, yd["VCC"]), (x_vcc, yd["VCC"]), (x_vcc, y_vcc), (x_vup, y_vcc), (x_vup, y_vin),
+                  (xe["+"], y_vin), (xe["+"], ye)]]),
+        "SW": ([sm("IO1"), ep("SW")], [[(xa, ys["IO1"]), (wl[0], ys["IO1"]), (wl[0], yu[1]), (xe["SW"], yu[1]), (xe["SW"], ye)]]),
+        "DT": ([sm("IO0"), ep("DT")], [[(xa, ys["IO0"]), (wl[1], ys["IO0"]), (wl[1], yu[2]), (xe["DT"], yu[2]), (xe["DT"], ye)]]),
+        "CLK": ([sm("IO2"), ep("CLK")], [[(xa, ys["IO2"]), (wl[2], ys["IO2"]), (wl[2], yu[3]), (xe["CLK"], yu[3]), (xe["CLK"], ye)]]),
+        "B1": ([sm("IO3"), sw(2, 3)], [[(xa, ys["IO3"]), (wl[3], ys["IO3"]), (wl[3], leg(2, 3)[1]), leg(2, 3)]]),
+        "B2": ([sm("IO4"), sw(0, 3)], [[(xa, ys["IO4"]), (leg(0, 3)[0], ys["IO4"]), leg(0, 3)]]),
+        "B3": ([sm("IO5"), sw(1, 2)], [[(xb, ys["IO5"]), (leg(1, 2)[0], ys["IO5"]), leg(1, 2)]]),
+        "B4": ([sm("IO9"), sw(3, 2)], [[(xb, ys["IO9"]), (ch[2], ys["IO9"]), (ch[2], y_b4), (leg(3, 2)[0], y_b4), leg(3, 2)]]),
+        "DC": ([sm("IO10"), dd("DC")], [[(xb, ys["IO10"]), (ch[3], ys["IO10"]), (ch[3], y_dc), (x_dc, y_dc),
+                                          (x_dc, yd["DC"]), (dx, yd["DC"])]]),
+        "BLK": ([sm("IO20"), dd("BLK")], [[(xb, ys["IO20"]), (ch[4], ys["IO20"]), (ch[4], yd["BLK"]), (dx, yd["BLK"])]]),
     }
-    for k, (name, pin) in enumerate([("BLK", "IO20"), ("DC", "IO10"), ("RES", "IO8"), ("SDA", "IO7"), ("SCL", "IO6")]):
-        nets[name] = ([sm(pin), dd(name)],
-                      [("w", DW, [(dx, yd[name]), (d1[k], yd[name]), (d1[k], yj[k]), (d2[k], yj[k]), (d2[k], ys[pin]), (xb, ys[pin])])])
-    return nets
+    for k, (name, pin) in enumerate([("RES", "IO8"), ("SDA", "IO7"), ("SCL", "IO6")]):
+        nets[name] = ([sm(pin), dd(name)], [[(xb, ys[pin]), (fe[k], ys[pin]), (fe[k], fj[k]), (ff[k], fj[k]),
+                                             (ff[k], yd[name]), (dx, yd[name])]])
+    # DT crosses SW's line next to the left row (DT on top of a strip of Kapton)
+    y0 = ys["IO0"]
+    crossovers = [((wl[0] - W / 2 - G, y0 - W / 2 - 0.55, xa - SM_PAD[0] / 2, y0 + W / 2 + 0.55), ["DT"])]
+    return nets, crossovers
 
 
-def trace_solid(pts, w, z0, z1):
-    """A trace: a w wide strip along the points, round at every corner."""
-    parts = [cyl(w, x, y, z0, z1) for (x, y) in pts]
-    for a, b in zip(pts, pts[1:]):
-        L = math.hypot(b[0] - a[0], b[1] - a[1])
-        if L > 1e-6:
-            s = box(0, -w / 2, z0, L, w / 2, z1)
-            s.rotate(V(0, 0, 0), V(0, 0, 1), math.degrees(math.atan2(b[1] - a[1], b[0] - a[0])))
-            s.translate(V(a[0], a[1], 0))
-            parts.append(s)
-    return fuse_all(parts)
+def net_parts(nets, crossovers):
+    """(copper on the board, copper laid on the crossover patches): the nets on top lose their
+    part inside each patch from the first, and only that part goes in the second."""
+    over = {}
+    for rect, names in crossovers:
+        for n in names:
+            over.setdefault(n, []).append(rect)
+    return over
+
+
+def net_boxes(net, grow=0.0):
+    """A net as axis-aligned rectangles (x0, y0, x1, y1): its pads, and each trace segment with a
+    square end at every point (so every corner is square), all grown by grow."""
+    pads, traces = net
+    out = [(x - sx / 2 - grow, y - sy / 2 - grow, x + sx / 2 + grow, y + sy / 2 + grow) for (_, x, y, sx, sy) in pads]
+    for t in traces:  # a point list, or ("w", width, points) for a narrower trace
+        w, pts = (t[1], t[2]) if t and t[0] == "w" else (TRACE_W, t)
+        h = w / 2 + grow
+        for (ax, ay), (bx, by) in zip(pts, pts[1:] or pts):
+            assert abs(ax - bx) < 1e-9 or abs(ay - by) < 1e-9, "trace segments run along x or y"
+            out.append((min(ax, bx) - h, min(ay, by) - h, max(ax, bx) + h, max(ay, by) + h))
+    return out
 
 
 def net_solid(net, z0, z1, grow=0.0):
-    pads, traces = net
-    parts = []
-    for pad in pads:
-        if pad[0] == "rect":
-            parts.append(rr_prism(pad[3] + 2 * grow, pad[4] + 2 * grow, 0.4 + grow, z0, z1, pad[1], pad[2]))
-        else:
-            parts.append(cyl(pad[3] + 2 * grow, pad[1], pad[2], z0, z1))
-    for t in traces:
-        w, pts = (t[1], t[2]) if t and t[0] == "w" else (TRACE_W, t)
-        parts.append(trace_solid(pts, w + 2 * grow, z0, z1))
-    return fuse_all(parts)
+    return fuse_all([box(x0, y0, z0, x1, y1, z1) for (x0, y0, x1, y1) in net_boxes(net, grow)])
 
 
-def board_nets(z0, z1, grow=0.0):
-    return {k: net_solid(n, z0, z1, grow) for k, n in copper_layout().items()}
+def patch_box(rect, z0, z1):
+    return box(rect[0], rect[1], z0, rect[2], rect[3], z1)
+
+
+def board_nets(z0, z1, grow=0.0, clip=True):
+    """Each net's copper that lies on the board: nets on top of a crossover lose the part inside
+    the patch (that part sits on the insulating tape, above the copper below). clip=False keeps
+    them whole (the gaps draw every line in full, through the crossovers)."""
+    nets, crossovers = copper_layout()
+    over = net_parts(nets, crossovers) if clip else {}
+    out = {}
+    for k, n in nets.items():
+        sol = net_solid(n, z0, z1, grow)
+        for rect in over.get(k, []):
+            sol = sol.cut(patch_box(rect, z0 - 1, z1 + 1))
+        out[k] = sol
+    return out
+
+
+def bare_holes():
+    """Through holes with no copper pad round them (unused pins and switch legs): (x, y, d)."""
+    nets, _ = copper_layout()
+    pads = [(x, y) for (pads_, _) in nets.values() for (_, x, y, _, _) in pads_]
+    holes = [(x, y, HOLE_D) for d in (sm_pins, disp_pins, enc_pins) for (x, y) in d.values()]
+    holes += [btn_pin(i, k) + (SW_LEG_HOLE_D,) for i in range(4) for k in range(4)]
+    return [(x, y, d) for (x, y, d) in holes if not any(math.hypot(x - px, y - py) < 1e-6 for (px, py) in pads)]
+
+
+def grid_open(m, n):
+    """Square opening of a pixel mask: what is left of m after an n x n pixel square has swept
+    every place it fits. Anything narrower than n pixels goes; square corners stay square."""
+    import numpy as np
+    lo, hi = n // 2, n - 1 - n // 2
+
+    def window_sum(a, l, h):  # sum over [i - l, i + h] x [j - l, j + h]
+        c = np.zeros((a.shape[0] + l + h + 1, a.shape[1] + l + h + 1), np.int32)
+        c[l + 1:l + 1 + a.shape[0], l + 1:l + 1 + a.shape[1]] = a
+        c = c.cumsum(0).cumsum(1)
+        H, W = a.shape
+        return (c[l + h + 1:l + h + 1 + H, l + h + 1:l + h + 1 + W] - c[:H, l + h + 1:l + h + 1 + W]
+                - c[l + h + 1:l + h + 1 + H, :W] + c[:H, :W])
+
+    eroded = window_sum(m, lo, hi) == n * n
+    return window_sum(eroded, hi, lo) > 0
+
+
+def grid_rects(mask, x0, y0, res, xs, ys, keep):
+    """Connected pieces of a pixel mask, keep(piece) decides, as rectangles (x0, y0, x1, y1) with
+    their edges snapped onto the nearest exact edge in xs / ys (within a pixel)."""
+    import bisect
+    runs = []  # (row, i0, i1)
+    for j in range(mask.shape[0]):
+        row = mask[j]
+        if not row.any():
+            continue
+        d = [int(k) for k in (row[1:] != row[:-1]).nonzero()[0] + 1]
+        edges = ([0] if row[0] else []) + d + ([len(row)] if row[-1] else [])
+        runs += [(j, edges[k], edges[k + 1]) for k in range(0, len(edges), 2)]
+    parent = list(range(len(runs)))
+
+    def find(k):
+        while parent[k] != k:
+            parent[k] = parent[parent[k]]
+            k = parent[k]
+        return k
+    by_row = {}
+    for k, (j, i0, i1) in enumerate(runs):
+        by_row.setdefault(j, []).append(k)
+        for q in by_row.get(j - 1, []):
+            if runs[q][1] < i1 and i0 < runs[q][2]:
+                parent[find(k)] = find(q)
+    pieces = {}
+    for k in range(len(runs)):
+        pieces.setdefault(find(k), []).append(runs[k])
+
+    def snap(v, vals):
+        i = bisect.bisect_left(vals, v)
+        best = min(vals[max(i - 1, 0):i + 1], key=lambda s: abs(s - v), default=v)
+        return best if abs(best - v) <= 1.01 * res else v
+    rects = []
+    for piece in pieces.values():
+        if not keep(piece):
+            continue
+        open_ = {}  # (i0, i1) -> [j0, j1]: runs stacked into rectangles
+        for (j, i0, i1) in sorted(piece):
+            r = open_.get((i0, i1))
+            if r and r[1] == j:
+                r[1] = j + 1
+            else:
+                if r:
+                    rects.append((i0, r[0], i1, r[1]))
+                open_[(i0, i1)] = [j, j + 1]
+        rects += [(i0, j0, i1, j1) for (i0, i1), (j0, j1) in open_.items()]
+    out = [(snap(x0 + i0 * res, xs), snap(y0 + j0 * res, ys), snap(x0 + i1 * res, xs), snap(y0 + j1 * res, ys))
+           for (i0, j0, i1, j1) in rects]
+    return [r for r in out if r[2] - r[0] > 1e-3 and r[3] - r[1] > 1e-3]  # (snapping can close one)
 
 
 def carrier_outline():
@@ -632,67 +731,118 @@ def carrier_through_cuts():
 
 
 def copper_grooves():
-    """The gap along both sides of every trace and pad, cut into the printed PCB's underside. Where
-    two gaps leave less than TRACE_RIDGE_MIN of plastic between them (or to a hole or the edge),
-    that sliver becomes gap too, and so does any island of plastic smaller than TRACE_ISLAND_MIN;
-    gaps thinner than TRACE_GROOVE_MIN are filled in. The pin rows stay solid copper bands."""
-    z0, z1 = C_BOT - 1, C_BOT + TRACE_GROOVE[1]
-    flat = lambda shp: [f for f in shp.Faces if abs(f.normalAt(0, 0).z) > 0.99 and abs(f.CenterOfMass.z - z0) < 1e-6]
-    outer = fuse_all(list(board_nets(z0, z1, TRACE_GROOVE[0]).values()))
-    copper = fuse_all(list(board_nets(z0 - 1, z1 + 1).values()))
+    """The gap along both sides of every trace and pad, cut into the printed PCB's back, cleaned up
+    for FDM on a GROOVE_GRID pixel grid of the back:
+    - plastic left between two gaps (or a gap and a hole or the edge) narrower than
+      TRACE_RIDGE_MIN becomes gap, and so does an island of plastic under TRACE_ISLAND_MIN;
+    - a gap narrower than TRACE_GROOVE_MIN (a crumb next to a hole or the edge) is filled in;
+    - the plastic round a hole without copper (unused pin or switch leg) stays whole.
+    The changes are rectangles snapped onto the traces' edges, so every corner stays square.
+    Between neighbouring pins of a pin row the gap is the PIN_GAP cut line. Every line is drawn in
+    full, through the crossovers too (cut the crossing apart by hand there)."""
+    import numpy as np
+    z0, z1, res = C_BOT - 1, C_BOT + TRACE_GROOVE[1], GROOVE_GRID
+    nets, _ = copper_layout()
+    gap_b = [b for n in nets.values() for b in net_boxes(n, TRACE_GROOVE[0])]
+    cu_b = [b for n in nets.values() for b in net_boxes(n)]
     board = carrier_outline().cut(carrier_through_cuts())
     plate = Part.makeCompound([f.copy() for f in board.Faces
                                if abs(f.normalAt(0, 0).z + 1) < 1e-6 and abs(f.CenterOfMass.z - C_BOT) < 1e-6])
-    plate.translate(V(0, 0, z0 - C_BOT))
-    field = plate.cut(Part.makeCompound(flat(outer)))  # plastic left between the gaps
-    plate = Part.makeCompound(plate.Faces)
-    r = TRACE_RIDGE_MIN / 2
+    bb = plate.BoundBox
+    X0, Y0 = bb.XMin - 2 * res, bb.YMin - 2 * res
+    nx, ny = int(bb.XLength / res) + 5, int(bb.YLength / res) + 5
+    xc = X0 + (np.arange(nx) + 0.5) * res  # pixel centres
+    yc = Y0 + (np.arange(ny) + 0.5) * res
 
-    def offset(faces, d):
-        out = []
-        for f in faces:
-            try:  # fine polygons offset reliably (some outlines do not)
-                wires = [Part.makePolygon(w.discretize(Deflection=0.01) + [w.discretize(Deflection=0.01)[0]])
-                         for w in f.Wires]
-                out += Part.makeFace(wires, "Part::FaceMakerBullseye").makeOffset2D(d).Faces
-            except Exception as exc:
-                if "no wires" not in str(exc):  # a real failure: keep the face as it is
-                    out.append(f)              # (no wires = it shrank away: a sliver)
-        return out
+    def fill(m, rects):
+        for (a0, b0, a1, b1) in rects:
+            i0, i1 = int(np.ceil((a0 - X0) / res - 0.5)), int(np.floor((a1 - X0) / res - 0.5)) + 1
+            j0, j1 = int(np.ceil((b0 - Y0) / res - 0.5)), int(np.floor((b1 - Y0) / res - 0.5)) + 1
+            m[max(j0, 0):max(j1, 0), max(i0, 0):max(i1, 0)] = True
+        return m
+    board_m = np.zeros((ny, nx), bool)  # the back, row by row
+    for j, y in enumerate(yc):
+        line = Part.makeLine(V(X0, y, C_BOT), V(X0 + nx * res, y, C_BOT))
+        for e in plate.common(line).Edges:
+            a, b = sorted((e.Vertexes[0].X, e.Vertexes[-1].X))
+            board_m[j, (xc >= a) & (xc <= b)] = True
+    solid_m = board_m.copy()  # holes without copper (and the post holes) count as plastic: it stays whole round them
+    for (x, y, d) in bare_holes() + [(x, y, SPIGOT_HOLE_D) for (x, y) in SCREWS]:
+        solid_m |= ((xc[None, :] - x) ** 2 + (yc[:, None] - y) ** 2) <= (d / 2) ** 2
+    gap_m = fill(np.zeros((ny, nx), bool), gap_b)
+    cu_m = fill(np.zeros((ny, nx), bool), cu_b)
+    near_gap = gap_m.copy()
+    near_gap[1:] |= gap_m[:-1]; near_gap[:-1] |= gap_m[1:]; near_gap[:, 1:] |= gap_m[:, :-1]; near_gap[:, :-1] |= gap_m[:, 1:]
+    xs = sorted({v for b in gap_b + cu_b for v in (b[0], b[2])} | {e.Vertexes[0].X for e in plate.Edges
+                if e.Curve.TypeId == "Part::GeomLine" and abs(e.Vertexes[0].X - e.Vertexes[-1].X) < 1e-6})
+    ys = sorted({v for b in gap_b + cu_b for v in (b[1], b[3])} | {e.Vertexes[0].Y for e in plate.Edges
+                if e.Curve.TypeId == "Part::GeomLine" and abs(e.Vertexes[0].Y - e.Vertexes[-1].Y) < 1e-6})
+    touching = lambda piece: any(near_gap[j, i0:i1].any() for (j, i0, i1) in piece)
+    big = lambda piece: sum(i1 - i0 for (_, i0, i1) in piece) * res * res > 0.05 and \
+        min(max(i1 for (_, _, i1) in piece) - min(i0 for (_, i0, _) in piece),
+            max(j for (j, _, _) in piece) - min(j for (j, _, _) in piece) + 1) > 2  # no hairlines
 
-    kept = offset(offset(field.Faces, -r), r)
-    small = [f for f in kept if f.Area < TRACE_ISLAND_MIN]
-    print("plastic islands made gap: %d (%s mm²)" % (len(small), ", ".join("%.1f" % f.Area for f in small)))
-    kept = Part.makeCompound([f for f in kept if f.Area >= TRACE_ISLAND_MIN])
-    keep = kept.extrude(V(0, 0, z1 - z0 + 1)) if kept.Faces else None
-    grooves = Part.makeCompound([f.extrude(V(0, 0, z1 - z0)) for f in plate.Faces]).cut(copper)
-    rows = [[sm_pins[n] for n in SM_COL_A], [sm_pins[n] for n in SM_COL_B], list(disp_pins.values()), list(enc_pins.values())]
-    for pts in rows:  # solid strips along the pin rows
-        xs, ys_ = [q[0] for q in pts], [q[1] for q in pts]
-        grooves = grooves.cut(box(min(xs) - PIN_ROW_BAND, min(ys_) - PIN_ROW_BAND, z0 - 1,
-                                  max(xs) + PIN_ROW_BAND, max(ys_) + PIN_ROW_BAND, z1 + 1))
-    grooves = grooves.cut(keep) if keep else grooves
-    opened, crumbs = [], []
-    for f in flat(grooves):  # a face that opens away is a crumb; one the offset mangles is kept
-        o = offset(offset([f], -TRACE_GROOVE_MIN / 2), TRACE_GROOVE_MIN / 2)
-        a = sum(g.Area for g in o)
-        if a < 1e-6 and f.Area < 3.0:
-            crumbs.append(f.Area)
-        else:
-            opened += o if a > 0.5 * f.Area else [f]
-    print("gap crumbs filled: %d (%s mm²)" % (len(crumbs), ", ".join("%.2f" % c for c in crumbs)))
-    return Part.makeCompound([f.extrude(V(0, 0, z1 - z0)) for f in opened])
+    # plastic between the gaps narrower than TRACE_RIDGE_MIN: gap
+    plastic = solid_m & ~gap_m
+    n = int(round(TRACE_RIDGE_MIN / res)) - 1  # one pixel under, so a ridge just over the limit is not aliased away
+    thin = plastic & ~grid_open(plastic, n)
+    ridge_r = grid_rects(thin, X0, Y0, res, xs, ys, lambda p: touching(p) and big(p))
+    # gaps narrower than TRACE_GROOVE_MIN (crumbs next to a hole or the edge): plastic
+    gaps = board_m & gap_m & ~cu_m
+    n = int(round(TRACE_GROOVE_MIN / res))
+    crumb_r = grid_rects(gaps & ~grid_open(gaps, n), X0, Y0, res, xs, ys, big)
+
+    # widest gap: the layer over a gap bridges it, so gaps should stay narrow
+    gm = board_m & (gap_m | thin) & ~cu_m
+    n = 2
+    while n < 200 and grid_open(gm, n + 2).any():
+        n += 2
+    wide = grid_rects(grid_open(gm, n), X0, Y0, res, xs, ys, lambda p: True)
+    print("widest gap (the bridge over it): %.1f mm, at %s" % (n * res, ", ".join(
+        "(%.1f, %.1f)" % ((r[0] + r[2]) / 2, (r[1] + r[3]) / 2) for r in wide[:4])))
+    slab = lambda rects, za, zb: fuse_all([box(a0, b0, za, a1, b1, zb) for (a0, b0, a1, b1) in rects])
+    # the open area at the back face: the gaps, the holes and everything outside the board
+    zb, D = C_BOT, TRACE_GROOVE[1]
+    back = Part.makeCompound([f.extrude(V(0, 0, 1)) for f in plate.Faces])  # the board, C_BOT .. +1
+    cut = slab(gap_b + ridge_r, zb - 1, zb + 1)
+    islands = [s_ for s_ in back.cut(cut).Solids if s_.Volume < TRACE_ISLAND_MIN]  # too small to print: gap
+    shown = [s_.Volume for s_ in islands if s_.Volume > 0.05]
+    print("plastic slivers made gap: %d pieces, %.1f mm²; islands made gap: %d (%s mm²); gap crumbs filled: %d" % (
+        len(ridge_r), sum((r[2] - r[0]) * (r[3] - r[1]) for r in ridge_r), len(shown),
+        ", ".join("%.1f" % a for a in shown), len(crumb_r)))
+    outside = box(bb.XMin - 5, bb.YMin - 5, zb - 1, bb.XMax + 5, bb.YMax + 5, zb + 1).cut(back)
+    open_ = cut.fuse([outside] + islands).cut(slab(cu_b, zb - 2, zb + 2))
+    if crumb_r:
+        open_ = open_.cut(slab(crumb_r, zb - 2, zb + 2))
+    faces = [f for f in open_.removeSplitter().Faces
+             if abs(f.normalAt(0, 0).z - 1) < 1e-6 and abs(f.CenterOfMass.z - (zb + 1)) < 1e-6]
+    # straight (90°) walls: a flat-bottomed gap the blade can follow; kept narrow, so the layer
+    # over it is only a short bridge
+    out = []
+    for f in faces:
+        f = f.copy()
+        f.translate(V(0, 0, z0 - f.CenterOfMass.z))
+        out.append(f.extrude(V(0, 0, z1 - z0)))
+    board_zone = Part.makeCompound([f.extrude(V(0, 0, z1 - z0)) for f in plate.Faces])
+    board_zone.translate(V(0, 0, z0 - C_BOT))
+    return board_zone.common(fuse_all(out)).removeSplitter()
 
 
 def check_traces():
-    """Smallest gap between two different nets (the plastic wall between their copper)."""
-    sol = board_nets(C_BOT - TAPE_T, C_BOT)
-    keys, worst = list(sol), (99.0, "", "")
+    """Gap between every two nets, smallest first (the crossovers left out): at least one
+    TRACE_GROOVE gap everywhere (side-by-side traces and neighbouring pins are exactly that)."""
+    nets, crossovers = copper_layout()
+    over = net_parts(nets, crossovers)
+    sol = {}
+    for k, n in nets.items():
+        sol[k] = net_solid(n, C_BOT - TAPE_T, C_BOT)
+        for rect in over.get(k, []):
+            sol[k] = sol[k].cut(patch_box(rect, C_BOT - 1, C_BOT + 1))
+    keys, pairs = list(sol), []
     for i in range(len(keys)):
         for j in range(i + 1, len(keys)):
-            d = sol[keys[i]].distToShape(sol[keys[j]])[0]
-            worst = min(worst, (d, keys[i], keys[j]))
-    return worst
+            pairs.append((sol[keys[i]].distToShape(sol[keys[j]])[0], keys[i], keys[j]))
+    return sorted(pairs)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -980,8 +1130,29 @@ def dummy_supermini():
 
 
 def dummy_copper():
-    """Copper tape flush on the underside."""
-    return fuse_all(list(board_nets(C_BOT - TAPE_T, C_BOT).values())).cut(carrier_through_cuts())
+    """Copper tape flush on the underside; at the crossover the upper trace's copper lies on the
+    insulating tape over the lower copper."""
+    nets, crossovers = copper_layout()
+    t, k, f = TAPE_T, KAPTON_T, C_BOT
+    parts = list(board_nets(f - t, f).values())
+    for rect, names in crossovers:  # (the tape itself: Dummy_Kapton)
+        for nm in names:
+            parts.append(net_solid(nets[nm], f - 2 * t - k, f - t - k).common(patch_box(rect, f - 5, f + 5)))
+    footprint = carrier_outline()  # the board edge trims the tape
+    footprint.translate(V(0, 0, -C_T / 2))
+    return fuse_all(parts).common(footprint).cut(carrier_through_cuts())
+
+
+def dummy_kapton():
+    """Insulating tape where the upper trace crosses the lower copper."""
+    nets, crossovers = copper_layout()
+    f, t, k = C_BOT, TAPE_T, KAPTON_T
+    parts = []
+    for rect, names in crossovers:
+        upper = fuse_all([net_solid(nets[n], f - t - k, f - t) for n in names])
+        lower = fuse_all([net_solid(n, f - t - k, f - t) for m, n in nets.items() if m not in names])
+        parts.append(upper.common(lower).common(patch_box(rect, f - 5, f + 5)))
+    return fuse_all(parts)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -996,6 +1167,7 @@ COLORS = {
     "Ring": (0.80, 0.80, 0.82), "Shell": (0.13, 0.13, 0.15), "Floor": (0.13, 0.13, 0.15),
     "Retainer": (0.12, 0.45, 0.25), "Cap": (0.04, 0.04, 0.05), "Carrier": (0.12, 0.45, 0.25),
     "Pinion": (0.95, 0.50, 0.18), "Dummy": (0.30, 0.45, 0.85), "Copper": (0.85, 0.50, 0.20),
+    "Kapton": (0.95, 0.70, 0.15),
 }
 FLIP = ("Ring", "Shell", "Cap") + tuple(BUTTON_NAMES)  # printed upside down
 
@@ -1020,6 +1192,7 @@ def build():
     DUMMIES["Dummy_Display"] = tilted(dummy_display())
     DUMMIES["Dummy_SuperMini"] = tilted(dummy_supermini())
     DUMMIES["Dummy_Copper"] = tilted(dummy_copper())
+    DUMMIES["Dummy_Kapton"] = tilted(dummy_kapton())
 
 
 def check_interference():
@@ -1039,6 +1212,8 @@ def check_interference():
 def color_key(name):
     if name == "Dummy_Copper":
         return "Copper"
+    if name == "Dummy_Kapton":
+        return "Kapton"
     if name.startswith("Dummy"):
         return "Dummy"
     return "Shell" if name.startswith("Tile") else name
@@ -1097,8 +1272,9 @@ def main():
     doc = to_doc()
     clashes = check_interference()
     print("interference:", clashes if clashes else "none")
-    d, a, b = check_traces()
-    print("trace clearance: %.2f mm (%s / %s), need 0.8" % (d, a, b))
+    pairs = check_traces()
+    print("trace clearance: %.2f mm (%s / %s), need %.2f: %s" % (pairs[0] + (TRACE_GROOVE[0],
+          "ok" if pairs[0][0] > TRACE_GROOVE[0] - 1e-6 else "TOO CLOSE")))
     print("height: front %.1f, back %.1f, ring top %.1f mm (wedge %.1f°)" % (heights() + (WEDGE_DEG,)))
     for name, shp in PRINTED.items():
         bb = shp.BoundBox
