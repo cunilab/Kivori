@@ -206,7 +206,10 @@ back plate lifts off and the encoder stays on its pins.
 2. Lay copper tape flat over the back and rub it down so the gaps show through.
 3. Run a fresh blade along every gap (the gap guides it) and peel the copper off everything that is
    not a trace or pad, including along the cut lines between neighbouring pins. At the
-   crossover, cut VCC's copper off where it crosses the GND line.
+   crossover, cut VCC's copper off where it crosses the GND line. Then drill every pin and switch
+   leg hole through from the component side with a 1.0-1.2 mm bit in a pin vise: the holes stop
+   0.6 mm short of the copper side (`PIN_SKIN`), so the pads print as solid rectangles, and the
+   drill opens the plastic and the tape in one go, guided by the blind hole.
 4. Stick a piece of Kapton tape over the GND line there, then lay a short strip of copper across it,
    joining VCC's copper on both sides; trim it to the trace width.
 5. Fit the display, the three switches and the SuperMini from the front; solder every pin on the

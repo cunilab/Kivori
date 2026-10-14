@@ -212,6 +212,11 @@ TRACE_GROOVE = (0.6, 0.6)   # gap along both sides of every trace and pad: width
 PIN_GAP = 0.6
 TRACE_PAD = (3.0, 2.54 - PIN_GAP)  # pads at the 2.54 mm pins: across the row, along it
 TRACE_W = TRACE_PAD[1]      # trace width = pad width, so side by side traces are one gap apart
+# Pin holes stop PIN_SKIN short of the copper side: the pads print as plain solid rectangles in
+# the gap layers (a hole in them would leave a ring too thin to print). After taping, drill each
+# hole through from the component side (1.0-1.2 mm bit in a pin vise), through the tape as well;
+# the blind hole guides the drill.
+PIN_SKIN = TRACE_GROOVE[1]
 TRACE_PAD_D = 2.8           # square pads at the switch legs (0.5 mm of copper round the leg hole)
 TAPE_T = 0.06               # copper tape thickness (stand-in only)
 TRACE_ISLAND_MIN = 12.0     # mm²: smaller islands of plastic between the gaps become gap (FDM)
@@ -767,6 +772,7 @@ def carrier_through_cuts(pcb=False):
     """Everything that goes right through the board. pcb=True gives what a real PCB keeps (the
     SuperMini pin holes); the printed carrier gets slots for the header strips instead."""
     cuts = []
+    zp = C_BACK + PIN_SKIN if COPPER_TRACES and not pcb else C_BACK - 1  # pin holes: blind (PIN_SKIN)
     for (side, yc) in HOOKS:  # clear the snap hooks
         x0, x1 = (0, WALL + 2.8) if side < 0 else (W - WALL - 2.8, W)
         cuts.append(box(x0, yc - HOOK_W / 2 - 1.2, C_BACK - 1, x1, yc + HOOK_W / 2 + 1.2, C_FRONT + 1))
@@ -775,13 +781,13 @@ def carrier_through_cuts(pcb=False):
     # the EC11 bushing reaches through from the HW-040 hanging behind (its body stops just behind)
     cuts.append(cyl(EC11_BUSH_D + 2 * EC11_HOLE_CLR, KNOB_C[0], KNOB_C[1], C_BACK - 1, C_FRONT + 1))
     if COPPER_TRACES:  # a hole per display pin, each in a pad
-        cuts += [cyl(HOLE_D, x, y, C_BACK - 1, C_FRONT + 1) for (x, y) in disp_pins.values()]
+        cuts += [cyl(HOLE_D, x, y, zp, C_FRONT + 1) for (x, y) in disp_pins.values()]
     else:
         cuts.append(cbox(disp_hdr_x, dpcb_c[1], 2.6, 7 * 2.54 + 1.0, C_BACK - 1, C_FRONT + 1))
     for i in range(3):
         for p in range(4):
             x, y = btn_pin(i, p)
-            cuts.append(cyl(SW_HOLE_D, x, y, C_BACK - 1, C_FRONT + 1))
+            cuts.append(cyl(SW_HOLE_D, x, y, zp, C_FRONT + 1))
         for k in ([] if COPPER_TRACES else range(len(SW_PEGS))):  # bosses some switches have (not TS13)
             x, y = btn_peg(i, k)
             cuts.append(cyl(SW_PEG_HOLE_D, x, y, C_BACK - 1, C_FRONT + 1))
@@ -789,9 +795,9 @@ def carrier_through_cuts(pcb=False):
         cuts += [cyl(HOLE_D, x, y, C_BACK - 1, C_FRONT + 1) for (x, y) in sm_pins.values()]
         return cuts
     if SM_FRONT:  # its soldered pins go through to the copper
-        cuts += [cyl(HOLE_D, x, y, C_BACK - 1, C_FRONT + 1) for (x, y) in sm_pins.values()]
+        cuts += [cyl(HOLE_D, x, y, zp, C_FRONT + 1) for (x, y) in sm_pins.values()]
     if COPPER_TRACES:  # the HW-040's bent pins
-        cuts += [cyl(HOLE_D, x, y, C_BACK - 1, C_FRONT + 1) for (x, y) in enc_pins.values()]
+        cuts += [cyl(HOLE_D, x, y, zp, C_FRONT + 1) for (x, y) in enc_pins.values()]
         return cuts
     w, l = SM_HDR[0] + 2 * SM_HDR_CLR, SM_HDR[1] + 2 * SM_HDR_CLR
     c = SM_HDR_CHAMFER
@@ -801,6 +807,16 @@ def carrier_through_cuts(pcb=False):
                                 rr_wire(w, l, 0.3, C_BACK + c)], True)
         cuts.append(place(border, xr, sm_hdr_y))
     return cuts
+
+
+def pin_skins():
+    """The PIN_SKIN plugs left over the pin holes on the copper side (drilled out by hand)."""
+    if not COPPER_TRACES:
+        return []
+    pins = list(disp_pins.values()) + list(enc_pins.values()) + (list(sm_pins.values()) if SM_FRONT else [])
+    z0, z1 = C_BACK - 1, C_BACK + PIN_SKIN + 0.01
+    return ([cyl(HOLE_D, x, y, z0, z1) for (x, y) in pins] +
+            [cyl(SW_HOLE_D, *btn_pin(i, k), z0, z1) for i in range(3) for k in range(4)])
 
 
 def copper_layout():
@@ -1335,7 +1351,7 @@ def dummy_copper():
             parts.append(net_solid(nets[nm], f - 2 * t - k, f - t - k).common(patch_box(rect, C_BACK - 5, C_BACK + 5)))
     footprint = carrier_outline()  # the board edge trims the tape (B3 along the top edge)
     footprint.translate(V(0, 0, -C_T / 2))
-    return fuse_all(parts).common(footprint).cut(carrier_through_cuts())
+    return fuse_all(parts).common(footprint).cut(carrier_through_cuts() + pin_skins())  # (drilled)
 
 
 def dummy_kapton():
@@ -1389,7 +1405,9 @@ PRESS_FITS = {("BackPlate", "RubberDots")}  # TPU plugs (the screw counterbores 
 
 def check_interference():
     """Clashes between parts; the intended press fits are reported apart."""
-    items = list(PRINTED.items()) + list(DUMMIES.items())
+    # checked with the pin holes drilled through (the skins are drilled out after taping)
+    skins = pin_skins()
+    items = [(n, sh.cut(skins) if n == "Carrier" and skins else sh) for n, sh in PRINTED.items()] + list(DUMMIES.items())
     clashes, fits = [], []
     for i in range(len(items)):
         for j in range(i + 1, len(items)):

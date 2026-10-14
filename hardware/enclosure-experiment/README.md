@@ -157,7 +157,10 @@ bridges (the copper gaps, the USB pocket, the hinge C holes open upward), nothin
 1. Print the printed PCB in PETG. Lay copper tape over its underside, cut along the gaps
    (including the cut lines between neighbouring pins) and peel off the rest. At the crossover,
    cut DT's copper off across SW's line, stick Kapton over SW there and join DT's two ends with a
-   short strip of copper.
+   short strip of copper. Then drill every pin and switch leg hole through from the component side
+   with a 1.0-1.2 mm bit in a pin vise: the holes stop 0.6 mm short of the copper side
+   (`PIN_SKIN`), so the pads print as solid rectangles, and the drill opens the plastic and the
+   tape in one go, guided by the blind hole.
 2. Fit the switches, the SuperMini and the lower female header from the top; bend the switch
    legs over and solder every pin underneath. Plug the second header into the first and the
    display into that, onto its posts. Low-temperature solder (Sn42Bi58) and quick touches.

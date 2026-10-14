@@ -209,6 +209,10 @@ SM_PAD = (TRACE_W, TRACE_W)  # SuperMini pads (across, along the row): square, s
 DISP_PAD = (2.4, TRACE_W)   # display pads
 ENC_PAD = (3.0, TRACE_W)    # encoder pads (its row runs along x)
 TRACE_PAD_D = 2.8           # square pads at the switch legs (0.5 mm of copper round the leg hole)
+# Pin holes stop PIN_SKIN short of the copper side: the pads print as plain solid rectangles in
+# the gap layers (a hole in them would leave a ring too thin to print). After taping, drill each
+# hole through from the component side (1.0-1.2 mm bit in a pin vise), through the tape as well.
+PIN_SKIN = TRACE_GROOVE[1]
 TRACE_ISLAND_MIN = 12.0     # mm²: smaller islands of plastic between the gaps become gap (FDM)
 TRACE_GROOVE_MIN = 0.5      # gaps thinner than this (crumbs) are filled in (the cut lines stay)
 TRACE_RIDGE_MIN = 1.0       # plastic left between two gaps: at least this wide, or it becomes gap
@@ -723,11 +727,20 @@ def carrier_outline():
 
 def carrier_through_cuts():
     z0, z1 = C_BOT - 1, C_TOP + 1
+    zp = C_BOT + PIN_SKIN                   # pin holes: blind, PIN_SKIN short of the copper side
     cuts = [cyl(EC11_BUSH_D + 2 * EC11_HOLE_CLR, SHAFT_C[0], SHAFT_C[1], z0, z1)]
-    cuts += [cyl(HOLE_D, x, y, z0, z1) for (x, y) in list(sm_pins.values()) + list(disp_pins.values()) + list(enc_pins.values())]
-    cuts += [cyl(SW_LEG_HOLE_D, *btn_pin(i, k), z0, z1) for i in range(4) for k in range(4)]
+    cuts += [cyl(HOLE_D, x, y, zp, z1) for (x, y) in list(sm_pins.values()) + list(disp_pins.values()) + list(enc_pins.values())]
+    cuts += [cyl(SW_LEG_HOLE_D, *btn_pin(i, k), zp, z1) for i in range(4) for k in range(4)]
     cuts += [cyl(SPIGOT_HOLE_D, x, y, z0, z1) for (x, y) in SCREWS]
     return cuts
+
+
+def pin_skins():
+    """The PIN_SKIN plugs left over the pin holes on the copper side (drilled out by hand)."""
+    z0, z1 = C_BOT - 1, C_BOT + PIN_SKIN + 0.01
+    pins = list(sm_pins.values()) + list(disp_pins.values()) + list(enc_pins.values())
+    return ([cyl(HOLE_D, x, y, z0, z1) for (x, y) in pins] +
+            [cyl(SW_LEG_HOLE_D, *btn_pin(i, k), z0, z1) for i in range(4) for k in range(4)])
 
 
 def copper_grooves():
@@ -1140,7 +1153,7 @@ def dummy_copper():
             parts.append(net_solid(nets[nm], f - 2 * t - k, f - t - k).common(patch_box(rect, f - 5, f + 5)))
     footprint = carrier_outline()  # the board edge trims the tape
     footprint.translate(V(0, 0, -C_T / 2))
-    return fuse_all(parts).common(footprint).cut(carrier_through_cuts())
+    return fuse_all(parts).common(footprint).cut(carrier_through_cuts() + pin_skins())  # (drilled)
 
 
 def dummy_kapton():
@@ -1196,7 +1209,9 @@ def build():
 
 
 def check_interference():
-    items = list(PRINTED.items()) + list(DUMMIES.items())
+    # checked with the pin holes drilled through (the skins are drilled out after taping)
+    skins = tilted(fuse_all(pin_skins()))
+    items = [(n, sh.cut(skins) if n == "Carrier" else sh) for n, sh in PRINTED.items()] + list(DUMMIES.items())
     clashes = []
     for i in range(len(items)):
         for j in range(i + 1, len(items)):
