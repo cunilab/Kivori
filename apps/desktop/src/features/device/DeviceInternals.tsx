@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import {
   Card,
@@ -28,7 +28,7 @@ function Row({
   testId?: string;
 }): ReactElement {
   return (
-    <div className="flex items-center justify-between gap-4 py-2 text-sm">
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2 text-sm">
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="text-right font-medium" data-testid={testId}>
         {children}
@@ -37,11 +37,23 @@ function Row({
   );
 }
 
-function Group({ title, children }: { title: string; children: ReactNode }): ReactElement {
+function Group({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: ReactNode;
+}): ReactElement {
+  const headingId = useId();
   return (
-    <section className="space-y-1">
-      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</h3>
-      <dl className="divide-y">{children}</dl>
+    <section aria-labelledby={headingId} className="min-w-0 rounded-lg border p-4">
+      <h3 id={headingId} className="font-medium">
+        {title}
+      </h3>
+      {description ? <p className="mt-1 text-xs text-muted-foreground">{description}</p> : null}
+      <dl className="mt-3 divide-y">{children}</dl>
     </section>
   );
 }
@@ -77,7 +89,7 @@ export function formatBytes(bytes: number): string {
   return `${bytes} B`;
 }
 
-const percent = (part: number, whole: number): number => (whole > 0 ? (part / whole) * 100 : 0);
+const percent = (part: number, whole: number): number => (part / whole) * 100;
 
 const seconds = (s: number): string => {
   const h = Math.floor(s / 3600);
@@ -85,7 +97,7 @@ const seconds = (s: number): string => {
   return h > 0 ? `${h} h ${m} min` : m > 0 ? `${m} min ${s % 60} s` : `${s} s`;
 };
 
-/** `used` of `limit` with a percentage and a bar; only the size when the limit is unknown. */
+/** `used` of `limit` with a percentage and a bar; only the size when the limit is unknown or zero. */
 function Usage({
   label,
   used,
@@ -99,29 +111,29 @@ function Usage({
 }): ReactElement {
   return (
     <div className="space-y-1.5 py-2 text-sm">
-      <div className="flex items-center justify-between gap-4">
-        <dt className="text-muted-foreground">{label}</dt>
-        <dd className="text-right font-medium" data-testid={testId}>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="space-y-1.5 text-right font-medium">
+        <span className="block" data-testid={testId}>
           <Value value={used}>
             {(u) =>
-              limit === null
+              limit === null || limit === 0
                 ? formatBytes(u)
                 : `${formatBytes(u)} of ${formatBytes(limit)} (${percent(u, limit).toFixed(1)}%)`
             }
           </Value>
-        </dd>
-      </div>
-      {used !== null && limit !== null ? (
-        <Progress value={Math.min(100, percent(used, limit))} aria-label={label} />
-      ) : null}
+        </span>
+        {used !== null && limit !== null && limit > 0 ? (
+          <Progress value={Math.min(100, percent(used, limit))} aria-label={label} />
+        ) : null}
+      </dd>
     </div>
   );
 }
 
 function Body({ s }: { s: Snapshot }): ReactElement {
   return (
-    <>
-      <Group title={t.groups.flash}>
+    <div className="grid items-start gap-4 xl:grid-cols-2">
+      <Group title={t.groups.flash} description={t.notes.flash}>
         <Usage
           label={t.rows.appImage}
           used={s.appImageBytes}
@@ -138,7 +150,7 @@ function Body({ s }: { s: Snapshot }): ReactElement {
           <Value value={s.flashTotalBytes}>{formatBytes}</Value>
         </Row>
       </Group>
-      <Group title={t.groups.ram}>
+      <Group title={t.groups.ram} description={t.notes.ram}>
         <Usage
           label={t.rows.ramStatic}
           used={s.ramStaticBytes}
@@ -152,7 +164,7 @@ function Body({ s }: { s: Snapshot }): ReactElement {
           <Value value={s.stackFreeMinBytes}>{formatBytes}</Value>
         </Row>
       </Group>
-      <Group title={t.groups.cpu}>
+      <Group title={t.groups.cpu} description={t.notes.cpu}>
         <Row label={t.rows.busy}>
           <Value value={s.busyPercent}>{(p) => `${p}%`}</Value>
         </Row>
@@ -206,7 +218,7 @@ function Body({ s }: { s: Snapshot }): ReactElement {
           <Value value={s.framesRejected}>{(n) => n}</Value>
         </Row>
       </Group>
-    </>
+    </div>
   );
 }
 
