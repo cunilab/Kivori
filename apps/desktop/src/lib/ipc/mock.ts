@@ -840,6 +840,7 @@ export function mockGetDiagnostics(): DiagnosticsDto {
       identity: connected ? mockIdentity : null,
     },
     connection: {
+      generation: connected ? 1 : 0,
       state: connected ? 'connected' : 'disconnected',
       connectedForSecs: connected ? 754 + seconds : null,
       reconnects: connected ? 1 : 0,
@@ -877,6 +878,8 @@ export function mockGetDeviceInternals(): DeviceInternalsDto {
   const seconds = Math.floor((Date.now() - mockStartedAt) / 1000);
   return {
     connected,
+    connectionGeneration: connected ? 1 : 0,
+    snapshotAgeMs: connected ? 0 : null,
     supported: connected,
     snapshot: connected
       ? {

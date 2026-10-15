@@ -2,7 +2,13 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@kivori/ui/components/tooltip';
-import type { DiagnosticsDto } from '../../../lib/ipc/types';
+import { connectionFixture } from '../../../test/connection';
+import type {
+  DiagnosticsDto,
+  ConnectionStatusDto,
+  DeviceInternalsDto,
+} from '../../../lib/ipc/types';
+import { mockGetDeviceInternals } from '../../../lib/ipc/mock';
 import { setDevMode } from '../../../lib/dev-mode';
 import { parseDiagnostics } from '../../../lib/ipc/validate';
 
@@ -23,6 +29,7 @@ const disconnected: DiagnosticsDto = {
     identity: null,
   },
   connection: {
+    generation: 0,
     state: 'disconnected',
     connectedForSecs: null,
     reconnects: 0,
@@ -63,18 +70,28 @@ const connected: DiagnosticsDto = {
       known: true,
     },
   },
-  connection: { ...disconnected.connection, state: 'connected', rttMs: 6, lastPongAgeMs: 400 },
+  connection: {
+    ...disconnected.connection,
+    generation: 1,
+    state: 'connected',
+    rttMs: 6,
+    lastPongAgeMs: 400,
+  },
   health: { ...disconnected.health, freeBytes: 2048, deviceUptimeMs: 65_000 },
 };
 
+let connection: ConnectionStatusDto;
 const view = (): ReturnType<typeof render> =>
   render(
     <TooltipProvider>
-      <Diagnostics />
+      <Diagnostics connection={connection} />
     </TooltipProvider>,
   );
 
 beforeEach(() => {
+  connection = connectionFixture([], { connection: 'disconnected', connectionGeneration: 0 });
+  setDevMode(false);
+  setLatestInternals(null);
   bridge.get.mockReset().mockResolvedValue(disconnected);
 });
 
@@ -91,6 +108,8 @@ describe('Diagnostics card', () => {
 
   it('shows known values once the device reports them', async () => {
     bridge.get.mockResolvedValue(connected);
+    connection = connectionFixture();
+    connection = connectionFixture();
     view();
     await screen.findByText('3fa9c1d2');
     expect(screen.getByText('mascotInteraction, deskStatusV1')).toBeInTheDocument();
@@ -100,6 +119,8 @@ describe('Diagnostics card', () => {
 
   it('shows the product, board and identity source, and a revision that is unknown until provisioned', async () => {
     bridge.get.mockResolvedValue(connected);
+    connection = connectionFixture();
+    connection = connectionFixture();
     view();
     await screen.findByText('3fa9c1d2');
     expect(screen.getByTestId('diag-product')).toHaveTextContent('Kivori Pip');
@@ -117,6 +138,7 @@ describe('Diagnostics card', () => {
         identity: { ...connected.versions.identity!, hwRev: 2, source: 'chip' },
       },
     });
+    connection = connectionFixture();
     view();
     await screen.findByText('3fa9c1d2');
     expect(screen.getByTestId('diag-hw-rev')).toHaveTextContent('2');
@@ -141,10 +163,12 @@ describe('Diagnostics card', () => {
 
   it('copies the diagnostics as JSON that parses back to the same data', async () => {
     bridge.get.mockResolvedValue(connected);
+    connection = connectionFixture();
     const writeText = vi.fn().mockResolvedValue(undefined);
     const user = userEvent.setup();
     // userEvent installs its own clipboard stub; replace it after setup.
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    connection = connectionFixture();
     view();
     await screen.findByText('3fa9c1d2');
     await user.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
@@ -161,9 +185,112 @@ describe('Diagnostics card', () => {
     expect(JSON.stringify(copied)).not.toMatch(/"(port|path|deviceId)"/i);
   });
 
+  it('refreshes basic diagnostics on copy and reports clipboard failures', async () => {
+    bridge.get.mockResolvedValue(connected);
+    connection = connectionFixture();
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockRejectedValue(new Error('Clipboard denied'));
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    view();
+    await screen.findByText('3fa9c1d2');
+    const before = bridge.get.mock.calls.length;
+    await user.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
+    await screen.findByText(/couldn.t copy|could not copy|Unable to copy/i);
+    expect(bridge.get.mock.calls.length).toBeGreaterThan(before);
+  });
+
+  it('refuses a copy if the native base has advanced to another session', async () => {
+    bridge.get
+      .mockResolvedValueOnce(connected)
+      .mockResolvedValue({ ...connected, connection: { ...connected.connection, generation: 2 } });
+    connection = connectionFixture();
+    const user = userEvent.setup();
+    const writeText = vi.fn();
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    view();
+    await screen.findByText('3fa9c1d2');
+    await user.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
+    await waitFor(() => expect(bridge.get).toHaveBeenCalledTimes(2));
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it('rejects a copy reply arriving after the page changes sessions', async () => {
+    bridge.get.mockResolvedValue(connected);
+    connection = connectionFixture();
+    const user = userEvent.setup();
+    const writeText = vi.fn();
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const page = view();
+    await screen.findByText('3fa9c1d2');
+    let resolveCopy!: (value: DiagnosticsDto) => void;
+    bridge.get.mockReturnValueOnce(
+      new Promise<DiagnosticsDto>((resolve) => {
+        resolveCopy = resolve;
+      }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
+    connection = connectionFixture(undefined, { connectionGeneration: 2 });
+    page.rerender(
+      <TooltipProvider>
+        <Diagnostics connection={connection} />
+      </TooltipProvider>,
+    );
+    await act(async () => {
+      resolveCopy(connected);
+    });
+    expect(writeText).not.toHaveBeenCalled();
+    expect(screen.queryByText('3fa9c1d2')).not.toBeInTheDocument();
+  });
+
+  it('copies only fresh measurements from the base generation, without polling internals', async () => {
+    bridge.get.mockResolvedValue(connected);
+    connection = connectionFixture();
+    const originalUrl = location.href;
+    history.replaceState(null, '', '?mock=connected');
+    const measurement = mockGetDeviceInternals();
+    history.replaceState(null, '', originalUrl);
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    act(() => setDevMode(true));
+    try {
+      view();
+      await screen.findByText('3fa9c1d2');
+      for (const [generation, age, status] of [
+        [1, 0, 'fresh'],
+        [2, 0, 'unavailable'],
+        [1, 6000, 'stale'],
+      ] as const) {
+        setLatestInternals({
+          ...measurement,
+          connectionGeneration: generation,
+          snapshotAgeMs: age,
+        });
+        await user.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
+        const bundle = JSON.parse(writeText.mock.lastCall![0] as string);
+        expect(bundle.internals.status).toBe(status);
+        expect(bundle.internals.data?.snapshot ?? null).toEqual(
+          status === 'fresh' ? measurement.snapshot : null,
+        );
+      }
+      // The mocked IPC module exposes only getDiagnostics: requesting internals would fail.
+      expect(writeText).toHaveBeenCalledTimes(3);
+    } finally {
+      setDevMode(false);
+      setLatestInternals(null);
+    }
+  });
+
   it('adds the device internals to the copy only with developer mode on', async () => {
     bridge.get.mockResolvedValue(connected);
-    const internals = { connected: true, supported: true, snapshot: null };
+    connection = connectionFixture();
+    const internals: DeviceInternalsDto = {
+      connected: true,
+      supported: true,
+      connectionGeneration: 1,
+      snapshotAgeMs: null,
+      snapshot: null,
+    };
     setLatestInternals(internals);
     const writeText = vi.fn().mockResolvedValue(undefined);
     const user = userEvent.setup();
@@ -182,7 +309,7 @@ describe('Diagnostics card', () => {
       await user.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
       await waitFor(() => expect(writeText).toHaveBeenCalled());
       const copied = JSON.parse(writeText.mock.calls[0][0] as string) as Record<string, unknown>;
-      expect(copied.internals).toEqual(internals);
+      expect(copied.internals).toEqual({ status: 'unavailable', ageMs: null, data: null });
       expect(Object.keys(copied).slice(0, 5)).toEqual([
         'versions',
         'connection',

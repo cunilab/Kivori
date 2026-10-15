@@ -41,8 +41,17 @@ const view = (info = appInfo, connection = connectionFixture()) => (
 beforeEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
-  bridge.diagnostics.mockResolvedValue(mockGetDiagnostics());
-  bridge.internals.mockResolvedValue({ connected: true, supported: true, snapshot: null });
+  bridge.diagnostics.mockResolvedValue({
+    ...mockGetDiagnostics(),
+    connection: { ...mockGetDiagnostics().connection, state: 'connected', generation: 1 },
+  });
+  bridge.internals.mockResolvedValue({
+    connected: true,
+    supported: true,
+    connectionGeneration: 1,
+    snapshotAgeMs: null,
+    snapshot: null,
+  });
   bridge.play.mockResolvedValue(undefined);
   bridge.activity.mockResolvedValue([]);
 });

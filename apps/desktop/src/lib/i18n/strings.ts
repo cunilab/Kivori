@@ -632,6 +632,7 @@ export const strings = {
     description:
       'Flash, memory, load and link numbers from the device. Updates about once a second.',
     loadFailed: 'Device internals are unavailable right now.',
+    stale: 'Device internals are stale. Waiting for a new measurement…',
     notConnected: 'Connect your Kivori to see its internals.',
     unsupported:
       "This device's firmware doesn't report internals. Update the firmware to see them.",

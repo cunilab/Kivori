@@ -10,9 +10,9 @@ import {
 import { Progress } from '@kivori/ui/components/progress';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@kivori/ui/components/tooltip';
 import { getDeviceInternals } from '@/lib/ipc';
-import type { DeviceInternalsDto } from '@/lib/ipc/types';
+import type { ConnectionStatusDto, DeviceInternalsDto } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
-import { setLatestInternals } from './internals-latest';
+import { INTERNALS_FRESH_MS, setLatestInternals } from './internals-latest';
 
 const t = strings.internals;
 
@@ -226,48 +226,86 @@ function Body({ s }: { s: Snapshot }): ReactElement {
  * Developer-mode numbers from the device itself. Mounted only with developer mode on; asks the
  * device about once a second while it is mounted and the window is visible, and never otherwise.
  */
-export function DeviceInternals(): ReactElement {
+export function DeviceInternals({
+  connection,
+}: {
+  connection: ConnectionStatusDto | null;
+}): ReactElement {
+  const generation = connection?.connectionGeneration;
+  const connected = connection?.connection === 'connected';
   const [data, setData] = useState<DeviceInternalsDto | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
+    setData(null);
+    setLatestInternals(null);
+    setFailed(false);
+    if (!connected) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async (): Promise<void> => {
       try {
         if (!document.hidden) {
+          const requestedAt = performance.now();
           const next = await getDeviceInternals();
-          if (active) {
-            setLatestInternals(next);
-            setData(next);
+          if (active && !document.hidden && next.connectionGeneration === generation) {
+            // Count the whole IPC trip conservatively; a delayed reply must not renew its age.
+            const observed = {
+              ...next,
+              snapshotAgeMs:
+                next.snapshotAgeMs === null
+                  ? null
+                  : next.snapshotAgeMs + Math.ceil(performance.now() - requestedAt),
+            };
+            setLatestInternals(observed);
+            setData(observed);
             setFailed(false);
           }
         }
       } catch {
-        if (active) setFailed(true);
+        if (active) {
+          setLatestInternals(null);
+          setData(null);
+          setFailed(true);
+        }
       } finally {
         if (active) timer = setTimeout(() => void poll(), 1000);
       }
     };
+    const visibilityChanged = (): void => {
+      if (document.hidden) {
+        setLatestInternals(null);
+        setData(null);
+      }
+    };
+    document.addEventListener('visibilitychange', visibilityChanged);
     void poll();
     return () => {
+      document.removeEventListener('visibilitychange', visibilityChanged);
       active = false;
       clearTimeout(timer);
       setLatestInternals(null);
     };
-  }, []);
+  }, [generation, connected]);
 
+  const current = connected && data?.connectionGeneration === generation ? data : null;
+  const stale =
+    current?.snapshotAgeMs !== null && (current?.snapshotAgeMs ?? 0) > INTERNALS_FRESH_MS;
   const notice = failed
     ? t.loadFailed
-    : !data
-      ? t.waiting
-      : !data.connected
-        ? t.notConnected
-        : !data.supported
-          ? t.unsupported
-          : !data.snapshot
-            ? t.waiting
-            : null;
+    : !connected
+      ? t.notConnected
+      : stale
+        ? t.stale
+        : !current
+          ? t.waiting
+          : !current.connected
+            ? t.notConnected
+            : !current.supported
+              ? t.unsupported
+              : !current.snapshot
+                ? t.waiting
+                : null;
 
   return (
     <Card>
@@ -286,8 +324,8 @@ export function DeviceInternals(): ReactElement {
             {notice}
           </p>
         ) : null}
-        {!failed && data?.connected && data.supported && data.snapshot ? (
-          <Body s={data.snapshot} />
+        {!failed && !stale && current?.connected && current.supported && current.snapshot ? (
+          <Body s={current.snapshot} />
         ) : null}
       </CardContent>
     </Card>
