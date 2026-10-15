@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
-import { toast } from 'sonner';
 import { TriangleAlert } from 'lucide-react';
 import { Alert, AlertAction, AlertTitle } from '@kivori/ui/components/alert';
 import { Button } from '@kivori/ui/components/button';
@@ -14,39 +13,29 @@ import {
 import { Label } from '@kivori/ui/components/label';
 import { Switch } from '@kivori/ui/components/switch';
 import { ToggleGroup, ToggleGroupItem } from '@kivori/ui/components/toggle-group';
-import { useDevMode } from '@/lib/dev-mode';
-import { playMascotAction, setBuddySettings } from '@/lib/ipc';
+import { setBuddySettings } from '@/lib/ipc';
 import { INTENSITIES } from '@/lib/ipc/types';
-import type { ConfigDto, Intensity, MascotAction } from '@/lib/ipc/types';
+import type { ConfigDto, Intensity } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
-import { errorText } from '@/lib/utils';
-
-const ACTIONS: readonly MascotAction[] = ['greet', 'pet', 'tickle', 'surprise', 'comfort'];
 
 type BuddySettings = ConfigDto['buddy'];
 
 interface CompanionControlsProps {
   config: ConfigDto | null;
-  connected: boolean;
-  supported: boolean;
   settingsSupported?: boolean;
 }
 
 /**
- * The Buddy card: reactions and intensity are saved settings for everyone; the direct social
- * reactions are a developer tool. A change shows at once (UI only) and is dropped as soon as the
+ * The Buddy card: reactions and intensity are saved settings for everyone. A change shows at once (UI only) and is dropped as soon as the
  * saved config arrives, or when the save fails.
  */
 export function CompanionControls({
   config,
-  connected,
-  supported,
   settingsSupported = true,
 }: CompanionControlsProps): ReactElement {
   const [pending, setPending] = useState<BuddySettings | null>(null);
   const [failed, setFailed] = useState<BuddySettings | null>(null);
   const t = strings.companion;
-  const devMode = useDevMode();
 
   // The saved config arrived: it is the truth again.
   const revision = config?.revision;
@@ -62,7 +51,6 @@ export function CompanionControls({
   };
 
   const shown = pending ?? config?.buddy ?? null;
-  const available = connected && supported;
 
   return (
     <Card>
@@ -111,29 +99,6 @@ export function CompanionControls({
             ))}
           </ToggleGroup>
         </fieldset>
-
-        {/* Direct reactions are a developer tool. */}
-        {devMode && available ? (
-          <fieldset className="space-y-2">
-            <legend className="mb-2 text-sm font-medium">{t.actions}</legend>
-            <div className="flex flex-wrap gap-2">
-              {ACTIONS.map((action) => (
-                <Button
-                  key={action}
-                  type="button"
-                  variant="secondary"
-                  onClick={() => {
-                    void playMascotAction(action).catch((error: unknown) =>
-                      toast.error(t.failed, { description: errorText(error) }),
-                    );
-                  }}
-                >
-                  {t.actionLabels[action]}
-                </Button>
-              ))}
-            </div>
-          </fieldset>
-        ) : null}
 
         {failed ? (
           <Alert variant="destructive">

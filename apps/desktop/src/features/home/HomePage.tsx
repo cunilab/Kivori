@@ -1,8 +1,6 @@
 import type { ReactElement, ReactNode } from 'react';
-import { toast } from 'sonner';
 import {
   Cpu,
-  Hand,
   LayoutGrid,
   LoaderCircle,
   MemoryStick,
@@ -45,12 +43,9 @@ import { Page } from '@/components/kivori/page';
 import { ResultBadge } from '@/components/kivori/result-badge';
 import { uiConnection } from '@/hooks/use-kivori';
 import { hasCapability, canMirrorState } from '@/lib/device-support';
-import { useDevMode } from '@/lib/dev-mode';
-import { playMascotAction } from '@/lib/ipc';
 import type { ConnectionStatusDto, DeskStatusDto } from '@/lib/ipc/types';
 import { format, strings } from '@/lib/i18n/strings';
 import { cn } from '@kivori/ui/lib/utils';
-import { errorText } from '@/lib/utils';
 
 export type NavigateTo = (page: 'display' | 'device') => void;
 
@@ -68,9 +63,7 @@ function Hero({
   onNavigate: NavigateTo;
 }): ReactElement {
   const ui = uiConnection(connection);
-  const devMode = useDevMode();
   const display = hasCapability(connection, 'deskStatusV1');
-  const reactions = hasCapability(connection, 'mascotInteraction');
   if (ui === 'loading' || !desk) {
     return (
       <Card className="p-6">
@@ -153,8 +146,6 @@ function Hero({
             reconnecting: t.hero.reconnectingBody,
             incompatible: connection?.incompatibleReason ?? t.hero.incompatibleBody,
           }[ui];
-  // Social reactions are a developer tool (owner's call): customers never see "Say hi".
-  const canGreet = devMode && reactions;
   const modeName = strings.display.modes[desk.mode].name;
 
   return (
@@ -227,19 +218,6 @@ function Hero({
               <Button onClick={() => onNavigate('display')}>
                 <LayoutGrid data-icon="inline-start" aria-hidden="true" />
                 {t.hero.changeView}
-              </Button>
-            ) : null}
-            {canGreet ? (
-              <Button
-                variant="outline"
-                onClick={() =>
-                  void playMascotAction('greet').catch((error: unknown) =>
-                    toast.error(strings.companion.failed, { description: errorText(error) }),
-                  )
-                }
-              >
-                <Hand data-icon="inline-start" aria-hidden="true" />
-                {t.hero.sayHi}
               </Button>
             ) : null}
           </div>

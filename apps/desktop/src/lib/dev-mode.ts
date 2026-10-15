@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
-// Developer mode: a per-computer preference (localStorage), off by default. It reveals Activity,
-// technical device details, buddy social reactions and, in dev builds only, Device Studio. Same
+// Developer mode: a per-computer preference (localStorage), off by default. It enables the tools
+// on Developer; Device Studio also requires its build gate. Same
 // store pattern as the theme: a module-level subscription instead of a provider.
 
 const KEY = 'kivori.developerMode';

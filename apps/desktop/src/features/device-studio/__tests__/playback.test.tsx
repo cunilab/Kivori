@@ -1,3 +1,4 @@
+import { onConnectionStatus } from '../../../lib/ipc';
 import { connectionFixture } from '../../../test/connection';
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -144,4 +145,29 @@ it('records only live connected acknowledgments and rebases after device uptime 
     },
   ]);
   expect(useStudioStore.getState().playing).toBe(true);
+});
+
+it('cancels a subscription that resolves after the Studio tab unmounts and ignores late events', async () => {
+  let finish!: (stop: () => void) => void;
+  let lateEvent!: (status: ConnectionStatusDto) => void;
+  const stop = vi.fn();
+  vi.mocked(onConnectionStatus).mockImplementationOnce((handler) => {
+    lateEvent = handler;
+    return new Promise((resolve) => {
+      finish = resolve;
+    });
+  });
+  const page = render(<DeviceStudio />);
+  page.unmount();
+  await act(async () => {
+    finish(stop);
+    await Promise.resolve();
+    lateEvent(
+      status({
+        mascotAction: { action: 'pet', personality: 'cozy', seed: 16, appliedAtMs: 80000 },
+      }),
+    );
+  });
+  expect(stop).toHaveBeenCalledTimes(1);
+  expect(useStudioStore.getState().actionEvents).toHaveLength(0);
 });
