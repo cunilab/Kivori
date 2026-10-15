@@ -10,18 +10,14 @@ import {
   CardHeader,
   CardTitle,
 } from '@kivori/ui/components/card';
-import { Label } from '@kivori/ui/components/label';
 import { Skeleton } from '@kivori/ui/components/skeleton';
-import { Switch } from '@kivori/ui/components/switch';
 import { Known } from '@/components/kivori/known';
 import { Page } from '@/components/kivori/page';
 import { uiConnection, type UiConnection } from '@/hooks/use-kivori';
 import type { AppInfoDto, ConnectionStatusDto } from '@/lib/ipc/types';
-import { setDevMode, useDevMode } from '@/lib/dev-mode';
 import { strings } from '@/lib/i18n/strings';
 import { cn } from '@kivori/ui/lib/utils';
 import { Diagnostics } from './Diagnostics';
-import { DeviceInternals } from './DeviceInternals';
 import { FirmwareUpdate } from './FirmwareUpdate';
 import { StartupCard } from './StartupCard';
 import { AppUpdates } from '../updates/AppUpdates';
@@ -55,8 +51,6 @@ function Row({
   );
 }
 
-const version = (v: { major: number; minor: number }): string => `${v.major}.${v.minor}`;
-
 /** Device: connection health, versions, and the user-initiated firmware update. */
 export function DevicePage({
   connection,
@@ -70,7 +64,6 @@ export function DevicePage({
 }): ReactElement {
   const ui = uiConnection(connection);
   const device = connection?.device ?? null;
-  const devMode = useDevMode();
 
   return (
     <Page title={t.title} description={t.description}>
@@ -122,30 +115,6 @@ export function DevicePage({
                   {(v) => v}
                 </Known>
               </Row>
-              {devMode ? (
-                <>
-                  <Row label={t.protocol}>
-                    <Known value={device?.protocolVersion} why={strings.why.firmware}>
-                      {version}
-                    </Known>
-                  </Row>
-                  <Row label={t.deviceId}>
-                    <Known value={device?.deviceIdHashShort} why={strings.why.firmware}>
-                      {(id) => <span className="font-mono">{id}</span>}
-                    </Known>
-                  </Row>
-                  <Row label={t.buddyRequested} testId="desired">
-                    <Known value={connection?.desired} why={strings.why.buddy}>
-                      {(state) => strings.studio.states[state]}
-                    </Known>
-                  </Row>
-                  <Row label={t.buddyReported} testId="reported">
-                    <Known value={connection?.reported} why={strings.why.buddy}>
-                      {(state) => strings.studio.states[state]}
-                    </Known>
-                  </Row>
-                </>
-              ) : null}
             </dl>
           </CardContent>
         </Card>
@@ -166,8 +135,7 @@ export function DevicePage({
               </CardContent>
             </Card>
           ) : null}
-          <Diagnostics />
-          {devMode ? <DeviceInternals /> : null}
+          <Diagnostics technical={false} />
           <Card size="sm">
             <CardHeader>
               <CardTitle>{t.app}</CardTitle>
@@ -177,36 +145,8 @@ export function DevicePage({
                 <Row label={t.appVersion}>
                   {appInfo ? appInfo.appVersion : <Skeleton className="h-4 w-16" />}
                 </Row>
-                {devMode ? (
-                  <Row label={t.appProtocol}>
-                    {appInfo ? version(appInfo.protocolVersion) : <Skeleton className="h-4 w-10" />}
-                  </Row>
-                ) : null}
               </dl>
               <AppUpdates />
-            </CardContent>
-          </Card>
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle id="advanced-heading" role="heading" aria-level={2}>
-                {t.advanced}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between gap-4">
-                <div className="space-y-0.5">
-                  <Label htmlFor="developer-mode">{t.developerMode}</Label>
-                  <p id="developer-mode-hint" className="text-xs text-muted-foreground">
-                    {t.developerModeHint}
-                  </p>
-                </div>
-                <Switch
-                  id="developer-mode"
-                  aria-describedby="developer-mode-hint"
-                  checked={devMode}
-                  onCheckedChange={setDevMode}
-                />
-              </div>
             </CardContent>
           </Card>
         </div>

@@ -267,7 +267,7 @@ This is planned work, not completed behavior. Code may run ahead under rule 2 wh
 rows and M3 owner/hardware blockers remain open; it does not close or replace them. Windows remains
 the beta acceptance platform. Finish and review the docs before implementing these boxes.
 
-- [ ] **Developer page:** always visible in the sidebar, master toggle off by default; consolidate
+- [x] **Developer page:** always visible in the sidebar, master toggle off by default; consolidate
   Activity, protocol details, internals and direct reaction tools. Device Studio requires both its
   build gate and the toggle. Turning the toggle off stops internals polling and removes developer
   controls everywhere. Preserve release-surface checks and keyboard/focus behavior.

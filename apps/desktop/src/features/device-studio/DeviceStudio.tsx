@@ -7,7 +7,6 @@ import { PREVIEW_FPS } from '../../lib/ipc/types';
 import type { AnimationTimeline, ConnectionStatusDto } from '../../lib/ipc/types';
 import { strings } from '../../lib/i18n/strings';
 import { hasCapability } from '../../lib/device-support';
-import { Page } from '../../components/kivori/page';
 import { Controls } from './Controls';
 import { TestAction } from './TestAction';
 import { useStudioStore } from './store';
@@ -48,17 +47,24 @@ export function DeviceStudio({
   requestRef.current = { state, animation, elapsedMs };
 
   useEffect(() => {
+    let active = true;
     const apply = (status: ConnectionStatusDto): void => {
-      if (!hasCapability(status, 'mascotInteraction')) return;
+      if (!active || !hasCapability(status, 'mascotInteraction')) return;
       const applied = status.mascotAction;
       if (!applied) return;
       recordAppliedAction(applied, status.connectionGeneration);
     };
     let unlisten = (): void => {};
-    void onConnectionStatus(apply).then((stop) => {
-      unlisten = stop;
-    });
-    return () => unlisten();
+    void onConnectionStatus(apply)
+      .then((stop) => {
+        if (active) unlisten = stop;
+        else stop();
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+      unlisten();
+    };
   }, [recordAppliedAction]);
 
   // Advance the timeline while playing (drift-free integer stepping lives in the store).
@@ -135,42 +141,44 @@ export function DeviceStudio({
 
   const t = strings.studio;
   return (
-    <Page title={t.heading} description={t.description}>
-      <section aria-label={t.heading} className="device-studio space-y-4">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.8fr)]">
+    <section aria-labelledby="studio-heading" className="device-studio space-y-4">
+      <h2 id="studio-heading" className="text-lg font-semibold">
+        {t.heading}
+      </h2>
+      <p className="text-sm text-muted-foreground">{t.description}</p>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.8fr)]">
+        <Card>
+          <CardHeader>
+            <CardTitle>{t.preview}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center gap-3">
+            <DevicePreview
+              state={state}
+              elapsedMs={elapsedMs}
+              label={t.preview}
+              frame={playing && !streamError ? streamFrame : null}
+              animation={animation}
+              streaming={playing && !streamError}
+            />
+            {streamError && <p role="alert">{streamError}</p>}
+          </CardContent>
+        </Card>
+        <div className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>{t.preview}</CardTitle>
+              <CardTitle>{t.controls}</CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col items-center gap-3">
-              <DevicePreview
-                state={state}
-                elapsedMs={elapsedMs}
-                label={t.preview}
-                frame={playing && !streamError ? streamFrame : null}
-                animation={animation}
-                streaming={playing && !streamError}
-              />
-              {streamError && <p role="alert">{streamError}</p>}
+            <CardContent>
+              <Controls connection={connection} />
             </CardContent>
           </Card>
-          <div className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>{t.controls}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Controls connection={connection} />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent>
-                <TestAction />
-              </CardContent>
-            </Card>
-          </div>
+          <Card>
+            <CardContent>
+              <TestAction />
+            </CardContent>
+          </Card>
         </div>
-      </section>
-    </Page>
+      </div>
+    </section>
   );
 }
