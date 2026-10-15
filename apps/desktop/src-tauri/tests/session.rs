@@ -855,8 +855,11 @@ fn the_latest_internals_reply_is_cached_and_forgotten_with_the_connection() {
         SendableState::Idle,
         Capabilities::MASCOT_INTERACTION.union(Capabilities::DEVICE_INTERNALS_V1),
     );
+    let received_at = std::time::Instant::now();
+    session.set_host_instant(received_at);
     let _ = desktop_drain(&mut link);
     assert_eq!(session.internals(), None);
+    assert_eq!(session.internals_received_at(), None);
     assert!(session.request_internals(&mut link).expect("request"));
     let nonce = internals_request_session(&desktop_drain(&mut link)).expect("request sent");
 
@@ -874,6 +877,7 @@ fn the_latest_internals_reply_is_cached_and_forgotten_with_the_connection() {
         .pump(&mut link, &mut manager, &mut orch)
         .expect("pump");
     assert_eq!(session.internals(), None);
+    assert_eq!(session.internals_received_at(), None);
 
     device_push(
         &mut link,
@@ -888,6 +892,24 @@ fn the_latest_internals_reply_is_cached_and_forgotten_with_the_connection() {
         .pump(&mut link, &mut manager, &mut orch)
         .expect("pump");
     assert_eq!(session.internals(), Some(sample_internals()));
+    assert_eq!(session.internals_received_at(), Some(received_at));
+
+    // Equal values are still a new measurement; the injected receipt clock is authoritative.
+    let next_at = received_at + std::time::Duration::from_secs(2);
+    session.set_host_instant(next_at);
+    device_push(
+        &mut link,
+        &Message::Internals(kivori_protocol::InternalsReport {
+            session: nonce,
+            internals: sample_internals(),
+        }),
+        wire_version(),
+        3,
+    );
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+    assert_eq!(session.internals_received_at(), Some(next_at));
 
     // The device ends the session: the snapshot describes a connection that is gone.
     device_push(
@@ -896,10 +918,11 @@ fn the_latest_internals_reply_is_cached_and_forgotten_with_the_connection() {
             reason: ByeReason::Shutdown,
         }),
         wire_version(),
-        3,
+        4,
     );
     let _ = session.pump(&mut link, &mut manager, &mut orch);
     assert_eq!(session.internals(), None);
+    assert_eq!(session.internals_received_at(), None);
 }
 
 #[test]
@@ -919,6 +942,7 @@ fn an_unnegotiated_internals_reply_is_ignored() {
         .pump(&mut link, &mut manager, &mut orch)
         .expect("pump");
     assert_eq!(session.internals(), None);
+    assert_eq!(session.internals_received_at(), None);
 }
 
 fn buddy_settings(msgs: &[Message]) -> Vec<kivori_protocol::BuddySettings> {

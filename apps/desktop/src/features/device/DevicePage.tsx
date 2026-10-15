@@ -135,7 +135,7 @@ export function DevicePage({
               </CardContent>
             </Card>
           ) : null}
-          <Diagnostics technical={false} />
+          <Diagnostics technical={false} connection={connection} />
           <Card size="sm">
             <CardHeader>
               <CardTitle>{t.app}</CardTitle>

@@ -1807,6 +1807,7 @@ pub struct HostServicesSnapshot {
 pub struct DiagnosticsSnapshot {
     /// The connection state token.
     pub connection: &'static str,
+    pub connection_generation: u32,
     /// The device's firmware version, while connected.
     pub firmware_version: Option<String>,
     /// The short, non-reversible device hash, while connected.
@@ -1829,6 +1830,7 @@ pub struct DiagnosticsSnapshot {
     pub host: HostServicesSnapshot,
     /// The latest device internals snapshot of this connection (developer mode).
     pub internals: Option<DeviceInternals>,
+    pub internals_received_at: Option<Instant>,
     /// Which product and board the connected device is.
     pub identity: Option<DeviceIdentity>,
 }
@@ -1839,6 +1841,7 @@ impl DiagnosticsSnapshot {
     pub fn initial() -> Self {
         Self {
             connection: connection_token(ConnectionState::Disconnected),
+            connection_generation: 0,
             firmware_version: None,
             device_hash: None,
             negotiated_caps: Capabilities::NONE,
@@ -1856,6 +1859,7 @@ impl DiagnosticsSnapshot {
                 input_permission: "unknown",
             },
             internals: None,
+            internals_received_at: None,
             identity: None,
         }
     }
@@ -1892,6 +1896,7 @@ pub struct VersionsDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionDiagnosticsDto {
+    pub generation: u32,
     pub state: &'static str,
     pub connected_for_secs: Option<u64>,
     pub reconnects: u32,
@@ -1973,6 +1978,7 @@ pub fn diagnostics_dto(
             identity: snapshot.identity.as_ref().map(identity_dto),
         },
         connection: ConnectionDiagnosticsDto {
+            generation: snapshot.connection_generation,
             state: snapshot.connection,
             connected_for_secs: snapshot
                 .connected_since
@@ -2039,6 +2045,9 @@ const fn reset_reason_token(reason: ResetReason) -> &'static str {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceInternalsDto {
+    pub connection_generation: u32,
+    /// Age of the last accepted device report, not the age of this IPC read.
+    pub snapshot_age_ms: Option<u64>,
     /// A device is connected.
     pub connected: bool,
     /// The connected device's firmware reports internals (it negotiated the capability).
@@ -2087,12 +2096,19 @@ pub struct ChipRevisionDto {
 
 /// Projects the internals card from the device thread's latest figures.
 #[must_use]
-pub fn device_internals_dto(snapshot: &DiagnosticsSnapshot) -> DeviceInternalsDto {
+pub fn device_internals_dto(snapshot: &DiagnosticsSnapshot, now: Instant) -> DeviceInternalsDto {
     let supported = snapshot.connection == connection_token(ConnectionState::Connected)
         && snapshot
             .effective_caps
             .contains(Capabilities::DEVICE_INTERNALS_V1);
     DeviceInternalsDto {
+        connection_generation: snapshot.connection_generation,
+        snapshot_age_ms: snapshot
+            .internals_received_at
+            .filter(|_| supported && snapshot.internals.is_some())
+            .map(|at| {
+                u64::try_from(now.saturating_duration_since(at).as_millis()).unwrap_or(u64::MAX)
+            }),
         connected: snapshot.connection == connection_token(ConnectionState::Connected),
         supported,
         snapshot: snapshot

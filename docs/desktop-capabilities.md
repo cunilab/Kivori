@@ -21,6 +21,14 @@ expose basic Copy diagnostics with the toggle off. Only the active tool mounts, 
 or switching the toggle off stops its polling. A removed focused control returns focus to the page
 title; Developer itself stays available when its tools are turned off.
 
+Copy diagnostics reads the safe base on demand. Developer mode may add only internals already
+observed by the active instrumentation in the same connection generation. The optional envelope
+labels fresh (at most five seconds old), stale or unavailable data; stale and unavailable entries
+carry no measurements. Report age starts at native receipt, so cached IPC reads do not renew it.
+Session transitions, polling failures and leaving instrumentation invalidate the frontend cache;
+late replies cannot restore it. Copy never starts internals polling.
+
+
 ## Surface mapping
 
 | Surface | Current rule |

@@ -140,6 +140,7 @@ pub struct Session {
     /// The caller's host clock (ms) as of the last [`Session::set_host_ms`]; the session has no
     /// clock of its own.
     host_ms: u32,
+    host_instant: Option<std::time::Instant>,
     /// Device-to-host clock offset learned from `Pong`s. Connection-scoped like
     /// `current_session`: the device clock restarts with the device.
     device_clock: DeviceClock,
@@ -147,6 +148,7 @@ pub struct Session {
     diagnostics: SessionDiagnostics,
     /// The latest `Internals` snapshot of this session (developer mode). Connection-scoped.
     internals: Option<DeviceInternals>,
+    internals_received_at: Option<std::time::Instant>,
     /// The identity the device reported after the handshake (`PRODUCT_IDENTITY_V1`).
     /// Connection-scoped, exactly like `current_session`.
     identity: Option<DeviceIdentity>,
@@ -183,9 +185,11 @@ impl Session {
             connection_generation: 0,
             activity: Vec::new(),
             host_ms: 0,
+            host_instant: None,
             device_clock: DeviceClock::default(),
             diagnostics: SessionDiagnostics::default(),
             internals: None,
+            internals_received_at: None,
             identity: None,
         }
     }
@@ -342,6 +346,12 @@ impl Session {
     /// next [`Session::pump`] reads. Used to relate a `Pong` to the device clock.
     pub fn set_host_ms(&mut self, host_ms: u32) {
         self.host_ms = host_ms;
+    }
+
+    /// Supplies monotonic receipt time for diagnostics read by the next pump. This is separate
+    /// from the wrapping protocol clock; absent injection leaves measurement age unknown.
+    pub fn set_host_instant(&mut self, now: std::time::Instant) {
+        self.host_instant = Some(now);
     }
 
     /// The current device-to-host clock estimate (empty until the first usable `Pong`), for
@@ -734,6 +744,12 @@ impl Session {
         self.internals
     }
 
+    /// When the latest accepted internals report arrived; rereading the cache does not refresh it.
+    #[must_use]
+    pub const fn internals_received_at(&self) -> Option<std::time::Instant> {
+        self.internals_received_at
+    }
+
     /// Whether the heartbeat has missed its threshold (the caller then raises `HeartbeatTimeout`).
     #[must_use]
     pub fn heartbeat_timed_out(&self) -> bool {
@@ -944,6 +960,7 @@ impl Session {
                     && self.current_session == Some(report.session) =>
             {
                 self.internals = Some(report.internals);
+                self.internals_received_at = self.host_instant;
             }
             // Only the identity of this session counts. A product or board the catalog does not
             // know is never guessed: effective support stays empty and flashing refuses it.
@@ -1052,6 +1069,7 @@ impl Session {
         self.diagnostics.free_bytes = None;
         self.diagnostics.last_pong = None;
         self.internals = None;
+        self.internals_received_at = None;
         self.identity = None;
     }
 

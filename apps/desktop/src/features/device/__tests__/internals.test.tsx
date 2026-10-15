@@ -1,20 +1,21 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import axe from 'axe-core';
 import { TooltipProvider } from '@kivori/ui/components/tooltip';
 import type { DeviceInternalsDto } from '../../../lib/ipc/types';
+import { connectionFixture } from '../../../test/connection';
 import { parseDeviceInternals } from '../../../lib/ipc/validate';
 
 const bridge = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('../../../lib/ipc', () => ({ getDeviceInternals: bridge.get }));
 
 import { DeviceInternals, formatBytes } from '../DeviceInternals';
-import { getLatestInternals } from '../internals-latest';
+import { getLatestInternals, internalsForBundle, setLatestInternals } from '../internals-latest';
 
 const view = (): ReturnType<typeof render> =>
   render(
     <TooltipProvider>
-      <DeviceInternals />
+      <DeviceInternals connection={connectionFixture()} />
     </TooltipProvider>,
   );
 
@@ -45,7 +46,13 @@ const snapshot: NonNullable<DeviceInternalsDto['snapshot']> = {
   framesRejected: 0,
 };
 
-const reporting: DeviceInternalsDto = { connected: true, supported: true, snapshot };
+const reporting: DeviceInternalsDto = {
+  connected: true,
+  supported: true,
+  connectionGeneration: 1,
+  snapshotAgeMs: 0,
+  snapshot,
+};
 
 beforeEach(() => {
   bridge.get.mockReset().mockResolvedValue(reporting);
@@ -162,18 +169,36 @@ describe('DeviceInternals card', () => {
   });
 
   it('tells a device without the capability that its firmware does not report internals', async () => {
-    bridge.get.mockResolvedValue({ connected: true, supported: false, snapshot: null });
+    bridge.get.mockResolvedValue({
+      connected: true,
+      supported: false,
+      connectionGeneration: 1,
+      snapshotAgeMs: null,
+      snapshot: null,
+    });
     view();
     await screen.findByText(/firmware doesn't report internals/);
     expect(screen.queryByText('Flash')).not.toBeInTheDocument();
   });
 
   it('asks to connect when no device is connected, and waits for the first answer', async () => {
-    bridge.get.mockResolvedValue({ connected: false, supported: false, snapshot: null });
+    bridge.get.mockResolvedValue({
+      connected: false,
+      supported: false,
+      connectionGeneration: 1,
+      snapshotAgeMs: null,
+      snapshot: null,
+    });
     const { unmount } = view();
     await screen.findByText('Connect your Kivori to see its internals.');
     unmount();
-    bridge.get.mockResolvedValue({ connected: true, supported: true, snapshot: null });
+    bridge.get.mockResolvedValue({
+      connected: true,
+      supported: true,
+      connectionGeneration: 1,
+      snapshotAgeMs: null,
+      snapshot: null,
+    });
     view();
     await screen.findByText('Waiting for the device to answer…');
   });
@@ -195,10 +220,135 @@ describe('DeviceInternals card', () => {
     }
   });
 
+  it('clears a mounted card on reconnect and rejects the old session reply arriving later', async () => {
+    let resolveOld!: (value: DeviceInternalsDto) => void;
+    bridge.get.mockReturnValueOnce(
+      new Promise<DeviceInternalsDto>((resolve) => {
+        resolveOld = resolve;
+      }),
+    );
+    const page = view();
+    bridge.get.mockResolvedValue({ ...reporting, connectionGeneration: 2, snapshot: null });
+    page.rerender(
+      <TooltipProvider>
+        <DeviceInternals connection={connectionFixture(undefined, { connectionGeneration: 2 })} />
+      </TooltipProvider>,
+    );
+    await waitFor(() => expect(bridge.get).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      resolveOld(reporting);
+    });
+    expect(screen.queryByText('Flash')).not.toBeInTheDocument();
+    expect(internalsForBundle(2, true).status).toBe('unavailable');
+    page.unmount();
+    expect(getLatestInternals()).toBeNull();
+  });
+
+  it('clears measured values as soon as a still-mounted card disconnects', async () => {
+    const page = view();
+    await screen.findByText('Flash');
+    page.rerender(
+      <TooltipProvider>
+        <DeviceInternals connection={connectionFixture([], { connection: 'disconnected' })} />
+      </TooltipProvider>,
+    );
+    expect(screen.queryByText('Flash')).not.toBeInTheDocument();
+    expect(getLatestInternals()).toBeNull();
+  });
+
+  it('labels stale native measurements and excludes them from the bundle', async () => {
+    bridge.get.mockResolvedValue({ ...reporting, snapshotAgeMs: 6000 });
+    view();
+    await screen.findByText(/internals are stale/);
+    expect(screen.queryByText('Flash')).not.toBeInTheDocument();
+    expect(internalsForBundle(1, true)).toMatchObject({ status: 'stale', data: null });
+  });
+
+  it('invalidates the copy cache when polling fails', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      view();
+      await screen.findByText('Flash');
+      bridge.get.mockRejectedValue(new Error('IPC failed'));
+      await act(() => vi.advanceTimersByTimeAsync(1100));
+      await screen.findByText('Device internals are unavailable right now.');
+      expect(getLatestInternals()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('counts time in flight and rejects replies received after hiding the window', async () => {
+    let resolve!: (value: DeviceInternalsDto) => void;
+    bridge.get.mockReturnValueOnce(
+      new Promise<DeviceInternalsDto>((done) => {
+        resolve = done;
+      }),
+    );
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(100);
+    try {
+      const page = view();
+      bridge.get.mockResolvedValue({ ...reporting, snapshotAgeMs: 6100 });
+      clock.mockReturnValue(6200);
+      await act(async () => {
+        resolve(reporting);
+      });
+      await screen.findByText(/internals are stale/);
+      expect(internalsForBundle(1, true).status).toBe('stale');
+      page.unmount();
+      bridge.get.mockReturnValueOnce(
+        new Promise<DeviceInternalsDto>((done) => {
+          resolve = done;
+        }),
+      );
+      view();
+      const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+      try {
+        act(() => document.dispatchEvent(new Event('visibilitychange')));
+        await act(async () => {
+          resolve(reporting);
+        });
+        expect(getLatestInternals()).toBeNull();
+        expect(screen.queryByText('Flash')).not.toBeInTheDocument();
+      } finally {
+        hidden.mockRestore();
+      }
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('ages a native measurement without treating cache reads as device replies', () => {
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(100);
+    try {
+      setLatestInternals({ ...reporting, snapshotAgeMs: 4000 });
+      expect(internalsForBundle(1, true)).toMatchObject({
+        status: 'fresh',
+        ageMs: 4000,
+        data: { ...reporting, snapshotAgeMs: 4000 },
+      });
+      clock.mockReturnValue(1200);
+      expect(internalsForBundle(1, true)).toEqual({ status: 'stale', ageMs: 5100, data: null });
+      expect(internalsForBundle(2, true)).toEqual({
+        status: 'unavailable',
+        ageMs: null,
+        data: null,
+      });
+      expect(internalsForBundle(1, false)).toEqual({
+        status: 'unavailable',
+        ageMs: null,
+        data: null,
+      });
+    } finally {
+      clock.mockRestore();
+      setLatestInternals(null);
+    }
+  });
+
   it('keeps the latest answer for Copy diagnostics while mounted', async () => {
     view();
     await screen.findByText('Flash');
-    expect(getLatestInternals()).toEqual(reporting);
+    expect(getLatestInternals()).toMatchObject({ ...reporting, snapshotAgeMs: expect.any(Number) });
   });
 });
 
@@ -208,7 +358,13 @@ describe('parseDeviceInternals', () => {
   });
 
   it('accepts a missing snapshot', () => {
-    const none = { connected: true, supported: true, snapshot: null };
+    const none = {
+      connected: true,
+      supported: true,
+      connectionGeneration: 1,
+      snapshotAgeMs: null,
+      snapshot: null,
+    };
     expect(parseDeviceInternals(none)).toEqual(none);
   });
 
@@ -220,6 +376,9 @@ describe('parseDeviceInternals', () => {
     expect(() => parseDeviceInternals(bad({ resetReason: 'cosmicRay' }))).toThrow();
     expect(() => parseDeviceInternals(bad({ chipModel: 'esp8266' }))).toThrow();
     expect(() => parseDeviceInternals(bad({ framesIn: -1 }))).toThrow();
+    expect(() => parseDeviceInternals({ ...reporting, connectionGeneration: -1 })).toThrow();
+    expect(() => parseDeviceInternals({ ...reporting, snapshotAgeMs: 1.5 })).toThrow();
+    expect(() => parseDeviceInternals({ ...reporting, snapshotAgeMs: undefined })).toThrow();
     expect(() => parseDeviceInternals(bad({ busyPercent: 101 }))).toThrow();
     expect(() => parseDeviceInternals(bad({ temperatureDeciCelsius: 3.5 }))).toThrow();
     expect(() => parseDeviceInternals(null)).toThrow();

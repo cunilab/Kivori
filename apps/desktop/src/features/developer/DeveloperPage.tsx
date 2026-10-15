@@ -80,7 +80,7 @@ export function DeveloperPage({
           <TabsContent value="diagnostics" className="space-y-4">
             {current === 'diagnostics' ? (
               <>
-                <Diagnostics />
+                <Diagnostics connection={connection} />
                 <Card>
                   <CardHeader>
                     <CardTitle role="heading" aria-level={2}>
@@ -105,7 +105,7 @@ export function DeveloperPage({
                     </dl>
                   </CardContent>
                 </Card>
-                <DeviceInternals />
+                <DeviceInternals connection={connection} />
               </>
             ) : null}
           </TabsContent>
@@ -122,7 +122,7 @@ export function DeveloperPage({
           ) : null}
         </Tabs>
       ) : (
-        <Diagnostics technical={false} />
+        <Diagnostics technical={false} connection={connection} />
       )}
     </Page>
   );

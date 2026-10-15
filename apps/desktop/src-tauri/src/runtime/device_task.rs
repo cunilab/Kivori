@@ -626,6 +626,7 @@ fn device_loop(
             }
             Some(open_link) => {
                 session.set_host_ms(elapsed_ms(started.elapsed()));
+                session.set_host_instant(Instant::now());
                 let pump_error = session
                     .pump(open_link, &mut manager, &mut orchestrator)
                     .err();
@@ -1609,6 +1610,8 @@ struct DiagnosticsPublisher {
     /// The internals snapshot in the last publish; a new one is published at once so the card
     /// does not wait out the interval.
     last_internals: Option<DeviceInternals>,
+    last_internals_received_at: Option<Instant>,
+    last_session: Option<(ConnectionState, u32)>,
     /// The identity in the last publish, published at once when it arrives.
     last_identity: Option<DeviceIdentity>,
     connected_since: Option<Instant>,
@@ -1636,7 +1639,11 @@ impl DiagnosticsPublisher {
         }
         let internals = session.internals();
         let identity = session.identity();
-        if internals == self.last_internals
+        let received_at = session.internals_received_at();
+        let session_key = (manager.state(), session.connection_generation());
+        if self.last_session == Some(session_key)
+            && received_at == self.last_internals_received_at
+            && internals == self.last_internals
             && identity == self.last_identity
             && self
                 .last_published
@@ -1646,10 +1653,13 @@ impl DiagnosticsPublisher {
         }
         self.last_published = Some(now);
         self.last_internals = internals;
+        self.last_internals_received_at = received_at;
+        self.last_session = Some(session_key);
         self.last_identity = identity;
         let device = manager.device().filter(|_| connected);
         *cell.lock().expect("diagnostics lock") = DiagnosticsSnapshot {
             connection: crate::ipc::dto::connection_token(manager.state()),
+            connection_generation: session.connection_generation(),
             firmware_version: device.map(|d| {
                 format!(
                     "{}.{}.{}",
@@ -1670,6 +1680,7 @@ impl DiagnosticsPublisher {
             session: session.diagnostics(),
             host,
             internals,
+            internals_received_at: received_at,
             identity: session.identity().filter(|_| connected),
         };
     }
@@ -1794,5 +1805,36 @@ impl InputPermissionProbe {
         };
         self.last = Some((Instant::now(), token));
         token
+    }
+}
+
+#[cfg(test)]
+mod diagnostics_tests {
+    use super::*;
+
+    #[test]
+    fn connection_boundaries_bypass_the_diagnostics_publish_interval() {
+        let mut previous = DiagnosticsSnapshot::initial();
+        previous.connection = "connected";
+        previous.internals = Some(DeviceInternals::default());
+        let host = previous.host;
+        let cell = Mutex::new(previous);
+        let mut publisher = DiagnosticsPublisher {
+            last_published: Some(Instant::now()),
+            last_session: Some((ConnectionState::Connected, 0)),
+            ..Default::default()
+        };
+        let mut manager = ConnectionManager::new();
+        let session = Session::new(SessionConfig::default());
+        publisher.publish(&cell, &manager, &session, host);
+        assert_eq!(cell.lock().unwrap().connection, "disconnected");
+        assert!(cell.lock().unwrap().internals.is_none());
+        manager.apply(ManagerEvent::PortOpened);
+        publisher.publish(&cell, &manager, &session, host);
+        assert_eq!(cell.lock().unwrap().connection, "connecting");
+        publisher.last_session = Some((manager.state(), 99));
+        cell.lock().unwrap().connection_generation = 99;
+        publisher.publish(&cell, &manager, &session, host);
+        assert_eq!(cell.lock().unwrap().connection_generation, 0);
     }
 }
