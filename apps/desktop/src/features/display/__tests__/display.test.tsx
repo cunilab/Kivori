@@ -1,10 +1,11 @@
+import { connectionFixture } from '../../../test/connection';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Toaster } from '@kivori/ui/components/sonner';
-import type { ConfigDto, ConnectionStatusDto, DeskStatusDto } from '../../../lib/ipc/types';
+import type { ConfigDto, DeskStatusDto } from '../../../lib/ipc/types';
 
 const h = vi.hoisted(() => ({
   setMode: vi.fn<(mode: string) => Promise<void>>(() => Promise.resolve()),
@@ -57,19 +58,7 @@ const config: ConfigDto = {
   buddy: { reactions: true, intensity: 'normal' },
 };
 
-const connection: ConnectionStatusDto = {
-  connection: 'connected',
-  desired: 'idle',
-  reported: null,
-  device: null,
-  incompatibleReason: null,
-  retryCount: 0,
-  connectionGeneration: 1,
-  capabilities: ['deskStatusV1'],
-  mascotInteraction: false,
-  mascotAction: null,
-  host: 'active',
-};
+const connection = connectionFixture(['deskStatusV1']);
 
 function view(d: DeskStatusDto, c: ConfigDto | null = config): ReactElement {
   return (
@@ -93,11 +82,7 @@ describe('DisplayPage', () => {
     async (status) => {
       const user = userEvent.setup();
       render(<DisplayPage desk={desk} config={config} connection={status} />);
-      const live = screen.getByRole('radiogroup', { name: 'Show now' });
-      for (const radio of within(live).getAllByRole('radio')) {
-        expect(radio).toHaveAttribute('aria-disabled', 'true');
-        await user.click(radio);
-      }
+      expect(screen.queryByRole('radiogroup', { name: 'Show now' })).not.toBeInTheDocument();
       expect(screen.queryByTestId('on-device')).not.toBeInTheDocument();
       await user.click(
         within(screen.getByRole('group', { name: 'Brightness' })).getByRole('button', {
@@ -108,6 +93,35 @@ describe('DisplayPage', () => {
       expect(h.setMode).not.toHaveBeenCalled();
     },
   );
+
+  it('desk status alone supports all five live views, without advertising reaction or media-text support', async () => {
+    const user = userEvent.setup();
+    render(view(desk));
+    const live = screen.getByRole('radiogroup', { name: 'Show now' });
+    expect(within(live).getAllByRole('radio')).toHaveLength(5);
+    await user.click(within(live).getByRole('radio', { name: /^Media/ }));
+    expect(h.setMode).toHaveBeenCalledWith('media');
+  });
+
+  it('drops pending live selections when the session generation changes', async () => {
+    const user = userEvent.setup();
+    const page = render(<DisplayPage desk={desk} config={config} connection={connection} />);
+    await user.click(
+      within(screen.getByRole('radiogroup', { name: 'Show now' })).getByRole('radio', {
+        name: /^Media/,
+      }),
+    );
+    expect(screen.getByText('Applying…')).toBeInTheDocument();
+    page.rerender(
+      <DisplayPage
+        desk={desk}
+        config={config}
+        connection={{ ...connection, connectionGeneration: 2 }}
+      />,
+    );
+    expect(screen.queryByText('Applying…')).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /^Buddy/ })).toHaveAttribute('aria-checked', 'true');
+  });
 
   it('checks the mode the device reports', () => {
     render(view(desk));

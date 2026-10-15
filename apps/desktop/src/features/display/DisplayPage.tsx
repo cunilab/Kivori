@@ -14,6 +14,7 @@ import type { ConfigDto, ConnectionStatusDto, DeskStatusDto, DisplayMode } from 
 import { strings } from '@/lib/i18n/strings';
 import { cn } from '@kivori/ui/lib/utils';
 import { errorText } from '@/lib/utils';
+import { hasCapability } from '@/lib/device-support';
 import { CompanionControls } from './CompanionControls';
 
 const t = strings.display;
@@ -90,8 +91,9 @@ export function DisplayPage({
     return () => clearTimeout(timer);
   }, [pending, desk?.mode]);
 
-  const canSetMode =
-    connection?.connection === 'connected' && connection.capabilities.includes('deskStatusV1');
+  const canSetMode = hasCapability(connection, 'deskStatusV1');
+  const known =
+    connection?.connection === 'connected' && connection.device?.identity?.known === true;
   const choose = (mode: DisplayMode): void => {
     if (!canSetMode) return;
     if (mode === (pending ?? desk?.mode)) return;
@@ -102,16 +104,23 @@ export function DisplayPage({
     });
   };
 
+  useEffect(() => setPending(null), [connection?.connectionGeneration, canSetMode]);
   const selected = pending ?? desk?.mode ?? null;
 
   return (
     <Page title={t.title} description={t.description}>
+      <p className="text-sm text-muted-foreground">{strings.savedConfiguration}</p>
       <section aria-labelledby="default-view-heading" className="space-y-3">
         <div className="space-y-0.5">
           <h2 id="default-view-heading" className="text-base font-semibold">
             {t.defaultView.heading}
           </h2>
           <p className="text-sm text-muted-foreground">{t.defaultView.body}</p>
+          {known && !canSetMode ? (
+            <p className="text-xs text-muted-foreground" role="note">
+              {strings.savedOnly}
+            </p>
+          ) : null}
         </div>
         <ToggleGroup
           aria-labelledby="default-view-heading"
@@ -138,6 +147,16 @@ export function DisplayPage({
             {t.doublePress.heading}
           </h2>
           <p className="text-sm text-muted-foreground">{t.doublePress.body}</p>
+          {known &&
+          !(
+            hasCapability(connection, 'physicalInputV1') &&
+            hasCapability(connection, 'buttonInputV1') &&
+            hasCapability(connection, 'doublePressV1')
+          ) ? (
+            <p className="text-xs text-muted-foreground" role="note">
+              {strings.savedOnly}
+            </p>
+          ) : null}
         </div>
         <ToggleGroup
           aria-labelledby="double-press-heading"
@@ -172,6 +191,11 @@ export function DisplayPage({
             {t.brightness.heading}
           </h2>
           <p className="text-sm text-muted-foreground">{t.brightness.body}</p>
+          {known && !hasCapability(connection, 'idleLifeV1') ? (
+            <p className="text-xs text-muted-foreground" role="note">
+              {strings.savedOnly}
+            </p>
+          ) : null}
         </div>
         <ToggleGroup
           aria-label={t.brightness.heading}
@@ -196,90 +220,95 @@ export function DisplayPage({
         </ToggleGroup>
       </section>
 
-      <section aria-labelledby="view-heading" className="space-y-3">
-        <div className="space-y-0.5">
-          <h2 id="view-heading" className="flex items-center gap-2 text-base font-semibold">
-            <MonitorSmartphone className="size-4 text-muted-foreground" aria-hidden="true" />
-            {t.view}
-          </h2>
-          <p className="text-sm text-muted-foreground">{t.viewBody}</p>
-        </div>
-        {desk ? (
-          <RadioGroup
-            aria-labelledby="view-heading"
-            disabled={!canSetMode}
-            value={selected}
-            onValueChange={(value) => choose(value as DisplayMode)}
-            className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5"
-          >
-            {DISPLAY_MODES.map((mode) => {
-              const isSelected = selected === mode;
-              const isPending = pending === mode;
-              const onDevice = canSetMode && desk.mode === mode;
-              return (
-                <label
-                  key={mode}
-                  data-mode={mode}
-                  data-selected={isSelected}
-                  className={cn(
-                    'group relative flex cursor-pointer flex-col gap-3 rounded-xl bg-card p-3 ring-1 ring-foreground/10 transition-all hover:-translate-y-0.5 hover:shadow-md has-focus-visible:ring-2 has-focus-visible:ring-ring',
-                    !canSetMode && 'cursor-default opacity-50',
-                    isSelected && 'ring-2 ring-primary shadow-md shadow-primary/10',
-                  )}
-                >
-                  <div aria-hidden="true">
-                    <DeviceScreen
-                      mode={mode}
-                      className={cn(
-                        'w-full transition-opacity',
-                        !isSelected && 'opacity-80 group-hover:opacity-100',
-                      )}
-                    />
-                  </div>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 space-y-0.5">
-                      <span className="block text-sm font-medium">{t.modes[mode].name}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {t.modes[mode].body}
-                      </span>
-                    </div>
-                    <RadioGroupItem value={mode} className="mt-0.5" />
-                  </div>
-                  {isPending ? (
-                    <Badge
-                      variant="secondary"
-                      className="absolute top-5 left-5 h-6 gap-1.5 px-2.5"
-                      role="status"
-                    >
-                      <LoaderCircle
-                        data-icon="inline-start"
-                        className="animate-spin"
-                        aria-hidden="true"
-                      />
-                      {t.applying}
-                    </Badge>
-                  ) : onDevice ? (
-                    <Badge className="absolute top-5 left-5 h-6 px-2.5" data-testid="on-device">
-                      {t.current}
-                    </Badge>
-                  ) : null}
-                </label>
-              );
-            })}
-          </RadioGroup>
-        ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-            {DISPLAY_MODES.map((mode) => (
-              <Skeleton key={mode} className="aspect-[0.8] rounded-xl" />
-            ))}
+      {canSetMode ? (
+        <section aria-labelledby="view-heading" className="space-y-3">
+          <div className="space-y-0.5">
+            <h2 id="view-heading" className="flex items-center gap-2 text-base font-semibold">
+              <MonitorSmartphone className="size-4 text-muted-foreground" aria-hidden="true" />
+              {t.view}
+            </h2>
+            <p className="text-sm text-muted-foreground">{t.viewBody}</p>
           </div>
-        )}
-      </section>
+          {desk ? (
+            <RadioGroup
+              aria-labelledby="view-heading"
+              value={selected}
+              onValueChange={(value) => choose(value as DisplayMode)}
+              className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5"
+            >
+              {DISPLAY_MODES.map((mode) => {
+                const isSelected = selected === mode;
+                const isPending = pending === mode;
+                const onDevice = desk.mode === mode;
+                return (
+                  <label
+                    key={mode}
+                    data-mode={mode}
+                    data-selected={isSelected}
+                    className={cn(
+                      'group relative flex cursor-pointer flex-col gap-3 rounded-xl bg-card p-3 ring-1 ring-foreground/10 transition-all hover:-translate-y-0.5 hover:shadow-md has-focus-visible:ring-2 has-focus-visible:ring-ring',
+                      isSelected && 'ring-2 ring-primary shadow-md shadow-primary/10',
+                    )}
+                  >
+                    <div aria-hidden="true">
+                      <DeviceScreen
+                        mode={mode}
+                        className={cn(
+                          'w-full transition-opacity',
+                          !isSelected && 'opacity-80 group-hover:opacity-100',
+                        )}
+                      />
+                    </div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 space-y-0.5">
+                        <span className="block text-sm font-medium">{t.modes[mode].name}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          {t.modes[mode].body}
+                        </span>
+                      </div>
+                      <RadioGroupItem value={mode} className="mt-0.5" />
+                    </div>
+                    {isPending ? (
+                      <Badge
+                        variant="secondary"
+                        className="absolute top-5 left-5 h-6 gap-1.5 px-2.5"
+                        role="status"
+                      >
+                        <LoaderCircle
+                          data-icon="inline-start"
+                          className="animate-spin"
+                          aria-hidden="true"
+                        />
+                        {t.applying}
+                      </Badge>
+                    ) : onDevice ? (
+                      <Badge className="absolute top-5 left-5 h-6 px-2.5" data-testid="on-device">
+                        {t.current}
+                      </Badge>
+                    ) : null}
+                  </label>
+                );
+              })}
+            </RadioGroup>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+              {DISPLAY_MODES.map((mode) => (
+                <Skeleton key={mode} className="aspect-[0.8] rounded-xl" />
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
 
       <CompanionControls
         config={config}
         connected={connection?.connection === 'connected'}
-        supported={connection?.mascotInteraction ?? false}
+        supported={hasCapability(connection, 'mascotInteraction')}
+        settingsSupported={
+          !known ||
+          hasCapability(connection, 'mascotInteraction') ||
+          hasCapability(connection, 'idleLifeV1')
+        }
       />
     </Page>
   );

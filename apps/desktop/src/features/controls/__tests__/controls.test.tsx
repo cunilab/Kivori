@@ -1,3 +1,5 @@
+import { connectionFixture } from '../../../test/connection';
+import type { ConnectionStatusDto } from '../../../lib/ipc/types';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
@@ -15,12 +17,12 @@ vi.mock('../../../lib/ipc', async (importOriginal) => {
 import * as ipc from '../../../lib/ipc';
 import { ControlsPage } from '../ControlsPage';
 
-function Harness(): ReactElement {
+function Harness({ connection = null }: { connection?: ConnectionStatusDto | null }): ReactElement {
   const desk = useDeskStatus();
   const config = useConfig();
   return (
     <>
-      <ControlsPage desk={desk} config={config} />
+      <ControlsPage desk={desk} config={config} connection={connection} />
       <Toaster />
     </>
   );
@@ -47,6 +49,26 @@ afterEach(() => {
 });
 
 describe('ControlsPage', () => {
+  it('retains edited bindings and host tests when switching to a device without their controls', async () => {
+    const user = userEvent.setup();
+    const page = render(<Harness connection={connectionFixture()} />);
+    await openPressEditor(user);
+    await user.click(screen.getByRole('radio', { name: /Keyboard shortcut/ }));
+    await user.type(screen.getByLabelText('Shortcut'), 'Ctrl+Alt+K');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(row('press')).toHaveTextContent('Custom'));
+    const saved = await ipc.getConfig();
+    page.rerender(
+      <Harness connection={connectionFixture(['physicalInputV1', 'productIdentityV1'])} />,
+    );
+    expect(row('press')).toHaveTextContent('Saved only');
+    expect(row('rotate')).not.toHaveTextContent('Saved only');
+    expect(within(row('press')).getByRole('button', { name: 'Test' })).not.toBeDisabled();
+    page.rerender(<Harness connection={null} />);
+    expect(row('press')).toHaveTextContent('Keyboard shortcut: Ctrl+Alt+K');
+    expect(await ipc.getConfig()).toEqual(saved);
+  });
+
   it('opens on the active profile and shows each control with its action', async () => {
     render(<Harness />);
     expect(await screen.findByRole('tab', { name: 'General', selected: true })).toBeVisible();

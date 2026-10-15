@@ -3,6 +3,8 @@ import { Pause, Play, Send, StepForward } from 'lucide-react';
 import { Button } from '@kivori/ui/components/button';
 import { Slider } from '@kivori/ui/components/slider';
 import { ToggleGroup, ToggleGroupItem } from '@kivori/ui/components/toggle-group';
+import { hasCapability, canMirrorState } from '../../lib/device-support';
+import type { ConnectionStatusDto } from '../../lib/ipc/types';
 import { useConfig } from '../../hooks/use-kivori';
 import { mirrorState, playMascotAction } from '../../lib/ipc';
 import type { CompanionState, MascotAction, SendableState } from '../../lib/ipc/types';
@@ -19,7 +21,11 @@ const SENDABLE = new Set<CompanionState>(SENDABLE_STATES);
 const ACTIONS: readonly MascotAction[] = ['greet', 'pet', 'tickle', 'surprise', 'comfort'];
 
 /** Device Studio control surface: state selection, timeline scrub, transport, and mirror-to-device. */
-export function Controls(): ReactElement {
+export function Controls({
+  connection = null,
+}: {
+  connection?: ConnectionStatusDto | null;
+}): ReactElement {
   const personality = INTENSITY_PERSONALITY[useConfig()?.buddy.intensity ?? 'normal'];
   const state = useStudioStore((s) => s.state);
   const elapsedMs = useStudioStore((s) => s.elapsedMs);
@@ -35,7 +41,7 @@ export function Controls(): ReactElement {
   );
 
   const t = strings.studio;
-  const canMirror = SENDABLE.has(state);
+  const canMirror = SENDABLE.has(state) && canMirrorState(connection);
 
   return (
     <div className="studio-controls space-y-6">
@@ -72,7 +78,9 @@ export function Controls(): ReactElement {
               disabled={eventLimit}
               onClick={() => {
                 playAction(action, personality);
-                void playMascotAction(action).catch(() => {});
+                if (hasCapability(connection, 'mascotInteraction')) {
+                  void playMascotAction(action).catch(() => {});
+                }
               }}
             >
               {strings.companion.actionLabels[action]}
@@ -111,17 +119,19 @@ export function Controls(): ReactElement {
         <Button type="button" variant="outline" onClick={reset}>
           Restart preview
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={!canMirror}
-          onClick={() => {
-            if (canMirror) void mirrorState(state as SendableState);
-          }}
-        >
-          <Send data-icon="inline-start" />
-          {t.mirror}
-        </Button>
+        {canMirrorState(connection) ? (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!canMirror}
+            onClick={() => {
+              if (canMirror) void mirrorState(state as SendableState);
+            }}
+          >
+            <Send data-icon="inline-start" />
+            {t.mirror}
+          </Button>
+        ) : null}
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { connectionFixture } from '../../../test/connection';
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DeviceStudio } from '../DeviceStudio';
@@ -53,20 +54,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 function status(overrides: Partial<ConnectionStatusDto> = {}): ConnectionStatusDto {
-  return {
-    connection: 'connected',
-    desired: 'idle',
-    reported: 'idle',
-    device: null,
-    incompatibleReason: null,
-    retryCount: 0,
-    connectionGeneration: 1,
-    capabilities: ['mascotInteraction', 'deskStatusV1'],
-    mascotInteraction: true,
-    mascotAction: null,
-    host: 'active',
-    ...overrides,
-  };
+  return connectionFixture(undefined, overrides);
 }
 
 it('keeps one live stream when the expression changes and sends event history', async () => {

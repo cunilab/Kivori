@@ -319,7 +319,8 @@ The webview may call only these commands and listen to these events. No command 
   Feature writers and physical input use the same effective support. The first accepted identity is
   fixed for that session; known identity-only recovery firmware receives no normal state commands.
   Live display mode selection requires `deskStatusV1`; saved display/binding settings remain editable
-  offline. Full navigation and per-surface mapping is still tracked in M2.8.
+  offline. The [main-window capability mapping](./desktop-capabilities.md) separates live device
+  actions from host readings and saved configuration; remaining integration is tracked in M2.8.
 - `connectionGeneration` changes whenever device uptime may have reset. Device Studio maps applied-action acknowledgments onto its own monotonic clock per generation.
 
 ## 4. Timing, rendering and assets

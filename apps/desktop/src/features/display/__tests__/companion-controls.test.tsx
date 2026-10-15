@@ -91,11 +91,15 @@ describe('CompanionControls', () => {
     ]);
   });
 
-  it('explains firmware requirement and disables reactions for unsupported devices', () => {
+  it('hides unsupported live reactions while keeping saved buddy settings editable', () => {
     localStorage.setItem('kivori.developerMode', 'true');
     render(<CompanionControls config={config} connected supported={false} />);
-    expect(screen.getByText(/update kivori firmware/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Greet' })).toBeDisabled();
+    expect(screen.queryByText(/update kivori firmware/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Greet' })).not.toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Reactions' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
   });
 
   it('reverts a failed save, says so, and retries the same settings', async () => {

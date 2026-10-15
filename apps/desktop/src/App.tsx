@@ -203,8 +203,32 @@ export function App(): ReactElement {
   const current = hidden(page) ? 'home' : page;
   // A page that just became hidden (developer mode turned off) lands on Home for good.
   useEffect(() => {
-    if (current !== page) setPage(current);
+    if (current !== page) {
+      setPage(current);
+      requestAnimationFrame(() =>
+        document.querySelector<HTMLElement>('[data-page-title]')?.focus(),
+      );
+    }
   }, [current, page]);
+
+  const lastFocused = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const remember = (event: FocusEvent): void => {
+      if (event.target instanceof HTMLElement) lastFocused.current = event.target;
+    };
+    document.addEventListener('focusin', remember);
+    return () => document.removeEventListener('focusin', remember);
+  }, []);
+  const supportKey = `${connection?.connection}:${connection?.connectionGeneration}:${connection?.device?.identity?.known}:${connection?.capabilities.join(',')}:${devMode}`;
+  useEffect(() => {
+    if (
+      lastFocused.current &&
+      !lastFocused.current.isConnected &&
+      document.activeElement === document.body
+    ) {
+      document.querySelector<HTMLElement>('[data-page-title]')?.focus({ preventScroll: true });
+    }
+  }, [supportKey]);
 
   const go = (next: PageId): void => {
     setPage(next);
@@ -321,7 +345,7 @@ export function App(): ReactElement {
                 onNavigate={go}
               />
             ) : current === 'controls' ? (
-              <ControlsPage desk={desk} config={config} />
+              <ControlsPage desk={desk} config={config} connection={connection} />
             ) : current === 'display' ? (
               <DisplayPage desk={desk} config={config} connection={connection} />
             ) : current === 'activity' ? (
@@ -335,7 +359,7 @@ export function App(): ReactElement {
                 }}
               />
             ) : showStudio ? (
-              <DeviceStudio />
+              <DeviceStudio connection={connection} />
             ) : null}
           </div>
         </SidebarInset>

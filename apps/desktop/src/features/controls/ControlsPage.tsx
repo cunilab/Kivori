@@ -68,6 +68,8 @@ import type {
   RotateSpec,
   SlotDto,
 } from '@/lib/ipc/types';
+import { hasCapability } from '@/lib/device-support';
+import type { ConnectionStatusDto } from '@/lib/ipc/types';
 import { format, strings } from '@/lib/i18n/strings';
 import { errorText } from '@/lib/utils';
 import { ActionPicker, catalogId } from './ActionPicker';
@@ -193,9 +195,11 @@ function isKeyboard(
 export function ControlsPage({
   desk,
   config,
+  connection = null,
 }: {
   desk: DeskStatusDto | null;
   config: ConfigDto | null;
+  connection?: ConnectionStatusDto | null;
 }): ReactElement {
   const [chosen, setChosen] = useState<ProfileId | null>(null);
   const [catalog, setCatalog] = useState<ActionCatalogEntryDto[] | null>(null);
@@ -275,8 +279,25 @@ export function ControlsPage({
     );
   };
 
+  const supported = (key: GestureKey): boolean => {
+    if (!hasCapability(connection, 'physicalInputV1')) return false;
+    switch (key) {
+      case 'rotate':
+        return true;
+      case 'press':
+      case 'hold':
+        return hasCapability(connection, 'buttonInputV1');
+      case 'doublePress':
+        return (
+          hasCapability(connection, 'buttonInputV1') && hasCapability(connection, 'doublePressV1')
+        );
+      default:
+        return hasCapability(connection, 'contextButtonsV1');
+    }
+  };
   return (
     <Page title={t.title} description={t.description}>
+      <p className="text-sm text-muted-foreground">{strings.savedConfiguration}</p>
       {config?.notice ? (
         <Alert data-testid="config-notice">
           <TriangleAlert aria-hidden="true" />
@@ -355,6 +376,11 @@ export function ControlsPage({
                               </div>
                               <div>
                                 <CardTitle>{t.gestures[row.key].name}</CardTitle>
+                                {connection?.connection === 'connected' &&
+                                connection.device?.identity?.known === true &&
+                                !supported(row.key) ? (
+                                  <Badge variant="outline">{strings.savedOnly}</Badge>
+                                ) : null}
                                 <CardDescription>{t.gestures[row.key].hint}</CardDescription>
                               </div>
                             </div>
