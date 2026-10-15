@@ -68,8 +68,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: riscv32imc-unknown-none-elf
       - name: Test the release scripts
-        run: node --test scripts/release-tools.test.mjs
+        run: node --test scripts/release-tools.test.mjs scripts/firmware-release-guard.test.mjs
       - name: Compute the versions
         id: plan
         env:
@@ -110,10 +113,6 @@ jobs:
             cat "$RUNNER_TEMP/release-info/notes.md"
           } >> "$GITHUB_STEP_SUMMARY"
           cat "$RUNNER_TEMP/release-info/title.txt"; echo; cat "$RUNNER_TEMP/release-info/notes.md"
-      - uses: dtolnay/rust-toolchain@stable
-        if: ${{ !inputs.dry_run && steps.plan.outputs.commit_needed == 'true' }}
-        with:
-          targets: riscv32imc-unknown-none-elf # firmware/pala/rust-toolchain.toml asks for it
       # Cargo.lock records every workspace member's version, and the firmware lockfile also records the
       # shared crates (path dependencies that inherit the app version). `--workspace` touches only those.
       - name: Refresh both Cargo.lock files

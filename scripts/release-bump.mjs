@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
 import { productName } from './release-info.mjs';
+import { checkFirmwareRelease } from './firmware-release-guard.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -176,6 +177,11 @@ export function planRelease({
   const keeps =
     (fwOverride ? fwOverride === firmwareCurrent : firmwareBump === 'none') &&
     exists(firmwareTag(product, firmwareCurrent));
+  if (keeps && compareSemver(firmwareCurrent, firmwarePrevious) < 0) {
+    throw new Error(
+      `firmware ${firmwareCurrent} is below the latest released version ${firmwarePrevious}`,
+    );
+  }
   if (!keeps) {
     const wanted = firmwareTag(product, fwOverride || bumpVersion(firmwareCurrent, firmwareBump));
     if (exists(wanted)) throw new Error(`tag ${wanted} already exists; pick another version`);
@@ -218,14 +224,15 @@ export function commitBody(plan, productDisplay) {
   return `${productDisplay} firmware ${plan.firmware}, unchanged.`;
 }
 
-function localTags() {
+function localTagsAt(root) {
   return execFileSync('git', ['tag', '--list'], { cwd: root, encoding: 'utf8' })
     .split('\n')
     .map((t) => t.trim())
     .filter(Boolean);
 }
 
-function main(argv) {
+export function main(argv, directory = root) {
+  const root = directory;
   const { values: opt } = parseArgs({
     args: argv,
     options: {
@@ -240,6 +247,7 @@ function main(argv) {
     },
   });
   if (opt.write && opt['dry-run']) throw new Error('--write and --dry-run exclude each other');
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(opt.product)) throw new Error('invalid product id');
 
   const appToml = join(root, 'Cargo.toml');
   const fwToml = join(root, 'firmware', opt.product, 'Cargo.toml');
@@ -249,6 +257,7 @@ function main(argv) {
     readFileSync(join(root, 'products', opt.product, 'product.toml'), 'utf8'),
   );
 
+  const tags = localTagsAt(root);
   const plan = planRelease({
     appCurrent: tomlVersion(appText, 'workspace.package'),
     firmwareCurrent: tomlVersion(fwText, 'package'),
@@ -257,8 +266,10 @@ function main(argv) {
     appExact: opt['app-version'],
     firmwareBump: opt.firmware,
     firmwareExact: opt['firmware-version'],
-    tags: localTags(),
+    tags,
   });
+  const guard = checkFirmwareRelease(root, opt.product, plan.firmwarePrevious, plan.firmware, tags);
+  console.log(`Firmware guard: ${guard}.`);
 
   const how = (exact, bump) => (exact.trim() ? 'exact' : bump);
   console.log(
