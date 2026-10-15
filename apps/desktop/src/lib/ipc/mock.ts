@@ -35,7 +35,13 @@ import type {
   SlotDto,
   SlotSpec,
 } from './types';
-import { COMPANION_STATES, MACRO_LIMITS, PREVIEW_DIM, PROFILE_LIMITS } from './types';
+import {
+  CAPABILITY_NAMES,
+  COMPANION_STATES,
+  MACRO_LIMITS,
+  PREVIEW_DIM,
+  PROFILE_LIMITS,
+} from './types';
 
 /// A unique marker string; `scripts/check-mock-excluded.mjs` fails if it appears in a prod bundle.
 export const MOCK_BUILD_SENTINEL = 'kivori-ipc-browser-mock-must-not-ship';
@@ -338,13 +344,7 @@ export function mockConnectionStatus(): ConnectionStatusDto {
           identity: mockIdentity,
         },
         connectionGeneration: 1,
-        capabilities: [
-          'mascotInteraction',
-          'physicalInputV1',
-          'presentationV1',
-          'deskStatusV1',
-          'mediaInfoV1',
-        ],
+        capabilities: [...CAPABILITY_NAMES],
         mascotInteraction: true,
       };
     case 'incompatible':
@@ -835,9 +835,7 @@ export function mockGetDiagnostics(): DiagnosticsDto {
       firmware: connected ? '0.1.0' : null,
       protocol: '0.1',
       negotiatedMinor: connected ? 1 : null,
-      capabilities: connected
-        ? ['mascotInteraction', 'physicalInputV1', 'presentationV1', 'deskStatusV1', 'mediaInfoV1']
-        : [],
+      capabilities: connected ? [...CAPABILITY_NAMES] : [],
       deviceHash: connected ? '3fa9c1d2' : null,
       identity: connected ? mockIdentity : null,
     },

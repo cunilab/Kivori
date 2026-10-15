@@ -1,3 +1,4 @@
+import { connectionFixture } from '../../../test/connection';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
@@ -39,25 +40,7 @@ function desk(overrides: Partial<DeskStatusDto> = {}): DeskStatusDto {
 }
 
 function connection(overrides: Partial<ConnectionStatusDto> = {}): ConnectionStatusDto {
-  return {
-    connection: 'connected',
-    desired: 'idle',
-    reported: 'idle',
-    device: {
-      firmwareVersion: '0.1.0',
-      protocolVersion: { major: 0, minor: 1 },
-      deviceIdHashShort: 'deadbeef',
-      identity: null,
-    },
-    incompatibleReason: null,
-    retryCount: 0,
-    connectionGeneration: 1,
-    capabilities: ['mascotInteraction', 'deskStatusV1'],
-    mascotInteraction: true,
-    mascotAction: null,
-    host: 'active',
-    ...overrides,
-  };
+  return connectionFixture(undefined, overrides);
 }
 
 function view(d: DeskStatusDto | null, c: ConnectionStatusDto | null = connection()): ReactElement {
@@ -69,6 +52,43 @@ function view(d: DeskStatusDto | null, c: ConnectionStatusDto | null = connectio
 }
 
 describe('HomePage', () => {
+  it.each(['pending', 'unknown', 'identity-only', 'dial'] as const)(
+    'shows neutral product status without reactions or screen claims for %s, preserving host monitoring',
+    (kind) => {
+      localStorage.setItem('kivori.developerMode', 'true');
+      const session = connectionFixture(
+        kind === 'dial' ? ['physicalInputV1', 'productIdentityV1'] : ['productIdentityV1'],
+      );
+      if (kind === 'pending') session.device!.identity = null;
+      if (kind === 'unknown') session.device!.identity!.known = false;
+      if (kind === 'dial') session.device!.identity!.product = 'Test dial without screen';
+      session.reported = null;
+      render(view(desk({ mediaTitle: 'A host-only reading' }), session));
+      expect(screen.queryByTestId('buddy-mascot')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Change view' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Say hi' })).not.toBeInTheDocument();
+      expect(screen.queryByText('Showing')).not.toBeInTheDocument();
+      expect(screen.getByTestId('desk-title')).toHaveTextContent('A host-only reading');
+      if (kind === 'pending')
+        expect(screen.getByText('Reading device identity…')).toBeInTheDocument();
+      if (kind === 'unknown')
+        expect(screen.getByText('This device is not supported by this app')).toBeInTheDocument();
+      if (kind === 'identity-only')
+        expect(screen.getByText('Device firmware needs attention')).toBeInTheDocument();
+      localStorage.clear();
+    },
+  );
+
+  it('survives pending, resolved and disconnected transitions without changing hook order', () => {
+    const pending = connectionFixture();
+    pending.device!.identity = null;
+    const page = render(view(desk(), pending));
+    page.rerender(view(desk(), connectionFixture()));
+    expect(screen.getByTestId('buddy-mascot')).toBeInTheDocument();
+    page.rerender(view(desk(), connection({ connection: 'disconnected', device: null })));
+    expect(screen.getByText('Plug in your Kivori')).toBeInTheDocument();
+  });
+
   it('renders every null as an explicit "—" with a reason, never 0', async () => {
     render(view(desk()));
     for (const id of ['desk-volume', 'desk-cpu', 'desk-ram', 'desk-media', 'desk-title']) {

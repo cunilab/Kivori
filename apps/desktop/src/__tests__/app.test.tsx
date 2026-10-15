@@ -1,3 +1,6 @@
+import * as ipc from '../lib/ipc';
+import type { ConnectionStatusDto } from '../lib/ipc/types';
+import { connectionFixture } from '../test/connection';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -45,6 +48,36 @@ describe('App shell', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Activity' }));
     expect(screen.getByRole('heading', { level: 1, name: 'Activity' })).toBeInTheDocument();
+  });
+
+  it('preserves configuration navigation and moves focus when a new device loses a focused live surface', async () => {
+    let publish: ((status: ConnectionStatusDto) => void) | undefined;
+    vi.spyOn(ipc, 'getConnectionStatus').mockResolvedValue(connectionFixture());
+    vi.spyOn(ipc, 'onConnectionStatus').mockImplementation(async (handler) => {
+      publish = handler;
+      return () => {};
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Display' }));
+    const radio = await screen.findByRole('radio', { name: /^Clock/ });
+    radio.focus();
+    expect(radio).toHaveFocus();
+    act(() =>
+      publish?.(
+        connectionFixture(['physicalInputV1', 'productIdentityV1'], { connectionGeneration: 2 }),
+      ),
+    );
+    expect(screen.queryByRole('radiogroup', { name: 'Show now' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Display' })).toHaveFocus();
+    expect(screen.getByRole('group', { name: 'Default view' })).toBeInTheDocument();
+    expect(navLabels()).toEqual(['Home', 'Controls', 'Display', 'Device']);
+    act(() => publish?.(connectionFixture([], { connection: 'disconnected', device: null })));
+    expect(screen.getByRole('heading', { level: 1, name: 'Display' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Reactions' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
   });
 
   it('shows the plug-in guidance when no Kivori is connected', async () => {
@@ -96,7 +129,7 @@ describe('Developer mode', () => {
     expect(screen.getByText('App protocol')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Display' }));
-    expect(screen.getByRole('button', { name: 'Greet' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Greet' })).not.toBeInTheDocument();
 
     first.unmount();
     render(<App />);
@@ -113,6 +146,9 @@ describe('Developer mode', () => {
     act(() => setDevMode(false));
     expect(await screen.findByRole('heading', { level: 1, name: 'Home' })).toBeInTheDocument();
     expect(navLabels()).not.toContain('Activity');
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Home' })).toHaveFocus(),
+    );
     // Turning it back on does not resurrect the hidden page.
     act(() => setDevMode(true));
     expect(screen.getByRole('heading', { level: 1, name: 'Home' })).toBeInTheDocument();
@@ -130,15 +166,13 @@ describe('Developer mode', () => {
 });
 
 describe('Brand art', () => {
-  it('uses the keycap icon in the sidebar and the mascot on the Buddy screen', async () => {
+  it('uses shared brand art without assuming an unplugged device has a mascot', async () => {
     render(<App />);
     expect(screen.getByTestId('brand-mark')).toHaveAttribute(
       'src',
       expect.stringContaining('kivori-icon.svg'),
     );
-    expect(await screen.findByTestId('empty-mascot')).toHaveAttribute(
-      'src',
-      expect.stringContaining('mascot.svg'),
-    );
+    expect(await screen.findByText('Plug in your Kivori')).toBeInTheDocument();
+    expect(screen.queryByTestId('empty-mascot')).not.toBeInTheDocument();
   });
 });

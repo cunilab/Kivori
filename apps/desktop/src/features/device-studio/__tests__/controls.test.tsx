@@ -1,3 +1,4 @@
+import { connectionFixture } from '../../../test/connection';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
@@ -53,37 +54,47 @@ afterEach(() => {
 describe('Device Studio Controls', () => {
   it('selecting a state through the toggle group updates the store', async () => {
     const user = userEvent.setup();
-    render(<Controls />);
+    render(<Controls connection={connectionFixture()} />);
     await user.click(screen.getByRole('button', { name: strings.studio.states.happy }));
     expect(useStudioStore.getState().state).toBe('happy');
   });
 
   it('records a social reaction cue and requests device playback', async () => {
     const user = userEvent.setup();
-    render(<Controls />);
+    render(<Controls connection={connectionFixture()} />);
     await user.click(screen.getByRole('button', { name: 'Tickle' }));
     expect(useStudioStore.getState().actionEvents).toHaveLength(1);
     expect(useStudioStore.getState().actionEvents[0]?.action).toBe('tickle');
     expect(ipc.playMascotAction).toHaveBeenCalledWith('tickle');
   });
 
+  it('keeps preview reactions offline without mirroring or sending them to a later device', async () => {
+    const user = userEvent.setup();
+    render(<Controls connection={null} />);
+    await user.click(screen.getByRole('button', { name: 'Tickle' }));
+    expect(useStudioStore.getState().actionEvents.at(-1)?.action).toBe('tickle');
+    expect(ipc.playMascotAction).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: strings.studio.mirror })).not.toBeInTheDocument();
+    expect(ipc.mirrorState).not.toHaveBeenCalled();
+  });
+
   it('play toggles playback', async () => {
     const user = userEvent.setup();
-    render(<Controls />);
+    render(<Controls connection={connectionFixture()} />);
     await user.click(screen.getByRole('button', { name: strings.studio.play }));
     expect(useStudioStore.getState().playing).toBe(true);
   });
 
   it('mirror is disabled for non-sendable states', async () => {
     useStudioStore.setState({ state: 'offline' });
-    render(<Controls />);
+    render(<Controls connection={connectionFixture()} />);
     await screen.findByRole('slider', { name: strings.studio.scrub });
     expect(screen.getByRole('button', { name: strings.studio.mirror })).toBeDisabled();
   });
 
   it('marks the current state as the pressed toggle', async () => {
     useStudioStore.setState({ state: 'busy' });
-    render(<Controls />);
+    render(<Controls connection={connectionFixture()} />);
     await screen.findByRole('slider', { name: strings.studio.scrub });
     expect(screen.getByRole('button', { name: strings.studio.states.busy })).toHaveAttribute(
       'aria-pressed',
@@ -92,12 +103,12 @@ describe('Device Studio Controls', () => {
   });
 
   it('exposes the timeline as an accessible slider', async () => {
-    render(<Controls />);
+    render(<Controls connection={connectionFixture()} />);
     expect(await screen.findByRole('slider', { name: strings.studio.scrub })).toBeInTheDocument();
   });
 
   it('has no axe accessibility violations', async () => {
-    const { container } = render(<Controls />);
+    const { container } = render(<Controls connection={connectionFixture()} />);
     // Wait for Base UI's edge-aligned slider to complete its post-layout positioning before scanning.
     await screen.findByRole('slider', { name: strings.studio.scrub });
     // color-contrast can't be computed under jsdom (no canvas text metrics); the rest still runs.
