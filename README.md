@@ -238,6 +238,11 @@ just web-dev           # website dev server on :3000
 
 ## Contributing
 
+- A new post-handshake wire message or appended wire-enum variant bumps `PROTOCOL_MINOR` and
+  declares its negotiated capability gate. Minor is a descriptive revision, not a feature gate.
+  Changing existing wire layouts, including pre-negotiation handshake layouts, requires a protocol
+  major change. See
+  [ADR-0002](docs/adr/0002-one-wire-protocol-crate.md).
 - Pull request titles are conventional commits (`feat:`, `fix:`, `perf:`, scoped like
   `feat(mic): ...`, `!` for a breaking change). They become the release notes, so write them for
   the person reading the release.
