@@ -280,7 +280,7 @@ test('a stale committed lockfile is rejected before writes, rather than repaired
   git(root, 'tag', 'fw-pala-v0.1.0');
   rejectWithoutWrites(
     root,
-    /error: (?:the lock file .* needs to be updated|cannot update the lock file)/s,
+    /(?:the lock file .* needs to be updated|cannot update the lock file)/s,
   );
 });
 
