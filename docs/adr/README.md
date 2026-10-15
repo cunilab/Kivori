@@ -20,3 +20,4 @@ An architecture decision record (ADR) is one short file that captures one decisi
 | [ADR-0014](./0014-versions-product-identity-and-product-catalog.md) | Versions, product identity and the product catalog | Proposed | 2026-10-12 |
 | [ADR-0015](./0015-app-updates-through-github-releases.md) | App updates through GitHub Releases | Proposed | 2026-10-12 |
 | [ADR-0016](./0016-locking-a-board-to-its-firmware-in-tiers.md) | Locking a board to its firmware, in tiers | Proposed | 2026-10-12 |
+| [ADR-0017](./0017-product-contract-and-capability-driven-desktop.md) | Product contract and capability-driven Desktop | Proposed | 2026-10-15 |

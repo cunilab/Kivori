@@ -157,7 +157,7 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 
 ### Product identity (`PRODUCT_IDENTITY_V1`, ADR-0014)
 
-- One appended message: tag 23 `Identity { session, product, board, hw_rev, source }` (device to desktop). The device sends it once, right after the `Ready` that negotiated the capability, from the accepted session. `HelloAck` is unchanged (a fixed struct, ADR-0002) and the minor does not move for it: the capability gates the message, which is what negotiation by capability is for. `product` and `board` are the `u16` numbers of `products/registry.toml` (never 0); `hw_rev` is `None` until provisioning burned one; `source` is `Build` (compiled into the firmware) or `Chip` (read from the chip identity record).
+- One appended message: tag 23 `Identity { session, product, board, hw_rev, source }` (device to desktop). The device sends it once, right after the `Ready` that negotiated the capability, from the accepted session. `HelloAck` is unchanged (a fixed struct, ADR-0002). This addition did not bump the minor; capability intersection gates the message. That records the earlier implementation, not future versioning discipline: new messages follow [ADR-0002](./adr/0002-one-wire-protocol-crate.md), where minor is a descriptive revision and capabilities still decide feature support. `product` and `board` are the `u16` numbers of `products/registry.toml` (never 0); `hw_rev` is `None` until provisioning burned one; `source` is `Build` (compiled into the firmware) or `Chip` (read from the chip identity record).
 - The desktop (`Session::identity`) keeps it for the connection only and clears it at every session boundary. A device that did not negotiate the capability is the legacy identity: product `pala`, board `c3-supermini`, revision unknown, source "legacy" (a desktop-side value, never on the wire). Numbers resolve through `catalog::by_wire`; one the catalog does not know is shown as "Unknown product (n)" or "Unknown board (n)" and never guessed: the session negotiates nothing else for that device and the flashing guard refuses it.
 - Firmware build identity: `firmware/<product>/build.rs` reads the product and board numbers from `products/registry.toml` (and the image's minimum protocol from `product.toml`) into compile-time `env!` values, so no number is typed twice. The physical build advertises the capability.
 - Chip identity record (`kivori_protocol::identity`, `no_std`): 12 bytes, little-endian: format version (1), product (`u16`), board (`u16`), hardware revision (`u8`, 0 = unspecified), 2 reserved zero bytes, CRC-32 (the frame CRC) over the first 8. A region of all zeros is "not provisioned" (fresh eFuses read zero). Firmware reads it from the C3 user eFuse block (BLOCK3, `BLOCK_USR_DATA`) with `esp_hal::efuse::read_field_le`; this step never writes eFuses. An unprovisioned or invalid record means source `Build` with no revision.
@@ -533,6 +533,10 @@ Core function needs no internet, cloud, CDN, telemetry or licence check. Discove
 
 Each architecture decision is its own record in [`docs/adr/`](./adr/). The [ADR index](./adr/README.md)
 lists them all with their status and says how to add one.
+
+The M2.8 target contract is [ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md).
+It separates catalog metadata from negotiated UI support and defines developer/support boundaries.
+It is planned work; the as-built descriptions above remain current until implementation lands.
 
 ## 8. Engineering principles
 

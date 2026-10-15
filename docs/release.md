@@ -7,6 +7,63 @@ updater, attach files to a draft). Nothing is published until you publish the dr
 signing still waits on owner certificates (#36); see
 [architecture.md](./architecture.md#release-pipeline-m3-s5) and ADR-0014/0015.
 
+## Release policy
+
+**Version promises.** App 1.0.0 ships with M4/v1, after its acceptance gates pass. From 1.0.0,
+forward config migrations preserve supported user configuration, the app maintains the current
+and previous protocol-major support window, and breaking changes to supported app behavior require
+an app major bump. Wire compatibility has its own protocol version and capability rules
+([ADR-0002](./adr/0002-one-wire-protocol-crate.md)); firmware versions remain per product, never
+lockstep with the app. Below 1.0, beta behavior and configuration may change; release notes must
+call out breaking changes. These are release obligations, not a claim that future compatibility
+has already been tested. Downgrade support is not promised.
+
+**Beta cadence.** Release when there is a user-visible improvement or fix, not on every merge.
+Update prompts cost attention. Keep the manual Release button, Later and Skip this version;
+urgency of a safety or recovery fix can justify an earlier release.
+
+**M2.8 guard requirements (not implemented yet).** Before the release start job writes versions or
+pushes, inspect each bundled product's firmware inputs since its latest released firmware tag
+(`fw-<product>-vX.Y.Z`) on the release commit's ancestry. Do not use an unrelated branch's highest
+version as the input-diff baseline. Refuse ambiguous/divergent firmware history rather than silently
+using an older tag; retain the separate version-monotonicity checks against existing tags.
+If inputs changed, the resolved firmware version must be greater than that released version. Check
+the resolved version, not whether the bump selector says `none`: an exact
+version override can satisfy the rule, and an exact unchanged version cannot bypass it. Refuse
+missing baseline history; fetch all tags/history. First release applies only when no
+`fw-<product>-v*` tag exists anywhere in the repository. If tags exist but none is an ancestor of
+the release commit, refuse instead of treating it as a first release. For a genuine first release,
+tag the current version under the existing version checks, without an invented diff baseline.
+
+Enumerate Cargo path dependencies and build-dependencies from the product's firmware workspace,
+plus explicit non-Cargo inputs checked against its build scripts. For Pip this includes `products/`,
+`assets/`, `tools/asset-compiler/`, relevant shared crates, root and firmware `Cargo.toml`/lockfiles,
+`rust-toolchain.toml`, and applicable `.cargo/` and packaging/build configuration. Tests must prove
+catalog, asset and asset-compiler changes require a bump. A conservative scope may require an extra
+bump; do not silently miss a firmware input. Explain failures with the product, baseline and commits.
+
+Exclude harmless version bookkeeping by content, never by commit title or author: only workspace
+package-version metadata and corresponding workspace path-crate lockfile version entries proven
+not to affect firmware behavior. Dependency source/checksum changes and all other hunks still count,
+including real changes mixed into a release commit. If firmware starts consuming shared-crate
+version metadata, that metadata can no longer be exempt. The firmware's own version and image
+identity/version validation remain subject to the existing release checks.
+
+Exercise changed/unchanged inputs, exact overrides, first release, unreachable/divergent tags,
+bookkeeping-only and mixed bookkeeping/real changes, and failure before mutation in release-tool
+tests. Until this guard lands, the manual firmware review in the Windows instructions below remains
+necessary.
+
+Release titles and the Firmware notes section must cover every bundled product using catalog names
+and independent firmware versions. M2.8 must also replace the single-image bundle with validated
+catalog-driven images per supported product/board and resolve update/flash targets by identity.
+Test two isolated product fixtures through packaging selection and release metadata; refuse
+mismatched images before flashing. Release validation must verify that the bundled image set equals
+the shipping catalog's supported product/board set, with no test products or images. The current
+pipeline below still bundles and names Pip only. There remains one app release, firmware tags have
+no GitHub Release, and the owner reviews the draft before publication. See
+[ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md).
+
 ## One-time owner setup
 
 Until this is done, releases still build but are **not updatable**: the build warns "Release is not

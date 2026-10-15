@@ -256,6 +256,75 @@ Software done and host-tested (#72); owner key and hardware rows remain.
 - [ ] Hardware: Phase 14 rows in [validation.md](./validation.md)
 - [ ] Gates 5, 8, 10
 
+## M2.8: Desktop organization and product contract
+
+**Outcome:** support tools are easy to find, unsupported device controls are absent, and another
+product using existing features can be added without product-specific branches in shared Desktop
+code. Design: [ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md), reviewed from
+[issue #76](https://github.com/cunilab/Kivori/issues/76).
+
+This is planned work, not completed behavior. Code may run ahead under rule 2 while M2.7 hardware
+rows and M3 owner/hardware blockers remain open; it does not close or replace them. Windows remains
+the beta acceptance platform. Finish and review the docs before implementing these boxes.
+
+- [ ] **Developer page:** always visible in the sidebar, master toggle off by default; consolidate
+  Activity, protocol details, internals and direct reaction tools. Device Studio requires both its
+  build gate and the toggle. Turning the toggle off stops internals polling and removes developer
+  controls everywhere. Preserve release-surface checks and keyboard/focus behavior.
+- [ ] **Product contract:** catalog-driven names, optional art, firmware paths, provisioning and
+  packaging/release selection; remove shared-app hardcoded product defaults and the manually
+  maintained embedding list. Missing art uses a neutral frame. New transports, flash methods or
+  interaction models need explicit feature work; this is not support for arbitrary future hardware.
+- [ ] **Capability-driven UI:** document the capability-to-surface mapping; backend effective support
+  combines current-session negotiation, resolved identity and host support, not catalog minimums.
+  UI and command handling deny ordinary product actions while identity is pending/unknown. Cover
+  navigation, cards, display views and controls. Keep offline binding/display configuration editable
+  without authorizing device actions from retained metadata; preserve stored bindings for absent
+  controls when products switch, without adding per-product profile stores. Define incompatible
+  and known identity-only recovery states; move focus when a live page becomes unavailable.
+- [ ] **Hardware tiles:** reorganize the existing formatted metrics and usage bars into readable
+  flash, RAM and run-loop/frame tiles. Label app image versus app partition, static RAM, stack
+  headroom and run-loop busy time accurately; do not imply heap usage or whole-chip CPU load.
+  Preserve unavailable values and visible-only 1 Hz polling (ADR-0013). No new firmware metrics,
+  protocol changes or trend-history feature in this item.
+- [ ] **Support bundle:** basic Copy diagnostics works with developer mode off and is also exposed
+  on Developer. Optional internals come only from visible instrumentation in the current session;
+  mark unavailable/stale data, never copy another device's snapshot, and never start polling just
+  to copy. Correlate snapshots with connection generations, clear on session boundaries and reject
+  late replies; test reconnect while the card stays mounted. Preserve privacy and clipboard errors.
+- [ ] **Home health summary:** developer-only link state, consecutive retries and total reconnects,
+  reusing existing status/diagnostics data; no internals polling or event-history dashboard on Home.
+- [ ] **Product acceptance tests:** Pip, a minimal fake product and mixed capabilities; supported
+  controls still work, unsupported controls/art are absent. Exercise missing art, old firmware,
+  pending/unknown identity, known identity-only firmware, offline configuration and session switches.
+  Test backend action refusal before identity resolves. Catalog/build tests prove additions using
+  supported features require no shared-app product-list edits and firmware selection ignores order.
+  Isolate fake products/images from shipping discovery and test preservation of stored bindings.
+- [ ] **Product identifier guard:** scoped to shared app/tooling, catalog-derived identifiers,
+  explicit exceptions and a positive control. Supplement behavioral tests rather than replacing them.
+- [ ] **Firmware release guard:** reject changed firmware inputs under an unchanged released version
+  before writing versions or pushing. Compare resolved versions, including exact overrides; define
+  first-release behavior, reachable product-specific baselines and catalog/build/assets/toolchain/
+  lockfile inputs. Recognize harmless version bookkeeping by content, never commit title or author.
+  List offending commits; test rejection, valid bumps, exact overrides, no prior tag, divergent
+  history and bookkeeping mixed with real changes.
+- [ ] **Firmware bundles and release metadata:** replace the single-image bundle with validated
+  catalog-driven product/board images; select matching firmware for updates, flash and recovery.
+  Build/package the whole supported set and list every product's independent version in release
+  titles/notes. Test two product fixtures, image identity/version mismatch and wrong-product refusal.
+  No-handshake recovery requires explicit choice for ambiguous USB/board hints and refuses no match;
+  never choose an implicit default. Release validation excludes all test products/images.
+  Keep one app release, permanent firmware tags, draft publication and existing flash safety rules.
+
+Written policy: [release promises and M2.8 guard requirements](./release.md#release-policy), and
+[protocol change discipline](./adr/0002-one-wire-protocol-crate.md). These policies are recorded;
+the implementation boxes above stay open until verified. No new hardware evidence is claimed.
+
+Out of scope: multi-device UI, a device-gallery Home, visual redesign of customer pages, new
+firmware instrumentation, runtime plugins, cloud sync, downgrade guarantees, update channels,
+independent per-product profile stores and platform work already scheduled for M4/Later.
+M2.8 does not relax any paid-beta gate.
+
 ## M3: Paid beta
 
 **Outcome:** an external user receives Kivori, installs it, configures it, recovers from common
