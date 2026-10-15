@@ -40,6 +40,7 @@ fn initial_status_is_disconnected_idle() {
     assert!(dto.device.is_none());
     assert_eq!(dto.retry_count, 0);
     assert!(!dto.mascot_interaction);
+    assert!(dto.capabilities.is_empty());
 }
 
 #[test]
@@ -54,7 +55,7 @@ fn connected_status_projects_all_three_axes() {
         &manager,
         &orchestrator,
         Some(CompanionState::Happy),
-        true,
+        kivori_model::Capabilities::MASCOT_INTERACTION,
         None,
         7,
         HostPresence::Active,
@@ -63,6 +64,7 @@ fn connected_status_projects_all_three_axes() {
     assert_eq!(dto.desired, "busy");
     assert_eq!(dto.reported.as_deref(), Some("happy"));
     assert!(dto.mascot_interaction);
+    assert_eq!(dto.capabilities, vec!["mascotInteraction"]);
     assert_eq!(dto.connection_generation, 7);
     let device = dto.device.expect("device present when connected");
     assert_eq!(device.firmware_version, "0.1.2");
@@ -79,7 +81,7 @@ fn host_presence_projects_and_the_override_does_not_change_the_users_choice() {
         &ConnectionManager::new(),
         &orchestrator,
         None,
-        false,
+        kivori_model::Capabilities::NONE,
         None,
         0,
         HostPresence::Locked,
@@ -99,7 +101,7 @@ fn incompatible_status_carries_reason() {
         &manager,
         &Orchestrator::new(),
         None,
-        false,
+        kivori_model::Capabilities::NONE,
         None,
         1,
         HostPresence::Active,

@@ -90,7 +90,10 @@ export function DisplayPage({
     return () => clearTimeout(timer);
   }, [pending, desk?.mode]);
 
+  const canSetMode =
+    connection?.connection === 'connected' && connection.capabilities.includes('deskStatusV1');
   const choose = (mode: DisplayMode): void => {
+    if (!canSetMode) return;
     if (mode === (pending ?? desk?.mode)) return;
     setPending(mode);
     void setDisplayMode(mode).catch((error: unknown) => {
@@ -204,6 +207,7 @@ export function DisplayPage({
         {desk ? (
           <RadioGroup
             aria-labelledby="view-heading"
+            disabled={!canSetMode}
             value={selected}
             onValueChange={(value) => choose(value as DisplayMode)}
             className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5"
@@ -211,7 +215,7 @@ export function DisplayPage({
             {DISPLAY_MODES.map((mode) => {
               const isSelected = selected === mode;
               const isPending = pending === mode;
-              const onDevice = desk.mode === mode;
+              const onDevice = canSetMode && desk.mode === mode;
               return (
                 <label
                   key={mode}
@@ -219,6 +223,7 @@ export function DisplayPage({
                   data-selected={isSelected}
                   className={cn(
                     'group relative flex cursor-pointer flex-col gap-3 rounded-xl bg-card p-3 ring-1 ring-foreground/10 transition-all hover:-translate-y-0.5 hover:shadow-md has-focus-visible:ring-2 has-focus-visible:ring-ring',
+                    !canSetMode && 'cursor-default opacity-50',
                     isSelected && 'ring-2 ring-primary shadow-md shadow-primary/10',
                   )}
                 >

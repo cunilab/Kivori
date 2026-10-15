@@ -313,6 +313,13 @@ The webview may call only these commands and listen to these events. No command 
 - Events are small JSON. Frame bytes travel as raw RGBA8888 (240x240, no JSON or base64) through a `tauri::ipc::Response` or a `Channel<ArrayBuffer>`. The canvas only blits. RGB565 to RGBA happens in Rust.
 - Dev-only commands are compiled out of release builds, and so is the Device Studio route.
 - Preview animation input: `{ initialState, events: [{ atMs, state }], actionEvents: [{ atMs, action, personality, seed }] }`, at most 256 events, integer milliseconds. Supplying it selects externally clocked playback, which supports pause, step and backward seek. Streaming keeps at most two in-flight frames and drops frames that were superseded while rendering.
+- `ConnectionStatusDto.capabilities` is the backend's effective feature list for the current session.
+  It stays empty until identity resolves to a known product/board, and after disconnect. Legacy
+  firmware resolves to the existing legacy identity. Raw negotiation remains available in diagnostics.
+  Feature writers and physical input use the same effective support. The first accepted identity is
+  fixed for that session; known identity-only recovery firmware receives no normal state commands.
+  Live display mode selection requires `deskStatusV1`; saved display/binding settings remain editable
+  offline. Full navigation and per-surface mapping is still tracked in M2.8.
 - `connectionGeneration` changes whenever device uptime may have reset. Device Studio maps applied-action acknowledgments onto its own monotonic clock per generation.
 
 ## 4. Timing, rendering and assets

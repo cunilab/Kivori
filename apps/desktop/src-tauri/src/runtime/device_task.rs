@@ -231,7 +231,7 @@ fn device_loop(
         &manager,
         &orchestrator,
         session.reported(),
-        session.supports_mascot_interaction(),
+        session.effective_caps(),
         session.last_mascot_action_applied(),
         session.connection_generation(),
         presence.presence(),
@@ -366,11 +366,18 @@ fn device_loop(
                         let _ = session.request_internals(link);
                     }
                 }
-                DeviceCommand::SetDisplayMode(mode) => {
+                DeviceCommand::SetDisplayMode(mode)
+                    if manager.state().can_drive_device()
+                        && session
+                            .effective_caps()
+                            .contains(Capabilities::DESK_STATUS_V1)
+                        && !flash.is_busy() =>
+                {
                     desk.set_mode(mode, &mut |observation| {
                         record_observations(&app, &activity_log, [observation]);
                     });
                 }
+                DeviceCommand::SetDisplayMode(_) => {}
                 DeviceCommand::TestAction(action) => {
                     desk.test(action, started.elapsed(), &mut |observation| {
                         record_observations(&app, &activity_log, [observation]);
@@ -727,7 +734,7 @@ fn device_loop(
         });
         if !flash.is_busy()
             && session
-                .negotiated_caps()
+                .effective_caps()
                 .contains(Capabilities::PRESENTATION_V1)
         {
             if let Some(open_link) = link.as_mut() {
@@ -858,13 +865,14 @@ fn device_loop(
         // The desktop owns ambient behavior only for a device without idle life. Suppressed or
         // disconnected states consume due opportunities, preventing stale antics from firing
         // immediately after focus work or reconnect.
-        let companion_state = if manager.state().can_drive_device() {
-            session
-                .reported()
-                .unwrap_or_else(|| orchestrator.desired().to_companion())
-        } else {
-            CompanionState::Offline
-        };
+        let companion_state =
+            if manager.state().can_drive_device() && session.supports_mascot_interaction() {
+                session
+                    .reported()
+                    .unwrap_or_else(|| orchestrator.desired().to_companion())
+            } else {
+                CompanionState::Offline
+            };
         let cue = if session.supports_idle_life() {
             None
         } else {
@@ -923,7 +931,7 @@ fn device_loop(
             &manager,
             &orchestrator,
             session.reported(),
-            session.supports_mascot_interaction(),
+            session.effective_caps(),
             session.last_mascot_action_applied(),
             session.connection_generation(),
             presence.presence(),
@@ -1152,7 +1160,13 @@ pub fn synchronize_session(
 ) {
     let current = session
         .current_session()
-        .filter(|_| manager.state().can_drive_device())
+        .filter(|_| {
+            manager.state().can_drive_device()
+                && session
+                    .identity()
+                    .is_some_and(|identity| identity.resolve().is_some())
+                && session.effective_caps() != Capabilities::PRODUCT_IDENTITY_V1
+        })
         .map(|nonce| (session.connection_generation(), nonce));
     if *active == current {
         return;
@@ -1639,6 +1653,7 @@ impl DiagnosticsPublisher {
             }),
             device_hash: device.map(|d| d.device_id_hash_short.clone()),
             negotiated_caps: session.negotiated_caps(),
+            effective_caps: session.effective_caps(),
             negotiated_minor: device.map(|d| {
                 d.protocol_version
                     .minor

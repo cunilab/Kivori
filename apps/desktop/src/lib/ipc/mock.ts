@@ -318,6 +318,7 @@ export function mockConnectionStatus(): ConnectionStatusDto {
     incompatibleReason: null,
     retryCount: 0,
     connectionGeneration: 0,
+    capabilities: [],
     mascotInteraction: false,
     mascotAction: null,
     host: 'active',
@@ -337,6 +338,13 @@ export function mockConnectionStatus(): ConnectionStatusDto {
           identity: mockIdentity,
         },
         connectionGeneration: 1,
+        capabilities: [
+          'mascotInteraction',
+          'physicalInputV1',
+          'presentationV1',
+          'deskStatusV1',
+          'mediaInfoV1',
+        ],
         mascotInteraction: true,
       };
     case 'incompatible':

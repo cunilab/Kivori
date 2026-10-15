@@ -160,17 +160,19 @@ function countOrNull(name: string, value: unknown): number | null {
 }
 
 /**
- * The connection snapshot. Only `host` is a token this layer owns the vocabulary of; an older or
- * newer native side that sends another value is rejected rather than shown as a wrong state.
+ * Validate the connection's closed tokens before they authorize live controls.
  */
 export function parseConnectionStatus(raw: unknown): ConnectionStatusDto {
   const r = record('connection status', raw);
   const status = r as unknown as ConnectionStatusDto;
+  const capabilities = r.capabilities === undefined ? [] : r.capabilities;
+  if (!Array.isArray(capabilities)) throw new Error('Kivori: invalid capabilities.');
   return {
     ...status,
     device: status.device
       ? { ...status.device, identity: parseIdentity(record('device', status.device).identity) }
       : status.device,
+    capabilities: capabilities.map((name) => oneOf('capability', CAPABILITY_NAMES, name)),
     host: oneOf('host presence', HOST_PRESENCES, r.host),
   };
 }

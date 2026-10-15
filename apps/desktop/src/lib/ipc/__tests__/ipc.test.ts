@@ -801,6 +801,16 @@ describe('parseFirmwareStatus', () => {
 });
 
 describe('parseConnectionStatus', () => {
+  it('validates effective capabilities and defaults older payloads to no support', () => {
+    const base = { host: 'active' };
+    expect(parseConnectionStatus(base).capabilities).toEqual([]);
+    expect(parseConnectionStatus({ ...base, capabilities: ['deskStatusV1'] }).capabilities).toEqual(
+      ['deskStatusV1'],
+    );
+    for (const capabilities of [null, 'deskStatusV1', [42], ['futureFeature']]) {
+      expect(() => parseConnectionStatus({ ...base, capabilities })).toThrow();
+    }
+  });
   it('accepts every host presence and rejects an unknown one', async () => {
     const mock = await import('../mock');
     const good = JSON.parse(JSON.stringify(mock.mockConnectionStatus()));

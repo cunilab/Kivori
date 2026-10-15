@@ -166,6 +166,11 @@ fn internals_dto_keeps_unavailable_as_null_and_hides_a_stale_snapshot() {
     snapshot.negotiated_caps = snapshot
         .negotiated_caps
         .union(Capabilities::DEVICE_INTERNALS_V1);
+    assert!(
+        !device_internals_dto(&snapshot).supported,
+        "raw negotiation cannot authorize internals"
+    );
+    snapshot.effective_caps = snapshot.negotiated_caps;
     let json = serde_json::to_value(device_internals_dto(&snapshot)).unwrap();
     assert_eq!(json["supported"], true);
     let internals = &json["snapshot"];

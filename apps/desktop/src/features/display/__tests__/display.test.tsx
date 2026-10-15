@@ -4,7 +4,7 @@ import axe from 'axe-core';
 import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Toaster } from '@kivori/ui/components/sonner';
-import type { ConfigDto, DeskStatusDto } from '../../../lib/ipc/types';
+import type { ConfigDto, ConnectionStatusDto, DeskStatusDto } from '../../../lib/ipc/types';
 
 const h = vi.hoisted(() => ({
   setMode: vi.fn<(mode: string) => Promise<void>>(() => Promise.resolve()),
@@ -57,10 +57,24 @@ const config: ConfigDto = {
   buddy: { reactions: true, intensity: 'normal' },
 };
 
+const connection: ConnectionStatusDto = {
+  connection: 'connected',
+  desired: 'idle',
+  reported: null,
+  device: null,
+  incompatibleReason: null,
+  retryCount: 0,
+  connectionGeneration: 1,
+  capabilities: ['deskStatusV1'],
+  mascotInteraction: false,
+  mascotAction: null,
+  host: 'active',
+};
+
 function view(d: DeskStatusDto, c: ConfigDto | null = config): ReactElement {
   return (
     <>
-      <DisplayPage desk={d} config={c} connection={null} />
+      <DisplayPage desk={d} config={c} connection={connection} />
       <Toaster />
     </>
   );
@@ -74,6 +88,27 @@ beforeEach(() => {
 });
 
 describe('DisplayPage', () => {
+  it.each([null, { ...connection, capabilities: [] }])(
+    'blocks live view changes without effective support, but saves settings offline (%s)',
+    async (status) => {
+      const user = userEvent.setup();
+      render(<DisplayPage desk={desk} config={config} connection={status} />);
+      const live = screen.getByRole('radiogroup', { name: 'Show now' });
+      for (const radio of within(live).getAllByRole('radio')) {
+        expect(radio).toHaveAttribute('aria-disabled', 'true');
+        await user.click(radio);
+      }
+      expect(screen.queryByTestId('on-device')).not.toBeInTheDocument();
+      await user.click(
+        within(screen.getByRole('group', { name: 'Brightness' })).getByRole('button', {
+          name: 'Step 3',
+        }),
+      );
+      expect(h.setBrightness).toHaveBeenCalledWith(3);
+      expect(h.setMode).not.toHaveBeenCalled();
+    },
+  );
+
   it('checks the mode the device reports', () => {
     render(view(desk));
     expect(screen.getByRole('radio', { name: /^Buddy/ })).toHaveAttribute('aria-checked', 'true');

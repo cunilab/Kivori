@@ -61,6 +61,7 @@ function status(overrides: Partial<ConnectionStatusDto> = {}): ConnectionStatusD
     incompatibleReason: null,
     retryCount: 0,
     connectionGeneration: 1,
+    capabilities: ['mascotInteraction', 'deskStatusV1'],
     mascotInteraction: true,
     mascotAction: null,
     host: 'active',
