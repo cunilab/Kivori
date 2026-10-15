@@ -302,6 +302,7 @@ export interface ConnectionStatusDto {
   retryCount: number;
   /** Within-process device-session identity; changes when device uptime may reset. */
   connectionGeneration: number;
+  capabilities: CapabilityName[];
   mascotInteraction: boolean;
   mascotAction: MascotActionAppliedDto | null;
   /** `locked` shows the sleeping buddy; `sleeping` means the port was released for a suspend. */

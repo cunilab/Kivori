@@ -101,6 +101,7 @@ describe('onboarding steps follow real status', () => {
       incompatibleReason: null,
       retryCount: 0,
       connectionGeneration: 0,
+      capabilities: [],
       mascotInteraction: false,
       mascotAction: null,
       host: 'active',
