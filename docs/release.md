@@ -22,8 +22,21 @@ has already been tested. Downgrade support is not promised.
 Update prompts cost attention. Keep the manual Release button, Later and Skip this version;
 urgency of a safety or recovery fix can justify an earlier release.
 
-**M2.8 guard requirements (not implemented yet).** Before the release start job writes versions or
-pushes, inspect each bundled product's firmware inputs since its latest released firmware tag
+**Firmware release guard (M2.8).** The Release button runs `scripts/firmware-release-guard.mjs`
+through `release-bump.mjs` before writing versions or outputs. It needs Rust/Cargo and full Git
+history/tags, including for a dry run; the workflow installs Rust before computing the plan.
+The guard checks the selected product (currently the only bundled product, Pip). Multi-product
+packaging must apply it to every bundled product when that M2.8 item lands.
+Full `cargo metadata --locked` resolution validates both lockfiles before an unchanged-version
+release can write anything; stale locks are refused instead of being silently repaired afterward.
+The resolved firmware graph includes local patches and build dependencies. Project Cargo config
+`paths` overrides are refused; use supported path dependencies or manifest patches instead.
+Cargo config directories from the product crate up to the repository root are checked and watched,
+including `firmware/.cargo/`. With current lockfiles,
+[Cargo's workspace update rule](https://doc.rust-lang.org/cargo/commands/cargo-update.html)
+preserves existing external dependency versions while refreshing workspace version metadata.
+
+Inspect firmware inputs since the latest released firmware tag
 (`fw-<product>-vX.Y.Z`) on the release commit's ancestry. Do not use an unrelated branch's highest
 version as the input-diff baseline. Refuse ambiguous/divergent firmware history rather than silently
 using an older tag; retain the separate version-monotonicity checks against existing tags.
@@ -51,8 +64,11 @@ identity/version validation remain subject to the existing release checks.
 
 Exercise changed/unchanged inputs, exact overrides, first release, unreachable/divergent tags,
 bookkeeping-only and mixed bookkeeping/real changes, and failure before mutation in release-tool
-tests. Until this guard lands, the manual firmware review in the Windows instructions below remains
-necessary.
+tests. The suites run in host CI and before the Release button computes versions. Unchanged-version
+checks require clean committed inputs so local edits cannot be silently omitted from the Git diff.
+Non-Cargo inputs are explicitly listed; the inventory test checks the current firmware's declared
+build inputs, and new build/packaging inputs must extend that list. Hand-pushed app tags bypass the
+Release button, so their author must still review firmware changes and bump/tag it when needed.
 
 Release titles and the Firmware notes section must cover every bundled product using catalog names
 and independent firmware versions. M2.8 must also replace the single-image bundle with validated
@@ -107,8 +123,9 @@ updatable" and no `.sig` or `latest.json` is produced.
      never below the version in `Cargo.toml`;
    - `firmware_bump`: `none` (default, the firmware keeps its version), `patch`, `minor` or `major`;
      `firmware_version`: an exact `A.B.C` instead, under the same rule against the latest
-     `fw-pala-v*` tag. Bump it when the Kivori Pip firmware changed since the last release (look for
-     commits touching `firmware/pala/` or a shared crate it uses). While no `fw-pala-v*` tag exists
+     `fw-pala-v*` tag. The input guard refuses an unchanged firmware version when firmware or build
+     inputs changed, listing the baseline, paths and commits; choose a bump or newer exact version.
+     While no `fw-pala-v*` tag exists
      yet, `none` also tags the current firmware (`fw-pala-v0.1.0` with the first release), so the
      firmware lineage starts tagged;
    - `dry_run`: tick it first to see the versions and the notes without changing anything. The run's
@@ -167,7 +184,8 @@ it the same way. A re-run for the same tag updates the draft; a published releas
 To try the pipeline without a tag, run the `release` workflow by hand (Actions, Run workflow); it
 uploads the installer as a workflow artifact and creates no release. Pull requests that touch
 packaging files run it too, and never read the signing secrets. The release scripts' tests:
-`node --test scripts/release-tools.test.mjs` (the Release button runs them first).
+`node --test scripts/release-tools.test.mjs scripts/firmware-release-guard.test.mjs`
+(host CI and the Release button run both suites).
 
 ## Verifying an app update end to end
 
