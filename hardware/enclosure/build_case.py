@@ -212,8 +212,8 @@ C_TAB_CLR = 0.4             # carrier tab under the SuperMini header ends, to th
 COPPER_TRACES = True        # False: the hand-wired version (header strips in slots)
 TRACE_GROOVE = (0.95, 0.6)  # gap along both sides of every trace and pad: width, depth
 # 2.54 mm pin rows: a square pad round each pin, and between two neighbouring pins a PIN_GAP cut
-# line that guides the blade (one nozzle width: about 0.37 mm of plastic is left round each hole)
-PIN_GAP = 0.6
+# line that guides the blade (one nozzle width: about 0.47 mm of plastic is left round each hole)
+PIN_GAP = 0.4
 TRACE_PAD = (3.0, 2.54 - PIN_GAP)  # pads at the 2.54 mm pins: across the row, along it
 TRACE_W = 2.54 - TRACE_GROOVE[0]  # side by side traces on the 2.54 mm pin pitch are one gap apart
 # Pin holes go right through (PIN_SKIN = 0), clear for the pins; after taping, pierce the tape over
@@ -223,7 +223,7 @@ PIN_SKIN = 0.0
 TRACE_PAD_D = 2.8           # square pads at the switch legs (0.5 mm of copper round the leg hole)
 TAPE_T = 0.06               # copper tape thickness (stand-in only)
 TRACE_ISLAND_MIN = 12.0     # mm²: smaller islands of plastic between the gaps become gap (FDM)
-TRACE_GROOVE_MIN = 0.5      # gaps thinner than this (crumbs) are filled in (the cut lines stay)
+TRACE_GROOVE_MIN = 0.35     # gaps thinner than this (crumbs) are filled in (under PIN_GAP: the cut lines stay)
 TRACE_RIDGE_MIN = 1.0       # plastic left between two gaps: at least this wide, or it becomes gap
 GROOVE_GRID = 0.05          # pixel size of the grid the gaps are cleaned up on (copper_grooves)
 KAPTON_T = 0.06             # insulating tape under a crossover (stand-in only)
@@ -772,14 +772,12 @@ def carrier_outline():
     hw = SM[0] / 2 + 1.0
     if not (COPPER_TRACES and SM_FRONT):
         return c.fuse(box(SM_X - hw, H / 2, C_BACK, SM_X + hw, y_tab, C_FRONT)).removeSplitter()
-    # copper: the right row's last pad (B3, which runs on along the edge) ends flush with the board
-    # edge, so no thin strip of plastic is left past its gap (it would turn to gap and leave the
-    # board above it hanging over); the step down lines up with the pad's gap
-    xb = sm_rows[1]
-    y_pad = max(y for (x, y) in sm_pins.values() if abs(x - xb) < 1e-6) + TRACE_PAD[1] / 2
-    x_step = xb - TRACE_PAD[0] / 2 - TRACE_GROOVE[0]
-    return c.fuse([box(SM_X - hw, H / 2, C_BACK, x_step, y_tab, C_FRONT),
-                   box(x_step - 0.01, H / 2, C_BACK, xb + TRACE_PAD[0] / 2, y_pad, C_FRONT)]).removeSplitter()
+    # copper: one straight edge across both rows, flush with their last pads (B3's runs on along the
+    # edge), so no thin strip of plastic is left past a pad's gap (it would turn to gap and leave
+    # the board above it hanging over); the tab spans the rows from pad edge to pad edge
+    xa, xb = sm_rows
+    y_pad = max(y for (x, y) in sm_pins.values()) + TRACE_PAD[1] / 2
+    return c.fuse(box(xa - TRACE_PAD[0] / 2, H / 2, C_BACK, xb + TRACE_PAD[0] / 2, y_pad, C_FRONT)).removeSplitter()
 
 
 def carrier_through_cuts(pcb=False):
@@ -840,8 +838,9 @@ def copper_layout():
     points), every segment along x or y. Crossovers: [(x0, y0, x1, y1), [nets on top]].
 
     Pin map chosen for this board (README, Wiring): the right SuperMini row feeds the whole display
-    and the right button; the left row feeds the encoder and the other two buttons. Unused pins
-    (5V, IO9, IO21) and the unused leg of each switch's signal pair get no copper.
+    and the right button; the left row feeds the encoder and the other two buttons. The unused
+    SuperMini pins (5V, IO9, IO21) get a plain pad with no trace, so every pin row looks the same and
+    its cut lines run on unbroken; the unused leg of each switch's signal pair gets no copper.
     - Display: SCL, SDA, RES, DC, BLK leave the right row side by side and step down onto the
       display pins in order; VCC and GND come in from the right.
     - Encoder: DT, SW, 3V3 and GND run down between the rows and into its pins from the east,
@@ -930,6 +929,8 @@ def copper_layout():
     for name, (p, x) in fan.items():
         y0, y1 = ys[p], yd[name]
         nets[name] = ([sm(p), dd(name)], [[(xb, y0), (x, y0), (x, y1), (disp_hdr_x, y1)]])
+    for p in ("5V", "IO9", "IO21"):  # unused: a pad alone, each its own net
+        nets["NC_" + p] = ([sm(p)], [])
     crossovers = [((lane[3] - 2.1, yv - 1.6, lane[3] + 2.1, yv + 1.6), ["3V3"])]  # VCC over GND
     return nets, crossovers
 
@@ -1168,6 +1169,8 @@ def check_traces(pads=True):
     over = net_parts(nets, crossovers)
     sol = {}
     for k, n in nets.items():
+        if not pads and not n[1]:
+            continue  # a pad alone (unused pin)
         sol[k] = net_solid(n if pads else ([], n[1]), C_BACK - TAPE_T, C_BACK)
         for rect in over.get(k, []):
             sol[k] = sol[k].cut(patch_box(rect, C_BACK - 1, C_BACK + 1))
