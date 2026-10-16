@@ -55,7 +55,13 @@ on:
       - 'scripts/fetch-espflash.*'
       - 'scripts/bundle-macos.sh'
       - 'scripts/build-firmware.mjs'
+      - 'scripts/build-firmware-set.mjs'
+      - 'apps/desktop/src-tauri/build.rs'
+      - 'apps/desktop/src-tauri/catalog_build.rs'
       - 'products/**'
+      - 'firmware/**'
+      - 'apps/desktop/src-tauri/src/firmware_bundle.rs'
+      - 'apps/desktop/src-tauri/src/firmware_marker.rs'
       - 'scripts/check-release-surface.sh'
       - 'scripts/test-windows-device-studio-startup.ps1'
       - 'THIRD_PARTY_NOTICES.md'
@@ -69,30 +75,32 @@ env:
 jobs:
   firmware:
     runs-on: ubuntu-latest
-    outputs:
-      binary: ${{ steps.build.outputs.binary }}
     steps:
       - uses: actions/checkout@v4
         with:
           # When called, github.ref is the commit the Release button started from, before its bump.
           ref: ${{ inputs.tag || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: riscv32imc-unknown-none-elf
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
-      - name: Build the catalog-selected firmware
-        id: build
+      # Catalog crate toolchains must match the stable toolchain installed above.
+      - name: Install catalog firmware targets
         shell: bash
         run: |
-          firmware="$(bun scripts/build-firmware.mjs)"
-          echo "path=$firmware" >> "$GITHUB_OUTPUT"
-          echo "binary=$(basename "$firmware")" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          targets="$(bun scripts/build-firmware-set.mjs --targets)"
+          while IFS= read -r target; do rustup target add "$target"; done <<< "$targets"
+      - name: Build the complete catalog firmware set
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset KIVORI_FIRMWARE_PATH
+          bun scripts/build-firmware-set.mjs --out-dir "$RUNNER_TEMP/firmware-set" --manifest-out "$RUNNER_TEMP/firmware-manifest.json"
       - uses: actions/upload-artifact@v4
         with:
-          name: firmware-elf
-          path: ${{ steps.build.outputs.path }}
+          name: firmware-elfs
+          path: ${{ runner.temp }}/firmware-set/*.elf
           if-no-files-found: error
 
   windows:
@@ -163,19 +171,30 @@ jobs:
         run: ./scripts/fetch-espflash.ps1
       - uses: actions/download-artifact@v4
         with:
-          name: firmware-elf
+          name: firmware-elfs
           path: ${{ runner.temp }}/firmware
       - run: bun install --frozen-lockfile
+      - name: Prepare the complete firmware manifest on Windows
+        id: firmware
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:KIVORI_FIRMWARE_PATH = $null
+          $manifest = & bun scripts/build-firmware-set.mjs --from-dir (Join-Path $env:RUNNER_TEMP 'firmware') --manifest-out (Join-Path $env:RUNNER_TEMP 'firmware-manifest.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Firmware manifest preparation failed.' }
+          if (@($manifest).Count -ne 1) { throw 'Expected one manifest path.' }
+          "manifest=$manifest" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
       - run: bun --filter kivori-desktop-ui build
       - name: Build the NSIS installer
         working-directory: apps/desktop
         shell: bash
         env:
-          KIVORI_FIRMWARE_PATH: ${{ runner.temp }}/firmware/${{ needs.firmware.outputs.binary }}
+          KIVORI_FIRMWARE_MANIFEST: ${{ steps.firmware.outputs.manifest }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ steps.updater.outputs.enabled == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ steps.updater.outputs.enabled == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         run: |
           set -euo pipefail
+          unset KIVORI_FIRMWARE_PATH
           args=(--config src-tauri/tauri.release.conf.json)
           # tauri.release.conf.json asks for updater artifacts; without the key that would fail the build.
           if [ '${{ steps.updater.outputs.enabled }}' != 'true' ]; then
@@ -340,8 +359,12 @@ jobs:
         with:
           node-version: 20
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: riscv32imc-unknown-none-elf
+      # Catalog crate toolchains must match stable, as in the firmware job.
+      - name: Install catalog firmware targets
+        run: |
+          set -euo pipefail
+          targets="$(bun scripts/build-firmware-set.mjs --targets)"
+          while IFS= read -r target; do rustup target add "$target"; done <<< "$targets"
       - name: Import the signing certificate (placeholder)
         if: env.APPLE_CERTIFICATE != '' && env.APPLE_SIGNING_IDENTITY != ''
         run: |

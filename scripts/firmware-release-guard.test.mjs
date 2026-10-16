@@ -171,6 +171,8 @@ test('changed inputs reject unchanged firmware before versions or outputs are wr
     'firmware/pala/rust-toolchain.toml',
     '.github/workflows/release.yml',
     'scripts/build-desktop-firmware.ps1',
+    'scripts/build-firmware.mjs',
+    'scripts/build-firmware-set.mjs',
   ]) {
     await t.test(path, (t) => {
       const root = fixture(t);

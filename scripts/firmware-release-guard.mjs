@@ -57,6 +57,8 @@ export function firmwareInputs(root, product) {
     'justfile',
     'scripts/bundle-macos.sh',
     'scripts/build-desktop-firmware.ps1',
+    'scripts/build-firmware.mjs',
+    'scripts/build-firmware-set.mjs',
     '.github/workflows/release.yml',
     '.github/workflows/release-start.yml',
     '.github/workflows/firmware.yml',

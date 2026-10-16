@@ -89,12 +89,16 @@ check-boundaries:
 bundle-windows:
     #!/usr/bin/env bash
     set -euo pipefail
-    firmware="$(bun scripts/build-firmware.mjs)"
+    firmware_dir="$(mktemp -d)"
+    trap 'rm -rf "$firmware_dir"' EXIT
+    unset KIVORI_FIRMWARE_PATH
+    manifest="$(bun scripts/build-firmware-set.mjs --out-dir "$firmware_dir/images" --manifest-out "$firmware_dir/manifest.json")"
+    [ -s "$manifest" ] || { echo "Missing firmware manifest" >&2; exit 1; }
     powershell -NoProfile -File scripts/fetch-espflash.ps1
     bun install --frozen-lockfile
     bun --filter kivori-desktop-ui build
     cd apps/desktop
-    KIVORI_FIRMWARE_PATH="$firmware" bunx tauri build --config src-tauri/tauri.release.conf.json -- --no-default-features
+    KIVORI_FIRMWARE_MANIFEST="$manifest" bunx tauri build --config src-tauri/tauri.release.conf.json -- --no-default-features
 
 # Build the macOS .app + .dmg (run on a Mac; signs only when APPLE_SIGNING_IDENTITY is set).
 bundle-macos:
@@ -117,24 +121,32 @@ desktop:
         echo "Port 1420 is already in use (another UI dev server?). Stop it, then retry." >&2
         exit 1
     fi
-    firmware="$(bun scripts/build-firmware.mjs)"
+    firmware_dir="$(mktemp -d)"
+    trap 'rm -rf "$firmware_dir"' EXIT
+    unset KIVORI_FIRMWARE_PATH
+    manifest="$(bun scripts/build-firmware-set.mjs --out-dir "$firmware_dir/images" --manifest-out "$firmware_dir/manifest.json")"
+    [ -s "$manifest" ] || { echo "Missing firmware manifest" >&2; exit 1; }
     set -m  # the UI server gets its own process group, so Ctrl-C / exit stops all of it
     bun --filter kivori-desktop-ui dev &
     ui=$!
-    trap 'kill -- -"$ui" 2>/dev/null || true' EXIT
+    trap 'kill -- -"$ui" 2>/dev/null || true; rm -rf "$firmware_dir"' EXIT
     echo "Waiting for the UI dev server on :1420..."
     until curl -sf -o /dev/null http://localhost:1420; do
         kill -0 "$ui" 2>/dev/null || { echo "The UI dev server exited." >&2; exit 1; }
         sleep 0.3
     done
-    KIVORI_FIRMWARE_PATH="$firmware" cargo run -p kivori-desktop
+    KIVORI_FIRMWARE_MANIFEST="$manifest" cargo run -p kivori-desktop
 
-# Run Kivori Desktop with the freshly built product firmware embedded.
+# Run Kivori Desktop with freshly built firmware for every catalog pair embedded.
 app:
     #!/usr/bin/env bash
     set -euo pipefail
-    firmware="$(bun scripts/build-firmware.mjs)"
-    KIVORI_FIRMWARE_PATH="$firmware" cargo run -p kivori-desktop
+    firmware_dir="$(mktemp -d)"
+    trap 'rm -rf "$firmware_dir"' EXIT
+    unset KIVORI_FIRMWARE_PATH
+    manifest="$(bun scripts/build-firmware-set.mjs --out-dir "$firmware_dir/images" --manifest-out "$firmware_dir/manifest.json")"
+    [ -s "$manifest" ] || { echo "Missing firmware manifest" >&2; exit 1; }
+    KIVORI_FIRMWARE_MANIFEST="$manifest" cargo run -p kivori-desktop
 
 # DEV ONLY (M3 S7; docs/provisioning.md): flash the freshly built firmware onto the ONE plugged-in
 # unit, check the link and controls, print PASS/FAIL and append to provisioning-log.csv.
@@ -145,6 +157,7 @@ provision *args:
     #!/usr/bin/env bash
     set -euo pipefail
     firmware="$(bun scripts/build-firmware.mjs)"
+    unset KIVORI_FIRMWARE_MANIFEST
     KIVORI_FIRMWARE_PATH="$firmware" cargo run -p kivori-desktop --example provision -- {{args}}
 
 # ---- website (apps/web; Next.js on Cloudflare Workers via OpenNext) ----

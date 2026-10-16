@@ -37,14 +37,20 @@ fn main() {
     let manifest = std::env::var_os("KIVORI_FIRMWARE_MANIFEST");
     let paths = catalog_build::firmware_paths(legacy.as_deref(), manifest.as_deref())
         .expect("explicit firmware input");
-    if let Some(path) = manifest {
-        println!("cargo:rerun-if-changed={}", Path::new(&path).display());
+    if let Some(path) = &manifest {
+        println!("cargo:rerun-if-changed={}", Path::new(path).display());
     }
     for path in &paths {
         println!("cargo:rerun-if-changed={}", path.display());
     }
-    let generated = catalog_build::generate_firmware(&catalog, &root, &paths, Path::new(&out_dir))
-        .expect("bundled firmware matches its catalog identity");
+    let generated = catalog_build::generate_firmware(
+        &catalog,
+        &root,
+        &paths,
+        Path::new(&out_dir),
+        manifest.is_some(),
+    )
+    .expect("bundled firmware matches its catalog identity");
     for manifest in generated.manifests {
         println!("cargo:rerun-if-changed={}", manifest.display());
     }

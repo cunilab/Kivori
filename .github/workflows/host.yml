@@ -16,7 +16,12 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
-      - run: bun test scripts/build-firmware.test.mjs
+      - run: bun test scripts/build-firmware.test.mjs scripts/build-firmware-set.test.mjs
+
+      - name: Desktop packaging wrapper contract
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/test-firmware-packaging.ps1
 
   release-tools:
     runs-on: ubuntu-latest
