@@ -186,7 +186,12 @@ export function parseConnectionStatus(raw: unknown): ConnectionStatusDto {
 function parsePresentation(raw: unknown): ProductPresentationDto | null {
   if (raw === null || raw === undefined) return null;
   const r = record('product presentation', raw);
+  const art = r.art === undefined || r.art === null ? null : text('product art key', r.art, 96);
+  if (art !== null && !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(art)) {
+    throw new Error('Kivori: invalid product art key.');
+  }
   return {
+    art,
     displayName: text('product display name', r.displayName, 96),
     model: text('product model', r.model, 96),
   };

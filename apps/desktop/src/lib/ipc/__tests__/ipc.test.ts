@@ -48,6 +48,7 @@ import {
   setProfilePinCycle,
   listRunningApps,
   getAppIcon,
+  getProductArt,
   getUpdateStatus,
   onUpdateStatus,
   onUpdateDialogRequested,
@@ -868,6 +869,25 @@ describe('profile commands', () => {
     await expect(getAppIcon('icon-bad.exe')).resolves.toBeNull();
     tauri.invoke.mockRejectedValue(new Error('nope'));
     await expect(getAppIcon('icon-fail.exe')).resolves.toBeNull();
+  });
+
+  it('loads immutable catalog art once per key and treats invalid/failed responses as absent', async () => {
+    tauri.invoke.mockResolvedValue('data:image/png;base64,AAAA');
+    await expect(getProductArt('art-a')).resolves.toBe('data:image/png;base64,AAAA');
+    expect(tauri.invoke).toHaveBeenLastCalledWith('get_product_art', { product: 'art-a' });
+    tauri.invoke.mockClear();
+    await getProductArt('art-a');
+    expect(tauri.invoke).not.toHaveBeenCalled();
+    tauri.invoke.mockResolvedValue('unbundled.png');
+    await expect(getProductArt('art-bad')).resolves.toBeNull();
+    tauri.invoke.mockResolvedValue('data:image/png;base64,' + 'A'.repeat(700_000));
+    await expect(getProductArt('art-large')).resolves.toBeNull();
+    tauri.invoke.mockRejectedValue(new Error('unavailable'));
+    await expect(getProductArt('art-failed')).resolves.toBeNull();
+    tauri.invoke.mockClear();
+    tauri.invoke.mockResolvedValue('data:image/png;base64,AAAA');
+    await expect(getProductArt('art-failed')).resolves.toBe('data:image/png;base64,AAAA');
+    expect(tauri.invoke).toHaveBeenCalledTimes(1);
   });
 
   it('accepts a custom profile id in the desk status and rejects a malformed one', async () => {

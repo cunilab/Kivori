@@ -1,10 +1,11 @@
-import type { ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import { Usb } from 'lucide-react';
 import { cn } from '@kivori/ui/lib/utils';
 import type { ConnectionStatusDto } from '@/lib/ipc/types';
+import { getProductArt } from '@/lib/ipc';
 import { format, strings } from '@/lib/i18n/strings';
 
-/** A neutral product figure until catalog artwork delivery is available. Never a device preview. */
+/** Current catalog artwork, or a neutral product figure. Never a device preview. */
 export function ProductArt({
   connection,
   className,
@@ -16,6 +17,20 @@ export function ProductArt({
     connection?.connection === 'connected' && connection.device?.identity?.known
       ? connection.device.presentation
       : null;
+  const art = presentation?.art ?? null;
+  const [loaded, setLoaded] = useState<{ art: string; url: string | null } | null>(null);
+  useEffect(() => {
+    let active = true;
+    if (art)
+      void getProductArt(art).then((url) => {
+        if (active) setLoaded({ art, url });
+      });
+    return () => {
+      active = false;
+    };
+  }, [art]);
+  // A late lookup for another product can never appear in this session's figure.
+  const url = art && loaded?.art === art ? loaded.url : null;
   return (
     <figure
       role="img"
@@ -32,11 +47,23 @@ export function ProductArt({
         className,
       )}
     >
-      <Usb
-        className="size-16 text-muted-foreground"
-        aria-hidden="true"
-        data-testid="product-art-neutral"
-      />
+      {url ? (
+        <img
+          key={art}
+          src={url}
+          alt=""
+          className="h-48 w-full object-contain"
+          onError={() => {
+            if (art) setLoaded({ art, url: null });
+          }}
+        />
+      ) : (
+        <Usb
+          className="size-16 text-muted-foreground"
+          aria-hidden="true"
+          data-testid="product-art-neutral"
+        />
+      )}
       {presentation ? (
         <figcaption className="space-y-1 text-center">
           <p className="font-medium">{presentation.displayName}</p>

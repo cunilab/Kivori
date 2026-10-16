@@ -10,7 +10,8 @@ short_name = "Pip"
 # Model code printed on the unit and its box: two capitals, a dash, capitals or digits (`KV-P1`).
 model = "KV-P1"
 
-# Product picture shown in the app, relative to this directory. Empty until artwork exists.
+# Product picture: a lowercase kebab-case .png filename in this directory (static, <=512 KiB,
+# <=1024 pixels per side). Empty until artwork exists.
 image = ""
 
 # Capabilities (names of `kivori_model::Capabilities` flags) every unit of this product must

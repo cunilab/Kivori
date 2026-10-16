@@ -91,6 +91,8 @@ windows = { version = "0.58", features = [
 windows-core = "0.58"
 
 [build-dependencies]
+# Build-time validation of bounded, static product artwork; already in the asset compiler tree.
+png = "0.18"
 tauri-build = { version = "2", features = [] }
 # The build parses the product catalog and checks the bundled firmware against it (ADR-0014).
 serde = { version = "1", features = ["derive"] }
@@ -99,6 +101,7 @@ toml = "0.8"
 kivori-asset-compiler = { path = "../../../tools/asset-compiler" }
 
 [dev-dependencies]
+png = "0.18" # exercises the shared build-time artwork validator
 # The asset compiler (resvg) is a BUILD/test tool only — never a desktop runtime dependency.
 # The app bundles a pre-compiled blob; tests compile one here.
 kivori-asset-compiler = { path = "../../../tools/asset-compiler" }

@@ -4,6 +4,7 @@ use std::process::Command;
 #[path = "src/catalog.rs"]
 #[allow(dead_code)]
 mod catalog;
+mod catalog_art;
 mod catalog_build;
 #[path = "src/firmware_marker.rs"]
 mod firmware_marker;
@@ -17,11 +18,12 @@ fn main() {
     std::fs::write(Path::new(&out_dir).join("kivori.assets"), &blob)
         .expect("write compiled asset blob");
 
-    // Watch the root before discovery so additions and removals invalidate the generated catalog.
+    // Cargo scans this directory recursively: metadata and artwork edits/additions/removals rebuild.
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let products = root.join("products");
     println!("cargo:rerun-if-changed={}", products.display());
-    let (catalog, source) = catalog_build::generate(&products).expect("valid product catalog");
+    let (catalog, source) =
+        catalog_build::generate(&products, Path::new(&out_dir)).expect("valid product catalog");
     std::fs::write(Path::new(&out_dir).join("catalog_sources.rs"), source)
         .expect("write embedded catalog sources");
 

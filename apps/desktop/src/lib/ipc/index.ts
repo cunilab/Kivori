@@ -493,6 +493,31 @@ export async function listRunningApps(): Promise<AppRefDto[]> {
   return unavailable();
 }
 
+const productArt = new Map<string, Promise<string | null>>();
+
+/** Compiled, immutable artwork only. Missing/failed lookups keep the neutral figure. */
+export function getProductArt(product: string): Promise<string | null> {
+  const cached = productArt.get(product);
+  if (cached) return cached;
+  const lookup = (async (): Promise<string | null> => {
+    if (isTauri()) {
+      const url = await invoke<unknown>('get_product_art', { product });
+      return typeof url === 'string' &&
+        url.length <= 700_000 &&
+        /^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(url)
+        ? url
+        : null;
+    }
+    return null;
+  })().catch(() => {
+    // A later lookup can recover from a transient IPC failure.
+    productArt.delete(product);
+    return null;
+  });
+  productArt.set(product, lookup);
+  return lookup;
+}
+
 const icons = new Map<string, Promise<string | null>>();
 
 /**

@@ -20,7 +20,7 @@ fn read(path: &Path) -> Result<String, CatalogError> {
 
 /// Discovers only direct product directories; validates before emitting deterministic Rust literals.
 /// Reserved registry entries without a directory do not create active products.
-pub fn generate(products_dir: &Path) -> Result<(Catalog, String), CatalogError> {
+pub fn generate(products_dir: &Path, out_dir: &Path) -> Result<(Catalog, String), CatalogError> {
     let registry = read(&products_dir.join("registry.toml"))?;
     let entries = fs::read_dir(products_dir)
         .map_err(|e| CatalogError(format!("{}: {e}", products_dir.display())))?;
@@ -54,21 +54,31 @@ pub fn generate(products_dir: &Path) -> Result<(Catalog, String), CatalogError> 
         .collect();
     let catalog = Catalog::parse(&registry, &sources)?;
     for product in catalog.products() {
-        if product.display_name.encode_utf16().count() > 96 || product.model.len() > 96 {
+        if product.display_name.encode_utf16().count() > 96
+            || product.model.len() > 96
+            || (product.image.is_some() && product.id.len() > 96)
+        {
             return Err(CatalogError(format!(
                 "product `{}` presentation exceeds the desktop IPC limit of 96 UTF-16 units",
                 product.id
             )));
         }
     }
-    if let Some(product) = catalog.products().iter().find(|p| p.image.is_some()) {
-        return Err(CatalogError(format!("product `{}` declares image artwork; bundled product art delivery is not supported yet (use an empty image)", product.id)));
-    }
     let mut generated = format!(
         "const REGISTRY: &str = {registry:?};\nconst PRODUCT_FILES: &[(&str, &str)] = &[\n"
     );
     for (id, text) in sources {
         generated.push_str(&format!("    ({id:?}, {text:?}),\n"));
+    }
+    generated.push_str("];\nconst PRODUCT_ART: &[(&str, &[u8])] = &[\n");
+    for product in catalog.products() {
+        if let Some(image) = &product.image {
+            let bytes = crate::catalog_art::read(&products_dir.join(&product.id), image)?;
+            fs::create_dir_all(out_dir).map_err(|e| CatalogError(e.to_string()))?;
+            let bundled = out_dir.join(format!("catalog-art-{}.png", product.id));
+            fs::write(&bundled, bytes).map_err(|e| CatalogError(e.to_string()))?;
+            generated.push_str(&format!("    ({:?}, include_bytes!(concat!(env!(\"OUT_DIR\"), \"/catalog-art-{}.png\"))),\n", product.id, product.id));
+        }
     }
     generated.push_str("];\n");
     Ok((catalog, generated))
@@ -144,10 +154,25 @@ mod tests {
     #[test]
     fn second_product_is_generated_without_a_source_list_and_reservations_stay_inactive() {
         let root = fixture();
-        let (one, _) = generate(&root.path().join("products")).unwrap();
+        let (one, _) = generate(&root.path().join("products"), &root.path().join("out")).unwrap();
         assert_eq!(one.products().len(), 1);
         add_product(root.path(), "lada");
-        let (catalog, source) = generate(&root.path().join("products")).unwrap();
+        let mut art_assertions = String::new();
+        for (index, id) in ["lada", "pala"].iter().enumerate() {
+            let bytes = crate::platform::png::encode_rgba(1, 1, &[index as u8, 1, 2, 255]).unwrap();
+            let directory = root.path().join("products").join(id);
+            fs::write(directory.join("unit.png"), &bytes).unwrap();
+            fs::write(
+                directory.join("product.toml"),
+                format!("image = \"unit.png\"\n{}", product(id)),
+            )
+            .unwrap();
+            art_assertions.push_str(&format!("assert_eq!(PRODUCT_ART[{index}].0, {id:?}); assert_eq!(PRODUCT_ART[{index}].1, &{bytes:?});"));
+        }
+        let expected_pala =
+            fs::read_to_string(root.path().join("products/pala/product.toml")).unwrap();
+        let (catalog, source) =
+            generate(&root.path().join("products"), &root.path().join("out")).unwrap();
         assert_eq!(
             catalog
                 .products()
@@ -157,12 +182,21 @@ mod tests {
             ["lada", "pala"]
         );
         assert!(catalog.product("reserved").is_none());
-        assert_eq!(source, generate(&root.path().join("products")).unwrap().1);
+        assert_eq!(
+            source,
+            generate(&root.path().join("products"), &root.path().join("out"))
+                .unwrap()
+                .1
+        );
 
+        // Snapshot bytes must survive source art removal before compilation.
+        for id in ["lada", "pala"] {
+            fs::remove_file(root.path().join("products").join(id).join("unit.png")).unwrap();
+        }
         // Compile the actual generated constants, including quoted/newline metadata, outside
         // shipping discovery. This checks emission rather than a second implementation of it.
         let harness = root.path().join("embedded.rs");
-        fs::write(&harness, format!("{source}\nfn main() {{ assert!(REGISTRY.contains(\"reserved\")); assert_eq!(PRODUCT_FILES.len(), 2); assert_eq!(PRODUCT_FILES[0].0, \"lada\"); assert_eq!(PRODUCT_FILES[1], (\"pala\", {:?})); }}", product("pala"))).unwrap();
+        fs::write(&harness, format!("{source}\nfn main() {{ assert!(REGISTRY.contains(\"reserved\")); assert_eq!(PRODUCT_FILES.len(), 2); assert_eq!(PRODUCT_FILES[0].0, \"lada\"); assert_eq!(PRODUCT_FILES[1], (\"pala\", {:?})); assert_eq!(PRODUCT_ART.len(), 2); {art_assertions} }}", expected_pala)).unwrap();
         let binary = root
             .path()
             .join(format!("embedded{}", std::env::consts::EXE_SUFFIX));
@@ -174,6 +208,7 @@ mod tests {
                     "--crate-name",
                     "catalog_fixture",
                 ])
+                .env("OUT_DIR", root.path().join("out"))
                 .arg(&harness)
                 .arg("-o")
                 .arg(&binary)
@@ -215,7 +250,10 @@ mod tests {
                 "invalid-id" => fs::rename(products.join("pala"), products.join("Pala")).unwrap(),
                 _ => unreachable!(),
             }
-            assert!(generate(&products).is_err(), "{case} must be refused");
+            assert!(
+                generate(&products, &root.path().join("out")).is_err(),
+                "{case} must be refused"
+            );
         }
     }
 
@@ -223,13 +261,16 @@ mod tests {
     fn root_dotfiles_are_ignored_but_dot_directories_are_not_product_sources() {
         let root = fixture();
         let products = root.path().join("products");
-        let (_, expected) = generate(&products).unwrap();
+        let (_, expected) = generate(&products, &root.path().join("out")).unwrap();
         for name in [".DS_Store", ".registry.toml.swp"] {
             fs::write(products.join(name), "not catalog data").unwrap();
         }
-        assert_eq!(generate(&products).unwrap().1, expected);
+        assert_eq!(
+            generate(&products, &root.path().join("out")).unwrap().1,
+            expected
+        );
         fs::create_dir(products.join(".fixtures")).unwrap();
-        assert!(generate(&products).is_err());
+        assert!(generate(&products, &root.path().join("out")).is_err());
     }
 
     #[test]
@@ -242,13 +283,14 @@ mod tests {
             let root = fixture();
             let path = root.path().join("products/pala/product.toml");
             fs::write(path, product("pala").replace(old, &replacement)).unwrap();
-            let error = generate(&root.path().join("products")).unwrap_err();
+            let error =
+                generate(&root.path().join("products"), &root.path().join("out")).unwrap_err();
             assert!(error.0.contains("IPC limit"), "{error}");
         }
     }
 
     #[test]
-    fn declared_art_is_refused_until_bundled_delivery_exists() {
+    fn missing_declared_art_is_refused() {
         let root = fixture();
         let path = root.path().join("products/pala/product.toml");
         fs::write(
@@ -259,11 +301,8 @@ mod tests {
             ),
         )
         .unwrap();
-        let error = generate(&root.path().join("products")).unwrap_err();
-        assert!(
-            error.0.contains("art delivery is not supported yet"),
-            "{error}"
-        );
+        let error = generate(&root.path().join("products"), &root.path().join("out")).unwrap_err();
+        assert!(error.0.contains("product art `art.png`"), "{error}");
     }
 
     #[cfg(unix)]
@@ -302,7 +341,7 @@ mod tests {
                 _ => unreachable!(),
             }
             assert!(
-                generate(&products).is_err(),
+                generate(&products, &root.path().join("out")).is_err(),
                 "{case} symlink must be refused"
             );
         }
@@ -326,7 +365,8 @@ mod tests {
             product("lada").replace("min_protocol = \"0.1\"", "min_protocol = \"0.2\""),
         )
         .unwrap();
-        let (catalog, _) = generate(&root.path().join("products")).unwrap();
+        let (catalog, _) =
+            generate(&root.path().join("products"), &root.path().join("out")).unwrap();
         // pala is second in deterministic catalog order, but its image still selects its crate.
         assert_eq!(
             check_firmware(&catalog, root.path(), &image(1, 1, "0.1.0", "0.1")).unwrap(),

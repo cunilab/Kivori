@@ -39,6 +39,8 @@ export interface DeviceIdentityDto {
 export interface ProductPresentationDto {
   displayName: string;
   model: string;
+  /** Opaque compiled artwork key, never a filesystem path or URL. */
+  art: string | null;
 }
 
 export interface DeviceInfoDto {
