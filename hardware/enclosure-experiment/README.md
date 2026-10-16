@@ -53,8 +53,8 @@ encoder cannot sit on the ring's axis.
    body edge, with 0.3 mm gaps between them and round the ring.
    - **The switch holds the tile**, the way a standard 12×12 switch cap is held. Under the
      middle of each tile (44 mm out along the diagonal) a stem hangs down to the switch, ending in
-     a square socket that snaps over the switch's square tip (the v1 TS13 stem: 3.8 mm head on a
-     3.1 mm neck). Its four walls flex (slits at the corners, 5 mm up the stem). Two of them have
+     a square socket that snaps over the switch's square tip (the v1 stem: a 3.8 mm head over a
+     3.0 mm neck only 1 mm tall). Its four walls flex (slits at the corners, 5 mm up the stem). Two of them have
      hooks with a 45° lead-in below and a flat top that catches under the tip.
    - 3 legs sliding in guide bosses in the sub-deck keep a big tile from tilting, so pressing
      near a corner still moves it evenly onto its switch.
@@ -144,7 +144,7 @@ bridges (the copper gaps, the USB pocket, the hinge C holes open upward), nothin
 | ST7789 1.3" 240×240 (GMT130) | As bought, plugged into the sockets. Header on the right, as on v1, so `Rotation::Deg90` stays. |
 | 2 × 7-pin 2.54 mm female header, 8.5 mm tall | Stacked: the display's sockets. |
 | HW-040 rotary encoder | On the floor pillars under the printed PCB (its nut is not used). The pinion pushes onto the D-shaft. Its SW pin is the bezel press. |
-| 4 × 12×12 push switch, 10 mm tall, snap-fit stem | One more than v1. |
+| 4 × 12×12 push switch, 7.3 mm tall, snap-fit stem | One more than v1. |
 | ESP32-C3 SuperMini with soldered header strips | On the printed PCB, USB-C to the back. |
 | Copper tape, 0.06 mm, a roll | All traces. |
 | Kapton (polyimide) tape, a few cm | The crossover patch. |
@@ -193,7 +193,7 @@ bridges (the copper gaps, the USB pocket, the hinge C holes open upward), nothin
 1. **Gear fit.** Print the `Pinion` and the `Ring` first. If the gears bind, raise `BACKLASH_CD`;
    if they skip, lower it.
 2. **Ring friction.** PLA on PLA: a little PTFE dry lube on the sub-deck round the hole.
-3. **Switch tip.** The socket fits the v1 stem (3.8 mm head, 3.1 mm neck). If the snap is too
+3. **Switch tip.** The socket fits the v1 stem (3.8 mm head over a 1 mm tall, 3.0 mm neck). If the snap is too
    tight or too loose, change `SOCK_CLR` and `SOCK_HOOK`. Print the tiles in PETG if PLA walls
    crack when snapping.
 4. **Tile feel.** The legs have 0.15 mm clearance in the guide bosses. If a tile sticks, open

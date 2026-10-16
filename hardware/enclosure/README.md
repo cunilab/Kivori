@@ -114,7 +114,7 @@ different filaments, so no filament change mid-print is needed.
 | ESP32-C3 SuperMini | Behind the printed PCB, components facing the back plate, pin headers soldered with the plastic strips on the non-component side. Wires solder to the long pins. |
 | ST7789 1.3" 240×240, 7-pin | On four standoffs with pegs, glass in a 0.6 mm pocket behind the window, header pins through the slot. |
 | HW-040 rotary encoder | Hangs behind the printed PCB (see above). Its right-angle header points towards the middle of the case. The nut is not used (the bushing ends inside the face). |
-| 3 × 12×12 mm push switch, 10 mm tall | Legs go through the printed PCB. |
+| 3 × 12×12 mm push switch, 7.3 mm tall | Legs go through the printed PCB. |
 | Thin wire (26–30 AWG) | Point to point on the back. |
 | 4 × M2 × 12 self-tapping screws, pan head up to Ø4 | From under the plinth into the face posts. |
 | 2 × M2 × 12 self-tapping screws, pan head up to Ø4 | Copper-trace version: HW-040 onto the printed PCB (hand-wired version: 2 × M2 × 8 into the back plate). |
@@ -275,10 +275,12 @@ measured on the real parts from photos next to a ruler (about ±0.3–0.5 mm). T
    and how far the receptacle sticks out past the board end (`SM_USB_OVERHANG`, 0.5 mm): that sets
    how close the receptacle comes to the port hole.
    Pin headers: plastic 2.5 mm, long pins 6 mm past it (measured).
-4. **12 mm switch**: snap-fit stem (Same Sky TS13 drawing), 10 mm tall version.
-   - Housing 12 × 12 × 3.5 mm with a round Ø7 platform up to 4.3 mm.
-   - Stem: a 3.1 mm square neck, then a 3.8 × 3.8 mm head 1.8 mm tall, top at 10 mm (sellers of
-     the round caps describe the same stem as "3.4 × 3.8 mm with a locking notch").
+4. **12 mm switch**: snap-fit stem, the 7.3 mm tall version (seller drawing).
+   - Housing 11.7 × 11.7 × 3.6 mm with a round Ø6.4 platform up to 4.5 mm.
+   - Stem: on the platform a 3.0 mm square neck only 1 mm tall, then the 3.8 × 3.8 mm square head
+     (the grip), 1.7 mm tall, top at 7.2 mm. The cap's lips snap in under the head, into that
+     1 mm neck. The switch top sits 3.0 mm under the face, so a square sleeve inside the cap
+     reaches down to it and only the finger ends round the head flex.
    - The cap's lips reach 0.3 mm under the head (`CAP_SNAP`). Measure your head: if the cap
      falls off, raise `CAP_SNAP` a little (or lower `CAP_SNAP_CLR`); if it will not click on or a
      finger cracks, lower it.

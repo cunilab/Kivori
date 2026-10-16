@@ -121,19 +121,22 @@ BTN_FLANGE = 15.2           # retaining flange behind the face
 BTN_FLANGE_T = 1.2
 BTN_CAP_PROUD = 3.5         # cap top above the face
 # 12x12 projected-plunger switch, seller drawing TS-G005 (7.5 mm version; this one is 10 mm tall)
-SW_BODY, SW_BODY_H, SW_TOTAL_H = 12.0, 3.5, 10.0  # housing 12 x 12 x 3.5; head top 10 mm (seller)
-SW_BOSS_D, SW_BOSS_H = 7.1, 4.3   # round platform on the housing, top 4.3 mm above the PCB
-# Snap-fit stem (Same Sky TS13 drawing, the usual 12x12 "square snap fit actuator"): a 3.8 mm
-# square head on a narrower neck, so a cap clicks on under the head
-SW_NECK = 3.1               # stem neck, square
-SW_HEAD, SW_HEAD_H = 3.8, 1.8  # square head with a centre hole
+SW_BODY, SW_BODY_H = 11.7, 3.6  # housing 11.7 x 11.7 x 3.6 (seller drawing, the 7.3 mm switch)
+SW_BOSS_D, SW_BOSS_H = 6.4, 4.5   # round platform on the housing, top 4.5 mm above the PCB
+# Snap-fit stem (seller drawing): on the platform a short narrower neck, 1 mm tall, then the square
+# head (the grip) up to the top, so a cap clicks on under the head
+SW_NECK, SW_NECK_H = 3.0, 1.0  # stem neck, square: width, height above the platform
+SW_HEAD, SW_HEAD_H = 3.8, 1.7  # square head with a centre hole: width, height
+SW_TOTAL_H = SW_BOSS_H + SW_NECK_H + SW_HEAD_H  # head top 7.2 mm above the PCB
 CAP_WALL = 1.0              # hollow cap side wall
 # The cap clicks on like a bought round 12x12 cap: four fingers, 2 mm wide, hang from the cap top
 # round the head. A lip on each snaps in under the head, and a stop post on the cap top rests on
-# it, so the cap is held both ways without play and a press goes straight into the stem.
+# it, so the cap is held both ways without play and a press goes straight into the stem. The
+# short switch sits deep, so a square sleeve joins the fingers down to the head top: only their
+# ends round the head flex.
 CAP_TOP_T = 1.2             # flat cap top; the cap prints top down, so the top comes off the bed
 CAP_FINGER = (2.0, 0.8)     # finger width (as on the reference cap), thickness
-CAP_SNAP = 0.3              # lip reach in under the head (the neck is 0.35 narrower per side)
+CAP_SNAP = 0.3              # lip reach in under the head (the neck is 0.4 narrower per side)
 CAP_SNAP_CLR = 0.1          # finger to head side
 CAP_STOP_D = 2.6            # stop post on the head, round its centre hole
 SW_PADS = [(-6.25, -2.5), (6.25, -2.5), (-6.25, 2.5), (6.25, 2.5)]  # pin 1,1,2,2 (land pattern Ø1.5)
@@ -142,7 +145,7 @@ SW_PEG_HOLE_D = 2.0
 BTN_GPIO = ["IO3", "IO4", "IO5"]  # left, middle, right (copper-trace pin map, see README Wiring)
 
 # Printed PCB ("carrier"): same plane as a future real PCB
-C_FRONT = -10.2             # sets the switches: plunger top 0.2 below the face (long cap fingers)
+C_FRONT = -10.2             # printed PCB front (the 7.2 mm switch top ends 3.0 below the face: the caps reach down)
 # knob just tall enough to cover the whole shaft, so the shaft is never cut
 KNOB_H = HW040_FRONT + EC11_SHAFT_H + 0.5 + KNOB_TOP_T - KNOB_GAP
 C_T = 2.0                   # printed thickness (a real board is 1.6, it grows backwards); leaves a 0.6 mm HW-040 pocket floor
@@ -1247,6 +1250,9 @@ def cap_snap(z_ceil):
     f.translate(V(0, -w / 2, 0))
     parts = [place(f, 0, 0, k * 90.0) for k in range(4)]
     parts.append(cyl(CAP_STOP_D, 0, 0, SW_PLUNGER_TOP, z_ceil + 0.01))
+    if z_ceil - SW_PLUNGER_TOP > 0.5:  # sleeve tying the fingers together above the head
+        parts.append(cbox(0, 0, 2 * r_o, 2 * r_o, SW_PLUNGER_TOP, z_ceil + 0.01).cut(
+            cbox(0, 0, 2 * r_i, 2 * r_i, SW_PLUNGER_TOP - 1, z_ceil - 0.01)))
     return fuse_all(parts)
 
 

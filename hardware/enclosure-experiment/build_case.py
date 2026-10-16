@@ -168,12 +168,14 @@ SOCK_CLR = 0.025            # socket = switch tip + this, per side (a light grip
 SOCK_WALL = 0.7             # flexing walls round the socket
 SOCK_HOOK = (0.3, 0.6)      # hooks under the tip: depth, height (45° lead-in below, flat on top)
 SOCK_SLIT = 0.5             # slits at the socket corners free the walls ...
-SOCK_STEM = 0.6             # tile underside above the switch tip
+SOCK_STEM = 3.4             # tile underside above the switch tip (the socket stem reaches down to the short switch)
 SW_HOLE_D = 9.0             # socket through the sub-deck
 # 12x12 switch, 10 mm tall, snap-fit stem (same as v1: Same Sky TS13 drawing)
-SW_BODY, SW_BODY_H, SW_TOTAL_H = 12.0, 3.5, 10.0
-SW_BOSS_D, SW_BOSS_H = 7.1, 4.3
-SW_NECK, SW_HEAD, SW_HEAD_H = 3.1, 3.8, 1.8
+SW_BODY, SW_BODY_H = 11.7, 3.6  # seller drawing (the 7.3 mm switch)
+SW_BOSS_D, SW_BOSS_H = 6.4, 4.5  # round platform
+SW_NECK, SW_NECK_H = 3.0, 1.0  # stem (seller drawing): a 1 mm tall neck on the platform ...
+SW_HEAD, SW_HEAD_H = 3.8, 1.7  # ... then the square head (the grip)
+SW_TOTAL_H = SW_BOSS_H + SW_NECK_H + SW_HEAD_H  # head top 7.2 mm above the PCB
 SW_PADS = [(-6.25, -2.5), (6.25, -2.5), (-6.25, 2.5), (6.25, 2.5)]  # pin 1,1 (front), 2,2 (back)
 SW_LEG_HOLE_D = 1.8
 
