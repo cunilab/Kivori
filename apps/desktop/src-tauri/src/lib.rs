@@ -7,6 +7,10 @@
 pub mod action;
 pub mod activity;
 pub mod catalog;
+#[cfg(test)]
+#[path = "../catalog_build.rs"]
+mod catalog_build;
+mod catalog_embedded;
 pub mod companion;
 pub mod config;
 pub mod desk;
