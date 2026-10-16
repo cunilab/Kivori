@@ -122,8 +122,18 @@ unsupported required inputs fail instead of timing out or disappearing. Newly fl
 must report the matching Build/Chip identity and image version. Baseline state/health/heartbeat
 checks remain unconditional. Identity burning is restricted to the implemented `c3-supermini`
 ESP32-C3 backend; that board binding is an explicit hardware-backend exception. Previewing identity
-still flashes/checks firmware and does not burn eFuses. Existing Pip build recipes and single-image
-packaging remain unchanged until separate catalog-driven build/bundle work supplies their metadata.
+still flashes/checks firmware and does not burn eFuses. Build recipes now use the catalog metadata described below; single-image packaging remains until
+separate bundle work.
+
+**As built (M2.8 firmware build recipes).** Optional `firmware.build` metadata carries target and
+features; shipping boards must supply it. One Bun helper builds the explicitly selected catalog pair
+(or the sole active pair), with no default based on catalog order. Local build/desktop/provision/bundle
+recipes, PowerShell and the release firmware job consume its verified artifact path. Builds pin the
+crate-local target directory, use the firmware crate's working directory, disable default features,
+require the selected binary and preserve target linker flags by refusing global Rust flag overrides.
+Provision identity flags remain assertions, separate from build selection. Board-specific development
+flash/test recipes remain explicit. Multi-image packaging, recovery selection and release-set metadata
+are still open.
 
 ## Consequences
 

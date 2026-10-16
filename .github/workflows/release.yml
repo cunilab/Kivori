@@ -54,6 +54,8 @@ on:
       - 'bun.lock'
       - 'scripts/fetch-espflash.*'
       - 'scripts/bundle-macos.sh'
+      - 'scripts/build-firmware.mjs'
+      - 'products/**'
       - 'scripts/check-release-surface.sh'
       - 'scripts/test-windows-device-studio-startup.ps1'
       - 'THIRD_PARTY_NOTICES.md'
@@ -67,6 +69,8 @@ env:
 jobs:
   firmware:
     runs-on: ubuntu-latest
+    outputs:
+      binary: ${{ steps.build.outputs.binary }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -75,13 +79,20 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: riscv32imc-unknown-none-elf
-      - name: Build the product firmware (physical ST7789 + rotary runtime)
-        working-directory: firmware/pala
-        run: cargo build --locked --release --target riscv32imc-unknown-none-elf --no-default-features --features physical-st7789
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Build the catalog-selected firmware
+        id: build
+        shell: bash
+        run: |
+          firmware="$(bun scripts/build-firmware.mjs)"
+          echo "path=$firmware" >> "$GITHUB_OUTPUT"
+          echo "binary=$(basename "$firmware")" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
           name: firmware-elf
-          path: firmware/pala/target/riscv32imc-unknown-none-elf/release/kivori-firmware
+          path: ${{ steps.build.outputs.path }}
           if-no-files-found: error
 
   windows:
@@ -160,7 +171,7 @@ jobs:
         working-directory: apps/desktop
         shell: bash
         env:
-          KIVORI_FIRMWARE_PATH: ${{ runner.temp }}/firmware/kivori-firmware
+          KIVORI_FIRMWARE_PATH: ${{ runner.temp }}/firmware/${{ needs.firmware.outputs.binary }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ steps.updater.outputs.enabled == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ steps.updater.outputs.enabled == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         run: |

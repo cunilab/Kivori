@@ -287,7 +287,9 @@ the beta acceptance platform. Finish and review the docs before implementing the
   shipping roots. Provisioning QA now selects requirements/input groups/discovery hints from the
   bundled image’s catalog identity, rejects identity-argument mismatches before device I/O, and
   requires matching post-flash identity. Identity burns are limited to the implemented C3 backend.
-  Build/tooling recipes and multi-image packaging/release keep this item open.
+  Firmware build target/features now live in the catalog; local build/bundle/provision recipes,
+  PowerShell and release firmware CI share one validated, explicit-or-unambiguous build helper.
+  Multi-image packaging/release keeps this item open.
 - [ ] **Capability-driven UI:** document the capability-to-surface mapping; backend effective support
   combines current-session negotiation, resolved identity and host support, not catalog minimums.
   UI and command handling deny ordinary product actions while identity is pending/unknown. Cover
