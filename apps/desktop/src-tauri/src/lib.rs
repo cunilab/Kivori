@@ -19,6 +19,7 @@ pub mod config;
 pub mod desk;
 pub mod device;
 pub mod firmware;
+pub mod firmware_bundle;
 pub mod firmware_marker;
 pub mod firmware_offer;
 pub mod identity;

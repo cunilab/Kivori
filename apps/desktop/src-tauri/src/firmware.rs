@@ -11,7 +11,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::activity::{ActivityEventKind, SessionActivity};
 use crate::device::discovery::{default_allowlist, filter_candidates, PortCandidate};
-use crate::firmware_marker::{scan_image_identity, ImageIdentity};
+use crate::firmware_bundle::{FirmwareBundle, FirmwareImage};
 use crate::identity::{RecoveryRefusal, RestoreOption, WrongProduct};
 use serde::Serialize;
 
@@ -23,12 +23,7 @@ pub const RECONNECT_TIMEOUT: Duration = Duration::from_secs(20);
 /// How much of `espflash`'s stderr is kept for classification (the tail, where errors are reported).
 pub const STDERR_LIMIT: usize = 8 * 1024;
 
-/// The firmware version stamped into this build by `build.rs` (empty when no firmware is embedded).
-pub const BUNDLED_FIRMWARE_VERSION: &str = env!("KIVORI_BUNDLED_FIRMWARE_VERSION");
-
-/// The fixed firmware artifact embedded by `build.rs`; an empty file means this build cannot flash.
-pub static BUNDLED_FIRMWARE: &[u8] =
-    include_bytes!(concat!(env!("OUT_DIR"), "/kivori-firmware.elf"));
+include!(concat!(env!("OUT_DIR"), "/firmware_sources.rs"));
 
 /// User-visible firmware flashing phase.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -360,8 +355,9 @@ impl FlashWorkflow {
                 message,
                 image_size: if available { image_size } else { 0 },
                 failure: None,
-                bundled_version: (available && !BUNDLED_FIRMWARE_VERSION.is_empty())
-                    .then(|| BUNDLED_FIRMWARE_VERSION.to_string()),
+                bundled_version: single_image()
+                    .filter(|_| available)
+                    .map(|image| image.identity().version.clone()),
                 advice: UpdateAdvice::Unknown,
                 wrong_product: None,
                 restore_choices: Vec::new(),
@@ -599,54 +595,54 @@ impl FlashWorkflow {
     }
 }
 
-/// The identity record of the bundled image (`None` when no firmware is embedded, or it has none).
+/// The complete immutable, build-validated image set.
 #[must_use]
-pub fn bundled_image_identity() -> Option<&'static ImageIdentity> {
-    static IDENTITY: std::sync::OnceLock<Option<ImageIdentity>> = std::sync::OnceLock::new();
-    IDENTITY
-        .get_or_init(|| scan_image_identity(BUNDLED_FIRMWARE))
-        .as_ref()
+pub fn bundled_images() -> &'static FirmwareBundle<'static> {
+    static IMAGES: std::sync::OnceLock<FirmwareBundle<'static>> = std::sync::OnceLock::new();
+    IMAGES.get_or_init(|| {
+        FirmwareBundle::parse(FIRMWARE_IMAGES).expect("build-validated firmware images")
+    })
 }
 
-/// Returns whether the bundled artifact is an ELF32 little-endian RISC-V executable.
+/// Exact product/board lookup, with no implicit product or first-entry default.
 #[must_use]
-pub fn bundled_image_available() -> bool {
-    is_elf32_riscv(BUNDLED_FIRMWARE)
+pub fn image_for(product: u16, board: u16) -> Option<&'static FirmwareImage<'static>> {
+    bundled_images().get(product, board)
 }
 
-/// Returns the initial safe status for the currently embedded artifact.
+/// The current single-image runtime bridge. Multiple images never select a default.
+#[must_use]
+pub fn single_image() -> Option<&'static FirmwareImage<'static>> {
+    bundled_images().single()
+}
+
+/// Returns the initial safe status for the explicitly single-image runtime.
 #[must_use]
 pub fn initial_status() -> FirmwareStatus {
-    FlashWorkflow::new(bundled_image_available(), BUNDLED_FIRMWARE.len() as u64)
-        .status
-        .clone()
+    FlashWorkflow::new(
+        single_image().is_some(),
+        single_image().map_or(0, |image| image.bytes().len() as u64),
+    )
+    .status
+    .clone()
 }
 
-/// Runs the fixed bundled image through `espflash` for the given native-owned port.
+/// Runs an explicitly selected, validated image through the native flasher.
 ///
-/// `espflash` stderr is captured in-process (bounded) only to classify a failure; it is never logged
-/// or exposed. The child is killed and reaped on timeout or application shutdown.
+/// `espflash` stderr stays in-process and bounded; cancellation kills and reaps the child.
 ///
 /// # Errors
 /// The [`FlashFailure`] class describing why the image was not flashed.
-pub fn flash_bundled(port: &str, cancel: &AtomicBool) -> Result<(), FlashFailure> {
-    if !bundled_image_available() {
-        return Err(FlashFailure::ImageUnavailable);
-    }
+pub fn flash_image(
+    image: &FirmwareImage<'_>,
+    port: &str,
+    cancel: &AtomicBool,
+) -> Result<(), FlashFailure> {
     let tool = find_espflash().ok_or(FlashFailure::ToolMissing)?;
-    let temp = write_temp_image(BUNDLED_FIRMWARE).ok_or(FlashFailure::ImageUnavailable)?;
+    let temp = write_temp_image(image.bytes()).ok_or(FlashFailure::ImageUnavailable)?;
     let result = run_espflash(&tool, port, &temp, cancel);
     let _ = std::fs::remove_file(&temp);
     result
-}
-
-fn is_elf32_riscv(bytes: &[u8]) -> bool {
-    bytes.len() >= 20
-        && bytes.starts_with(b"\x7fELF")
-        && bytes[4] == 1
-        && bytes[5] == 1
-        && bytes[18] == 0xF3
-        && bytes[19] == 0
 }
 
 /// The sidecar's file name on this platform.

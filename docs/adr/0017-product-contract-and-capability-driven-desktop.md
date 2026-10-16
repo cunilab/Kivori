@@ -146,6 +146,14 @@ retains the named wrong-product refusal. Candidate/board refusals use the existi
 until pair-level recovery UI arrives. Queued requests cannot replace an active flash workflow.
 Multi-image embedding, per-image update advice and pair-level recovery choices remain open.
 
+**As built (M2.8 image-set foundation).** Explicit legacy-path or manifest input is validated as an
+immutable image set. Exact product/board lookup never falls back to catalog order; duplicate keys,
+ambiguous markers and invalid catalog/version/protocol records are refused. Generated sources are
+ordered by wire pair. Current native consumers explicitly require a sole image and pass its typed
+bytes to the flasher. A shipping build-time gate rejects multiple images until the next runtime slice
+makes status, offers, recovery and provisioning target-specific. Synthetic two-image generation and
+lookup tests do not claim multi-image shipping support or close hardware acceptance.
+
 ## Consequences
 
 This is a target contract, not an as-built claim. Implementation and checks are tracked in
