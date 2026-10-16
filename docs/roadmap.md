@@ -229,7 +229,7 @@ Software done and host-tested (#72); owner key and hardware rows remain.
   - each firmware image carries an identity record (product, board, firmware version, minimum
     protocol) next to its version marker; the app refuses to flash an image onto a different
     product or board, and the firmware shows an error screen if it boots on the wrong one
-  - `just provision --product --board --rev` writes the identity into chip one-time memory (C3 user
+  - `just provision --product --board --rev --burn-identity` writes the identity into chip one-time memory (C3 user
     eFuse block) for units that are sold; it shows the record and needs a typed confirmation
 - [x] **Product catalog in the app:** `products/<id>/product.toml` per product (display name, image,
   boards, flash method per board, bundled firmware with version, SHA-256 and minimum protocol,
@@ -284,7 +284,10 @@ the beta acceptance platform. Finish and review the docs before implementing the
   product figures on Home, Welcome and Tour. Fixed hardware-body artwork is removed. Declared static
   PNGs are now validated and embedded at build time, delivered by a cached allowlisted lookup, with
   neutral fallback and stale-load protection. Pip still has no artwork; fixture images stay outside
-  shipping roots. Provisioning/tooling defaults and multi-image packaging/release keep this item open.
+  shipping roots. Provisioning QA now selects requirements/input groups/discovery hints from the
+  bundled image’s catalog identity, rejects identity-argument mismatches before device I/O, and
+  requires matching post-flash identity. Identity burns are limited to the implemented C3 backend.
+  Build/tooling recipes and multi-image packaging/release keep this item open.
 - [ ] **Capability-driven UI:** document the capability-to-surface mapping; backend effective support
   combines current-session negotiation, resolved identity and host support, not catalog minimums.
   UI and command handling deny ordinary product actions while identity is pending/unknown. Cover
