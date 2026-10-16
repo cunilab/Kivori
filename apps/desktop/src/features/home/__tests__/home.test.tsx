@@ -7,7 +7,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@kivori/ui/components/tooltip';
 import type { ConnectionStatusDto, DeskStatusDto } from '../../../lib/ipc/types';
 
-vi.mock('../../../lib/ipc', () => ({ playMascotAction: vi.fn(() => Promise.resolve()) }));
+vi.mock('../../../lib/ipc', () => ({
+  playMascotAction: vi.fn(() => Promise.resolve()),
+  getDiagnostics: vi.fn(() => new Promise(() => {})),
+}));
 
 import { HomePage } from '../HomePage';
 

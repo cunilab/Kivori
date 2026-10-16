@@ -298,7 +298,7 @@ the beta acceptance platform. Finish and review the docs before implementing the
   mark unavailable/stale data, never copy another device's snapshot, and never start polling just
   to copy. Correlate snapshots with connection generations, clear on session boundaries and reject
   late replies; test reconnect while the card stays mounted. Preserve privacy and clipboard errors.
-- [ ] **Home health summary:** developer-only link state, consecutive retries and total reconnects,
+- [x] **Home health summary:** developer-only link state, consecutive retries and total reconnects,
   reusing existing status/diagnostics data; no internals polling or event-history dashboard on Home.
 - [ ] **Product acceptance tests:** Pip, a minimal fake product and mixed capabilities; supported
   controls still work, unsupported controls/art are absent. Exercise missing art, old firmware,
