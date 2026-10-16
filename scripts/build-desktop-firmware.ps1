@@ -1,22 +1,21 @@
-# Builds the physical mascot firmware and embeds it in the desktop binary. Does not flash a device.
+# Builds catalog-selected firmware and embeds it in the desktop binary. Does not flash a device.
 [CmdletBinding()]
-param([switch]$Release)
+param([switch]$Release, [string]$Product, [string]$Board)
 
 $ErrorActionPreference = 'Stop'
 $kivoriRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$kivoriFirmwareRoot = Join-Path $kivoriRoot 'firmware/pala'
 $kivoriPreviousFirmware = $env:KIVORI_FIRMWARE_PATH
 $kivoriPreviousTarget = $env:CARGO_TARGET_DIR
 try {
-    # An explicit target directory makes artifact selection independent of the caller's environment.
-    $env:CARGO_TARGET_DIR = Join-Path $kivoriFirmwareRoot 'target'
-    Push-Location $kivoriFirmwareRoot
-    try {
-        & cargo build --locked --release --target riscv32imc-unknown-none-elf --no-default-features --features physical-st7789
-        if ($LASTEXITCODE -ne 0) { throw 'Physical firmware build failed.' }
-    } finally { Pop-Location }
-
-    $env:KIVORI_FIRMWARE_PATH = Join-Path $env:CARGO_TARGET_DIR 'riscv32imc-unknown-none-elf/release/kivori-firmware'
+    $kivoriFirmwareArgs = @((Join-Path $kivoriRoot 'scripts/build-firmware.mjs'))
+    if ($Product) { $kivoriFirmwareArgs += @('--product', $Product) }
+    if ($Board) { $kivoriFirmwareArgs += @('--board', $Board) }
+    $kivoriFirmwarePath = & bun @kivoriFirmwareArgs
+    if ($LASTEXITCODE -ne 0) { throw 'Catalog firmware build failed.' }
+    if (@($kivoriFirmwarePath).Count -ne 1 -or -not (Test-Path -LiteralPath $kivoriFirmwarePath -PathType Leaf)) {
+        throw 'Firmware builder must return exactly one existing artifact path.'
+    }
+    $env:KIVORI_FIRMWARE_PATH = $kivoriFirmwarePath
     $env:CARGO_TARGET_DIR = Join-Path $kivoriRoot 'target'
     Push-Location $kivoriRoot
     try {
@@ -25,7 +24,7 @@ try {
         & cargo @kivoriBuildArgs
         if ($LASTEXITCODE -ne 0) { throw 'Desktop build failed.' }
     } finally { Pop-Location }
-    Write-Host 'Desktop built with the physical ESP32-C3/ST7789 mascot firmware. No device was flashed.'
+    Write-Host 'Desktop built with catalog-selected firmware. No device was flashed.'
 } finally {
     $env:KIVORI_FIRMWARE_PATH = $kivoriPreviousFirmware
     $env:CARGO_TARGET_DIR = $kivoriPreviousTarget

@@ -32,6 +32,47 @@ pub struct BundledFirmware {
     pub artifact: PathBuf,
     /// Oldest wire protocol `(major, minor)` this firmware speaks.
     pub min_protocol: (u16, u16),
+    /// Explicit release build recipe, required by build tooling (optional for runtime-only catalogs).
+    pub build: Option<FirmwareBuild>,
+}
+
+/// Product firmware build inputs, independent of desktop features.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FirmwareBuild {
+    /// Rust target triple.
+    pub target: String,
+    /// Explicit Cargo features; default features are disabled.
+    pub features: Vec<String>,
+}
+
+impl FirmwareBuild {
+    fn validate(&self, artifact: &str) -> Result<(), CatalogError> {
+        let target_ok = self.target.split('-').count() > 1
+            && self.target.split('-').all(|part| {
+                !part.is_empty()
+                    && part
+                        .bytes()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'_')
+            });
+        let feature_ok = self.features.iter().all(|feature| {
+            feature.split(['-', '/']).all(|part| {
+                !part.is_empty() && part.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
+            })
+        });
+        let unique: std::collections::BTreeSet<_> = self.features.iter().collect();
+        let prefix = format!("target/{}/release/", self.target);
+        let binary_ok = artifact.strip_prefix(&prefix).is_some_and(|binary| {
+            !binary.is_empty()
+                && binary
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-'))
+        });
+        if !target_ok || !feature_ok || unique.len() != self.features.len() || !binary_ok {
+            return err("invalid firmware build target, features or target/<target>/release/<binary> artifact");
+        }
+        Ok(())
+    }
 }
 
 /// One board a product ships on.
@@ -129,6 +170,8 @@ struct RawFirmware {
     crate_dir: String,
     artifact: String,
     min_protocol: String,
+    #[serde(default)]
+    build: Option<FirmwareBuild>,
 }
 
 /// Machine ids are lowercase kebab-case.
@@ -245,6 +288,9 @@ impl Catalog {
                     .iter()
                     .map(|u| parse_usb(u))
                     .collect::<Result<Vec<_>, _>>()?;
+                if let Some(build) = &board.firmware.build {
+                    build.validate(&board.firmware.artifact)?;
+                }
                 boards.push(Board {
                     id: board_id,
                     number: board_number,
@@ -255,6 +301,7 @@ impl Catalog {
                         crate_dir: board.firmware.crate_dir.into(),
                         artifact: board.firmware.artifact.into(),
                         min_protocol: parse_protocol(&board.firmware.min_protocol)?,
+                        build: board.firmware.build,
                     },
                 });
             }
@@ -339,6 +386,23 @@ mod tests {
     }
 
     #[test]
+    fn build_metadata_is_optional_but_validated_when_present() {
+        let base = product("c3-supermini");
+        assert!(parse(REG, &base).is_ok());
+        let with_build = base.replace("artifact = \"a\"", "artifact = \"target/test-none-elf/release/device\"")
+            + "[boards.c3-supermini.firmware.build]\ntarget = 'test-none-elf'\nfeatures = ['physical']\n";
+        assert!(parse(REG, &with_build).is_ok());
+        for invalid in [
+            with_build.replace("test-none-elf'", "bad/target'"),
+            with_build.replace("['physical']", "['physical', 'physical']"),
+            with_build.replace("['physical']", "['bad,feature']"),
+            with_build.replace("release/device", "release/../device"),
+        ] {
+            assert!(parse(REG, &invalid).is_err());
+        }
+    }
+
+    #[test]
     fn embedded_catalog_is_valid_and_has_pala_on_c3_supermini() {
         let catalog = Catalog::embedded();
         let (product, board) = catalog.by_wire(1, 1).expect("pala on c3-supermini");
@@ -384,6 +448,28 @@ mod tests {
             let manifest = root.join(&board.firmware.crate_dir).join("Cargo.toml");
             let text = std::fs::read_to_string(&manifest).expect("firmware crate manifest");
             assert!(crate_version(&text).is_some(), "{}", manifest.display());
+            let build = board
+                .firmware
+                .build
+                .as_ref()
+                .expect("shipping board has build recipe");
+            let manifest: toml::Value = toml::from_str(&text).unwrap();
+            let binary = board
+                .firmware
+                .artifact
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap();
+            assert!(manifest["bin"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|bin| bin["name"].as_str() == Some(binary)));
+            assert!(build.features.iter().all(|feature| !matches!(
+                feature.as_str(),
+                "latency-probe" | "debug-payloads" | "host-sim"
+            )));
         }
     }
 
