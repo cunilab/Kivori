@@ -1,36 +1,28 @@
 import type { ReactElement } from 'react';
 import { CircleCheck, Circle } from 'lucide-react';
-import { DeviceArt } from '@/components/kivori/device-art';
-import type { DeskStatusDto } from '@/lib/ipc/types';
-import { format, strings } from '@/lib/i18n/strings';
+import { ProductArt } from '@/components/kivori/product-art';
+import type { ConnectionStatusDto } from '@/lib/ipc/types';
+import { strings } from '@/lib/i18n/strings';
 import { cn } from '@kivori/ui/lib/utils';
 import { TOUR_STEPS } from '../use-onboarding';
 import { StepFrame } from './frame';
 
 const t = strings.onboarding.tour;
 
-/** The device picture and the three live checks; `done` counts the ones already seen. */
+/** The product figure and the three live checks; `done` counts the ones already seen. */
 export function Tour({
-  desk,
+  connection,
   done,
   connected,
 }: {
-  desk: DeskStatusDto | null;
+  connection: ConnectionStatusDto | null;
   done: number;
   connected: boolean;
 }): ReactElement {
-  const current = TOUR_STEPS[done];
-  const highlight = current === 'knob' ? 'knob' : current === 'press' ? 'press' : undefined;
   return (
     <StepFrame title={t.title} body={t.body}>
       <div className="grid items-center gap-6 sm:grid-cols-[minmax(0,15rem)_1fr]">
-        <DeviceArt
-          mode={desk?.mode ?? 'buddy'}
-          values={desk ?? undefined}
-          highlight={highlight}
-          label={format(t.illustration, { part: t.parts[current ?? 'buttons'] })}
-          className="w-full max-w-60"
-        />
+        <ProductArt connection={connection} className="max-w-60" />
         <ol className="space-y-3" aria-label={t.title}>
           {TOUR_STEPS.map((step, index) => {
             const finished = index < done;

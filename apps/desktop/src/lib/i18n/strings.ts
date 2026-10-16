@@ -55,6 +55,7 @@ export const strings = {
   savedConfiguration:
     'Settings are saved on this computer, including controls and views absent on the connected device.',
   savedOnly: 'Saved only',
+  productArt: { label: '{product} · {model}', neutral: 'Kivori device' },
   home: {
     title: 'Home',
     health: {
@@ -77,7 +78,6 @@ export const strings = {
       recovery: 'Device firmware needs attention',
       recoveryBody:
         'This device can identify itself but has no ordinary features enabled. Open Device to check its matching firmware.',
-      neutral: 'Device status',
       connecting: 'Connecting to Kivori…',
       connectingBody: 'Kivori Desktop found a device and is saying hello.',
       reconnecting: 'Reconnecting…',
@@ -91,7 +91,6 @@ export const strings = {
       showing: 'Showing',
       firmware: 'Firmware',
       buddy: 'Buddy',
-      illustration: 'Illustration of the {mode} view (not a live mirror of the screen)',
     },
     empty: {
       title: 'Plug in your Kivori',
@@ -694,8 +693,7 @@ export const strings = {
   },
   firmwareUpdate: {
     heading: 'Firmware update',
-    description:
-      'Install the firmware bundled with this app for ESP32-C3 + ST7789, including the animated buddy.',
+    description: 'Install the firmware bundled with this app for the matching product and board.',
     action: 'Flash firmware',
     working: 'Updating firmware…',
     preparing: 'Preparing firmware update…',
@@ -752,7 +750,7 @@ export const strings = {
     continue: 'Continue',
     welcome: {
       title: 'Welcome to Kivori',
-      body: 'Kivori is a little desk controller with a knob, three buttons and a screen. This takes about a minute and you can skip any of it.',
+      body: 'Set up your Kivori for this computer. This takes about a minute and you can skip any step.',
       start: 'Get started',
     },
     plug: {
@@ -794,8 +792,6 @@ export const strings = {
       body: 'Use the real device. Each step ticks off when Kivori Desktop sees it.',
       needDevice: 'Connect your Kivori to try these.',
       skipTour: 'Skip the tour',
-      illustration: 'Illustration of Kivori, highlighting the {part}',
-      parts: { knob: 'knob', press: 'knob press', buttons: 'buttons' },
       steps: {
         knob: { name: 'Turn the knob', hint: 'Turn it either way to change the volume.' },
         press: { name: 'Press the knob', hint: 'Press the knob straight down once.' },

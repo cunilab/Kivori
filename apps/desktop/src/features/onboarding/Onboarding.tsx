@@ -153,13 +153,13 @@ export function Onboarding({
         </div>
 
         {step === 'welcome' ? (
-          <Welcome />
+          <Welcome connection={connection} />
         ) : step === 'plug' ? (
           <PlugIn connection={connection} updateAvailable={updateAvailable} />
         ) : step === 'permissions' ? (
           <Permissions state={accessibility.state} onChange={accessibility.refresh} />
         ) : step === 'tour' ? (
-          <Tour desk={desk} done={tour.done} connected={connected} />
+          <Tour connection={connection} done={tour.done} connected={connected} />
         ) : step === 'customize' ? (
           <Customize
             config={config}

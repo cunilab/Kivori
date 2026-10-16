@@ -37,14 +37,14 @@ import {
 } from '@kivori/ui/components/empty';
 import { Progress } from '@kivori/ui/components/progress';
 import { Skeleton } from '@kivori/ui/components/skeleton';
-import { DeviceScreen } from '@/components/kivori/device-art';
+import { ProductArt } from '@/components/kivori/product-art';
 import { Known } from '@/components/kivori/known';
 import { Page } from '@/components/kivori/page';
 import { ResultBadge } from '@/components/kivori/result-badge';
 import { uiConnection } from '@/hooks/use-kivori';
 import { hasCapability, canMirrorState } from '@/lib/device-support';
 import type { ConnectionStatusDto, DeskStatusDto } from '@/lib/ipc/types';
-import { format, strings } from '@/lib/i18n/strings';
+import { strings } from '@/lib/i18n/strings';
 import { useDevMode } from '@/lib/dev-mode';
 import { LinkHealth } from './LinkHealth';
 import { cn } from '@kivori/ui/lib/utils';
@@ -70,7 +70,7 @@ function Hero({
     return (
       <Card className="p-6">
         <div className="grid items-center gap-6 md:grid-cols-[minmax(0,18rem)_1fr]">
-          <Skeleton className="aspect-[1.45] w-full rounded-[16%]" />
+          <Skeleton className="aspect-square w-full rounded-[16%]" />
           <div className="space-y-3">
             <Skeleton className="h-7 w-48" />
             <Skeleton className="h-4 w-72" />
@@ -157,17 +157,7 @@ function Hero({
         className="pointer-events-none absolute -top-24 -right-24 size-72 rounded-full bg-primary/10 blur-3xl"
       />
       <div className="relative grid items-center gap-6 md:grid-cols-[minmax(0,18rem)_1fr] lg:gap-10">
-        <figure
-          role="img"
-          aria-label={display ? format(t.hero.illustration, { mode: modeName }) : t.hero.neutral}
-          className="flex aspect-square w-full max-w-72 items-center justify-center rounded-2xl bg-muted p-4"
-        >
-          {display ? (
-            <DeviceScreen mode={desk.mode} values={desk} className="w-full" />
-          ) : (
-            <Usb className="size-16 text-muted-foreground" aria-hidden="true" />
-          )}
-        </figure>
+        <ProductArt connection={connection} className="max-w-72" />
         <div className="space-y-4">
           <div className="space-y-1.5">
             <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">

@@ -35,7 +35,14 @@ export interface DeviceIdentityDto {
   known: boolean;
 }
 
+/** Customer metadata from the compiled catalog. It never authorizes live features. */
+export interface ProductPresentationDto {
+  displayName: string;
+  model: string;
+}
+
 export interface DeviceInfoDto {
+  presentation: ProductPresentationDto | null;
   firmwareVersion: string;
   protocolVersion: ProtocolVersion;
   deviceIdHashShort: string;
