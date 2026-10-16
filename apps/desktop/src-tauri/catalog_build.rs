@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::catalog::{crate_version, Catalog, CatalogError};
-use crate::firmware_marker::{scan_firmware_version, scan_image_identity};
+use crate::firmware_bundle::{FirmwareBundle, FirmwareImage};
 
 fn read(path: &Path) -> Result<String, CatalogError> {
     let metadata =
@@ -84,33 +84,114 @@ pub fn generate(products_dir: &Path, out_dir: &Path) -> Result<(Catalog, String)
     Ok((catalog, generated))
 }
 
-/// Checks the explicitly supplied single image by its own identity, never catalog order.
-/// Returns its crate manifest so Cargo can watch version changes. An absent image is a host build.
+/// Checks a parsed image against its catalog entry and crate version, never catalog order.
+/// Returns the crate manifest Cargo must watch.
 pub fn check_firmware(
     catalog: &Catalog,
     root: &Path,
-    image: &[u8],
-) -> Result<Option<PathBuf>, CatalogError> {
-    if image.is_empty() {
-        return Ok(None);
-    }
-    let version = scan_firmware_version(image)
-        .ok_or_else(|| CatalogError("bundled image has no firmware version marker".into()))?;
-    let record = scan_image_identity(image)
-        .ok_or_else(|| CatalogError("bundled image has no KIVORI-FW-IDENTITY record".into()))?;
+    image: &FirmwareImage<'_>,
+) -> Result<PathBuf, CatalogError> {
+    let record = image.identity();
     let (_, board) = catalog
         .by_wire(record.product, record.board)
         .ok_or_else(|| CatalogError("bundled image names an unknown product/board".into()))?;
     let manifest = root.join(&board.firmware.crate_dir).join("Cargo.toml");
     let expected_version = crate_version(&read(&manifest)?)
         .ok_or_else(|| CatalogError(format!("{} has no package version", manifest.display())))?;
-    if version != expected_version
-        || record.version != expected_version
-        || record.min_protocol != board.firmware.min_protocol
-    {
+    if record.version != expected_version || record.min_protocol != board.firmware.min_protocol {
         return Err(CatalogError(format!("bundled image differs from {} version or catalog minimum protocol; rebuild the firmware", manifest.display())));
     }
-    Ok(Some(manifest))
+    Ok(manifest)
+}
+
+/// Resolves explicit build inputs without reading process-global environment variables.
+pub fn firmware_paths(
+    legacy: Option<&std::ffi::OsStr>,
+    manifest: Option<&std::ffi::OsStr>,
+) -> Result<Vec<PathBuf>, CatalogError> {
+    match (legacy, manifest) {
+        (Some(_), Some(_)) => Err(CatalogError(
+            "set only one of KIVORI_FIRMWARE_PATH and KIVORI_FIRMWARE_MANIFEST".into(),
+        )),
+        (Some(path), None) => Ok(vec![PathBuf::from(path)]),
+        (None, Some(path)) => {
+            let path = Path::new(path);
+            if !path.is_absolute() {
+                return Err(CatalogError(
+                    "firmware manifest path must be absolute".into(),
+                ));
+            }
+            let text = fs::read_to_string(path)
+                .map_err(|error| CatalogError(format!("{}: {error}", path.display())))?;
+            let paths: Vec<PathBuf> = serde_json::from_str::<Vec<String>>(&text)
+                .map_err(|error| CatalogError(format!("invalid firmware manifest: {error}")))?
+                .into_iter()
+                .map(PathBuf::from)
+                .collect();
+            if paths.is_empty() || paths.iter().any(|path| !path.is_absolute()) {
+                return Err(CatalogError(
+                    "firmware manifest must list one or more absolute image paths".into(),
+                ));
+            }
+            Ok(paths)
+        }
+        (None, None) => Ok(Vec::new()),
+    }
+}
+
+/// Validated image-set output and the manifests Cargo must watch.
+pub struct GeneratedFirmware {
+    pub source: String,
+    pub manifests: Vec<PathBuf>,
+}
+
+/// Validates and emits deterministic image sources, independent of input/catalog order.
+pub fn generate_firmware(
+    catalog: &Catalog,
+    root: &Path,
+    paths: &[PathBuf],
+    out: &Path,
+) -> Result<GeneratedFirmware, CatalogError> {
+    let bytes = paths
+        .iter()
+        .map(|path| {
+            fs::read(path).map_err(|error| CatalogError(format!("{}: {error}", path.display())))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let refs: Vec<&[u8]> = bytes.iter().map(Vec::as_slice).collect();
+    let bundle = FirmwareBundle::parse(&refs).map_err(|message| CatalogError(message.into()))?;
+    let mut manifests = Vec::new();
+    // Validate every entry before emitting any image, so an invalid set never gets a partial index.
+    for image in bundle.images() {
+        let manifest = check_firmware(catalog, root, image)?;
+        manifests.push(manifest);
+    }
+    manifests.sort();
+    manifests.dedup();
+    fs::create_dir_all(out).map_err(|error| CatalogError(error.to_string()))?;
+    let mut source = String::from("const FIRMWARE_IMAGES: &[&[u8]] = &[\n");
+    for image in bundle.images() {
+        let record = image.identity();
+        let file = format!("firmware-{}-{}.elf", record.product, record.board);
+        fs::write(out.join(&file), image.bytes())
+            .map_err(|error| CatalogError(error.to_string()))?;
+        source.push_str(&format!(
+            "    include_bytes!(concat!(env!(\"OUT_DIR\"), \"/{file}\")),\n"
+        ));
+    }
+    source.push_str("];\n");
+    Ok(GeneratedFirmware { source, manifests })
+}
+
+/// Shipping guard until every native consumer selects its product/board image explicitly.
+pub fn require_single_image_runtime(count: usize) -> Result<(), CatalogError> {
+    // shortcut: remove this gate with per-device flash/status/offer selection in the next M2.8 slice.
+    if count > 1 {
+        return Err(CatalogError(
+            "multi-image runtime selection is not implemented yet; supply at most one image".into(),
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -348,7 +429,11 @@ mod tests {
     }
 
     fn image(product: u16, board: u16, version: &str, protocol: &str) -> Vec<u8> {
-        format!("KIVORI-FW-VERSION:{version}\0KIVORI-FW-IDENTITY:p={product};b={board};v={version};m={protocol}\0").into_bytes()
+        let mut bytes = vec![0; 52];
+        bytes[..6].copy_from_slice(b"\x7fELF\x01\x01");
+        bytes[18] = 243;
+        bytes.extend_from_slice(format!("KIVORI-FW-VERSION:{version}\0KIVORI-FW-IDENTITY:p={product};b={board};v={version};m={protocol}\0").as_bytes());
+        bytes
     }
 
     #[test]
@@ -367,15 +452,17 @@ mod tests {
         .unwrap();
         let (catalog, _) =
             generate(&root.path().join("products"), &root.path().join("out")).unwrap();
-        // pala is second in deterministic catalog order, but its image still selects its crate.
-        assert_eq!(
-            check_firmware(&catalog, root.path(), &image(1, 1, "0.1.0", "0.1")).unwrap(),
-            Some(root.path().join("firmware/pala/Cargo.toml"))
-        );
-        assert_eq!(
-            check_firmware(&catalog, root.path(), &image(2, 1, "0.2.0", "0.2")).unwrap(),
-            Some(root.path().join("firmware/lada/Cargo.toml"))
-        );
+        // pala is second in catalog order, but each image still selects its own crate.
+        for (product, version, protocol, crate_id) in
+            [(1, "0.1.0", "0.1", "pala"), (2, "0.2.0", "0.2", "lada")]
+        {
+            let bytes = image(product, 1, version, protocol);
+            let parsed = FirmwareImage::parse(&bytes).unwrap();
+            assert_eq!(
+                check_firmware(&catalog, root.path(), &parsed).unwrap(),
+                root.path().join(format!("firmware/{crate_id}/Cargo.toml"))
+            );
+        }
         for bad in [
             image(2, 1, "0.1.0", "0.2"),
             image(2, 1, "0.2.0", "0.1"),
@@ -388,8 +475,156 @@ mod tests {
             b"KIVORI-FW-VERSION:0.1.0\0".to_vec(),
             b"KIVORI-FW-IDENTITY:p=1;b=1;v=0.1.0;m=0.1\0".to_vec(),
         ] {
-            assert!(check_firmware(&catalog, root.path(), &bad).is_err());
+            let result = FirmwareImage::parse(&bad)
+                .map_err(|message| CatalogError(message.into()))
+                .and_then(|image| check_firmware(&catalog, root.path(), &image));
+            assert!(result.is_err());
         }
-        assert_eq!(check_firmware(&catalog, root.path(), &[]).unwrap(), None);
+    }
+
+    #[test]
+    fn firmware_inputs_are_explicit_and_exclusive() {
+        assert!(firmware_paths(None, None).unwrap().is_empty());
+        let root = tempfile::tempdir().unwrap();
+        let legacy = root.path().join("legacy.elf");
+        let manifest = root.path().join("images.json");
+        assert_eq!(
+            firmware_paths(Some(legacy.as_os_str()), None)
+                .unwrap()
+                .as_slice(),
+            std::slice::from_ref(&legacy)
+        );
+        assert!(firmware_paths(Some(legacy.as_os_str()), Some(manifest.as_os_str())).is_err());
+        assert!(firmware_paths(None, Some(manifest.as_os_str())).is_err());
+        assert!(firmware_paths(None, Some(root.path().as_os_str())).is_err());
+        assert!(firmware_paths(None, Some(std::ffi::OsStr::new("relative.json"))).is_err());
+        for text in [
+            "not json",
+            "{}",
+            "[]",
+            "[1]",
+            "[\"relative.elf\"]",
+            "[\"\"]",
+        ] {
+            fs::write(&manifest, text).unwrap();
+            assert!(
+                firmware_paths(None, Some(manifest.as_os_str())).is_err(),
+                "{text}"
+            );
+        }
+        fs::write(&manifest, serde_json::to_string(&[&legacy]).unwrap()).unwrap();
+        assert_eq!(
+            firmware_paths(None, Some(manifest.as_os_str())).unwrap(),
+            [legacy]
+        );
+    }
+
+    #[test]
+    fn firmware_set_generation_is_deterministic_and_compiles_with_exact_lookup() {
+        let root = fixture();
+        add_product(root.path(), "lada");
+        fs::write(
+            root.path().join("firmware/lada/Cargo.toml"),
+            "[package]\nname = 'test'\nversion = '0.2.0'\n",
+        )
+        .unwrap();
+        fs::write(
+            root.path().join("products/lada/product.toml"),
+            product("lada").replace("min_protocol = \"0.1\"", "min_protocol = \"0.2\""),
+        )
+        .unwrap();
+        let out = root.path().join("out");
+        let (catalog, _) = generate(&root.path().join("products"), &out).unwrap();
+        let first = image(1, 1, "0.1.0", "0.1");
+        let second = image(2, 1, "0.2.0", "0.2");
+        let a = root.path().join("first.elf");
+        let b = root.path().join("second.elf");
+        fs::write(&a, &first).unwrap();
+        fs::write(&b, &second).unwrap();
+        let generated =
+            generate_firmware(&catalog, root.path(), &[b.clone(), a.clone()], &out).unwrap();
+        assert!(
+            generated.source.find("firmware-1-1.elf").unwrap()
+                < generated.source.find("firmware-2-1.elf").unwrap()
+        );
+        assert_eq!(generated.manifests.len(), 2);
+        let forward =
+            generate_firmware(&catalog, root.path(), &[a.clone(), b.clone()], &out).unwrap();
+        assert_eq!(generated.source, forward.source);
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let harness = format!("#[path = {:?}] mod firmware_marker;\n#[path = {:?}] mod firmware_bundle;\n{}\nfn main() {{ let bundle = firmware_bundle::FirmwareBundle::parse(FIRMWARE_IMAGES).unwrap(); assert_eq!(bundle.get(1,1).unwrap().bytes(), &{:?}); assert_eq!(bundle.get(2,1).unwrap().bytes(), &{:?}); assert!(bundle.get(9,1).is_none()); assert!(bundle.get(1,9).is_none()); assert!(bundle.single().is_none()); }}", src.join("firmware_marker.rs"), src.join("firmware_bundle.rs"), generated.source, first, second);
+        let source = root.path().join("bundle_check.rs");
+        fs::write(&source, harness).unwrap();
+        let executable = root
+            .path()
+            .join(format!("bundle_check{}", std::env::consts::EXE_SUFFIX));
+        let compiler = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+        let result = std::process::Command::new(compiler)
+            .args(["--edition=2021", "-A", "dead_code"])
+            .arg(&source)
+            .arg("-o")
+            .arg(&executable)
+            .env("OUT_DIR", &out)
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(std::process::Command::new(&executable)
+            .status()
+            .unwrap()
+            .success());
+        assert!(require_single_image_runtime(2).is_err());
+        assert!(require_single_image_runtime(0).is_ok());
+        assert!(require_single_image_runtime(1).is_ok());
+        assert!(generate_firmware(&catalog, root.path(), &[a.clone(), a.clone()], &out).is_err());
+        fs::write(&b, &first).unwrap();
+        assert!(generate_firmware(&catalog, root.path(), &[a, b], &out).is_err());
+    }
+
+    #[test]
+    fn invalid_or_missing_firmware_never_emits_a_partial_index() {
+        let root = fixture();
+        let (catalog, _) = generate(
+            &root.path().join("products"),
+            &root.path().join("catalog-out"),
+        )
+        .unwrap();
+        let path = root.path().join("image.elf");
+        let out = root.path().join("firmware-out");
+        assert!(
+            generate_firmware(&catalog, root.path(), std::slice::from_ref(&path), &out).is_err()
+        );
+        for bytes in [
+            Vec::new(),
+            b"not ELF".to_vec(),
+            image(9, 1, "0.1.0", "0.1"),
+            image(1, 1, "0.2.0", "0.1"),
+            image(1, 1, "0.1.0", "0.2"),
+        ] {
+            fs::write(&path, bytes).unwrap();
+            assert!(
+                generate_firmware(&catalog, root.path(), std::slice::from_ref(&path), &out)
+                    .is_err()
+            );
+            assert!(!out.exists());
+        }
+        let valid = root.path().join("valid.elf");
+        fs::write(&valid, image(1, 1, "0.1.0", "0.1")).unwrap();
+        fs::write(&path, image(9, 1, "0.1.0", "0.1")).unwrap();
+        assert!(generate_firmware(&catalog, root.path(), &[valid, path.clone()], &out).is_err());
+        assert!(!out.exists());
+        fs::write(&path, image(1, 1, "0.1.0", "0.1")).unwrap();
+        let one =
+            generate_firmware(&catalog, root.path(), std::slice::from_ref(&path), &out).unwrap();
+        assert!(one.source.contains("firmware-1-1.elf"));
+        assert_eq!(
+            fs::read(out.join("firmware-1-1.elf")).unwrap(),
+            image(1, 1, "0.1.0", "0.1")
+        );
+        let empty = generate_firmware(&catalog, root.path(), &[], &out).unwrap();
+        assert_eq!(empty.source, "const FIRMWARE_IMAGES: &[&[u8]] = &[\n];\n");
     }
 }

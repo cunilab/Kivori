@@ -1,8 +1,8 @@
 //! Pure scan for the firmware version marker.
 //!
 //! The firmware embeds `KIVORI-FW-VERSION:<major>.<minor>.<patch>\0` in its image. This file has no
-//! dependencies on the rest of the crate: `build.rs` includes it with `#[path]` to stamp the bundled
-//! version at compile time, and the library re-exports it so tests exercise the very same code.
+//! dependencies on the rest of the crate: build-time validation includes it with `#[path]`, and
+//! the library uses the same parser for immutable image-set lookup.
 
 /// The text that precedes the version inside the firmware image.
 pub const FIRMWARE_VERSION_MARKER: &[u8] = b"KIVORI-FW-VERSION:";
@@ -13,26 +13,14 @@ pub const FIRMWARE_VERSION_MARKER: &[u8] = b"KIVORI-FW-VERSION:";
 /// treated as an answer, so a stray copy of the marker text cannot hide the real one.
 #[must_use]
 pub fn scan_firmware_version(image: &[u8]) -> Option<String> {
-    let marker = FIRMWARE_VERSION_MARKER;
-    let mut from = 0;
-    while let Some(offset) = image
-        .get(from..)
-        .and_then(|rest| rest.windows(marker.len()).position(|w| w == marker))
-    {
-        let start = from + offset + marker.len();
-        let tail = &image[start..];
-        // A version is short; look at a bounded window so a missing terminator cannot scan far.
-        let window = &tail[..tail.len().min(32)];
-        if let Some(end) = window.iter().position(|&b| b == 0) {
-            if let Ok(text) = std::str::from_utf8(&window[..end]) {
-                if is_triple(text) {
-                    return Some(text.to_string());
-                }
-            }
-        }
-        from = start;
-    }
-    None
+    scan_firmware_versions(image).next()
+}
+
+/// Every well-formed version marker, including duplicates (for bundle validation).
+pub fn scan_firmware_versions(image: &[u8]) -> impl Iterator<Item = String> + '_ {
+    records(image, FIRMWARE_VERSION_MARKER, 32)
+        .filter(|text| is_triple(text))
+        .map(str::to_string)
 }
 
 /// The text that precedes the image identity record inside the firmware image.
@@ -55,26 +43,31 @@ pub struct ImageIdentity {
 /// `image`. Like [`scan_firmware_version`], a malformed copy is skipped, not an answer.
 #[must_use]
 pub fn scan_image_identity(image: &[u8]) -> Option<ImageIdentity> {
-    let marker = FIRMWARE_IDENTITY_MARKER;
-    let mut from = 0;
-    while let Some(offset) = image
-        .get(from..)
-        .and_then(|rest| rest.windows(marker.len()).position(|w| w == marker))
-    {
-        let start = from + offset + marker.len();
-        let tail = &image[start..];
-        let window = &tail[..tail.len().min(64)];
-        if let Some(end) = window.iter().position(|&b| b == 0) {
-            if let Some(identity) = std::str::from_utf8(&window[..end])
-                .ok()
-                .and_then(parse_image_identity)
-            {
-                return Some(identity);
+    scan_image_identities(image).next()
+}
+
+/// Every well-formed identity record, including duplicates (for bundle validation).
+pub fn scan_image_identities(image: &[u8]) -> impl Iterator<Item = ImageIdentity> + '_ {
+    records(image, FIRMWARE_IDENTITY_MARKER, 64).filter_map(parse_image_identity)
+}
+
+fn records<'a>(
+    image: &'a [u8],
+    marker: &'static [u8],
+    limit: usize,
+) -> impl Iterator<Item = &'a str> + 'a {
+    image
+        .windows(marker.len())
+        .enumerate()
+        .filter_map(move |(offset, window)| {
+            if window != marker {
+                return None;
             }
-        }
-        from = start;
-    }
-    None
+            let tail = &image[offset + marker.len()..];
+            let bounded = &tail[..tail.len().min(limit)];
+            let end = bounded.iter().position(|&byte| byte == 0)?;
+            std::str::from_utf8(&bounded[..end]).ok()
+        })
 }
 
 fn parse_image_identity(text: &str) -> Option<ImageIdentity> {

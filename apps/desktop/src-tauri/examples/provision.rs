@@ -21,10 +21,9 @@ use kivori_desktop::device::{
     serial::{enumerate, SerialPortLink},
     session::{Session, SessionConfig},
 };
-use kivori_desktop::firmware::{
-    bundled_image_identity, flash_bundled, BUNDLED_FIRMWARE, RECONNECT_TIMEOUT,
-};
-use kivori_desktop::firmware_marker::scan_firmware_version;
+use kivori_desktop::firmware::{flash_image, single_image, RECONNECT_TIMEOUT};
+use kivori_desktop::firmware_bundle::FirmwareImage;
+use kivori_desktop::firmware_marker::ImageIdentity;
 use kivori_desktop::identity::DeviceIdentity;
 use kivori_desktop::orchestrator::Orchestrator;
 use kivori_desktop::provision::{
@@ -45,11 +44,12 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let plan = match parse_args(&args).and_then(|a| {
         let plan = resolve_plan(Catalog::embedded(), &a)?;
-        let policy = QaPolicy::for_image(Catalog::embedded(), bundled_image_identity())?;
+        let image = single_image().ok_or("provisioning requires exactly one bundled image")?;
+        let policy = QaPolicy::for_image(Catalog::embedded(), Some(image.identity()))?;
         if let Some(plan) = &plan {
             check_image_matches_plan(Some(policy.image), plan)?;
         }
-        Ok((plan, a.burn, policy))
+        Ok((plan, a.burn, policy, image))
     }) {
         Ok(parsed) => parsed,
         Err(message) => {
@@ -57,7 +57,7 @@ fn main() {
             std::process::exit(2);
         }
     };
-    let (plan, burn, policy) = plan;
+    let (plan, burn, policy, image) = plan;
     println!(
         "QA target: {} ({}) on {} ({}).",
         policy.product.display_name, policy.product.id, policy.board.display_name, policy.board.id
@@ -74,7 +74,7 @@ fn main() {
         identity: None,
         negotiated_caps: Capabilities::NONE,
         device_version: None,
-        bundled_version: scan_firmware_version(BUNDLED_FIRMWARE),
+        bundled_version: Some(image.identity().version.clone()),
         heartbeat_ok: false,
         state_report_seen: false,
         health_seen: false,
@@ -82,7 +82,13 @@ fn main() {
         identity_check: None,
     };
     let mut hash = None;
-    let outcome = run(&mut obs, &mut hash, &policy, plan.as_ref().filter(|_| burn));
+    let outcome = run(
+        &mut obs,
+        &mut hash,
+        image,
+        &policy,
+        plan.as_ref().filter(|_| burn),
+    );
     if let Err(message) = outcome {
         println!("Stopped: {message}");
     }
@@ -226,6 +232,7 @@ fn probe_identity(port: &str) -> Result<Option<DeviceIdentity>, String> {
 fn run(
     obs: &mut Observations,
     hash: &mut Option<String>,
+    image: &FirmwareImage<'_>,
     policy: &QaPolicy<'_>,
     burn: Option<&IdentityPlan>,
 ) -> Result<(), String> {
@@ -241,7 +248,7 @@ fn run(
         ));
     }
     if let Some(plan) = burn {
-        burn_identity(&port.port_name, plan)
+        burn_identity(image.identity(), &port.port_name, plan)
             .inspect_err(|_| obs.flash_failure = Some("identity_burn"))?;
     }
     println!(
@@ -249,7 +256,7 @@ fn run(
         port.port_name
     );
     let cancel = AtomicBool::new(false);
-    if let Err(failure) = flash_bundled(&port.port_name, &cancel) {
+    if let Err(failure) = flash_image(image, &port.port_name, &cancel) {
         obs.flash_failure = Some(failure.token());
         return Err(failure.message().into());
     }
@@ -411,9 +418,9 @@ fn burn_block(tool: &str, port: &str, file: &Path) -> Result<(), String> {
 
 /// The checks, in order, then the burn: image matches the record, espefuse version, block blank,
 /// typed confirmation. The port is free here (no session is open).
-fn burn_identity(port: &str, plan: &IdentityPlan) -> Result<(), String> {
+fn burn_identity(image: &ImageIdentity, port: &str, plan: &IdentityPlan) -> Result<(), String> {
     require_burn_backend(&plan.board_id)?;
-    check_image_matches_plan(bundled_image_identity(), plan)?;
+    check_image_matches_plan(Some(image), plan)?;
     let tool = find_espefuse().ok_or(
         "espefuse not found: install it with `pip install esptool==4.7.0` (docs/provisioning.md).",
     )?;

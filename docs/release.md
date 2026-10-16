@@ -252,3 +252,11 @@ The release firmware job shares this recipe and passes the resulting artifact's 
 Windows download/embedding job. It still builds one image and installs the current C3 toolchain
 target. A multi-image release set and product-aware release orchestration remain M2.8 follow-up work.
 These commands build software; actual flashing/provisioning still requires its explicit recipe.
+
+The native build accepts either `KIVORI_FIRMWARE_PATH` or `KIVORI_FIRMWARE_MANIFEST`, never both.
+The manifest variable is an absolute JSON-file path; its contents are a nonempty array of absolute
+image paths. Images are resolved by their embedded catalog identities, not filenames or list order.
+An explicit manifest with more than one image currently fails the shipping runtime gate. This is an
+intentional intermediate M2.8 limit: the generator and exact lookup support multiple images, while
+existing desktop workflows still require exactly one. Runtime selection and all-image packaging
+must land before multi-image installers can be built. An unset pair of variables embeds no firmware.
