@@ -115,6 +115,16 @@ profile guidance is generic and the middle-button pin hint requires physical/con
 support. Session switches never rewrite configuration. Launch-at-login consent still applies only
 on Finish. No protocol, catalog schema, per-product profile store or hardware-test claim is added.
 
+**As built (M2.8 provisioning QA policy).** The explicitly bundled image selects the catalog QA
+product/board, required capabilities, discovery hints and input groups. Identity arguments assert
+that target even without a burn. Required groups come from catalog minima, not negotiated omissions;
+unsupported required inputs fail instead of timing out or disappearing. Newly flashed firmware
+must report the matching Build/Chip identity and image version. Baseline state/health/heartbeat
+checks remain unconditional. Identity burning is restricted to the implemented `c3-supermini`
+ESP32-C3 backend; that board binding is an explicit hardware-backend exception. Previewing identity
+still flashes/checks firmware and does not burn eFuses. Existing Pip build recipes and single-image
+packaging remain unchanged until separate catalog-driven build/bundle work supplies their metadata.
+
 ## Consequences
 
 This is a target contract, not an as-built claim. Implementation and checks are tracked in
