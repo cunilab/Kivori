@@ -10,6 +10,7 @@ export function connectionFixture(
     desired: 'idle',
     reported: 'idle',
     device: {
+      presentation: { displayName: 'Kivori Pip', model: 'KV-P1' },
       firmwareVersion: '0.1.0',
       protocolVersion: { major: 0, minor: 1 },
       deviceIdHashShort: 'deadbeef',

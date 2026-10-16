@@ -302,6 +302,24 @@ pub fn identity_dto(identity: &DeviceIdentity) -> DeviceIdentityDto {
     }
 }
 
+/// Customer presentation resolved from the compiled product catalog, never device-provided text.
+/// Artwork delivery is a separate step; no image bytes or filesystem paths cross this DTO.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProductPresentationDto {
+    pub display_name: String,
+    pub model: String,
+}
+
+/// Projects customer metadata independently of a product's currently negotiated capabilities.
+#[must_use]
+pub fn product_presentation_dto(product: &crate::catalog::Product) -> ProductPresentationDto {
+    ProductPresentationDto {
+        display_name: product.display_name.clone(),
+        model: product.model.clone(),
+    }
+}
+
 /// Safe connected-device summary (never the raw identity).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -314,6 +332,8 @@ pub struct DeviceInfoDto {
     pub device_id_hash_short: String,
     /// Which product and board this is; `null` while a device that reports one has not yet.
     pub identity: Option<DeviceIdentityDto>,
+    /// Current known product/board only; absent while pending, unknown or disconnected.
+    pub presentation: Option<ProductPresentationDto>,
 }
 
 impl ConnectionStatusDto {
@@ -323,6 +343,14 @@ impl ConnectionStatusDto {
     pub fn with_identity(mut self, identity: Option<DeviceIdentity>) -> Self {
         if let Some(device) = self.device.as_mut() {
             device.identity = identity.as_ref().map(identity_dto);
+            device.presentation = if self.connection == connection_token(ConnectionState::Connected)
+            {
+                identity
+                    .and_then(|i| i.resolve())
+                    .map(|(product, _)| product_presentation_dto(product))
+            } else {
+                None
+            };
         }
         self
     }
@@ -640,6 +668,7 @@ pub fn connection_status(
         protocol_version: d.protocol_version.into(),
         device_id_hash_short: d.device_id_hash_short.clone(),
         identity: None,
+        presentation: None,
     });
     ConnectionStatusDto {
         connection: connection_token(manager.state()).to_string(),

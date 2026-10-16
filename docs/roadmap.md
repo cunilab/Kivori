@@ -280,6 +280,9 @@ the beta acceptance platform. Finish and review the docs before implementing the
   and fixture products stay outside shipping roots. The existing single-image build check resolves its product/board by image identity rather
   than catalog order. Product art, provisioning/tooling defaults and multi-image packaging/release
   selection remain open; generated catalog discovery alone does not complete this item.
+  Customer presentation now exposes catalog name/model for the current known product/board, with
+  neutral figures on Home, Welcome and Tour. Fixed hardware-body artwork is removed. Actual bundled
+  art delivery remains open; non-empty image declarations are refused until that step exists.
 - [ ] **Capability-driven UI:** document the capability-to-surface mapping; backend effective support
   combines current-session negotiation, resolved identity and host support, not catalog minimums.
   UI and command handling deny ordinary product actions while identity is pending/unknown. Cover
@@ -292,7 +295,9 @@ the beta acceptance platform. Finish and review the docs before implementing the
   Saved display/binding configuration stays editable offline. The main-window
   [surface mapping](./desktop-capabilities.md) now covers live actions, neutral session states,
   saved-only control annotations, offline Studio preview, focus recovery and control-specific input
-  guards. Catalog-driven art/onboarding and remaining M2.8 integration still need their own steps.
+  guards. Catalog-driven art and remaining M2.8 integration still need their own steps. Setup's
+  capability-aware Tour steps, connection gating and customization assumptions remain open; neutral
+  product presentation alone does not implement those behaviors.
 - [x] **Hardware tiles:** reorganize the existing formatted metrics and usage bars into readable
   flash, RAM and run-loop/frame tiles. Label app image versus app partition, static RAM, stack
   headroom and run-loop busy time accurately; do not imply heap usage or whole-chip CPU load.

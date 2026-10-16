@@ -64,6 +64,7 @@ describe('DevicePage', () => {
           desired: 'busy',
           reported: 'happy',
           device: {
+            presentation: null,
             firmwareVersion: '0.1.2',
             protocolVersion: { major: 0, minor: 1 },
             deviceIdHashShort: 'deadbeef',
@@ -85,6 +86,7 @@ describe('DevicePage', () => {
         status({
           connection: 'connected',
           device: {
+            presentation: null,
             firmwareVersion: '0.1.2',
             protocolVersion: { major: 0, minor: 1 },
             deviceIdHashShort: 'deadbeef',
@@ -111,6 +113,7 @@ describe('DevicePage', () => {
         status({
           connection: 'connected',
           device: {
+            presentation: null,
             firmwareVersion: '0.1.2',
             protocolVersion: { major: 0, minor: 1 },
             deviceIdHashShort: 'deadbeef',

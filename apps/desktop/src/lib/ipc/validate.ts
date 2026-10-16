@@ -48,6 +48,7 @@ import type {
   ActionCatalogEntryDto,
   ConnectionStatusDto,
   DeviceIdentityDto,
+  ProductPresentationDto,
   ActionSpec,
   ActivityEventDto,
   ButtonDto,
@@ -170,10 +171,24 @@ export function parseConnectionStatus(raw: unknown): ConnectionStatusDto {
   return {
     ...status,
     device: status.device
-      ? { ...status.device, identity: parseIdentity(record('device', status.device).identity) }
+      ? {
+          ...status.device,
+          identity: parseIdentity(record('device', status.device).identity),
+          presentation: parsePresentation(record('device', status.device).presentation),
+        }
       : status.device,
     capabilities: capabilities.map((name) => oneOf('capability', CAPABILITY_NAMES, name)),
     host: oneOf('host presence', HOST_PRESENCES, r.host),
+  };
+}
+
+/** Strictly validate catalog metadata when present; it never authorizes capabilities or identity. */
+function parsePresentation(raw: unknown): ProductPresentationDto | null {
+  if (raw === null || raw === undefined) return null;
+  const r = record('product presentation', raw);
+  return {
+    displayName: text('product display name', r.displayName, 96),
+    model: text('product model', r.model, 96),
   };
 }
 

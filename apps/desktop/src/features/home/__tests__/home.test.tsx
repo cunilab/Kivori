@@ -87,7 +87,7 @@ describe('HomePage', () => {
     pending.device!.identity = null;
     const page = render(view(desk(), pending));
     page.rerender(view(desk(), connectionFixture()));
-    expect(screen.getByTestId('buddy-mascot')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Kivori Pip · KV-P1' })).toBeInTheDocument();
     page.rerender(view(desk(), connection({ connection: 'disconnected', device: null })));
     expect(screen.getByText('Plug in your Kivori')).toBeInTheDocument();
   });
@@ -251,15 +251,14 @@ describe('HomePage', () => {
     ).toBeInTheDocument();
   });
 
-  it('draws the real keycap mascot on the Buddy screen, not the old blob face', () => {
-    const { container } = render(view(desk({ mode: 'buddy' })));
-    expect(screen.getByTestId('buddy-mascot')).toHaveAttribute(
-      'src',
-      expect.stringContaining('mascot.svg'),
-    );
-    // The old blob blinked its CSS eyes; the mascot is one image and nothing blinks.
-    expect(container.querySelector('.motion-safe\\:animate-blink')).toBeNull();
-    expect(screen.getByRole('img').querySelectorAll('img')).toHaveLength(1);
+  it('shows catalog name/model and a neutral figure when the product has no artwork', () => {
+    render(view(desk({ mode: 'buddy' })));
+    const art = screen.getByRole('img', { name: 'Kivori Pip · KV-P1' });
+    expect(within(art).getByText('Kivori Pip')).toBeInTheDocument();
+    expect(within(art).getByText('KV-P1')).toBeInTheDocument();
+    expect(within(art).getByTestId('product-art-neutral')).toBeInTheDocument();
+    expect(art.querySelector('img')).toBeNull();
+    expect(screen.queryByTestId('buddy-mascot')).not.toBeInTheDocument();
   });
 
   it('guides the user to plug in Kivori when disconnected', () => {

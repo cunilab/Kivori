@@ -11,6 +11,7 @@ fn status(connection: &str, host: &'static str, firmware: Option<&str>) -> Conne
         connection: connection.to_string(),
         host,
         device: firmware.map(|version| DeviceInfoDto {
+            presentation: None,
             firmware_version: version.to_string(),
             protocol_version: ProtocolVersionDto { major: 1, minor: 5 },
             device_id_hash_short: "deadbeef".to_string(),
