@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from '@kivori/ui/components/alert';
 import { Button } from '@kivori/ui/components/button';
 import { RecoveryDialog } from '@/features/device/RecoveryDialog';
 import { uiConnection } from '@/hooks/use-kivori';
+import { sessionState } from '@/lib/device-support';
 import { restoreFirmware } from '@/lib/ipc';
 import type { ConnectionStatusDto } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
@@ -26,7 +27,7 @@ export function needsRecovery(connection: ConnectionStatusDto | null): boolean {
 }
 
 /**
- * Follows the real connection status: the step offers Continue only once Kivori is connected. An
+ * Continue requires a current usable identity, not just a transport connection. An
  * incompatible or stuck device leads to the same BOOT-button recovery the Device page has.
  */
 export function PlugIn({
@@ -40,6 +41,24 @@ export function PlugIn({
   const [recovering, setRecovering] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const recovery = needsRecovery(connection);
+  const session = sessionState(connection);
+  const warning = ui === 'incompatible' || session === 'unknown' || session === 'attention';
+  const message =
+    session === 'ready'
+      ? t.connected
+      : session === 'pending'
+        ? t.pending
+        : session === 'unknown'
+          ? t.unknown
+          : session === 'attention'
+            ? t.attention
+            : ui === 'incompatible'
+              ? t.incompatible
+              : restoring
+                ? t.restoring
+                : recovery
+                  ? t.stuck
+                  : t.waiting;
 
   const restore = (): void => {
     setRecovering(false);
@@ -58,28 +77,20 @@ export function PlugIn({
         data-state={ui}
         className="flex items-center gap-3 rounded-lg bg-muted px-3 py-2.5 text-sm font-medium"
       >
-        {ui === 'connected' ? (
-          <>
-            <CircleCheck className="size-4 text-success" aria-hidden="true" />
-            {t.connected}
-          </>
-        ) : ui === 'incompatible' ? (
-          <>
-            <TriangleAlert className="size-4 text-destructive" aria-hidden="true" />
-            {t.incompatible}
-          </>
+        {session === 'ready' ? (
+          <CircleCheck className="size-4 text-success" aria-hidden="true" />
+        ) : warning ? (
+          <TriangleAlert className="size-4 text-destructive" aria-hidden="true" />
         ) : (
-          <>
-            <LoaderCircle
-              className="size-4 text-muted-foreground motion-safe:animate-spin"
-              aria-hidden="true"
-            />
-            {restoring ? t.restoring : recovery ? t.stuck : t.waiting}
-          </>
+          <LoaderCircle
+            className="size-4 text-muted-foreground motion-safe:animate-spin"
+            aria-hidden="true"
+          />
         )}
+        {message}
       </div>
 
-      {updateAvailable ? (
+      {updateAvailable && session === 'ready' ? (
         <p className="text-sm" role="status" data-testid="onboarding-update-hint">
           {t.updateHint}
         </p>

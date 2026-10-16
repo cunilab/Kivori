@@ -65,7 +65,7 @@ describe('catalog product presentation', () => {
     expect(screen.getByRole('img', { name: 'Kivori device' })).toBeInTheDocument();
     expect(page.container.querySelector('[data-highlight]')).toBeNull();
     expect(screen.queryByTestId('buddy-mascot')).not.toBeInTheDocument();
-    page.rerender(<Tour connection={connectionFixture()} done={0} connected />);
+    page.rerender(<Tour connection={connectionFixture()} />);
     expect(screen.getByRole('img', { name: 'Kivori Pip · KV-P1' })).toBeInTheDocument();
     expect(page.container.querySelector('[data-highlight]')).toBeNull();
     expect(screen.queryByTestId('buddy-mascot')).not.toBeInTheDocument();

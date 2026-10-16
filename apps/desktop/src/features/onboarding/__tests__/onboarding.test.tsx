@@ -8,7 +8,6 @@ import {
   uiConnection,
   useConfig,
   useConnectionStatus,
-  useDeskStatus,
   useUpdateAvailable,
 } from '@/hooks/use-kivori';
 import {
@@ -25,14 +24,12 @@ import { needsRecovery } from '../steps/PlugIn';
 /** Drives the real hooks against the browser mock; `?mock=` picks the scenario. */
 function Harness({ onComplete }: { onComplete: () => Promise<void> }): ReactElement {
   const connection = useConnectionStatus();
-  const desk = useDeskStatus();
   const config = useConfig();
   const updateAvailable = useUpdateAvailable(connection);
   return (
     <TooltipProvider>
       <Onboarding
         connection={connection}
-        desk={desk}
         config={config}
         updateAvailable={updateAvailable}
         onComplete={onComplete}
@@ -115,7 +112,7 @@ describe('onboarding steps follow real status', () => {
     expect(needsRecovery({ ...base, connection: 'connected', retryCount: 9 })).toBe(false);
   });
 
-  it('ticks the tour off as the knob and buttons are really used', async () => {
+  it('guides supported controls without claiming host changes verify device input', async () => {
     scenario('connected');
     const user = userEvent.setup();
     render(<Harness onComplete={() => Promise.resolve()} />);
@@ -124,31 +121,24 @@ describe('onboarding steps follow real status', () => {
     await next(user);
     await heading('Try your Kivori');
     const steps = screen.getByRole('list', { name: 'Try your Kivori' });
-    const done = (): string[] =>
-      Array.from(steps.querySelectorAll('li[data-done="true"]')).map((li) => li.textContent ?? '');
-    expect(done()).toEqual([]);
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
-
-    act(() => mockSimulateInput('knob'));
-    await waitFor(() => expect(done()).toHaveLength(1));
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
-    act(() => mockSimulateInput('press'));
-    await waitFor(() => expect(done()).toHaveLength(2));
-    act(() => mockSimulateInput('press'));
-    await waitFor(() => expect(done()).toHaveLength(3));
+    expect(steps.querySelectorAll('li')).toHaveLength(3);
     expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
-    expect(screen.queryByRole('button', { name: 'Skip the tour' })).not.toBeInTheDocument();
+    act(() => mockSimulateInput('knob'));
+    act(() => mockSimulateInput('press'));
+    expect(steps.querySelector('[data-done]')).toBeNull();
+    expect(screen.getByText(/Continue whenever you are ready/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
   });
 
-  it('lets the tour be skipped', async () => {
+  it('keeps the guide non-blocking without a device', async () => {
     scenario('disconnected');
     const user = userEvent.setup();
     render(<Harness onComplete={() => Promise.resolve()} />);
     await next(user, 'Get started');
     await next(user, 'Skip this step');
     await heading('Try your Kivori');
-    expect(screen.getByText('Connect your Kivori to try these.')).toBeInTheDocument();
-    await next(user, 'Skip the tour');
+    expect(screen.getByText(/No device controls are available/)).toBeInTheDocument();
+    await next(user);
     await heading('Make it yours');
   });
 });
@@ -206,7 +196,7 @@ describe('finishing', () => {
     await next(user, 'Get started');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled());
     await next(user);
-    await next(user, 'Skip the tour');
+    await next(user);
     await heading('Make it yours');
     const launch = await screen.findByRole('switch', { name: 'Start with Windows' });
     expect(launch).toBeChecked();
@@ -227,7 +217,7 @@ describe('finishing', () => {
     render(<Harness onComplete={onComplete} />);
     await next(user, 'Get started');
     await next(user, 'Skip this step');
-    await next(user, 'Skip the tour');
+    await next(user);
     await user.click(await screen.findByRole('switch', { name: 'Start with Windows' }));
     await next(user);
     await next(user, 'Finish');
@@ -241,7 +231,7 @@ describe('finishing', () => {
     render(<Harness onComplete={() => Promise.reject(new Error('disk'))} />);
     await next(user, 'Get started');
     await next(user, 'Skip this step');
-    await next(user, 'Skip the tour');
+    await next(user);
     await next(user);
     await next(user, 'Finish');
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not finish setup');
@@ -254,7 +244,7 @@ describe('finishing', () => {
     render(<Harness onComplete={() => Promise.resolve()} />);
     await next(user, 'Get started');
     await next(user, 'Skip this step');
-    await next(user, 'Skip the tour');
+    await next(user);
     await heading('Make it yours');
     const clock = await screen.findByRole('button', { name: 'Clock' });
     await waitFor(() => expect(clock).toBeEnabled());

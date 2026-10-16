@@ -104,6 +104,17 @@ Firmware remains bundled with the app; there are no downloaded per-device softwa
 Configuration belongs to the active OS user and machine, not on-device hardware profiles. The
 existing isolated signed app updater remains the network exception, not a product plugin system.
 
+**As built (M2.8 capability-aware setup).** Plug-in readiness uses the current known usable-session
+rule, including legacy baseline support, with separate pending/unknown/identity-only guidance and
+Skip. The Tour is a non-blocking guide filtered by the same effective control policy as Controls.
+It no longer infers physical input from host volume or generic `lastAction`, which have no
+control/source/session attribution. No completion state survives a product or session change
+because no verification state is stored. True attributed input verification needs separate
+backend/IPC work. Saved view/Buddy configuration remains editable offline with saved-only notes;
+profile guidance is generic and the middle-button pin hint requires physical/context-button
+support. Session switches never rewrite configuration. Launch-at-login consent still applies only
+on Finish. No protocol, catalog schema, per-product profile store or hardware-test claim is added.
+
 ## Consequences
 
 This is a target contract, not an as-built claim. Implementation and checks are tracked in

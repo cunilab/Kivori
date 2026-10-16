@@ -297,9 +297,11 @@ the beta acceptance platform. Finish and review the docs before implementing the
   Saved display/binding configuration stays editable offline. The main-window
   [surface mapping](./desktop-capabilities.md) now covers live actions, neutral session states,
   saved-only control annotations, offline Studio preview, focus recovery and control-specific input
-  guards. Remaining M2.8 integration still needs its own steps. Setup's
-  capability-aware Tour steps, connection gating and customization assumptions remain open; neutral
-  product presentation alone does not implement those behaviors.
+  guards. Setup now gates Plug-in readiness on known usable sessions, shows non-blocking guidance
+  only for supported controls, and annotates offline/absent-feature settings without changing saved
+  configuration on product switches. The old host-status completion heuristic is removed because it
+  cannot verify device input. Cross-surface product acceptance remains open; this step does not
+  close M2.8.
 - [x] **Hardware tiles:** reorganize the existing formatted metrics and usage bars into readable
   flash, RAM and run-loop/frame tiles. Label app image versus app partition, static RAM, stack
   headroom and run-loop busy time accurately; do not imply heap usage or whole-chip CPU load.
@@ -359,7 +361,7 @@ problems and uses it without developer help. Start charging for beta units here.
 - [ ] macOS build (if shipped; `scripts/bundle-macos.sh` bundles the adapter, entitlements and Info.plist and signs only when `APPLE_SIGNING_IDENTITY` is set; software done in M3 S5, signing and the hardware rows are open): bundle `target/<profile>/mediaremote-adapter/` as a resource, Developer ID-sign its two Mach-O helpers with hardened runtime, add `NSAppleEventsUsageDescription` and the `com.apple.security.automation.apple-events` entitlement, list the adapter (BSD-3) in third-party notices (ADR-0009)
 - [ ] Launch at login and tray presence; the window stays optional. Software done in M3 S4 (autostart plugin, hidden start, tray status and switch, Device page switch); stays open until the S4 hardware rows in [validation.md](./validation.md) pass
 - [ ] Survive sleep/wake and lock/unlock with intentional screens, never a frozen frame (gate 9). Software done in M3 S1+S2 (host takeovers: Sleeping, Updating and a 4 s host-silence Offline; sleep, lock and console-switch handling in Desktop); stays open until the S2 hardware rows (Phase 7) in [validation.md](./validation.md) pass
-- [ ] First-run onboarding. Software done in M3 S6 (stepper for plug in, macOS Accessibility, a live tour, default view, buddy intensity and launch at login, with "Run setup again" on the Device page); stays open until the S6 hardware rows in [validation.md](./validation.md) pass
+- [ ] First-run onboarding. Software done in M3 S6 (stepper for plug in, macOS Accessibility, a capability-filtered non-verifying guide (replacing the earlier live-tour heuristic), default view, buddy intensity and launch at login, with "Run setup again" on the Device page); stays open until the S6 hardware rows in [validation.md](./validation.md) pass
 - [ ] User-facing firmware update and recovery flow (flash the bundled build; a failed flash says so). Software done in M3 S3 (flash, classified failures, BOOT-button restore, incompatible recovery); the pinned `espflash` 4.6.0 sidecar now ships in the installer (S5); stays open until the S3 hardware rows (Phase 8) in [validation.md](./validation.md) pass
 - [x] Device and software version shown to the user (Device page and Home show the device firmware, app version and the firmware bundled in the app, with an "update available" hint; the bundled version is read from the firmware image, so it appears whenever a build embeds one)
 - [ ] Regulatory check before selling (FCC Part 15 / CE for the finished unit, not just the module)

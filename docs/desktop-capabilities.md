@@ -52,8 +52,23 @@ compiled keys as PNG data URLs: no runtime filesystem access/downloads, and no i
 updates or diagnostic copies. Lookups are cached in the frontend; product changes, disconnects and
 image errors cannot retain the wrong image. Pip currently declares no artwork and stays neutral.
 
-The existing Tour control checks and customization assumptions remain separate capability/onboarding
-work; presentation does not claim that setup supports every product's controls.
+Setup uses the same effective control rules as Controls. Plug-in Continue requires a known usable
+current session, including compatible legacy baseline sessions; a transport connection alone is
+insufficient. Pending identity waits, unknown identity suggests updating the app, and identity-only
+firmware points to Device after setup. Skip remains available and BOOT recovery is unchanged.
+
+The Tour is a non-blocking guide, not a hardware test. It lists rotary input, push-switch and context
+buttons only when their effective capabilities are present. It has no completion ticks or retained
+progress: host volume changes and generic action results cannot identify physical controls or the
+session that produced them. Continue remains available, including offline and when no controls are
+available. The step list stays stable through capability/session changes (only the existing host
+permission filter applies). Attributed input verification would require separate backend/IPC work.
+
+Customization keeps saved view/Buddy editors available in every session state, with `Saved only`
+notes whenever the current session lacks their features, including offline. Profile guidance is
+generic; middle-button pin guidance requires physical/context-button support. Product switches
+change guidance only and never write configuration. Launch-at-login consent is still applied only
+on Finish; Skip setup leaves it unchanged.
 
 ## Surface mapping
 
@@ -61,6 +76,9 @@ work; presentation does not claim that setup supports every product's controls.
 | --- | --- |
 | Home computer monitoring, microphone, media and last action | Host readings and host action outcomes; independent of device capabilities. Unknown readings retain their existing unavailable explanations. |
 | Home product figure and setup figures | Catalog name/model only for a current connected identity with both product and board known. Only that product’s bundled artwork, otherwise a neutral figure; never infer hardware art from capabilities. |
+| Setup Plug-in Continue | Known current usable session, including legacy baseline; pending/unknown/identity-only cannot pass as ready. Skip stays available. |
+| Setup Tour | Non-blocking guidance using the same rotary/push-switch/context-button rules as Controls; no hardware verification or progress inferred from host status. |
+| Setup saved view/Buddy | Always editable; `Saved only` without the applicable current feature, including offline. Pin hint only with physical/context-button support. |
 | Home Showing chip, Change view | `deskStatusV1`. |
 | Home Buddy report | A current, resolved, usable session with an actual reported state. This is baseline protocol data, not proof of transient reaction support. |
 | Developer Social reactions | Developer mode and `mascotInteraction`. Direct reaction controls are absent from Home and Display. |
@@ -105,8 +123,8 @@ identity pending/unknown/recovery, offline preview, binding retention and focus 
 sessions. Native session tests cover control-specific input refusal and Mirror refusing to stage
 state while pending or disconnected. Fake devices are injected in tests, never registered for shipping.
 
-Catalog-provided product art/control metadata, catalog-driven onboarding
-and diagnostic snapshot freshness are separate M2.8 items. This mapping does not claim those are
-complete or that catalog metadata can implement a new interaction model. See
+Catalog artwork delivery and capability-aware setup are implemented as described above. Product
+acceptance, provisioning/tool defaults, multi-image packaging and the identifier guard remain
+separate M2.8 work. Catalog metadata does not implement a new interaction model. See
 [ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md) and the
 [M2.8 checklist](./roadmap.md#m28-desktop-organization-and-product-contract).
