@@ -3,13 +3,8 @@ import type { ReactElement } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@kivori/ui/components/button';
 import { getStartupSettings, setLaunchAtLogin } from '@/lib/ipc';
-import type {
-  ConfigDto,
-  ConnectionStatusDto,
-  DeskStatusDto,
-  StartupSettingsDto,
-} from '@/lib/ipc/types';
-import { uiConnection } from '@/hooks/use-kivori';
+import type { ConfigDto, ConnectionStatusDto, StartupSettingsDto } from '@/lib/ipc/types';
+import { sessionState } from '@/lib/device-support';
 import { brandIconUrl } from '@/lib/brand';
 import { format, strings } from '@/lib/i18n/strings';
 import { cn } from '@kivori/ui/lib/utils';
@@ -19,7 +14,7 @@ import { Permissions } from './steps/Permissions';
 import { PlugIn } from './steps/PlugIn';
 import { Tour } from './steps/Tour';
 import { Welcome } from './steps/Welcome';
-import { TOUR_STEPS, useAccessibility, useTour } from './use-onboarding';
+import { useAccessibility } from './use-onboarding';
 
 const t = strings.onboarding;
 
@@ -35,19 +30,17 @@ const ALL_STEPS: readonly StepId[] = [
 
 /**
  * First-run setup: a full-window stepper shown instead of the normal layout until it is finished
- * or skipped. A step moves on only from real status (connected, permission granted, a control seen
- * on the device) or when the person skips it. Launch at login is the one setting held back until
+ * or skipped. Plug-in and permission readiness follow current status; the Tour is guidance,
+ * not hardware verification. Launch at login is the one setting held back until
  * Finish.
  */
 export function Onboarding({
   connection,
-  desk,
   config,
   updateAvailable,
   onComplete,
 }: {
   connection: ConnectionStatusDto | null;
-  desk: DeskStatusDto | null;
   config: ConfigDto | null;
   updateAvailable: boolean;
   /** Marks setup finished (Finish and Skip setup both call it). Rejects when it cannot be saved. */
@@ -61,8 +54,7 @@ export function Onboarding({
   const [launch, setLaunch] = useState(true);
 
   const accessibility = useAccessibility(step === 'permissions');
-  const tour = useTour(desk, step === 'tour');
-  const connected = uiConnection(connection) === 'connected';
+  const deviceReady = sessionState(connection) === 'ready';
 
   useEffect(() => {
     let active = true;
@@ -115,9 +107,9 @@ export function Onboarding({
 
   const gate: Record<StepId, { ready: boolean; skippable: boolean }> = {
     welcome: { ready: true, skippable: false },
-    plug: { ready: connected, skippable: true },
+    plug: { ready: deviceReady, skippable: true },
     permissions: { ready: accessibility.state === 'granted', skippable: true },
-    tour: { ready: tour.done >= TOUR_STEPS.length, skippable: true },
+    tour: { ready: true, skippable: false },
     customize: { ready: true, skippable: false },
     done: { ready: true, skippable: false },
   };
@@ -159,9 +151,10 @@ export function Onboarding({
         ) : step === 'permissions' ? (
           <Permissions state={accessibility.state} onChange={accessibility.refresh} />
         ) : step === 'tour' ? (
-          <Tour connection={connection} done={tour.done} connected={connected} />
+          <Tour connection={connection} />
         ) : step === 'customize' ? (
           <Customize
+            connection={connection}
             config={config}
             startup={startup}
             launchAtLogin={launch}
@@ -180,7 +173,7 @@ export function Onboarding({
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {skippable && !ready ? (
               <Button variant="outline" disabled={busy} onClick={() => go(index + 1)}>
-                {step === 'tour' ? t.tour.skipTour : t.skipStep}
+                {t.skipStep}
               </Button>
             ) : null}
             {last ? (

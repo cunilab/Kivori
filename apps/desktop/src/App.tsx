@@ -239,7 +239,6 @@ export function App(): ReactElement {
       <TooltipProvider>
         <Onboarding
           connection={connection}
-          desk={desk}
           config={config}
           updateAvailable={updateAvailable}
           onComplete={onboarding.complete}

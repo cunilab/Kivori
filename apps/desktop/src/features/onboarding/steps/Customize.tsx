@@ -6,8 +6,15 @@ import { Switch } from '@kivori/ui/components/switch';
 import { ToggleGroup, ToggleGroupItem } from '@kivori/ui/components/toggle-group';
 import { setBuddySettings, setDisplaySettings } from '@/lib/ipc';
 import { DISPLAY_MODES, INTENSITIES } from '@/lib/ipc/types';
-import type { ConfigDto, DisplayMode, Intensity, StartupSettingsDto } from '@/lib/ipc/types';
+import type {
+  ConfigDto,
+  ConnectionStatusDto,
+  DisplayMode,
+  Intensity,
+  StartupSettingsDto,
+} from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
+import { controlSupported, hasCapability } from '@/lib/device-support';
 import { StepFrame } from './frame';
 
 const t = strings.onboarding.customize;
@@ -18,11 +25,13 @@ const t = strings.onboarding.customize;
  * at login is only a choice here: it is applied when the person finishes setup.
  */
 export function Customize({
+  connection,
   config,
   startup,
   launchAtLogin,
   onLaunchAtLogin,
 }: {
+  connection: ConnectionStatusDto | null;
   config: ConfigDto | null;
   startup: StartupSettingsDto | null;
   launchAtLogin: boolean;
@@ -67,9 +76,13 @@ export function Customize({
 
   return (
     <StepFrame title={t.title} body={t.body}>
+      <p className="text-sm text-muted-foreground">{strings.savedConfiguration}</p>
       <div className="space-y-1 rounded-lg bg-muted/60 px-4 py-3">
         <h2 className="text-sm font-semibold">{t.autoHeading}</h2>
         <p className="text-sm text-muted-foreground">{t.autoBody}</p>
+        {controlSupported(connection, 'button2Hold') ? (
+          <p className="text-sm text-muted-foreground">{t.pinBody}</p>
+        ) : null}
       </div>
 
       <div className="space-y-2">
@@ -78,6 +91,11 @@ export function Customize({
             {t.viewHeading}
           </h2>
           <p className="text-xs text-muted-foreground">{t.viewBody}</p>
+          {!hasCapability(connection, 'deskStatusV1') ? (
+            <p className="text-xs text-muted-foreground" role="note">
+              {strings.savedOnly}
+            </p>
+          ) : null}
         </div>
         <ToggleGroup
           aria-labelledby="onboarding-view"
@@ -104,6 +122,14 @@ export function Customize({
             {t.intensityHeading}
           </h2>
           <p className="text-xs text-muted-foreground">{t.intensityBody}</p>
+          {!(
+            hasCapability(connection, 'idleLifeV1') ||
+            hasCapability(connection, 'mascotInteraction')
+          ) ? (
+            <p className="text-xs text-muted-foreground" role="note">
+              {strings.savedOnly}
+            </p>
+          ) : null}
         </div>
         <ToggleGroup
           aria-labelledby="onboarding-intensity"

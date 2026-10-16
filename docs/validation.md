@@ -280,9 +280,9 @@ CI builds the NSIS installer, installs it silently, checks the app and the `espf
 
 ## Phase 11: First-run onboarding (M3 S6)
 
-Automated: the stepper only advances on real status or Skip, completes once, and skips the permission step on Windows (vitest against the browser mock). These rows need a real machine and a Kivori.
+Automated: Plug-in/permission gates follow current readiness or Skip; the capability-filtered Tour is non-blocking guidance and does not verify hardware. Tests cover session changes, offline saved settings, launch consent, completion/restart and skipping permissions on Windows. These unchecked rows still need a real machine and a Kivori.
 
-- [ ] 11.1 Fresh Windows user (no `config.json`), start Kivori | onboarding appears once; the tour detects the knob turn, the knob press and a side button press
+- [ ] 11.1 Fresh Windows user (no `config.json`), start Kivori | onboarding appears once; Plug-in waits for a known usable session; the Tour shows only supported rotary/push-switch/context-button guidance with no automatic completion ticks. Manually try the controls against their saved bindings; this walkthrough is not a hardware test
 - [ ] 11.2 Finish setup, quit and relaunch | onboarding does not appear again
 - [ ] 11.3 macOS without Accessibility: choose "Allow access" | the macOS prompt appears; after ticking Kivori in System Settings the step turns green without restarting setup
 - [ ] 11.4 Update from a build that already had a `config.json` | onboarding does not appear
