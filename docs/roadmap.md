@@ -275,6 +275,11 @@ the beta acceptance platform. Finish and review the docs before implementing the
   packaging/release selection; remove shared-app hardcoded product defaults and the manually
   maintained embedding list. Missing art uses a neutral frame. New transports, flash methods or
   interaction models need explicit feature work; this is not support for arbitrary future hardware.
+  First implementation: active catalog entries are now discovered, validated and embedded at build
+  time without a maintained source list; registry reservations without metadata remain inactive,
+  and fixture products stay outside shipping roots. The existing single-image build check resolves its product/board by image identity rather
+  than catalog order. Product art, provisioning/tooling defaults and multi-image packaging/release
+  selection remain open; generated catalog discovery alone does not complete this item.
 - [ ] **Capability-driven UI:** document the capability-to-surface mapping; backend effective support
   combines current-session negotiation, resolved identity and host support, not catalog minimums.
   UI and command handling deny ordinary product actions while identity is pending/unknown. Cover
