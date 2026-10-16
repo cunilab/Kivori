@@ -213,8 +213,13 @@ pub struct RestoreOption {
 /// What recovery (no handshake possible) does about which product's firmware to write.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RecoveryDecision {
-    /// Write the bundled image.
-    Proceed,
+    /// A hardware target established independently of bundled image availability.
+    Proceed {
+        /// Product wire number.
+        product: u16,
+        /// Board wire number.
+        board: u16,
+    },
     /// More than one product could be on this port: the user must pick, then ask again.
     Choose(Vec<RestoreOption>),
     /// Recovery cannot establish a supported, matching product/board target.
@@ -224,48 +229,57 @@ pub enum RecoveryDecision {
 /// Why recovery must stop before reserving a port.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RecoveryRefusal {
-    /// No image identity, or one that the catalog does not know.
-    ImageUnavailable,
     /// No catalog candidate for the port, or the chosen product is not one of its candidates.
     NoCandidate,
     /// The selected product has several possible boards; an image cannot prove which one is present.
     BoardAmbiguous,
-    /// A single resolved product/board is not the bundled image's pair.
-    WrongProduct(WrongProduct),
 }
 
-/// Decides recovery for a port with USB ids `usb` (`None` when unknown). Candidates are the
-/// products with a board listing those ids. With exactly one, it is used; with several the user
-/// must pick (`chosen`, a product id). A pick cannot bypass candidate membership. Exactly one
-/// board must remain and match a known image; neither image availability nor order resolves ambiguity.
-/// A reported identity for this port takes precedence over USB hints, including an unknown identity.
+/// Binds recovery evidence to exactly one allowlisted port from this enumeration snapshot.
+/// `identity_pending` means this live session must report an identity before it can be trusted.
+#[must_use]
+pub fn decide_recovery_for_port(
+    catalog: &Catalog,
+    ports: &[&crate::device::discovery::PortCandidate],
+    chosen: Option<&str>,
+    connected_port: Option<&str>,
+    reported: Option<&DeviceIdentity>,
+    identity_pending: bool,
+) -> RecoveryDecision {
+    let [port] = ports else {
+        return RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate);
+    };
+    let Some(usb) = port.vid.zip(port.pid) else {
+        return RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate);
+    };
+    let same_port = connected_port == Some(port.port_name.as_str());
+    if same_port && identity_pending {
+        return RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate);
+    }
+    decide_recovery(catalog, Some(usb), chosen, reported.filter(|_| same_port))
+}
+
+/// Resolves a recovery target before image lookup. USB hints and an explicit product choice must
+/// leave exactly one catalog pair. A live identity for this port overrides USB hints; an unknown
+/// identity is refused. Image availability and ordering never identify hardware.
 #[must_use]
 pub fn decide_recovery(
     catalog: &Catalog,
     usb: Option<UsbId>,
     chosen: Option<&str>,
-    image: Option<&ImageIdentity>,
     reported: Option<&DeviceIdentity>,
 ) -> RecoveryDecision {
-    let Some(image) = image.filter(|image| catalog.by_wire(image.product, image.board).is_some())
-    else {
-        return RecoveryDecision::Refuse(RecoveryRefusal::ImageUnavailable);
-    };
     if let Some(device) = reported {
-        if device.product != image.product || device.board != image.board {
-            return RecoveryDecision::Refuse(RecoveryRefusal::WrongProduct(WrongProduct {
-                device: label(catalog, device.product, device.board),
-                image: label(catalog, image.product, image.board),
-            }));
-        }
-        // Matching the known image also resolves this device's product/board in the catalog.
-        let (product, _) = catalog
-            .by_wire(device.product, device.board)
-            .expect("known image pair");
+        let Some((product, _)) = catalog.by_wire(device.product, device.board) else {
+            return RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate);
+        };
         if chosen.is_some_and(|id| id != product.id) {
             return RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate);
         }
-        return RecoveryDecision::Proceed;
+        return RecoveryDecision::Proceed {
+            product: device.product,
+            board: device.board,
+        };
     }
     let mut candidates: Vec<(&Product, &Board)> = catalog
         .products()
@@ -294,13 +308,10 @@ pub fn decide_recovery(
     let [(product, board)] = candidates.as_slice() else {
         return RecoveryDecision::Refuse(RecoveryRefusal::BoardAmbiguous);
     };
-    if image.product == product.number && image.board == board.number {
-        return RecoveryDecision::Proceed;
+    RecoveryDecision::Proceed {
+        product: product.number,
+        board: board.number,
     }
-    RecoveryDecision::Refuse(RecoveryRefusal::WrongProduct(WrongProduct {
-        device: label(catalog, product.number, board.number),
-        image: label(catalog, image.product, image.board),
-    }))
 }
 
 #[cfg(test)]
@@ -411,27 +422,23 @@ mod tests {
     }
 
     #[test]
-    fn recovery_uses_the_only_product_for_the_port() {
-        let catalog = Catalog::embedded();
-        let usb = Some((0x303A, 0x1001));
+    fn recovery_uses_the_only_catalog_pair_not_a_bundled_image() {
+        let expected = RecoveryDecision::Proceed {
+            product: 1,
+            board: 1,
+        };
         assert_eq!(
-            decide_recovery(catalog, usb, None, Some(&image(1, 1)), None),
-            RecoveryDecision::Proceed
+            decide_recovery(Catalog::embedded(), Some((0x303A, 0x1001)), None, None),
+            expected
         );
         assert_eq!(
             decide_recovery(
-                catalog,
-                usb,
+                Catalog::embedded(),
                 None,
-                Some(&image(1, 1)),
+                None,
                 Some(&DeviceIdentity::legacy())
             ),
-            RecoveryDecision::Proceed
-        );
-        // Not knowing the USB ids still leaves only one product in this catalog.
-        assert_eq!(
-            decide_recovery(catalog, None, None, Some(&image(1, 1)), None),
-            RecoveryDecision::Proceed
+            expected
         );
     }
 
@@ -439,36 +446,15 @@ mod tests {
     fn recovery_asks_when_several_products_could_be_on_the_port() {
         let catalog = two_products();
         let usb = Some((0x303A, 0x1001));
-        let decision = decide_recovery(&catalog, usb, None, Some(&image(1, 1)), None);
-        assert_eq!(
-            decision,
-            RecoveryDecision::Choose(vec![
-                RestoreOption {
-                    id: "pala".into(),
-                    name: "Kivori Pip".into()
-                },
-                RestoreOption {
-                    id: "lamp".into(),
-                    name: "Lamp".into()
-                },
-            ])
+        assert!(
+            matches!(decide_recovery(&catalog, usb, None, None), RecoveryDecision::Choose(options) if options.len() == 2)
         );
-    }
-
-    #[test]
-    fn a_pick_must_be_the_bundled_image_or_it_is_refused_with_both_names() {
-        let catalog = two_products();
-        let usb = Some((0x303A, 0x1001));
         assert_eq!(
-            decide_recovery(&catalog, usb, Some("pala"), Some(&image(1, 1)), None),
-            RecoveryDecision::Proceed
+            decide_recovery(&catalog, usb, Some("lamp"), None),
+            RecoveryDecision::Proceed {
+                product: 2,
+                board: 1
+            }
         );
-        let RecoveryDecision::Refuse(RecoveryRefusal::WrongProduct(refusal)) =
-            decide_recovery(&catalog, usb, Some("lamp"), Some(&image(1, 1)), None)
-        else {
-            panic!("the bundled image is not the lamp's");
-        };
-        assert_eq!(refusal.device, "Lamp on B");
-        assert_eq!(refusal.image, "Kivori Pip on B");
     }
 }

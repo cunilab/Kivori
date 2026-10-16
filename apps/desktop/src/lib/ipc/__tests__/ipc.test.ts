@@ -1007,6 +1007,10 @@ describe('firmware offer', () => {
     expect(() => parseFirmwareOffer({ ...optional, key: null })).toThrow();
     const required = { ...none, kind: 'required', to: '0.2.0', reason: 'protocolTooOld', key: 'k' };
     expect(parseFirmwareOffer(required)).toEqual(required);
+    expect(parseFirmwareOffer({ ...required, to: null }).to).toBeNull();
+    expect(() =>
+      parseFirmwareOffer({ ...required, to: null, reason: 'missingCapabilities' }),
+    ).toThrow();
     expect(() => parseFirmwareOffer({ ...required, reason: 'because' })).toThrow();
     // Fields that mean nothing for a kind are dropped.
     expect(parseFirmwareOffer({ ...optional, kind: 'updateApp' })).toEqual({

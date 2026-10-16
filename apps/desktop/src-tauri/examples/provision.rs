@@ -21,7 +21,7 @@ use kivori_desktop::device::{
     serial::{enumerate, SerialPortLink},
     session::{Session, SessionConfig},
 };
-use kivori_desktop::firmware::{flash_image, single_image, RECONNECT_TIMEOUT};
+use kivori_desktop::firmware::{bundled_images, flash_image, RECONNECT_TIMEOUT};
 use kivori_desktop::firmware_bundle::FirmwareImage;
 use kivori_desktop::firmware_marker::ImageIdentity;
 use kivori_desktop::identity::DeviceIdentity;
@@ -29,9 +29,9 @@ use kivori_desktop::orchestrator::Orchestrator;
 use kivori_desktop::provision::{
     block_file, check_block, check_image_matches_plan, confirmation_matches, csv_row,
     describe_record, espefuse_version_accepted, evaluate, format_utc, guard_before_flash,
-    parse_args, parse_espefuse_version, require_burn_backend, resolve_plan, verify_identity,
-    BlockCheck, IdentityLog, IdentityPlan, InputProgress, Observations, QaPolicy, BANNER,
-    CSV_HEADER, ESPEFUSE_MAJOR, HEARTBEAT_HOLD_SECS, USAGE,
+    parse_args, parse_espefuse_version, require_burn_backend, resolve_plan, select_image,
+    verify_identity, BlockCheck, IdentityLog, IdentityPlan, InputProgress, Observations, QaPolicy,
+    BANNER, CSV_HEADER, ESPEFUSE_MAJOR, HEARTBEAT_HOLD_SECS, USAGE,
 };
 use kivori_model::Capabilities;
 
@@ -44,7 +44,7 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let plan = match parse_args(&args).and_then(|a| {
         let plan = resolve_plan(Catalog::embedded(), &a)?;
-        let image = single_image().ok_or("provisioning requires exactly one bundled image")?;
+        let image = select_image(bundled_images(), plan.as_ref())?;
         let policy = QaPolicy::for_image(Catalog::embedded(), Some(image.identity()))?;
         if let Some(plan) = &plan {
             check_image_matches_plan(Some(policy.image), plan)?;

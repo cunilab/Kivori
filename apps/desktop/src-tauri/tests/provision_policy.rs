@@ -210,3 +210,32 @@ fn identity_selection_asserts_the_image_even_without_burning_and_other_boards_ca
     assert!(require_burn_backend("c3-supermini").is_ok());
     assert!(require_burn_backend("test-board").is_err());
 }
+
+#[test]
+fn provisioning_selects_the_exact_plan_and_never_a_first_image_default() {
+    use kivori_desktop::firmware_bundle::FirmwareBundle;
+    use kivori_desktop::provision::{select_image, IdentityPlan};
+    let bytes = |product, board, version| {
+        let mut elf = vec![0; 52];
+        elf[..6].copy_from_slice(b"\x7fELF\x01\x01");
+        elf[18] = 243;
+        elf.extend_from_slice(format!("KIVORI-FW-VERSION:{version}\0KIVORI-FW-IDENTITY:p={product};b={board};v={version};m=0.1\0").as_bytes());
+        elf
+    };
+    let first = bytes(41, 9, "0.1.0");
+    let second = bytes(42, 10, "0.2.0");
+    let bundle = FirmwareBundle::parse(&[&second, &first]).unwrap();
+    let plan = IdentityPlan {
+        product_id: "fixture".into(),
+        board_id: "test-board".into(),
+        product: 42,
+        board: 10,
+        rev: 1,
+    };
+    assert_eq!(select_image(&bundle, Some(&plan)).unwrap().bytes(), second);
+    assert!(select_image(&bundle, None).is_err());
+    assert!(select_image(&bundle, Some(&IdentityPlan { board: 9, ..plan })).is_err());
+    let one = FirmwareBundle::parse(&[&first]).unwrap();
+    assert_eq!(select_image(&one, None).unwrap().bytes(), first);
+    assert!(select_image(&FirmwareBundle::default(), None).is_err());
+}

@@ -183,17 +183,6 @@ pub fn generate_firmware(
     Ok(GeneratedFirmware { source, manifests })
 }
 
-/// Shipping guard until every native consumer selects its product/board image explicitly.
-pub fn require_single_image_runtime(count: usize) -> Result<(), CatalogError> {
-    // shortcut: remove this gate with per-device flash/status/offer selection in the next M2.8 slice.
-    if count > 1 {
-        return Err(CatalogError(
-            "multi-image runtime selection is not implemented yet; supply at most one image".into(),
-        ));
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -576,9 +565,6 @@ mod tests {
             .status()
             .unwrap()
             .success());
-        assert!(require_single_image_runtime(2).is_err());
-        assert!(require_single_image_runtime(0).is_ok());
-        assert!(require_single_image_runtime(1).is_ok());
         assert!(generate_firmware(&catalog, root.path(), &[a.clone(), a.clone()], &out).is_err());
         fs::write(&b, &first).unwrap();
         assert!(generate_firmware(&catalog, root.path(), &[a, b], &out).is_err());

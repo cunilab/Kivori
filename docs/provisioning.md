@@ -16,7 +16,9 @@ no selection is needed. For an explicit target, set `KIVORI_PRODUCT` and `KIVORI
 `KIVORI_PRODUCT=pala KIVORI_BOARD=c3-supermini just provision`. If the catalog has multiple pairs,
 both variables are required; catalog order never selects a default.
 
-`--product/--board/--rev` remain identity preview/burn assertions; they do **not** select the build.
+`--product/--board/--rev` do **not** select the build. At runtime, they select/assert an exact
+embedded image pair; no arguments require exactly one image, and a missing pair is refused before
+any device I/O. Explicit flags still preview the identity unless `--burn-identity` is supplied.
 They must match the bundled image even without `--burn-identity`. For a separately built image, supply
 its absolute path through `KIVORI_FIRMWARE_PATH` to `cargo run -p kivori-desktop --example provision`.
 The desktop validates the image against its catalog entry. Multi-image packaging remains separate

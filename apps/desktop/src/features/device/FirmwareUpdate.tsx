@@ -82,7 +82,11 @@ export function FirmwareUpdate({
     status?.phase === 'preparing' ||
     status?.phase === 'flashing' ||
     status?.phase === 'reconnecting';
-  const canFlash = (connected || incompatible) && status?.available && !busy && !pollError;
+  const canFlash =
+    (incompatible || (connected && status?.bundledVersion != null)) &&
+    status?.available &&
+    !busy &&
+    !pollError;
   const canRestore = status?.available && !busy && !pollError;
   const showRestore = incompatible || needsRestore(status);
   const error = requestError ?? pollError;

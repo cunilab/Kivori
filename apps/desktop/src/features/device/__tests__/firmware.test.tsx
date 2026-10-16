@@ -69,6 +69,16 @@ describe('firmware update', () => {
     expect(screen.getByRole('button', { name: 'Flash firmware' })).toBeEnabled();
   });
 
+  it('keeps recovery enabled without enabling a connected flash for an unknown target', async () => {
+    bridge.get.mockResolvedValue({ ...ready, bundledVersion: null, imageSize: 0 });
+    const { rerender } = render(<FirmwareUpdate connected />);
+    await screen.findByText(ready.message);
+    expect(screen.getByRole('button', { name: 'Flash firmware' })).toBeDisabled();
+    rerender(<FirmwareUpdate connected={false} incompatible />);
+    expect(screen.getByRole('button', { name: 'Flash firmware' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Restore with the BOOT button' })).toBeEnabled();
+  });
+
   it('explains an unavailable firmware package without enabling the action', async () => {
     bridge.get.mockResolvedValue({
       ...ready,

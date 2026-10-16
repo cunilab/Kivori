@@ -277,7 +277,7 @@ the beta acceptance platform. Finish and review the docs before implementing the
   interaction models need explicit feature work; this is not support for arbitrary future hardware.
   First implementation: active catalog entries are now discovered, validated and embedded at build
   time without a maintained source list; registry reservations without metadata remain inactive,
-  and fixture products stay outside shipping roots. The existing single-image build check resolves its product/board by image identity rather
+  and fixture products stay outside shipping roots. Image build checks resolve each product/board by image identity rather
   than catalog order. Provisioning/tooling defaults and multi-image packaging/release
   selection remain open; generated catalog discovery alone does not complete this item.
   Customer presentation now exposes catalog name/model for the current known product/board, with
@@ -292,8 +292,9 @@ the beta acceptance platform. Finish and review the docs before implementing the
   Recovery now refuses missing images, invalid/stale picks, absent candidates and ambiguous boards
   before port reservation; image availability cannot decide hardware identity. Multi-image
   packaging/release keeps this item open. The image-set foundation now validates/emits deterministic
-  multi-image indexes with exact lookup; shipping builds remain gated to at most one image until
-  per-device runtime selection replaces the explicit single-image bridge.
+  multi-image indexes with exact lookup. Native flash, status, offers, recovery and provisioning now
+  select exact per-device images; the runtime build gate is removed. Whole-catalog packaging/release
+  metadata and pair-level recovery choices remain open.
 - [ ] **Capability-driven UI:** document the capability-to-surface mapping; backend effective support
   combines current-session negotiation, resolved identity and host support, not catalog minimums.
   UI and command handling deny ordinary product actions while identity is pending/unknown. Cover

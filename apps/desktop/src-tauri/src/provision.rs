@@ -535,6 +535,24 @@ impl IdentityPlan {
     }
 }
 
+/// Selects a provisioning image before I/O. Multiple images require an explicit identity plan.
+///
+/// # Errors
+/// No exact image for the plan, or no unambiguous image when no plan was supplied.
+pub fn select_image<'a, 'bytes>(
+    bundle: &'a crate::firmware_bundle::FirmwareBundle<'bytes>,
+    plan: Option<&IdentityPlan>,
+) -> Result<&'a crate::firmware_bundle::FirmwareImage<'bytes>, String> {
+    match plan {
+        Some(plan) => bundle
+            .get(plan.product, plan.board)
+            .ok_or_else(|| "no bundled firmware matches the provisioning product/board.".into()),
+        None => bundle.single().ok_or_else(|| {
+            "provisioning requires one image or explicit --product/--board/--rev.".into()
+        }),
+    }
+}
+
 /// Resolves the options through the catalog. `None` when no identity option was given.
 ///
 /// # Errors

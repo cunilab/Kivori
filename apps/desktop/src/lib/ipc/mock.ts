@@ -233,7 +233,7 @@ function initialFirmwareOffer(): FirmwareOfferDto {
     };
   }
   if (scenario() === 'incompatible') {
-    return { ...none, kind: 'required', to: '0.2.0', reason: 'protocolTooOld', key: '1::0.2.0' };
+    return { ...none, kind: 'required', to: null, reason: 'protocolTooOld', key: '1::' };
   }
   return none;
 }
