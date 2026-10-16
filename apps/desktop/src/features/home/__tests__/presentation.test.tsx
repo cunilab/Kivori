@@ -80,7 +80,7 @@ describe('catalog product presentation', () => {
         presentation: {
           displayName: 'Test dial',
           model: 'KV-T2',
-          image: 'https://example.invalid/unbundled.png',
+          image: 'unbundled.png',
         },
       },
     });
