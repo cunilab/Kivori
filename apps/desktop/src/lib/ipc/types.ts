@@ -156,7 +156,7 @@ export interface FirmwareOfferDto {
   product: string | null;
   /** The device's firmware version, with `offerOptional`. */
   from: string | null;
-  /** The bundled firmware version, with `offerOptional` and `required`. */
+  /** Exact target version; null for protocol recovery before target resolution. */
   to: string | null;
   /** Set only with `required`. */
   reason: FirmwareRequiredReason | null;

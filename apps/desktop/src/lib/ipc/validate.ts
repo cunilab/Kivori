@@ -265,21 +265,27 @@ export function parseUpdateStatus(raw: unknown): UpdateStatusDto {
 
 /**
  * Validates a `FirmwareOfferDto`. Unknown kinds or reasons are rejected, and a question
- * (`offerOptional`, `required`) must carry its key and versions.
+ * must carry its key. Recovery without a handshake has no target version.
  */
 export function parseFirmwareOffer(raw: unknown): FirmwareOfferDto {
   const r = record('firmware offer', raw);
   const kind = oneOf('firmware offer kind', FIRMWARE_OFFER_KINDS, r.kind);
   const asks = kind === 'offerOptional' || kind === 'required';
+  const reason =
+    kind === 'required'
+      ? oneOf('firmware required reason', FIRMWARE_REQUIRED_REASONS, r.reason)
+      : null;
   return {
     kind,
     product: asks ? textOrNull('offer product', r.product ?? null) : null,
     from: kind === 'offerOptional' ? text('offer from', r.from, 64) : null,
-    to: asks ? text('offer to', r.to, 64) : null,
-    reason:
-      kind === 'required'
-        ? oneOf('firmware required reason', FIRMWARE_REQUIRED_REASONS, r.reason)
-        : null,
+    to:
+      reason === 'protocolTooOld' && r.to === null
+        ? null
+        : asks
+          ? text('offer to', r.to, 64)
+          : null,
+    reason,
     key: asks ? text('offer key', r.key, 256) : null,
   };
 }

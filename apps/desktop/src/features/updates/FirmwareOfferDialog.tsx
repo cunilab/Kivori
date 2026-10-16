@@ -178,11 +178,13 @@ export function FirmwareOfferDialog(): ReactElement | null {
                 {subject.product}
               </span>
             ) : null}
-            <span className="block" data-testid="offer-versions">
-              {subject.kind === 'offerOptional'
-                ? format(t.versions, { from: subject.from ?? '', to: subject.to ?? '' })
-                : format(t.requiredVersion, { to: subject.to ?? '' })}
-            </span>
+            {subject.to != null ? (
+              <span className="block" data-testid="offer-versions">
+                {subject.kind === 'offerOptional'
+                  ? format(t.versions, { from: subject.from ?? '', to: subject.to ?? '' })
+                  : format(t.requiredVersion, { to: subject.to })}
+              </span>
+            ) : null}
             {required && subject.reason ? (
               <span className="block">{t.required[subject.reason]}</span>
             ) : null}

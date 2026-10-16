@@ -55,9 +55,9 @@ const required: FirmwareOfferDto = {
   kind: 'required',
   product: null,
   from: null,
-  to: '0.2.0',
+  to: null,
   reason: 'protocolTooOld',
-  key: '1::0.2.0',
+  key: '1::',
 };
 const deferred: FirmwareOfferDto = { ...none, kind: 'deferredForAppUpdate' };
 
@@ -221,6 +221,7 @@ describe('firmware offer dialog', () => {
       await screen.findByRole('alertdialog', { name: 'Your Kivori needs a firmware update' }),
     ).toBeInTheDocument();
     expect(screen.getByText('Its firmware is too old to work with this app.')).toBeInTheDocument();
+    expect(screen.queryByTestId('offer-versions')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Later' })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Not now' }));
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());

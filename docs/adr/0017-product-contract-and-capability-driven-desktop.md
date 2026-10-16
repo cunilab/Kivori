@@ -132,7 +132,7 @@ recipes, PowerShell and the release firmware job consume its verified artifact p
 crate-local target directory, use the firmware crate's working directory, disable default features,
 require the selected binary and preserve target linker flags by refusing global Rust flag overrides.
 Provision identity flags remain assertions, separate from build selection. Board-specific development
-flash/test recipes remain explicit. Multi-image packaging, recovery selection and release-set metadata
+flash/test recipes remain explicit. Multi-image packaging, pair-level recovery choices and release-set metadata
 are still open.
 
 **As built (M2.8 recovery target guard).** A live session identity associated with the selected port takes
@@ -141,18 +141,23 @@ Recovery refuses a missing/unknown image identity, a port
 with no catalog candidates, a product choice outside that port's candidates, and a product with
 multiple possible boards. Image availability never resolves hardware identity or catalog order.
 Without USB ids the pure resolver considers the full catalog; runtime still requires exactly one
-USB-hinted port. Multiple products retain the explicit product chooser; a unique mismatching pair
-retains the named wrong-product refusal. Candidate/board refusals use the existing generic failure
+USB-hinted port. Multiple products retain the explicit product chooser. The runtime slice below
+replaces single-image mismatch refusal with exact lookup. Candidate/board refusals use the existing generic failure
 until pair-level recovery UI arrives. Queued requests cannot replace an active flash workflow.
-Multi-image embedding, per-image update advice and pair-level recovery choices remain open.
+Per-device image selection is implemented below; pair-level recovery choices remain open.
 
 **As built (M2.8 image-set foundation).** Explicit legacy-path or manifest input is validated as an
 immutable image set. Exact product/board lookup never falls back to catalog order; duplicate keys,
 ambiguous markers and invalid catalog/version/protocol records are refused. Generated sources are
-ordered by wire pair. Current native consumers explicitly require a sole image and pass its typed
-bytes to the flasher. A shipping build-time gate rejects multiple images until the next runtime slice
-makes status, offers, recovery and provisioning target-specific. Synthetic two-image generation and
-lookup tests do not claim multi-image shipping support or close hardware acceptance.
+ordered by wire pair. Native consumers now select the exact current identity's image; no bundle
+entry acts as a hardware default. Recovery resolves a single allowlisted port and its catalog target
+before lookup, refuses pending live identities and ambiguous boards, and cannot borrow another
+port's identity. Missing target images are unavailable. Status version/size/advice follow the selected
+identity, while accepted operations retain their image and idle refresh preserves queued reservations.
+Incompatible recovery offers carry no assumed version. Provisioning flags select an exact embedded
+pair, and no-argument provisioning requires a sole image. Multiple images can now be embedded;
+whole-catalog packaging/release recipes, pair-level recovery choices and hardware acceptance remain
+open. Synthetic fixtures are not shipping products.
 
 ## Consequences
 

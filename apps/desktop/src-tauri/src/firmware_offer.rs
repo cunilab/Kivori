@@ -129,8 +129,10 @@ pub struct OfferInputs<'a> {
     pub device: &'a OfferDevice,
     /// The connection generation: it changes on every new connect.
     pub generation: u32,
-    /// The bundled image's identity record; `None` when this build cannot flash.
+    /// Exact image for the connected identity; never inferred for an incompatible device.
     pub image: Option<&'a ImageIdentity>,
+    /// Recovery can ask the user to resolve a target when this build has any images.
+    pub restorable: bool,
     /// The protocol major this app speaks.
     pub host_major: u16,
     /// An app update is offered, downloading, installing or held for an idle device.
@@ -147,7 +149,7 @@ pub struct OfferKey {
     /// Short device hash; `None` for an incompatible device (it has none yet).
     pub hash: Option<String>,
     /// The bundled firmware version.
-    pub version: String,
+    pub version: Option<String>,
     /// The connection generation.
     pub generation: u32,
 }
@@ -160,7 +162,7 @@ impl OfferKey {
             "{}:{}:{}",
             self.generation,
             self.hash.as_deref().unwrap_or(""),
-            self.version
+            self.version.as_deref().unwrap_or("")
         )
     }
 }
@@ -192,9 +194,9 @@ pub fn decide(inputs: &OfferInputs<'_>, settled: bool, later: Option<&OfferKey>)
             if device_major.is_some_and(|major| major > inputs.host_major) {
                 return Decision::plain(FirmwareOffer::UpdateApp);
             }
-            let Some(image) = inputs.image else {
+            if !inputs.restorable {
                 return Decision::plain(FirmwareOffer::None);
-            };
+            }
             if inputs.app_update_due {
                 return Decision::plain(FirmwareOffer::DeferredForAppUpdate);
             }
@@ -208,7 +210,7 @@ pub fn decide(inputs: &OfferInputs<'_>, settled: bool, later: Option<&OfferKey>)
                 },
                 key: Some(OfferKey {
                     hash: None,
-                    version: image.version.clone(),
+                    version: None,
                     generation: inputs.generation,
                 }),
             }
@@ -243,7 +245,7 @@ pub fn decide(inputs: &OfferInputs<'_>, settled: bool, later: Option<&OfferKey>)
                     }
                     let key = OfferKey {
                         hash: Some(hash.clone()),
-                        version: image.version.clone(),
+                        version: Some(image.version.clone()),
                         generation: inputs.generation,
                     };
                     if *missing_capabilities {

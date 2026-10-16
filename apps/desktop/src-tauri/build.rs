@@ -43,7 +43,6 @@ fn main() {
     for path in &paths {
         println!("cargo:rerun-if-changed={}", path.display());
     }
-    catalog_build::require_single_image_runtime(paths.len()).expect("supported firmware runtime");
     let generated = catalog_build::generate_firmware(&catalog, &root, &paths, Path::new(&out_dir))
         .expect("bundled firmware matches its catalog identity");
     for manifest in generated.manifests {
