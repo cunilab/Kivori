@@ -244,6 +244,11 @@ Software is done (tracker, device-thread and Windows window tests, macOS IOKit r
 
 ## Phase 8: Firmware update and recovery (M3 S3)
 
+Automated M2.8 resolver/workflow checks cover missing/unknown images, stale or invalid product choices, unknown
+USB hints, reported-identity mismatches, shared-USB board ambiguity, distinct-board selection, refusal status cleanup and no port
+reservation/flasher start on refusal. The fixtures are not shipping products. These checks do not
+complete the hardware rows below.
+
 Software is done (workflow, classifier fixtures, recovery rules, sidecar lookup, DTO allowlist, UI tests). The classifier fixtures are conservative guesses at `espflash` 4.x wording; row 8.7 refreshes them. Rows 8.1 to 8.6 need a real device and the installed app (the S5 installer bundles the `espflash` 4.6.0 sidecar) or a dev build with `espflash` on `PATH`.
 
 - [ ] 8.1 Flash from the installed app on a machine with no Rust toolchain | it succeeds and the device reconnects (needs the S5 installer)

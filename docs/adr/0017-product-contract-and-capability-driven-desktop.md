@@ -135,6 +135,17 @@ Provision identity flags remain assertions, separate from build selection. Board
 flash/test recipes remain explicit. Multi-image packaging, recovery selection and release-set metadata
 are still open.
 
+**As built (M2.8 recovery target guard).** A live session identity associated with the selected port takes
+precedence over USB hints; mismatching/unknown identities cannot fall back to identity-free recovery.
+Recovery refuses a missing/unknown image identity, a port
+with no catalog candidates, a product choice outside that port's candidates, and a product with
+multiple possible boards. Image availability never resolves hardware identity or catalog order.
+Without USB ids the pure resolver considers the full catalog; runtime still requires exactly one
+USB-hinted port. Multiple products retain the explicit product chooser; a unique mismatching pair
+retains the named wrong-product refusal. Candidate/board refusals use the existing generic failure
+until pair-level recovery UI arrives. Queued requests cannot replace an active flash workflow.
+Multi-image embedding, per-image update advice and pair-level recovery choices remain open.
+
 ## Consequences
 
 This is a target contract, not an as-built claim. Implementation and checks are tracked in

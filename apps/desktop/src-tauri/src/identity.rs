@@ -217,58 +217,90 @@ pub enum RecoveryDecision {
     Proceed,
     /// More than one product could be on this port: the user must pick, then ask again.
     Choose(Vec<RestoreOption>),
-    /// The product (the only one, or the user's pick) is not the bundled image's.
-    Refuse(WrongProduct),
+    /// Recovery cannot establish a supported, matching product/board target.
+    Refuse(RecoveryRefusal),
+}
+
+/// Why recovery must stop before reserving a port.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RecoveryRefusal {
+    /// No image identity, or one that the catalog does not know.
+    ImageUnavailable,
+    /// No catalog candidate for the port, or the chosen product is not one of its candidates.
+    NoCandidate,
+    /// The selected product has several possible boards; an image cannot prove which one is present.
+    BoardAmbiguous,
+    /// A single resolved product/board is not the bundled image's pair.
+    WrongProduct(WrongProduct),
 }
 
 /// Decides recovery for a port with USB ids `usb` (`None` when unknown). Candidates are the
 /// products with a board listing those ids. With exactly one, it is used; with several the user
-/// must pick (`chosen`, a product id). The chosen product's board must be the bundled image's.
+/// must pick (`chosen`, a product id). A pick cannot bypass candidate membership. Exactly one
+/// board must remain and match a known image; neither image availability nor order resolves ambiguity.
+/// A reported identity for this port takes precedence over USB hints, including an unknown identity.
 #[must_use]
 pub fn decide_recovery(
     catalog: &Catalog,
     usb: Option<UsbId>,
     chosen: Option<&str>,
     image: Option<&ImageIdentity>,
+    reported: Option<&DeviceIdentity>,
 ) -> RecoveryDecision {
-    let candidates: Vec<(&Product, &Board)> = catalog
+    let Some(image) = image.filter(|image| catalog.by_wire(image.product, image.board).is_some())
+    else {
+        return RecoveryDecision::Refuse(RecoveryRefusal::ImageUnavailable);
+    };
+    if let Some(device) = reported {
+        if device.product != image.product || device.board != image.board {
+            return RecoveryDecision::Refuse(RecoveryRefusal::WrongProduct(WrongProduct {
+                device: label(catalog, device.product, device.board),
+                image: label(catalog, image.product, image.board),
+            }));
+        }
+        // Matching the known image also resolves this device's product/board in the catalog.
+        let (product, _) = catalog
+            .by_wire(device.product, device.board)
+            .expect("known image pair");
+        if chosen.is_some_and(|id| id != product.id) {
+            return RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate);
+        }
+        return RecoveryDecision::Proceed;
+    }
+    let mut candidates: Vec<(&Product, &Board)> = catalog
         .products()
         .iter()
         .flat_map(|p| p.boards.iter().map(move |b| (p, b)))
         .filter(|(_, b)| usb.is_none_or(|id| b.usb.contains(&id)))
         .collect();
-    let target = match (chosen, candidates.as_slice()) {
-        (Some(id), _) => candidates.iter().find(|(p, _)| p.id == id).copied(),
-        (None, [only]) => Some(*only),
-        (None, []) => None,
-        (None, _) => {
-            let mut options: Vec<RestoreOption> = Vec::new();
-            for (product, _) in &candidates {
-                if !options.iter().any(|o| o.id == product.id) {
-                    options.push(RestoreOption {
-                        id: product.id.clone(),
-                        name: product.display_name.clone(),
-                    });
-                }
-            }
-            // One product on several boards is a board question, not a product one; the bundled
-            // image's own check below settles it.
-            if options.len() > 1 {
-                return RecoveryDecision::Choose(options);
-            }
-            candidates.first().copied()
+    if let Some(id) = chosen {
+        candidates.retain(|(product, _)| product.id == id);
+    }
+    if candidates.is_empty() {
+        return RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate);
+    }
+    let mut options: Vec<RestoreOption> = Vec::new();
+    for (product, _) in &candidates {
+        if !options.iter().any(|option| option.id == product.id) {
+            options.push(RestoreOption {
+                id: product.id.clone(),
+                name: product.display_name.clone(),
+            });
         }
-    };
-    let (Some((product, board)), Some(image)) = (target, image) else {
-        return RecoveryDecision::Proceed;
+    }
+    if options.len() > 1 {
+        return RecoveryDecision::Choose(options);
+    }
+    let [(product, board)] = candidates.as_slice() else {
+        return RecoveryDecision::Refuse(RecoveryRefusal::BoardAmbiguous);
     };
     if image.product == product.number && image.board == board.number {
         return RecoveryDecision::Proceed;
     }
-    RecoveryDecision::Refuse(WrongProduct {
+    RecoveryDecision::Refuse(RecoveryRefusal::WrongProduct(WrongProduct {
         device: label(catalog, product.number, board.number),
         image: label(catalog, image.product, image.board),
-    })
+    }))
 }
 
 #[cfg(test)]
@@ -383,12 +415,22 @@ mod tests {
         let catalog = Catalog::embedded();
         let usb = Some((0x303A, 0x1001));
         assert_eq!(
-            decide_recovery(catalog, usb, None, Some(&image(1, 1))),
+            decide_recovery(catalog, usb, None, Some(&image(1, 1)), None),
+            RecoveryDecision::Proceed
+        );
+        assert_eq!(
+            decide_recovery(
+                catalog,
+                usb,
+                None,
+                Some(&image(1, 1)),
+                Some(&DeviceIdentity::legacy())
+            ),
             RecoveryDecision::Proceed
         );
         // Not knowing the USB ids still leaves only one product in this catalog.
         assert_eq!(
-            decide_recovery(catalog, None, None, Some(&image(1, 1))),
+            decide_recovery(catalog, None, None, Some(&image(1, 1)), None),
             RecoveryDecision::Proceed
         );
     }
@@ -397,7 +439,7 @@ mod tests {
     fn recovery_asks_when_several_products_could_be_on_the_port() {
         let catalog = two_products();
         let usb = Some((0x303A, 0x1001));
-        let decision = decide_recovery(&catalog, usb, None, Some(&image(1, 1)));
+        let decision = decide_recovery(&catalog, usb, None, Some(&image(1, 1)), None);
         assert_eq!(
             decision,
             RecoveryDecision::Choose(vec![
@@ -418,11 +460,11 @@ mod tests {
         let catalog = two_products();
         let usb = Some((0x303A, 0x1001));
         assert_eq!(
-            decide_recovery(&catalog, usb, Some("pala"), Some(&image(1, 1))),
+            decide_recovery(&catalog, usb, Some("pala"), Some(&image(1, 1)), None),
             RecoveryDecision::Proceed
         );
-        let RecoveryDecision::Refuse(refusal) =
-            decide_recovery(&catalog, usb, Some("lamp"), Some(&image(1, 1)))
+        let RecoveryDecision::Refuse(RecoveryRefusal::WrongProduct(refusal)) =
+            decide_recovery(&catalog, usb, Some("lamp"), Some(&image(1, 1)), None)
         else {
             panic!("the bundled image is not the lamp's");
         };
