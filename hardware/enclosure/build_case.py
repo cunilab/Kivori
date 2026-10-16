@@ -90,6 +90,7 @@ ENC_CORNER = 5.0            # each corner bracket runs this far along both board
 HW040_COL_D = 5.0           # pillars under its two holes ...
 HW040_PEG_CLR = 0.2         # ... pegs 2.8 mm in its 3.2 mm holes
 HW040_PIN_BEND = 0.0        # straight pins, up from the header row
+HW040_PIN_L = 2.5 + 6.0     # straight header: plastic + pin past it, from the board front (NOMINAL)
 EC11_HOLE_CLR = 0.3         # printed PCB round hole round the EC11 bushing, per side (it also centres the encoder)
 
 # Display: ST7789 1.3" 240x240, 7-pin module, mounted rotated 90° (header on the right)
@@ -152,7 +153,7 @@ C_T = 2.0                   # printed thickness (a real board is 1.6, it grows b
 C_BACK = C_FRONT - C_T
 C_INSET = 0.8               # carrier outline inset from the inner walls
 HOLE_D = 1.2                # 2.54 mm header holes
-SW_HOLE_D = 1.8             # switch legs
+SW_HOLE_D = HOLE_D          # switch legs: same hole as the header pins
 POSTS = [(6.0, 7.0), (6.0, 62.5), (104.0, 62.5), (104.0, 7.0)]  # face posts, symmetric, near the corners
 POST_D = 4.2               # slim: the front-right post sits just outside the right cap's flange
 # Post spigot: right through the carrier and on into a socket in the back-plate column, so the
@@ -209,17 +210,16 @@ C_TAB_CLR = 0.4             # carrier tab under the SuperMini header ends, to th
 # line. Only pins that carry a signal get copper (no pad on unused pins or switch legs).
 # One crossover remains (copper_layout).
 COPPER_TRACES = True        # False: the hand-wired version (header strips in slots)
-TRACE_GROOVE = (0.6, 0.6)   # gap along both sides of every trace and pad: width, depth (= PIN_GAP)
+TRACE_GROOVE = (0.95, 0.6)  # gap along both sides of every trace and pad: width, depth
 # 2.54 mm pin rows: a square pad round each pin, and between two neighbouring pins a PIN_GAP cut
 # line that guides the blade (one nozzle width: about 0.37 mm of plastic is left round each hole)
 PIN_GAP = 0.6
 TRACE_PAD = (3.0, 2.54 - PIN_GAP)  # pads at the 2.54 mm pins: across the row, along it
-TRACE_W = TRACE_PAD[1]      # trace width = pad width, so side by side traces are one gap apart
-# Pin holes stop PIN_SKIN short of the copper side: the pads print as plain solid rectangles in
-# the gap layers (a hole in them would leave a ring too thin to print). After taping, drill each
-# hole through from the component side (1.0-1.2 mm bit in a pin vise), through the tape as well;
-# the blind hole guides the drill.
-PIN_SKIN = TRACE_GROOVE[1]
+TRACE_W = 2.54 - TRACE_GROOVE[0]  # side by side traces on the 2.54 mm pin pitch are one gap apart
+# Pin holes go right through (PIN_SKIN = 0), clear for the pins; after taping, pierce the tape over
+# each one. PIN_SKIN > 0 stops them that far short of the copper side instead (blind holes: the
+# pads print as plain solid rectangles in the gap layers, drilled out by hand after taping).
+PIN_SKIN = 0.0
 TRACE_PAD_D = 2.8           # square pads at the switch legs (0.5 mm of copper round the leg hole)
 TAPE_T = 0.06               # copper tape thickness (stand-in only)
 TRACE_ISLAND_MIN = 12.0     # mm²: smaller islands of plastic between the gaps become gap (FDM)
@@ -227,6 +227,8 @@ TRACE_GROOVE_MIN = 0.5      # gaps thinner than this (crumbs) are filled in (the
 TRACE_RIDGE_MIN = 1.0       # plastic left between two gaps: at least this wide, or it becomes gap
 GROOVE_GRID = 0.05          # pixel size of the grid the gaps are cleaned up on (copper_grooves)
 KAPTON_T = 0.06             # insulating tape under a crossover (stand-in only)
+# No solder: cut an X in the tape over each pin hole; each pin pushed through folds the four copper
+# petals along it and touches them.
 # RST: a needle hole through the visor and the face over the SuperMini's RST button, with a guide
 # tube down to just above the button
 RST_HOLE_D = 1.0
@@ -768,14 +770,23 @@ def carrier_outline():
     # SuperMini's first pin holes inside the board now that the board sits up against the wall
     y_tab = H - WALL - C_FRONT * TAPER - C_TAB_CLR
     hw = SM[0] / 2 + 1.0
-    return c.fuse(box(SM_X - hw, H / 2, C_BACK, SM_X + hw, y_tab, C_FRONT)).removeSplitter()
+    if not (COPPER_TRACES and SM_FRONT):
+        return c.fuse(box(SM_X - hw, H / 2, C_BACK, SM_X + hw, y_tab, C_FRONT)).removeSplitter()
+    # copper: the right row's last pad (B3, which runs on along the edge) ends flush with the board
+    # edge, so no thin strip of plastic is left past its gap (it would turn to gap and leave the
+    # board above it hanging over); the step down lines up with the pad's gap
+    xb = sm_rows[1]
+    y_pad = max(y for (x, y) in sm_pins.values() if abs(x - xb) < 1e-6) + TRACE_PAD[1] / 2
+    x_step = xb - TRACE_PAD[0] / 2 - TRACE_GROOVE[0]
+    return c.fuse([box(SM_X - hw, H / 2, C_BACK, x_step, y_tab, C_FRONT),
+                   box(x_step - 0.01, H / 2, C_BACK, xb + TRACE_PAD[0] / 2, y_pad, C_FRONT)]).removeSplitter()
 
 
 def carrier_through_cuts(pcb=False):
     """Everything that goes right through the board. pcb=True gives what a real PCB keeps (the
     SuperMini pin holes); the printed carrier gets slots for the header strips instead."""
     cuts = []
-    zp = C_BACK + PIN_SKIN if COPPER_TRACES and not pcb else C_BACK - 1  # pin holes: blind (PIN_SKIN)
+    zp = C_BACK + PIN_SKIN if COPPER_TRACES and PIN_SKIN > 0 and not pcb else C_BACK - 1  # blind if PIN_SKIN
     for (side, yc) in HOOKS:  # clear the snap hooks
         x0, x1 = (0, WALL + 2.8) if side < 0 else (W - WALL - 2.8, W)
         cuts.append(box(x0, yc - HOOK_W / 2 - 1.2, C_BACK - 1, x1, yc + HOOK_W / 2 + 1.2, C_FRONT + 1))
@@ -814,7 +825,7 @@ def carrier_through_cuts(pcb=False):
 
 def pin_skins():
     """The PIN_SKIN plugs left over the pin holes on the copper side (drilled out by hand)."""
-    if not COPPER_TRACES:
+    if not COPPER_TRACES or PIN_SKIN <= 0:
         return []
     pins = list(disp_pins.values()) + list(enc_pins.values()) + (list(sm_pins.values()) if SM_FRONT else [])
     z0, z1 = C_BACK - 1, C_BACK + PIN_SKIN + 0.01
@@ -858,10 +869,13 @@ def copper_layout():
     dd = lambda n: pin(*disp_pins[n])
     ep = lambda n: pin(*enc_pins[n])
     P = TRACE_W + TRACE_GROOVE[0]                     # pitch of side-by-side traces: one gap apart
-    # between the rows: four lanes, DT SW 3V3 GND, evenly spaced between the pads
-    x0, x1 = xa + TRACE_PAD[0] / 2, xb - TRACE_PAD[0] / 2
-    g4 = (x1 - x0 - 4 * TRACE_W) / 5
-    lane = [x0 + g4 + TRACE_W / 2 + k * (TRACE_W + g4) for k in range(4)]
+    # between the rows: four lanes, DT SW 3V3 GND. GND runs one gap from the right row's pads, so
+    # its gap lines up with theirs (also by the unused pins there); DT passes the encoder's CLK pad
+    # with TRACE_RIDGE_MIN of plastic between the two gaps; SW and 3V3 spread evenly between them
+    gr = TRACE_GROOVE[0]
+    l0 = max(xa + TRACE_PAD[0] / 2 + gr, enc_x + TRACE_PAD[0] / 2 + 2 * gr + TRACE_RIDGE_MIN) + TRACE_W / 2
+    l3 = xb - TRACE_PAD[0] / 2 - gr - TRACE_W / 2
+    lane = [l0 + k * (l3 - l0) / 3 for k in range(4)]
 
     def down(n, k, y_end):  # from a left-row pin east into lane k, down, and west onto the encoder
         return [(xa, ys[n]), (lane[k], ys[n]), (lane[k], y_end), (enc_x, y_end)]
@@ -876,7 +890,9 @@ def copper_layout():
     # B3 keeps 1 mm of plastic between its gap and the top-right post hole
     post = POSTS[2]
     keep = SPIGOT_HOLE_D / 2 + TRACE_RIDGE_MIN + TRACE_GROOVE[0] + TRACE_W / 2
-    xb3, yb3 = post[0] - keep, post[1] - keep
+    # ... and its run under the post lies one gap above GND's run onto the display (any further
+    # up, the plastic strip left between the two gaps is too thin and turns into one wide gap)
+    xb3, yb3 = post[0] - keep, min(post[1] - keep, yd["GND"] + P)
     xc = xa - TRACE_PAD[0] / 2 - TRACE_GROOVE[0] - TRACE_W / 2  # CLK down the outside of the left row
     # GND down to the switches, 1 mm of plastic clear of the left switch's unused leg
     xge = btn_pin(0, 2)[0] - SW_HOLE_D / 2 - TRACE_RIDGE_MIN - TRACE_GROOVE[0] - TRACE_W / 2
@@ -1124,6 +1140,9 @@ def copper_grooves():
     print("plastic slivers made gap: %d pieces, %.1f mm²; islands made gap: %d (%s mm²); gap crumbs filled: %d" % (
         len(ridge_r), sum((r[2] - r[0]) * (r[3] - r[1]) for r in ridge_r), len(shown),
         ", ".join("%.1f" % a for a in shown), len(crumb_r)))
+    if ridge_r:
+        print("  slivers at:", ", ".join("(%.1f, %.1f) %.1fx%.1f" % ((r[0] + r[2]) / 2, (r[1] + r[3]) / 2,
+                                                                     r[2] - r[0], r[3] - r[1]) for r in ridge_r))
     outside = box(bb.XMin - 5, bb.YMin - 5, zb - 1, bb.XMax + 5, bb.YMax + 5, zb + 1).cut(back)
     open_ = cut.fuse([outside] + islands).cut(slab(cu_b, zb - 2, zb + 2))
     if crumb_r:
@@ -1142,14 +1161,14 @@ def copper_grooves():
     return board_zone.common(fuse_all(out)).removeSplitter()
 
 
-def check_traces():
-    """Gap between every two nets, smallest first (the crossovers left out): at least one
-    TRACE_GROOVE gap everywhere (side-by-side traces and neighbouring pins are exactly that)."""
+def check_traces(pads=True):
+    """Gap between every two nets, smallest first (the crossovers left out): at least one PIN_GAP
+    between neighbouring pins of a row, and with pads=False (the traces alone) one TRACE_GROOVE."""
     nets, crossovers = copper_layout()
     over = net_parts(nets, crossovers)
     sol = {}
     for k, n in nets.items():
-        sol[k] = net_solid(n, C_BACK - TAPE_T, C_BACK)
+        sol[k] = net_solid(n if pads else ([], n[1]), C_BACK - TAPE_T, C_BACK)
         for rect in over.get(k, []):
             sol[k] = sol[k].cut(patch_box(rect, C_BACK - 1, C_BACK + 1))
     keys, pairs = list(sol), []
@@ -1297,7 +1316,7 @@ def dummy_encoder():
     hdr = cbox(hw_hdr[0], hw_hdr[1], 2.5, 5 * 2.54, f, f + 2.5)
     pins = box(hw_hdr[0], hw_hdr[1] - 5.6, f + 1.0, hw_pin_tip_x, hw_hdr[1] + 5.6, f + 1.64)
     if COPPER_TRACES:  # straight pins, up through the printed PCB
-        pins = fuse_all([cbox(x, y, 0.64, 0.64, f, f + 2.5 + 6.0) for (x, y) in enc_pins.values()])
+        pins = fuse_all([cbox(x, y, 0.64, 0.64, f, f + HW040_PIN_L) for (x, y) in enc_pins.values()])
     # on its back: EC11 legs and resistors, header solder joints
     kx0, kx1, ky0, ky1 = HW040_BACK_KEEPOUT
     legs = box(KNOB_C[0] + kx0, KNOB_C[1] + ky0, hw_back - HW040_BACK_PARTS, KNOB_C[0] + kx1, KNOB_C[1] + ky1, hw_back + 0.01)
@@ -1511,8 +1530,12 @@ def main():
     print("interference:", clashes if clashes else "none")
     if COPPER_TRACES:
         pairs = check_traces()
-        print("trace clearance: %.2f mm (%s / %s), need %.2f: %s" % (pairs[0] + (TRACE_GROOVE[0],
-              "ok" if pairs[0][0] > TRACE_GROOVE[0] - 1e-6 else "TOO CLOSE")))
+        need = min(PIN_GAP, TRACE_GROOVE[0])  # neighbouring pins of a row: the PIN_GAP cut line
+        print("trace clearance: %.2f mm (%s / %s), need %.2f: %s" % (pairs[0] + (need,
+              "ok" if pairs[0][0] > need - 1e-6 else "TOO CLOSE")))
+        t = check_traces(pads=False)[0]
+        print("trace to trace: %.2f mm (%s / %s), need %.2f: %s" % (t + (TRACE_GROOVE[0],
+              "ok" if t[0] > TRACE_GROOVE[0] - 1e-6 else "TOO CLOSE")))
     print("buttons:", [(round(x, 2), round(y, 2), round(a, 2)) for (x, y, a) in BTNS])
     for name, shp in PRINTED.items():
         bb = shp.BoundBox
