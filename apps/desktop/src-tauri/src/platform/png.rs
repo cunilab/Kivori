@@ -1,4 +1,4 @@
-//! A minimal PNG writer and a base64 encoder, for the small app icons the webview shows. The
+//! A minimal PNG writer and a base64 encoder, for app icons and bundled product artwork. The
 //! pixel data is stored uncompressed (deflate "stored" blocks): an icon is a few kilobytes, so a
 //! compressor would only add a dependency.
 

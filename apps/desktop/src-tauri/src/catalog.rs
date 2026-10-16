@@ -228,6 +228,11 @@ impl Catalog {
                     raw.model
                 ));
             }
+            if !raw.image.is_empty() && !raw.image.strip_suffix(".png").is_some_and(valid_id) {
+                return err(format!(
+                    "product `{id}` image must be a lowercase kebab-case .png filename"
+                ));
+            }
             let mut boards = Vec::new();
             for (board_id, board) in raw.boards {
                 let Some(&board_number) = registry.boards.get(&board_id) else {
@@ -421,6 +426,31 @@ mod tests {
         for good in ["KV-P1", "KV-1", "AB-XYZ9"] {
             let src = ok.replace("KV-X1", good);
             assert!(parse(REG, &src).is_ok(), "{good} should be accepted");
+        }
+    }
+
+    #[test]
+    fn artwork_is_an_optional_plain_png_filename() {
+        let source = product("c3-supermini");
+        for name in ["", "unit.png", "pip-front-2.png"] {
+            let source = format!("image = {name:?}\n{source}");
+            assert!(parse(REG, &source).is_ok(), "{name}");
+        }
+        for name in [
+            "../art.png",
+            "/art.png",
+            "./art.png",
+            "art/unit.png",
+            "art\\unit.png",
+            "C:art.png",
+            "art.svg",
+            "unit.PNG",
+            "-art.png",
+            "art-.png",
+            "art_1.png",
+        ] {
+            let source = format!("image = {name:?}\n{source}");
+            assert!(parse(REG, &source).is_err(), "{name}");
         }
     }
 

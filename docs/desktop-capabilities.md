@@ -36,22 +36,31 @@ once a second only while the card is mounted and the window is visible. Missing,
 mismatched-session totals remain unavailable. Home never requests device internals or activity
 history, and turning developer mode off or leaving Home stops these reads.
 
-Catalog customer name/model metadata is exposed separately on `DeviceInfoDto.presentation`, never
-inside copied diagnostics. Shipping builds reject display names/models over the IPC limit of 96
-UTF-16 units. Home, Welcome and Tour use a neutral product figure, with those labels
-only for a known current connected product/board. Missing/pending/unknown/disconnected metadata
-never borrows another product's picture. The fixed hardware-body illustration is removed; Display
-keeps its existing software-view illustrations. No art is delivered yet: a non-empty catalog `image`
-is a build error until the bundled-art step implements validation and delivery. The existing Tour
-control checks and customization assumptions remain separate capability/onboarding work; this
-presentation step does not claim that setup supports every product's controls.
+Catalog name/model and an optional artwork key are exposed on `DeviceInfoDto.presentation`, never
+inside copied diagnostics. Shipping builds reject names/models/art keys over the IPC limit of 96
+UTF-16 units. Home, Welcome and Tour show those labels and only that product's bundled artwork for
+a known current connected product/board. Missing/pending/unknown/disconnected identities never
+borrow another product's picture; missing/failed artwork uses a neutral figure. The fixed
+hardware-body illustration is removed; Display keeps its existing software-view illustrations.
+
+Catalog `image` is empty or a lowercase kebab-case `.png` filename directly inside its product
+directory. The build refuses symlinks, missing or malformed files, APNG, files over 512 KiB and
+dimensions outside 1–1024 pixels per side. It fully decodes with a bounded build-only decoder and
+checks the remaining chunks, then embeds a copy of the validated original bytes (including PNG
+metadata). Cargo's recursive catalog watch covers artwork changes. `get_product_art` serves only
+compiled keys as PNG data URLs: no runtime filesystem access/downloads, and no image bytes in status
+updates or diagnostic copies. Lookups are cached in the frontend; product changes, disconnects and
+image errors cannot retain the wrong image. Pip currently declares no artwork and stays neutral.
+
+The existing Tour control checks and customization assumptions remain separate capability/onboarding
+work; presentation does not claim that setup supports every product's controls.
 
 ## Surface mapping
 
 | Surface | Current rule |
 | --- | --- |
 | Home computer monitoring, microphone, media and last action | Host readings and host action outcomes; independent of device capabilities. Unknown readings retain their existing unavailable explanations. |
-| Home product figure and setup figures | Catalog name/model only for a current connected identity with both product and board known. Neutral figure in every case until bundled artwork delivery exists; never infer hardware art from capabilities. |
+| Home product figure and setup figures | Catalog name/model only for a current connected identity with both product and board known. Only that product’s bundled artwork, otherwise a neutral figure; never infer hardware art from capabilities. |
 | Home Showing chip, Change view | `deskStatusV1`. |
 | Home Buddy report | A current, resolved, usable session with an actual reported state. This is baseline protocol data, not proof of transient reaction support. |
 | Developer Social reactions | Developer mode and `mascotInteraction`. Direct reaction controls are absent from Home and Display. |

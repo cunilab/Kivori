@@ -278,11 +278,13 @@ the beta acceptance platform. Finish and review the docs before implementing the
   First implementation: active catalog entries are now discovered, validated and embedded at build
   time without a maintained source list; registry reservations without metadata remain inactive,
   and fixture products stay outside shipping roots. The existing single-image build check resolves its product/board by image identity rather
-  than catalog order. Product art, provisioning/tooling defaults and multi-image packaging/release
+  than catalog order. Provisioning/tooling defaults and multi-image packaging/release
   selection remain open; generated catalog discovery alone does not complete this item.
   Customer presentation now exposes catalog name/model for the current known product/board, with
-  neutral figures on Home, Welcome and Tour. Fixed hardware-body artwork is removed. Actual bundled
-  art delivery remains open; non-empty image declarations are refused until that step exists.
+  product figures on Home, Welcome and Tour. Fixed hardware-body artwork is removed. Declared static
+  PNGs are now validated and embedded at build time, delivered by a cached allowlisted lookup, with
+  neutral fallback and stale-load protection. Pip still has no artwork; fixture images stay outside
+  shipping roots. Provisioning/tooling defaults and multi-image packaging/release keep this item open.
 - [ ] **Capability-driven UI:** document the capability-to-surface mapping; backend effective support
   combines current-session negotiation, resolved identity and host support, not catalog minimums.
   UI and command handling deny ordinary product actions while identity is pending/unknown. Cover
@@ -295,7 +297,7 @@ the beta acceptance platform. Finish and review the docs before implementing the
   Saved display/binding configuration stays editable offline. The main-window
   [surface mapping](./desktop-capabilities.md) now covers live actions, neutral session states,
   saved-only control annotations, offline Studio preview, focus recovery and control-specific input
-  guards. Catalog-driven art and remaining M2.8 integration still need their own steps. Setup's
+  guards. Remaining M2.8 integration still needs its own steps. Setup's
   capability-aware Tour steps, connection gating and customization assumptions remain open; neutral
   product presentation alone does not implement those behaviors.
 - [x] **Hardware tiles:** reorganize the existing formatted metrics and usage bars into readable

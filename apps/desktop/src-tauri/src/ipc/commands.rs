@@ -506,6 +506,12 @@ pub async fn list_running_apps() -> Vec<dto::RunningAppDto> {
     .unwrap_or_default()
 }
 
+/// Catalog artwork only; no runtime filesystem access or device action.
+#[tauri::command]
+pub fn get_product_art(product: String) -> Option<String> {
+    crate::catalog_embedded::product_art(&product)
+}
+
 /// An app's icon as a PNG data URL, `null` when it cannot be read (the UI shows a letter). Runs
 /// off the UI thread and the focus poller; results are cached per app id.
 #[tauri::command]

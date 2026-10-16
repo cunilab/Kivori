@@ -17,3 +17,20 @@ impl Catalog {
         })
     }
 }
+
+/// Serves only compiled catalog artwork, never paths supplied by the webview.
+pub(crate) fn product_art(product: &str) -> Option<String> {
+    PRODUCT_ART
+        .iter()
+        .find(|(id, _)| *id == product)
+        .map(|(_, bytes)| crate::platform::png::png_data_url(bytes))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn unbundled_keys_never_resolve_to_files() {
+        assert!(super::product_art("../art.png").is_none());
+        assert!(super::product_art("unknown-product").is_none());
+    }
+}

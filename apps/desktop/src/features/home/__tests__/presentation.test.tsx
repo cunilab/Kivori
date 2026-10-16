@@ -14,7 +14,7 @@ import { HomePage } from '../HomePage';
 function fakeProduct() {
   const connection = connectionFixture(['productIdentityV1'], { connectionGeneration: 2 });
   connection.device!.identity!.product = 'Test dial';
-  connection.device!.presentation = { displayName: 'Test dial', model: 'KV-T2' };
+  connection.device!.presentation = { displayName: 'Test dial', model: 'KV-T2', art: null };
   return connection;
 }
 
@@ -84,11 +84,18 @@ describe('catalog product presentation', () => {
         },
       },
     });
-    expect(parsed.device?.presentation).toEqual({ displayName: 'Test dial', model: 'KV-T2' });
+    expect(parsed.device?.presentation).toEqual({
+      displayName: 'Test dial',
+      model: 'KV-T2',
+      art: null,
+    });
     for (const presentation of [
-      { displayName: 7, model: 'KV-T2' },
+      { displayName: 7, model: 'KV-T2', art: null },
       { displayName: 'Dial', model: null },
       { displayName: 'Dial', model: 'X'.repeat(97) },
+      { displayName: 'Dial', model: 'KV-T2', art: '../art.png' },
+      { displayName: 'Dial', model: 'KV-T2', art: 4 },
+      { displayName: 'Dial', model: 'KV-T2', art: 'a'.repeat(97) },
     ]) {
       expect(() =>
         parseConnectionStatus({ ...connection, device: { ...connection.device, presentation } }),

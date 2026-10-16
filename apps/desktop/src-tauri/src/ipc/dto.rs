@@ -303,12 +303,13 @@ pub fn identity_dto(identity: &DeviceIdentity) -> DeviceIdentityDto {
 }
 
 /// Customer presentation resolved from the compiled product catalog, never device-provided text.
-/// Artwork delivery is a separate step; no image bytes or filesystem paths cross this DTO.
+/// Artwork is an optional compiled key; no image bytes or filesystem paths cross this DTO.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProductPresentationDto {
     pub display_name: String,
     pub model: String,
+    pub art: Option<String>,
 }
 
 /// Projects customer metadata independently of a product's currently negotiated capabilities.
@@ -317,6 +318,7 @@ pub fn product_presentation_dto(product: &crate::catalog::Product) -> ProductPre
     ProductPresentationDto {
         display_name: product.display_name.clone(),
         model: product.model.clone(),
+        art: product.image.as_ref().map(|_| product.id.clone()),
     }
 }
 
