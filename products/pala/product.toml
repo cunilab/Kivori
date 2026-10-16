@@ -44,7 +44,7 @@ usb = ["303A:1001"]
 [boards.c3-supermini.firmware]
 # Firmware crate directory, relative to the repository root.
 crate = "firmware/pala"
-# Release build output, relative to the crate directory (what KIVORI_FIRMWARE_PATH points at).
+# Release build output, relative to the crate directory; packaging snapshots it per product/board.
 artifact = "target/riscv32imc-unknown-none-elf/release/kivori-firmware"
 # Oldest wire protocol (major.minor) this firmware speaks.
 min_protocol = "0.1"

@@ -145,12 +145,42 @@ pub struct GeneratedFirmware {
     pub manifests: Vec<PathBuf>,
 }
 
+/// Manifest builds must contain exactly the active catalog pairs; single-image inputs may be partial.
+pub fn require_complete(
+    catalog: &Catalog,
+    bundle: &FirmwareBundle<'_>,
+) -> Result<(), CatalogError> {
+    let expected: std::collections::BTreeSet<_> = catalog
+        .products()
+        .iter()
+        .flat_map(|product| {
+            product
+                .boards
+                .iter()
+                .map(move |board| (product.number, board.number))
+        })
+        .collect();
+    let actual: std::collections::BTreeSet<_> = bundle
+        .images()
+        .iter()
+        .map(|image| (image.identity().product, image.identity().board))
+        .collect();
+    if actual != expected {
+        return Err(CatalogError(
+            "firmware manifest must contain exactly the complete active catalog set".into(),
+        ));
+    }
+    Ok(())
+}
+
 /// Validates and emits deterministic image sources, independent of input/catalog order.
+/// Manifest (`complete`) mode requires exactly the active catalog identity set.
 pub fn generate_firmware(
     catalog: &Catalog,
     root: &Path,
     paths: &[PathBuf],
     out: &Path,
+    complete: bool,
 ) -> Result<GeneratedFirmware, CatalogError> {
     let bytes = paths
         .iter()
@@ -160,6 +190,9 @@ pub fn generate_firmware(
         .collect::<Result<Vec<_>, _>>()?;
     let refs: Vec<&[u8]> = bytes.iter().map(Vec::as_slice).collect();
     let bundle = FirmwareBundle::parse(&refs).map_err(|message| CatalogError(message.into()))?;
+    if complete {
+        require_complete(catalog, &bundle)?;
+    }
     let mut manifests = Vec::new();
     // Validate every entry before emitting any image, so an invalid set never gets a partial index.
     for image in bundle.images() {
@@ -530,15 +563,44 @@ mod tests {
         let b = root.path().join("second.elf");
         fs::write(&a, &first).unwrap();
         fs::write(&b, &second).unwrap();
+        let incomplete = root.path().join("incomplete");
+        assert!(generate_firmware(
+            &catalog,
+            root.path(),
+            std::slice::from_ref(&a),
+            &incomplete,
+            true
+        )
+        .is_err());
+        assert!(!incomplete.exists(), "incomplete manifests emit nothing");
+        assert!(require_complete(&catalog, &FirmwareBundle::parse(&[]).unwrap()).is_err());
+        let extra = image(99, 1, "0.1.0", "0.1");
+        assert!(require_complete(
+            &catalog,
+            &FirmwareBundle::parse(&[&first, &second, &extra]).unwrap()
+        )
+        .is_err());
+        assert!(
+            require_complete(&catalog, &FirmwareBundle::parse(&[&first, &extra]).unwrap()).is_err()
+        );
+        // The explicit legacy image path still supports a subset for development/provisioning.
+        generate_firmware(
+            &catalog,
+            root.path(),
+            std::slice::from_ref(&a),
+            &incomplete,
+            false,
+        )
+        .unwrap();
         let generated =
-            generate_firmware(&catalog, root.path(), &[b.clone(), a.clone()], &out).unwrap();
+            generate_firmware(&catalog, root.path(), &[b.clone(), a.clone()], &out, true).unwrap();
         assert!(
             generated.source.find("firmware-1-1.elf").unwrap()
                 < generated.source.find("firmware-2-1.elf").unwrap()
         );
         assert_eq!(generated.manifests.len(), 2);
         let forward =
-            generate_firmware(&catalog, root.path(), &[a.clone(), b.clone()], &out).unwrap();
+            generate_firmware(&catalog, root.path(), &[a.clone(), b.clone()], &out, true).unwrap();
         assert_eq!(generated.source, forward.source);
         let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let harness = format!("#[path = {:?}] mod firmware_marker;\n#[path = {:?}] mod firmware_bundle;\n{}\nfn main() {{ let bundle = firmware_bundle::FirmwareBundle::parse(FIRMWARE_IMAGES).unwrap(); assert_eq!(bundle.get(1,1).unwrap().bytes(), &{:?}); assert_eq!(bundle.get(2,1).unwrap().bytes(), &{:?}); assert!(bundle.get(9,1).is_none()); assert!(bundle.get(1,9).is_none()); assert!(bundle.single().is_none()); }}", src.join("firmware_marker.rs"), src.join("firmware_bundle.rs"), generated.source, first, second);
@@ -565,9 +627,11 @@ mod tests {
             .status()
             .unwrap()
             .success());
-        assert!(generate_firmware(&catalog, root.path(), &[a.clone(), a.clone()], &out).is_err());
+        assert!(
+            generate_firmware(&catalog, root.path(), &[a.clone(), a.clone()], &out, false).is_err()
+        );
         fs::write(&b, &first).unwrap();
-        assert!(generate_firmware(&catalog, root.path(), &[a, b], &out).is_err());
+        assert!(generate_firmware(&catalog, root.path(), &[a, b], &out, false).is_err());
     }
 
     #[test]
@@ -580,9 +644,14 @@ mod tests {
         .unwrap();
         let path = root.path().join("image.elf");
         let out = root.path().join("firmware-out");
-        assert!(
-            generate_firmware(&catalog, root.path(), std::slice::from_ref(&path), &out).is_err()
-        );
+        assert!(generate_firmware(
+            &catalog,
+            root.path(),
+            std::slice::from_ref(&path),
+            &out,
+            false
+        )
+        .is_err());
         for bytes in [
             Vec::new(),
             b"not ELF".to_vec(),
@@ -591,26 +660,38 @@ mod tests {
             image(1, 1, "0.1.0", "0.2"),
         ] {
             fs::write(&path, bytes).unwrap();
-            assert!(
-                generate_firmware(&catalog, root.path(), std::slice::from_ref(&path), &out)
-                    .is_err()
-            );
+            assert!(generate_firmware(
+                &catalog,
+                root.path(),
+                std::slice::from_ref(&path),
+                &out,
+                false
+            )
+            .is_err());
             assert!(!out.exists());
         }
         let valid = root.path().join("valid.elf");
         fs::write(&valid, image(1, 1, "0.1.0", "0.1")).unwrap();
         fs::write(&path, image(9, 1, "0.1.0", "0.1")).unwrap();
-        assert!(generate_firmware(&catalog, root.path(), &[valid, path.clone()], &out).is_err());
+        assert!(
+            generate_firmware(&catalog, root.path(), &[valid, path.clone()], &out, false).is_err()
+        );
         assert!(!out.exists());
         fs::write(&path, image(1, 1, "0.1.0", "0.1")).unwrap();
-        let one =
-            generate_firmware(&catalog, root.path(), std::slice::from_ref(&path), &out).unwrap();
+        let one = generate_firmware(
+            &catalog,
+            root.path(),
+            std::slice::from_ref(&path),
+            &out,
+            false,
+        )
+        .unwrap();
         assert!(one.source.contains("firmware-1-1.elf"));
         assert_eq!(
             fs::read(out.join("firmware-1-1.elf")).unwrap(),
             image(1, 1, "0.1.0", "0.1")
         );
-        let empty = generate_firmware(&catalog, root.path(), &[], &out).unwrap();
+        let empty = generate_firmware(&catalog, root.path(), &[], &out, false).unwrap();
         assert_eq!(empty.source, "const FIRMWARE_IMAGES: &[&[u8]] = &[\n];\n");
     }
 }

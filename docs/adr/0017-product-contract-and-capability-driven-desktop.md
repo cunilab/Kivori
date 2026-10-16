@@ -122,8 +122,7 @@ unsupported required inputs fail instead of timing out or disappearing. Newly fl
 must report the matching Build/Chip identity and image version. Baseline state/health/heartbeat
 checks remain unconditional. Identity burning is restricted to the implemented `c3-supermini`
 ESP32-C3 backend; that board binding is an explicit hardware-backend exception. Previewing identity
-still flashes/checks firmware and does not burn eFuses. Build recipes now use the catalog metadata described below; single-image packaging remains until
-separate bundle work.
+still flashes/checks firmware and does not burn eFuses. Build recipes now use the catalog metadata described below; whole-catalog packaging is implemented below.
 
 **As built (M2.8 firmware build recipes).** Optional `firmware.build` metadata carries target and
 features; shipping boards must supply it. One Bun helper builds the explicitly selected catalog pair
@@ -132,8 +131,8 @@ recipes, PowerShell and the release firmware job consume its verified artifact p
 crate-local target directory, use the firmware crate's working directory, disable default features,
 require the selected binary and preserve target linker flags by refusing global Rust flag overrides.
 Provision identity flags remain assertions, separate from build selection. Board-specific development
-flash/test recipes remain explicit. Multi-image packaging, pair-level recovery choices and release-set metadata
-are still open.
+flash/test recipes remain explicit. Whole-catalog packaging is implemented below; pair-level recovery
+choices and release-set metadata remain open.
 
 **As built (M2.8 recovery target guard).** A live session identity associated with the selected port takes
 precedence over USB hints; mismatching/unknown identities cannot fall back to identity-free recovery.
@@ -156,8 +155,18 @@ port's identity. Missing target images are unavailable. Status version/size/advi
 identity, while accepted operations retain their image and idle refresh preserves queued reservations.
 Incompatible recovery offers carry no assumed version. Provisioning flags select an exact embedded
 pair, and no-argument provisioning requires a sole image. Multiple images can now be embedded;
-whole-catalog packaging/release recipes, pair-level recovery choices and hardware acceptance remain
-open. Synthetic fixtures are not shipping products.
+pair-level recovery choices, release metadata and hardware acceptance remain open. Synthetic fixtures are not shipping products.
+
+**As built (M2.8 catalog firmware packaging).** Desktop development/bundle recipes, PowerShell and
+release CI build every active pair in deterministic wire order. Each successful build is copied
+before a later board can overwrite the same Cargo output. Fresh staging directories and exclusive
+manifest creation prevent stale output reuse. Only ELF files cross runner boundaries; Windows
+checks the exact expected filenames and recreates absolute paths locally. Native manifest mode
+independently requires exact equality with the active catalog identity set and validates all image
+records before emission. The single-image path remains available for targeted development and
+provisioning. Targets derive from catalog recipes; release CI expects stable crate toolchains.
+Single-target selectors cannot narrow desktop packages. Multi-product version/bump/tag guards and
+release titles/notes remain subsequent release work, required before a multi-product release.
 
 ## Consequences
 

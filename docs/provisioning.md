@@ -21,8 +21,9 @@ embedded image pair; no arguments require exactly one image, and a missing pair 
 any device I/O. Explicit flags still preview the identity unless `--burn-identity` is supplied.
 They must match the bundled image even without `--burn-identity`. For a separately built image, supply
 its absolute path through `KIVORI_FIRMWARE_PATH` to `cargo run -p kivori-desktop --example provision`.
-The desktop validates the image against its catalog entry. Multi-image packaging remains separate
-M2.8 work.
+The desktop validates the image against its catalog entry. Desktop packaging now includes every
+active pair; `just provision` deliberately keeps this explicit single-target build path and clears any
+inherited complete-set manifest. A manually supplied manifest must cover the entire active catalog.
 
 ## Steps
 

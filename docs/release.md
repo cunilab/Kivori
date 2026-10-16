@@ -25,8 +25,9 @@ urgency of a safety or recovery fix can justify an earlier release.
 **Firmware release guard (M2.8).** The Release button runs `scripts/firmware-release-guard.mjs`
 through `release-bump.mjs` before writing versions or outputs. It needs Rust/Cargo and full Git
 history/tags, including for a dry run; the workflow installs Rust before computing the plan.
-The guard checks the selected product (currently the only bundled product, Pip). Multi-product
-packaging must apply it to every bundled product when that M2.8 item lands.
+The guard checks the selected product (currently the only shipping product, Pip). Packaging now
+builds the complete catalog; applying version/bump/tag checks to every bundled product remains the
+release-orchestration follow-up, required before a multi-product release.
 Full `cargo metadata --locked` resolution validates both lockfiles before an unchanged-version
 release can write anything; stale locks are refused instead of being silently repaired afterward.
 The resolved firmware graph includes local patches and build dependencies. Project Cargo config
@@ -232,32 +233,50 @@ Per-unit flashing and QA of new units: see [provisioning.md](./provisioning.md).
   as missing).
 - The WebView2 bootstrapper needs a network connection on a PC that does not have WebView2 yet.
 
-## Catalog-selected firmware builds
+## Catalog firmware builds and packaging
 
-Build recipes use `bun scripts/build-firmware.mjs`, which reads the selected board's
-`firmware.build.target` and `firmware.build.features` and returns one freshly built artifact path.
-`just fw-build`, `app`, `desktop`, `provision`, `bundle-windows` and `bundle-macos` use the same helper.
-It needs Bun and the board's Rust target/toolchain installed. Set both `KIVORI_PRODUCT` and
-`KIVORI_BOARD` to select a pair; no variables are needed while the catalog has exactly one pair.
-Multiple pairs without selection fail instead of choosing the first. The helper also accepts
-`--product <id> --board <id>`; PowerShell's desktop builder accepts `-Product <id> -Board <id>`.
+`bun scripts/build-firmware.mjs` builds one selected catalog pair. `just fw-build` and `provision`
+use it. Set both `KIVORI_PRODUCT` and `KIVORI_BOARD`, or pass `--product <id> --board <id>`; no
+selection is needed for a sole active pair. Empty, partial, unknown and ambiguous selections fail.
+Every active pair must have a valid build recipe; registry reservations without metadata are not builds.
 
-Builds now always use the lockfile, disable default features, name the binary explicitly and ignore
-an inherited `CARGO_TARGET_DIR` for the firmware child. Unset `RUSTFLAGS` and
-`CARGO_ENCODED_RUSTFLAGS` before running these recipes: they would replace the firmware's linker
-configuration. Logs go to stderr; stdout contains only the artifact path. A failed build never hands
-a stale path to the embedding step. The PowerShell wrapper restores its caller's environment.
+Desktop `app`/`desktop`, both bundle recipes and `scripts/build-desktop-firmware.ps1 [-Release]`
+instead build **every** active catalog pair through `scripts/build-firmware-set.mjs`. They ignore
+single-pair selector environment variables. PowerShell no longer accepts `-Product`/`-Board`.
+Each build uses its catalog target/features, locks dependencies, disables default features, names the
+binary explicitly, and pins the child target directory. Global `RUSTFLAGS` and
+`CARGO_ENCODED_RUSTFLAGS` must be unset so the firmware retains its linker configuration.
 
-The release firmware job shares this recipe and passes the resulting artifact's basename to the
-Windows download/embedding job. It still builds one image and installs the current C3 toolchain
-target. A multi-image release set and product-aware release orchestration remain M2.8 follow-up work.
-These commands build software; actual flashing/provisioning still requires its explicit recipe.
+The set builder requires a fresh absolute output directory and an absolute manifest path outside it:
 
-The native build accepts either `KIVORI_FIRMWARE_PATH` or `KIVORI_FIRMWARE_MANIFEST`, never both.
-The manifest variable is an absolute JSON-file path; its contents are a nonempty array of absolute
-image paths. Images are resolved by their embedded catalog identities, not filenames or list order.
-The runtime supports multiple validated images and selects only the exact product/board target.
-Pending/unknown identities and missing image pairs have no fallback; recovery establishes the
-hardware target before lookup. An unset pair of variables embeds no firmware. The existing build
-recipes still supply one image; packaging the complete supported catalog set and generalizing
-release metadata remain M2.8 follow-up work.
+```bash
+staging="$(mktemp -d)"
+bun scripts/build-firmware-set.mjs --out-dir "$staging/images" --manifest-out "$staging/manifest.json"
+```
+
+It validates all plans before building, sorts by wire product/board, and copies each successful image
+to `firmware-<product-number>-<board-number>.elf` immediately, before another build can overwrite a
+shared Cargo artifact. Only a complete successful set gets a manifest; existing outputs/manifests
+are refused. Child logs go to stderr and stdout contains only the manifest path. Desktop wrappers
+clear the legacy image input, use temporary staging and clean it afterward. PowerShell restores both
+firmware input variables and the desktop target-directory environment on success or failure.
+
+Local builds need each catalog Rust target/toolchain installed. `--targets` lists deduplicated targets
+for CI installation. Release CI uses stable; catalog crate toolchains must match it. The Ubuntu job
+builds all images and uploads **only the ELF files**, not its host-specific manifest. Windows checks
+the downloaded directory and creates its own absolute manifest:
+
+```bash
+bun scripts/build-firmware-set.mjs --from-dir /absolute/download --manifest-out /absolute/manifest.json
+```
+
+Missing/extra entries, subdirectories, symlinks and empty images are refused. Native embedding then
+validates ELF identities, versions and protocols and requires manifest mode to equal the entire
+active catalog identity set, independent of filenames or input order. An exclusive
+`KIVORI_FIRMWARE_PATH` still accepts one targeted image for development/provisioning;
+`KIVORI_FIRMWARE_MANIFEST` is an absolute JSON file containing the complete set of absolute paths.
+Unset inputs embed no firmware. Single-pair selection never narrows a desktop package.
+
+These commands build software. Provisioning/flashing remains a separate explicit operation.
+Multi-product release titles/notes, bump/tag orchestration and whole-set version guards remain the
+next M2.8 release work; complete image packaging does not complete that release policy.

@@ -87,6 +87,9 @@ bun install
 just desktop                   # UI dev server + native app with the bundled firmware, one command
 ```
 
+Desktop recipes embed firmware for every active catalog pair. Single-target `KIVORI_PRODUCT` /
+`KIVORI_BOARD` selection applies to `fw-build` and provisioning, not desktop packages.
+
 The native core owns the serial link; the webview receives only typed IPC commands. Device
 discovery is automatic: there is no COM-port picker by design.
 
