@@ -29,6 +29,13 @@ Session transitions, polling failures and leaving instrumentation invalidate the
 late replies cannot restore it. Copy never starts internals polling.
 
 
+Home shows a small Link health card only while developer mode is on. It uses current connection
+status for link state and consecutive retries, and the existing safe diagnostics cache for the
+native reconnect total since app start (excluding the first connection). Cache reads occur about
+once a second only while the card is mounted and the window is visible. Missing, failed or
+mismatched-session totals remain unavailable. Home never requests device internals or activity
+history, and turning developer mode off or leaving Home stops these reads.
+
 ## Surface mapping
 
 | Surface | Current rule |

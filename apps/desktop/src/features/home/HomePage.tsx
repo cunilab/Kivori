@@ -45,6 +45,8 @@ import { uiConnection } from '@/hooks/use-kivori';
 import { hasCapability, canMirrorState } from '@/lib/device-support';
 import type { ConnectionStatusDto, DeskStatusDto } from '@/lib/ipc/types';
 import { format, strings } from '@/lib/i18n/strings';
+import { useDevMode } from '@/lib/dev-mode';
+import { LinkHealth } from './LinkHealth';
 import { cn } from '@kivori/ui/lib/utils';
 
 export type NavigateTo = (page: 'display' | 'device') => void;
@@ -436,6 +438,7 @@ export function HomePage({
   updateAvailable?: boolean;
   onNavigate: NavigateTo;
 }): ReactElement {
+  const devMode = useDevMode();
   return (
     <Page title={t.title} description={t.description}>
       <Hero
@@ -444,6 +447,8 @@ export function HomePage({
         updateAvailable={updateAvailable}
         onNavigate={onNavigate}
       />
+
+      {devMode ? <LinkHealth connection={connection} /> : null}
 
       <section aria-labelledby="monitoring-heading" className="space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
