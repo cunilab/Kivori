@@ -12,7 +12,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use crate::activity::{ActivityEventKind, SessionActivity};
 use crate::device::discovery::{default_allowlist, filter_candidates, PortCandidate};
 use crate::firmware_marker::{scan_image_identity, ImageIdentity};
-use crate::identity::{RestoreOption, WrongProduct};
+use crate::identity::{RecoveryRefusal, RestoreOption, WrongProduct};
 use serde::Serialize;
 
 /// Maximum time allowed for one `espflash` process before it is terminated.
@@ -440,8 +440,8 @@ impl FlashWorkflow {
     }
 
     /// Reserves recovery of a device that cannot be verified (wrong-major firmware, a unit in ROM
-    /// download mode). Allowed only when exactly one allowlisted port is present, so the flasher can
-    /// never be pointed at the wrong board. Returns the port for the device thread only.
+    /// download mode). Requires exactly one USB-hinted port; the caller must first accept its
+    /// product/board recovery policy. Returns the port for the device thread only.
     pub fn request_recovery(&mut self, candidates: &[PortCandidate]) -> Result<String, String> {
         if !self.status.available {
             return Err("Firmware is unavailable in this application build.".to_string());
@@ -500,7 +500,23 @@ impl FlashWorkflow {
         self.status.message = failure.message().to_string();
         self.status.failure = Some(failure);
         self.target = None;
+        self.status.wrong_product = None;
+        self.status.restore_choices.clear();
         self.observe(ActivityEventKind::FirmwarePreparationRejected);
+    }
+
+    /// Reports a recovery policy refusal without reserving a target or starting the flasher.
+    pub fn refuse_recovery(&mut self, refusal: RecoveryRefusal) {
+        match refusal {
+            RecoveryRefusal::ImageUnavailable => {
+                self.fail_preparation_with(FlashFailure::ImageUnavailable)
+            }
+            RecoveryRefusal::NoCandidate | RecoveryRefusal::BoardAmbiguous => {
+                // shortcut: generic copy until recovery offers product/board choices.
+                self.fail_preparation_with(FlashFailure::Unknown)
+            }
+            RecoveryRefusal::WrongProduct(wrong) => self.fail_wrong_product(wrong),
+        }
     }
 
     /// Refuses an image for a device it is not for (tier A). Nothing was written; the status
