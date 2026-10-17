@@ -233,9 +233,8 @@ test('the real repository is scanned and clean with explicit reviewed exceptions
   expect(result.violations).toEqual([]);
 });
 
-test(
+(process.platform === 'win32' ? test.skip : test)(
   'offline dependency guard visits every catalog workspace and scans a custom second crate',
-  { skip: process.platform === 'win32' },
   () =>
     usingFixture(({ root, put }) => {
       put('products/registry.toml', '[products]\nlada = 1\njahe = 2\n[boards]\nrp-zero = 2\n');
