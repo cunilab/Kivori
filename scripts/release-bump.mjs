@@ -1,13 +1,13 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // Next app and firmware versions for a release (ADR-0014). Used by .github/workflows/release-start.yml
 // (the Release button); safe to run locally, where it only prints unless --write is given.
 //
-//   node scripts/release-bump.mjs --app none|patch|minor|major [--app-version X.Y.Z] \
-//        [--firmware none|patch|minor|major] [--firmware-version A.B.C] [--product pala] \
-//        [--dry-run | --write] [--outputs FILE]
+//   bun scripts/release-bump.mjs --app none|patch|minor|major [--app-version X.Y.Z] \
+//        [--firmware none|patch|minor|major] [--firmware-version A.B.C] [--product ID] \
+//        [--firmware-overrides JSON_MAP] [--dry-run | --write] [--outputs FILE]
 //
 // The app version is `[workspace.package] version` in Cargo.toml, the firmware version `[package]
-// version` in firmware/<product>/Cargo.toml. A bump starts from that Cargo version; `none` keeps it
+// version` in the catalog-selected firmware crates. A bump starts from that Cargo version; `none` keeps it
 // and an exact version overrides the bump. Each new version must be greater than the latest existing
 // tag of its component (`vX.Y.Z` for the app, `fw-<product>-vA.B.C` for the firmware) and never below
 // its Cargo version; with no tag yet, the Cargo version may be released as it is (the first release).
@@ -24,7 +24,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
-import { productName } from './release-info.mjs';
+import { releaseCatalog } from './release-catalog.mjs';
 import { checkFirmwareRelease } from './firmware-release-guard.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -240,77 +240,114 @@ export function main(argv, directory = root) {
       'app-version': { type: 'string', default: '' },
       firmware: { type: 'string', default: 'none' },
       'firmware-version': { type: 'string', default: '' },
-      product: { type: 'string', default: 'pala' },
+      'firmware-overrides': { type: 'string' },
+      product: { type: 'string' },
       'dry-run': { type: 'boolean', default: false },
       write: { type: 'boolean', default: false },
       outputs: { type: 'string' },
     },
   });
   if (opt.write && opt['dry-run']) throw new Error('--write and --dry-run exclude each other');
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(opt.product)) throw new Error('invalid product id');
+  const catalog = releaseCatalog(root);
+  if (opt.product && !catalog.some((p) => p.product === opt.product))
+    throw new Error(`Unknown active product: ${opt.product}`);
+  if (catalog.length !== 1 && !opt.product && (opt.firmware !== 'none' || opt['firmware-version']))
+    throw new Error('Select --product or use --firmware-overrides with multiple products');
+  const overrides = opt['firmware-overrides'] ? JSON.parse(opt['firmware-overrides']) : {};
+  if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides))
+    throw new Error('Firmware overrides must be a JSON object');
+  if (
+    opt['firmware-overrides'] &&
+    (opt.product || opt.firmware !== 'none' || opt['firmware-version'])
+  )
+    throw new Error('--firmware-overrides excludes --product, --firmware and --firmware-version');
+  for (const [id, value] of Object.entries(overrides)) {
+    if (!catalog.some((p) => p.product === id)) throw new Error(`Unknown active product: ${id}`);
+    if (typeof value !== 'string' || (!BUMPS.includes(value) && !SEMVER.test(value)))
+      throw new Error(`Invalid firmware override for ${id}: use a bump or X.Y.Z`);
+  }
 
   const appToml = join(root, 'Cargo.toml');
-  const fwToml = join(root, 'firmware', opt.product, 'Cargo.toml');
   const appText = readFileSync(appToml, 'utf8');
-  const fwText = readFileSync(fwToml, 'utf8');
-  const display = productName(
-    readFileSync(join(root, 'products', opt.product, 'product.toml'), 'utf8'),
-  );
-
   const tags = localTagsAt(root);
-  const plan = planRelease({
-    appCurrent: tomlVersion(appText, 'workspace.package'),
-    firmwareCurrent: tomlVersion(fwText, 'package'),
-    product: opt.product,
-    appBump: opt.app,
-    appExact: opt['app-version'],
-    firmwareBump: opt.firmware,
-    firmwareExact: opt['firmware-version'],
-    tags,
+  const firmware = catalog.map((product) => {
+    const selected = !opt.product || opt.product === product.product;
+    let bump = selected ? opt.firmware : 'none';
+    let exact = selected ? opt['firmware-version'] : '';
+    if (Object.hasOwn(overrides, product.product)) {
+      const value = overrides[product.product];
+      bump = BUMPS.includes(value) ? value : 'none';
+      exact = BUMPS.includes(value) ? '' : value;
+    }
+    const plan = planRelease({
+      appCurrent: tomlVersion(appText, 'workspace.package'),
+      firmwareCurrent: product.version,
+      product: product.product,
+      appBump: opt.app,
+      appExact: opt['app-version'],
+      firmwareBump: bump,
+      firmwareExact: exact,
+      tags,
+    });
+    return { ...product, ...plan };
   });
-  const guard = checkFirmwareRelease(root, opt.product, plan.firmwarePrevious, plan.firmware, tags);
-  console.log(`Firmware guard: ${guard}.`);
-
-  const how = (exact, bump) => (exact.trim() ? 'exact' : bump);
-  console.log(
-    plan.appPrevious
-      ? `Previous release: ${appTag(plan.appPrevious)}`
-      : 'Previous release: none (this is the first release)',
-  );
-  console.log(
-    plan.appChanged
-      ? `Kivori app:   ${plan.appCurrent} -> ${plan.app} (${how(opt['app-version'], opt.app)}), tag ${plan.appTag}`
-      : `Kivori app:   ${plan.app} (the current version, as it is), tag ${plan.appTag}`,
-  );
-  console.log(
-    plan.firmwareChanged
-      ? `${display} firmware: ${plan.firmwareCurrent} -> ${plan.firmware} (${how(opt['firmware-version'], opt.firmware)}), tag ${plan.firmwareTag}`
-      : plan.firmwareTag
-        ? `${display} firmware: ${plan.firmware} (unchanged, first firmware tag ${plan.firmwareTag})`
-        : `${display} firmware: ${plan.firmware} (unchanged, no firmware tag)`,
-  );
-  if (plan.commitNeeded) {
-    console.log(`Commit: chore(release): ${plan.appTag}`);
-    console.log(`        ${commitBody(plan, display)}`);
-  } else {
-    console.log('Commit: none, no version changes; the current main commit is tagged as it is');
-    console.log(`        ${commitBody(plan, display)}`);
+  const plan = firmware[0];
+  const crateVersions = new Map();
+  for (const product of firmware) {
+    for (const crate of product.crates) {
+      if (crateVersions.has(crate) && crateVersions.get(crate) !== product.firmware)
+        throw new Error(`Conflicting firmware versions for shared crate ${crate}`);
+      crateVersions.set(crate, product.firmware);
+    }
   }
+  const edits = new Map();
+  if (plan.appChanged)
+    edits.set('Cargo.toml', setTomlVersion(appText, 'workspace.package', plan.app));
+  for (const [crate, version] of crateVersions) {
+    const path = `${crate}/Cargo.toml`;
+    const text = readFileSync(join(root, path), 'utf8');
+    if (version !== tomlVersion(text, 'package'))
+      edits.set(path, setTomlVersion(text, 'package', version));
+  }
+  // Every bundled lineage must pass before any version or workflow output is written.
+  for (const product of firmware) {
+    for (const crate of product.crates) {
+      const guard = checkFirmwareRelease(
+        root,
+        product.product,
+        product.firmwarePrevious,
+        product.firmware,
+        tags,
+        crate,
+        [...edits.keys()],
+      );
+      console.log(`${product.product} (${crate}) firmware guard: ${guard}.`);
+    }
+  }
+  const commitNeeded = firmware.some((p) => p.commitNeeded);
+  const body = firmware.map((p) => commitBody(p, p.name)).join(' ');
+  console.log(`Kivori app: ${plan.appCurrent} -> ${plan.app}, tag ${plan.appTag}`);
+  for (const product of firmware)
+    console.log(
+      `${product.name} firmware: ${product.firmwareCurrent} -> ${product.firmware}` +
+        (product.firmwareTag ? `, tag ${product.firmwareTag}` : ', unchanged, no firmware tag'),
+    );
+  console.log(
+    commitNeeded ? `Commit: chore(release): ${plan.appTag}` : 'Commit: none, versions unchanged',
+  );
+  console.log(body);
 
+  // Lock refresh may only update version bookkeeping, never repair a stale dependency resolution.
+  for (const cwd of [root, ...[...crateVersions.keys()].map((crate) => join(root, crate))]) {
+    execFileSync('cargo', ['metadata', '--locked', '--all-features', '--format-version', '1'], {
+      cwd,
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+  }
   if (opt.write) {
-    const wrote = [];
-    if (plan.appChanged) {
-      writeFileSync(appToml, setTomlVersion(appText, 'workspace.package', plan.app));
-      wrote.push('Cargo.toml');
-    }
-    if (plan.firmwareChanged) {
-      writeFileSync(fwToml, setTomlVersion(fwText, 'package', plan.firmware));
-      wrote.push(`firmware/${opt.product}/Cargo.toml`);
-    }
-    console.log(wrote.length ? `Wrote ${wrote.join(' and ')}.` : 'Nothing to write.');
-  } else {
-    console.log('Dry run: nothing written.');
-  }
+    for (const [path, text] of edits) writeFileSync(join(root, path), text);
+    console.log(edits.size ? `Wrote ${[...edits.keys()].join(', ')}.` : 'Nothing to write.');
+  } else console.log('Dry run: nothing written.');
 
   if (opt.outputs) {
     const out = {
@@ -318,12 +355,25 @@ export function main(argv, directory = root) {
       app_tag: plan.appTag,
       app_previous: plan.appPrevious,
       app_changed: String(plan.appChanged),
-      firmware_version: plan.firmware,
-      firmware_previous: plan.firmwareCurrent,
-      firmware_changed: String(plan.firmwareChanged),
-      firmware_tag: plan.firmwareTag,
-      commit_needed: String(plan.commitNeeded),
-      commit_body: commitBody(plan, display),
+      firmware: JSON.stringify(
+        firmware.map((p) => ({
+          product: p.product,
+          name: p.name,
+          version: p.firmware,
+          tag: p.firmwareTag,
+        })),
+      ),
+      firmware_versions: JSON.stringify(
+        Object.fromEntries(firmware.map((p) => [p.product, p.firmware])),
+      ),
+      firmware_crates: JSON.stringify([...crateVersions.keys()]),
+      release_files: JSON.stringify([
+        'Cargo.toml',
+        'Cargo.lock',
+        ...[...crateVersions.keys()].flatMap((c) => [`${c}/Cargo.toml`, `${c}/Cargo.lock`]),
+      ]),
+      commit_needed: String(commitNeeded),
+      commit_body: body,
     };
     appendFileSync(
       opt.outputs,

@@ -519,7 +519,7 @@ Provisioning with explicit identity flags selects that exact embedded pair; with
 exactly one image. This happens before device I/O, and the pre-flash identity guard still asserts the
 selected image. The multi-image runtime build gate is removed. Synthetic two-product and two-board
 fixtures exercise lookup, recovery, metadata and provisioning. Desktop/release recipes now build
-every active pair. Whole-catalog packaging is implemented below; release metadata and hardware acceptance remain open.
+every active pair. Whole-catalog packaging is implemented below; hardware acceptance remains open; catalog release orchestration is implemented below.
 
 ### Firmware build recipes (M2.8)
 
@@ -557,7 +557,7 @@ failure. Single-product selectors never narrow desktop packages.
 
 Existing `fw-check`, `fw-test`, `fw-flash`, latency recipes and firmware feature-matrix CI remain
 explicit Pip/C3 developer checks. Local targets/toolchains must already be installed. Multi-product
-release notes and version/bump/tag orchestration remain subsequent work; neither helper flashes.
+release notes and version/bump/tag orchestration use the same catalog through `release-catalog.mjs`; every product/crate is guarded before writes, and all new lineage tags push atomically. Neither helper flashes.
 
 ### First-run onboarding (M3 S6)
 
@@ -613,7 +613,7 @@ On a normal launch the main window stays hidden and `setup` starts a watcher thr
 - Versions: the Cargo workspace version is the only app version. `tauri.conf.json` has no `version`, so Tauri takes it from `kivori-desktop`; the installer name, `CFBundleShortVersionString` and the tag check all follow it.
 - Config split: the base `tauri.conf.json` stays dev-safe (`bundle.active: false`, no `externalBin` or `resources`), because Tauri's build script checks those paths at compile time and would break every dev and CI `cargo build`. Packaging lives in `tauri.release.conf.json` (NSIS, per-user install, embedded WebView2 bootstrapper, the `espflash` sidecar, `THIRD_PARTY_NOTICES.md`) and `tauri.release.macos.conf.json` (app and dmg, the adapter resource, `Info.plist`, `Entitlements.plist`, hardened runtime), merged with `tauri build --config`. Release builds pass `-- --no-default-features`, so Device Studio and the PATH fallback are compiled out.
 - Sidecar: `scripts/fetch-espflash.{sh,ps1}` download espflash 4.6.0 from the official GitHub release, check a pinned SHA-256 and write `src-tauri/binaries/espflash-<triple>[.exe]` (gitignored). Tauri installs it as `espflash[.exe]` next to the app, which is where `find_espflash` looks first. Bump the version and hashes together, in both scripts and `release.yml`.
-- Windows: `.github/workflows/release.yml` builds the firmware ELF on Ubuntu, then on Windows builds the NSIS installer with `KIVORI_FIRMWARE_PATH`, runs `check-release-surface.sh --desktop-artifact` (dev symbols absent, firmware version marker present), silently installs, checks the exe and `espflash --version`, runs the startup smoke test with `--autostart`, and silently uninstalls. `nsis/hooks.nsh` removes the HKCU `Run\Kivori` value that `tauri-plugin-autostart` writes; the workflow plants that value before uninstalling to prove it. A release tag (which must equal the workspace version), from the Release button's call or a `v*` tag pushed by hand, uploads the installer and `SHA256SUMS` to a draft GitHub release. Nothing is published automatically.
+- Windows: `.github/workflows/release.yml` builds all catalog firmware ELFs on Ubuntu, then on Windows recreates a host-local complete `KIVORI_FIRMWARE_MANIFEST` and builds the NSIS installer, runs `check-release-surface.sh --desktop-artifact` (dev symbols absent, firmware version marker present), silently installs, checks the exe and `espflash --version`, runs the startup smoke test with `--autostart`, and silently uninstalls. `nsis/hooks.nsh` removes the HKCU `Run\Kivori` value that `tauri-plugin-autostart` writes; the workflow plants that value before uninstalling to prove it. A release tag (which must equal the workspace version), from the Release button's call or a `v*` tag pushed by hand, uploads the installer and `SHA256SUMS` to a draft GitHub release. Nothing is published automatically.
 - Signing is not implemented: the installer is unsigned and a placeholder step (repository variable `WINDOWS_SIGNING`) fails closed until owner certificates exist (#36). Unsigned binaries trigger SmartScreen, and Defender may flag `espflash.exe`.
 - macOS (ADR-0009): `scripts/bundle-macos.sh` is the main path; CI only builds it on a manual dispatch. The adapter is staged by `build.rs` in `target/release/mediaremote-adapter/` and bundled to `Contents/Resources/mediaremote-adapter`, which is what `adapter_dir()` resolves. With `APPLE_SIGNING_IDENTITY` set the script signs the two Mach-O helpers, then the app, with hardened runtime. Notarization is not done.
 

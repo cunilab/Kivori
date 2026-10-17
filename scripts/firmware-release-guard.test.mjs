@@ -6,7 +6,21 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { firmwareInputs, normalizeBookkeeping } from './firmware-release-guard.mjs';
-import { main, planRelease } from './release-bump.mjs';
+import { planRelease } from './release-bump.mjs';
+
+const bumpScript = fileURLToPath(new URL('./release-bump.mjs', import.meta.url));
+function main(args, root) {
+  return execFileSync(
+    'bun',
+    [
+      '--eval',
+      `import { main } from ${JSON.stringify(pathToFileURL(bumpScript).href)}; main(JSON.parse(process.argv[1]), process.argv[2]);`,
+      JSON.stringify(args),
+      root,
+    ],
+    { encoding: 'utf8', stdio: 'pipe' },
+  );
+}
 
 const git = (root, ...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
 function put(root, path, text) {
@@ -25,6 +39,19 @@ function locks(root) {
     });
   }
 }
+
+function productToml(name, crate) {
+  return `short_name = "${name}"
+display_name = "Kivori ${name}"
+[boards.board.firmware]
+crate = "${crate}"
+artifact = "target/riscv32imc-unknown-none-elf/release/device"
+[boards.board.firmware.build]
+target = "riscv32imc-unknown-none-elf"
+features = []
+`;
+}
+
 function fixture(t, { tagged = true, consumesVersion = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'kivori-release-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -68,8 +95,8 @@ function fixture(t, { tagged = true, consumesVersion = false } = {}) {
     '[workspace]\nresolver = "2"\n[package]\nname = "test-firmware"\nversion = "0.1.0"\nedition = "2021"\n[dependencies]\ntest-shared = { path = "../../crates/shared" }\n[build-dependencies]\ntest-compiler = { path = "../../tools/asset-compiler" }\n',
   );
   put(root, 'firmware/pala/src/lib.rs', 'pub const VALUE: u8 = 1;\n');
-  put(root, 'products/pala/product.toml', 'short_name = "Pip"\n');
-  put(root, 'products/registry.toml', '[products]\npala = 1\n');
+  put(root, 'products/pala/product.toml', productToml('Pip', 'firmware/pala'));
+  put(root, 'products/registry.toml', '[products]\npala = 1\n[boards]\nboard = 1\n');
   put(root, 'assets/mascot.svg', '<svg/>\n');
   locks(root);
   commit(root, 'initial firmware');
@@ -173,6 +200,7 @@ test('changed inputs reject unchanged firmware before versions or outputs are wr
     'scripts/build-desktop-firmware.ps1',
     'scripts/build-firmware.mjs',
     'scripts/build-firmware-set.mjs',
+    'scripts/release-catalog.mjs',
   ]) {
     await t.test(path, (t) => {
       const root = fixture(t);
@@ -365,4 +393,610 @@ test('an older existing firmware tag cannot bypass version monotonicity', () => 
       }),
     /below the latest released version 0\.2\.0/,
   );
+});
+
+function twoProducts(t, options) {
+  const root = fixture(t, options);
+  put(root, 'products/registry.toml', '[products]\npala = 1\nlamp = 2\n[boards]\nboard = 1\n');
+  put(root, 'products/lamp/product.toml', productToml('Lamp', 'devices/lamp firmware'));
+  put(
+    root,
+    'devices/lamp firmware/Cargo.toml',
+    '[workspace]\nresolver = "2"\n[package]\nname = "test-lamp"\nversion = "0.4.0"\nedition = "2021"\n[dependencies]\ntest-shared = { path = "../../crates/shared" }\n',
+  );
+  put(root, 'devices/lamp firmware/src/lib.rs', 'pub const VALUE: u8 = 1;\n');
+  execFileSync(
+    'cargo',
+    ['generate-lockfile', '--offline', '--manifest-path', 'devices/lamp firmware/Cargo.toml'],
+    { cwd: root, stdio: 'pipe' },
+  );
+  commit(root, 'feat: second catalog product');
+  if (options?.tagged !== false) {
+    git(root, 'tag', '-f', 'fw-pala-v0.1.0');
+    git(root, 'tag', 'fw-lamp-v0.4.0');
+  }
+  return root;
+}
+function outputFile(t) {
+  const dir = mkdtempSync(join(tmpdir(), 'kivori-plan-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  return join(dir, 'outputs');
+}
+function readOutputs(path) {
+  return Object.fromEntries(
+    readFileSync(path, 'utf8')
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const at = line.indexOf('=');
+        return [line.slice(0, at), line.slice(at + 1)];
+      }),
+  );
+}
+function info(args, root) {
+  const script = new URL('./release-info.mjs', import.meta.url).href;
+  return execFileSync(
+    'bun',
+    [
+      '--eval',
+      `import { main } from ${JSON.stringify(script)}; main(JSON.parse(process.argv[1]), process.argv[2]);`,
+      JSON.stringify(args),
+      root,
+    ],
+    { encoding: 'utf8', stdio: 'pipe' },
+  );
+}
+
+test('whole catalog first release and independent per-product overrides preserve wire order', (t) => {
+  const root = twoProducts(t, { tagged: false });
+  const outputs = outputFile(t);
+  main(['--app', 'none', '--dry-run', '--outputs', outputs], root);
+  const first = readOutputs(outputs);
+  assert.equal(first.commit_needed, 'false');
+  assert.deepEqual(JSON.parse(first.firmware), [
+    { product: 'pala', name: 'Pip', version: '0.1.0', tag: 'fw-pala-v0.1.0' },
+    { product: 'lamp', name: 'Lamp', version: '0.4.0', tag: 'fw-lamp-v0.4.0' },
+  ]);
+  assert.deepEqual(JSON.parse(first.firmware_crates), ['firmware/pala', 'devices/lamp firmware']);
+  const notes = info(
+    ['--version', first.app_version, '--firmware-versions', first.firmware_versions],
+    root,
+  );
+  assert.ok(notes.startsWith('Kivori 0.1.0 · Pip firmware 0.1.0 · Lamp firmware 0.4.0\n'));
+  assert.match(notes, /Kivori Pip firmware 0.1.0, Kivori Lamp firmware 0.4.0/);
+  assert.equal(git(root, 'status', '--porcelain'), '');
+});
+
+test('a later product refusing unchanged firmware leaves every version and output untouched', (t) => {
+  const root = twoProducts(t);
+  put(root, 'devices/lamp firmware/src/lib.rs', 'pub const VALUE: u8 = 2;\n');
+  commit(root, 'fix: lamp behavior');
+  const outputs = outputFile(t);
+  assert.throws(
+    () =>
+      main(
+        [
+          '--app',
+          'patch',
+          '--product',
+          'pala',
+          '--firmware',
+          'patch',
+          '--write',
+          '--outputs',
+          outputs,
+        ],
+        root,
+      ),
+    /lamp firmware inputs changed/,
+  );
+  assert.equal(git(root, 'status', '--porcelain'), '');
+  assert.equal(existsSync(outputs), false);
+  main(
+    [
+      '--app',
+      'patch',
+      '--firmware-overrides',
+      '{"pala":"patch","lamp":"0.5.0"}',
+      '--dry-run',
+      '--outputs',
+      outputs,
+    ],
+    root,
+  );
+  const preview = info(
+    ['--version', '0.1.1', '--firmware-versions', readOutputs(outputs).firmware_versions],
+    root,
+  );
+  rmSync(outputs);
+  main(
+    [
+      '--app',
+      'patch',
+      '--firmware-overrides',
+      '{"pala":"patch","lamp":"0.5.0"}',
+      '--write',
+      '--outputs',
+      outputs,
+    ],
+    root,
+  );
+  assert.equal(info(['--version', '0.1.1'], root), preview);
+  assert.match(readFileSync(join(root, 'firmware/pala/Cargo.toml'), 'utf8'), /version = "0.1.1"/);
+  assert.match(
+    readFileSync(join(root, 'devices/lamp firmware/Cargo.toml'), 'utf8'),
+    /version = "0.5.0"/,
+  );
+  assert.deepEqual(JSON.parse(readOutputs(outputs).firmware_versions), {
+    pala: '0.1.1',
+    lamp: '0.5.0',
+  });
+});
+
+test('shared inputs guard all products, and unlisted overrides mean unchanged', (t) => {
+  const root = twoProducts(t);
+  put(root, 'crates/shared/src/lib.rs', 'pub const VALUE: u8 = 2;\n');
+  commit(root, 'fix: shared behavior');
+  const outputs = outputFile(t);
+  assert.throws(
+    () =>
+      main(
+        [
+          '--app',
+          'patch',
+          '--firmware-overrides',
+          '{"pala":"patch"}',
+          '--write',
+          '--outputs',
+          outputs,
+        ],
+        root,
+      ),
+    /lamp firmware inputs changed/,
+  );
+  assert.equal(git(root, 'status', '--porcelain'), '');
+  assert.equal(existsSync(outputs), false);
+  main(
+    ['--app', 'patch', '--firmware-overrides', '{"pala":"patch","lamp":"patch"}', '--dry-run'],
+    root,
+  );
+});
+
+test('catalog selectors and override validation fail before any mutation', (t) => {
+  const root = twoProducts(t);
+  for (const args of [
+    ['--product', 'reserved'],
+    ['--firmware', 'patch'],
+    ['--firmware-version', '1.0.0'],
+    ['--firmware-overrides', '{"reserved":"patch"}'],
+    ['--firmware-overrides', '{"lamp":"huge"}'],
+    ['--firmware-overrides', '{"lamp":3}'],
+    ['--firmware-overrides', '[]'],
+    ['--firmware-overrides', '{}', '--product', 'pala'],
+  ]) {
+    const outputs = outputFile(t);
+    assert.throws(() => main(['--app', 'patch', '--write', '--outputs', outputs, ...args], root));
+    assert.equal(git(root, 'status', '--porcelain'), '');
+    assert.equal(existsSync(outputs), false);
+  }
+});
+
+test('multi-board products check every crate and reject mismatched versions', (t) => {
+  const root = twoProducts(t);
+  const original = readFileSync(join(root, 'products/lamp/product.toml'), 'utf8');
+  put(
+    root,
+    'products/lamp/product.toml',
+    original +
+      productToml('Lamp', 'firmware/pala')
+        .slice(productToml('Lamp', 'firmware/pala').indexOf('[boards.'))
+        .replaceAll('boards.board', 'boards.other'),
+  );
+  put(
+    root,
+    'products/registry.toml',
+    '[products]\npala = 1\nlamp = 2\n[boards]\nboard = 1\nother = 2\n',
+  );
+  commit(root, 'test: second lamp board');
+  const outputs = outputFile(t);
+  assert.throws(
+    () => main(['--app', 'patch', '--write', '--outputs', outputs], root),
+    /same firmware version/,
+  );
+  assert.equal(git(root, 'status', '--porcelain'), '');
+  assert.equal(existsSync(outputs), false);
+});
+
+test('shared firmware crate allows consistent lineages and refuses conflicting bumps', (t) => {
+  const root = twoProducts(t);
+  put(root, 'products/lamp/product.toml', productToml('Lamp', 'firmware/pala'));
+  commit(root, 'test: shared firmware crate');
+  git(root, 'tag', '-d', 'fw-lamp-v0.4.0');
+  git(root, 'tag', 'fw-lamp-v0.1.0');
+  git(root, 'tag', '-f', 'fw-pala-v0.1.0');
+  assert.throws(
+    () => main(['--app', 'patch', '--product', 'pala', '--firmware', 'patch', '--write'], root),
+    /Conflicting firmware versions/,
+  );
+  assert.equal(git(root, 'status', '--porcelain'), '');
+  const outputs = outputFile(t);
+  main(
+    [
+      '--app',
+      'patch',
+      '--firmware-overrides',
+      '{"pala":"patch","lamp":"patch"}',
+      '--dry-run',
+      '--outputs',
+      outputs,
+    ],
+    root,
+  );
+  assert.deepEqual(JSON.parse(readOutputs(outputs).firmware_crates), ['firmware/pala']);
+});
+
+test('planned app version changes cannot bypass shared version reflection', (t) => {
+  const root = fixture(t, { consumesVersion: true });
+  rejectWithoutWrites(root, /firmware inputs will change/);
+  main(['--app', 'patch', '--firmware', 'patch', '--dry-run'], root);
+});
+
+test('release notes cover independent firmware histories at custom catalog paths', (t) => {
+  const root = twoProducts(t);
+  git(root, 'tag', 'v0.1.0');
+  put(root, 'firmware/pala/src/lib.rs', 'pub const VALUE: u8 = 2;\n');
+  commit(root, 'fix(firmware): pip correction');
+  put(root, 'devices/lamp firmware/src/lib.rs', 'pub const VALUE: u8 = 2;\n');
+  commit(root, 'feat(firmware): lamp behavior');
+  const notes = info(
+    [
+      '--version',
+      '0.2.0',
+      '--prev-tag',
+      'v0.1.0',
+      '--firmware-versions',
+      '{"pala":"0.1.1","lamp":"0.5.0"}',
+      '--repo',
+      'test/repo',
+    ],
+    root,
+  );
+  const pip = notes.slice(notes.indexOf('### Pip firmware'), notes.indexOf('### Lamp firmware'));
+  const lamp = notes.slice(notes.indexOf('### Lamp firmware'));
+  assert.match(pip, /Pip firmware 0.1.1.*was 0.1.0/);
+  assert.match(pip, /pip correction/);
+  assert.doesNotMatch(pip, /lamp behavior/);
+  assert.match(lamp, /Lamp firmware 0.5.0.*was 0.4.0/);
+  assert.match(lamp, /lamp behavior/);
+  assert.doesNotMatch(lamp, /pip correction/);
+  assert.match(lamp, /compare\/v0.1.0...v0.2.0/);
+  for (const map of [
+    '{"lamp":"0.5.0"}',
+    '{"pala":"0.1.1","absent":"0.4.0"}',
+    '[]',
+    '{"pala":3,"lamp":"0.4.0"}',
+  ])
+    assert.throws(
+      () => info(['--version', '0.2.0', '--firmware-versions', map], root),
+      /Invalid catalog firmware version overrides/,
+    );
+});
+
+function workflowStep(name) {
+  const workflow = readFileSync(
+    new URL('../.github/workflows/release-start.yml', import.meta.url),
+    'utf8',
+  );
+  const section = workflow.split(`      - name: ${name}\n`)[1].split(/\n {6}- |\n {2}release:/)[0];
+  return section
+    .split('        run: |\n')[1]
+    .split('\n')
+    .filter((line) => line.startsWith('          ') || !line.trim())
+    .map((line) => line.slice(10))
+    .join('\n');
+}
+function runWorkflowStep(name, root, outputs, extra = {}) {
+  const env = {
+    ...process.env,
+    ...Object.fromEntries(
+      Object.entries(readOutputs(outputs)).map(([k, v]) => [k.toUpperCase(), v]),
+    ),
+    RUNNER_TEMP: dirname(outputs),
+    ...extra,
+  };
+  return execFileSync('bash', ['-c', workflowStep(name)], {
+    cwd: root,
+    env,
+    encoding: 'utf8',
+    stdio: 'pipe',
+  });
+}
+
+test('actual release workflow refreshes all locks, commits exact files and atomically pushes every tag', (t) => {
+  const root = twoProducts(t);
+  const outputs = outputFile(t);
+  const remote = join(dirname(outputs), 'origin.git');
+  execFileSync('git', ['init', '--bare', '--quiet', remote]);
+  git(root, 'remote', 'add', 'origin', remote);
+  git(root, 'push', '--quiet', 'origin', 'main');
+  main(
+    [
+      '--app',
+      'patch',
+      '--firmware-overrides',
+      '{"pala":"patch","lamp":"0.5.0"}',
+      '--write',
+      '--outputs',
+      outputs,
+    ],
+    root,
+  );
+  runWorkflowStep('Refresh all Cargo.lock files', root, outputs);
+  for (const crate of ['firmware/pala', 'devices/lamp firmware'])
+    assert.match(
+      readFileSync(join(root, crate, 'Cargo.lock'), 'utf8'),
+      /name = "test-shared"\nversion = "0.1.1"/,
+    );
+  runWorkflowStep('Commit, tag and push', root, outputs);
+  assert.equal(git(root, 'status', '--porcelain'), '');
+  assert.equal(git(remote, 'rev-parse', 'main'), git(root, 'rev-parse', 'HEAD'));
+  for (const tag of ['v0.1.1', 'fw-pala-v0.1.1', 'fw-lamp-v0.5.0'])
+    assert.equal(git(remote, 'rev-parse', `${tag}^{commit}`), git(root, 'rev-parse', 'HEAD'));
+  const changed = git(root, 'diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD')
+    .split('\n')
+    .sort();
+  assert.deepEqual(changed, JSON.parse(readOutputs(outputs).release_files).sort());
+});
+
+test('actual first-release workflow tags without a version commit', (t) => {
+  const root = twoProducts(t, { tagged: false });
+  const before = git(root, 'rev-parse', 'HEAD');
+  const outputs = outputFile(t);
+  const remote = join(dirname(outputs), 'origin.git');
+  execFileSync('git', ['init', '--bare', '--quiet', remote]);
+  git(root, 'remote', 'add', 'origin', remote);
+  git(root, 'push', '--quiet', 'origin', 'main');
+  main(['--app', 'none', '--write', '--outputs', outputs], root);
+  runWorkflowStep('Commit, tag and push', root, outputs);
+  assert.equal(git(root, 'rev-parse', 'HEAD'), before);
+  for (const tag of ['v0.1.0', 'fw-pala-v0.1.0', 'fw-lamp-v0.4.0'])
+    assert.equal(git(remote, 'rev-parse', `${tag}^{commit}`), before);
+});
+
+test('unexpected lock-refresh edits are refused and remote tag races push nothing', (t) => {
+  const root = twoProducts(t);
+  const outputs = outputFile(t);
+  const remote = join(dirname(outputs), 'origin.git');
+  execFileSync('git', ['init', '--bare', '--quiet', remote]);
+  git(root, 'remote', 'add', 'origin', remote);
+  git(root, 'push', '--quiet', 'origin', 'main');
+  const before = git(root, 'rev-parse', 'HEAD');
+  main(
+    [
+      '--app',
+      'patch',
+      '--firmware-overrides',
+      '{"pala":"patch","lamp":"patch"}',
+      '--write',
+      '--outputs',
+      outputs,
+    ],
+    root,
+  );
+  put(root, 'surprise.txt', 'Unexpected output.\n');
+  assert.throws(
+    () => runWorkflowStep('Refresh all Cargo.lock files', root, outputs),
+    /Unexpected change in surprise.txt/,
+  );
+  rmSync(join(root, 'surprise.txt'));
+  runWorkflowStep('Refresh all Cargo.lock files', root, outputs);
+  git(remote, 'update-ref', 'refs/tags/fw-lamp-v0.4.1', before);
+  assert.throws(
+    () => runWorkflowStep('Commit, tag and push', root, outputs),
+    /Push to main rejected/,
+  );
+  assert.equal(git(remote, 'rev-parse', 'main'), before);
+  assert.equal(git(remote, 'tag', '--list', 'v0.1.1', 'fw-pala-v0.1.1'), '');
+});
+
+test('every crate of a same-version multi-board product participates in the guard', (t) => {
+  const root = twoProducts(t);
+  const other = 'boards/alternate';
+  put(
+    root,
+    `${other}/Cargo.toml`,
+    '[workspace]\n[package]\nname = "alternate"\nversion = "0.4.0"\nedition = "2021"\n',
+  );
+  put(root, `${other}/src/lib.rs`, 'pub const VALUE: u8 = 1;\n');
+  execFileSync(
+    'cargo',
+    ['generate-lockfile', '--offline', '--manifest-path', `${other}/Cargo.toml`],
+    { cwd: root, stdio: 'pipe' },
+  );
+  const path = 'products/lamp/product.toml';
+  const board = productToml('Lamp', other);
+  put(
+    root,
+    path,
+    readFileSync(join(root, path), 'utf8') +
+      board.slice(board.indexOf('[boards.')).replaceAll('boards.board', 'boards.other'),
+  );
+  put(
+    root,
+    'products/registry.toml',
+    '[products]\npala = 1\nlamp = 2\n[boards]\nboard = 1\nother = 2\n',
+  );
+  commit(root, 'feat: alternate lamp board');
+  git(root, 'tag', '-f', 'fw-pala-v0.1.0');
+  git(root, 'tag', '-f', 'fw-lamp-v0.4.0');
+  put(root, `${other}/src/lib.rs`, 'pub const VALUE: u8 = 2;\n');
+  commit(root, 'fix: alternate board');
+  const outputs = outputFile(t);
+  assert.throws(
+    () => main(['--app', 'patch', '--write', '--outputs', outputs], root),
+    /boards\/alternate\/src\/lib.rs/,
+  );
+  assert.equal(git(root, 'status', '--porcelain'), '');
+  assert.equal(existsSync(outputs), false);
+  main(
+    ['--app', 'patch', '--product', 'lamp', '--firmware', 'patch', '--write', '--outputs', outputs],
+    root,
+  );
+  for (const crate of ['devices/lamp firmware', other])
+    assert.match(readFileSync(join(root, crate, 'Cargo.toml'), 'utf8'), /version = "0.4.1"/);
+  assert.deepEqual(JSON.parse(readOutputs(outputs).firmware_crates), [
+    'firmware/pala',
+    'devices/lamp firmware',
+    other,
+  ]);
+});
+
+test('future firmware manifest edits cannot bypass another product dependency guard', (t) => {
+  const root = twoProducts(t);
+  put(
+    root,
+    'devices/lamp firmware/Cargo.toml',
+    readFileSync(join(root, 'devices/lamp firmware/Cargo.toml'), 'utf8') +
+      'test-firmware = { path = "../../firmware/pala" }\n',
+  );
+  execFileSync(
+    'cargo',
+    ['generate-lockfile', '--offline', '--manifest-path', 'devices/lamp firmware/Cargo.toml'],
+    { cwd: root, stdio: 'pipe' },
+  );
+  commit(root, 'test: firmware crate dependency');
+  git(root, 'tag', '-f', 'fw-pala-v0.1.0');
+  git(root, 'tag', '-f', 'fw-lamp-v0.4.0');
+  assert.throws(
+    () => main(['--app', 'patch', '--product', 'pala', '--firmware', 'patch', '--write'], root),
+    /lamp firmware inputs will change/,
+  );
+  assert.equal(git(root, 'status', '--porcelain'), '');
+});
+
+test('newly cataloged shared-crate products have no invented previous firmware baseline', (t) => {
+  const root = twoProducts(t);
+  git(root, 'tag', 'v0.1.0', 'HEAD^');
+  put(root, 'products/lamp/product.toml', productToml('Lamp', 'firmware/pala'));
+  commit(root, 'feat: new product sharing firmware');
+  const notes = info(['--version', '0.1.1', '--prev-tag', 'v0.1.0'], root);
+  const section = notes.slice(notes.indexOf('### Lamp firmware'));
+  assert.match(section, /Lamp firmware 0.1.0 is bundled with this release\./);
+  assert.doesNotMatch(section, /unchanged|was 0.1.0/);
+});
+
+test('inherited firmware versions and non-root firmware workspaces fail before writes', (t) => {
+  const root = fixture(t, { tagged: false });
+  const path = join(root, 'firmware/pala/Cargo.toml');
+  const original = readFileSync(path, 'utf8');
+  for (const text of [
+    original.replace('version = "0.1.0"', 'version.workspace = true'),
+    original.replace('[workspace]\nresolver = "2"\n', ''),
+  ]) {
+    writeFileSync(path, text);
+    assert.throws(
+      () => main(['--app', 'patch', '--write'], root),
+      /Explicit X.Y.Z|explicit workspace root/,
+    );
+    assert.match(readFileSync(join(root, 'Cargo.toml'), 'utf8'), /version = "0.1.0"/);
+  }
+});
+
+test('single-product CLI preserves the existing first release title and body byte for byte', (t) => {
+  const root = fixture(t, { tagged: false });
+  assert.equal(
+    info(['--version', '0.1.0'], root),
+    'Kivori 0.1.0 · Pip firmware 0.1.0\n\n### First release\n\nKivori 0.1.0, with Kivori Pip firmware 0.1.0.\n\nSee the README for what Kivori does.\n\n',
+  );
+});
+
+test('missing locks fail before first-release or bumped versions and outputs are written', (t) => {
+  for (const lock of ['Cargo.lock', 'devices/lamp firmware/Cargo.lock']) {
+    const root = twoProducts(t, { tagged: false });
+    rmSync(join(root, lock));
+    const outputs = outputFile(t);
+    assert.throws(
+      () =>
+        main(
+          [
+            '--app',
+            'patch',
+            '--firmware-overrides',
+            '{"pala":"patch","lamp":"patch"}',
+            '--write',
+            '--outputs',
+            outputs,
+          ],
+          root,
+        ),
+      /lock file|locked/,
+    );
+    assert.equal(existsSync(outputs), false);
+    assert.match(readFileSync(join(root, 'Cargo.toml'), 'utf8'), /version = "0.1.0"/);
+    assert.match(
+      readFileSync(join(root, 'devices/lamp firmware/Cargo.toml'), 'utf8'),
+      /version = "0.4.0"/,
+    );
+    assert.equal(existsSync(join(root, lock)), false);
+  }
+});
+
+test('actual compute and preview workflow steps preserve dry-run input and version-map semantics', (t) => {
+  const root = twoProducts(t, { tagged: false });
+  for (const script of [
+    'release-bump.mjs',
+    'release-info.mjs',
+    'release-catalog.mjs',
+    'firmware-release-guard.mjs',
+    'build-firmware.mjs',
+  ])
+    put(root, `scripts/${script}`, readFileSync(new URL(`./${script}`, import.meta.url), 'utf8'));
+  commit(root, 'test: release scripts');
+  const outputs = outputFile(t);
+  writeFileSync(outputs, '');
+  const extra = {
+    APP_BUMP: 'none',
+    APP_VERSION: '',
+    PRODUCT: '',
+    FIRMWARE_BUMP: 'none',
+    FIRMWARE_VERSION: '',
+    FIRMWARE_OVERRIDES: '',
+    DRY_RUN: 'true',
+    GITHUB_OUTPUT: outputs,
+    GITHUB_REPOSITORY: 'test/repo',
+    GITHUB_STEP_SUMMARY: join(dirname(outputs), 'summary.md'),
+  };
+  runWorkflowStep('Compute the versions', root, outputs, extra);
+  assert.equal(readOutputs(outputs).commit_needed, 'false');
+  runWorkflowStep('Release notes preview', root, outputs, {
+    DRY_RUN: 'true',
+    GITHUB_REPOSITORY: 'test/repo',
+    GITHUB_STEP_SUMMARY: extra.GITHUB_STEP_SUMMARY,
+  });
+  assert.equal(
+    readFileSync(join(dirname(outputs), 'release-info/title.txt'), 'utf8'),
+    'Kivori 0.1.0 · Pip firmware 0.1.0 · Lamp firmware 0.4.0',
+  );
+  assert.equal(git(root, 'status', '--porcelain'), '');
+  writeFileSync(outputs, '');
+  runWorkflowStep('Compute the versions', root, outputs, {
+    ...extra,
+    APP_BUMP: 'patch',
+    FIRMWARE_OVERRIDES: '{"pala":"patch","lamp":"0.5.0"}',
+  });
+  assert.deepEqual(JSON.parse(readOutputs(outputs).firmware_versions), {
+    pala: '0.1.1',
+    lamp: '0.5.0',
+  });
+  runWorkflowStep('Release notes preview', root, outputs, {
+    DRY_RUN: 'true',
+    GITHUB_REPOSITORY: 'test/repo',
+    GITHUB_STEP_SUMMARY: extra.GITHUB_STEP_SUMMARY,
+  });
+  assert.match(
+    readFileSync(join(dirname(outputs), 'release-info/title.txt'), 'utf8'),
+    /Pip firmware 0.1.1 · Lamp firmware 0.5.0/,
+  );
+  assert.equal(git(root, 'status', '--porcelain'), '');
 });
