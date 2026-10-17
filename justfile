@@ -26,7 +26,7 @@ build:
     bun run build
 
 # ---- firmware (isolated workspace; ADR-0001) ----
-# fw-check/test/flash/flash-latency are explicit Pip/C3 development recipes.
+# fw-check/test/flash/flash-latency are explicit board-specific development recipes.
 # no_std isolation proof: compile ONLY the shared crates for the RISC-V target from the firmware
 # workspace. Nothing esp-hal here, so this stays fast and proves the firewall.
 
@@ -82,6 +82,11 @@ golden-bless:
 # Direct-dependency firewall over the shared no_std crates.
 check-boundaries:
     bash scripts/check-crate-boundaries.sh
+
+# Product-contract identifiers stay out of shared app/tooling (ADR-0017).
+check-identifiers:
+    bun scripts/check-product-identifiers.mjs
+    bun test scripts/check-product-identifiers.test.mjs
 
 # ---- release bundles (M3 S5; docs/release.md) ----
 
@@ -152,7 +157,7 @@ app:
 # unit, check the link and controls, print PASS/FAIL and append to provisioning-log.csv.
 
 # Provision and QA one Kivori unit (builds the firmware first). Optional identity record:
-# `just provision --product pala --board c3-supermini --rev 1 [--burn-identity]` (docs/provisioning.md).
+# `just provision --product <id> --board <id> --rev 1 [--burn-identity]` (docs/provisioning.md).
 provision *args:
     #!/usr/bin/env bash
     set -euo pipefail

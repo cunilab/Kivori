@@ -20,7 +20,7 @@ const LEGACY_BOARD: &str = "c3-supermini";
 /// a device that did not negotiate `PRODUCT_IDENTITY_V1`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IdentitySource {
-    /// The device sent no identity; assumed the original Kivori Pip on the C3 SuperMini.
+    /// The device sent no identity; assumed the fixed legacy product/board (ADR-0014).
     Legacy,
     /// Compiled into the device's firmware.
     Build,
@@ -57,7 +57,7 @@ pub struct DeviceIdentity {
 }
 
 impl DeviceIdentity {
-    /// The identity of a device that reported none: `pala` on `c3-supermini`, revision unknown.
+    /// The fixed legacy identity of a device that reported none, revision unknown (ADR-0014).
     ///
     /// # Panics
     /// If the embedded catalog lacks the legacy product or board (the catalog tests rule that out).
@@ -183,7 +183,7 @@ pub struct WrongProduct {
 }
 
 /// Tier A of ADR-0016: the image's identity record must name the connected device's product and
-/// board. The legacy identity counts as `pala` / `c3-supermini`.
+/// board. A device without identity uses the fixed legacy pair (ADR-0014).
 ///
 /// # Errors
 /// [`WrongProduct`] naming both sides when they differ (including a device whose numbers the

@@ -99,11 +99,11 @@ pub struct Product {
     pub id: String,
     /// Wire number from the registry.
     pub number: u16,
-    /// Customer name shown to the user ("Kivori Pip").
+    /// Customer name shown to the user ("Kivori Example").
     pub display_name: String,
-    /// Short customer name, without the brand ("Pip").
+    /// Short customer name, without the brand ("Example").
     pub short_name: String,
-    /// Model code printed on the unit and its box ("KV-P1").
+    /// Model code printed on the unit and its box ("AB-C1").
     pub model: String,
     /// Product picture, relative to the product directory (none yet when empty).
     pub image: Option<String>,
@@ -205,7 +205,7 @@ fn check_table(kind: &str, table: &BTreeMap<String, u16>) -> Result<(), CatalogE
     Ok(())
 }
 
-/// Model codes are two uppercase letters, a dash, then uppercase letters or digits (`KV-P1`).
+/// Model codes are two uppercase letters, a dash, then uppercase letters or digits (`AB-C1`).
 fn valid_model(model: &str) -> bool {
     model.split_once('-').is_some_and(|(prefix, rest)| {
         prefix.len() == 2
@@ -267,7 +267,7 @@ impl Catalog {
             }
             if !valid_model(&raw.model) {
                 return err(format!(
-                    "product `{id}` model `{}` is not like `KV-P1` (two capitals, a dash, capitals or digits)",
+                    "product `{id}` model `{}` is not like `AB-C1` (two capitals, a dash, capitals or digits)",
                     raw.model
                 ));
             }

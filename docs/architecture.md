@@ -47,19 +47,25 @@ Two Cargo workspaces. Shared crates are `no_std`, no-alloc, and the single sourc
 | `tools/asset-compiler` | SVG to deterministic RGB565 blob (host build tool). |
 | `tests/e2e-host-sim`, `tests/golden-frames` | Host-sim end-to-end tests, cross-OS frame-hash harness. |
 | `.github/workflows/` | CI, see below. |
-| `scripts/` | Boundary guards (`check-crate-boundaries.sh`, `check-offline-deps.sh`, `check-frontend-offline.mjs`) and firmware/desktop build scripts. |
+| `scripts/` | Boundary guards (`check-crate-boundaries.sh`, `check-offline-deps.sh`, `check-frontend-offline.mjs`, `check-product-identifiers.mjs`) and firmware/desktop build scripts. |
 
 CI workflows (`.github/workflows/`):
 
 | Workflow | What it runs |
 |---|---|
-| `host` | Rust on Ubuntu and Windows, the frontend, and the Windows Device Studio startup smoke test: format, clippy, tests, the boundary, offline and release-surface guards. |
+| `host` | Rust on Ubuntu and Windows, the frontend, and the Windows Device Studio startup smoke test: format, clippy, tests, the boundary, offline, release-surface and product-identifier guards. |
 | `firmware` | no_std isolation proof, firmware host-sim tests and RISC-V builds and clippy per feature set. |
 | `determinism` | Golden-frame hashes across operating systems and the byte-reproducible asset blob. |
 | `release` | The unsigned Windows installer and draft release on a `v*` tag, manually with an optional macOS build; also on pull requests that touch packaging files ([release.md](./release.md)). |
 | `Release` (`release-start.yml`) | Manual only, from `main`: the owner's Release button. Bumps the app (and optionally firmware) version, refreshes the lockfiles, commits and tags, then calls `release` with the tag; a dry run only prints the plan and notes ([release.md](./release.md)). |
 
 `scripts/check-crate-boundaries.sh` fails CI if a shared crate gains a std, host or OS dependency. Compiling the shared crates for RISC-V is the hard backstop.
+
+`just check-identifiers` checks catalog-derived product ids/names/models/boards in shared app/tooling,
+with exact reviewed line/count exceptions and positive controls; see [ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md#consequences).
+It complements the capability/firmware-selection tests. The offline dependency guard derives all
+firmware workspaces/source roots from packaging's validated catalog plans; it requires Bun as well
+as Cargo/jq and refuses catalog discovery failure.
 
 ### State axes
 

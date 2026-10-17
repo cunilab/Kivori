@@ -141,14 +141,14 @@ export function packageVersion(cargoToml) {
   return m[1];
 }
 
-/** The product's `short_name` ("Pip"), the customer name without the brand. */
+/** The product's `short_name`, the customer name without the brand. */
 export function productName(productToml) {
   const m = /^short_name\s*=\s*"([^"]*)"/m.exec(productToml);
   if (!m || !m[1].trim()) throw new Error('no short_name found');
   return m[1].trim();
 }
 
-/** The product's `display_name` ("Kivori Pip"), the full customer name. */
+/** The product's `display_name`, the full customer name. */
 export function productDisplayName(productToml) {
   const m = /^display_name\s*=\s*"([^"]*)"/m.exec(productToml);
   if (!m || !m[1].trim()) throw new Error('no display_name found');
