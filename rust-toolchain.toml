@@ -1,5 +1,5 @@
 # Host toolchain pin (strict, stable Rust per the constitution's Engineering Standards).
-# The firmware workspace pins its own toolchain + RISC-V target (firmware/pala/rust-toolchain.toml).
+# Each catalog-selected firmware workspace pins its own toolchain and device target.
 [toolchain]
 channel = "stable"
 components = ["rustfmt", "clippy"]

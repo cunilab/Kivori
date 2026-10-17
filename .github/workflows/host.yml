@@ -16,7 +16,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
-      - run: bun test scripts/build-firmware.test.mjs scripts/build-firmware-set.test.mjs
+      - run: bun test scripts/build-firmware.test.mjs scripts/build-firmware-set.test.mjs scripts/check-product-identifiers.test.mjs
+      - run: bun scripts/check-product-identifiers.mjs
 
       - name: Desktop packaging wrapper contract
         if: runner.os == 'Windows'
@@ -43,6 +44,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - uses: dtolnay/rust-toolchain@stable
         with:
           # The release feature-surface guard also builds the firmware library for the device target.
