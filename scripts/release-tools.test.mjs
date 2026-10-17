@@ -12,6 +12,7 @@ import {
   tomlVersion,
 } from './release-bump.mjs';
 import {
+  firmwareDirs,
   firstReleaseNotes,
   groupCommits,
   isAppCommit,
@@ -321,12 +322,14 @@ test('release notes: app sections, then the firmware, unchanged or with its comm
   const commits = parseGitLog(log);
   const base = {
     commits,
-    product: 'pala',
-    productDisplay: 'Pip',
+
     prevVersion: '0.1.0',
   };
 
-  const unchanged = releaseNotes({ ...base, firmwareVersion: '0.1.0', previousFirmware: '0.1.0' });
+  const unchanged = releaseNotes({
+    ...base,
+    products: [{ name: 'Pip', version: '0.1.0', previous: '0.1.0', dirs: firmwareDirs('pala') }],
+  });
   assert.equal(unchanged.notes, unchanged.short);
   assert.ok(unchanged.short.startsWith('### Breaking changes\n'));
   assert.ok(!unchanged.short.includes('idle life'), 'firmware-only commits stay out of the app');
@@ -339,8 +342,7 @@ test('release notes: app sections, then the firmware, unchanged or with its comm
 
   const changed = releaseNotes({
     ...base,
-    firmwareVersion: '0.2.0',
-    previousFirmware: '0.1.0',
+    products: [{ name: 'Pip', version: '0.2.0', previous: '0.1.0', dirs: firmwareDirs('pala') }],
     compareUrl: 'https://github.com/cunilab/Kivori/compare/v0.1.0...v0.2.0',
   });
   const firmware = changed.short.slice(changed.short.indexOf('### Firmware'));
@@ -371,8 +373,7 @@ Pip firmware 0.2.0 is bundled with this release (was 0.1.0).
   const quiet = releaseNotes({
     ...base,
     commits: parseGitLog(fakeLog([['c', 'chore: x', '', ['Cargo.toml']]])),
-    firmwareVersion: '0.1.1',
-    previousFirmware: '0.1.0',
+    products: [{ name: 'Pip', version: '0.1.1', previous: '0.1.0', dirs: firmwareDirs('pala') }],
   });
   assert.equal(
     quiet.short,
@@ -390,8 +391,7 @@ No firmware features or fixes are listed since Kivori 0.1.0.
 test('a first release gets a short note, not the whole history', () => {
   const first = firstReleaseNotes({
     version: '0.1.0',
-    productFullName: 'Kivori Pip',
-    firmwareVersion: '0.1.0',
+    products: [{ display: 'Kivori Pip', version: '0.1.0' }],
     repo: 'cunilab/Kivori',
   });
   assert.equal(
@@ -406,8 +406,7 @@ See the [README](https://github.com/cunilab/Kivori/blob/v0.1.0/README.md) for wh
   assert.equal(first.notes, first.short, 'no compare link without a previous tag');
   const local = firstReleaseNotes({
     version: '0.1.0',
-    productFullName: 'Kivori Pip',
-    firmwareVersion: '0.1.0',
+    products: [{ display: 'Kivori Pip', version: '0.1.0' }],
   });
   assert.ok(local.short.includes('See the README for what Kivori does.'));
 });
@@ -428,7 +427,10 @@ test('title and names come from the files', () => {
   );
   assert.throws(() => productDisplayName('short_name = "Pip"\n'), /display_name/);
   assert.throws(() => productName('short_name = ""\n'), /short_name/);
-  assert.equal(releaseTitle('0.2.0', 'Pip', '0.1.0'), 'Kivori 0.2.0 · Pip firmware 0.1.0');
+  assert.equal(
+    releaseTitle('0.2.0', [{ name: 'Pip', version: '0.1.0' }]),
+    'Kivori 0.2.0 · Pip firmware 0.1.0',
+  );
 });
 
 // --- updater-manifest.mjs -----------------------------------------------------------------------

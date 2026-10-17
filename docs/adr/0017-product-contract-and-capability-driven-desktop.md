@@ -132,7 +132,7 @@ crate-local target directory, use the firmware crate's working directory, disabl
 require the selected binary and preserve target linker flags by refusing global Rust flag overrides.
 Provision identity flags remain assertions, separate from build selection. Board-specific development
 flash/test recipes remain explicit. Whole-catalog packaging is implemented below; pair-level recovery
-choices and release-set metadata remain open.
+choices remain open; release-set metadata is implemented below.
 
 **As built (M2.8 recovery target guard).** A live session identity associated with the selected port takes
 precedence over USB hints; mismatching/unknown identities cannot fall back to identity-free recovery.
@@ -155,7 +155,7 @@ port's identity. Missing target images are unavailable. Status version/size/advi
 identity, while accepted operations retain their image and idle refresh preserves queued reservations.
 Incompatible recovery offers carry no assumed version. Provisioning flags select an exact embedded
 pair, and no-argument provisioning requires a sole image. Multiple images can now be embedded;
-pair-level recovery choices, release metadata and hardware acceptance remain open. Synthetic fixtures are not shipping products.
+pair-level recovery choices and hardware acceptance remain open; release orchestration is implemented below. Synthetic fixtures are not shipping products.
 
 **As built (M2.8 catalog firmware packaging).** Desktop development/bundle recipes, PowerShell and
 release CI build every active pair in deterministic wire order. Each successful build is copied
@@ -165,8 +165,18 @@ checks the exact expected filenames and recreates absolute paths locally. Native
 independently requires exact equality with the active catalog identity set and validates all image
 records before emission. The single-image path remains available for targeted development and
 provisioning. Targets derive from catalog recipes; release CI expects stable crate toolchains.
-Single-target selectors cannot narrow desktop packages. Multi-product version/bump/tag guards and
-release titles/notes remain subsequent release work, required before a multi-product release.
+Single-target selectors cannot narrow desktop packages.
+
+**As built (M2.8 catalog release orchestration).** Release tooling reads the same complete catalog
+and names every bundled product/version in wire order. Independent per-product override maps permit
+mixed bumps/exact versions in one release. All product/crate guards run before any version/output
+write, including unchanged products and planned manifest edits. Each product's boards require one
+explicit package version; firmware crates are standalone workspace roots. Shared firmware crates
+require consistent resolved versions across their product lineages. Every unique lockfile is
+refreshed, only planned version/lock paths may be staged, and the app plus new firmware tags are
+pushed atomically. Single-product title/notes behavior and legacy firmware history are preserved.
+Synthetic two-product fixtures execute planning, notes and the actual workflow shell against local
+bare remotes; tests do not trigger a real release. Pair-level recovery and hardware acceptance remain open.
 
 ## Consequences
 

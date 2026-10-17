@@ -25,11 +25,17 @@ urgency of a safety or recovery fix can justify an earlier release.
 **Firmware release guard (M2.8).** The Release button runs `scripts/firmware-release-guard.mjs`
 through `release-bump.mjs` before writing versions or outputs. It needs Rust/Cargo and full Git
 history/tags, including for a dry run; the workflow installs Rust before computing the plan.
-The guard checks the selected product (currently the only shipping product, Pip). Packaging now
-builds the complete catalog; applying version/bump/tag checks to every bundled product remains the
-release-orchestration follow-up, required before a multi-product release.
-Full `cargo metadata --locked` resolution validates both lockfiles before an unchanged-version
-release can write anything; stale locks are refused instead of being silently repaired afterward.
+The guard checks every active catalog product and every firmware crate used by its boards, including
+products with no requested bump. Crate paths come from packaging's validated plans. Firmware crates
+must be explicit standalone workspace roots with explicit `X.Y.Z` package versions, and all boards
+of one product must share a version. Shared firmware crates must resolve to the same version for
+all claiming products; conflicting requests fail before mutation. Each product retains its own tags.
+Planned app/firmware manifest changes are checked too: an app bump requires firmware bumps when
+shared crates reflect workspace version metadata. Catalog and packaging changes conservatively
+count as inputs to every product, so this release-tool change itself requires firmware bumps.
+Full `cargo metadata --locked` resolution validates root and every active firmware lockfile before
+any release writes versions or outputs, including first releases and firmware bumps. Stale locks are
+refused instead of being silently repaired afterward.
 The resolved firmware graph includes local patches and build dependencies. Project Cargo config
 `paths` overrides are refused; use supported path dependencies or manifest patches instead.
 Cargo config directories from the product crate up to the repository root are checked and watched,
@@ -76,8 +82,7 @@ and independent firmware versions. M2.8 must also replace the single-image bundl
 catalog-driven images per supported product/board and resolve update/flash targets by identity.
 Test two isolated product fixtures through packaging selection and release metadata; refuse
 mismatched images before flashing. Release validation must verify that the bundled image set equals
-the shipping catalog's supported product/board set, with no test products or images. The current
-pipeline below still bundles and names Pip only. There remains one app release, firmware tags have
+the shipping catalog's supported product/board set, with no test products or images. The pipeline below builds and names every active catalog product. There remains one app release, firmware tags have
 no GitHub Release, and the owner reviews the draft before publication. See
 [ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md).
 
@@ -122,31 +127,39 @@ updatable" and no `.sig` or `latest.json` is produced.
      you chose on purpose. `app_version`: an exact `X.Y.Z` instead. Whatever you pick must be
      greater than the latest `v*` tag (with no tag yet, the current version itself is allowed) and is
      never below the version in `Cargo.toml`;
-   - `firmware_bump`: `none` (default, the firmware keeps its version), `patch`, `minor` or `major`;
-     `firmware_version`: an exact `A.B.C` instead, under the same rule against the latest
-     `fw-pala-v*` tag. The input guard refuses an unchanged firmware version when firmware or build
+   - `product`: optional active product id for the single-product firmware controls. With one
+     product it may be empty; with multiple products, a non-`none` bump or exact override requires
+     a selection. `firmware_bump`: `none` (default), `patch`, `minor` or `major`;
+     `firmware_version`: an exact `A.B.C` instead, under the same rule against that product's latest
+     `fw-<product>-v*` tag. The input guard refuses an unchanged firmware version when firmware or build
      inputs changed, listing the baseline, paths and commits; choose a bump or newer exact version.
-     While no `fw-pala-v*` tag exists
-     yet, `none` also tags the current firmware (`fw-pala-v0.1.0` with the first release), so the
-     firmware lineage starts tagged;
+     While no `fw-<product>-v*` tag exists, `none` also tags its current version, starting its lineage;
+   - `firmware_overrides`: for different changes in one run, a JSON map such as
+     `{"product-a":"patch","product-b":"0.3.0"}`. Keys must be active product ids; values are
+     `none`, `patch`, `minor`, `major`, or plain `X.Y.Z`. Omitted products keep their versions but
+     still run the guard. This input cannot mix with `product`, a non-`none` `firmware_bump`, or
+     `firmware_version`. Bumps start from each product's independent current version;
    - `dry_run`: tick it first to see the versions and the notes without changing anything. The run's
      summary page shows both.
 3. The `start` job then:
    - refuses to run anywhere but `main`, and refuses a version that is not greater than its latest
-     tag, below its `Cargo.toml` version, or whose tag (`vX.Y.Z`, `fw-pala-vA.B.C`) already exists
+     tag, below its `Cargo.toml` version, or whose new tag (`vX.Y.Z`, `fw-<product>-vA.B.C`) already exists
      (`scripts/release-bump.mjs`);
-   - writes `[workspace.package] version` in `Cargo.toml` (and `version` in
-     `firmware/pala/Cargo.toml` when bumped), refreshes both `Cargo.lock` files with
-     `cargo update --workspace`, and fails if anything else changed;
+   - validates the entire plan before writing `[workspace.package] version` and the changed
+     catalog firmware package versions. Refreshes root and every unique firmware workspace lockfile
+     with `cargo update --workspace`, even for products whose firmware keeps its version (the app
+     version can change shared-crate lock entries). Fails on changes outside the planned manifests
+     and lockfiles;
    - commits `chore(release): vX.Y.Z` (the body names the firmware version) as `github-actions[bot]`,
-     tags `vX.Y.Z` (and `fw-pala-vA.B.C`, which gets no GitHub Release), and pushes commit and
+     tags `vX.Y.Z` and every new `fw-<product>-vA.B.C` (which gets no GitHub Release), and pushes commit and
      tags to `main` in one atomic push. If `main` moved after you pressed the button, the push is
      rejected and nothing lands: run it again. When no version changes (the first release with
      `none`), there is no version commit: the current `main` commit is tagged as it is and only the
      tags are pushed.
 4. It then calls `release.yml` with the tag, which builds the firmware, builds the installer, installs
    and uninstalls it on a clean runner, and creates the **draft** release (never a pre-release): title
-   `Kivori X.Y.Z · Pip firmware A.B.C`, notes, and the files `Kivori_X.Y.Z_x64-setup.exe`, its
+   `Kivori X.Y.Z · Pip firmware A.B.C` for today's one-product catalog, adding each further
+   product and independent firmware version in registry wire order. Notes cover every product; files are `Kivori_X.Y.Z_x64-setup.exe`, its
    `.sig`, `latest.json` and `SHA256SUMS`.
 5. Open Releases on GitHub, check the draft (edit the notes if a line reads badly), and publish it as a
    normal release (never tick pre-release; the updater ignores pre-releases). Installed apps see it
@@ -159,12 +172,13 @@ updatable" and no `.sig` or `latest.json` is produced.
 `docs`, `test`, `refactor`, `ci` and commits that are not conventional are left out, and so are
 merge commits. The app list skips commits that only touch `firmware/`, `hardware/`, `apps/web/`,
 `docs/` or `.github/`, and `web`-scoped commits. A Firmware section
-follows: the bundled version and "unchanged", or, when the version changed, the firmware commits
-(those touching `firmware/pala/`, or its earlier homes `firmware/desk-buddy/` and
-`firmware/esp32-c3/`) grouped the same way. The release body ends with a compare
+follows for each product: the bundled version and "unchanged", or, when the version changed, commits
+touching that product's catalog crate directories, grouped the same way. Pip's earlier homes
+`firmware/desk-buddy/` and `firmware/esp32-c3/` still count. Custom firmware crate paths also stay out
+of the app-only list. A product absent at the previous app tag is listed without an invented baseline. The release body ends with a compare
 link; `latest.json` (shown in the app's update dialog) carries the same notes without it. The
 first release has no previous `v*` tag, so instead of the whole history its body is a short "First
-release" note: the app version, "Kivori Pip firmware 0.1.0", and a line pointing to the README for
+release" note: the app version, every product firmware version, and a line pointing to the README for
 the features.
 
 **First time:** nobody has Kivori installed yet, so the first release (0.1.0) is installed by hand
@@ -177,8 +191,8 @@ protocol major is newer than the app's) and never offers the flash by itself; th
 Flash firmware button, after its confirmation, restores it as an incompatible device.
 
 A `v*` tag pushed by hand still works (a hotfix from a branch, for example): bump `version` in
-`Cargo.toml` under `[workspace.package]`, update `Cargo.lock` (and `firmware/pala/Cargo.lock`,
-which records the shared crates' version), commit, then tag `vX.Y.Z` and push the tag. `release.yml`
+`Cargo.toml` under `[workspace.package]`, update root and all catalog firmware lockfiles
+(which record shared-crate versions), commit, then tag `vX.Y.Z` and push the tag. `release.yml`
 fails at the first step if the tag and the workspace version differ, creates the draft itself and fills
 it the same way. A re-run for the same tag updates the draft; a published release is never changed.
 
@@ -278,5 +292,17 @@ active catalog identity set, independent of filenames or input order. An exclusi
 Unset inputs embed no firmware. Single-pair selection never narrows a desktop package.
 
 These commands build software. Provisioning/flashing remains a separate explicit operation.
-Multi-product release titles/notes, bump/tag orchestration and whole-set version guards remain the
-next M2.8 release work; complete image packaging does not complete that release policy.
+Release planning and titles/notes consume the same complete catalog. The Release button validates
+every lineage before writes, refreshes every unique lockfile, stages only planned paths, and atomically
+pushes the app tag and all new product firmware tags with any version commit. Preview notes receive
+the complete planned version map, so dry-run and written-version notes agree. Release CLIs require
+Bun for the shared TOML catalog reader; the Node test suites invoke that real reader through Bun.
+
+For example (test product ids shown):
+
+```bash
+bun scripts/release-bump.mjs --app patch --firmware-overrides '{"product-a":"patch","product-b":"0.3.0"}' --dry-run
+```
+
+No actual release is triggered by local planning or tests. Hardware acceptance and ambiguous
+pair-level recovery choices remain separate M2.8 work.
