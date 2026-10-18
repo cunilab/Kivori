@@ -33,41 +33,39 @@ fn catalog(first_boards: &str, second_usb: &str) -> Catalog {
 
 #[test]
 fn policy_refusals_clear_old_choices_and_never_reserve_or_start_a_flash() {
-    for (reason, expected) in [(RecoveryRefusal::NoCandidate, FlashFailure::Unknown)] {
-        let mut flash = FlashWorkflow::new(true, 512);
-        flash.fail_wrong_product(WrongProduct {
-            device: "Old device".into(),
-            image: "Old image".into(),
-        });
-        flash.ask_restore_choice(vec![RestoreOption {
-            id: "old".into(),
-            name: "Old choice".into(),
-            board: "board-a".into(),
-            board_name: "board-a".into(),
-        }]);
-        flash.drain_activity();
-        flash.refuse_recovery(reason);
-        let status = flash.status();
-        assert_eq!(status.phase, FirmwarePhase::Failed);
-        assert_eq!(status.failure, Some(expected));
-        assert_eq!(status.wrong_product, None);
-        assert!(status.restore_choices.is_empty());
-        assert!(!flash.is_busy());
-        assert_eq!(
-            flash
-                .drain_activity()
-                .iter()
-                .map(|event| event.kind)
-                .collect::<Vec<_>>(),
-            [ActivityEventKind::FirmwarePreparationRejected]
-        );
-        // A later verified attempt starts clean.
+    let mut flash = FlashWorkflow::new(true, 512);
+    flash.fail_wrong_product(WrongProduct {
+        device: "Old device".into(),
+        image: "Old image".into(),
+    });
+    flash.ask_restore_choice(vec![RestoreOption {
+        id: "old".into(),
+        name: "Old choice".into(),
+        board: "board-a".into(),
+        board_name: "board-a".into(),
+    }]);
+    flash.drain_activity();
+    flash.refuse_recovery(RecoveryRefusal::NoCandidate);
+    let status = flash.status();
+    assert_eq!(status.phase, FirmwarePhase::Failed);
+    assert_eq!(status.failure, Some(FlashFailure::Unknown));
+    assert_eq!(status.wrong_product, None);
+    assert!(status.restore_choices.is_empty());
+    assert!(!flash.is_busy());
+    assert_eq!(
         flash
-            .request(true, Some("fixture-port"), Some("fixture-hash"))
-            .unwrap();
-        assert!(flash.is_busy());
-        assert_eq!(flash.status().failure, None);
-    }
+            .drain_activity()
+            .iter()
+            .map(|event| event.kind)
+            .collect::<Vec<_>>(),
+        [ActivityEventKind::FirmwarePreparationRejected]
+    );
+    // A later verified attempt starts clean.
+    flash
+        .request(true, Some("fixture-port"), Some("fixture-hash"))
+        .unwrap();
+    assert!(flash.is_busy());
+    assert_eq!(flash.status().failure, None);
 }
 
 fn target(product: u16, board: u16) -> RecoveryDecision {
