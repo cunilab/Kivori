@@ -87,8 +87,8 @@ Checked for FDM in each part's print orientation:
   sides are 45° to the bed, and the knob's grip grooves run out of the skirt edge.
 - **Thin features:** nothing thinner than 0.7 mm (about two nozzle widths). On the printed PCB's
   copper side every gap along a trace is 0.95 mm wide (the cut lines between neighbouring pins
-  0.4 mm) with straight walls, so the layer over it is only a short bridge (the widest gap is
-  2.1 mm, a short one at a switch), and plastic left between two gaps is at least 1 mm. Small text is gone from the bed sides; the wordmark is engraved.
+  0.74 mm) with straight walls, so the layer over it is only a short bridge (the widest gap is
+  2.0 mm, a short one at a switch), and plastic left between two gaps is at least 1 mm. Small text is gone from the bed sides; the wordmark is engraved.
 - **Fits:** FDM prints holes 0.1-0.2 mm small, so the fits allow for it: spigot 3.4 in 3.9, visor
   peg 1.8 in 2.3, knob bore 6.25 on the 6 mm shaft, cap 13.4 in a 14 mm opening.
 - **Small parts:** the caps' snap
@@ -158,23 +158,25 @@ Instead of hand wiring, the back of the printed PCB carries copper-tape traces, 
 PCB: parts on the front, copper on the back. Each trace and pad is flush with the back, with a gap
 0.95 mm wide and 0.6 mm deep along both sides, so taping is: lay the tape flat, cut along the gaps, peel off the
 rest. Every trace and pad has square corners and runs along x or y, so every cut is a straight
-knife line. Traces are 1.59 mm wide, so side-by-side traces sit on the 2.54 mm pin pitch one
-0.95 mm gap apart. B3 runs along the top edge, where the board edge trims its outer side, and keeps
+knife line. Traces are 1.8 mm wide, as wide as the pin pads (no step where a trace leaves its pad), so
+traces leaving neighbouring pins side by side are 0.74 mm apart, like the pins; elsewhere they
+keep a 0.95 mm gap, except VCC, GND and B3 down the right edge, which share the room between the
+display pins and the snap-hook cut-out (0.8 mm gaps). B3 runs along the top edge, where the board edge trims its outer side, and keeps
 1 mm of plastic to the post hole there; the SuperMini's last pins (IO5, 5V) sit on a tab whose
 edge runs straight across both rows, flush with their pads, so no thin strip of plastic is left
 past them to overhang. Between the SuperMini rows the
 GND lane runs one gap from the right row's pads, so the gap line along that row stays straight,
 also past the unused pins. Wherever two gaps would leave less than 1 mm of plastic between them
 (or to a hole or the edge), that strip becomes gap too, and so does any island of plastic under
-12 mm² between the gaps; gaps thinner than 0.35 mm are filled in. The clean-up runs on a 0.05 mm
+6 mm² between the gaps; gaps thinner than 0.35 mm are filled in. The clean-up runs on a 0.05 mm
 grid of the back and every change is a rectangle snapped onto the traces' edges, so all corners
 stay square, and only plastic touching a gap changes. So nothing small or thin prints.
 The gaps are on the bed side with straight (90°) walls, so the blade has a square edge to follow;
-the layer over each gap bridges it, so every gap is kept narrow (0.95 mm, the widest 2.1 mm; the
+the layer over each gap bridges it, so every gap is kept narrow (0.95 mm, the widest 2.0 mm; the
 switch's facing GND and signal pads grow towards each other to one gap). The plastic round the post
 holes stays whole. In the 2.54 mm
-pin rows (SuperMini, display, encoder) each used pin has a 3.0 × 2.14 mm square pad with a 0.4 mm
-cut line to its neighbours (about 0.47 mm of plastic is left round each hole there). The unused
+pin rows (SuperMini, display, encoder) each used pin has a 3.0 × 1.8 mm square pad with a 0.74 mm
+cut line to its neighbours (about 0.3 mm of plastic is left round each hole there). The unused
 SuperMini pins (5V, IO9, IO21) get a plain pad with no trace, so every pin row looks the same.
 The leg of each switch next to the one that carries its button signal (internally joined) gets
 no copper and no outline, and the plastic round its hole stays whole. The switch legs have 2.8 mm square pads.

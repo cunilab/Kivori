@@ -211,18 +211,19 @@ C_TAB_CLR = 0.4             # carrier tab under the SuperMini header ends, to th
 # One crossover remains (copper_layout).
 COPPER_TRACES = True        # False: the hand-wired version (header strips in slots)
 TRACE_GROOVE = (0.95, 0.6)  # gap along both sides of every trace and pad: width, depth
-# 2.54 mm pin rows: a square pad round each pin, and between two neighbouring pins a PIN_GAP cut
-# line that guides the blade (one nozzle width: about 0.47 mm of plastic is left round each hole)
-PIN_GAP = 0.4
-TRACE_PAD = (3.0, 2.54 - PIN_GAP)  # pads at the 2.54 mm pins: across the row, along it
-TRACE_W = 2.54 - TRACE_GROOVE[0]  # side by side traces on the 2.54 mm pin pitch are one gap apart
+# 2.54 mm pin rows: a square pad round each pin, as wide as the traces (no step where a trace
+# leaves its pad), and between two neighbouring pins a PIN_GAP cut line that guides the blade
+# (about 0.3 mm of plastic is left round each hole)
+TRACE_PAD = (3.0, 1.8)      # pads at the 2.54 mm pins: across the row, along it
+TRACE_W = TRACE_PAD[1]      # trace width = pad width
+PIN_GAP = 2.54 - TRACE_PAD[1]  # cut line between neighbouring pins, and between the traces leaving them side by side
 # Pin holes go right through (PIN_SKIN = 0), clear for the pins; after taping, pierce the tape over
 # each one. PIN_SKIN > 0 stops them that far short of the copper side instead (blind holes: the
 # pads print as plain solid rectangles in the gap layers, drilled out by hand after taping).
 PIN_SKIN = 0.0
 TRACE_PAD_D = 2.8           # square pads at the switch legs (0.5 mm of copper round the leg hole)
 TAPE_T = 0.06               # copper tape thickness (stand-in only)
-TRACE_ISLAND_MIN = 12.0     # mm²: smaller islands of plastic between the gaps become gap (FDM)
+TRACE_ISLAND_MIN = 6.0      # mm²: smaller islands of plastic between the gaps become gap (FDM)
 TRACE_GROOVE_MIN = 0.35     # gaps thinner than this (crumbs) are filled in (under PIN_GAP: the cut lines stay)
 TRACE_RIDGE_MIN = 1.0       # plastic left between two gaps: at least this wide, or it becomes gap
 GROOVE_GRID = 0.05          # pixel size of the grid the gaps are cleaned up on (copper_grooves)
@@ -884,8 +885,12 @@ def copper_layout():
     fan = {"SCL": ("IO6", xf + 4 * P), "SDA": ("IO7", xf + 3 * P), "RES": ("IO8", xf + 2 * P),
            "DC": ("IO10", xf + P), "BLK": ("IO20", xf)}
     yv = yd["BLK"] - P                                # VCC's run under the display
-    xv = disp_hdr_x + TRACE_PAD[0] / 2 + TRACE_GROOVE[0] + TRACE_W / 2  # VCC up the east side of the display pins
-    xg, x5 = xv + P, xv + 2 * P                       # GND outside it, B3 outside that
+    # VCC up the east side of the display pins, GND outside it, B3 outside that: evenly spaced (one
+    # gap, or less where it must) between the display pads and the right snap-hook cut-out
+    x_l, x_r = disp_hdr_x + TRACE_PAD[0] / 2, W - WALL - 2.8
+    gc = min(TRACE_GROOVE[0], (x_r - x_l - 3 * TRACE_W) / 3)
+    xv = x_l + gc + TRACE_W / 2
+    xg, x5 = xv + TRACE_W + gc, xv + 2 * (TRACE_W + gc)
     # B3 keeps 1 mm of plastic between its gap and the top-right post hole
     post = POSTS[2]
     keep = SPIGOT_HOLE_D / 2 + TRACE_RIDGE_MIN + TRACE_GROOVE[0] + TRACE_W / 2
@@ -1141,6 +1146,9 @@ def copper_grooves():
     print("plastic slivers made gap: %d pieces, %.1f mm²; islands made gap: %d (%s mm²); gap crumbs filled: %d" % (
         len(ridge_r), sum((r[2] - r[0]) * (r[3] - r[1]) for r in ridge_r), len(shown),
         ", ".join("%.1f" % a for a in shown), len(crumb_r)))
+    if shown:
+        print("  islands at:", ", ".join("(%.1f, %.1f)" % (s_.BoundBox.Center.x, s_.BoundBox.Center.y)
+                                         for s_ in islands if s_.Volume > 0.05))
     if ridge_r:
         print("  slivers at:", ", ".join("(%.1f, %.1f) %.1fx%.1f" % ((r[0] + r[2]) / 2, (r[1] + r[3]) / 2,
                                                                      r[2] - r[0], r[3] - r[1]) for r in ridge_r))
@@ -1537,8 +1545,9 @@ def main():
         print("trace clearance: %.2f mm (%s / %s), need %.2f: %s" % (pairs[0] + (need,
               "ok" if pairs[0][0] > need - 1e-6 else "TOO CLOSE")))
         t = check_traces(pads=False)[0]
-        print("trace to trace: %.2f mm (%s / %s), need %.2f: %s" % (t + (TRACE_GROOVE[0],
-              "ok" if t[0] > TRACE_GROOVE[0] - 1e-6 else "TOO CLOSE")))
+        need = min(PIN_GAP, TRACE_GROOVE[0])  # traces leaving neighbouring pins run one PIN_GAP apart
+        print("trace to trace: %.2f mm (%s / %s), need %.2f: %s" % (t + (need,
+              "ok" if t[0] > need - 1e-6 else "TOO CLOSE")))
     print("buttons:", [(round(x, 2), round(y, 2), round(a, 2)) for (x, y, a) in BTNS])
     for name, shp in PRINTED.items():
         bb = shp.BoundBox
