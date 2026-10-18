@@ -387,3 +387,16 @@ that choice buttons only open a BOOT dialog, show both catalog names and queue t
 after confirmation; cancel, lost choices and a new live connection make no request. Unplugging for the BOOT steps keeps confirmation open. Payload tests reject
 missing/oversized board fields, duplicate pairs and choices outside a failed-choice status. These
 are synthetic policy/UI checks; actual BOOT/flashing/reconnect hardware rows remain unchecked.
+
+M2.8 app-shell acceptance (`product-acceptance.test.tsx`) uses test-only connection payloads,
+the production connection parser, real hooks/pages/navigation and the browser IPC backend. It
+checks Pip's live view/action path, a minimal dial without display/mascot/media features, and mixed
+capabilities with working display/context-button actions, saved-only push-switch bindings and no
+mascot action.
+A loaded Pip image disappears on a product switch; missing artwork keeps the new product's
+captions and a neutral figure. Product switches preserve a
+custom binding; an offline display edit preserves profile bindings. Pending, unknown and
+identity-only sessions remove live display controls; original firmware remains identified as legacy.
+These tests do not exercise the native Tauri event bridge, backend action refusal or real hardware.
+The existing IPC tests cover the bridge contract separately; the product acceptance roadmap item
+remains open for its backend/catalog acceptance pass.
