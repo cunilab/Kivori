@@ -421,3 +421,27 @@ Native paths above are relative to `apps/desktop/src-tauri`; frontend paths are 
 use the real generators with simulated Cargo outputs. They do not build or flash a second physical product. Native Tauri event-bridge coverage remains
 separate from the app-shell browser tests. Request activity is intent, and queued commands use the
 execution-time session as documented in [desktop capabilities](./desktop-capabilities.md).
+
+### M2.8 software closure audit
+
+The Product contract and Capability-driven UI items are implemented in the M2.8 review stack.
+The audit reuses the product-acceptance evidence above and checks the broader contract boundaries:
+
+| Item | Implementation and evidence |
+| --- | --- |
+| Product contract | Native `catalog_build.rs` discovers metadata/art and compiles fixture additions without a shared product list. Provisioning selects QA/identity from the chosen image (`tests/provision_policy.rs`), with eFuse burns limited to the implemented C3 board backend. Build, desktop packaging and release helpers use the catalog's complete image set (`scripts/build-firmware{,-set}.test.mjs`, `scripts/firmware-release-guard.test.mjs`). The identifier guard and its CLI positive controls enforce the shared-source boundary with exact reviewed legacy/hardware/fixture exceptions. |
+| Capability-driven UI | `Session::effective_caps` combines host/device negotiation with resolved current identity; frontend `device-support.ts` requires that connected known session. The documented surface mapping is exercised by app-shell, setup, Controls/Display, art and focus tests. Native session and runtime-admission tests prevent ordinary feature traffic from pending/unknown identities; saved settings and host-only action tests remain usable offline. |
+
+The audit reruns the product identifier/build-script fixtures, provisioning/recovery/presentation
+tests, and app-shell/support/art tests. Catalog registration, complete image indexes, release
+orchestration and production-feature boundaries also retain their existing automated CI coverage.
+This is software evidence: the Rust image fixtures contain synthetic markers, simulated Cargo
+outputs do not validate a second physical product, and browser UI tests do not exercise native
+serial hardware or the Tauri event bridge. The documented extension boundary still requires feature
+work for a new transport, flash method or interaction model; metadata cannot provide those.
+
+All M2.8 software checklist items are checked on this branch. The stacked PRs still require review
+and merging; no issue closure, release, signing, real BOOT recovery, flashing or eFuse burn follows
+from these checks. Existing M2.7/M3 owner and hardware rows remain open. ADR approval status is
+separate from implementation status. Execution-time command checks and request-intent activity
+semantics remain the documented limits above.

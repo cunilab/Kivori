@@ -263,23 +263,24 @@ product using existing features can be added without product-specific branches i
 code. Design: [ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md), reviewed from
 [issue #76](https://github.com/cunilab/Kivori/issues/76).
 
-This is planned work, not completed behavior. Code may run ahead under rule 2 while M2.7 hardware
-rows and M3 owner/hardware blockers remain open; it does not close or replace them. Windows remains
-the beta acceptance platform. Finish and review the docs before implementing these boxes.
+The software checklist below is implemented and covered by automated acceptance checks in the
+M2.8 review stack. This is not a merge, release or hardware-acceptance claim. M2.7 hardware rows and
+M3 owner/hardware blockers remain open; Windows remains the beta acceptance platform. The
+[closure audit](./validation.md#m28-software-closure-audit) records the evidence and remaining limits.
 
 - [x] **Developer page:** always visible in the sidebar, master toggle off by default; consolidate
   Activity, protocol details, internals and direct reaction tools. Device Studio requires both its
   build gate and the toggle. Turning the toggle off stops internals polling and removes developer
   controls everywhere. Preserve release-surface checks and keyboard/focus behavior.
-- [ ] **Product contract:** catalog-driven names, optional art, firmware paths, provisioning and
+- [x] **Product contract:** catalog-driven names, optional art, firmware paths, provisioning and
   packaging/release selection; remove shared-app hardcoded product defaults and the manually
   maintained embedding list. Missing art uses a neutral frame. New transports, flash methods or
   interaction models need explicit feature work; this is not support for arbitrary future hardware.
-  First implementation: active catalog entries are now discovered, validated and embedded at build
+  Active catalog entries are discovered, validated and embedded at build
   time without a maintained source list; registry reservations without metadata remain inactive,
   and fixture products stay outside shipping roots. Image build checks resolve each product/board by image identity rather
   than catalog order. Provisioning/tooling and image-set work are detailed below; generated catalog
-  discovery alone does not complete this item.
+  discovery is supplemented by the provisioning, packaging and release checks below.
   Customer presentation now exposes catalog name/model for the current known product/board, with
   product figures on Home, Welcome and Tour. Fixed hardware-body artwork is removed. Declared static
   PNGs are now validated and embedded at build time, delivered by a cached allowlisted lookup, with
@@ -299,14 +300,14 @@ the beta acceptance platform. Finish and review the docs before implementing the
   set. Catalog release planning now guards all products/crates before writes, supports independent
   override maps, refreshes every lockfile and atomically pushes all lineage tags. Titles/notes cover
   every bundled product; two-product fixtures exercise the actual workflow against local remotes.
-- [ ] **Capability-driven UI:** document the capability-to-surface mapping; backend effective support
+- [x] **Capability-driven UI:** document the capability-to-surface mapping; backend effective support
   combines current-session negotiation, resolved identity and host support, not catalog minimums.
   UI and command handling deny ordinary product actions while identity is pending/unknown. Cover
   navigation, cards, display views and controls. Keep offline binding/display configuration editable
   without authorizing device actions from retained metadata; preserve stored bindings for absent
   controls when products switch, without adding per-product profile stores. Define incompatible
   and known identity-only recovery states; move focus when a live page becomes unavailable.
-  First implementation: session effective capabilities now wait for resolved identity, gate feature
+  Session effective capabilities wait for resolved identity, gate feature
   traffic/input and live display commands, and reach the UI through `ConnectionStatusDto`.
   Saved display/binding configuration stays editable offline. The main-window
   [surface mapping](./desktop-capabilities.md) now covers live actions, neutral session states,
@@ -315,7 +316,7 @@ the beta acceptance platform. Finish and review the docs before implementing the
   only for supported controls, and annotates offline/absent-feature settings without changing saved
   configuration on product switches. The old host-status completion heuristic is removed because it
   cannot verify device input. Cross-surface acceptance is verified by Product acceptance tests below;
-  this capability-driven UI item remains open for the final closure audit.
+  the closure audit verifies this surface mapping against the current implementation and checks.
 - [x] **Hardware tiles:** reorganize the existing formatted metrics and usage bars into readable
   flash, RAM and run-loop/frame tiles. Label app image versus app partition, static RAM, stack
   headroom and run-loop busy time accurately; do not imply heap usage or whole-chip CPU load.
@@ -365,7 +366,8 @@ the beta acceptance platform. Finish and review the docs before implementing the
 
 Written policy: [release promises and M2.8 guard requirements](./release.md#release-policy), and
 [protocol change discipline](./adr/0002-one-wire-protocol-crate.md). These policies are recorded;
-the implementation boxes above stay open until verified. No new hardware evidence is claimed.
+the checked boxes record verified software implementation in the review stack. Review and merging
+remain separate; no new hardware evidence is claimed.
 
 Out of scope: multi-device UI, a device-gallery Home, visual redesign of customer pages, new
 firmware instrumentation, runtime plugins, cloud sync, downgrade guarantees, update channels,
