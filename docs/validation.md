@@ -258,7 +258,7 @@ commands to check input isolation, cleanup and environment restoration without e
 
 Automated M2.8 resolver/workflow checks cover missing/unknown images, stale or invalid product choices, unknown
 USB hints, unknown reported identities, pending-handshake refusal, same-port identity binding, shared-USB board
-ambiguity, distinct-board selection, refusal status cleanup and no port
+ambiguity with explicit product/board choices, distinct-board selection, refusal status cleanup and no port
 reservation/flasher start on refusal. The fixtures are not shipping products. These checks do not
 complete the hardware rows below.
 
@@ -380,3 +380,10 @@ second source root fails and catalog discovery errors fail closed. The mocked sh
 on Unix; the real dependency guard still runs in both Rust CI jobs. No guard fixture flashes,
 burns identity or launches the desktop. These checks supplement the remaining product acceptance
 and hardware/recovery rows; a clean textual scan cannot prove capability behavior.
+
+M2.8 pair recovery fixtures cover two boards with shared USB hints, exact-pair selection, stale/unknown
+choices, board-only refusal, live-identity precedence and unchanged busy reservations. UI tests prove
+that choice buttons only open a BOOT dialog, show both catalog names and queue the exact pair only
+after confirmation; cancel, lost choices and a new live connection make no request. Unplugging for the BOOT steps keeps confirmation open. Payload tests reject
+missing/oversized board fields, duplicate pairs and choices outside a failed-choice status. These
+are synthetic policy/UI checks; actual BOOT/flashing/reconnect hardware rows remain unchecked.

@@ -176,8 +176,8 @@ export interface FirmwareStatusDto {
   advice: UpdateAdvice;
   /** Both names; set only with the `wrongProduct` failure. */
   wrongProduct: { device: string; image: string } | null;
-  /** The products to pick from; set only with the `chooseProduct` failure. */
-  restoreChoices: { id: string; name: string }[];
+  /** The product/board pairs to pick from; set only with the `chooseProduct` failure. */
+  restoreChoices: { id: string; name: string; board: string; boardName: string }[];
 }
 
 export const CAPABILITY_NAMES = [

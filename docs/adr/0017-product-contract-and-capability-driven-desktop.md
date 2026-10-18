@@ -132,30 +132,30 @@ crate-local target directory, use the firmware crate's working directory, disabl
 require the selected binary and preserve target linker flags by refusing global Rust flag overrides.
 Provision identity flags remain assertions, separate from build selection. Board-specific development
 flash/test recipes remain explicit. Whole-catalog packaging is implemented below; pair-level recovery
-choices remain open; release-set metadata is implemented below.
+choices and release-set metadata are implemented below.
 
 **As built (M2.8 recovery target guard).** A live session identity associated with the selected port takes
 precedence over USB hints; mismatching/unknown identities cannot fall back to identity-free recovery.
 Recovery refuses a missing/unknown image identity, a port
-with no catalog candidates, a product choice outside that port's candidates, and a product with
-multiple possible boards. Image availability never resolves hardware identity or catalog order.
+with no catalog candidates, a product choice outside that port's candidates. Multiple possible boards now require
+an explicit pair choice as described below. Image availability never resolves hardware identity or catalog order.
 Without USB ids the pure resolver considers the full catalog; runtime still requires exactly one
-USB-hinted port. Multiple products retain the explicit product chooser. The runtime slice below
-replaces single-image mismatch refusal with exact lookup. Candidate/board refusals use the existing generic failure
-until pair-level recovery UI arrives. Queued requests cannot replace an active flash workflow.
-Per-device image selection is implemented below; pair-level recovery choices remain open.
+USB-hinted port. Multiple candidates use the explicit pair chooser described below. The runtime slice below
+replaces single-image mismatch refusal with exact lookup. Candidate refusals use the existing generic failure
+under the existing recovery rules. Queued requests cannot replace an active flash workflow.
+Per-device image selection and pair-level recovery choices are implemented below.
 
 **As built (M2.8 image-set foundation).** Explicit legacy-path or manifest input is validated as an
 immutable image set. Exact product/board lookup never falls back to catalog order; duplicate keys,
 ambiguous markers and invalid catalog/version/protocol records are refused. Generated sources are
 ordered by wire pair. Native consumers now select the exact current identity's image; no bundle
 entry acts as a hardware default. Recovery resolves a single allowlisted port and its catalog target
-before lookup, refuses pending live identities and ambiguous boards, and cannot borrow another
+before lookup, refuses pending live identities and requires an explicit choice for ambiguous boards, and cannot borrow another
 port's identity. Missing target images are unavailable. Status version/size/advice follow the selected
 identity, while accepted operations retain their image and idle refresh preserves queued reservations.
 Incompatible recovery offers carry no assumed version. Provisioning flags select an exact embedded
 pair, and no-argument provisioning requires a sole image. Multiple images can now be embedded;
-pair-level recovery choices and hardware acceptance remain open; release orchestration is implemented below. Synthetic fixtures are not shipping products.
+hardware acceptance remains open; pair-level recovery and release orchestration are implemented below. Synthetic fixtures are not shipping products.
 
 **As built (M2.8 catalog firmware packaging).** Desktop development/bundle recipes, PowerShell and
 release CI build every active pair in deterministic wire order. Each successful build is copied
@@ -176,7 +176,22 @@ require consistent resolved versions across their product lineages. Every unique
 refreshed, only planned version/lock paths may be staged, and the app plus new firmware tags are
 pushed atomically. Single-product title/notes behavior and legacy firmware history are preserved.
 Synthetic two-product fixtures execute planning, notes and the actual workflow shell against local
-bare remotes; tests do not trigger a real release. Pair-level recovery and hardware acceptance remain open.
+bare remotes; tests do not trigger a real release. Hardware acceptance remains open; pair-level recovery is implemented below.
+
+**As built (M2.8 recovery pair choices).** Ambiguous no-handshake recovery offers exact catalog
+product/board pairs. Each button opens the existing BOOT confirmation with both names visible;
+cancel never queues a restore. The selected pair must still be present in the latest failed-choice
+status, and connection changes close the dialog. The existing `chooseProduct` token is retained;
+its payload now includes board id/name and the UI validates complete, unique pairs.
+
+The device thread re-enumerates on every confirmed request and requires exactly one allowlisted
+port. USB candidates are narrowed by product and board; invalid/stale selections and a board without
+a product are refused. Product-only callers remain supported when one board is unambiguous. A
+same-port live identity overrides USB hints and refuses any differing selection; pending or unknown
+identities cannot fall back to the chooser. Images are looked up only after target resolution, and
+missing images never select a different pair. Busy reservations remain exclusive. Choice metadata
+contains public catalog ids/names, never port paths. Onboarding retains its generic BOOT restore;
+the Device firmware card hosts the pair chooser. These fixtures perform no device writes.
 
 ## Consequences
 

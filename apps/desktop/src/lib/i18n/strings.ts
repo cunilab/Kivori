@@ -724,11 +724,12 @@ export const strings = {
         'The update finished, but Kivori could not confirm your device afterwards. Unplug it, plug it in again, and check the Device page.',
       wrongProduct:
         'This firmware is not for your device, so nothing was changed. Your device is {device}; the firmware in this app is for {image}.',
-      chooseProduct: 'Kivori could not tell which product this is. Choose yours, then restore it.',
+      chooseProduct:
+        'Kivori could not identify this device. Choose its product and board, then confirm the restore.',
       unknown:
         'The update did not finish. If your Kivori no longer works, restore it with the BOOT button.',
     },
-    chooseProductAction: 'Restore {product}',
+    chooseProductAction: 'Choose {product} on {board}',
     restore: 'Restore with the BOOT button',
     restoreHint: 'Use this if the update failed or your Kivori shows the wrong firmware.',
     confirmTitle: 'Flash Kivori firmware?',
@@ -851,6 +852,7 @@ export const strings = {
     },
   },
   recovery: {
+    target: 'Restore firmware for {target}.',
     title: 'Restore your Kivori',
     description:
       'This puts the firmware bundled with this app back on your Kivori. Connect only one Kivori.',

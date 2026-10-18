@@ -579,10 +579,14 @@ fn a_restore_that_needs_a_pick_lists_the_products_and_clears_on_the_next_attempt
         RestoreOption {
             id: "pala".into(),
             name: "Kivori Pip".into(),
+            board: "board-a".into(),
+            board_name: "board-a".into(),
         },
         RestoreOption {
             id: "lamp".into(),
             name: "Lamp".into(),
+            board: "board-a".into(),
+            board_name: "board-a".into(),
         },
     ]);
     assert_eq!(flash.status().failure, Some(FlashFailure::ChooseProduct));
@@ -597,10 +601,47 @@ fn a_restore_that_needs_a_pick_lists_the_products_and_clears_on_the_next_attempt
 #[test]
 fn a_restore_for_a_picked_product_is_queued_with_its_id() {
     let (state, rx) = app_state_with_connection("disconnected");
-    assert!(state.queue_firmware_restore_for("pala".into()).is_ok());
+    assert!(state
+        .queue_firmware_restore_for("pala".into(), None)
+        .is_ok());
     assert_eq!(
         rx.recv().unwrap(),
-        DeviceCommand::RestoreFirmwareFor("pala".into())
+        DeviceCommand::RestoreFirmwareFor("pala".into(), None)
     );
     state.shutdown();
+}
+
+#[test]
+fn a_restore_pair_is_queued_and_cannot_replace_an_existing_reservation() {
+    let (state, rx) = app_state_with_connection("disconnected");
+    state
+        .queue_firmware_restore_for("fixture".into(), Some("board-b".into()))
+        .unwrap();
+    assert_eq!(
+        rx.recv().unwrap(),
+        DeviceCommand::RestoreFirmwareFor("fixture".into(), Some("board-b".into()))
+    );
+    assert!(state
+        .queue_firmware_restore_for("other".into(), Some("board-a".into()))
+        .is_err());
+    assert!(rx.try_recv().is_err());
+    state.shutdown();
+}
+
+#[test]
+fn malformed_restore_selections_do_not_reserve_or_clear_status() {
+    for (product, board) in [
+        ("", None),
+        ("fixture", Some("")),
+        ("fixture", Some("../board")),
+    ] {
+        let (state, rx) = app_state_with_connection("disconnected");
+        let before = state.firmware_status_snapshot();
+        assert!(state
+            .queue_firmware_restore_for(product.into(), board.map(str::to_owned))
+            .is_err());
+        assert_eq!(state.firmware_status_snapshot(), before);
+        assert!(rx.try_recv().is_err());
+        state.shutdown();
+    }
 }

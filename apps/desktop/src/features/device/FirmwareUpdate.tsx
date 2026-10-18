@@ -44,6 +44,9 @@ export function FirmwareUpdate({
   const [requesting, setRequesting] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [recovering, setRecovering] = useState(false);
+  const [recoveryChoice, setRecoveryChoice] = useState<
+    FirmwareStatusDto['restoreChoices'][number] | null
+  >(null);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
   const pending = useRef(false);
@@ -88,6 +91,25 @@ export function FirmwareUpdate({
     !busy &&
     !pollError;
   const canRestore = status?.available && !busy && !pollError;
+  const choiceValid =
+    recoveryChoice === null ||
+    (status?.phase === 'failed' &&
+      status.failure === 'chooseProduct' &&
+      status.restoreChoices.some(
+        (choice) => choice.id === recoveryChoice.id && choice.board === recoveryChoice.board,
+      ));
+  useEffect(() => {
+    if (connected) {
+      setRecovering(false);
+      setRecoveryChoice(null);
+    }
+  }, [connected]);
+  useEffect(() => {
+    if (!choiceValid) {
+      setRecovering(false);
+      setRecoveryChoice(null);
+    }
+  }, [choiceValid]);
   const showRestore = incompatible || needsRestore(status);
   const error = requestError ?? pollError;
 
@@ -110,13 +132,13 @@ export function FirmwareUpdate({
     }
   };
 
-  const restore = async (product?: string): Promise<void> => {
+  const restore = async (product?: string, board?: string): Promise<void> => {
     if (!canRestore || pending.current) return;
     pending.current = true;
     setRequesting(true);
     setRequestError(null);
     try {
-      await restoreFirmware(product);
+      await restoreFirmware(product, board);
       const snapshot = await getFirmwareStatus();
       if (mounted.current) setStatus(snapshot);
     } catch (failure) {
@@ -256,14 +278,17 @@ export function FirmwareUpdate({
         {phase === 'failed' && status?.failure === 'chooseProduct' ? (
           <ul className="space-y-2" aria-label={t.failures.chooseProduct}>
             {status.restoreChoices.map((choice) => (
-              <li key={choice.id}>
+              <li key={`${choice.id}/${choice.board}`}>
                 <Button
                   variant="outline"
                   disabled={!canRestore}
-                  onClick={() => void restore(choice.id)}
+                  onClick={() => {
+                    setRecoveryChoice(choice);
+                    setRecovering(true);
+                  }}
                 >
                   <LifeBuoy aria-hidden="true" />
-                  {format(t.chooseProductAction, { product: choice.name })}
+                  {format(t.chooseProductAction, { product: choice.name, board: choice.boardName })}
                 </Button>
               </li>
             ))}
@@ -274,7 +299,10 @@ export function FirmwareUpdate({
             <Button
               variant="outline"
               disabled={!canRestore}
-              onClick={() => setRecovering(true)}
+              onClick={() => {
+                setRecoveryChoice(null);
+                setRecovering(true);
+              }}
               aria-describedby="firmware-restore-hint"
             >
               <LifeBuoy aria-hidden="true" />
@@ -287,10 +315,18 @@ export function FirmwareUpdate({
         ) : null}
         <RecoveryDialog
           open={recovering}
-          onOpenChange={setRecovering}
+          onOpenChange={(open) => {
+            setRecovering(open);
+            if (!open) setRecoveryChoice(null);
+          }}
+          target={
+            recoveryChoice ? `${recoveryChoice.name} / ${recoveryChoice.boardName}` : undefined
+          }
+          disabled={!canRestore || !choiceValid}
           onRestore={() => {
+            if (!choiceValid) return;
             setRecovering(false);
-            void restore();
+            void restore(recoveryChoice?.id, recoveryChoice?.board);
           }}
         />
         {error ? (

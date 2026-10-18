@@ -41,8 +41,8 @@ pub enum DeviceCommand {
     /// Restore the bundled firmware on the one Kivori device present, even one that cannot
     /// handshake (wrong-major firmware, or a unit held in ROM download mode).
     RestoreFirmware,
-    /// The same restore, for the product the user picked when more than one could be on the port.
-    RestoreFirmwareFor(String),
+    /// The same restore, for an explicit product and optional board chosen by the user.
+    RestoreFirmwareFor(String, Option<String>),
     /// Re-publish the current status (used by an explicit UI resync).
     Refresh,
     /// Ask the device for one internals snapshot (developer mode, while the card is visible).
@@ -357,8 +357,27 @@ impl AppState {
 
     /// [`Self::queue_firmware_restore`] for the product the user picked (a machine id from the
     /// status's restore choices).
-    pub fn queue_firmware_restore_for(&self, product: String) -> Result<(), String> {
-        self.reserve_and_queue(DeviceCommand::RestoreFirmwareFor(product))
+    pub fn queue_firmware_restore_for(
+        &self,
+        product: String,
+        board: Option<String>,
+    ) -> Result<(), String> {
+        let valid = |id: &str| {
+            !id.is_empty()
+                && id.len() <= 64
+                && id.split('-').all(|part| {
+                    !part.is_empty()
+                        && part
+                            .bytes()
+                            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+                })
+        };
+        if !valid(&product) || board.as_deref().is_some_and(|id| !valid(id)) {
+            return Err(
+                "Choose a valid catalog product and board before restoring firmware.".into(),
+            );
+        }
+        self.reserve_and_queue(DeviceCommand::RestoreFirmwareFor(product, board))
     }
 
     fn reserve_and_queue(&self, command: DeviceCommand) -> Result<(), String> {

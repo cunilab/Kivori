@@ -660,15 +660,19 @@ pub fn dismiss_firmware_offer(
     Ok(offer)
 }
 
-/// Queues recovery of this application's fixed bundled firmware on the one Kivori device present,
-/// including one that cannot handshake. Takes no arguments; the device thread finds the port and
-/// refuses unless exactly one allowlisted device is connected. `product` is a machine id from the
-/// status's restore choices, sent back only after the app asked which product the device is.
+/// Queues recovery on the one allowlisted port present, including a device that cannot handshake.
+/// Optional product/board ids are catalog choices confirmed by the user. The device thread
+/// re-enumerates and validates the complete target before image lookup or port reservation.
 #[tauri::command]
-pub fn restore_firmware(app: State<'_, AppState>, product: Option<String>) -> Result<(), String> {
-    match product {
-        Some(product) => app.queue_firmware_restore_for(product),
-        None => app.queue_firmware_restore(),
+pub fn restore_firmware(
+    app: State<'_, AppState>,
+    product: Option<String>,
+    board: Option<String>,
+) -> Result<(), String> {
+    match (product, board) {
+        (Some(product), board) => app.queue_firmware_restore_for(product, board),
+        (None, None) => app.queue_firmware_restore(),
+        (None, Some(_)) => Err("Choose a product with the board before restoring firmware.".into()),
     }
 }
 

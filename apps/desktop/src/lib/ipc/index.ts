@@ -325,10 +325,11 @@ export async function flashFirmware(): Promise<void> {
 /**
  * Restores the bundled firmware on the one Kivori device present, even one that cannot connect
  * (wrong firmware, or held in download mode with the BOOT button). Takes no port. `product` is a
- * restore choice's id, sent only after the app asked which product the device is.
+ * restore choice's id; optional `board` selects its exact board after visible confirmation.
  */
-export async function restoreFirmware(product?: string): Promise<void> {
-  if (isTauri()) return invoke<void>('restore_firmware', { product: product ?? null });
+export async function restoreFirmware(product?: string, board?: string): Promise<void> {
+  if (isTauri())
+    return invoke<void>('restore_firmware', { product: product ?? null, board: board ?? null });
   return unavailable();
 }
 

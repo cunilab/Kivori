@@ -9,6 +9,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: tauri.invoke }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: tauri.listen }));
 import {
   flashFirmware,
+  restoreFirmware,
   getFirmwareStatus,
   appReady,
   getAppInfo,
@@ -798,6 +799,49 @@ describe('parseFirmwareStatus', () => {
     expect(() => parseFirmwareStatus({ ...good, advice: 'maybe' })).toThrow();
     expect(() => parseFirmwareStatus({ ...good, phase: 'exploding' })).toThrow();
     expect(() => parseFirmwareStatus(null)).toThrow();
+  });
+});
+
+describe('recovery pair payloads', () => {
+  it('sends the confirmed pair and preserves generic recovery', async () => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} });
+    tauri.invoke.mockResolvedValue(undefined);
+    await restoreFirmware('fixture', 'board-a');
+    expect(tauri.invoke).toHaveBeenLastCalledWith('restore_firmware', {
+      product: 'fixture',
+      board: 'board-a',
+    });
+    await restoreFirmware();
+    expect(tauri.invoke).toHaveBeenLastCalledWith('restore_firmware', {
+      product: null,
+      board: null,
+    });
+  });
+
+  const choice = { id: 'fixture', name: 'Fixture', board: 'board-a', boardName: 'Board A' };
+  const status = {
+    available: true,
+    phase: 'failed',
+    message: 'Choose',
+    imageSize: 0,
+    failure: 'chooseProduct',
+    bundledVersion: null,
+    advice: 'unknown',
+    restoreChoices: [choice],
+  };
+  it('keeps exact board identity and rejects malformed, duplicate or out-of-phase choices', () => {
+    expect(parseFirmwareStatus(status).restoreChoices).toEqual([choice]);
+    for (const bad of [
+      { ...choice, board: undefined },
+      { ...choice, board: '' },
+      { ...choice, board: 'Board A' },
+      { ...choice, boardName: 'x'.repeat(97) },
+    ])
+      expect(() => parseFirmwareStatus({ ...status, restoreChoices: [bad] })).toThrow();
+    expect(() => parseFirmwareStatus({ ...status, restoreChoices: [choice, choice] })).toThrow();
+    expect(() => parseFirmwareStatus({ ...status, phase: 'idle' })).toThrow();
+    expect(() => parseFirmwareStatus({ ...status, failure: 'unknown' })).toThrow();
+    expect(() => parseFirmwareStatus({ ...status, restoreChoices: 'bad' })).toThrow();
   });
 });
 
