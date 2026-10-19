@@ -232,7 +232,7 @@ pub struct FirmwareOfferDto {
     pub product: Option<String>,
     /// The device's firmware version, with `offerOptional`.
     pub from: Option<String>,
-    /// The bundled firmware version, with `offerOptional` and `required`.
+    /// Exact target version; absent for protocol recovery before target resolution.
     pub to: Option<String>,
     /// Why the update is required, with `required`.
     pub reason: Option<&'static str>,
@@ -257,7 +257,9 @@ pub fn firmware_offer_dto(
         },
         to: match offer {
             FirmwareOffer::OfferOptional { to, .. } => Some(to.clone()),
-            FirmwareOffer::Required { .. } => decision.key.as_ref().map(|key| key.version.clone()),
+            FirmwareOffer::Required { .. } => {
+                decision.key.as_ref().and_then(|key| key.version.clone())
+            }
             _ => None,
         },
         reason: match offer {

@@ -52,6 +52,7 @@ fn inputs<'a>(device: &'a OfferDevice, image: Option<&'a ImageIdentity>) -> Offe
         device,
         generation: 1,
         image,
+        restorable: image.is_some(),
         host_major: HOST_MAJOR,
         app_update_due: false,
         flashing: false,
@@ -87,7 +88,7 @@ fn optional(from: &str, to: &str) -> FirmwareOffer {
 fn key(generation: u32) -> OfferKey {
     OfferKey {
         hash: Some("abcd1234".into()),
-        version: "0.2.0".into(),
+        version: Some("0.2.0".into()),
         generation,
     }
 }
@@ -372,7 +373,7 @@ fn an_offer_is_keyed_by_device_bundled_version_and_connection() {
     // An incompatible device has no hash yet.
     let old_major = older_major();
     let required = decide(&next_major_inputs(&old_major, Some(&bundled)), true, None);
-    assert_eq!(required.key.unwrap().token(), "1::0.2.0");
+    assert_eq!(required.key.unwrap().token(), "1::");
     // Nothing that is not a question carries a key.
     let newer = connected("0.3.0");
     assert_eq!(
@@ -609,7 +610,7 @@ fn the_dto_carries_versions_and_names_only_for_a_question() {
         },
         key: Some(OfferKey {
             hash: None,
-            version: "0.2.0".into(),
+            version: Some("0.2.0".into()),
             generation: 4,
         }),
     };
@@ -647,4 +648,57 @@ fn a_device_lacking_a_required_capability_is_detected_from_the_catalog() {
         &identity(9, 1),
         Capabilities::NONE
     ));
+}
+
+#[test]
+fn incompatible_recovery_offer_has_no_assumed_image_version() {
+    let device = older_major();
+    let inputs = OfferInputs {
+        restorable: true,
+        ..next_major_inputs(&device, None)
+    };
+    let decision = decide(&inputs, true, None);
+    assert_eq!(
+        decision.offer,
+        FirmwareOffer::Required {
+            reason: RequiredReason::ProtocolTooOld
+        }
+    );
+    assert_eq!(decision.key.as_ref().unwrap().version, None);
+    let dto = firmware_offer_dto(&decision, None);
+    assert_eq!(dto.to, None);
+    assert_eq!(dto.product, None);
+    assert_eq!(dto.key.as_deref(), Some("1::"));
+}
+
+#[test]
+fn another_products_offer_uses_only_its_exact_image_version() {
+    let mut second = image("0.7.0");
+    second.product = 42;
+    second.board = 10;
+    let device = OfferDevice::Connected {
+        hash: "fixture-second".into(),
+        firmware: "0.6.0".into(),
+        identity: Some(identity(42, 10)),
+        missing_capabilities: false,
+    };
+    let decision = decide(&inputs(&device, Some(&second)), true, None);
+    assert_eq!(decision.offer, optional("0.6.0", "0.7.0"));
+    assert_eq!(decision.key.unwrap().version.as_deref(), Some("0.7.0"));
+    assert_eq!(
+        decide(&inputs(&device, Some(&image("9.0.0"))), true, None).offer,
+        FirmwareOffer::None
+    );
+    assert_eq!(
+        decide(
+            &OfferInputs {
+                restorable: true,
+                ..inputs(&device, None)
+            },
+            true,
+            None
+        )
+        .offer,
+        FirmwareOffer::None
+    );
 }

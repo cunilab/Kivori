@@ -274,19 +274,10 @@ impl AppState {
     /// The current safe firmware-update projection for the Overview UI.
     #[must_use]
     pub fn firmware_status_snapshot(&self) -> FirmwareStatus {
-        let mut status = self
-            .firmware_status
+        self.firmware_status
             .lock()
             .expect("firmware status lock")
-            .clone();
-        let device = self.status_snapshot().device;
-        status.advice = firmware::update_advice(
-            device
-                .as_ref()
-                .map(|device| device.firmware_version.as_str()),
-            status.bundled_version.as_deref(),
-        );
-        status
+            .clone()
     }
 
     /// The firmware update offer as the dialog, the Device page and the tray show it.
@@ -384,6 +375,9 @@ impl AppState {
             }
             let previous = status.clone();
             status.phase = FirmwarePhase::Preparing;
+            status.image_size = 0;
+            status.bundled_version = None;
+            status.advice = firmware::UpdateAdvice::Unknown;
             status.message = "Preparing firmware update.".to_string();
             status.failure = None;
             status.wrong_product = None;

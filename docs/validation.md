@@ -245,11 +245,14 @@ Software is done (tracker, device-thread and Windows window tests, macOS IOKit r
 ## Phase 8: Firmware update and recovery (M3 S3)
 
 Automated image-set checks compile a generated two-product index outside shipping catalog roots and
-verify exact lookup, deterministic order, duplicate/invalid-image refusal and the temporary
-single-image shipping gate. The legacy single-image path and empty host builds remain supported.
+verify exact lookup, deterministic order and duplicate/invalid-image refusal. Multi-image runtime
+fixtures cover exact product/board selection, per-target version/size/advice, active metadata retention,
+IPC reservation preservation, generic recovery offers without an assumed version, and explicit
+provisioning selection before I/O. The legacy single-image path and empty host builds remain supported.
 
 Automated M2.8 resolver/workflow checks cover missing/unknown images, stale or invalid product choices, unknown
-USB hints, reported-identity mismatches, shared-USB board ambiguity, distinct-board selection, refusal status cleanup and no port
+USB hints, unknown reported identities, pending-handshake refusal, same-port identity binding, shared-USB board
+ambiguity, distinct-board selection, refusal status cleanup and no port
 reservation/flasher start on refusal. The fixtures are not shipping products. These checks do not
 complete the hardware rows below.
 

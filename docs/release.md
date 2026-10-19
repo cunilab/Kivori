@@ -256,7 +256,8 @@ These commands build software; actual flashing/provisioning still requires its e
 The native build accepts either `KIVORI_FIRMWARE_PATH` or `KIVORI_FIRMWARE_MANIFEST`, never both.
 The manifest variable is an absolute JSON-file path; its contents are a nonempty array of absolute
 image paths. Images are resolved by their embedded catalog identities, not filenames or list order.
-An explicit manifest with more than one image currently fails the shipping runtime gate. This is an
-intentional intermediate M2.8 limit: the generator and exact lookup support multiple images, while
-existing desktop workflows still require exactly one. Runtime selection and all-image packaging
-must land before multi-image installers can be built. An unset pair of variables embeds no firmware.
+The runtime supports multiple validated images and selects only the exact product/board target.
+Pending/unknown identities and missing image pairs have no fallback; recovery establishes the
+hardware target before lookup. An unset pair of variables embeds no firmware. The existing build
+recipes still supply one image; packaging the complete supported catalog set and generalizing
+release metadata remain M2.8 follow-up work.

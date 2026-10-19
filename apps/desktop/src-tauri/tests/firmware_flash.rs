@@ -79,6 +79,10 @@ fn app_state_reserves_flash_before_queuing_a_second_request() {
     state.firmware_status.lock().unwrap().available = true;
     assert!(state.queue_firmware_flash().is_ok());
     assert_eq!(rx.recv().unwrap(), DeviceCommand::FlashFirmware);
+    let mut idle = FlashWorkflow::new(true, 0);
+    let reserved = state.firmware_status.lock().unwrap().clone();
+    idle.refresh_image(None, None, &mut state.firmware_status.lock().unwrap());
+    assert_eq!(*state.firmware_status.lock().unwrap(), reserved);
     assert!(state.queue_firmware_flash().is_err());
     assert_eq!(
         state.firmware_status_snapshot().phase,

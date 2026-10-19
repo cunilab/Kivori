@@ -98,30 +98,64 @@ fn malformed_marker_copies_do_not_hide_or_duplicate_the_real_record() {
 
 #[test]
 fn compiled_index_entries_match_their_lookup_keys() {
-    // The shipping gate limits this check to zero/one; the generated host harness tests multiple.
-
     let bundle = kivori_desktop::firmware::bundled_images();
     for image in bundle.images() {
         let identity = image.identity();
         let found = kivori_desktop::firmware::image_for(identity.product, identity.board).unwrap();
         assert_eq!(found.bytes(), image.bytes());
     }
-    assert_eq!(
-        kivori_desktop::firmware::single_image().is_some(),
-        bundle.images().len() == 1
-    );
     let status = kivori_desktop::firmware::initial_status();
-    assert_eq!(status.available, bundle.single().is_some());
-    assert_eq!(
-        status.image_size,
-        bundle
-            .single()
-            .map_or(0, |image| image.bytes().len() as u64)
-    );
-    assert_eq!(
-        status.bundled_version,
-        bundle
-            .single()
-            .map(|image| image.identity().version.clone())
-    );
+    assert_eq!(status.available, !bundle.images().is_empty());
+    assert_eq!(status.image_size, 0);
+    assert_eq!(status.bundled_version, None);
+}
+
+#[test]
+fn status_follows_exact_device_images_and_retains_an_active_target() {
+    use kivori_desktop::firmware::{FlashWorkflow, UpdateAdvice};
+    let a = image(41, 9, "0.1.0", "0.1");
+    let b = image(42, 10, "0.3.0", "0.1");
+    let bundle = FirmwareBundle::parse(&[&b, &a]).unwrap();
+    let mut workflow = FlashWorkflow::new(true, 0);
+    let mut published = workflow.status().clone();
+    for (product, board, version, expected, bytes) in [
+        (41, 9, "0.1.0", UpdateAdvice::UpToDate, a.len()),
+        (42, 10, "0.2.0", UpdateAdvice::UpdateAvailable, b.len()),
+    ] {
+        workflow.refresh_image(bundle.get(product, board), Some(version), &mut published);
+        assert_eq!(published.image_size, bytes as u64);
+        assert_eq!(published.advice, expected);
+        assert_eq!(
+            published.bundled_version.as_deref(),
+            Some(
+                bundle
+                    .get(product, board)
+                    .unwrap()
+                    .identity()
+                    .version
+                    .as_str()
+            )
+        );
+    }
+    for key in [(99, 9), (41, 10)] {
+        workflow.refresh_image(bundle.get(key.0, key.1), Some("0.0.1"), &mut published);
+        assert_eq!(published.bundled_version, None);
+        assert_eq!(published.image_size, 0);
+        assert_eq!(published.advice, UpdateAdvice::Unknown);
+        assert!(published.available, "recovery remains available");
+    }
+    workflow.select_image(bundle.get(42, 10));
+    workflow
+        .request(true, Some("fixture-port"), Some("fixture-hash"))
+        .unwrap();
+    let accepted = workflow.status().clone();
+    published = accepted.clone();
+    workflow.select_image(bundle.get(41, 9));
+    workflow.refresh_image(None, None, &mut published);
+    assert_eq!(workflow.status(), &accepted);
+    assert_eq!(published, accepted);
+    workflow.finish(Ok(()));
+    let reconnecting = workflow.status().clone();
+    workflow.select_image(None);
+    assert_eq!(workflow.status(), &reconnecting);
 }

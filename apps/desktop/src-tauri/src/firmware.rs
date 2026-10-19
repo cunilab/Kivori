@@ -280,19 +280,19 @@ impl FlashTarget {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FirmwareStatus {
-    /// Whether this app build contains a valid fixed firmware image.
+    /// Whether this app build contains any validated firmware images.
     pub available: bool,
     /// Current native workflow phase.
     pub phase: FirmwarePhase,
     /// Human-readable status with no port, path, or process output.
     pub message: String,
-    /// Bundled image byte length, or zero when unavailable.
+    /// Selected image byte length, or zero when no target is established.
     pub image_size: u64,
     /// Why the last attempt failed, as a token for the UI to word; `None` unless the phase is failed.
     pub failure: Option<FlashFailure>,
-    /// Version of the firmware bundled in this build, when known.
+    /// Version for the current device or accepted flash target, when known.
     pub bundled_version: Option<String>,
-    /// Whether the connected device should be updated. Filled when the status is read.
+    /// Whether the connected device should be updated, evaluated with the same selected image.
     pub advice: UpdateAdvice,
     /// Both names, set only with [`FlashFailure::WrongProduct`].
     pub wrong_product: Option<WrongProductInfo>,
@@ -355,9 +355,7 @@ impl FlashWorkflow {
                 message,
                 image_size: if available { image_size } else { 0 },
                 failure: None,
-                bundled_version: single_image()
-                    .filter(|_| available)
-                    .map(|image| image.identity().version.clone()),
+                bundled_version: None,
                 advice: UpdateAdvice::Unknown,
                 wrong_product: None,
                 restore_choices: Vec::new(),
@@ -372,6 +370,39 @@ impl FlashWorkflow {
             ActivityEventKind::FirmwareUnavailable
         });
         workflow
+    }
+
+    /// Refreshes target metadata while idle; an accepted operation keeps its exact image.
+    pub fn select_image(&mut self, image: Option<&FirmwareImage<'_>>) {
+        if !self.is_busy() {
+            self.status.image_size = image.map_or(0, |image| image.bytes().len() as u64);
+            self.status.bundled_version = image.map(|image| image.identity().version.clone());
+            self.status.advice = UpdateAdvice::Unknown;
+        }
+    }
+
+    /// Refreshes idle metadata without replacing an IPC reservation or workflow result.
+    pub fn refresh_image(
+        &mut self,
+        image: Option<&FirmwareImage<'_>>,
+        device_version: Option<&str>,
+        published: &mut FirmwareStatus,
+    ) {
+        if self.is_busy()
+            || matches!(
+                published.phase,
+                FirmwarePhase::Preparing | FirmwarePhase::Flashing | FirmwarePhase::Reconnecting
+            )
+        {
+            return;
+        }
+        self.select_image(image);
+        self.status.advice = update_advice(device_version, self.status.bundled_version.as_deref());
+        published.advice = self.status.advice;
+        published.image_size = self.status.image_size;
+        published
+            .bundled_version
+            .clone_from(&self.status.bundled_version);
     }
 
     /// Returns the safe status projection.
@@ -504,14 +535,10 @@ impl FlashWorkflow {
     /// Reports a recovery policy refusal without reserving a target or starting the flasher.
     pub fn refuse_recovery(&mut self, refusal: RecoveryRefusal) {
         match refusal {
-            RecoveryRefusal::ImageUnavailable => {
-                self.fail_preparation_with(FlashFailure::ImageUnavailable)
-            }
             RecoveryRefusal::NoCandidate | RecoveryRefusal::BoardAmbiguous => {
                 // shortcut: generic copy until recovery offers product/board choices.
                 self.fail_preparation_with(FlashFailure::Unknown)
             }
-            RecoveryRefusal::WrongProduct(wrong) => self.fail_wrong_product(wrong),
         }
     }
 
@@ -610,21 +637,12 @@ pub fn image_for(product: u16, board: u16) -> Option<&'static FirmwareImage<'sta
     bundled_images().get(product, board)
 }
 
-/// The current single-image runtime bridge. Multiple images never select a default.
-#[must_use]
-pub fn single_image() -> Option<&'static FirmwareImage<'static>> {
-    bundled_images().single()
-}
-
-/// Returns the initial safe status for the explicitly single-image runtime.
+/// Returns the initial status without assuming a device identity.
 #[must_use]
 pub fn initial_status() -> FirmwareStatus {
-    FlashWorkflow::new(
-        single_image().is_some(),
-        single_image().map_or(0, |image| image.bytes().len() as u64),
-    )
-    .status
-    .clone()
+    FlashWorkflow::new(!bundled_images().images().is_empty(), 0)
+        .status
+        .clone()
 }
 
 /// Runs an explicitly selected, validated image through the native flasher.

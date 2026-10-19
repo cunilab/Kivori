@@ -37,8 +37,7 @@ use crate::device::transport::SerialLink;
 use crate::firmware::{self, FirmwareStatus, FlashFailure, FlashWorkflow, ResumeTarget};
 use crate::firmware_offer::{OfferDevice, OfferInputs, OfferTracker};
 use crate::identity::{
-    check_image_for_device, decide_recovery, missing_required_capabilities, DeviceIdentity,
-    RecoveryDecision,
+    decide_recovery_for_port, missing_required_capabilities, DeviceIdentity, RecoveryDecision,
 };
 use crate::input::{Freshness, InputIngress, LogicalInput, RejectReason};
 use crate::ipc::dto::{
@@ -219,10 +218,7 @@ fn device_loop(
     // The brightness step to show, and the last buddy settings the device was sent (per session).
     let mut brightness = config.display.brightness;
     let mut buddy_sent: Option<(u32, u32, MascotPersonality, bool, u8)> = None;
-    let mut flash = FlashWorkflow::new(
-        firmware::single_image().is_some(),
-        firmware::single_image().map_or(0, |image| image.bytes().len() as u64),
-    );
+    let mut flash = FlashWorkflow::new(!firmware::bundled_images().images().is_empty(), 0);
     publish_firmware_status(&firmware_status, &flash);
     drain_firmware_activity(&app, &activity_log, &mut flash);
     let started = Instant::now();
@@ -402,6 +398,7 @@ fn device_loop(
                         publish_firmware_status(&firmware_status, &flash);
                         continue;
                     }
+                    flash.select_image(None);
                     // A device that cannot be verified (wrong-major firmware, a unit in ROM download
                     // mode) is recovered by identity-free port rules instead of a verified handshake.
                     let chosen = match &flash_command {
@@ -411,70 +408,72 @@ fn device_loop(
                     let recovery = flash_command != DeviceCommand::FlashFirmware
                         || manager.state() == ConnectionState::Incompatible;
                     let mut refusal = firmware::FlashFailure::Unknown;
-                    let Some(bundled) = firmware::single_image() else {
-                        flash.fail_preparation_with(firmware::FlashFailure::ImageUnavailable);
+                    if !recovery
+                        && (!manager.state().can_drive_device() || session.identity().is_none())
+                    {
+                        flash.fail_preparation_with(firmware::FlashFailure::Unknown);
                         drain_firmware_activity(&app, &activity_log, &mut flash);
                         publish_firmware_status(&firmware_status, &flash);
                         continue;
-                    };
-                    let image = Some(bundled.identity());
-                    let requested = if recovery {
+                    }
+                    let bundled = if recovery {
                         let candidates = enumerate();
                         let found = filter_candidates(&candidates, default_allowlist());
-                        if found.is_empty() {
-                            refusal = firmware::FlashFailure::NoDownloadMode;
-                        }
-                        // Use this port's live identity when present; only an identity-free port
-                        // falls back to USB candidates and an explicit product choice.
-                        let usb = found.first().and_then(|p| Some((p.vid?, p.pid?)));
-                        let reported = match found.as_slice() {
-                            [port]
-                                if connected_port.as_deref() == Some(port.port_name.as_str()) =>
-                            {
-                                session.identity()
-                            }
-                            _ => None,
+                        let [_] = found.as_slice() else {
+                            refusal = if found.is_empty() {
+                                firmware::FlashFailure::NoDownloadMode
+                            } else {
+                                firmware::FlashFailure::Unknown
+                            };
+                            flash.fail_preparation_with(refusal);
+                            drain_firmware_activity(&app, &activity_log, &mut flash);
+                            publish_firmware_status(&firmware_status, &flash);
+                            continue;
                         };
-                        match decide_recovery(
+                        let target = decide_recovery_for_port(
                             Catalog::embedded(),
-                            usb,
+                            &found,
                             chosen.as_deref(),
-                            image,
-                            reported.as_ref(),
-                        ) {
-                            RecoveryDecision::Proceed => flash.request_recovery(&candidates),
-                            RecoveryDecision::Choose(options) if found.len() == 1 => {
+                            connected_port.as_deref(),
+                            session.identity().as_ref(),
+                            manager.state() != ConnectionState::Incompatible
+                                && session.identity().is_none(),
+                        );
+                        let (product, board) = match target {
+                            RecoveryDecision::Proceed { product, board } => (product, board),
+                            RecoveryDecision::Choose(options) => {
                                 flash.ask_restore_choice(options);
                                 drain_firmware_activity(&app, &activity_log, &mut flash);
                                 publish_firmware_status(&firmware_status, &flash);
                                 continue;
                             }
-                            RecoveryDecision::Refuse(reason) if found.len() == 1 => {
+                            RecoveryDecision::Refuse(reason) => {
                                 flash.refuse_recovery(reason);
                                 drain_firmware_activity(&app, &activity_log, &mut flash);
                                 publish_firmware_status(&firmware_status, &flash);
                                 continue;
                             }
-                            // Not exactly one device on a port: the port rules refuse it as before.
-                            _ => flash.request_recovery(&candidates),
-                        }
+                        };
+                        firmware::image_for(product, board).map(|image| (image, Some(candidates)))
                     } else {
-                        // Tier A (ADR-0016): the image's identity record must match the connected
-                        // device (legacy counts as pala on c3-supermini), checked before
-                        // anything is reserved, let alone written. A device whose identity has not
-                        // arrived yet cannot be verified and is refused by `request` below.
-                        let mismatch = session.identity().zip(image).and_then(|(device, image)| {
-                            check_image_for_device(image, &device).err()
-                        });
-                        if let Some(wrong) = mismatch {
-                            flash.fail_wrong_product(wrong);
-                            drain_firmware_activity(&app, &activity_log, &mut flash);
-                            publish_firmware_status(&firmware_status, &flash);
-                            continue;
-                        }
-                        let identity_pending = session.identity().is_none();
+                        session
+                            .identity()
+                            .and_then(|device| firmware::image_for(device.product, device.board))
+                            .map(|image| (image, None))
+                    };
+                    let Some((bundled, candidates)) = bundled else {
+                        flash.select_image(None);
+                        flash.fail_preparation_with(firmware::FlashFailure::ImageUnavailable);
+                        drain_firmware_activity(&app, &activity_log, &mut flash);
+                        publish_firmware_status(&firmware_status, &flash);
+                        continue;
+                    };
+                    flash.select_image(Some(bundled));
+                    let requested = if let Some(candidates) = candidates {
+                        flash.request_recovery(&candidates)
+                    } else {
                         flash.request(
-                            manager.state().can_drive_device() && !identity_pending,
+                            manager.state().can_drive_device(),
                             connected_port.as_deref(),
                             manager
                                 .device()
@@ -963,6 +962,22 @@ fn device_loop(
         // The app updater never installs during a knob gesture (ADR-0015).
         knob_gesture.store(rotary.gesture_open(), Ordering::Relaxed);
 
+        // Refresh only metadata; IPC may already have reserved Preparing in the shared cell.
+        let selected = session
+            .identity()
+            .filter(|_| manager.state().can_drive_device())
+            .and_then(|device| firmware::image_for(device.product, device.board));
+        let offer_device = offer_device(&manager, &session);
+        let device_version = match &offer_device {
+            OfferDevice::Connected { firmware, .. } => Some(firmware.as_str()),
+            _ => None,
+        };
+        flash.refresh_image(
+            selected,
+            device_version,
+            &mut firmware_status.lock().expect("firmware status lock"),
+        );
+
         // 3. Publish + emit the snapshot on change.
         let snapshot = connection_status(
             &manager,
@@ -984,7 +999,6 @@ fn device_loop(
         // 3b. The firmware update offer (ADR-0015, step 6), decided after the snapshot so the
         // dialog and the tray read the same status. Nothing here flashes; "Update now" queues the
         // ordinary `FlashFirmware`.
-        let offer_device = offer_device(&manager, &session);
         let app_update_due = crate::updater::app_update_due(&app);
         let (evaluation, offer) = {
             let mut tracker = firmware_offer.lock().expect("firmware offer lock");
@@ -993,7 +1007,8 @@ fn device_loop(
                 &OfferInputs {
                     device: &offer_device,
                     generation: session.connection_generation(),
-                    image: firmware::single_image().map(|image| image.identity()),
+                    image: selected.map(|image| image.identity()),
+                    restorable: !firmware::bundled_images().images().is_empty(),
                     host_major: kivori_protocol::PROTOCOL_MAJOR,
                     app_update_due,
                     flashing: flash.is_busy(),
