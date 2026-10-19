@@ -15,8 +15,8 @@ import { mascotUrl } from '@/lib/brand';
 import { cn } from '@kivori/ui/lib/utils';
 import type { DeskStatusDto, DisplayMode } from '@/lib/ipc/types';
 
-// Custom (no shadcn equivalent): a CSS illustration of the Kivori hardware and its five screen
-// views. It is never a pixel mirror of the device (that renderer is Device-Studio-only); live values
+// Custom (no shadcn equivalent): a CSS illustration of the supported software screen views.
+// It is never a pixel mirror of the device (that renderer is Device-Studio-only); live values
 // appear only when the desktop knows them, otherwise the art shows neutral placeholders.
 
 type Values = Pick<
@@ -182,47 +182,5 @@ export function DeviceScreen({
         <SystemView values={values} />
       )}
     </div>
-  );
-}
-
-/** The whole device: a navy body with the screen and the knob. */
-export function DeviceArt({
-  mode,
-  values,
-  busy,
-  highlight,
-  label,
-  className,
-}: {
-  mode: DisplayMode;
-  values?: Values | undefined;
-  busy?: boolean | undefined;
-  /** Rings the knob (onboarding's tour): turning it, or pressing it. */
-  highlight?: 'knob' | 'press' | undefined;
-  label: string;
-  className?: string;
-}): ReactElement {
-  return (
-    <figure
-      role="img"
-      aria-label={label}
-      className={cn(
-        'relative flex aspect-[1.45] items-center gap-[7%] rounded-[16%] bg-gradient-to-b from-[#1b2236] to-[#0c101c] p-[7%] shadow-[0_24px_48px_-20px_rgb(12_16_28/0.55),inset_0_1px_0_rgb(255_255_255/0.08)] ring-1 ring-black/20',
-        className,
-      )}
-    >
-      <DeviceScreen mode={mode} values={values} busy={busy} className="h-full" />
-      <div
-        data-highlight={highlight}
-        className={cn(
-          'relative aspect-square flex-1 rounded-full bg-gradient-to-b from-[#3a4257] to-[#151a28] shadow-[0_6px_14px_rgb(0_0_0/0.4),inset_0_1px_0_rgb(255_255_255/0.15)]',
-          highlight && 'ring-4 ring-panel-amber/80 ring-offset-2 ring-offset-[#0c101c]',
-          highlight === 'press' && 'motion-safe:animate-pulse',
-        )}
-      >
-        <div className="absolute inset-[16%] rounded-full bg-[repeating-conic-gradient(rgb(255_255_255/0.07)_0deg_4deg,transparent_4deg_12deg)]" />
-        <span className="absolute top-[12%] left-1/2 h-[16%] w-[5%] -translate-x-1/2 rounded-full bg-panel-amber" />
-      </div>
-    </figure>
   );
 }

@@ -53,6 +53,17 @@ pub fn generate(products_dir: &Path) -> Result<(Catalog, String), CatalogError> 
         .map(|(id, text)| (id.as_str(), text.as_str()))
         .collect();
     let catalog = Catalog::parse(&registry, &sources)?;
+    for product in catalog.products() {
+        if product.display_name.encode_utf16().count() > 96 || product.model.len() > 96 {
+            return Err(CatalogError(format!(
+                "product `{}` presentation exceeds the desktop IPC limit of 96 UTF-16 units",
+                product.id
+            )));
+        }
+    }
+    if let Some(product) = catalog.products().iter().find(|p| p.image.is_some()) {
+        return Err(CatalogError(format!("product `{}` declares image artwork; bundled product art delivery is not supported yet (use an empty image)", product.id)));
+    }
     let mut generated = format!(
         "const REGISTRY: &str = {registry:?};\nconst PRODUCT_FILES: &[(&str, &str)] = &[\n"
     );
@@ -219,6 +230,40 @@ mod tests {
         assert_eq!(generate(&products).unwrap().1, expected);
         fs::create_dir(products.join(".fixtures")).unwrap();
         assert!(generate(&products).is_err());
+    }
+
+    #[test]
+    fn presentation_must_fit_the_desktop_ipc_limit() {
+        for (old, replacement) in [
+            ("Test pala", "X".repeat(97)),
+            ("Test pala", "😀".repeat(49)),
+            ("KV-T1", format!("KV-{}", "X".repeat(94))),
+        ] {
+            let root = fixture();
+            let path = root.path().join("products/pala/product.toml");
+            fs::write(path, product("pala").replace(old, &replacement)).unwrap();
+            let error = generate(&root.path().join("products")).unwrap_err();
+            assert!(error.0.contains("IPC limit"), "{error}");
+        }
+    }
+
+    #[test]
+    fn declared_art_is_refused_until_bundled_delivery_exists() {
+        let root = fixture();
+        let path = root.path().join("products/pala/product.toml");
+        fs::write(
+            path,
+            product("pala").replace(
+                "required_capabilities = []",
+                "image = \"art.png\"\nrequired_capabilities = []",
+            ),
+        )
+        .unwrap();
+        let error = generate(&root.path().join("products")).unwrap_err();
+        assert!(
+            error.0.contains("art delivery is not supported yet"),
+            "{error}"
+        );
     }
 
     #[cfg(unix)]

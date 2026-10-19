@@ -36,12 +36,23 @@ once a second only while the card is mounted and the window is visible. Missing,
 mismatched-session totals remain unavailable. Home never requests device internals or activity
 history, and turning developer mode off or leaving Home stops these reads.
 
+Catalog customer name/model metadata is exposed separately on `DeviceInfoDto.presentation`, never
+inside copied diagnostics. Shipping builds reject display names/models over the IPC limit of 96
+UTF-16 units. Home, Welcome and Tour use a neutral product figure, with those labels
+only for a known current connected product/board. Missing/pending/unknown/disconnected metadata
+never borrows another product's picture. The fixed hardware-body illustration is removed; Display
+keeps its existing software-view illustrations. No art is delivered yet: a non-empty catalog `image`
+is a build error until the bundled-art step implements validation and delivery. The existing Tour
+control checks and customization assumptions remain separate capability/onboarding work; this
+presentation step does not claim that setup supports every product's controls.
+
 ## Surface mapping
 
 | Surface | Current rule |
 | --- | --- |
 | Home computer monitoring, microphone, media and last action | Host readings and host action outcomes; independent of device capabilities. Unknown readings retain their existing unavailable explanations. |
-| Home device screen illustration, Showing chip, Change view | `deskStatusV1`. Otherwise use a neutral device symbol, without a screen/knob claim. |
+| Home product figure and setup figures | Catalog name/model only for a current connected identity with both product and board known. Neutral figure in every case until bundled artwork delivery exists; never infer hardware art from capabilities. |
+| Home Showing chip, Change view | `deskStatusV1`. |
 | Home Buddy report | A current, resolved, usable session with an actual reported state. This is baseline protocol data, not proof of transient reaction support. |
 | Developer Social reactions | Developer mode and `mascotInteraction`. Direct reaction controls are absent from Home and Display. |
 | Display Show now | `deskStatusV1`, checked again by the backend. All five modes belong to this capability, including Buddy and Media. |
