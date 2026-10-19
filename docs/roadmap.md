@@ -302,7 +302,7 @@ the beta acceptance platform. Finish and review the docs before implementing the
   Isolate fake products/images from shipping discovery and test preservation of stored bindings.
 - [ ] **Product identifier guard:** scoped to shared app/tooling, catalog-derived identifiers,
   explicit exceptions and a positive control. Supplement behavioral tests rather than replacing them.
-- [ ] **Firmware release guard:** reject changed firmware inputs under an unchanged released version
+- [x] **Firmware release guard:** reject changed firmware inputs under an unchanged released version
   before writing versions or pushing. Compare resolved versions, including exact overrides; define
   first-release behavior, reachable product-specific baselines and catalog/build/assets/toolchain/
   lockfile inputs. Recognize harmless version bookkeeping by content, never commit title or author.
