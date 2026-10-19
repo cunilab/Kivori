@@ -24,12 +24,16 @@ fn status() -> ConnectionStatusDto {
 fn fake_product_presentation_comes_from_its_own_catalog_metadata() {
     let catalog = Catalog::parse(
         "[products]\nfixture = 42\n[boards]\ntest-board = 9\n",
-        &[("fixture", "display_name = 'Test dial'\nshort_name = 'Dial'\nmodel = 'KV-T2'\nrequired_capabilities = []\n[boards.test-board]\ndisplay_name = 'Test board'\nflash = 'espflash'\nusb = []\n[boards.test-board.firmware]\ncrate = 'test-firmware'\nartifact = 'test-image'\nmin_protocol = '0.1'\n")],
+        &[("fixture", "display_name = 'Test dial'\nshort_name = 'Dial'\nmodel = 'KV-T2'\nimage = 'unit.png'\nrequired_capabilities = []\n[boards.test-board]\ndisplay_name = 'Test board'\nflash = 'espflash'\nusb = []\n[boards.test-board.firmware]\ncrate = 'test-firmware'\nartifact = 'test-image'\nmin_protocol = '0.1'\n")],
     ).unwrap();
-    let dto = product_presentation_dto(catalog.product("fixture").unwrap());
+    let product = catalog.product("fixture").unwrap();
+    let mut without_art = product.clone();
+    without_art.image = None;
+    assert!(product_presentation_dto(&without_art).art.is_none());
+    let dto = product_presentation_dto(product);
     assert_eq!(
         serde_json::to_value(dto).unwrap(),
-        serde_json::json!({"displayName": "Test dial", "model": "KV-T2"})
+        serde_json::json!({"displayName": "Test dial", "model": "KV-T2", "art": "fixture"})
     );
 }
 

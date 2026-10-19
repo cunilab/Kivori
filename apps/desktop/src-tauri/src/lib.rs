@@ -8,6 +8,9 @@ pub mod action;
 pub mod activity;
 pub mod catalog;
 #[cfg(test)]
+#[path = "../catalog_art.rs"]
+mod catalog_art;
+#[cfg(test)]
 #[path = "../catalog_build.rs"]
 mod catalog_build;
 mod catalog_embedded;
@@ -173,6 +176,7 @@ pub fn run() {
         ipc::commands::set_profile_pin_cycle,
         ipc::commands::list_running_apps,
         ipc::commands::get_app_icon,
+        ipc::commands::get_product_art,
         ipc::commands::reset_config,
         ipc::commands::save_macro,
         ipc::commands::delete_macro,
@@ -233,6 +237,7 @@ pub fn run() {
         ipc::commands::set_profile_pin_cycle,
         ipc::commands::list_running_apps,
         ipc::commands::get_app_icon,
+        ipc::commands::get_product_art,
         ipc::commands::reset_config,
         ipc::commands::save_macro,
         ipc::commands::delete_macro,

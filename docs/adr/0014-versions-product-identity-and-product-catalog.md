@@ -21,6 +21,19 @@ Kivori will be one desktop app for several hardware products, so identity and ve
 
 **Releases.** release-please turns conventional commits into one release PR with a version and changelog per component; the app tags `vX.Y.Z` and gets a normal GitHub Release whose title names the bundled firmware; firmware tags `fw-<product>-vX.Y.Z` get no GitHub Release, so "latest release" always means the app.
 
+**As built (M2.8 product artwork).** Catalog `image` is empty or a lowercase kebab-case `.png`
+filename directly inside the product directory. The desktop build refuses symlinks and validates
+static PNGs with a build-only decoder: at most 512 KiB, 1–1024 pixels per side, no APNG, complete
+frame decoding and remaining-chunk checks with bounded decoder allocation. The validated original
+bytes (including PNG metadata) are copied to `OUT_DIR` and embedded; Cargo recursively watches
+`products/` for metadata and artwork edits. The current connected known product/board exposes only
+an optional compiled art key beside its display name/model. A separate `get_product_art` command
+returns the allowlisted bytes as a PNG data URL, cached by the frontend; status events and diagnostic
+copies carry no image bytes or paths. Home/Welcome/Tour use only that product's art, otherwise a
+neutral figure, and suppress stale loads and image errors. Pip's `image` remains empty until actual
+artwork exists. This does not implement capability-aware setup controls or multi-image firmware
+packaging.
+
 ## Consequences
 
 The catalog format leaves room for firmware as its own downloads later.
