@@ -334,8 +334,12 @@ the beta acceptance platform. Finish and review the docs before implementing the
   Test backend action refusal before identity resolves. Catalog/build tests prove additions using
   supported features require no shared-app product-list edits and firmware selection ignores order.
   Isolate fake products/images from shipping discovery and test preservation of stored bindings.
-- [ ] **Product identifier guard:** scoped to shared app/tooling, catalog-derived identifiers,
-  explicit exceptions and a positive control. Supplement behavioral tests rather than replacing them.
+- [x] **Product identifier guard:** scoped to shared app/tooling, catalog-derived identifiers,
+  exact line/count exceptions and CLI positive controls on Ubuntu/Windows. Includes untracked files,
+  filenames, camel/separator variants and production code after Rust test modules; real-repository
+  coverage is asserted. Offline dependency checks visit every catalog firmware workspace.
+  Supplement behavioral tests rather than replacing them; hardware-specific dev matrices remain
+  explicit reviewed exceptions.
 - [x] **Firmware release guard:** reject changed firmware inputs under an unchanged released version
   before writing versions or pushing. Compare resolved versions, including exact overrides; define
   first-release behavior, reachable product-specific baselines and catalog/build/assets/toolchain/

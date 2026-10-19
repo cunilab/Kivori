@@ -364,3 +364,19 @@ Rules in [product.md](./product.md#updates-us10-us11); design in ADR-0014 to ADR
 | 2026-10-02 | macOS 27, CoreAudio backend, automated | Volume set and read-back, mute toggle and read-back, an external `osascript` change arriving as External, own writes tagged Kivori; original volume and mute restored. CPU, RAM and local time read |
 
 Screenshots and logs from before this consolidation stay in git history.
+
+
+## M2.8 product identifier guard (automated)
+
+`just check-identifiers` runs a real-repository scan and isolated positive controls. Fixtures cover
+catalog-derived names/ids/models/boards/reservations, camel/separator variants, untracked source and
+binary filenames, exact exception counts, and leaks after Rust test modules. Structural checks
+exercise raw/byte strings, character literals, lifetimes, nested comments, fake test markers in
+production strings and unterminated inputs. They preserve source line numbers for diagnostics.
+
+The offline dependency guard fixture uses mocked Cargo metadata with two firmware workspaces,
+including a custom path with spaces. It asserts all workspaces are checked, a network API in the
+second source root fails and catalog discovery errors fail closed. The mocked shell fixture runs
+on Unix; the real dependency guard still runs in both Rust CI jobs. No guard fixture flashes,
+burns identity or launches the desktop. These checks supplement the remaining product acceptance
+and hardware/recovery rows; a clean textual scan cannot prove capability behavior.

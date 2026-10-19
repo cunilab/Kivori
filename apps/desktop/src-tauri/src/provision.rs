@@ -715,8 +715,8 @@ pub fn check_image_matches_plan(
 }
 
 /// The identity guard `flash_firmware` applies, for the provisioning flash: a unit that answered
-/// the pre-flash handshake must be the image's product and board (legacy counts as the Kivori Pip
-/// on the C3 SuperMini). `None` means the unit never handshook (blank or recovering).
+/// the pre-flash handshake must be the image's product and board (including the fixed legacy pair).
+/// `None` means the unit never handshook (blank or recovering).
 ///
 /// # Errors
 /// [`WrongProduct`] naming both sides.

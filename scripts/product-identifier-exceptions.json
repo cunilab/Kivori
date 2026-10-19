@@ -1,0 +1,128 @@
+[
+  {
+    "path": ".github/workflows/firmware.yml",
+    "text": "working-directory: firmware/pala",
+    "count": 5,
+    "reason": "Existing board-specific development/CI feature matrix; generalizing hardware test matrices is separate work."
+  },
+  {
+    "path": "apps/desktop/src-tauri/examples/provision.rs",
+    "text": "\"espefuse not found: install it with `pip install esptool==4.7.0` (docs/provisioning.md).\",",
+    "count": 1,
+    "reason": "Python package-manager installation guidance, unrelated to the product name."
+  },
+  {
+    "path": "apps/desktop/src-tauri/src/identity.rs",
+    "text": "const LEGACY_BOARD: &str = \"c3-supermini\";",
+    "count": 1,
+    "reason": "Fixed legacy identity mapping required by ADR-0014; never a default for devices reporting identity."
+  },
+  {
+    "path": "apps/desktop/src-tauri/src/identity.rs",
+    "text": "const LEGACY_PRODUCT: &str = \"pala\";",
+    "count": 1,
+    "reason": "Fixed legacy identity mapping required by ADR-0014; never a default for devices reporting identity."
+  },
+  {
+    "path": "apps/desktop/src-tauri/src/provision.rs",
+    "text": "\"c3-supermini\" => Ok(()),",
+    "count": 1,
+    "reason": "The implemented eFuse burn backend is tied to this board; unknown boards must remain refused."
+  },
+  {
+    "path": "apps/desktop/src/lib/ipc/mock.ts",
+    "text": "/** What a device that reports no identity looks like: the original Kivori Pip. */",
+    "count": 1,
+    "reason": "Browser-only fixture; production exclusion is checked by check-mock-excluded.mjs."
+  },
+  {
+    "path": "apps/desktop/src/lib/ipc/mock.ts",
+    "text": "board: 'C3 SuperMini',",
+    "count": 1,
+    "reason": "Browser-only fixture; production exclusion is checked by check-mock-excluded.mjs."
+  },
+  {
+    "path": "apps/desktop/src/lib/ipc/mock.ts",
+    "text": "presentation: { displayName: mockIdentity.product, model: 'KV-P1', art: null },",
+    "count": 1,
+    "reason": "Browser-only fixture; production exclusion is checked by check-mock-excluded.mjs."
+  },
+  {
+    "path": "apps/desktop/src/lib/ipc/mock.ts",
+    "text": "product: 'Kivori Pip',",
+    "count": 2,
+    "reason": "Browser-only fixture; production exclusion is checked by check-mock-excluded.mjs."
+  },
+  {
+    "path": "justfile",
+    "text": "cd firmware/pala && cargo build -p kivori-model -p kivori-protocol -p kivori-framebuffer -p kivori-renderer -p kivori-assets",
+    "count": 1,
+    "reason": "Explicit board-specific development recipe; desktop build and packaging recipes use the whole catalog."
+  },
+  {
+    "path": "justfile",
+    "text": "cd firmware/pala && cargo run --release --features physical-st7789",
+    "count": 1,
+    "reason": "Explicit board-specific development recipe; desktop build and packaging recipes use the whole catalog."
+  },
+  {
+    "path": "justfile",
+    "text": "cd firmware/pala && cargo run --release --features physical-st7789,latency-probe",
+    "count": 1,
+    "reason": "Explicit board-specific development recipe; desktop build and packaging recipes use the whole catalog."
+  },
+  {
+    "path": "justfile",
+    "text": "cd firmware/pala && cargo test --features host-sim --target $(rustc -vV | sed -n 's/^host: //p')",
+    "count": 1,
+    "reason": "Explicit board-specific development recipe; desktop build and packaging recipes use the whole catalog."
+  },
+  {
+    "path": "scripts/check-release-surface.sh",
+    "text": "(cd firmware/pala && cargo build -q --lib --features embedded)",
+    "count": 1,
+    "reason": "Existing board-specific development/CI feature matrix; generalizing hardware test matrices is separate work."
+  },
+  {
+    "path": "scripts/check-release-surface.sh",
+    "text": "(cd firmware/pala && cargo build -q --lib --features embedded,debug-payloads)",
+    "count": 1,
+    "reason": "Existing board-specific development/CI feature matrix; generalizing hardware test matrices is separate work."
+  },
+  {
+    "path": "scripts/check-release-surface.sh",
+    "text": "(cd firmware/pala && cargo build -q --lib --features host-sim)",
+    "count": 1,
+    "reason": "Existing board-specific development/CI feature matrix; generalizing hardware test matrices is separate work."
+  },
+  {
+    "path": "scripts/check-release-surface.sh",
+    "text": "(cd firmware/pala && cargo build -q --lib --features physical-st7789)",
+    "count": 1,
+    "reason": "Existing board-specific development/CI feature matrix; generalizing hardware test matrices is separate work."
+  },
+  {
+    "path": "scripts/check-release-surface.sh",
+    "text": "(cd firmware/pala && cargo build -q --lib --features physical-st7789,latency-probe)",
+    "count": 1,
+    "reason": "Existing board-specific development/CI feature matrix; generalizing hardware test matrices is separate work."
+  },
+  {
+    "path": "scripts/check-release-surface.sh",
+    "text": "(cd firmware/pala && cargo build -q --lib)",
+    "count": 2,
+    "reason": "Existing board-specific development/CI feature matrix; generalizing hardware test matrices is separate work."
+  },
+  {
+    "path": "scripts/check-release-surface.sh",
+    "text": "FIRMWARE_LIB=\"firmware/pala/target/riscv32imc-unknown-none-elf/debug/libkivori_firmware.rlib\"",
+    "count": 1,
+    "reason": "Existing board-specific development/CI feature matrix; generalizing hardware test matrices is separate work."
+  },
+  {
+    "path": "scripts/release-info.mjs",
+    "text": "export const LEGACY_FIRMWARE_DIRS = { pala: ['firmware/desk-buddy/', 'firmware/esp32-c3/'] };",
+    "count": 1,
+    "reason": "Permanent legacy firmware history paths used only to read historical release notes."
+  }
+]

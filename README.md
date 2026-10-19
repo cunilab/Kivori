@@ -255,13 +255,14 @@ just web-dev           # website dev server on :3000
   Windows startup smoke), `firmware` (no_std isolation, RISC-V clippy, host-sim tests),
   `determinism` (golden frames, asset reproducibility), `web` (website changes only) and, for
   packaging changes, `release`.
-- Three guard scripts run in CI and are worth running locally before pushing; they fail for
+- Four guard scripts run in CI and are worth running locally before pushing; they fail for
   reasons ordinary tests do not catch:
 
   ```bash
   bash scripts/check-release-surface.sh   # dev-only surfaces absent from production builds
   bash scripts/check-crate-boundaries.sh  # no std/OS deps in the shared no_std crates
   bash scripts/check-offline-deps.sh      # no first-party crate pulls a network client
+  just check-identifiers                # no product names/ids in shared app/tooling; positive controls
   ```
 
   `check-release-surface.sh` compiles the shared crates for the device target on purpose,

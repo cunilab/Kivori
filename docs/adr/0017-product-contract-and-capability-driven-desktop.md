@@ -205,6 +205,42 @@ and allow explicit contract files, product firmware/art, legacy handling, tests,
 own fixtures. Document exceptions. Include a positive control that inserts a known leak and proves
 the guard fails. A clean grep cannot detect unnamed assumptions about screen or button layout.
 
+**As built (M2.8 identifier guard).** `just check-identifiers` runs the Bun guard and its fixtures;
+Ubuntu/Windows host CI run both. Identifiers come from all registry ids (including reservations),
+active catalog names/models/board labels and firmware crate paths. Compound board-label words such
+as `SuperMini` are derived only when the catalog contains that camel-cased word; chip tokens are
+not added on their own. Case, camelCase, underscore, space, kebab and compact spellings are checked
+in file paths and UTF-8 text. This is a token check, not an AST or a proof of product-independent
+behavior: escaped literals, numeric suffixes and compounds without camel/separator boundaries and unnamed layout assumptions still need review
+and behavioral tests.
+
+Scope is `apps/desktop/`, `crates/`, `tools/`, `scripts/`, workflow and Cargo configuration, plus
+root manifests/toolchain/justfile. Git supplies tracked and untracked, nonignored files; tracked
+deletions are skipped. Product firmware crate contents, docs, test paths/suffixes, vendored code,
+lockfiles and binary contents are excluded. Binary filenames remain checked. Rust `#[cfg(test)]`
+module bodies are excluded with bounded braces after masking literals and nested comments only
+for structural detection; original production strings/comments and code after test modules remain
+checked. Unsupported test attributes are conservatively scanned. Unterminated structural inputs
+fail instead of masking to end-of-file.
+
+`scripts/product-identifier-exceptions.json` is the complete literal exception inventory: exact
+path, trimmed line, occurrence count and reason. A new duplicate, stale allowance or unlisted
+matching line fails; no runtime/mock source file is exempted wholesale. The 21 reviewed entries
+cover fixed legacy constants/history, the implemented board-specific identity-burn backend,
+browser-only mock fixtures, Python package-manager guidance and existing hardware development/CI
+feature matrices. The latter are deliberate debt until a catalog-driven hardware matrix exists;
+shared desktop build/packaging/release selection is already catalog-driven. Generic documentation
+examples no longer name the shipping product. A changed exception requires review, not an automatic
+baseline refresh.
+
+The offline dependency guard also uses packaging's validated TOML resolver for every unique
+firmware workspace and its source root, using NUL-delimited paths to preserve spaces. Discovery
+failure stops the check. Its fixtures verify a second custom crate is visited and a network API
+there is rejected. The identifier positive controls inject leaks in isolated Git repositories and
+require actual CLI failure, including untracked files, camelCase and production code after test
+modules. A separate test asserts the real repository is scanned and clean. These checks do not
+complete the remaining product acceptance or hardware/recovery rows.
+
 ## Alternatives considered
 
 - Universal catalog-only support for arbitrary hardware: rejected; data cannot supply missing

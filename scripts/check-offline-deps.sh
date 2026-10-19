@@ -5,8 +5,8 @@
 # (ADR-0015): the desktop app's `src/updater/` module may reach the release endpoint through
 # `tauri-plugin-updater`, and nothing else may reach the network. This guard allows exactly that:
 #
-#   1. Direct dependencies, BOTH workspaces (the root and the isolated firmware workspace,
-#      `cargo metadata --no-deps`): no first-party crate depends on a network client, and no crate
+#   1. Direct dependencies, root and every catalog-selected firmware workspace
+#      (`cargo metadata --no-deps`): no first-party crate depends on a network client, and no crate
 #      depends on a network-capable Tauri plugin except the pairs in NET_ALLOWED.
 #   2. Transitive dependencies, root workspace, every desktop target (normal and build edges): with
 #      the allowed plugin's own tree pruned, no network client is left. So the updater plugin's
@@ -27,7 +27,7 @@ TARGETS=(x86_64-pc-windows-msvc aarch64-apple-darwin x86_64-apple-darwin x86_64-
 # The one module allowed to use the network, and the first-party sources that ship.
 ALLOWED_DIR="apps/desktop/src-tauri/src/updater/"
 SOURCE_ROOTS=(apps/desktop/src-tauri/src apps/desktop/src-tauri/build.rs apps/desktop/src-tauri/examples
-  crates tools firmware/pala/src)
+  crates tools)
 NET_SOURCE='tauri_plugin_updater|UpdaterExt|reqwest|ureq|hyper::|std::net|TcpStream|TcpListener|UdpSocket'
 
 if ! command -v jq >/dev/null 2>&1; then
@@ -70,7 +70,22 @@ check_workspace() {
 }
 
 check_workspace "."
-check_workspace "firmware/pala"
+# Use packaging's TOML resolver so new firmware workspaces cannot escape the dependency/source checks.
+firmware_paths="$(mktemp)"
+trap 'rm -f "$firmware_paths"' EXIT
+bun --eval '
+  import { listFirmwarePlans } from "./scripts/build-firmware.mjs";
+  import { realpathSync } from "node:fs";
+  import { relative, sep } from "node:path";
+  const root = realpathSync(process.cwd());
+  const crates = new Set(listFirmwarePlans(root).map((plan) =>
+    relative(root, realpathSync(plan.cwd)).split(sep).join("/")));
+  for (const crate of crates) process.stdout.write(crate + "\0");
+' > "$firmware_paths"
+while IFS= read -r -d '' firmware_crate; do
+  check_workspace "$firmware_crate"
+  SOURCE_ROOTS+=("$firmware_crate/src")
+done < "$firmware_paths"
 
 prune=()
 for p in "${NET_PRUNE[@]}"; do prune+=(--prune "$p"); done
