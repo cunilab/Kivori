@@ -217,6 +217,7 @@ export interface DiagnosticsDto {
     identity: DeviceIdentityDto | null;
   };
   connection: {
+    generation: number;
     state: ConnectionState;
     connectedForSecs: number | null;
     reconnects: number;
@@ -261,6 +262,9 @@ export const RESET_REASONS = [
  * answered on this connection; inside it, `null` means the device cannot measure that value, never 0.
  */
 export interface DeviceInternalsDto {
+  connectionGeneration: number;
+  /** Age since the native session accepted this report, not since the IPC read. */
+  snapshotAgeMs: number | null;
   connected: boolean;
   /** The connected device's firmware reports internals. */
   supported: boolean;

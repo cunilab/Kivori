@@ -27,6 +27,7 @@ fn keys(value: &serde_json::Value, prefix: &str, out: &mut BTreeSet<String>) {
 fn connected_snapshot(now: Instant) -> DiagnosticsSnapshot {
     let mut snapshot = DiagnosticsSnapshot::initial();
     snapshot.connection = "connected";
+    snapshot.connection_generation = 7;
     snapshot.firmware_version = Some("0.4.0".to_string());
     snapshot.device_hash = Some("a1b2c3d4".to_string());
     snapshot.negotiated_caps = Capabilities::MASCOT_INTERACTION.union(Capabilities::DESK_STATUS_V1);
@@ -67,6 +68,7 @@ fn the_serialised_keys_are_exactly_the_allowlist() {
         "versions.identity.known",
         "connection",
         "connection.state",
+        "connection.generation",
         "connection.connectedForSecs",
         "connection.reconnects",
         "connection.retryCount",
@@ -160,18 +162,18 @@ fn internals_dto_keeps_unavailable_as_null_and_hides_a_stale_snapshot() {
     });
 
     // A device that did not negotiate the capability reports nothing, whatever was cached.
-    let dto = device_internals_dto(&snapshot);
+    let dto = device_internals_dto(&snapshot, Instant::now());
     assert!(dto.connected && !dto.supported && dto.snapshot.is_none());
 
     snapshot.negotiated_caps = snapshot
         .negotiated_caps
         .union(Capabilities::DEVICE_INTERNALS_V1);
     assert!(
-        !device_internals_dto(&snapshot).supported,
+        !device_internals_dto(&snapshot, Instant::now()).supported,
         "raw negotiation cannot authorize internals"
     );
     snapshot.effective_caps = snapshot.negotiated_caps;
-    let json = serde_json::to_value(device_internals_dto(&snapshot)).unwrap();
+    let json = serde_json::to_value(device_internals_dto(&snapshot, Instant::now())).unwrap();
     assert_eq!(json["supported"], true);
     let internals = &json["snapshot"];
     assert_eq!(internals["appImageBytes"], 700_000);
@@ -185,7 +187,9 @@ fn internals_dto_keeps_unavailable_as_null_and_hides_a_stale_snapshot() {
 
     // No answer yet on this connection.
     snapshot.internals = None;
-    assert!(device_internals_dto(&snapshot).snapshot.is_none());
+    assert!(device_internals_dto(&snapshot, Instant::now())
+        .snapshot
+        .is_none());
 }
 
 #[test]
@@ -218,4 +222,29 @@ fn identity_shows_names_revision_and_source_and_never_guesses_unknown_numbers() 
 
     snapshot.identity = None;
     assert_eq!(identity(&snapshot), serde_json::Value::Null);
+}
+
+#[test]
+fn internals_age_comes_from_the_device_reply_and_generation_matches_the_base() {
+    use kivori_desktop::ipc::dto::device_internals_dto;
+    let now = Instant::now();
+    let mut snapshot = connected_snapshot(now);
+    snapshot.effective_caps = Capabilities::DEVICE_INTERNALS_V1;
+    snapshot.internals = Some(Default::default());
+    snapshot.internals_received_at = Some(now - Duration::from_secs(6));
+    let first = device_internals_dto(&snapshot, now);
+    assert_eq!(first.snapshot_age_ms, Some(6000));
+    assert_eq!(
+        device_internals_dto(&snapshot, now + Duration::from_secs(2)).snapshot_age_ms,
+        Some(8000)
+    );
+    assert_eq!(
+        first.connection_generation,
+        diagnostics_dto(&snapshot, &ConfigStore::detached(), now)
+            .connection
+            .generation
+    );
+    snapshot.connection = "disconnected";
+    let ended = device_internals_dto(&snapshot, now);
+    assert!(ended.snapshot.is_none() && ended.snapshot_age_ms.is_none());
 }

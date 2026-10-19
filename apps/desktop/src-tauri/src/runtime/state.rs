@@ -255,7 +255,7 @@ impl AppState {
     #[must_use]
     pub fn internals_snapshot(&self) -> dto::DeviceInternalsDto {
         let snapshot = self.diagnostics.lock().expect("diagnostics lock").clone();
-        dto::device_internals_dto(&snapshot)
+        dto::device_internals_dto(&snapshot, std::time::Instant::now())
     }
 
     /// The current desk projection.

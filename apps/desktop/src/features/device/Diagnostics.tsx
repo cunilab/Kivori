@@ -11,10 +11,10 @@ import {
 } from '@kivori/ui/components/card';
 import { Known } from '@/components/kivori/known';
 import { getDiagnostics } from '@/lib/ipc';
-import type { DiagnosticsDto } from '@/lib/ipc/types';
+import type { ConnectionStatusDto, DiagnosticsDto } from '@/lib/ipc/types';
 import { useDevMode } from '@/lib/dev-mode';
 import { strings } from '@/lib/i18n/strings';
-import { getLatestInternals } from './internals-latest';
+import { internalsForBundle } from './internals-latest';
 
 const t = strings.diagnostics;
 const unknown = strings.unknown;
@@ -57,21 +57,37 @@ const seconds = (s: number): string => {
 const kib = (bytes: number): string => `${(bytes / 1024).toFixed(1)} KiB`;
 
 /** Versions, link health and host services, polled while visible. Never shows ports or paths. */
-export function Diagnostics({ technical = true }: { technical?: boolean }): ReactElement {
+export function Diagnostics({
+  technical = true,
+  connection,
+}: {
+  technical?: boolean;
+  connection: ConnectionStatusDto | null;
+}): ReactElement {
+  const generation = connection?.connectionGeneration;
+  const state = connection?.connection;
   const [data, setData] = useState<DiagnosticsDto | null>(null);
   const [failed, setFailed] = useState(false);
   const [copy, setCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
-  const latest = useRef<DiagnosticsDto | null>(null);
   const devMode = useDevMode();
+  const mounted = useRef(true);
+  const context = useRef({ connection, devMode });
+  context.current = { connection, devMode };
 
   useEffect(() => {
+    mounted.current = true;
+    setData(null);
+    setFailed(false);
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async (): Promise<void> => {
       try {
         const snapshot = await getDiagnostics();
-        if (active) {
-          latest.current = snapshot;
+        if (
+          active &&
+          snapshot.connection.generation === generation &&
+          snapshot.connection.state === state
+        ) {
           setData(snapshot);
           setFailed(false);
         }
@@ -84,17 +100,36 @@ export function Diagnostics({ technical = true }: { technical?: boolean }): Reac
     void poll();
     return () => {
       active = false;
+      mounted.current = false;
       clearTimeout(timer);
     };
-  }, []);
+  }, [generation, state]);
 
   const copyJson = async (): Promise<void> => {
-    if (!latest.current) return;
+    const started = context.current.connection;
+    if (!started) return;
     try {
-      // Internals are developer-mode information: they join the copy only while it is on.
-      const copied = devMode
-        ? { ...latest.current, internals: getLatestInternals() }
-        : latest.current;
+      // Read the safe base on demand; this command never asks the device for internals.
+      const base = await getDiagnostics();
+      const current = context.current;
+      if (
+        !mounted.current ||
+        current.connection?.connectionGeneration !== started.connectionGeneration ||
+        current.connection.connection !== started.connection ||
+        base.connection.generation !== started.connectionGeneration ||
+        base.connection.state !== started.connection
+      ) {
+        throw new Error('Diagnostics session changed.');
+      }
+      const copied = current.devMode
+        ? {
+            ...base,
+            internals: internalsForBundle(
+              base.connection.generation,
+              base.connection.state === 'connected',
+            ),
+          }
+        : base;
       await navigator.clipboard.writeText(JSON.stringify(copied, null, 2));
       setCopy('copied');
     } catch {
@@ -103,7 +138,8 @@ export function Diagnostics({ technical = true }: { technical?: boolean }): Reac
     setTimeout(() => setCopy('idle'), 2000);
   };
 
-  const d = data;
+  const d =
+    data?.connection.generation === generation && data?.connection.state === state ? data : null;
   return (
     <Card>
       <CardHeader>

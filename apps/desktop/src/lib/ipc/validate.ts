@@ -333,6 +333,7 @@ export function parseDiagnostics(raw: unknown): DiagnosticsDto {
       identity: parseIdentity(versions.identity),
     },
     connection: {
+      generation: count('connection generation', connection.generation),
       state: oneOf('connection state', CONNECTION_STATES, connection.state),
       connectedForSecs: countOrNull('connectedForSecs', connection.connectedForSecs),
       reconnects: count('reconnects', connection.reconnects),
@@ -369,8 +370,13 @@ export function parseDeviceInternals(raw: unknown): DeviceInternalsDto {
   if (typeof r.connected !== 'boolean' || typeof r.supported !== 'boolean') {
     throw new Error('Kivori: invalid device internals.');
   }
-  if (r.snapshot === null)
-    return { connected: r.connected, supported: r.supported, snapshot: null };
+  const metadata = {
+    connected: r.connected,
+    supported: r.supported,
+    connectionGeneration: count('connection generation', r.connectionGeneration),
+    snapshotAgeMs: countOrNull('snapshotAgeMs', r.snapshotAgeMs),
+  };
+  if (r.snapshot === null) return { ...metadata, snapshot: null };
   const s = record('internals snapshot', r.snapshot);
   const n = (name: string): number | null => countOrNull(name, s[name]);
   let chipRevision: { major: number; minor: number } | null = null;
@@ -383,8 +389,7 @@ export function parseDeviceInternals(raw: unknown): DeviceInternalsDto {
     throw new Error('Kivori: invalid temperatureDeciCelsius.');
   }
   return {
-    connected: r.connected,
-    supported: r.supported,
+    ...metadata,
     snapshot: {
       appImageBytes: n('appImageBytes'),
       appPartitionBytes: n('appPartitionBytes'),

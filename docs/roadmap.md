@@ -293,7 +293,7 @@ the beta acceptance platform. Finish and review the docs before implementing the
   headroom and run-loop busy time accurately; do not imply heap usage or whole-chip CPU load.
   Preserve unavailable values and visible-only 1 Hz polling (ADR-0013). No new firmware metrics,
   protocol changes or trend-history feature in this item.
-- [ ] **Support bundle:** basic Copy diagnostics works with developer mode off and is also exposed
+- [x] **Support bundle:** basic Copy diagnostics works with developer mode off and is also exposed
   on Developer. Optional internals come only from visible instrumentation in the current session;
   mark unavailable/stale data, never copy another device's snapshot, and never start polling just
   to copy. Correlate snapshots with connection generations, clear on session boundaries and reject
