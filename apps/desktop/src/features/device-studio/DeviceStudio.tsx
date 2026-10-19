@@ -6,6 +6,7 @@ import { onConnectionStatus, openPreviewStream, type PreviewStream } from '../..
 import { PREVIEW_FPS } from '../../lib/ipc/types';
 import type { AnimationTimeline, ConnectionStatusDto } from '../../lib/ipc/types';
 import { strings } from '../../lib/i18n/strings';
+import { hasCapability } from '../../lib/device-support';
 import { Page } from '../../components/kivori/page';
 import { Controls } from './Controls';
 import { TestAction } from './TestAction';
@@ -18,7 +19,11 @@ import { useStudioStore } from './store';
  * capped FPS and pushes RGBA bytes, which the canvas blits. Paused scrub/step falls back to a per-frame
  * `render_preview_frame` request, which returns the exact frame for an exact millisecond (SC-011).
  */
-export function DeviceStudio(): ReactElement {
+export function DeviceStudio({
+  connection = null,
+}: {
+  connection?: ConnectionStatusDto | null;
+}): ReactElement {
   const state = useStudioStore((s) => s.state);
   const elapsedMs = useStudioStore((s) => s.elapsedMs);
   const playing = useStudioStore((s) => s.playing);
@@ -44,7 +49,7 @@ export function DeviceStudio(): ReactElement {
 
   useEffect(() => {
     const apply = (status: ConnectionStatusDto): void => {
-      if (status.connection !== 'connected') return;
+      if (!hasCapability(status, 'mascotInteraction')) return;
       const applied = status.mascotAction;
       if (!applied) return;
       recordAppliedAction(applied, status.connectionGeneration);
@@ -155,7 +160,7 @@ export function DeviceStudio(): ReactElement {
                 <CardTitle>{t.controls}</CardTitle>
               </CardHeader>
               <CardContent>
-                <Controls />
+                <Controls connection={connection} />
               </CardContent>
             </Card>
             <Card>

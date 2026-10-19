@@ -41,12 +41,24 @@ export const strings = {
     starting: 'Starting',
     looking: 'Looking for your Kivori',
   },
+  savedConfiguration:
+    'Settings are saved on this computer, including controls and views absent on the connected device.',
+  savedOnly: 'Saved only',
   home: {
     title: 'Home',
     description: 'Your Kivori and this computer at a glance.',
     hero: {
       connected: 'Kivori is ready',
-      connectedBody: 'Turn the knob for volume. Press, hold or double-press to act.',
+      connectedBody: 'Your device is connected. Available features are shown below.',
+      pending: 'Reading device identity…',
+      pendingBody: 'Waiting for this device to identify itself before enabling its features.',
+      unknown: 'This device is not supported by this app',
+      unknownBody:
+        'Update Kivori Desktop to check for support. Firmware flashing is unavailable for an unknown device.',
+      recovery: 'Device firmware needs attention',
+      recoveryBody:
+        'This device can identify itself but has no ordinary features enabled. Open Device to check its matching firmware.',
+      neutral: 'Device status',
       connecting: 'Connecting to Kivori…',
       connectingBody: 'Kivori Desktop found a device and is saying hello.',
       reconnecting: 'Reconnecting…',

@@ -29,6 +29,7 @@ interface CompanionControlsProps {
   config: ConfigDto | null;
   connected: boolean;
   supported: boolean;
+  settingsSupported?: boolean;
 }
 
 /**
@@ -40,6 +41,7 @@ export function CompanionControls({
   config,
   connected,
   supported,
+  settingsSupported = true,
 }: CompanionControlsProps): ReactElement {
   const [pending, setPending] = useState<BuddySettings | null>(null);
   const [failed, setFailed] = useState<BuddySettings | null>(null);
@@ -69,6 +71,11 @@ export function CompanionControls({
           {t.heading}
         </CardTitle>
         <CardDescription>{t.description}</CardDescription>
+        {!settingsSupported ? (
+          <p className="text-xs text-muted-foreground" role="note">
+            {strings.savedOnly}
+          </p>
+        ) : null}
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
@@ -106,7 +113,7 @@ export function CompanionControls({
         </fieldset>
 
         {/* Direct reactions are a developer tool. */}
-        {devMode ? (
+        {devMode && available ? (
           <fieldset className="space-y-2">
             <legend className="mb-2 text-sm font-medium">{t.actions}</legend>
             <div className="flex flex-wrap gap-2">
@@ -115,7 +122,6 @@ export function CompanionControls({
                   key={action}
                   type="button"
                   variant="secondary"
-                  disabled={!available}
                   onClick={() => {
                     void playMascotAction(action).catch((error: unknown) =>
                       toast.error(t.failed, { description: errorText(error) }),
@@ -126,10 +132,6 @@ export function CompanionControls({
                 </Button>
               ))}
             </div>
-            {!connected ? <p className="text-xs text-muted-foreground">{t.connect}</p> : null}
-            {connected && !supported ? (
-              <p className="text-xs text-muted-foreground">{t.update}</p>
-            ) : null}
           </fieldset>
         ) : null}
 

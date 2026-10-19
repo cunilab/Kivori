@@ -284,7 +284,10 @@ the beta acceptance platform. Finish and review the docs before implementing the
   and known identity-only recovery states; move focus when a live page becomes unavailable.
   First implementation: session effective capabilities now wait for resolved identity, gate feature
   traffic/input and live display commands, and reach the UI through `ConnectionStatusDto`.
-  Saved display/binding configuration stays editable offline; the full surface mapping remains open.
+  Saved display/binding configuration stays editable offline. The main-window
+  [surface mapping](./desktop-capabilities.md) now covers live actions, neutral session states,
+  saved-only control annotations, offline Studio preview, focus recovery and control-specific input
+  guards. Catalog-driven art/onboarding and remaining M2.8 integration still need their own steps.
 - [ ] **Hardware tiles:** reorganize the existing formatted metrics and usage bars into readable
   flash, RAM and run-loop/frame tiles. Label app image versus app partition, static RAM, stack
   headroom and run-loop busy time accurately; do not imply heap usage or whole-chip CPU load.

@@ -261,12 +261,23 @@ fn device_loop(
                     // before the device thread reserved the serial session.
                 }
                 DeviceCommand::SetDesired(state) | DeviceCommand::MirrorDesired(state) => {
+                    let mirror = matches!(command, DeviceCommand::MirrorDesired(_));
                     let write_failed = match link.as_mut() {
-                        Some(open_link) => session
-                            .set_desired(open_link, &manager, &mut orchestrator, state)
-                            .is_err(),
+                        Some(open_link) => {
+                            if mirror {
+                                session
+                                    .mirror_desired(open_link, &manager, &mut orchestrator, state)
+                                    .is_err()
+                            } else {
+                                session
+                                    .set_desired(open_link, &manager, &mut orchestrator, state)
+                                    .is_err()
+                            }
+                        }
                         None => {
-                            orchestrator.set_desired(state);
+                            if !mirror {
+                                orchestrator.set_desired(state);
+                            }
                             false
                         }
                     };
@@ -1160,13 +1171,7 @@ pub fn synchronize_session(
 ) {
     let current = session
         .current_session()
-        .filter(|_| {
-            manager.state().can_drive_device()
-                && session
-                    .identity()
-                    .is_some_and(|identity| identity.resolve().is_some())
-                && session.effective_caps() != Capabilities::PRODUCT_IDENTITY_V1
-        })
+        .filter(|_| manager.state().can_drive_device() && session.can_sync_state())
         .map(|nonce| (session.connection_generation(), nonce));
     if *active == current {
         return;

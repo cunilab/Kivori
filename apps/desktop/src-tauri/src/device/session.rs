@@ -268,6 +268,14 @@ impl Session {
         }
     }
 
+    /// Baseline state synchronization is unavailable until identity resolves, or in recovery-only firmware.
+    #[must_use]
+    pub fn can_sync_state(&self) -> bool {
+        self.identity()
+            .is_some_and(|identity| identity.resolve().is_some())
+            && self.effective_caps() != Capabilities::PRODUCT_IDENTITY_V1
+    }
+
     /// Which product and board the connected device is. `None` with no session, and while a device
     /// that negotiated `PRODUCT_IDENTITY_V1` has not sent its `Identity` yet; a device that did not
     /// negotiate it is the legacy Kivori Pip on the C3 SuperMini (revision unknown).
@@ -413,6 +421,23 @@ impl Session {
         let shown = orchestrator.set_desired(state);
         if manager.state().can_drive_device() {
             self.transmit_set_state(link, shown)?;
+        }
+        Ok(())
+    }
+
+    /// Mirrors a preview only to a usable live session; never stages a state for a later device.
+    ///
+    /// # Errors
+    /// [`SessionError::Transport`] if the write fails.
+    pub fn mirror_desired<L: SerialLink>(
+        &mut self,
+        link: &mut L,
+        manager: &ConnectionManager,
+        orchestrator: &mut Orchestrator,
+        state: SendableState,
+    ) -> Result<(), SessionError<L::Error>> {
+        if manager.state().can_drive_device() && self.can_sync_state() {
+            self.set_desired(link, manager, orchestrator, state)?;
         }
         Ok(())
     }
@@ -908,11 +933,7 @@ impl Session {
                 );
             }
             // Unnegotiated input stays inert, mirroring the firmware Presentation gate.
-            Message::InputEvent(event)
-                if self
-                    .effective_caps()
-                    .contains(Capabilities::PHYSICAL_INPUT_V1) =>
-            {
+            Message::InputEvent(event) if self.supports_input(&event) => {
                 self.pending_inputs.push(event);
             }
             // Only a snapshot answering this session counts; a stale one is dropped unseen.
@@ -949,16 +970,25 @@ impl Session {
         Ok(())
     }
 
+    fn supports_input(&self, event: &InputEvent) -> bool {
+        use kivori_protocol::{ControlId, InputKind};
+        let caps = self.effective_caps();
+        caps.contains(Capabilities::PHYSICAL_INPUT_V1)
+            && match event.control {
+                ControlId::Rotary => true,
+                ControlId::Button => caps.contains(Capabilities::BUTTON_INPUT_V1),
+                ControlId::ContextButton(_) => caps.contains(Capabilities::CONTEXT_BUTTONS_V1),
+            }
+            && (event.kind != InputKind::DoublePress
+                || caps.contains(Capabilities::DOUBLE_PRESS_V1))
+    }
+
     fn transmit_set_state<L: SerialLink>(
         &mut self,
         link: &mut L,
         desired: SendableState,
     ) -> Result<(), SessionError<L::Error>> {
-        if self
-            .identity()
-            .is_none_or(|identity| identity.resolve().is_none())
-            || self.effective_caps() == Capabilities::PRODUCT_IDENTITY_V1
-        {
+        if !self.can_sync_state() {
             return Ok(());
         }
         self.send(

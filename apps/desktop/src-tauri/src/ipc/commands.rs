@@ -597,7 +597,7 @@ pub fn play_mascot_action(app: State<'_, AppState>, action: String) -> Result<()
         return Err("Connect Kivori before playing a reaction.".to_string());
     }
     if !status.mascot_interaction {
-        return Err("Update Kivori firmware to enable mascot interactions.".to_string());
+        return Err("Reactions are unavailable on this device.".to_string());
     }
     app.send_command(DeviceCommand::PlayMascotAction(action))
 }
@@ -703,7 +703,7 @@ pub fn render_preview_frame(
     ))
 }
 
-/// Mirrors the selected sendable state to the device (dev-only; identical to `set_desired_state`).
+/// Mirrors the selected sendable state to a usable live device (dev-only; never queued offline).
 ///
 /// # Errors
 /// Returns an error string if `state` is not a sendable token, or the device runtime is unavailable.

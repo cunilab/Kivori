@@ -1325,3 +1325,135 @@ fn desk_session_starts_after_identity_and_invalidates_cached_output() {
         assert_eq!(output.controls.is_some(), newly_started);
     }
 }
+
+#[test]
+fn input_requires_the_specific_control_and_gesture_capabilities() {
+    for (extra, control, kind, accepted) in [
+        (
+            Capabilities::NONE,
+            ControlId::Rotary,
+            InputKind::GestureStarted,
+            true,
+        ),
+        (
+            Capabilities::NONE,
+            ControlId::Button,
+            InputKind::Press,
+            false,
+        ),
+        (
+            Capabilities::BUTTON_INPUT_V1,
+            ControlId::Button,
+            InputKind::Press,
+            true,
+        ),
+        (
+            Capabilities::BUTTON_INPUT_V1,
+            ControlId::Button,
+            InputKind::DoublePress,
+            false,
+        ),
+        (
+            Capabilities::BUTTON_INPUT_V1.union(Capabilities::DOUBLE_PRESS_V1),
+            ControlId::Button,
+            InputKind::DoublePress,
+            true,
+        ),
+        (
+            Capabilities::NONE,
+            ControlId::ContextButton(0),
+            InputKind::Press,
+            false,
+        ),
+        (
+            Capabilities::CONTEXT_BUTTONS_V1,
+            ControlId::ContextButton(0),
+            InputKind::Hold,
+            true,
+        ),
+    ] {
+        let (mut link, mut session, mut manager, mut orch) = connect_with_caps(
+            SendableState::Idle,
+            Capabilities::PHYSICAL_INPUT_V1.union(extra),
+        );
+        let nonce = session.current_session().expect("session");
+        device_push(
+            &mut link,
+            &Message::InputEvent(InputEvent {
+                session: nonce,
+                gesture_id: 1,
+                control,
+                kind,
+                device_ms: 0,
+            }),
+            wire_version(),
+            1,
+        );
+        session
+            .pump(&mut link, &mut manager, &mut orch)
+            .expect("pump");
+        assert_eq!(
+            session.take_input_events().len(),
+            usize::from(accepted),
+            "{control:?}/{kind:?}"
+        );
+    }
+}
+
+#[test]
+fn preview_mirror_never_stages_state_for_an_unresolved_or_later_device() {
+    let caps = Capabilities::PRODUCT_IDENTITY_V1.union(Capabilities::DESK_STATUS_V1);
+    let (mut link, mut session, mut manager, mut orch) =
+        connect_with_caps(SendableState::Idle, caps);
+    let nonce = session.current_session().expect("session");
+    desktop_drain(&mut link);
+    session
+        .mirror_desired(&mut link, &manager, &mut orch, SendableState::Busy)
+        .expect("pending mirror");
+    assert_eq!(orch.user_desired(), SendableState::Idle);
+    assert!(desktop_drain(&mut link).is_empty());
+    device_push(&mut link, &identity_message(nonce, 1, 1), wire_version(), 1);
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+    assert_eq!(
+        set_state_desired(&desktop_drain(&mut link)),
+        Some(SendableState::Idle)
+    );
+    session
+        .mirror_desired(&mut link, &manager, &mut orch, SendableState::Happy)
+        .expect("live mirror");
+    assert_eq!(
+        set_state_desired(&desktop_drain(&mut link)),
+        Some(SendableState::Happy)
+    );
+    session
+        .close(&mut link, ByeReason::Shutdown)
+        .expect("close");
+    desktop_drain(&mut link);
+    session
+        .mirror_desired(&mut link, &manager, &mut orch, SendableState::Busy)
+        .expect("offline mirror");
+    assert_eq!(orch.user_desired(), SendableState::Happy);
+    assert!(desktop_drain(&mut link).is_empty());
+    for (product, caps) in [(9, caps), (1, Capabilities::PRODUCT_IDENTITY_V1)] {
+        let (mut link, mut session, mut manager, mut orch) =
+            connect_with_caps(SendableState::Idle, caps);
+        let nonce = session.current_session().expect("session");
+        desktop_drain(&mut link);
+        device_push(
+            &mut link,
+            &identity_message(nonce, product, 1),
+            wire_version(),
+            1,
+        );
+        session
+            .pump(&mut link, &mut manager, &mut orch)
+            .expect("pump");
+        session
+            .mirror_desired(&mut link, &manager, &mut orch, SendableState::Busy)
+            .expect("unsupported mirror");
+        assert_eq!(orch.user_desired(), SendableState::Idle);
+        assert!(desktop_drain(&mut link).is_empty());
+    }
+}

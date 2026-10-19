@@ -1,7 +1,6 @@
 import type { ReactElement, ReactNode } from 'react';
 import { toast } from 'sonner';
 import {
-  Cable,
   Cpu,
   Hand,
   LayoutGrid,
@@ -40,12 +39,12 @@ import {
 } from '@kivori/ui/components/empty';
 import { Progress } from '@kivori/ui/components/progress';
 import { Skeleton } from '@kivori/ui/components/skeleton';
-import { DeviceArt } from '@/components/kivori/device-art';
+import { DeviceScreen } from '@/components/kivori/device-art';
 import { Known } from '@/components/kivori/known';
 import { Page } from '@/components/kivori/page';
 import { ResultBadge } from '@/components/kivori/result-badge';
 import { uiConnection } from '@/hooks/use-kivori';
-import { mascotUrl } from '@/lib/brand';
+import { hasCapability, canMirrorState } from '@/lib/device-support';
 import { useDevMode } from '@/lib/dev-mode';
 import { playMascotAction } from '@/lib/ipc';
 import type { ConnectionStatusDto, DeskStatusDto } from '@/lib/ipc/types';
@@ -69,6 +68,9 @@ function Hero({
   onNavigate: NavigateTo;
 }): ReactElement {
   const ui = uiConnection(connection);
+  const devMode = useDevMode();
+  const display = hasCapability(connection, 'deskStatusV1');
+  const reactions = hasCapability(connection, 'mascotInteraction');
   if (ui === 'loading' || !desk) {
     return (
       <Card className="p-6">
@@ -93,16 +95,6 @@ function Hero({
               <div className="relative flex items-center gap-3 text-muted-foreground">
                 <div className="flex size-14 items-center justify-center rounded-2xl bg-muted">
                   <Usb className="size-7" aria-hidden="true" />
-                </div>
-                <Cable className="size-5 opacity-60" aria-hidden="true" />
-                <div className="flex size-14 items-center justify-center rounded-2xl bg-panel shadow-lg">
-                  <img
-                    src={mascotUrl}
-                    alt=""
-                    data-testid="empty-mascot"
-                    draggable={false}
-                    className="size-12 select-none"
-                  />
                 </div>
               </div>
             </EmptyMedia>
@@ -130,22 +122,39 @@ function Hero({
     );
   }
 
-  const busy = ui === 'connecting' || ui === 'reconnecting';
-  const title = {
-    connected: t.hero.connected,
-    connecting: t.hero.connecting,
-    reconnecting: t.hero.reconnecting,
-    incompatible: t.hero.incompatible,
-  }[ui];
-  const body = {
-    connected: t.hero.connectedBody,
-    connecting: t.hero.connectingBody,
-    reconnecting: t.hero.reconnectingBody,
-    incompatible: connection?.incompatibleReason ?? t.hero.incompatibleBody,
-  }[ui];
+  const pendingIdentity = ui === 'connected' && !connection?.device?.identity;
+  const unknownIdentity = ui === 'connected' && connection?.device?.identity?.known === false;
+  const recovery =
+    ui === 'connected' &&
+    connection?.device?.identity?.known === true &&
+    !canMirrorState(connection);
+  const busy = ui === 'connecting' || ui === 'reconnecting' || pendingIdentity;
+  const title = pendingIdentity
+    ? t.hero.pending
+    : unknownIdentity
+      ? t.hero.unknown
+      : recovery
+        ? t.hero.recovery
+        : {
+            connected: t.hero.connected,
+            connecting: t.hero.connecting,
+            reconnecting: t.hero.reconnecting,
+            incompatible: t.hero.incompatible,
+          }[ui];
+  const body = pendingIdentity
+    ? t.hero.pendingBody
+    : unknownIdentity
+      ? t.hero.unknownBody
+      : recovery
+        ? t.hero.recoveryBody
+        : {
+            connected: t.hero.connectedBody,
+            connecting: t.hero.connectingBody,
+            reconnecting: t.hero.reconnectingBody,
+            incompatible: connection?.incompatibleReason ?? t.hero.incompatibleBody,
+          }[ui];
   // Social reactions are a developer tool (owner's call): customers never see "Say hi".
-  const devMode = useDevMode();
-  const canGreet = devMode && ui === 'connected' && connection?.mascotInteraction === true;
+  const canGreet = devMode && reactions;
   const modeName = strings.display.modes[desk.mode].name;
 
   return (
@@ -155,16 +164,17 @@ function Hero({
         className="pointer-events-none absolute -top-24 -right-24 size-72 rounded-full bg-primary/10 blur-3xl"
       />
       <div className="relative grid items-center gap-6 md:grid-cols-[minmax(0,18rem)_1fr] lg:gap-10">
-        <DeviceArt
-          mode={desk.mode}
-          values={desk}
-          busy={busy}
-          label={format(t.hero.illustration, { mode: modeName })}
-          className={cn(
-            'w-full max-w-72 transition-opacity',
-            ui === 'incompatible' && 'opacity-60',
+        <figure
+          role="img"
+          aria-label={display ? format(t.hero.illustration, { mode: modeName }) : t.hero.neutral}
+          className="flex aspect-square w-full max-w-72 items-center justify-center rounded-2xl bg-muted p-4"
+        >
+          {display ? (
+            <DeviceScreen mode={desk.mode} values={desk} className="w-full" />
+          ) : (
+            <Usb className="size-16 text-muted-foreground" aria-hidden="true" />
           )}
-        />
+        </figure>
         <div className="space-y-4">
           <div className="space-y-1.5">
             <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
@@ -178,17 +188,19 @@ function Hero({
             <p className="max-w-prose text-sm text-muted-foreground">{body}</p>
           </div>
           <dl className="flex flex-wrap gap-2 text-xs">
-            <Chip label={t.hero.showing}>{modeName}</Chip>
+            {display ? <Chip label={t.hero.showing}>{modeName}</Chip> : null}
             <Chip label={t.hero.firmware}>
               <Known value={connection?.device?.firmwareVersion} why={strings.why.firmware}>
                 {(version) => version}
               </Known>
             </Chip>
-            <Chip label={t.hero.buddy}>
-              <Known value={connection?.reported} why={strings.why.buddy}>
-                {(state) => strings.studio.states[state]}
-              </Known>
-            </Chip>
+            {canMirrorState(connection) && connection?.reported != null ? (
+              <Chip label={t.hero.buddy}>
+                <Known value={connection?.reported} why={strings.why.buddy}>
+                  {(state) => strings.studio.states[state]}
+                </Known>
+              </Chip>
+            ) : null}
           </dl>
           {updateAvailable ? (
             <p
@@ -206,17 +218,17 @@ function Hero({
             </p>
           ) : null}
           <div className="flex flex-wrap gap-2">
-            {ui === 'incompatible' ? (
+            {ui === 'incompatible' || unknownIdentity || recovery ? (
               <Button onClick={() => onNavigate('device')}>
                 <Zap data-icon="inline-start" aria-hidden="true" />
                 {t.hero.openDevice}
               </Button>
-            ) : (
+            ) : display ? (
               <Button onClick={() => onNavigate('display')}>
                 <LayoutGrid data-icon="inline-start" aria-hidden="true" />
                 {t.hero.changeView}
               </Button>
-            )}
+            ) : null}
             {canGreet ? (
               <Button
                 variant="outline"
