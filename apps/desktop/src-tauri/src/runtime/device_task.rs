@@ -432,8 +432,7 @@ fn device_loop(
                             chosen_board.as_deref(),
                             connected_port.as_deref(),
                             session.identity().as_ref(),
-                            manager.state() != ConnectionState::Incompatible
-                                && session.identity().is_none(),
+                            manager.state(),
                         );
                         let (product, board) = match target {
                             RecoveryDecision::Proceed { product, board } => (product, board),

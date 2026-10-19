@@ -5,7 +5,7 @@
 //! Numbers resolve only through [`Catalog::by_wire`]; an unknown number is shown as such and never
 //! guessed into a known product.
 
-use kivori_model::Capabilities;
+use kivori_model::{Capabilities, ConnectionState};
 use kivori_protocol::{Identity, IdentitySource as WireSource};
 
 use crate::catalog::{Board, Catalog, Product, UsbId};
@@ -238,7 +238,7 @@ pub enum RecoveryRefusal {
 }
 
 /// Binds recovery evidence to exactly one allowlisted port from this enumeration snapshot.
-/// `identity_pending` means this live session must report an identity before it can be trusted.
+/// Only a connected session waiting for identity blocks identity-free BOOT recovery.
 #[must_use]
 pub fn decide_recovery_for_port(
     catalog: &Catalog,
@@ -247,7 +247,7 @@ pub fn decide_recovery_for_port(
     chosen_board: Option<&str>,
     connected_port: Option<&str>,
     reported: Option<&DeviceIdentity>,
-    identity_pending: bool,
+    state: ConnectionState,
 ) -> RecoveryDecision {
     let [port] = ports else {
         return RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate);
@@ -256,7 +256,7 @@ pub fn decide_recovery_for_port(
         return RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate);
     };
     let same_port = connected_port == Some(port.port_name.as_str());
-    if same_port && identity_pending {
+    if same_port && state == ConnectionState::Connected && reported.is_none() {
         return RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate);
     }
     decide_recovery(

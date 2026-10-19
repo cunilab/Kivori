@@ -9,6 +9,8 @@ use kivori_desktop::identity::{
     RecoveryRefusal, RestoreOption, WrongProduct,
 };
 
+use kivori_model::ConnectionState;
+
 const USB_A: (u16, u16) = (0x1234, 1);
 const USB_B: (u16, u16) = (0x1234, 2);
 
@@ -233,27 +235,39 @@ fn recovery_binds_live_identity_and_pending_state_to_the_only_selected_port() {
         ..port.clone()
     };
     let id = device(42, 9);
-    let resolve = |ports: &[&PortCandidate], live, pending| {
-        decide_recovery_for_port(&catalog, ports, None, None, live, Some(&id), pending)
+    let resolve = |ports: &[&PortCandidate], live, reported| {
+        decide_recovery_for_port(
+            &catalog,
+            ports,
+            None,
+            None,
+            live,
+            reported,
+            ConnectionState::Connected,
+        )
     };
     assert_eq!(
-        resolve(&[&port], Some("fixture-port"), false),
+        resolve(&[&port], Some("fixture-port"), Some(&id)),
         target(42, 9)
     );
     assert!(matches!(
-        resolve(&[&port], Some("other-port"), false),
+        resolve(&[&port], Some("other-port"), Some(&id)),
+        RecoveryDecision::Choose(_)
+    ));
+    assert!(matches!(
+        resolve(&[&port], Some("other-port"), None),
         RecoveryDecision::Choose(_)
     ));
     assert_eq!(
-        resolve(&[&port], Some("fixture-port"), true),
+        resolve(&[&port], Some("fixture-port"), None),
         RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate)
     );
     assert_eq!(
-        resolve(&[], None, false),
+        resolve(&[], None, Some(&id)),
         RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate)
     );
     assert_eq!(
-        resolve(&[&port, &other], Some("fixture-port"), false),
+        resolve(&[&port, &other], Some("fixture-port"), Some(&id)),
         RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate)
     );
     let unknown_usb = PortCandidate {
@@ -261,7 +275,88 @@ fn recovery_binds_live_identity_and_pending_state_to_the_only_selected_port() {
         ..port.clone()
     };
     assert_eq!(
-        resolve(&[&unknown_usb], None, false),
+        resolve(&[&unknown_usb], None, Some(&id)),
+        RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate)
+    );
+}
+
+#[test]
+fn boot_recovery_distinguishes_connecting_from_a_connected_pending_identity() {
+    let catalog = catalog(&board("board-a", "1234:0001"), "1234:0002");
+    let port = PortCandidate {
+        port_name: "boot-port".into(),
+        vid: Some(USB_A.0),
+        pid: Some(USB_A.1),
+    };
+    let refused = RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate);
+    for (state, reported, expected) in [
+        (ConnectionState::Connecting, None, target(41, 9)),
+        (ConnectionState::Disconnected, None, target(41, 9)),
+        (ConnectionState::Error, None, target(41, 9)),
+        (ConnectionState::Incompatible, None, target(41, 9)),
+        (ConnectionState::Connected, None, refused.clone()),
+        (
+            ConnectionState::Connected,
+            Some(device(99, 9)),
+            refused.clone(),
+        ),
+        (ConnectionState::Connected, Some(device(41, 99)), refused),
+        (
+            ConnectionState::Connected,
+            Some(device(41, 9)),
+            target(41, 9),
+        ),
+    ] {
+        for (product, chosen_board) in [
+            (None, None),
+            (Some("first"), None),
+            (Some("first"), Some("board-a")),
+        ] {
+            assert_eq!(
+                decide_recovery_for_port(
+                    &catalog,
+                    &[&port],
+                    product,
+                    chosen_board,
+                    Some("boot-port"),
+                    reported.as_ref(),
+                    state,
+                ),
+                expected,
+                "{state:?}, identity {reported:?}, product {product:?}",
+            );
+        }
+    }
+}
+
+#[test]
+fn a_connecting_boot_port_still_requires_an_explicit_choice_when_ambiguous() {
+    let catalog = catalog(&board("board-a", "1234:0001"), "1234:0001");
+    let port = PortCandidate {
+        port_name: "boot-port".into(),
+        vid: Some(USB_A.0),
+        pid: Some(USB_A.1),
+    };
+    let resolve = |product, chosen_board| {
+        decide_recovery_for_port(
+            &catalog,
+            &[&port],
+            product,
+            chosen_board,
+            Some("boot-port"),
+            None,
+            ConnectionState::Connecting,
+        )
+    };
+    assert!(matches!(resolve(None, None), RecoveryDecision::Choose(options) if options.len() == 2));
+    assert_eq!(resolve(Some("second"), Some("board-a")), target(42, 9));
+    assert_eq!(resolve(Some("second"), None), target(42, 9));
+    assert_eq!(
+        resolve(None, Some("board-a")),
+        RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate)
+    );
+    assert_eq!(
+        resolve(Some("missing"), Some("board-a")),
         RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate)
     );
 }

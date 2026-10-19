@@ -508,7 +508,8 @@ all matched crate manifests. No input means an empty host-build set, never a cac
 Native flash and update offers select an exact image from the current session identity, including the
 legacy identity rule; pending, unknown and missing pairs have no fallback. Recovery first requires
 one allowlisted port from a single enumeration snapshot, binds any live identity to that port and
-refuses pending identities. It then resolves catalog USB hints and an optional product/board choice
+refuses a same-port connected session waiting for identity. Other states with no reported identity
+(Connecting, Error, Disconnected or Incompatible) may use the guarded recovery path. It then resolves catalog USB hints and an optional product/board choice
 before looking up an image. Multiple candidate pairs require a new explicit BOOT confirmation;
 stale/invalid choices and absent candidates remain refused.
 Image availability never removes hardware candidates. The selected typed image is captured through
