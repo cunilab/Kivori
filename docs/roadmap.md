@@ -334,6 +334,10 @@ the beta acceptance platform. Finish and review the docs before implementing the
   Test backend action refusal before identity resolves. Catalog/build tests prove additions using
   supported features require no shared-app product-list edits and firmware selection ignores order.
   Isolate fake products/images from shipping discovery and test preservation of stored bindings.
+  App-shell acceptance now exercises Pip, a synthetic dial and mixed capabilities through real
+  navigation/hooks and browser IPC, including supported actions, saved bindings, offline edits and
+  pending/unknown/identity-only/legacy session changes. Backend refusal and catalog/build evidence
+  still need a final acceptance pass; this item remains open.
 - [x] **Product identifier guard:** scoped to shared app/tooling, catalog-derived identifiers,
   exact line/count exceptions and CLI positive controls on Ubuntu/Windows. Includes untracked files,
   filenames, camel/separator variants and production code after Rust test modules; real-repository
