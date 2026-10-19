@@ -257,7 +257,7 @@ absolute paths and native complete-set enforcement. Unix/Windows wrapper contrac
 commands to check input isolation, cleanup and environment restoration without executing the app.
 
 Automated M2.8 resolver/workflow checks cover missing/unknown images, stale or invalid product choices, unknown
-USB hints, unknown reported identities, pending-handshake refusal, same-port identity binding, shared-USB board
+USB hints, unknown reported identities, connected-session pending-identity refusal, same-port identity binding, shared-USB board
 ambiguity with explicit product/board choices, distinct-board selection, refusal status cleanup and no port
 reservation/flasher start on refusal. The fixtures are not shipping products. These checks do not
 complete the hardware rows below.
@@ -445,3 +445,9 @@ and merging; no issue closure, release, signing, real BOOT recovery, flashing or
 from these checks. Existing M2.7/M3 owner and hardware rows remain open. ADR approval status is
 separate from implementation status. Execution-time command checks and request-intent activity
 semantics remain the documented limits above.
+
+BOOT recovery regression coverage distinguishes an allowlisted port still attempting its handshake
+from a connected session waiting for Identity. The runtime passes its connection state directly to
+the shared resolver: Connecting may use guarded USB/choice recovery, while Connected without
+identity remains refused. The fixtures cover explicit pairs, unknown product/board refusal and
+ambiguous targets still requiring a choice. This is policy evidence, not a real BOOT/flashing run.
