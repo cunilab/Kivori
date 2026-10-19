@@ -57,6 +57,14 @@ export const strings = {
   savedOnly: 'Saved only',
   home: {
     title: 'Home',
+    health: {
+      heading: 'Link health',
+      description: 'Reconnects since this app started; the first connection is not counted.',
+      link: 'Link state',
+      retries: 'Consecutive retries',
+      reconnects: 'Total reconnects',
+      unavailable: 'Link diagnostics are not available right now.',
+    },
     description: 'Your Kivori and this computer at a glance.',
     hero: {
       connected: 'Kivori is ready',
