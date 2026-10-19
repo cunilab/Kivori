@@ -255,6 +255,19 @@ impl Session {
         self.negotiated_caps
     }
 
+    /// Features usable now, after this session's identity resolves to a supported catalog entry.
+    #[must_use]
+    pub fn effective_caps(&self) -> Capabilities {
+        if self
+            .identity()
+            .is_some_and(|identity| identity.resolve().is_some())
+        {
+            self.negotiated_caps
+        } else {
+            Capabilities::NONE
+        }
+    }
+
     /// Which product and board the connected device is. `None` with no session, and while a device
     /// that negotiated `PRODUCT_IDENTITY_V1` has not sent its `Identity` yet; a device that did not
     /// negotiate it is the legacy Kivori Pip on the C3 SuperMini (revision unknown).
@@ -279,7 +292,7 @@ impl Session {
     /// Whether both peers negotiated transient mascot interactions for this connection.
     #[must_use]
     pub fn supports_mascot_interaction(&self) -> bool {
-        self.negotiated_caps
+        self.effective_caps()
             .contains(Capabilities::MASCOT_INTERACTION)
     }
 
@@ -287,14 +300,14 @@ impl Session {
     /// sends it settings and no self-play; otherwise the companion director keeps playing for it.
     #[must_use]
     pub fn supports_idle_life(&self) -> bool {
-        self.negotiated_caps.contains(Capabilities::IDLE_LIFE_V1)
+        self.effective_caps().contains(Capabilities::IDLE_LIFE_V1)
     }
 
     /// Whether both peers negotiated host takeovers (`Bye(HostSleeping)` / `Bye(FirmwareUpdate)`)
     /// for this connection.
     #[must_use]
     pub fn supports_host_takeovers(&self) -> bool {
-        self.negotiated_caps
+        self.effective_caps()
             .contains(Capabilities::HOST_TAKEOVERS_V1)
     }
 
@@ -519,9 +532,7 @@ impl Session {
 
     /// Sends a `Presentation` to the device (Slice 002 return path).
     ///
-    /// Callers MUST check [`Session::negotiated_caps`] for `PRESENTATION_V1` before calling this —
-    /// an unnegotiated capability must produce no encode at all, not merely go unacted-on at the
-    /// device (see `runtime::device_task`).
+    /// Unsupported or unresolved devices produce no encode.
     ///
     /// # Errors
     /// [`SessionError::Transport`] if the write fails.
@@ -530,6 +541,12 @@ impl Session {
         link: &mut L,
         presentation: Presentation,
     ) -> Result<(), SessionError<L::Error>> {
+        if !self
+            .effective_caps()
+            .contains(Capabilities::PRESENTATION_V1)
+        {
+            return Ok(());
+        }
         self.send(link, &Message::Presentation(presentation))
     }
 
@@ -546,7 +563,7 @@ impl Session {
         let Some(session) = self.current_session else {
             return Ok(false);
         };
-        if !self.negotiated_caps.contains(Capabilities::DESK_STATUS_V1) {
+        if !self.effective_caps().contains(Capabilities::DESK_STATUS_V1) {
             return Ok(false);
         }
         self.send(link, &Message::Status(Status { session, status }))?;
@@ -566,7 +583,7 @@ impl Session {
         let Some(session) = self.current_session else {
             return Ok(false);
         };
-        if !self.negotiated_caps.contains(Capabilities::MEDIA_INFO_V1) {
+        if !self.effective_caps().contains(Capabilities::MEDIA_INFO_V1) {
             return Ok(false);
         }
         self.send(link, &Message::MediaInfo(MediaInfoUpdate { session, info }))?;
@@ -586,7 +603,7 @@ impl Session {
         let Some(session) = self.current_session else {
             return Ok(false);
         };
-        if !self.negotiated_caps.contains(Capabilities::MIC_STATE_V1) {
+        if !self.effective_caps().contains(Capabilities::MIC_STATE_V1) {
             return Ok(false);
         }
         self.send(link, &Message::MicState(MicStateUpdate { session, mic }))?;
@@ -607,7 +624,7 @@ impl Session {
             return Ok(false);
         };
         if !self
-            .negotiated_caps
+            .effective_caps()
             .contains(Capabilities::CONTROL_LABELS_V1)
         {
             return Ok(false);
@@ -634,7 +651,7 @@ impl Session {
             return Ok(false);
         };
         if !self
-            .negotiated_caps
+            .effective_caps()
             .contains(Capabilities::ACTION_FEEDBACK_V1)
         {
             return Ok(false);
@@ -642,7 +659,7 @@ impl Session {
         // A device that did not negotiate the quiet acknowledgement still gets today's Unverified.
         let kind = match feedback.kind {
             FeedbackKind::Triggered
-                if !self.negotiated_caps.contains(Capabilities::QUIET_ACK_V1) =>
+                if !self.effective_caps().contains(Capabilities::QUIET_ACK_V1) =>
             {
                 FeedbackKind::Unverified
             }
@@ -673,7 +690,7 @@ impl Session {
             return Ok(false);
         };
         if !self
-            .negotiated_caps
+            .effective_caps()
             .contains(Capabilities::DEVICE_INTERNALS_V1)
         {
             return Ok(false);
@@ -893,7 +910,7 @@ impl Session {
             // Unnegotiated input stays inert, mirroring the firmware Presentation gate.
             Message::InputEvent(event)
                 if self
-                    .negotiated_caps
+                    .effective_caps()
                     .contains(Capabilities::PHYSICAL_INPUT_V1) =>
             {
                 self.pending_inputs.push(event);
@@ -901,28 +918,24 @@ impl Session {
             // Only a snapshot answering this session counts; a stale one is dropped unseen.
             Message::Internals(report)
                 if self
-                    .negotiated_caps
+                    .effective_caps()
                     .contains(Capabilities::DEVICE_INTERNALS_V1)
                     && self.current_session == Some(report.session) =>
             {
                 self.internals = Some(report.internals);
             }
             // Only the identity of this session counts. A product or board the catalog does not
-            // know is never guessed: the device is shown as unknown and nothing is negotiated
-            // for it, so no feature is driven and the flashing guard refuses it.
+            // know is never guessed: effective support stays empty and flashing refuses it.
             Message::Identity(report)
                 if self
                     .negotiated_caps
                     .contains(Capabilities::PRODUCT_IDENTITY_V1)
-                    && self.current_session == Some(report.session) =>
+                    && self.current_session == Some(report.session)
+                    && self.identity.is_none() =>
             {
                 let identity = DeviceIdentity::from_wire(&report);
-                if identity.resolve().is_none() {
-                    self.negotiated_caps = self
-                        .negotiated_caps
-                        .intersection(Capabilities::PRODUCT_IDENTITY_V1);
-                }
                 self.identity = Some(identity);
+                self.transmit_set_state(link, orchestrator.resync_state())?;
             }
             // The device is ending the session: no connection, no session identity.
             Message::Bye(_) => {
@@ -941,6 +954,13 @@ impl Session {
         link: &mut L,
         desired: SendableState,
     ) -> Result<(), SessionError<L::Error>> {
+        if self
+            .identity()
+            .is_none_or(|identity| identity.resolve().is_none())
+            || self.effective_caps() == Capabilities::PRODUCT_IDENTITY_V1
+        {
+            return Ok(());
+        }
         self.send(
             link,
             &Message::SetState(SetState {

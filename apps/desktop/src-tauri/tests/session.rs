@@ -1056,7 +1056,7 @@ fn identity_is_pending_until_the_message_arrives_then_scoped_to_the_connection()
 }
 
 #[test]
-fn an_unknown_product_is_never_guessed_and_nothing_is_negotiated_for_it() {
+fn an_unknown_product_is_never_guessed_and_has_no_effective_support() {
     let (mut link, mut session, mut manager, mut orch) = connect_with_caps(
         SendableState::Idle,
         Capabilities::MASCOT_INTERACTION.union(Capabilities::PRODUCT_IDENTITY_V1),
@@ -1088,4 +1088,240 @@ fn an_unnegotiated_identity_message_is_ignored() {
         Some(1),
         "still the legacy identity"
     );
+}
+
+#[test]
+fn effective_support_waits_for_identity_and_resyncs_the_latest_desired_state() {
+    let caps = Capabilities::PRODUCT_IDENTITY_V1
+        .union(Capabilities::MASCOT_INTERACTION)
+        .union(Capabilities::PHYSICAL_INPUT_V1)
+        .union(Capabilities::DEVICE_INTERNALS_V1);
+    let (mut link, mut session, mut manager, mut orch) =
+        connect_with_caps(SendableState::Idle, caps);
+    let nonce = session.current_session().expect("session");
+    assert_eq!(session.negotiated_caps(), caps);
+    assert_eq!(session.effective_caps(), Capabilities::NONE);
+    assert!(!session.supports_mascot_interaction());
+    assert!(!session.request_internals(&mut link).expect("request"));
+    session
+        .set_desired(&mut link, &manager, &mut orch, SendableState::Busy)
+        .expect("desired");
+    assert!(desktop_drain(&mut link)
+        .iter()
+        .all(|message| matches!(message, Message::Ready(_))));
+
+    device_push(&mut link, &detent_event(nonce), wire_version(), 1);
+    device_push(&mut link, &identity_message(nonce, 1, 1), wire_version(), 2);
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+    assert!(
+        session.take_input_events().is_empty(),
+        "early input must never execute later"
+    );
+    assert_eq!(session.effective_caps(), caps);
+    assert!(session.supports_mascot_interaction());
+    assert!(
+        matches!(desktop_drain(&mut link).as_slice(), [Message::SetState(state)] if state.desired == SendableState::Busy)
+    );
+
+    // Identity cannot change underneath a live session, even with the same nonce.
+    device_push(&mut link, &identity_message(nonce, 9, 1), wire_version(), 3);
+    device_push(&mut link, &detent_event(nonce), wire_version(), 4);
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+    assert_eq!(session.identity().expect("identity").product, 1);
+    assert_eq!(session.take_input_events().len(), 1);
+    assert!(desktop_drain(&mut link).is_empty());
+    session
+        .close(&mut link, ByeReason::Shutdown)
+        .expect("close");
+    assert_eq!(session.effective_caps(), Capabilities::NONE);
+}
+
+#[test]
+fn unknown_and_identity_only_firmware_never_receive_normal_state() {
+    for (product, caps) in [
+        (
+            9,
+            Capabilities::PRODUCT_IDENTITY_V1
+                .union(Capabilities::MASCOT_INTERACTION)
+                .union(Capabilities::PHYSICAL_INPUT_V1),
+        ),
+        (1, Capabilities::PRODUCT_IDENTITY_V1),
+    ] {
+        let (mut link, mut session, mut manager, mut orch) =
+            connect_with_caps(SendableState::Idle, caps);
+        let nonce = session.current_session().expect("session");
+        desktop_drain(&mut link);
+        device_push(
+            &mut link,
+            &identity_message(nonce, product, 1),
+            wire_version(),
+            1,
+        );
+        device_push(&mut link, &detent_event(nonce), wire_version(), 2);
+        session
+            .pump(&mut link, &mut manager, &mut orch)
+            .expect("pump");
+        session
+            .set_desired(&mut link, &manager, &mut orch, SendableState::Busy)
+            .expect("desired");
+        assert!(desktop_drain(&mut link).is_empty());
+        assert!(session.take_input_events().is_empty());
+        assert!(!session.supports_mascot_interaction());
+        assert_eq!(
+            session.negotiated_caps(),
+            caps,
+            "negotiation remains available for diagnostics"
+        );
+        assert_eq!(
+            session.effective_caps(),
+            if product == 9 {
+                Capabilities::NONE
+            } else {
+                Capabilities::PRODUCT_IDENTITY_V1
+            }
+        );
+    }
+}
+
+#[test]
+fn every_feature_writer_is_inert_for_pending_and_unknown_identity() {
+    use kivori_model::desk::{
+        ActionFeedback, ActionKind, ControlLabels, DeskStatus, FeedbackKind, MicState,
+    };
+    use kivori_protocol::Presentation;
+    let caps = SessionConfig::default().capabilities;
+    let (mut link, mut session, mut manager, mut orch) =
+        connect_with_caps(SendableState::Idle, caps);
+    let nonce = session.current_session().expect("session");
+    desktop_drain(&mut link);
+    for unknown in [false, true] {
+        if unknown {
+            device_push(&mut link, &identity_message(nonce, 9, 1), wire_version(), 1);
+            session
+                .pump(&mut link, &mut manager, &mut orch)
+                .expect("pump");
+        }
+        assert!(!session
+            .send_status(&mut link, DeskStatus::UNKNOWN)
+            .expect("status"));
+        assert!(!session.send_media_info(&mut link, None).expect("media"));
+        assert!(!session
+            .send_mic_state(&mut link, MicState::UNKNOWN)
+            .expect("mic"));
+        assert!(!session
+            .send_control_labels(&mut link, ControlLabels::default())
+            .expect("labels"));
+        assert!(!session
+            .send_feedback(
+                &mut link,
+                ActionFeedback {
+                    action: ActionKind::PlayPause,
+                    kind: FeedbackKind::Unverified
+                }
+            )
+            .expect("feedback"));
+        assert!(!session.request_internals(&mut link).expect("internals"));
+        assert!(!session
+            .send_buddy_settings(&mut link, MascotPersonality::Calm, true, 3)
+            .expect("settings"));
+        assert!(!session
+            .play_mascot_action(
+                &mut link,
+                &manager,
+                MascotAction::Greet,
+                MascotPersonality::Calm,
+                1
+            )
+            .expect("action"));
+        session
+            .send_presentation(
+                &mut link,
+                Presentation {
+                    session: nonce,
+                    revision: 1,
+                    primary: kivori_model::presentation::PrimaryState::Idle,
+                    value: None,
+                    transient_ms: 0,
+                },
+            )
+            .expect("presentation");
+        assert!(
+            desktop_drain(&mut link).is_empty(),
+            "no feature bytes for pending/unknown identity"
+        );
+    }
+}
+
+#[test]
+fn desk_session_starts_after_identity_and_invalidates_cached_output() {
+    use kivori_desktop::desk::DeskRuntime;
+    use kivori_desktop::platform::system::NoSystemProbe;
+    use kivori_desktop::platform::{
+        FakeAppVolumeBackend, FakeForeground, FakeInputSynth, FakeMediaObserver, FakeMicBackend,
+        FakeVolumeBackend, OsServices,
+    };
+    use kivori_desktop::runtime::device_task::{synchronize_session, RotaryPipeline};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    for (product, caps, starts_at_ready, starts_at_identity) in [
+        (1, Capabilities::DESK_STATUS_V1, true, true),
+        (
+            1,
+            Capabilities::DESK_STATUS_V1.union(Capabilities::PRODUCT_IDENTITY_V1),
+            false,
+            true,
+        ),
+        (
+            9,
+            Capabilities::DESK_STATUS_V1.union(Capabilities::PRODUCT_IDENTITY_V1),
+            false,
+            false,
+        ),
+        (1, Capabilities::PRODUCT_IDENTITY_V1, false, false),
+    ] {
+        let (mut link, mut session, mut manager, mut orch) =
+            connect_with_caps(SendableState::Idle, caps);
+        let volume = Arc::new(FakeVolumeBackend::new(20));
+        let mut rotary = RotaryPipeline::new(&*volume);
+        let mut desk = DeskRuntime::new(OsServices {
+            volume,
+            app_volume: Arc::new(FakeAppVolumeBackend::new()),
+            mic: Arc::new(FakeMicBackend::new()),
+            synth: Arc::new(FakeInputSynth::new(Ok(()))),
+            media: Arc::new(FakeMediaObserver::default()),
+            system: Box::new(NoSystemProbe),
+            clock: || None,
+            foreground: Arc::new(FakeForeground::default()),
+        });
+        let mut active = None;
+        synchronize_session(&mut active, &session, &manager, &mut rotary, &mut desk);
+        assert_eq!(active.is_some(), starts_at_ready);
+        // Polling before identity consumes cached output; starting the usable session must resend it.
+        let _ = desk.tick(Duration::ZERO, &mut |_| {});
+        let cached = desk.tick(Duration::from_millis(1), &mut |_| {});
+        assert!(cached.status.is_none());
+        assert!(cached.media_info.is_none());
+        let nonce = session.current_session().expect("session");
+        device_push(
+            &mut link,
+            &identity_message(nonce, product, 1),
+            wire_version(),
+            1,
+        );
+        session
+            .pump(&mut link, &mut manager, &mut orch)
+            .expect("pump");
+        synchronize_session(&mut active, &session, &manager, &mut rotary, &mut desk);
+        assert_eq!(active.is_some(), starts_at_identity);
+        let output = desk.tick(Duration::from_millis(2), &mut |_| {});
+        let newly_started = !starts_at_ready && starts_at_identity;
+        assert_eq!(output.status.is_some(), newly_started);
+        assert_eq!(output.media_info.is_some(), newly_started);
+        assert_eq!(output.controls.is_some(), newly_started);
+    }
 }

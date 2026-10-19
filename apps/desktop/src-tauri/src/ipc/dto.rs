@@ -346,6 +346,8 @@ pub struct ConnectionStatusDto {
     pub retry_count: u32,
     /// Within-process port-session identity. Changes whenever device uptime may reset.
     pub connection_generation: u32,
+    /// Features usable by the current resolved device session; empty while identity is pending.
+    pub capabilities: Vec<&'static str>,
     /// Whether current device session supports transient mascot interactions.
     pub mascot_interaction: bool,
     /// Most recent correlated device acknowledgment for a social action in this session.
@@ -620,11 +622,16 @@ pub fn connection_status(
     manager: &ConnectionManager,
     orchestrator: &Orchestrator,
     reported: Option<CompanionState>,
-    mascot_interaction: bool,
+    capabilities: Capabilities,
     mascot_action: Option<MascotActionApplied>,
     connection_generation: u32,
     host: HostPresence,
 ) -> ConnectionStatusDto {
+    let capabilities = if manager.state().can_drive_device() {
+        capabilities
+    } else {
+        Capabilities::NONE
+    };
     let device = manager.device().map(|d| DeviceInfoDto {
         firmware_version: format!(
             "{}.{}.{}",
@@ -643,7 +650,8 @@ pub fn connection_status(
         incompatible_reason: manager.incompatible_reason().map(str::to_string),
         retry_count: manager.retry_count(),
         connection_generation,
-        mascot_interaction: manager.state().can_drive_device() && mascot_interaction,
+        capabilities: capability_names(capabilities),
+        mascot_interaction: capabilities.contains(Capabilities::MASCOT_INTERACTION),
         mascot_action: mascot_action.map(mascot_action_applied),
         host: host.token(),
     }
@@ -1222,7 +1230,7 @@ pub fn initial_status() -> ConnectionStatusDto {
         &ConnectionManager::new(),
         &Orchestrator::new(),
         None,
-        false,
+        Capabilities::NONE,
         None,
         0,
         HostPresence::Active,
@@ -1805,6 +1813,8 @@ pub struct DiagnosticsSnapshot {
     pub device_hash: Option<String>,
     /// The capability set negotiated for this connection.
     pub negotiated_caps: Capabilities,
+    /// Current identity-gated feature support, separate from raw negotiation diagnostics.
+    pub effective_caps: Capabilities,
     /// The protocol minor both sides settled on, while connected.
     pub negotiated_minor: Option<u16>,
     /// When the current connection came up.
@@ -1832,6 +1842,7 @@ impl DiagnosticsSnapshot {
             firmware_version: None,
             device_hash: None,
             negotiated_caps: Capabilities::NONE,
+            effective_caps: Capabilities::NONE,
             negotiated_minor: None,
             connected_since: None,
             reconnects: 0,
@@ -2077,9 +2088,10 @@ pub struct ChipRevisionDto {
 /// Projects the internals card from the device thread's latest figures.
 #[must_use]
 pub fn device_internals_dto(snapshot: &DiagnosticsSnapshot) -> DeviceInternalsDto {
-    let supported = snapshot
-        .negotiated_caps
-        .contains(Capabilities::DEVICE_INTERNALS_V1);
+    let supported = snapshot.connection == connection_token(ConnectionState::Connected)
+        && snapshot
+            .effective_caps
+            .contains(Capabilities::DEVICE_INTERNALS_V1);
     DeviceInternalsDto {
         connected: snapshot.connection == connection_token(ConnectionState::Connected),
         supported,

@@ -18,7 +18,7 @@ beforeEach(async () => {
 });
 
 describe('display and buddy settings through the browser mock', () => {
-  it('persist a double-press view and a default view, and the device follows the default', async () => {
+  it('persists a double-press view and a default view offline', async () => {
     const user = userEvent.setup();
     render(<Page />);
     const double = await screen.findByRole('group', { name: 'Double press shows' });
@@ -40,7 +40,7 @@ describe('display and buddy settings through the browser mock', () => {
     const defaults = screen.getByRole('group', { name: 'Default view' });
     await user.click(within(defaults).getByRole('button', { name: 'Clock' }));
     await waitFor(async () => expect((await getConfig()).display.defaultView).toBe('clock'));
-    expect(screen.getByTestId('on-device').closest('label')).toHaveAttribute('data-mode', 'clock');
+    expect(screen.queryByTestId('on-device')).not.toBeInTheDocument();
   });
 
   it('persists the brightness across a remount and keeps it when a view is changed', async () => {
