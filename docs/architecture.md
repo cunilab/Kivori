@@ -164,7 +164,7 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 - Firmware build identity: `firmware/<product>/build.rs` reads the product and board numbers from `products/registry.toml` (and the image's minimum protocol from `product.toml`) into compile-time `env!` values, so no number is typed twice. The physical build advertises the capability.
 - Chip identity record (`kivori_protocol::identity`, `no_std`): 12 bytes, little-endian: format version (1), product (`u16`), board (`u16`), hardware revision (`u8`, 0 = unspecified), 2 reserved zero bytes, CRC-32 (the frame CRC) over the first 8. A region of all zeros is "not provisioned" (fresh eFuses read zero). Firmware reads it from the C3 user eFuse block (BLOCK3, `BLOCK_USR_DATA`) with `esp_hal::efuse::read_field_le`; this step never writes eFuses. An unprovisioned or invalid record means source `Build` with no revision.
 - Wrong-board boot check (tier A, ADR-0016): a valid record whose product or board differs from the build identity makes the firmware run no product. It shows the static "Wrong firmware for this Kivori" screen (`render_wrong_board`; only the recovery hold is drawn above it), advertises only `PRODUCT_IDENTITY_V1`, and reports the chip's identity with source `Chip`, so the app can see what the unit is and reflash it. The recovery hold still reboots it (invariant 24).
-- Image identity record: the firmware image carries `KIVORI-FW-IDENTITY:p=<product>;b=<board>;v=<x.y.z>;m=<major.minor>\0` next to its version marker (`firmware_marker::scan_image_identity`). The desktop `build.rs` resolves that explicit image by its product/board wire identity, never the first catalog entry, then checks both version markers against that board's firmware crate and minimum protocol. Unknown identities or missing markers fail the build. `KIVORI_FIRMWARE_PATH` still supplies one image; multi-image bundling and provisioning defaults remain separate M2.8 work.
+- Image identity record: the firmware image carries `KIVORI-FW-IDENTITY:p=<product>;b=<board>;v=<x.y.z>;m=<major.minor>\0` next to its version marker (`firmware_marker::scan_image_identity`). The desktop `build.rs` resolves that explicit image by its product/board wire identity, never the first catalog entry, then checks both version markers against that board's firmware crate and minimum protocol. Unknown identities or missing markers fail the build. `KIVORI_FIRMWARE_PATH` still supplies one image; multi-image bundling and build/tooling defaults remain separate M2.8 work.
 - Flashing guard (tier A): before `flash_firmware` reserves the port, the image record is compared with the connected device's identity (legacy counts as `pala` on `c3-supermini`); a mismatch, or a device whose numbers the catalog does not know, is refused with `FlashFailure::WrongProduct` and both names in `FirmwareStatus.wrong_product`, and nothing is written. Recovery has no handshake, so `decide_recovery` picks from the catalog entries listing the port's USB ids: one product is used; several end in `FlashFailure::ChooseProduct` with `restore_choices`, and `restore_firmware(product)` is sent again with the user's pick, which must be the bundled image's product or it is refused as `WrongProduct`.
 
 ### Quiet Unverified (`QUIET_ACK_V1`)
@@ -466,6 +466,28 @@ The typed session activity log is the only runtime log.
 - Hidden start: `tauri.conf.json` creates the window with `visible: false`. `setup` shows it unless `std::env::args()` contains `--autostart` (`window_lifecycle::launched_at_login`); a login launch starts `WindowLifecycle::hidden()` (tray only, a close request is a no-op, `Reactivated` shows the window). The device task runs either way.
 - Tray (`runtime/lifecycle.rs`, id `kivori`): a disabled status line (`Connected`, `Not connected`, `Paused while locked`), `Open Kivori`, a `Launch at login` check item and `Quit`. While an app update is offered, `Update to vX.Y.Z…` sits below the status line (it opens the window and emits `updater://show`) and the tooltip ends `· Kivori X.Y.Z is ready`. The tooltip reads `Kivori · Desktop x.y.z · Firmware a.b.c` (firmware only while a device is connected, plus `Update available` when the advice says so). `tray_model(&ConnectionStatusDto, UpdateAdvice, Option<&str>)` is pure; `refresh_tray` applies it from the device thread next to `emit_status`, so the tray follows the same snapshot as the UI. The check item is re-read from the OS after each toggle.
 - A second launch while Kivori runs still goes to single-instance and surfaces the window.
+
+### Per-unit QA target policy (M2.8)
+
+The development-only provisioning helper resolves its `QaPolicy` from the explicitly bundled
+image’s catalog product/board. That policy owns minimum capabilities and input groups; it uses the
+selected board’s USB hints for nomination, with the normal pre-flash identity guard. Identity
+preview arguments must match the image before device I/O even when no burn is requested. The
+preview still runs firmware flashing/QA and is explicitly not an offline dry run.
+
+Required rotary/push-switch/context-button input groups follow the existing capability rules,
+with context count from the protocol. Missing negotiation cannot remove required checks; it avoids
+waiting for impossible input but still fails the capability and input requirements. After flashing,
+the selected product/board must be reported as Build or Chip (never a legacy fallback). Both observed
+firmware markers must match the policy’s image version. Baseline heartbeat/state/health checks
+remain required with zero input groups. CSV columns/privacy stay unchanged; product identity failure
+uses `product_identity`, separate from the burned chip/revision check’s `identity`.
+
+Only the existing `c3-supermini` ESP32-C3 user-eFuse backend may burn identity. Other boards fail
+closed, and neither `espflash` nor catalog order implies an eFuse layout. Block checks and typed
+confirmation are unchanged. `just provision` still builds the Pip recipe; catalog-driven build
+recipes and multi-image packaging remain separate work. These software tests do not close bench
+acceptance rows.
 
 ### First-run onboarding (M3 S6)
 

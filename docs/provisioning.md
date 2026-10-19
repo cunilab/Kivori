@@ -4,15 +4,29 @@
 developer tool (run from a repo checkout with the Rust and RISC-V toolchains). It is never part of
 an installer: the release-surface guard fails if it leaks into a release build.
 
+## QA target and build scope
+
+The bundled image's identity selects the catalog product and board, its minimum required
+capabilities, discovery hints and guided input groups. Missing/unknown image identity, unknown
+capability names or incomplete input prerequisites stop before any port is opened. No first entry
+or product-name default selects QA requirements.
+
+`just provision` still builds the Pip physical-firmware recipe. `--product/--board/--rev` assert the
+identity preview/burn target; they do **not** select or rebuild a different image. Those arguments
+must match the bundled image even without `--burn-identity`. To QA another supported catalogued
+image, build that image explicitly, then supply its absolute path through `KIVORI_FIRMWARE_PATH`
+to `cargo run -p kivori-desktop --example provision`. The desktop build validates it against its
+catalog entry. Generic build recipes and multi-image packaging remain separate M2.8 work.
+
 ## Steps
 
-1. Plug in **one** Kivori by USB. Unplug any other Kivori first; the tool refuses to run with two.
+1. Plug in **one** Kivori by USB. Unplug any other Kivori first; the tool requires exactly one candidate for the selected board.
 2. Run `just provision`. It builds the firmware, flashes it, then waits for the unit to restart.
-3. Watch the terminal. It holds the connection for 5 seconds, then asks for each control in turn
-   (20 seconds each):
+3. Watch the terminal. It identifies the selected catalog target, holds the connection for 5
+   seconds, then asks for the input groups that product requires (20 seconds each). For Pip:
    - turn the knob right 3 clicks, then left 3 clicks
    - press the knob, then hold it for about a second
-   - press the left, middle and right buttons under the screen
+   - press the left, middle and right context buttons
 4. It prints `PASS` or `FAIL` with the reason, the unit's short hash and the firmware versions, and
    adds one line to `provisioning-log.csv` in the folder you ran it from.
 
@@ -25,9 +39,10 @@ all, such as a blank board, cannot be checked and is flashed).
 
 `just provision --product pala --board c3-supermini --rev 1` resolves the ids through the
 product catalog (an unknown id is an error that lists the valid ones; all three options go together,
-`--rev` is 1 to 255). **Without `--burn-identity` this is a dry run**: it prints the exact record
-(fields, the 12 bytes in hex, the CRC-32) and carries on with the normal provisioning. Nothing is
-written.
+`--rev` is 1 to 255). **Without `--burn-identity` this previews the identity record only** (fields, 12 bytes in hex and
+CRC-32). **Firmware is still flashed and QA still runs. No eFuses are written.** It is not an
+offline dry run. The preview's revision is not checked against the device; revision verification
+applies only when `--burn-identity` is requested.
 
 **Burning is permanent. The record goes into one-time-programmable eFuses (the C3 user data block):
 it can never be erased or changed, and a wrong one cannot be fixed on that chip.**
@@ -35,6 +50,11 @@ it can never be erased or changed, and a wrong one cannot be fixed on that chip.
 Prerequisite (developer machine only, never part of an installer): Espressif's `espefuse` from
 `esptool`, pinned to **`esptool==4.7.0`** (`pip install esptool==4.7.0`; it installs `espefuse.py`).
 The tool runs `espefuse --help` and refuses any major version other than 4.
+
+Identity burning is implemented only for `c3-supermini` and its ESP32-C3 `BLOCK_USR_DATA` backend.
+Other boards are refused before device I/O when `--burn-identity` is requested, even if their flash
+method is `espflash`. The explicit board binding is a hardware-backend exception, never a product
+selection default. Another eFuse/OTP layout requires separate implementation and bench validation.
 
 To burn, add `--burn-identity`: `just provision --product pala --board c3-supermini --rev 1
 --burn-identity`. Checks, in order; any failure stops before anything is written:
@@ -63,16 +83,29 @@ record is treated as not present, so the unit still runs, but its identity is no
 Treat such a chip as having the wrong identity and do not ship it as another product.
 
 A `FAIL` lists the failed checks (for example `capability:HOST_TAKEOVERS_V1`, `firmware_version`,
-`health`, `input:button_left`). Fix the cause and run it again; each run adds a row.
+`health`, `product_identity`, `input:button_left`). Fix the cause and run it again; each run adds a row.
 
 ## What is checked
 
-- Exactly one allowlisted port, and the bundled firmware flashes.
-- The handshake completes and the required capabilities are negotiated (including
-  `HOST_TAKEOVERS_V1`).
-- The unit's firmware version equals the bundled version (read from the image's version marker).
+- Exactly one port nominated by the selected board’s USB hints, and the bundled firmware flashes.
+  USB is only a discovery hint; the pre-flash identity guard still applies.
+- The handshake completes and the selected product’s catalog-required capabilities are negotiated
+  (including `HOST_TAKEOVERS_V1` for Pip).
+- After flashing, identity must match the selected product/board and report `Build` or `Chip`;
+  missing, unknown, wrong or legacy-fallback identity fails as `product_identity`. Pre-flash legacy
+  identity remains accepted for the matching legacy product/board.
+- The unit and bundled version marker must both equal the selected image identity’s firmware version.
 - A state report and a health report arrive; the heartbeat holds for 5 seconds.
-- All seven guided inputs are seen.
+- All catalog-required input checks are supported and seen. Physical input requires both turn
+  directions; push-switch adds press/hold, and context-button support adds each protocol-defined
+  context button. Missing negotiated support skips the wait but fails both the required capability
+  and its input checks. Negotiated omissions cannot shrink the QA policy. Optional negotiated
+  controls beyond catalog minimums are outside this check set.
+- Double-press and host-takeover capabilities are checked through negotiation; this tool does not
+  guide functional checks for those behaviors. Context-button checks use the protocol's fixed
+  button count.
+- Heartbeat, state and health remain baseline requirements even for products with zero input
+  checks. The example prints that zero-check count explicitly.
 
 ## The log
 
@@ -89,5 +122,5 @@ the port name for the operator; it is not saved.
 - No `--erase`: the app's flashing path runs `espflash flash` only, which has no erase option, so a
   whole-chip erase for a first-time unit is not offered. Run `espflash erase-flash` by hand if needed.
 - A board stuck in ROM download mode (BOOT held) may need the app's recovery flow first.
-- The 7 input checks and the physical row in [validation.md](./validation.md) (Phase 12) still need a
+- The required input checks (seven for Pip) and the physical row in [validation.md](./validation.md) (Phase 12) still need a
   person at the bench; this tool only records what the unit reported.

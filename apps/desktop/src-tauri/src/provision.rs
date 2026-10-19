@@ -4,7 +4,7 @@
 //! decides PASS or FAIL and formats the log row. No I/O and no clock, so it is table-testable.
 //! The log row carries only the short device hash and versions: never the raw device id or a port.
 
-use crate::catalog::Catalog;
+use crate::catalog::{Board, Catalog, Product};
 use crate::firmware_marker::ImageIdentity;
 // Every capability name the catalog may require, with its flag.
 use crate::identity::CAPABILITY_NAMES as KNOWN_CAPABILITIES;
@@ -12,7 +12,7 @@ use crate::identity::{check_image_for_device, DeviceIdentity, IdentitySource, Wr
 use kivori_model::input::Direction;
 use kivori_model::Capabilities;
 use kivori_protocol::identity::{ChipRecord, ChipRecordState, RECORD_LEN};
-use kivori_protocol::{ControlId, InputKind};
+use kivori_protocol::{ControlId, InputKind, CONTEXT_BUTTONS};
 
 /// Printed by the example. It is also the marker `scripts/check-release-surface.sh` greps for, so a
 /// release build that contains this module fails the guard.
@@ -23,29 +23,86 @@ pub const HEARTBEAT_HOLD_SECS: u64 = 5;
 /// How many detents each turn check needs.
 pub const DETENTS_REQUIRED: u32 = 3;
 
-/// The product this QA helper checks (the only one that exists so far).
-const PRODUCT_ID: &str = "pala";
+/// Expectations selected by the explicitly bundled image, never by catalog order or a default id.
+#[derive(Debug)]
+pub struct QaPolicy<'a> {
+    pub product: &'a Product,
+    pub board: &'a Board,
+    pub image: &'a ImageIdentity,
+    pub required_capabilities: Vec<(&'static str, Capabilities)>,
+    pub inputs: Vec<InputCheck>,
+}
 
-/// Every capability a beta unit must negotiate: the catalog's list for the product.
-///
-/// # Panics
-/// If the catalog names a capability this build does not know; a test rejects that.
-#[must_use]
-pub fn required_capabilities() -> Vec<(&'static str, Capabilities)> {
-    let product = Catalog::embedded()
-        .product(PRODUCT_ID)
-        .expect("the catalog lists the QA product");
-    product
-        .required_capabilities
-        .iter()
-        .map(|name| {
-            KNOWN_CAPABILITIES
-                .iter()
-                .find(|(known, _)| known == name)
-                .copied()
-                .unwrap_or_else(|| panic!("catalog names unknown capability `{name}`"))
+impl<'a> QaPolicy<'a> {
+    /// Resolves the image and validates the required control groups before any device I/O.
+    ///
+    /// # Errors
+    /// Missing/unknown image identity, unknown capability names or incomplete input prerequisites.
+    pub fn for_image(
+        catalog: &'a Catalog,
+        image: Option<&'a ImageIdentity>,
+    ) -> Result<Self, String> {
+        let image = image.ok_or(
+            "bundled firmware has no identity record; provisioning requires a catalogued image.",
+        )?;
+        let (product, board) = catalog
+            .by_wire(image.product, image.board)
+            .ok_or("bundled firmware names an unknown product/board; provisioning requires a catalogued image.")?;
+        let required_capabilities: Vec<_> = product
+            .required_capabilities
+            .iter()
+            .map(|name| {
+                KNOWN_CAPABILITIES
+                    .iter()
+                    .find(|(known, _)| known == name)
+                    .copied()
+                    .ok_or_else(|| {
+                        format!(
+                            "product `{}` requires unknown capability `{name}`.",
+                            product.id
+                        )
+                    })
+            })
+            .collect::<Result<_, _>>()?;
+        let caps = required_capabilities
+            .iter()
+            .fold(Capabilities::NONE, |caps, (_, flag)| caps.union(*flag));
+        if (caps.contains(Capabilities::BUTTON_INPUT_V1)
+            || caps.contains(Capabilities::CONTEXT_BUTTONS_V1))
+            && !caps.contains(Capabilities::PHYSICAL_INPUT_V1)
+        {
+            return Err(
+                "required button groups also need PHYSICAL_INPUT_V1 in the catalog.".into(),
+            );
+        }
+        if caps.contains(Capabilities::DOUBLE_PRESS_V1)
+            && !(caps.contains(Capabilities::PHYSICAL_INPUT_V1)
+                && caps.contains(Capabilities::BUTTON_INPUT_V1))
+        {
+            return Err(
+                "DOUBLE_PRESS_V1 also needs physical input and push-switch support in the catalog."
+                    .into(),
+            );
+        }
+        let inputs = InputCheck::for_capabilities(caps);
+        Ok(Self {
+            product,
+            board,
+            image,
+            required_capabilities,
+            inputs,
         })
-        .collect()
+    }
+
+    /// A newly flashed image must report its own catalog identity, not a legacy fallback.
+    #[must_use]
+    pub fn matches_identity(&self, identity: Option<&DeviceIdentity>) -> bool {
+        identity.is_some_and(|identity| {
+            identity.source != IdentitySource::Legacy
+                && identity.product == self.product.number
+                && identity.board == self.board.number
+        })
+    }
 }
 
 /// One guided input the operator performs.
@@ -64,16 +121,25 @@ pub enum InputCheck {
 }
 
 impl InputCheck {
-    /// The guided order.
-    pub const ALL: [Self; 7] = [
-        Self::TurnRight,
-        Self::TurnLeft,
-        Self::Press,
-        Self::Hold,
-        Self::ContextButton(0),
-        Self::ContextButton(1),
-        Self::ContextButton(2),
-    ];
+    /// The guided order for required capability groups; negotiated omissions cannot weaken QA.
+    #[must_use]
+    pub fn for_capabilities(caps: Capabilities) -> Vec<Self> {
+        let mut checks = vec![Self::TurnRight, Self::TurnLeft, Self::Press, Self::Hold];
+        checks.extend((0..CONTEXT_BUTTONS).map(Self::ContextButton));
+        checks.retain(|check| check.supported_by(caps));
+        checks
+    }
+
+    /// Whether this input can be observed with the negotiated features.
+    #[must_use]
+    pub fn supported_by(self, caps: Capabilities) -> bool {
+        caps.contains(Capabilities::PHYSICAL_INPUT_V1)
+            && match self {
+                Self::TurnRight | Self::TurnLeft => true,
+                Self::Press | Self::Hold => caps.contains(Capabilities::BUTTON_INPUT_V1),
+                Self::ContextButton(_) => caps.contains(Capabilities::CONTEXT_BUTTONS_V1),
+            }
+    }
 
     /// Stable token used in the log and the failure reason.
     #[must_use]
@@ -95,11 +161,11 @@ impl InputCheck {
         match self {
             Self::TurnRight => "Turn the knob RIGHT (clockwise) 3 clicks.",
             Self::TurnLeft => "Turn the knob LEFT (counter-clockwise) 3 clicks.",
-            Self::Press => "PRESS the knob once (quick tap).",
-            Self::Hold => "HOLD the knob down for about one second, then release.",
-            Self::ContextButton(0) => "Press the LEFT button under the screen.",
-            Self::ContextButton(1) => "Press the MIDDLE button under the screen.",
-            Self::ContextButton(_) => "Press the RIGHT button under the screen.",
+            Self::Press => "PRESS the push-switch once (quick tap).",
+            Self::Hold => "HOLD the push-switch for about one second, then release.",
+            Self::ContextButton(0) => "Press the LEFT context button.",
+            Self::ContextButton(1) => "Press the MIDDLE context button.",
+            Self::ContextButton(_) => "Press the RIGHT context button.",
         }
     }
 
@@ -164,6 +230,8 @@ pub struct Observations {
     pub flash_failure: Option<&'static str>,
     /// The handshake completed.
     pub handshake: bool,
+    /// Identity reported after flashing.
+    pub identity: Option<DeviceIdentity>,
     /// Capabilities negotiated at the handshake.
     pub negotiated_caps: Capabilities,
     /// The unit's reported firmware version (`x.y.z`).
@@ -201,6 +269,8 @@ pub enum FailedCheck {
     Health,
     /// A guided input was not seen.
     Input(InputCheck),
+    /// The post-flash product/board identity is absent, legacy or does not match the image.
+    ProductIdentity,
     /// The unit does not report the burned identity (source `Chip`, same product, board, revision).
     Identity,
 }
@@ -219,6 +289,7 @@ impl FailedCheck {
             Self::Health => "health".into(),
             Self::Input(check) => format!("input:{}", check.token()),
             Self::Identity => "identity".into(),
+            Self::ProductIdentity => "product_identity".into(),
         }
     }
 }
@@ -260,7 +331,7 @@ impl Verdict {
 
 /// Decides PASS or FAIL. A flash or handshake failure stops there: nothing later could be read.
 #[must_use]
-pub fn evaluate(obs: &Observations) -> Verdict {
+pub fn evaluate(obs: &Observations, policy: &QaPolicy<'_>) -> Verdict {
     let mut failed = Vec::new();
     if let Some(class) = obs.flash_failure {
         failed.push(FailedCheck::Flash(class));
@@ -270,13 +341,17 @@ pub fn evaluate(obs: &Observations) -> Verdict {
         failed.push(FailedCheck::Handshake);
         return Verdict { failed };
     }
-    for (name, cap) in required_capabilities() {
+    if !policy.matches_identity(obs.identity.as_ref()) {
+        failed.push(FailedCheck::ProductIdentity);
+        return Verdict { failed };
+    }
+    for &(name, cap) in &policy.required_capabilities {
         if !obs.negotiated_caps.contains(cap) {
             failed.push(FailedCheck::Capability(name));
         }
     }
     let versions_match = match (&obs.device_version, &obs.bundled_version) {
-        (Some(device), Some(bundled)) => device == bundled,
+        (Some(device), Some(bundled)) => device == bundled && bundled == &policy.image.version,
         _ => false,
     };
     if !versions_match {
@@ -291,8 +366,8 @@ pub fn evaluate(obs: &Observations) -> Verdict {
     if !obs.health_seen {
         failed.push(FailedCheck::Health);
     }
-    for check in InputCheck::ALL {
-        if !obs.inputs_done.contains(&check) {
+    for &check in &policy.inputs {
+        if !check.supported_by(obs.negotiated_caps) || !obs.inputs_done.contains(&check) {
             failed.push(FailedCheck::Input(check));
         }
     }
@@ -491,6 +566,9 @@ pub fn resolve_plan(catalog: &Catalog, args: &Args) -> Result<Option<IdentityPla
             valid.join(", ")
         ));
     };
+    if args.burn {
+        require_burn_backend(board_id)?;
+    }
     let rev: u8 = rev
         .parse()
         .ok()
@@ -503,6 +581,20 @@ pub fn resolve_plan(catalog: &Catalog, args: &Args) -> Result<Option<IdentityPla
         board: board.number,
         rev,
     }))
+}
+
+/// Only the implemented, bench-specific eFuse backend may perform irreversible writes.
+/// This board binding is a hardware-backend exception, not a product selection default.
+///
+/// # Errors
+/// The selected board has no implemented identity-burn backend.
+pub fn require_burn_backend(board_id: &str) -> Result<(), String> {
+    match board_id {
+        "c3-supermini" => Ok(()),
+        _ => Err(format!(
+            "identity burning is not supported for board `{board_id}`; nothing was written."
+        )),
+    }
 }
 
 /// Lowercase hex, space separated.
@@ -595,10 +687,12 @@ pub fn check_image_matches_plan(
     match image {
         Some(i) if i.product == plan.product && i.board == plan.board => Ok(()),
         Some(_) => Err(format!(
-            "the bundled firmware is not for {} on {}; nothing was burned.",
+            "the bundled firmware is not for {} on {}; refusing to flash or burn.",
             plan.product_id, plan.board_id
         )),
-        None => Err("the bundled firmware has no identity record; nothing was burned.".into()),
+        None => {
+            Err("the bundled firmware has no identity record; refusing to flash or burn.".into())
+        }
     }
 }
 
@@ -609,12 +703,12 @@ pub fn check_image_matches_plan(
 /// # Errors
 /// [`WrongProduct`] naming both sides.
 pub fn guard_before_flash(
-    image: Option<&ImageIdentity>,
+    image: &ImageIdentity,
     device: Option<&DeviceIdentity>,
 ) -> Result<(), WrongProduct> {
-    match (image, device) {
-        (Some(image), Some(device)) => check_image_for_device(image, device),
-        _ => Ok(()),
+    match device {
+        Some(device) => check_image_for_device(image, device),
+        None => Ok(()),
     }
 }
 
@@ -678,13 +772,38 @@ pub fn format_utc(unix_secs: u64) -> String {
 mod tests {
     use super::*;
 
+    fn image() -> &'static ImageIdentity {
+        static IMAGE: std::sync::OnceLock<ImageIdentity> = std::sync::OnceLock::new();
+        IMAGE.get_or_init(|| ImageIdentity {
+            product: 1,
+            board: 1,
+            version: "0.1.0".into(),
+            min_protocol: (0, 1),
+        })
+    }
+
+    fn policy() -> QaPolicy<'static> {
+        QaPolicy::for_image(Catalog::embedded(), Some(image())).unwrap()
+    }
+
     #[test]
     fn catalog_capabilities_are_all_known() {
-        assert_eq!(required_capabilities().len(), 11);
+        for product in Catalog::embedded().products() {
+            for board in &product.boards {
+                let image = ImageIdentity {
+                    product: product.number,
+                    board: board.number,
+                    version: "0.1.0".into(),
+                    min_protocol: board.firmware.min_protocol,
+                };
+                QaPolicy::for_image(Catalog::embedded(), Some(&image)).unwrap();
+            }
+        }
     }
 
     fn all_caps() -> Capabilities {
-        required_capabilities()
+        policy()
+            .required_capabilities
             .iter()
             .fold(Capabilities::NONE, |acc, (_, cap)| acc.union(*cap))
     }
@@ -693,20 +812,24 @@ mod tests {
         Observations {
             flash_failure: None,
             handshake: true,
+            identity: Some(DeviceIdentity {
+                source: IdentitySource::Build,
+                ..DeviceIdentity::legacy()
+            }),
             negotiated_caps: all_caps(),
             device_version: Some("0.1.0".into()),
             bundled_version: Some("0.1.0".into()),
             heartbeat_ok: true,
             state_report_seen: true,
             health_seen: true,
-            inputs_done: InputCheck::ALL.to_vec(),
+            inputs_done: policy().inputs,
             identity_check: None,
         }
     }
 
     #[test]
     fn all_inputs_seen_passes() {
-        let verdict = evaluate(&good());
+        let verdict = evaluate(&good(), &policy());
         assert!(verdict.passed(), "{:?}", verdict.failed);
         assert_eq!(verdict.label(), "PASS");
         assert_eq!(verdict.failed_tokens(), "");
@@ -717,7 +840,7 @@ mod tests {
         let mut obs = good();
         obs.negotiated_caps =
             Capabilities::from_bits(all_caps().bits() & !Capabilities::HOST_TAKEOVERS_V1.bits());
-        let verdict = evaluate(&obs);
+        let verdict = evaluate(&obs, &policy());
         assert_eq!(
             verdict.failed,
             vec![FailedCheck::Capability("HOST_TAKEOVERS_V1")]
@@ -728,21 +851,27 @@ mod tests {
     fn a_version_mismatch_fails() {
         let mut obs = good();
         obs.device_version = Some("0.0.9".into());
-        assert_eq!(evaluate(&obs).failed, vec![FailedCheck::FirmwareVersion]);
+        assert_eq!(
+            evaluate(&obs, &policy()).failed,
+            vec![FailedCheck::FirmwareVersion]
+        );
     }
 
     #[test]
     fn an_unknown_version_fails() {
         let mut obs = good();
         obs.bundled_version = None;
-        assert_eq!(evaluate(&obs).failed, vec![FailedCheck::FirmwareVersion]);
+        assert_eq!(
+            evaluate(&obs, &policy()).failed,
+            vec![FailedCheck::FirmwareVersion]
+        );
     }
 
     #[test]
     fn missing_health_fails() {
         let mut obs = good();
         obs.health_seen = false;
-        assert_eq!(evaluate(&obs).failed, vec![FailedCheck::Health]);
+        assert_eq!(evaluate(&obs, &policy()).failed, vec![FailedCheck::Health]);
     }
 
     #[test]
@@ -751,7 +880,7 @@ mod tests {
         obs.state_report_seen = false;
         obs.heartbeat_ok = false;
         assert_eq!(
-            evaluate(&obs).failed,
+            evaluate(&obs, &policy()).failed,
             vec![FailedCheck::Heartbeat, FailedCheck::StateReport]
         );
     }
@@ -764,7 +893,7 @@ mod tests {
             InputCheck::Press,
             InputCheck::ContextButton(1),
         ];
-        let verdict = evaluate(&obs);
+        let verdict = evaluate(&obs, &policy());
         assert!(!verdict.passed());
         assert_eq!(
             verdict.failed_tokens(),
@@ -776,11 +905,17 @@ mod tests {
     fn a_flash_or_handshake_failure_stops_the_evaluation() {
         let mut obs = good();
         obs.flash_failure = Some("tool_missing");
-        assert_eq!(evaluate(&obs).failed_tokens(), "flash:tool_missing");
+        assert_eq!(
+            evaluate(&obs, &policy()).failed_tokens(),
+            "flash:tool_missing"
+        );
         let mut obs = good();
         obs.handshake = false;
         obs.inputs_done.clear();
-        assert_eq!(evaluate(&obs).failed, vec![FailedCheck::Handshake]);
+        assert_eq!(
+            evaluate(&obs, &policy()).failed,
+            vec![FailedCheck::Handshake]
+        );
     }
 
     #[test]
@@ -810,7 +945,7 @@ mod tests {
     fn csv_row_has_only_the_hash_and_versions_and_stays_one_line() {
         let mut obs = good();
         obs.inputs_done.clear();
-        let verdict = evaluate(&obs);
+        let verdict = evaluate(&obs, &policy());
         let none_log = IdentityLog::default();
         let row = csv_row(
             "2026-10-09T10:00:00Z",
@@ -993,13 +1128,13 @@ mod tests {
             version: "0.1.0".into(),
             min_protocol: (0, 1),
         };
-        assert!(guard_before_flash(Some(&image), Some(&DeviceIdentity::legacy())).is_ok());
-        assert!(guard_before_flash(Some(&image), None).is_ok());
+        assert!(guard_before_flash(&image, Some(&DeviceIdentity::legacy())).is_ok());
+        assert!(guard_before_flash(&image, None).is_ok());
         let other = DeviceIdentity {
             product: 2,
             ..DeviceIdentity::legacy()
         };
-        assert!(guard_before_flash(Some(&image), Some(&other)).is_err());
+        assert!(guard_before_flash(&image, Some(&other)).is_err());
     }
 
     #[test]
@@ -1048,12 +1183,12 @@ mod tests {
     fn a_failed_identity_check_fails_the_unit_and_the_csv_carries_the_identity() {
         let mut obs = good();
         obs.identity_check = Some(false);
-        let verdict = evaluate(&obs);
+        let verdict = evaluate(&obs, &policy());
         assert_eq!(verdict.failed, vec![FailedCheck::Identity]);
         obs.identity_check = Some(true);
-        assert!(evaluate(&obs).passed());
+        assert!(evaluate(&obs, &policy()).passed());
         let log = IdentityLog::from_device(Some(&chip_identity(Some(2), IdentitySource::Chip)));
-        let row = csv_row("t", Some("ab"), &obs, &evaluate(&obs), &log);
+        let row = csv_row("t", Some("ab"), &obs, &evaluate(&obs, &policy()), &log);
         assert!(row.ends_with(",chip,pala,c3-supermini,2"), "{row}");
         assert_eq!(row.matches(',').count(), CSV_HEADER.matches(',').count());
         assert!(CSV_HEADER

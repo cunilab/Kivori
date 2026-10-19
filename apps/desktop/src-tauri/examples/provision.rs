@@ -5,7 +5,7 @@
 //! Run it with `just provision` (which builds the firmware and bundles it). The port name is shown
 //! on the terminal for the operator but is never written to the log.
 //!
-//! With `--product/--board/--rev` it shows the chip identity record it would write (a dry run); with
+//! With `--product/--board/--rev` it previews the chip identity record (QA still flashes); with
 //! `--burn-identity` it writes it into the one-time eFuses through `espefuse`, after checking the
 //! block is blank and the operator typed the product id. All decisions are in `provision.rs`.
 use std::io::{BufRead, Write};
@@ -14,16 +14,15 @@ use std::process::Command;
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use kivori_desktop::catalog::Catalog;
+use kivori_desktop::catalog::{Board, Catalog};
 use kivori_desktop::device::{
-    discovery::{default_allowlist, filter_candidates, PortCandidate},
+    discovery::{filter_candidates, PortCandidate},
     fsm::{ConnectionManager, ManagerEvent},
     serial::{enumerate, SerialPortLink},
     session::{Session, SessionConfig},
 };
 use kivori_desktop::firmware::{
-    bundled_image_available, bundled_image_identity, flash_bundled, BUNDLED_FIRMWARE,
-    RECONNECT_TIMEOUT,
+    bundled_image_identity, flash_bundled, BUNDLED_FIRMWARE, RECONNECT_TIMEOUT,
 };
 use kivori_desktop::firmware_marker::scan_firmware_version;
 use kivori_desktop::identity::DeviceIdentity;
@@ -31,9 +30,9 @@ use kivori_desktop::orchestrator::Orchestrator;
 use kivori_desktop::provision::{
     block_file, check_block, check_image_matches_plan, confirmation_matches, csv_row,
     describe_record, espefuse_version_accepted, evaluate, format_utc, guard_before_flash,
-    parse_args, parse_espefuse_version, resolve_plan, verify_identity, BlockCheck, IdentityLog,
-    IdentityPlan, InputCheck, InputProgress, Observations, BANNER, CSV_HEADER, ESPEFUSE_MAJOR,
-    HEARTBEAT_HOLD_SECS, USAGE,
+    parse_args, parse_espefuse_version, require_burn_backend, resolve_plan, verify_identity,
+    BlockCheck, IdentityLog, IdentityPlan, InputProgress, Observations, QaPolicy, BANNER,
+    CSV_HEADER, ESPEFUSE_MAJOR, HEARTBEAT_HOLD_SECS, USAGE,
 };
 use kivori_model::Capabilities;
 
@@ -44,25 +43,35 @@ const INPUT_TIMEOUT: Duration = Duration::from_secs(20);
 fn main() {
     println!("{BANNER}");
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let plan = match parse_args(&args)
-        .and_then(|a| Ok((resolve_plan(Catalog::embedded(), &a)?, a.burn)))
-    {
+    let plan = match parse_args(&args).and_then(|a| {
+        let plan = resolve_plan(Catalog::embedded(), &a)?;
+        let policy = QaPolicy::for_image(Catalog::embedded(), bundled_image_identity())?;
+        if let Some(plan) = &plan {
+            check_image_matches_plan(Some(policy.image), plan)?;
+        }
+        Ok((plan, a.burn, policy))
+    }) {
         Ok(parsed) => parsed,
         Err(message) => {
             eprintln!("{message}\n{USAGE}");
             std::process::exit(2);
         }
     };
-    let (plan, burn) = plan;
+    let (plan, burn, policy) = plan;
+    println!(
+        "QA target: {} ({}) on {} ({}).",
+        policy.product.display_name, policy.product.id, policy.board.display_name, policy.board.id
+    );
     if let Some(plan) = &plan {
         println!("Identity record:\n{}", describe_record(plan));
         if !burn {
-            println!("DRY RUN: nothing is written to the chip. Add --burn-identity to burn it.");
+            println!("IDENTITY PREVIEW: no eFuses will be written. Firmware will still be flashed and checked.");
         }
     }
     let mut obs = Observations {
         flash_failure: None,
         handshake: false,
+        identity: None,
         negotiated_caps: Capabilities::NONE,
         device_version: None,
         bundled_version: scan_firmware_version(BUNDLED_FIRMWARE),
@@ -73,17 +82,11 @@ fn main() {
         identity_check: None,
     };
     let mut hash = None;
-    let mut identity = None;
-    let outcome = run(
-        &mut obs,
-        &mut hash,
-        &mut identity,
-        plan.as_ref().filter(|_| burn),
-    );
+    let outcome = run(&mut obs, &mut hash, &policy, plan.as_ref().filter(|_| burn));
     if let Err(message) = outcome {
         println!("Stopped: {message}");
     }
-    let verdict = evaluate(&obs);
+    let verdict = evaluate(&obs, &policy);
     println!();
     println!("{}", verdict.label());
     if !verdict.passed() {
@@ -113,7 +116,7 @@ fn main() {
         hash.as_deref(),
         &obs,
         &verdict,
-        &IdentityLog::from_device(identity.as_ref()),
+        &IdentityLog::from_device(obs.identity.as_ref()),
     );
     match append_log(&row) {
         Ok(()) => println!("  logged to {LOG_FILE}"),
@@ -135,9 +138,9 @@ fn append_log(row: &str) -> std::io::Result<()> {
 }
 
 /// Exactly one allowlisted port, or a message for the operator.
-fn single_port() -> Result<PortCandidate, String> {
+fn single_port(board: &Board) -> Result<PortCandidate, String> {
     let ports = enumerate();
-    let found = filter_candidates(&ports, default_allowlist());
+    let found = filter_candidates(&ports, &board.usb);
     match found.as_slice() {
         [only] => Ok((*only).clone()),
         [] => Err("no Kivori unit found: plug in one unit and retry.".into()),
@@ -223,18 +226,14 @@ fn probe_identity(port: &str) -> Result<Option<DeviceIdentity>, String> {
 fn run(
     obs: &mut Observations,
     hash: &mut Option<String>,
-    identity: &mut Option<DeviceIdentity>,
+    policy: &QaPolicy<'_>,
     burn: Option<&IdentityPlan>,
 ) -> Result<(), String> {
-    if !bundled_image_available() {
-        obs.flash_failure = Some("image_unavailable");
-        return Err("no firmware is bundled (run through `just provision`).".into());
-    }
-    let port = single_port().inspect_err(|_| obs.flash_failure = Some("port"))?;
+    let port = single_port(policy.board).inspect_err(|_| obs.flash_failure = Some("port"))?;
     // The same image-vs-device guard as the app's flashing path, before anything is written.
     let current =
         probe_identity(&port.port_name).inspect_err(|_| obs.flash_failure = Some("port"))?;
-    if let Err(wrong) = guard_before_flash(bundled_image_identity(), current.as_ref()) {
+    if let Err(wrong) = guard_before_flash(policy.image, current.as_ref()) {
         obs.flash_failure = Some("wrongProduct");
         return Err(format!(
             "this unit is {} but the bundled firmware is for {}: refusing to flash.",
@@ -242,7 +241,8 @@ fn run(
         ));
     }
     if let Some(plan) = burn {
-        burn_identity(obs, &port.port_name, plan)?;
+        burn_identity(&port.port_name, plan)
+            .inspect_err(|_| obs.flash_failure = Some("identity_burn"))?;
     }
     println!(
         "Found one unit on {}. Flashing the bundled firmware...",
@@ -258,14 +258,15 @@ fn run(
     let deadline = Instant::now() + RECONNECT_TIMEOUT;
     let port = loop {
         std::thread::sleep(Duration::from_millis(500));
-        match single_port() {
+        match single_port(policy.board) {
             Ok(port) => break port,
             Err(message) if Instant::now() >= deadline => return Err(message),
             Err(_) => {}
         }
     };
     let mut conn = connect(&port.port_name, HANDSHAKE_TIMEOUT)?;
-    *identity = await_identity(&mut conn, Duration::from_secs(5))?;
+    obs.handshake = true;
+    obs.identity = await_identity(&mut conn, Duration::from_secs(5))?;
     let Conn {
         mut link,
         mut session,
@@ -273,7 +274,7 @@ fn run(
         mut orchestrator,
     } = conn;
     if let Some(plan) = burn {
-        let ok = verify_identity(plan, identity.as_ref());
+        let ok = verify_identity(plan, obs.identity.as_ref());
         obs.identity_check = Some(ok);
         println!(
             "Identity after the burn: {}.",
@@ -284,12 +285,14 @@ fn run(
             }
         );
     }
-    obs.handshake = true;
     obs.negotiated_caps = session.negotiated_caps();
     if let Some(device) = manager.device() {
         let v = device.firmware_version;
         obs.device_version = Some(format!("{}.{}.{}", v.major, v.minor, v.patch));
         *hash = Some(device.device_id_hash_short.clone());
+    }
+    if !policy.matches_identity(obs.identity.as_ref()) {
+        return Err("the post-flash identity is absent, legacy or differs from the selected image; refusing QA.".into());
     }
     println!(
         "Connected (device {}).",
@@ -314,13 +317,18 @@ fn run(
     obs.health_seen = session.diagnostics().free_bytes.is_some();
 
     println!(
-        "\nNow the controls. Do each one when asked ({} s each).",
+        "\nCatalog requires {} input checks ({} s each).",
+        policy.inputs.len(),
         INPUT_TIMEOUT.as_secs()
     );
     let _ = session.take_input_events();
     let ping_clock = Instant::now();
     let mut next_ping = Duration::ZERO;
-    for check in InputCheck::ALL {
+    for &check in &policy.inputs {
+        if !check.supported_by(obs.negotiated_caps) {
+            println!("  -> {}: required capability missing; FAIL.", check.token());
+            continue;
+        }
         println!("  -> {}", check.prompt());
         let mut progress = InputProgress::new(check);
         let step = Instant::now();
@@ -403,7 +411,8 @@ fn burn_block(tool: &str, port: &str, file: &Path) -> Result<(), String> {
 
 /// The checks, in order, then the burn: image matches the record, espefuse version, block blank,
 /// typed confirmation. The port is free here (no session is open).
-fn burn_identity(obs: &mut Observations, port: &str, plan: &IdentityPlan) -> Result<(), String> {
+fn burn_identity(port: &str, plan: &IdentityPlan) -> Result<(), String> {
+    require_burn_backend(&plan.board_id)?;
     check_image_matches_plan(bundled_image_identity(), plan)?;
     let tool = find_espefuse().ok_or(
         "espefuse not found: install it with `pip install esptool==4.7.0` (docs/provisioning.md).",
@@ -423,9 +432,6 @@ fn burn_identity(obs: &mut Observations, port: &str, plan: &IdentityPlan) -> Res
     let dir = scratch_dir()?;
     let result = burn_checked(tool, port, plan, &dir);
     let _ = std::fs::remove_dir_all(&dir);
-    if result.is_err() {
-        obs.flash_failure = Some("identity_burn");
-    }
     result
 }
 

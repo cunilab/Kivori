@@ -292,7 +292,7 @@ Automated: Plug-in/permission gates follow current readiness or Skip; the capabi
 
 Run for every assembled beta unit with `just provision` ([provisioning.md](./provisioning.md)). The tool's evaluator is unit tested; the rows need a real unit and a person.
 
-- [ ] 12.1 Plug in one new unit, `just provision` | it flashes, then prints PASS (capabilities incl. HOST_TAKEOVERS_V1, firmware equals bundled, state and health seen, heartbeat held 5 s)
+- [ ] 12.1 Plug in one new unit, `just provision` | it flashes, then prints PASS (catalog-required capabilities incl. HOST_TAKEOVERS_V1 for Pip, post-flash Build/Chip identity matches target, firmware equals image identity and version marker, state and health seen, heartbeat held 5 s)
 - [ ] 12.2 Follow the prompts | knob right x3, left x3, press, hold and the three buttons are each seen
 - [ ] 12.3 Open `provisioning-log.csv` | one row for the unit: short hash and versions, no raw device id, no port name
 
@@ -327,7 +327,7 @@ Rules in [product.md](./product.md#updates-us10-us11); design in ADR-0014 to ADR
 - [ ] 14.2 Plug in a unit with older firmware | the app treats it as Kivori Pip on the C3 SuperMini and offers the firmware update a few seconds after it connects
 - [ ] 14.3 Choose "Later", unplug and replug | the offer comes back; choose "Update now" | "Updating" on the panel, then the buddy; Device page shows the new firmware
 - [ ] 14.4 Try to flash an image built for another board (developer build with a test image) | the app refuses and names the mismatch; nothing is written
-- [ ] 14.5 Provisioning with `--product pala --board c3-supermini --rev 1` on a spare unit: first without, then with `--burn-identity` (permanent; [provisioning.md](./provisioning.md)) | without it only the record is printed; with it the record is shown and the product id must be typed; the run prints identity PASS and the log row says `chip`; afterwards Diagnostics shows the identity from the chip; a second burn attempt on the same unit says "already provisioned"
+- [ ] 14.5 Provisioning with `--product pala --board c3-supermini --rev 1` on a spare unit: first without, then with `--burn-identity` (permanent; [provisioning.md](./provisioning.md)) | without it the record is previewed and firmware is still flashed/checked, with no eFuse write; with it the record is shown and the product id must be typed; the run prints identity PASS and the log row says `chip`; afterwards Diagnostics shows the identity from the chip; a second burn attempt on the same unit says "already provisioned"
 - [ ] 14.6 Install an older release, publish a newer one | within a day, or at the next start, a tray badge; opening the window shows the update dialog with the new version and notes
 - [ ] 14.7 "Install & restart" | the installer runs without questions, Kivori restarts on the new version, the device reconnects; the firmware offer follows if the new app bundles newer firmware
 - [ ] 14.8 "Skip this version", restart | no offer for that version; a newer one is offered again
