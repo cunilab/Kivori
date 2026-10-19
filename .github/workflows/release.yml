@@ -45,6 +45,10 @@ on:
     paths:
       - '.github/workflows/release.yml'
       - 'scripts/release-info.mjs'
+      - 'scripts/release-catalog.mjs'
+      - 'scripts/release-bump.mjs'
+      - 'scripts/firmware-release-guard.mjs'
+      - '.github/workflows/release-start.yml'
       - 'scripts/updater-manifest.mjs'
       - 'apps/desktop/package.json'
       - 'apps/desktop/src-tauri/tauri*.json'
@@ -286,7 +290,7 @@ jobs:
           tag='${{ steps.release.outputs.tag }}'
           prev="$(git describe --tags --abbrev=0 --match 'v[0-9]*' "${tag}^" 2>/dev/null || true)"
           # Notes come from the conventional commits since the previous app tag (scripts/release-info.mjs).
-          node scripts/release-info.mjs --version "${tag#v}" ${prev:+--prev-tag "$prev"} \
+          bun scripts/release-info.mjs --version "${tag#v}" ${prev:+--prev-tag "$prev"} \
             --repo '${{ github.repository }}' --out-dir "$RUNNER_TEMP/release-info"
           cat "$RUNNER_TEMP/release-info/title.txt"; echo; cat "$RUNNER_TEMP/release-info/notes.md"
       - name: Write latest.json (updater manifest)

@@ -7,9 +7,9 @@ const run = (root, command, args) =>
 const git = (root, ...args) => run(root, 'git', ['--literal-pathspecs', ...args]);
 
 /** Cargo supplies path/build dependencies; build.rs and packaging supply the non-Cargo inputs. */
-export function firmwareInputs(root, product) {
+export function firmwareInputs(root, product, crate = `firmware/${product}`) {
   root = realpathSync(root);
-  const firmware = join(root, 'firmware', product, 'Cargo.toml');
+  const firmware = realpathSync(join(root, crate, 'Cargo.toml'));
   const directories = [root];
   for (let directory = dirname(firmware); directory !== root; directory = dirname(directory)) {
     if (dirname(directory) === directory)
@@ -59,6 +59,7 @@ export function firmwareInputs(root, product) {
     'scripts/build-desktop-firmware.ps1',
     'scripts/build-firmware.mjs',
     'scripts/build-firmware-set.mjs',
+    'scripts/release-catalog.mjs',
     '.github/workflows/release.yml',
     '.github/workflows/release-start.yml',
     '.github/workflows/firmware.yml',
@@ -166,7 +167,15 @@ export function normalizeBookkeeping(path, text, version, names) {
 }
 
 /** Refuse stale firmware before the caller writes versions, outputs, commits or tags. */
-export function checkFirmwareRelease(root, product, previous, firmwareVersion, tags) {
+export function checkFirmwareRelease(
+  root,
+  product,
+  previous,
+  firmwareVersion,
+  tags,
+  crate = `firmware/${product}`,
+  pendingPaths = [],
+) {
   if (git(root, 'rev-parse', '--is-shallow-repository').trim() !== 'false') {
     throw new Error('firmware guard needs full Git history and tags; fetch with fetch-depth: 0');
   }
@@ -196,7 +205,7 @@ export function checkFirmwareRelease(root, product, previous, firmwareVersion, t
   if (firmwareVersion !== previous)
     return `new firmware version ${firmwareVersion} after ${baseline}`;
 
-  const { paths, bookkeepingNames } = firmwareInputs(root, product);
+  const { paths, bookkeepingNames } = firmwareInputs(root, product, crate);
   const dirty = git(root, 'status', '--porcelain', '--untracked-files=all', '--', ...paths).trim();
   if (dirty)
     throw new Error(`commit firmware inputs before checking an unchanged release:\n${dirty}`);
@@ -216,11 +225,7 @@ export function checkFirmwareRelease(root, product, previous, firmwareVersion, t
   const beforeRoot = git(root, 'show', `${baseline}:Cargo.toml`);
   const afterRoot = git(root, 'show', 'HEAD:Cargo.toml');
   const offending = changed.filter((path) => {
-    if (
-      path !== 'Cargo.toml' &&
-      path !== 'Cargo.lock' &&
-      path !== `firmware/${product}/Cargo.lock`
-    ) {
+    if (path !== 'Cargo.toml' && path !== 'Cargo.lock' && path !== `${crate}/Cargo.lock`) {
       return true;
     }
     const before = spawnSync('git', ['show', `${baseline}:${path}`], {
@@ -250,5 +255,14 @@ export function checkFirmwareRelease(root, product, previous, firmwareVersion, t
         `Inputs:\n${offending.map((p) => `  ${p}`).join('\n')}\nCommits:\n${commits}`,
     );
   }
+  const pending = pendingPaths.filter(
+    (path) =>
+      paths.some((input) => path === input || path.startsWith(`${input}/`)) &&
+      !(path === 'Cargo.toml' && bookkeepingNames.size > 0),
+  );
+  if (pending.length)
+    throw new Error(
+      `${product} firmware inputs will change in this release, but version ${firmwareVersion} is unchanged: ${pending.join(', ')}. Choose a firmware bump.`,
+    );
   return `inputs unchanged since ${baseline} (version bookkeeping excluded)`;
 }
