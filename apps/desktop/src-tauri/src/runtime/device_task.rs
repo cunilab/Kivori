@@ -392,7 +392,7 @@ fn device_loop(
                 }
                 flash_command @ (DeviceCommand::FlashFirmware
                 | DeviceCommand::RestoreFirmware
-                | DeviceCommand::RestoreFirmwareFor(_)) => {
+                | DeviceCommand::RestoreFirmwareFor(_, _)) => {
                     // A queued retry must not replace the active flash/reconnect target.
                     if flash.is_busy() {
                         publish_firmware_status(&firmware_status, &flash);
@@ -401,9 +401,11 @@ fn device_loop(
                     flash.select_image(None);
                     // A device that cannot be verified (wrong-major firmware, a unit in ROM download
                     // mode) is recovered by identity-free port rules instead of a verified handshake.
-                    let chosen = match &flash_command {
-                        DeviceCommand::RestoreFirmwareFor(product) => Some(product.clone()),
-                        _ => None,
+                    let (chosen, chosen_board) = match &flash_command {
+                        DeviceCommand::RestoreFirmwareFor(product, board) => {
+                            (Some(product.clone()), board.clone())
+                        }
+                        _ => (None, None),
                     };
                     let recovery = flash_command != DeviceCommand::FlashFirmware
                         || manager.state() == ConnectionState::Incompatible;
@@ -434,6 +436,7 @@ fn device_loop(
                             Catalog::embedded(),
                             &found,
                             chosen.as_deref(),
+                            chosen_board.as_deref(),
                             connected_port.as_deref(),
                             session.identity().as_ref(),
                             manager.state() != ConnectionState::Incompatible
@@ -1497,7 +1500,7 @@ pub fn plan_device_request(
         }
         DeviceCommand::FlashFirmware
         | DeviceCommand::RestoreFirmware
-        | DeviceCommand::RestoreFirmwareFor(_)
+        | DeviceCommand::RestoreFirmwareFor(_, _)
         | DeviceCommand::Refresh
         | DeviceCommand::RequestInternals
         | DeviceCommand::SetDisplayMode(_)

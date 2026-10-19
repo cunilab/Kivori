@@ -305,6 +305,9 @@ export function parseAccessibility(raw: unknown): AccessibilityState {
 /** Validates a `FirmwareStatusDto`: unknown phase, failure or advice tokens are rejected. */
 export function parseFirmwareStatus(raw: unknown): FirmwareStatusDto {
   const r = record('firmware status', raw);
+  const seen = new Set<string>();
+  if (r.restoreChoices !== undefined && !Array.isArray(r.restoreChoices))
+    throw new Error('Invalid recovery choices');
   return {
     available: r.available === true,
     phase: oneOf('firmware phase', FIRMWARE_PHASES, r.phase),
@@ -326,10 +329,23 @@ export function parseFirmwareStatus(raw: unknown): FirmwareStatusDto {
           },
     restoreChoices: Array.isArray(r.restoreChoices)
       ? r.restoreChoices.map((raw) => {
+          if (r.phase !== 'failed' || r.failure !== 'chooseProduct')
+            throw new Error('Unexpected recovery choices');
           const choice = record('restore choice', raw);
+          const id = text('product id', choice.id, 64);
+          const board = text('board id', choice.board, 64);
+          if (
+            !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id) ||
+            !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(board) ||
+            seen.has(`${id}/${board}`)
+          )
+            throw new Error('Invalid or duplicate recovery target');
+          seen.add(`${id}/${board}`);
           return {
-            id: text('product id', choice.id, 64),
+            id,
             name: text('product name', choice.name, 96),
+            board,
+            boardName: text('board name', choice.boardName, 96),
           };
         })
       : [],

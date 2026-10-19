@@ -304,5 +304,5 @@ For example (test product ids shown):
 bun scripts/release-bump.mjs --app patch --firmware-overrides '{"product-a":"patch","product-b":"0.3.0"}' --dry-run
 ```
 
-No actual release is triggered by local planning or tests. Hardware acceptance and ambiguous
-pair-level recovery choices remain separate M2.8 work.
+No actual release is triggered by local planning or tests. Hardware acceptance remains separate M2.8 work. Ambiguous recovery targets require an explicit
+product-and-board choice and confirmation before flashing.

@@ -117,7 +117,7 @@ impl FlashFailure {
                 "Firmware flashed, but the device could not be verified after reconnecting."
             }
             Self::WrongProduct => "This firmware is for a different Kivori product.",
-            Self::ChooseProduct => "Choose which Kivori product this is.",
+            Self::ChooseProduct => "Choose the Kivori product and board.",
             Self::Unknown => "Firmware flashing failed.",
         }
     }
@@ -296,7 +296,7 @@ pub struct FirmwareStatus {
     pub advice: UpdateAdvice,
     /// Both names, set only with [`FlashFailure::WrongProduct`].
     pub wrong_product: Option<WrongProductInfo>,
-    /// The products to pick from, set only with [`FlashFailure::ChooseProduct`].
+    /// The product/board pairs to pick from, set only with [`FlashFailure::ChooseProduct`].
     pub restore_choices: Vec<RestoreChoice>,
 }
 
@@ -310,7 +310,7 @@ pub struct WrongProductInfo {
     pub image: String,
 }
 
-/// One product the user may pick for a restore.
+/// One product/board pair the user may pick for a restore.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RestoreChoice {
@@ -318,6 +318,10 @@ pub struct RestoreChoice {
     pub id: String,
     /// Name shown to the user.
     pub name: String,
+    /// Catalog board machine id.
+    pub board: String,
+    /// Board name shown to the user.
+    pub board_name: String,
 }
 
 /// Result of a completed programming attempt, consumed by the device runtime.
@@ -535,10 +539,7 @@ impl FlashWorkflow {
     /// Reports a recovery policy refusal without reserving a target or starting the flasher.
     pub fn refuse_recovery(&mut self, refusal: RecoveryRefusal) {
         match refusal {
-            RecoveryRefusal::NoCandidate | RecoveryRefusal::BoardAmbiguous => {
-                // shortcut: generic copy until recovery offers product/board choices.
-                self.fail_preparation_with(FlashFailure::Unknown)
-            }
+            RecoveryRefusal::NoCandidate => self.fail_preparation_with(FlashFailure::Unknown),
         }
     }
 
@@ -552,7 +553,7 @@ impl FlashWorkflow {
         });
     }
 
-    /// Stops a recovery that needs the user to say which product is on the port.
+    /// Stops recovery until the user confirms the product/board pair on the port.
     pub fn ask_restore_choice(&mut self, options: Vec<RestoreOption>) {
         self.fail_preparation_with(FlashFailure::ChooseProduct);
         self.status.restore_choices = options
@@ -560,6 +561,8 @@ impl FlashWorkflow {
             .map(|o| RestoreChoice {
                 id: o.id,
                 name: o.name,
+                board: o.board,
+                board_name: o.board_name,
             })
             .collect();
     }

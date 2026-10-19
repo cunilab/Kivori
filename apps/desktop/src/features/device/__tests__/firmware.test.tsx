@@ -222,15 +222,95 @@ describe('firmware update', () => {
       phase: 'failed',
       failure: 'chooseProduct',
       restoreChoices: [
-        { id: 'pala', name: 'Kivori Pip' },
-        { id: 'lamp', name: 'Kivori Lamp' },
+        { id: 'pala', name: 'Kivori Pip', board: 'board-a', boardName: 'Board A' },
+        { id: 'lamp', name: 'Kivori Lamp', board: 'board-b', boardName: 'Board B' },
       ],
     });
     const user = userEvent.setup();
     render(<FirmwareUpdate connected />);
-    await user.click(await screen.findByRole('button', { name: 'Restore Kivori Lamp' }));
-    expect(bridge.restore).toHaveBeenCalledWith('lamp');
-    expect(screen.getByRole('button', { name: 'Restore Kivori Pip' })).toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: 'Choose Kivori Lamp on Board B' }));
+    expect(bridge.restore).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText('Restore firmware for Kivori Lamp / Board B.'),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Restore now' }));
+    expect(bridge.restore).toHaveBeenCalledWith('lamp', 'board-b');
+    expect(
+      screen.getByRole('button', { name: 'Choose Kivori Pip on Board A' }),
+    ).toBeInTheDocument();
+  });
+
+  it('requires confirmation for each board and cancel never queues a restore', async () => {
+    bridge.get.mockResolvedValue({
+      ...ready,
+      phase: 'failed',
+      failure: 'chooseProduct',
+      restoreChoices: [
+        { id: 'fixture', name: 'Fixture', board: 'board-a', boardName: 'Board A' },
+        { id: 'fixture', name: 'Fixture', board: 'board-b', boardName: 'Board B' },
+      ],
+    });
+    const user = userEvent.setup();
+    render(<FirmwareUpdate connected={false} />);
+    await user.click(await screen.findByRole('button', { name: 'Choose Fixture on Board A' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(bridge.restore).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Choose Fixture on Board B' }));
+    expect(await screen.findByText('Restore firmware for Fixture / Board B.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Restore now' }));
+    expect(bridge.restore).toHaveBeenCalledWith('fixture', 'board-b');
+  });
+
+  it('closes a choice confirmation when its pair disappears from the latest status', async () => {
+    bridge.get.mockResolvedValue({
+      ...ready,
+      phase: 'failed',
+      failure: 'chooseProduct',
+      restoreChoices: [{ id: 'fixture', name: 'Fixture', board: 'board-a', boardName: 'Board A' }],
+    });
+    const user = userEvent.setup();
+    render(<FirmwareUpdate connected={false} />);
+    await user.click(await screen.findByRole('button', { name: 'Choose Fixture on Board A' }));
+    bridge.get.mockResolvedValue(ready);
+    await waitFor(
+      () => expect(screen.queryByRole('button', { name: 'Restore now' })).not.toBeInTheDocument(),
+      { timeout: 2500 },
+    );
+    expect(bridge.restore).not.toHaveBeenCalled();
+  });
+
+  it('keeps the pair confirmation open while unplugging for the BOOT instructions', async () => {
+    bridge.get.mockResolvedValue({
+      ...ready,
+      phase: 'failed',
+      failure: 'chooseProduct',
+      restoreChoices: [{ id: 'fixture', name: 'Fixture', board: 'board-a', boardName: 'Board A' }],
+    });
+    const user = userEvent.setup();
+    const view = render(<FirmwareUpdate connected={false} incompatible />);
+    await user.click(await screen.findByRole('button', { name: 'Choose Fixture on Board A' }));
+    view.rerender(<FirmwareUpdate connected={false} />);
+    expect(screen.getByRole('button', { name: 'Restore now' })).toBeEnabled();
+    expect(bridge.restore).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Restore now' }));
+    expect(bridge.restore).toHaveBeenCalledWith('fixture', 'board-a');
+  });
+
+  it('closes a choice confirmation when a live device connects', async () => {
+    bridge.get.mockResolvedValue({
+      ...ready,
+      phase: 'failed',
+      failure: 'chooseProduct',
+      restoreChoices: [{ id: 'fixture', name: 'Fixture', board: 'board-a', boardName: 'Board A' }],
+    });
+    const user = userEvent.setup();
+    const view = render(<FirmwareUpdate connected={false} />);
+    await user.click(await screen.findByRole('button', { name: 'Choose Fixture on Board A' }));
+    view.rerender(<FirmwareUpdate connected />);
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Restore now' })).not.toBeInTheDocument(),
+    );
+    expect(bridge.restore).not.toHaveBeenCalled();
   });
 
   it('shows Restore when the connection is incompatible and keeps flashing available', async () => {

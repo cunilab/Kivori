@@ -290,10 +290,10 @@ the beta acceptance platform. Finish and review the docs before implementing the
   Firmware build target/features now live in the catalog; local build/bundle/provision recipes,
   PowerShell and release firmware CI share validated plans; targeted builds select an explicit or
   unambiguous pair, and desktop packaging includes every pair.
-  Recovery now refuses missing images, invalid/stale picks, absent candidates and ambiguous boards
+  Recovery now refuses missing images, invalid/stale picks and absent candidates
   before port reservation; image availability cannot decide hardware identity. The image-set foundation now validates/emits deterministic
   multi-image indexes with exact lookup. Native flash, status, offers, recovery and provisioning now
-  select exact per-device images; the runtime build gate is removed. Pair-level recovery choices remain open; release metadata is implemented below. Desktop development/bundle recipes and
+  select exact per-device images; the runtime build gate is removed. Pair-level recovery choices and release metadata are implemented below. Desktop development/bundle recipes and
   release CI now build/package every active pair, snapshot shared outputs and recreate host-local
   manifests after transfer. Native manifest embedding independently enforces the complete identity
   set. Catalog release planning now guards all products/crates before writes, supports independent
@@ -346,13 +346,15 @@ the beta acceptance platform. Finish and review the docs before implementing the
   lockfile inputs. Recognize harmless version bookkeeping by content, never commit title or author.
   List offending commits; test rejection, valid bumps, exact overrides, no prior tag, divergent
   history and bookkeeping mixed with real changes.
-- [ ] **Firmware bundles and release metadata:** replace the single-image bundle with validated
+- [x] **Firmware bundles and release metadata:** replace the single-image bundle with validated
   catalog-driven product/board images; select matching firmware for updates, flash and recovery.
   Build/package the whole supported set and list every product's independent version in release
   titles/notes. Test two product fixtures, image identity/version mismatch and wrong-product refusal.
   No-handshake recovery requires explicit choice for ambiguous USB/board hints and refuses no match;
   never choose an implicit default. Release validation excludes all test products/images.
   Keep one app release, permanent firmware tags, draft publication and existing flash safety rules.
+  Pair choices now include board ids/names and require a new visible BOOT confirmation. Native
+  re-enumeration, live identity checks and exact image selection precede any port reservation.
 
 Written policy: [release promises and M2.8 guard requirements](./release.md#release-policy), and
 [protocol change discipline](./adr/0002-one-wire-protocol-crate.md). These policies are recorded;

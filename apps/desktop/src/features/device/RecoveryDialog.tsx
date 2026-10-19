@@ -9,7 +9,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@kivori/ui/components/alert-dialog';
-import { strings } from '@/lib/i18n/strings';
+import { format, strings } from '@/lib/i18n/strings';
 
 /**
  * Walks the user through putting a Kivori into download mode with the BOOT button, then asks the
@@ -19,10 +19,14 @@ export function RecoveryDialog({
   open,
   onOpenChange,
   onRestore,
+  target,
+  disabled = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onRestore: () => void;
+  target?: string | undefined;
+  disabled?: boolean;
 }): ReactElement {
   const t = strings.recovery;
   return (
@@ -32,6 +36,7 @@ export function RecoveryDialog({
           <AlertDialogTitle>{t.title}</AlertDialogTitle>
           <AlertDialogDescription>{t.description}</AlertDialogDescription>
         </AlertDialogHeader>
+        {target ? <p className="text-sm font-medium">{format(t.target, { target })}</p> : null}
         <ol className="space-y-2 text-sm">
           {t.steps.map((step, index) => (
             <li key={step} className="flex items-start gap-3">
@@ -47,7 +52,9 @@ export function RecoveryDialog({
         </ol>
         <AlertDialogFooter>
           <AlertDialogCancel>{t.cancel}</AlertDialogCancel>
-          <AlertDialogAction onClick={onRestore}>{t.confirm}</AlertDialogAction>
+          <AlertDialogAction disabled={disabled} onClick={onRestore}>
+            {t.confirm}
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

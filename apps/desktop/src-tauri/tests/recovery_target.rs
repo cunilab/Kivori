@@ -33,42 +33,39 @@ fn catalog(first_boards: &str, second_usb: &str) -> Catalog {
 
 #[test]
 fn policy_refusals_clear_old_choices_and_never_reserve_or_start_a_flash() {
-    for (reason, expected) in [
-        (RecoveryRefusal::NoCandidate, FlashFailure::Unknown),
-        (RecoveryRefusal::BoardAmbiguous, FlashFailure::Unknown),
-    ] {
-        let mut flash = FlashWorkflow::new(true, 512);
-        flash.fail_wrong_product(WrongProduct {
-            device: "Old device".into(),
-            image: "Old image".into(),
-        });
-        flash.ask_restore_choice(vec![RestoreOption {
-            id: "old".into(),
-            name: "Old choice".into(),
-        }]);
-        flash.drain_activity();
-        flash.refuse_recovery(reason);
-        let status = flash.status();
-        assert_eq!(status.phase, FirmwarePhase::Failed);
-        assert_eq!(status.failure, Some(expected));
-        assert_eq!(status.wrong_product, None);
-        assert!(status.restore_choices.is_empty());
-        assert!(!flash.is_busy());
-        assert_eq!(
-            flash
-                .drain_activity()
-                .iter()
-                .map(|event| event.kind)
-                .collect::<Vec<_>>(),
-            [ActivityEventKind::FirmwarePreparationRejected]
-        );
-        // A later verified attempt starts clean.
+    let mut flash = FlashWorkflow::new(true, 512);
+    flash.fail_wrong_product(WrongProduct {
+        device: "Old device".into(),
+        image: "Old image".into(),
+    });
+    flash.ask_restore_choice(vec![RestoreOption {
+        id: "old".into(),
+        name: "Old choice".into(),
+        board: "board-a".into(),
+        board_name: "board-a".into(),
+    }]);
+    flash.drain_activity();
+    flash.refuse_recovery(RecoveryRefusal::NoCandidate);
+    let status = flash.status();
+    assert_eq!(status.phase, FirmwarePhase::Failed);
+    assert_eq!(status.failure, Some(FlashFailure::Unknown));
+    assert_eq!(status.wrong_product, None);
+    assert!(status.restore_choices.is_empty());
+    assert!(!flash.is_busy());
+    assert_eq!(
         flash
-            .request(true, Some("fixture-port"), Some("fixture-hash"))
-            .unwrap();
-        assert!(flash.is_busy());
-        assert_eq!(flash.status().failure, None);
-    }
+            .drain_activity()
+            .iter()
+            .map(|event| event.kind)
+            .collect::<Vec<_>>(),
+        [ActivityEventKind::FirmwarePreparationRejected]
+    );
+    // A later verified attempt starts clean.
+    flash
+        .request(true, Some("fixture-port"), Some("fixture-hash"))
+        .unwrap();
+    assert!(flash.is_busy());
+    assert_eq!(flash.status().failure, None);
 }
 
 fn target(product: u16, board: u16) -> RecoveryDecision {
@@ -103,26 +100,30 @@ fn shared_usb_still_requires_a_choice_when_only_one_products_image_exists() {
     let second = image(42, 9);
     let bundle = FirmwareBundle::parse(&[&second]).unwrap();
     assert_eq!(
-        decide_recovery(&catalog, Some(USB_A), None, None),
+        decide_recovery(&catalog, Some(USB_A), None, None, None),
         RecoveryDecision::Choose(vec![
             RestoreOption {
                 id: "first".into(),
-                name: "First".into()
+                name: "First".into(),
+                board: "board-a".into(),
+                board_name: "board-a".into(),
             },
             RestoreOption {
                 id: "second".into(),
-                name: "Second".into()
+                name: "Second".into(),
+                board: "board-a".into(),
+                board_name: "board-a".into(),
             },
         ])
     );
     // Hardware selection succeeds independently; the missing target image cannot fall back to B.
     assert_eq!(
-        decide_recovery(&catalog, Some(USB_A), Some("first"), None),
+        decide_recovery(&catalog, Some(USB_A), Some("first"), None, None),
         target(41, 9)
     );
     assert!(bundle.get(41, 9).is_none());
     assert_eq!(
-        decide_recovery(&catalog, Some(USB_A), Some("second"), None),
+        decide_recovery(&catalog, Some(USB_A), Some("second"), None, None),
         target(42, 9)
     );
     assert_eq!(bundle.get(42, 9).unwrap().bytes(), second);
@@ -138,26 +139,32 @@ fn choices_cannot_override_usb_candidates_or_a_reported_identity() {
         (Some(USB_A), Some("")),
     ] {
         assert_eq!(
-            decide_recovery(&catalog, usb, chosen, None),
+            decide_recovery(&catalog, usb, chosen, None, None),
             RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate)
         );
     }
     assert_eq!(
-        decide_recovery(&catalog, Some(USB_B), Some("second"), None),
+        decide_recovery(&catalog, Some(USB_B), Some("second"), None, None),
         target(42, 9)
     );
     assert_eq!(
-        decide_recovery(&catalog, Some(USB_A), Some("first"), Some(&device(42, 9))),
+        decide_recovery(
+            &catalog,
+            Some(USB_A),
+            Some("first"),
+            None,
+            Some(&device(42, 9))
+        ),
         RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate)
     );
     // The live identity wins over USB hints, even shared/wrong hints.
     assert_eq!(
-        decide_recovery(&catalog, Some(USB_A), None, Some(&device(42, 9))),
+        decide_recovery(&catalog, Some(USB_A), None, None, Some(&device(42, 9))),
         target(42, 9)
     );
     for unknown in [device(99, 9), device(41, 99)] {
         assert_eq!(
-            decide_recovery(&catalog, Some(USB_A), None, Some(&unknown)),
+            decide_recovery(&catalog, Some(USB_A), None, None, Some(&unknown)),
             RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate)
         );
     }
@@ -172,12 +179,25 @@ fn shared_board_hints_are_ambiguous_even_with_only_one_board_image() {
     assert!(bundle.get(41, 9).is_some());
     for chosen in [None, Some("first")] {
         assert_eq!(
-            decide_recovery(&catalog, Some(USB_A), chosen, None),
-            RecoveryDecision::Refuse(RecoveryRefusal::BoardAmbiguous)
+            decide_recovery(&catalog, Some(USB_A), chosen, None, None),
+            RecoveryDecision::Choose(vec![
+                RestoreOption {
+                    id: "first".into(),
+                    name: "First".into(),
+                    board: "board-a".into(),
+                    board_name: "board-a".into()
+                },
+                RestoreOption {
+                    id: "first".into(),
+                    name: "First".into(),
+                    board: "board-b".into(),
+                    board_name: "board-b".into()
+                },
+            ])
         );
     }
     assert_eq!(
-        decide_recovery(&catalog, Some(USB_A), None, Some(&device(41, 10))),
+        decide_recovery(&catalog, Some(USB_A), None, None, Some(&device(41, 10))),
         target(41, 10)
     );
     assert!(bundle.get(41, 10).is_none());
@@ -191,7 +211,7 @@ fn distinct_board_hints_select_exact_images_from_a_reversed_bundle() {
     let b = image(41, 10);
     let bundle = FirmwareBundle::parse(&[&b, &a]).unwrap();
     for (usb, expected, bytes) in [(USB_A, 9, &a), (USB_B, 10, &b)] {
-        let decision = decide_recovery(&catalog, Some(usb), Some("first"), None);
+        let decision = decide_recovery(&catalog, Some(usb), Some("first"), None, None);
         assert_eq!(decision, target(41, expected));
         let RecoveryDecision::Proceed { product, board } = decision else {
             unreachable!()
@@ -214,7 +234,7 @@ fn recovery_binds_live_identity_and_pending_state_to_the_only_selected_port() {
     };
     let id = device(42, 9);
     let resolve = |ports: &[&PortCandidate], live, pending| {
-        decide_recovery_for_port(&catalog, ports, None, live, Some(&id), pending)
+        decide_recovery_for_port(&catalog, ports, None, None, live, Some(&id), pending)
     };
     assert_eq!(
         resolve(&[&port], Some("fixture-port"), false),
@@ -242,6 +262,42 @@ fn recovery_binds_live_identity_and_pending_state_to_the_only_selected_port() {
     };
     assert_eq!(
         resolve(&[&unknown_usb], None, false),
+        RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate)
+    );
+}
+
+#[test]
+fn explicit_pairs_resolve_board_ambiguity_without_using_image_availability() {
+    let boards = board("board-a", "1234:0001") + &board("board-b", "1234:0001");
+    let catalog = catalog(&boards, "1234:0002");
+    for (chosen, expected) in [("board-a", 9), ("board-b", 10)] {
+        assert_eq!(
+            decide_recovery(&catalog, Some(USB_A), Some("first"), Some(chosen), None),
+            target(41, expected)
+        );
+    }
+    for (product, board) in [
+        (None, Some("board-a")),
+        (Some("first"), Some("missing")),
+        (Some("second"), Some("board-b")),
+    ] {
+        assert_eq!(
+            decide_recovery(&catalog, Some(USB_A), product, board, None),
+            RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate)
+        );
+    }
+    assert_eq!(
+        decide_recovery(
+            &catalog,
+            Some(USB_A),
+            Some("first"),
+            Some("board-a"),
+            Some(&device(41, 10))
+        ),
+        RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate)
+    );
+    assert_eq!(
+        decide_recovery(&catalog, Some(USB_B), Some("first"), Some("board-b"), None),
         RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate)
     );
 }

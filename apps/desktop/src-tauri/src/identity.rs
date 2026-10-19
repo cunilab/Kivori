@@ -201,13 +201,17 @@ pub fn check_image_for_device(
     })
 }
 
-/// One product the user may pick when a port could be several of them.
+/// One exact catalog product/board pair offered for explicit recovery confirmation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RestoreOption {
     /// Machine id of the product.
     pub id: String,
     /// Name shown to the user.
     pub name: String,
+    /// Catalog board machine id.
+    pub board: String,
+    /// Catalog board name shown beside the product.
+    pub board_name: String,
 }
 
 /// What recovery (no handshake possible) does about which product's firmware to write.
@@ -220,7 +224,7 @@ pub enum RecoveryDecision {
         /// Board wire number.
         board: u16,
     },
-    /// More than one product could be on this port: the user must pick, then ask again.
+    /// More than one catalog pair could be on this port: the user must pick, then confirm again.
     Choose(Vec<RestoreOption>),
     /// Recovery cannot establish a supported, matching product/board target.
     Refuse(RecoveryRefusal),
@@ -231,8 +235,6 @@ pub enum RecoveryDecision {
 pub enum RecoveryRefusal {
     /// No catalog candidate for the port, or the chosen product is not one of its candidates.
     NoCandidate,
-    /// The selected product has several possible boards; an image cannot prove which one is present.
-    BoardAmbiguous,
 }
 
 /// Binds recovery evidence to exactly one allowlisted port from this enumeration snapshot.
@@ -242,6 +244,7 @@ pub fn decide_recovery_for_port(
     catalog: &Catalog,
     ports: &[&crate::device::discovery::PortCandidate],
     chosen: Option<&str>,
+    chosen_board: Option<&str>,
     connected_port: Option<&str>,
     reported: Option<&DeviceIdentity>,
     identity_pending: bool,
@@ -256,10 +259,16 @@ pub fn decide_recovery_for_port(
     if same_port && identity_pending {
         return RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate);
     }
-    decide_recovery(catalog, Some(usb), chosen, reported.filter(|_| same_port))
+    decide_recovery(
+        catalog,
+        Some(usb),
+        chosen,
+        chosen_board,
+        reported.filter(|_| same_port),
+    )
 }
 
-/// Resolves a recovery target before image lookup. USB hints and an explicit product choice must
+/// Resolves a recovery target before image lookup. USB hints and explicit product/board choices must
 /// leave exactly one catalog pair. A live identity for this port overrides USB hints; an unknown
 /// identity is refused. Image availability and ordering never identify hardware.
 #[must_use]
@@ -267,13 +276,19 @@ pub fn decide_recovery(
     catalog: &Catalog,
     usb: Option<UsbId>,
     chosen: Option<&str>,
+    chosen_board: Option<&str>,
     reported: Option<&DeviceIdentity>,
 ) -> RecoveryDecision {
+    if chosen_board.is_some() && chosen.is_none() {
+        return RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate);
+    }
     if let Some(device) = reported {
-        let Some((product, _)) = catalog.by_wire(device.product, device.board) else {
+        let Some((product, board)) = catalog.by_wire(device.product, device.board) else {
             return RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate);
         };
-        if chosen.is_some_and(|id| id != product.id) {
+        if chosen.is_some_and(|id| id != product.id)
+            || chosen_board.is_some_and(|id| id != board.id)
+        {
             return RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate);
         }
         return RecoveryDecision::Proceed {
@@ -290,23 +305,24 @@ pub fn decide_recovery(
     if let Some(id) = chosen {
         candidates.retain(|(product, _)| product.id == id);
     }
+    if let Some(id) = chosen_board {
+        candidates.retain(|(_, board)| board.id == id);
+    }
     if candidates.is_empty() {
         return RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate);
     }
-    let mut options: Vec<RestoreOption> = Vec::new();
-    for (product, _) in &candidates {
-        if !options.iter().any(|option| option.id == product.id) {
-            options.push(RestoreOption {
-                id: product.id.clone(),
-                name: product.display_name.clone(),
-            });
-        }
-    }
-    if options.len() > 1 {
-        return RecoveryDecision::Choose(options);
-    }
     let [(product, board)] = candidates.as_slice() else {
-        return RecoveryDecision::Refuse(RecoveryRefusal::BoardAmbiguous);
+        return RecoveryDecision::Choose(
+            candidates
+                .iter()
+                .map(|(product, board)| RestoreOption {
+                    id: product.id.clone(),
+                    name: product.display_name.clone(),
+                    board: board.id.clone(),
+                    board_name: board.display_name.clone(),
+                })
+                .collect(),
+        );
     };
     RecoveryDecision::Proceed {
         product: product.number,
@@ -428,12 +444,19 @@ mod tests {
             board: 1,
         };
         assert_eq!(
-            decide_recovery(Catalog::embedded(), Some((0x303A, 0x1001)), None, None),
+            decide_recovery(
+                Catalog::embedded(),
+                Some((0x303A, 0x1001)),
+                None,
+                None,
+                None
+            ),
             expected
         );
         assert_eq!(
             decide_recovery(
                 Catalog::embedded(),
+                None,
                 None,
                 None,
                 Some(&DeviceIdentity::legacy())
@@ -447,10 +470,10 @@ mod tests {
         let catalog = two_products();
         let usb = Some((0x303A, 0x1001));
         assert!(
-            matches!(decide_recovery(&catalog, usb, None, None), RecoveryDecision::Choose(options) if options.len() == 2)
+            matches!(decide_recovery(&catalog, usb, None, None, None), RecoveryDecision::Choose(options) if options.len() == 2)
         );
         assert_eq!(
-            decide_recovery(&catalog, usb, Some("lamp"), None),
+            decide_recovery(&catalog, usb, Some("lamp"), None, None),
             RecoveryDecision::Proceed {
                 product: 2,
                 board: 1
