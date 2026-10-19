@@ -3,9 +3,9 @@
 //! (customer name, short name, model code, flash method, discovery hints, bundled firmware,
 //! required capabilities).
 //!
-//! Both are compiled into the app. This file is also compiled by `build.rs` (via `#[path]`), which
-//! validates the catalog and checks the bundled firmware against it, so it stays free of
-//! crate-internal dependencies; capability names are resolved to flags in `provision`.
+//! The shared parser is also compiled by `build.rs`; `catalog_build.rs` discovers and validates
+//! sources and firmware, and runtime-only `catalog_embedded.rs` loads the generated constants.
+//! This parser stays free of crate-internal dependencies; capability names resolve in `provision`.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -14,16 +14,6 @@ use serde::Deserialize;
 
 /// A `(vendor, product)` USB id pair.
 pub type UsbId = (u16, u16);
-
-/// The registry file, as embedded.
-const REGISTRY: &str = include_str!("../../../../products/registry.toml");
-
-/// Every product file, as embedded: `(machine id, file contents)`. A test checks that each
-/// directory under `products/` is listed.
-const PRODUCT_FILES: &[(&str, &str)] = &[(
-    "pala",
-    include_str!("../../../../products/pala/product.toml"),
-)];
 
 /// How a board is flashed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -280,19 +270,7 @@ impl Catalog {
         Ok(Self { products: out })
     }
 
-    /// The catalog compiled into this build.
-    ///
-    /// # Panics
-    /// If the embedded files are invalid; `build.rs` and the tests reject that before release.
-    #[must_use]
-    pub fn embedded() -> &'static Self {
-        static CATALOG: std::sync::OnceLock<Catalog> = std::sync::OnceLock::new();
-        CATALOG.get_or_init(|| {
-            Catalog::parse(REGISTRY, PRODUCT_FILES).expect("embedded product catalog is valid")
-        })
-    }
-
-    /// Every product, in registry file order of embedding.
+    /// Every product, in source order (machine-id order in the embedded catalog).
     #[must_use]
     pub fn products(&self) -> &[Product] {
         &self.products
@@ -386,7 +364,11 @@ mod tests {
             .map(|e| e.file_name().to_string_lossy().into_owned())
             .collect();
         on_disk.sort();
-        let mut embedded: Vec<&str> = PRODUCT_FILES.iter().map(|(id, _)| *id).collect();
+        let mut embedded: Vec<&str> = Catalog::embedded()
+            .products()
+            .iter()
+            .map(|p| p.id.as_str())
+            .collect();
         embedded.sort_unstable();
         assert_eq!(on_disk, embedded);
         for board in Catalog::embedded()
