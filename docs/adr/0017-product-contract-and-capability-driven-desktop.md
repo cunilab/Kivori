@@ -195,6 +195,14 @@ the Device firmware card hosts the pair chooser. These fixtures perform no devic
 
 ## Consequences
 
+**As built (M2.8 software closure audit).** Product contract and capability-driven UI implementation
+are verified against the [acceptance and closure evidence](../validation.md#m28-software-closure-audit).
+This completes the software checklist in the review stack, including catalog-driven provisioning,
+packaging and release selection and current-session feature gating. Supported-feature additions need
+no shared-app product list; new hardware backends and interaction models remain separate feature work.
+The PR stack still needs review and merging; this does not change this ADR's approval status or
+claim a release, a second physical product or completion of hardware acceptance.
+
 **As built (M2.8 automated product acceptance).** The app-shell scenarios and native session/runtime
 admission checks now cover the planned synthetic product matrix. Existing catalog and image-set
 generators compile their temporary multi-product fixtures and exact indexes without shared product

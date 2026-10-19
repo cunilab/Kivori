@@ -158,7 +158,7 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 - Sidecar lookup (`find_espflash`): `espflash[.exe]` beside the application executable first (where the installer puts it). `PATH` and `~/.cargo/bin` are searched only when built with the `device-studio` feature (the dev default). Release builds use `--no-default-features`, so they never run whatever `espflash` sits on `PATH`. A missing tool is `ToolMissing`. The installer bundles the pinned binary (see Release pipeline).
 - Flash: on `FlashFirmware` the device task sends `Bye(FirmwareUpdate)` (only when `supports_host_takeovers()`, so the panel shows Updating), drops the serial handle, runs `espflash` and then waits up to 20 s for the same port to handshake. The device identity must match (`FlashTarget::Verified { port, hash }`), so a swapped board is not reported as success.
 - Failures: stderr is captured in-process through a reader thread, bounded to the last 8 KiB, classified by the pure `classify_espflash(exit, stderr)` and dropped; it is never logged or emitted. Classes: `ToolMissing`, `PortBusy`, `NoDownloadMode`, `Timeout`, `Cancelled`, `ImageUnavailable`, `ReconnectTimedOut`, `WrongProduct`, `ChooseProduct`, `Unknown`. `WrongProduct` and `ChooseProduct` are decided before `espflash` runs, so nothing is written (see Product identity). Matching is conservative (case-insensitive fragments of known `espflash` 4.x and OS messages); anything else is `Unknown`. Refresh the fixtures from real output in the hardware session.
-- Recovery: a unit that cannot handshake (wrong-major firmware, or held in ROM download mode with BOOT) is restored with `FlashTarget::Recovery { port }`. `request_recovery` refuses unless exactly one allowlisted (`DEFAULT_ALLOWLIST`) port is present, so the flasher cannot be pointed at the wrong board. After the flash, any compatible device on that port is accepted and its new short hash recorded. A flash requested while the connection is `incompatible` takes this path too. A verified flash still rejects a different hash. A device on a newer major than the app (such as a board flashed before the version reset) gets the `UpdateApp` offer, which never flashes by itself; the Device page's Flash firmware button, after its confirmation dialog, still restores it this way.
+- Recovery: a unit that cannot handshake (wrong-major firmware, or held in ROM download mode with BOOT) is restored with `FlashTarget::Recovery { port }`. `request_recovery` refuses unless exactly one allowlisted (`DEFAULT_ALLOWLIST`) port is present; this is a port-uniqueness check, not board identity. The runtime separately resolves the catalog product/board and exact image under the identity and recovery rules below. After the flash, any compatible device on that port is accepted and its new short hash recorded. A flash requested while the connection is `incompatible` takes this path too. A verified flash still rejects a different hash. A device on a newer major than the app (such as a board flashed before the version reset) gets the `UpdateApp` offer, which never flashes by itself; the Device page's Flash firmware button, after its confirmation dialog, still restores it this way.
 - Version advice: build validation checks the embedded firmware's version marker against its identity record and catalog crate. Native code reads the validated image's version directly; the former global `KIVORI_BUNDLED_FIRMWARE_VERSION` stamp is removed. `update_advice(device, bundled)` returns `UpToDate`, `UpdateAvailable`, `DeviceNewer` or `Unknown`. It is advice only: nothing flashes without an explicit request.
 
 ### Product identity (`PRODUCT_IDENTITY_V1`, ADR-0014)
@@ -331,7 +331,7 @@ The webview may call only these commands and listen to these events. No command 
   fixed for that session; known identity-only recovery firmware receives no normal state commands.
   Live display mode selection requires `deskStatusV1`; saved display/binding settings remain editable
   offline. The [main-window capability mapping](./desktop-capabilities.md) separates live device
-  actions from host readings and saved configuration; remaining integration is tracked in M2.8.
+  actions from host readings and saved configuration; the software closure audit maps its evidence.
 - `connectionGeneration` changes whenever device uptime may have reset. Device Studio maps applied-action acknowledgments onto its own monotonic clock per generation.
 
 ## 4. Timing, rendering and assets
@@ -508,8 +508,9 @@ all matched crate manifests. No input means an empty host-build set, never a cac
 Native flash and update offers select an exact image from the current session identity, including the
 legacy identity rule; pending, unknown and missing pairs have no fallback. Recovery first requires
 one allowlisted port from a single enumeration snapshot, binds any live identity to that port and
-refuses pending identities. It then resolves catalog USB hints and an optional product choice before
-looking up an image. Shared-product hints require a choice; shared-board hints remain refused.
+refuses pending identities. It then resolves catalog USB hints and an optional product/board choice
+before looking up an image. Multiple candidate pairs require a new explicit BOOT confirmation;
+stale/invalid choices and absent candidates remain refused.
 Image availability never removes hardware candidates. The selected typed image is captured through
 flashing; it is not looked up again after releasing the session.
 
@@ -591,10 +592,10 @@ On a normal launch the main window stays hidden and `setup` starts a watcher thr
 
 ### Diagnostics
 
-- `get_diagnostics` returns `DiagnosticsDto`, shown as a card on the Device page (polled every 1 s while visible) and copied as JSON by "Copy diagnostics". Groups: `versions` (app, firmware, protocol, negotiated minor, capability names, short device hash, and `identity`: product and board display names, hardware revision or `null`, identity source `legacy`, `build` or `chip`, and whether the catalog knows it; product and board names are not personal data), `connection` (state, connected-for, reconnects, retry count, last pong age, round trip), `health` (device uptime, free SRAM, malformed frames, sequence gaps, device errors), `host` (system volume, app volume, media observation, focus detection, input permission) and `config` (status, schema version, custom bindings, macros). Unknown values are `null`.
+- `get_diagnostics` returns `DiagnosticsDto`, polled every 1 s while Diagnostics is mounted on Device or Developer. Device exposes basic Copy diagnostics; technical rows are on Developer with developer mode on. Copy diagnostics refreshes the safe base on demand. Groups: `versions` (app, firmware, protocol, negotiated minor, capability names, short device hash, and `identity`: product and board display names, hardware revision or `null`, identity source `legacy`, `build` or `chip`, and whether the catalog knows it; product and board names are not personal data), `connection` (state, connected-for, reconnects, retry count, last pong age, round trip), `health` (device uptime, free SRAM, malformed frames, sequence gaps, device errors), `host` (system volume, app volume, media observation, focus detection, input permission) and `config` (status, schema version, custom bindings, macros). Unknown values are `null`.
 - Privacy: no ports, paths or raw device ids. The device appears only as its short hash. A DTO allowlist test pins the serialised keys.
 - Developer is always in the sidebar, with its per-computer master toggle off by default. It owns Diagnostics (protocol/state and Device internals), Activity, Social reactions and, when the static frontend build gate and native build flag allow it, Device Studio. Only the selected tool mounts. Turning the toggle off removes tool controls and stops internals polling; focus returns to the Developer title if its active control disappears. Home and Display have no direct reaction controls.
-- Basic Copy diagnostics is available on Device and Developer even with the toggle off. With developer mode on, the copy may include an `internals` group from visible instrumentation's latest reply; unmounting the internals card clears that shared cache. General session freshness and support-bundle refinements remain tracked in M2.8.
+- Basic Copy diagnostics is available on Device and Developer even with the toggle off. With developer mode on, the copy may include an `internals` group from visible instrumentation's latest reply; unmounting the internals card clears that shared cache. Connection-generation and report-age checks reject stale or prior-session data; copying never starts internals polling (see Device internals).
 - Sources: `Session` keeps `Health.free_bytes`, `Pong.uptime_ms` with its receive instant, and counters for malformed frames, sequence gaps and device `Error`s. All of it is connection-scoped and reset by `Session::open` (the free-memory and uptime figures also clear when the link drops). The round trip comes from `HeartbeatMonitor` (`on_ping_sent(t_ms)`, `on_pong(t_ms_echo, now_ms)`), taken only from the echo of the latest ping.
 - The device thread writes a `DiagnosticsSnapshot` (raw figures and `Instant`s) at most once a second; `get_diagnostics` turns it into ages and adds the config summary from the config store at read time. Host-service tokens come from the live backends (`available`, `unsupported`, `unavailable`; media `observable`; focus `detecting`; input permission `required`, `granted`, `notNeeded` or `unknown`). Input permission is `granted` or `required` on macOS (from the Accessibility check, see First-run onboarding), `required` also after the OS refused synthesized input, and `notNeeded` elsewhere.
 - Firmware update advice (bundled version, update available) belongs in `FirmwareStatus` (M3); diagnostics will read it from there rather than duplicate it.
@@ -648,9 +649,10 @@ Core function needs no internet, cloud, CDN, telemetry or licence check. Discove
 Each architecture decision is its own record in [`docs/adr/`](./adr/). The [ADR index](./adr/README.md)
 lists them all with their status and says how to add one.
 
-The M2.8 target contract is [ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md).
+The implemented M2.8 contract is [ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md).
 It separates catalog metadata from negotiated UI support and defines developer/support boundaries.
-It is planned work; the as-built descriptions above remain current until implementation lands.
+The [software closure audit](./validation.md#m28-software-closure-audit) maps implementation and
+automated evidence. The review stack is not a shipping release; hardware acceptance stays separate.
 
 ## 8. Engineering principles
 

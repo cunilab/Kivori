@@ -128,15 +128,17 @@ Known identity-only firmware shows firmware attention guidance and links to Devi
 guarded matching-image workflow. Unknown identity shows app-update guidance and remains refused by
 flashing. Pending identity shows waiting status. These states keep configuration and host monitoring.
 
-## Evidence and remaining work
+## Evidence and scope
 
 Frontend tests cover a test-only dial without screen/reactions/media messages, mixed capabilities,
 identity pending/unknown/recovery, offline preview, binding retention and focus after switching
 sessions. Native session tests cover control-specific input refusal and Mirror refusing to stage
 state while pending or disconnected. Fake devices are injected in tests, never registered for shipping.
 
-Catalog artwork delivery and capability-aware setup are implemented as described above. Product
-acceptance, provisioning/tool defaults, multi-image packaging and the identifier guard remain
-separate M2.8 work. Catalog metadata does not implement a new interaction model. See
+Catalog artwork delivery, capability-aware setup, product acceptance, provisioning/tool selection,
+multi-image packaging and the identifier guard are implemented. The
+[software closure audit](./validation.md#m28-software-closure-audit) maps the product-contract and
+capability-UI criteria to their evidence. Hardware acceptance and PR review/merging remain separate.
+Catalog metadata does not implement a new interaction model. See
 [ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md) and the
 [M2.8 checklist](./roadmap.md#m28-desktop-organization-and-product-contract).
