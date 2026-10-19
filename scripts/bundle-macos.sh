@@ -20,9 +20,8 @@ bash scripts/fetch-espflash.sh
 bun install --frozen-lockfile
 bun --filter kivori-desktop-ui build
 
-(cd firmware/pala && cargo build --locked --release --target riscv32imc-unknown-none-elf \
-  --no-default-features --features physical-st7789)
-export KIVORI_FIRMWARE_PATH="$root/firmware/pala/target/riscv32imc-unknown-none-elf/release/kivori-firmware"
+KIVORI_FIRMWARE_PATH="$(bun scripts/build-firmware.mjs)"
+export KIVORI_FIRMWARE_PATH
 
 (cd apps/desktop && bunx tauri build \
   --config src-tauri/tauri.release.conf.json \

@@ -48,3 +48,8 @@ crate = "firmware/pala"
 artifact = "target/riscv32imc-unknown-none-elf/release/kivori-firmware"
 # Oldest wire protocol (major.minor) this firmware speaks.
 min_protocol = "0.1"
+
+# Explicit product build; tooling disables default features and pins the crate-local target directory.
+[boards.c3-supermini.firmware.build]
+target = "riscv32imc-unknown-none-elf"
+features = ["physical-st7789"]

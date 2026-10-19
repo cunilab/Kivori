@@ -164,7 +164,7 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 - Firmware build identity: `firmware/<product>/build.rs` reads the product and board numbers from `products/registry.toml` (and the image's minimum protocol from `product.toml`) into compile-time `env!` values, so no number is typed twice. The physical build advertises the capability.
 - Chip identity record (`kivori_protocol::identity`, `no_std`): 12 bytes, little-endian: format version (1), product (`u16`), board (`u16`), hardware revision (`u8`, 0 = unspecified), 2 reserved zero bytes, CRC-32 (the frame CRC) over the first 8. A region of all zeros is "not provisioned" (fresh eFuses read zero). Firmware reads it from the C3 user eFuse block (BLOCK3, `BLOCK_USR_DATA`) with `esp_hal::efuse::read_field_le`; this step never writes eFuses. An unprovisioned or invalid record means source `Build` with no revision.
 - Wrong-board boot check (tier A, ADR-0016): a valid record whose product or board differs from the build identity makes the firmware run no product. It shows the static "Wrong firmware for this Kivori" screen (`render_wrong_board`; only the recovery hold is drawn above it), advertises only `PRODUCT_IDENTITY_V1`, and reports the chip's identity with source `Chip`, so the app can see what the unit is and reflash it. The recovery hold still reboots it (invariant 24).
-- Image identity record: the firmware image carries `KIVORI-FW-IDENTITY:p=<product>;b=<board>;v=<x.y.z>;m=<major.minor>\0` next to its version marker (`firmware_marker::scan_image_identity`). The desktop `build.rs` resolves that explicit image by its product/board wire identity, never the first catalog entry, then checks both version markers against that board's firmware crate and minimum protocol. Unknown identities or missing markers fail the build. `KIVORI_FIRMWARE_PATH` still supplies one image; multi-image bundling and build/tooling defaults remain separate M2.8 work.
+- Image identity record: the firmware image carries `KIVORI-FW-IDENTITY:p=<product>;b=<board>;v=<x.y.z>;m=<major.minor>\0` next to its version marker (`firmware_marker::scan_image_identity`). The desktop `build.rs` resolves that explicit image by its product/board wire identity, never the first catalog entry, then checks both version markers against that board's firmware crate and minimum protocol. Unknown identities or missing markers fail the build. `KIVORI_FIRMWARE_PATH` still supplies one image; multi-image bundling remains separate M2.8 work.
 - Flashing guard (tier A): before `flash_firmware` reserves the port, the image record is compared with the connected device's identity (legacy counts as `pala` on `c3-supermini`); a mismatch, or a device whose numbers the catalog does not know, is refused with `FlashFailure::WrongProduct` and both names in `FirmwareStatus.wrong_product`, and nothing is written. Recovery has no handshake, so `decide_recovery` picks from the catalog entries listing the port's USB ids: one product is used; several end in `FlashFailure::ChooseProduct` with `restore_choices`, and `restore_firmware(product)` is sent again with the user's pick, which must be the bundled image's product or it is refused as `WrongProduct`.
 
 ### Quiet Unverified (`QUIET_ACK_V1`)
@@ -485,9 +485,35 @@ uses `product_identity`, separate from the burned chip/revision check’s `ident
 
 Only the existing `c3-supermini` ESP32-C3 user-eFuse backend may burn identity. Other boards fail
 closed, and neither `espflash` nor catalog order implies an eFuse layout. Block checks and typed
-confirmation are unchanged. `just provision` still builds the Pip recipe; catalog-driven build
-recipes and multi-image packaging remain separate work. These software tests do not close bench
-acceptance rows.
+confirmation are unchanged. `just provision` builds the catalog-selected image through the shared
+build helper below. Multi-image packaging remains separate work. These software tests do not close
+bench acceptance rows.
+
+### Firmware build recipes (M2.8)
+
+`firmware.build.target` and `firmware.build.features` in each board's catalog entry define its
+release recipe. The block is optional for runtime-only/test catalogs; every shipping board must
+provide it. When present, the shared Rust parser validates its tokens and matching
+`target/<target>/release/<binary>` artifact. Shipping-catalog tests require a declared binary and
+exclude developer-only feature recipes.
+
+`scripts/build-firmware.mjs` (Bun) selects `--product`/`--board`, or `KIVORI_PRODUCT`/`KIVORI_BOARD`.
+CLI selection takes precedence as a complete pair; it never borrows an environment selector. Empty
+selectors are errors. Without selection, exactly one active catalog pair must exist. Registry reservations are not active
+builds. Ambiguous, partial or unknown selections fail before Cargo. The helper validates paths and
+recipe metadata, builds from the firmware crate directory (preserving its toolchain/linker config),
+and passes `--locked --release --target ... --no-default-features --bin ...` plus catalog features.
+It overrides `CARGO_TARGET_DIR` only in the child environment to the crate's `target` directory and
+refuses inherited `RUSTFLAGS`/`CARGO_ENCODED_RUSTFLAGS` that would replace target linker flags.
+Cargo output goes to stderr; stdout is one absolute artifact path, emitted only after a successful
+build and output check. The desktop still validates the image identity and version before embedding.
+
+`just fw-build`, `app`, `desktop`, `provision`, both bundle recipes, the PowerShell desktop builder
+and the release firmware job share this helper. The PowerShell builder also accepts `-Product` and
+`-Board`. Existing `fw-check`, `fw-test`, `fw-flash`, latency recipes and firmware feature-matrix CI
+remain explicit Pip/C3 developer checks. Targets/toolchains must already be installed; release CI
+currently installs the C3 target. Multi-image release sets, their selection and product-aware release
+notes remain subsequent work; this helper builds one selected image and never flashes.
 
 ### First-run onboarding (M3 S6)
 
@@ -528,7 +554,7 @@ On a normal launch the main window stays hidden and `setup` starts a watcher thr
 - Overview has a Flash firmware button, enabled when connected and no update is running. `flash_firmware` takes no arguments. It installs only the firmware embedded in the desktop build.
 - Native flow: reject a disconnected or concurrent request, release the serial port, run `espflash` on that port with verification on, wait for a compatible handshake from the same device, then report `succeeded`. Failure returns `failed` and connection handling resumes. Accepting a request is not completion.
 - `FirmwareStatusDto`: `available`, `phase` (`idle, preparing, flashing, reconnecting, succeeded, failed`), `message`, `imageSize`. The UI polls it every 750 ms. Timeouts: flash 90 s, reconnect 20 s.
-- Embedding: `scripts/build-desktop-firmware.ps1` builds the firmware release ELF with `physical-st7789`, then builds the desktop with it embedded. For other pipelines set `KIVORI_FIRMWARE_PATH`. The build rejects a non-RISC-V or non-ELF32 image. A host build without the variable disables the action, so a stale artifact cannot slip in.
+- Embedding: `scripts/build-desktop-firmware.ps1` builds the catalog-selected firmware release ELF, then builds the desktop with it embedded. For other pipelines set `KIVORI_FIRMWARE_PATH`. The build rejects a non-RISC-V or non-ELF32 image. A host build without the variable disables the action, so a stale artifact cannot slip in.
 - `espflash` is the pinned sidecar shipped in the installer (dev builds may use one on `PATH`). Mirror to device sends a state command only. It does not install anything.
 - The offer (M2.7, `src/firmware_offer.rs`, pure): the device thread evaluates it every tick from the connection, the session identity, the bundled image's identity record, the updater state and whether a flash or knob gesture runs, and publishes `FirmwareOfferDto` (`kind`: `none | offerOptional | required | updateApp | deferredForAppUpdate`; product name, `from` and `to` versions, required `reason`: `protocolTooOld | missingCapabilities`, and an opaque `key`) on `firmware://offer`. Rules:
   - Only the bundled image whose record names the device's product and board counts, compared with `update_advice`. An unknown or foreign product, or an identity not yet reported, gets `none`; the flash guard (`wrongProduct`) still decides what may be written.

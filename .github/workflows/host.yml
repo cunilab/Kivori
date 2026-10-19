@@ -6,6 +6,18 @@ on:
   pull_request:
 
 jobs:
+  firmware-build-recipes:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun test scripts/build-firmware.test.mjs
+
   release-tools:
     runs-on: ubuntu-latest
     steps:

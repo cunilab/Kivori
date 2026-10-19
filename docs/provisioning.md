@@ -11,12 +11,16 @@ capabilities, discovery hints and guided input groups. Missing/unknown image ide
 capability names or incomplete input prerequisites stop before any port is opened. No first entry
 or product-name default selects QA requirements.
 
-`just provision` still builds the Pip physical-firmware recipe. `--product/--board/--rev` assert the
-identity preview/burn target; they do **not** select or rebuild a different image. Those arguments
-must match the bundled image even without `--burn-identity`. To QA another supported catalogued
-image, build that image explicitly, then supply its absolute path through `KIVORI_FIRMWARE_PATH`
-to `cargo run -p kivori-desktop --example provision`. The desktop build validates it against its
-catalog entry. Generic build recipes and multi-image packaging remain separate M2.8 work.
+`just provision` builds the catalog-selected release firmware. With today's sole product/board pair,
+no selection is needed. For an explicit target, set `KIVORI_PRODUCT` and `KIVORI_BOARD`, for example
+`KIVORI_PRODUCT=pala KIVORI_BOARD=c3-supermini just provision`. If the catalog has multiple pairs,
+both variables are required; catalog order never selects a default.
+
+`--product/--board/--rev` remain identity preview/burn assertions; they do **not** select the build.
+They must match the bundled image even without `--burn-identity`. For a separately built image, supply
+its absolute path through `KIVORI_FIRMWARE_PATH` to `cargo run -p kivori-desktop --example provision`.
+The desktop validates the image against its catalog entry. Multi-image packaging remains separate
+M2.8 work.
 
 ## Steps
 

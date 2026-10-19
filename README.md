@@ -93,7 +93,7 @@ discovery is automatic: there is no COM-port picker by design.
 ### Flash the device
 
 ```bash
-just fw-build                  # builds the product firmware (physical-st7789)
+just fw-build                  # builds catalog-selected firmware (currently Pip physical-st7789)
 just fw-flash                  # flash + monitor over USB
 ```
 
@@ -223,7 +223,7 @@ just test              # host workspace + frontend tests
 just build             # host workspace + frontend build
 just fw-check          # shared no_std crates compiled for RISC-V (isolation proof)
 just fw-test           # firmware core against host-sim adapters
-just fw-build          # build the product ESP32-C3 firmware (physical-st7789)
+just fw-build          # build catalog-selected firmware (currently Pip physical-st7789)
 just fw-flash          # flash + monitor the product firmware over USB
 just provision         # flash and check one new unit (docs/provisioning.md)
 just bundle-windows    # build the unsigned Windows installer (docs/release.md)

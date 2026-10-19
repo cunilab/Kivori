@@ -26,6 +26,7 @@ build:
     bun run build
 
 # ---- firmware (isolated workspace; ADR-0001) ----
+# fw-check/test/flash/flash-latency are explicit Pip/C3 development recipes.
 # no_std isolation proof: compile ONLY the shared crates for the RISC-V target from the firmware
 # workspace. Nothing esp-hal here, so this stays fast and proves the firewall.
 
@@ -37,11 +38,11 @@ fw-check:
 # `required-features`, so a plain `cargo build --release` silently builds only the library and
 # produces NO binary. `embedded` alone only selects main.rs's bare fallback mode (clock + serial,
 # no display, no input) — the shipped product firmware needs `physical-st7789` (which enables
-# `embedded` transitively via Cargo.toml), so that is the default here.
+# `embedded` transitively via Cargo.toml). The selected catalog entry owns the build features.
 
-# Build the flashable RISC-V firmware binary (the physical ST7789 + rotary product runtime).
+# Build the catalog firmware (sole pair, or KIVORI_PRODUCT + KIVORI_BOARD). Never flashes.
 fw-build:
-    cd firmware/pala && cargo build --release --features physical-st7789
+    bun scripts/build-firmware.mjs
 
 # Host-side device-core tests (no hardware).
 fw-test:
@@ -86,11 +87,14 @@ check-boundaries:
 
 # Build the unsigned Windows NSIS installer (run on Windows; needs PowerShell, bun and Rust).
 bundle-windows:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    firmware="$(bun scripts/build-firmware.mjs)"
     powershell -NoProfile -File scripts/fetch-espflash.ps1
-    cd firmware/pala && cargo build --locked --release --target riscv32imc-unknown-none-elf --no-default-features --features physical-st7789
     bun install --frozen-lockfile
     bun --filter kivori-desktop-ui build
-    cd apps/desktop && KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/pala/target/riscv32imc-unknown-none-elf/release/kivori-firmware" bunx tauri build --config src-tauri/tauri.release.conf.json -- --no-default-features
+    cd apps/desktop
+    KIVORI_FIRMWARE_PATH="$firmware" bunx tauri build --config src-tauri/tauri.release.conf.json -- --no-default-features
 
 # Build the macOS .app + .dmg (run on a Mac; signs only when APPLE_SIGNING_IDENTITY is set).
 bundle-macos:
@@ -113,7 +117,7 @@ desktop:
         echo "Port 1420 is already in use (another UI dev server?). Stop it, then retry." >&2
         exit 1
     fi
-    just fw-build
+    firmware="$(bun scripts/build-firmware.mjs)"
     set -m  # the UI server gets its own process group, so Ctrl-C / exit stops all of it
     bun --filter kivori-desktop-ui dev &
     ui=$!
@@ -123,12 +127,14 @@ desktop:
         kill -0 "$ui" 2>/dev/null || { echo "The UI dev server exited." >&2; exit 1; }
         sleep 0.3
     done
-    KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/pala/target/riscv32imc-unknown-none-elf/release/kivori-firmware" cargo run -p kivori-desktop
+    KIVORI_FIRMWARE_PATH="$firmware" cargo run -p kivori-desktop
 
 # Run Kivori Desktop with the freshly built product firmware embedded.
 app:
-    just fw-build
-    KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/pala/target/riscv32imc-unknown-none-elf/release/kivori-firmware" cargo run -p kivori-desktop
+    #!/usr/bin/env bash
+    set -euo pipefail
+    firmware="$(bun scripts/build-firmware.mjs)"
+    KIVORI_FIRMWARE_PATH="$firmware" cargo run -p kivori-desktop
 
 # DEV ONLY (M3 S7; docs/provisioning.md): flash the freshly built firmware onto the ONE plugged-in
 # unit, check the link and controls, print PASS/FAIL and append to provisioning-log.csv.
@@ -136,8 +142,10 @@ app:
 # Provision and QA one Kivori unit (builds the firmware first). Optional identity record:
 # `just provision --product pala --board c3-supermini --rev 1 [--burn-identity]` (docs/provisioning.md).
 provision *args:
-    just fw-build
-    KIVORI_FIRMWARE_PATH="{{justfile_directory()}}/firmware/pala/target/riscv32imc-unknown-none-elf/release/kivori-firmware" cargo run -p kivori-desktop --example provision -- {{args}}
+    #!/usr/bin/env bash
+    set -euo pipefail
+    firmware="$(bun scripts/build-firmware.mjs)"
+    KIVORI_FIRMWARE_PATH="$firmware" cargo run -p kivori-desktop --example provision -- {{args}}
 
 # ---- website (apps/web; Next.js on Cloudflare Workers via OpenNext) ----
 

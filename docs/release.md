@@ -231,3 +231,24 @@ Per-unit flashing and QA of new units: see [provisioning.md](./provisioning.md).
 - Unsigned: SmartScreen warns, and Defender may block `espflash.exe` (the app then reports the tool
   as missing).
 - The WebView2 bootstrapper needs a network connection on a PC that does not have WebView2 yet.
+
+## Catalog-selected firmware builds
+
+Build recipes use `bun scripts/build-firmware.mjs`, which reads the selected board's
+`firmware.build.target` and `firmware.build.features` and returns one freshly built artifact path.
+`just fw-build`, `app`, `desktop`, `provision`, `bundle-windows` and `bundle-macos` use the same helper.
+It needs Bun and the board's Rust target/toolchain installed. Set both `KIVORI_PRODUCT` and
+`KIVORI_BOARD` to select a pair; no variables are needed while the catalog has exactly one pair.
+Multiple pairs without selection fail instead of choosing the first. The helper also accepts
+`--product <id> --board <id>`; PowerShell's desktop builder accepts `-Product <id> -Board <id>`.
+
+Builds now always use the lockfile, disable default features, name the binary explicitly and ignore
+an inherited `CARGO_TARGET_DIR` for the firmware child. Unset `RUSTFLAGS` and
+`CARGO_ENCODED_RUSTFLAGS` before running these recipes: they would replace the firmware's linker
+configuration. Logs go to stderr; stdout contains only the artifact path. A failed build never hands
+a stale path to the embedding step. The PowerShell wrapper restores its caller's environment.
+
+The release firmware job shares this recipe and passes the resulting artifact's basename to the
+Windows download/embedding job. It still builds one image and installs the current C3 toolchain
+target. A multi-image release set and product-aware release orchestration remain M2.8 follow-up work.
+These commands build software; actual flashing/provisioning still requires its explicit recipe.
