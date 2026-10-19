@@ -20,8 +20,12 @@ bash scripts/fetch-espflash.sh
 bun install --frozen-lockfile
 bun --filter kivori-desktop-ui build
 
-KIVORI_FIRMWARE_PATH="$(bun scripts/build-firmware.mjs)"
-export KIVORI_FIRMWARE_PATH
+firmware_dir="$(mktemp -d)"
+trap 'rm -rf "$firmware_dir"' EXIT
+unset KIVORI_FIRMWARE_PATH
+KIVORI_FIRMWARE_MANIFEST="$(bun scripts/build-firmware-set.mjs --out-dir "$firmware_dir/images" --manifest-out "$firmware_dir/manifest.json")"
+[ -s "$KIVORI_FIRMWARE_MANIFEST" ] || { echo "Missing firmware manifest" >&2; exit 1; }
+export KIVORI_FIRMWARE_MANIFEST
 
 (cd apps/desktop && bunx tauri build \
   --config src-tauri/tauri.release.conf.json \

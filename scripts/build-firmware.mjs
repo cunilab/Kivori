@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // One catalog-selected firmware build. Stdout is exclusively the artifact path for callers.
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -9,7 +9,10 @@ import { parseArgs } from 'node:util';
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const machineId = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const cargoName = /^[a-zA-Z0-9_]+(?:[-/][a-zA-Z0-9_]+)*$/;
-const toml = (path) => Bun.TOML.parse(readFileSync(path, 'utf8'));
+const toml = (path) => {
+  if (!lstatSync(path).isFile()) throw new Error(`Catalog input must be a regular file: ${path}`);
+  return Bun.TOML.parse(readFileSync(path, 'utf8'));
+};
 
 function inside(parent, path) {
   if (
@@ -34,16 +37,23 @@ function inside(parent, path) {
   return absolute;
 }
 
-export function resolveFirmware(root, product, board) {
-  if ((product === undefined) !== (board === undefined))
-    throw new Error('Select both product and board.');
-  if (product !== undefined && (!machineId.test(product) || !machineId.test(board))) {
-    throw new Error('Product and board must be nonempty lowercase kebab-case ids.');
-  }
+export function listFirmwarePlans(root) {
   const registry = toml(join(root, 'products/registry.toml'));
+  for (const table of ['products', 'boards']) {
+    const entries = Object.entries(registry[table] ?? {});
+    if (
+      entries.some(
+        ([id, number]) =>
+          !machineId.test(id) || !Number.isInteger(number) || number < 1 || number > 65535,
+      ) ||
+      new Set(entries.map(([, number]) => number)).size !== entries.length
+    )
+      throw new Error('Duplicate or invalid catalog registry ids/wire numbers.');
+  }
   const pairs = [];
   for (const entry of readdirSync(join(root, 'products'), { withFileTypes: true })) {
-    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    if (entry.isFile() && (entry.name === 'registry.toml' || entry.name.startsWith('.'))) continue;
+    if (!entry.isDirectory()) throw new Error(`Unexpected catalog entry: ${entry.name}`);
     if (!machineId.test(entry.name) || !registry.products?.[entry.name]) {
       throw new Error(`Unregistered product directory: ${entry.name}`);
     }
@@ -54,15 +64,37 @@ export function resolveFirmware(root, product, board) {
       pairs.push({ product: entry.name, board: id, spec });
     }
   }
+  if (!pairs.length) throw new Error('The catalog has no active firmware pairs.');
+  const plans = pairs.map((pair) => firmwarePlan(root, pair, registry));
+  plans.sort((a, b) => a.productWire - b.productWire || a.boardWire - b.boardWire);
+  if (new Set(plans.map((p) => `${p.productWire}/${p.boardWire}`)).size !== plans.length)
+    throw new Error('Duplicate catalog firmware wire pair.');
+  return plans;
+}
+
+export function resolveFirmware(root, product, board) {
+  if ((product === undefined) !== (board === undefined))
+    throw new Error('Select both product and board.');
+  if (product !== undefined && (!machineId.test(product) || !machineId.test(board)))
+    throw new Error('Product and board must be nonempty lowercase kebab-case ids.');
+  const plans = listFirmwarePlans(root);
   const selected = product
-    ? pairs.find((pair) => pair.product === product && pair.board === board)
-    : pairs.length === 1
-      ? pairs[0]
+    ? plans.find((plan) => plan.product === product && plan.board === board)
+    : plans.length === 1
+      ? plans[0]
       : undefined;
   if (!selected)
     throw new Error(
-      `Select a catalog product/board pair: ${pairs.map((p) => `${p.product}/${p.board}`).join(', ')}`,
+      `Select a catalog product/board pair: ${plans.map((p) => `${p.product}/${p.board}`).join(', ')}`,
     );
+  return selected;
+}
+
+function firmwarePlan(root, selected, registry) {
+  const productWire = registry.products[selected.product];
+  const boardWire = registry.boards[selected.board];
+  if (![productWire, boardWire].every((n) => Number.isInteger(n) && n > 0 && n <= 65535))
+    throw new Error('Catalog firmware wire numbers must be 1..65535.');
   const firmware = selected.spec.firmware;
   const build = firmware?.build;
   if (
@@ -88,6 +120,9 @@ export function resolveFirmware(root, product, board) {
   return {
     product: selected.product,
     board: selected.board,
+    productWire,
+    boardWire,
+    target: build.target,
     cwd: crate,
     artifact: join(crate, firmware.artifact),
     targetDir: join(crate, 'target'),
@@ -105,12 +140,16 @@ export function resolveFirmware(root, product, board) {
   };
 }
 
-export function buildFirmware(plan, run = spawnSync) {
+export function checkFirmwareBuildEnvironment() {
   if (process.env.RUSTFLAGS !== undefined || process.env.CARGO_ENCODED_RUSTFLAGS !== undefined) {
     throw new Error(
       'Unset RUSTFLAGS and CARGO_ENCODED_RUSTFLAGS: firmware must retain its target linker flags.',
     );
   }
+}
+
+export function buildFirmware(plan, run = spawnSync) {
+  checkFirmwareBuildEnvironment();
   const result = run('cargo', plan.args, {
     cwd: plan.cwd,
     env: { ...process.env, CARGO_TARGET_DIR: plan.targetDir },
@@ -119,7 +158,11 @@ export function buildFirmware(plan, run = spawnSync) {
   if (result.error) throw result.error;
   if (result.status !== 0)
     throw new Error(`Firmware build failed (${result.signal ?? result.status}).`);
-  if (!existsSync(plan.artifact) || !statSync(plan.artifact).isFile())
+  if (
+    !existsSync(plan.artifact) ||
+    !statSync(plan.artifact).isFile() ||
+    statSync(plan.artifact).size === 0
+  )
     throw new Error(`Firmware artifact was not produced: ${plan.artifact}`);
   inside(plan.cwd, relative(plan.cwd, plan.artifact).split(sep).join('/'));
   return plan.artifact;

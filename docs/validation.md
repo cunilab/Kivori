@@ -250,6 +250,12 @@ fixtures cover exact product/board selection, per-target version/size/advice, ac
 IPC reservation preservation, generic recovery offers without an assumed version, and explicit
 provisioning selection before I/O. The legacy single-image path and empty host builds remain supported.
 
+Packaging fixtures build two products and multiple boards outside shipping roots, including a
+mocked shared Cargo artifact to verify immediate snapshots. They cover deterministic order,
+failed-build/no-manifest behavior, exact transferred filenames, nonregular/empty files, receiving-host
+absolute paths and native complete-set enforcement. Unix/Windows wrapper contracts mock child
+commands to check input isolation, cleanup and environment restoration without executing the app.
+
 Automated M2.8 resolver/workflow checks cover missing/unknown images, stale or invalid product choices, unknown
 USB hints, unknown reported identities, pending-handshake refusal, same-port identity binding, shared-USB board
 ambiguity, distinct-board selection, refusal status cleanup and no port
