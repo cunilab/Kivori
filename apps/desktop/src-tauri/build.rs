@@ -6,7 +6,11 @@ use std::process::Command;
 mod catalog;
 mod catalog_art;
 mod catalog_build;
+#[path = "src/firmware_bundle.rs"]
+#[allow(dead_code)]
+mod firmware_bundle;
 #[path = "src/firmware_marker.rs"]
+#[allow(dead_code)]
 mod firmware_marker;
 
 fn main() {
@@ -27,33 +31,29 @@ fn main() {
     std::fs::write(Path::new(&out_dir).join("catalog_sources.rs"), source)
         .expect("write embedded catalog sources");
 
-    // Firmware is built in its isolated workspace first. Opt in explicitly so ordinary host/CI
-    // builds do not silently package an old cross-compiled artifact from a previous local build.
     println!("cargo:rerun-if-env-changed=KIVORI_FIRMWARE_PATH");
-    let firmware = match std::env::var_os("KIVORI_FIRMWARE_PATH") {
-        Some(path) => {
-            let path = Path::new(&path);
-            println!("cargo:rerun-if-changed={}", path.display());
-            let bytes = std::fs::read(path).expect("read requested firmware ELF");
-            assert!(
-                bytes.len() >= 52 && &bytes[..6] == b"\x7fELF\x01\x01" && bytes[18..20] == [243, 0],
-                "firmware must be a little-endian ELF32 RISC-V image"
-            );
-            bytes
-        }
-        None => Vec::new(),
-    };
-    // The bundled firmware's own version, read from its image so it can never drift from what gets
-    // flashed. Empty when no firmware is embedded (ordinary host/CI builds).
-    let bundled_version = firmware_marker::scan_firmware_version(&firmware).unwrap_or_default();
-    println!("cargo:rustc-env=KIVORI_BUNDLED_FIRMWARE_VERSION={bundled_version}");
-    if let Some(manifest) = catalog_build::check_firmware(&catalog, &root, &firmware)
-        .expect("bundled firmware matches its catalog identity")
-    {
+    println!("cargo:rerun-if-env-changed=KIVORI_FIRMWARE_MANIFEST");
+    let legacy = std::env::var_os("KIVORI_FIRMWARE_PATH");
+    let manifest = std::env::var_os("KIVORI_FIRMWARE_MANIFEST");
+    let paths = catalog_build::firmware_paths(legacy.as_deref(), manifest.as_deref())
+        .expect("explicit firmware input");
+    if let Some(path) = manifest {
+        println!("cargo:rerun-if-changed={}", Path::new(&path).display());
+    }
+    for path in &paths {
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
+    catalog_build::require_single_image_runtime(paths.len()).expect("supported firmware runtime");
+    let generated = catalog_build::generate_firmware(&catalog, &root, &paths, Path::new(&out_dir))
+        .expect("bundled firmware matches its catalog identity");
+    for manifest in generated.manifests {
         println!("cargo:rerun-if-changed={}", manifest.display());
     }
-    std::fs::write(Path::new(&out_dir).join("kivori-firmware.elf"), firmware)
-        .expect("write bundled firmware");
+    std::fs::write(
+        Path::new(&out_dir).join("firmware_sources.rs"),
+        generated.source,
+    )
+    .expect("write embedded firmware sources");
 
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
         build_mediaremote_adapter(Path::new(&out_dir));

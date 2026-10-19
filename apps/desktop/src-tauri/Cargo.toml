@@ -96,6 +96,7 @@ png = "0.18"
 tauri-build = { version = "2", features = [] }
 # The build parses the product catalog and checks the bundled firmware against it (ADR-0014).
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 toml = "0.8"
 # Build-time only: compiles the canonical asset blob into OUT_DIR so the app bundles it (no runtime resvg).
 kivori-asset-compiler = { path = "../../../tools/asset-compiler" }

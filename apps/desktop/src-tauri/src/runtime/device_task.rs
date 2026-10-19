@@ -220,8 +220,8 @@ fn device_loop(
     let mut brightness = config.display.brightness;
     let mut buddy_sent: Option<(u32, u32, MascotPersonality, bool, u8)> = None;
     let mut flash = FlashWorkflow::new(
-        firmware::bundled_image_available(),
-        firmware::BUNDLED_FIRMWARE.len() as u64,
+        firmware::single_image().is_some(),
+        firmware::single_image().map_or(0, |image| image.bytes().len() as u64),
     );
     publish_firmware_status(&firmware_status, &flash);
     drain_firmware_activity(&app, &activity_log, &mut flash);
@@ -411,13 +411,13 @@ fn device_loop(
                     let recovery = flash_command != DeviceCommand::FlashFirmware
                         || manager.state() == ConnectionState::Incompatible;
                     let mut refusal = firmware::FlashFailure::Unknown;
-                    let image = firmware::bundled_image_identity();
-                    if image.is_none() {
+                    let Some(bundled) = firmware::single_image() else {
                         flash.fail_preparation_with(firmware::FlashFailure::ImageUnavailable);
                         drain_firmware_activity(&app, &activity_log, &mut flash);
                         publish_firmware_status(&firmware_status, &flash);
                         continue;
-                    }
+                    };
+                    let image = Some(bundled.identity());
                     let requested = if recovery {
                         let candidates = enumerate();
                         let found = filter_candidates(&candidates, default_allowlist());
@@ -510,7 +510,7 @@ fn device_loop(
                         |flashing_status| {
                             *firmware_status.lock().expect("firmware status lock") =
                                 flashing_status.clone();
-                            firmware::flash_bundled(&port, &cancel)
+                            firmware::flash_image(bundled, &port, &cancel)
                         },
                         |observation| {
                             record_observations(&app, &activity_log, [observation]);
@@ -993,8 +993,7 @@ fn device_loop(
                 &OfferInputs {
                     device: &offer_device,
                     generation: session.connection_generation(),
-                    image: firmware::bundled_image_identity()
-                        .filter(|_| firmware::bundled_image_available()),
+                    image: firmware::single_image().map(|image| image.identity()),
                     host_major: kivori_protocol::PROTOCOL_MAJOR,
                     app_update_due,
                     flashing: flash.is_busy(),

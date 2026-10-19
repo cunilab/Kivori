@@ -291,7 +291,9 @@ the beta acceptance platform. Finish and review the docs before implementing the
   PowerShell and release firmware CI share one validated, explicit-or-unambiguous build helper.
   Recovery now refuses missing images, invalid/stale picks, absent candidates and ambiguous boards
   before port reservation; image availability cannot decide hardware identity. Multi-image
-  packaging/release keeps this item open.
+  packaging/release keeps this item open. The image-set foundation now validates/emits deterministic
+  multi-image indexes with exact lookup; shipping builds remain gated to at most one image until
+  per-device runtime selection replaces the explicit single-image bridge.
 - [ ] **Capability-driven UI:** document the capability-to-surface mapping; backend effective support
   combines current-session negotiation, resolved identity and host support, not catalog minimums.
   UI and command handling deny ordinary product actions while identity is pending/unknown. Cover
