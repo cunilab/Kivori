@@ -1,5 +1,6 @@
 // Run with: node --test scripts/release-tools.test.mjs
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
 import {
   bumpVersion,
@@ -208,7 +209,26 @@ test('after the first release, none is refused and every version must pass the l
   assert.throws(() => planRelease({ ...later, firmwareBump: '' }), /firmware bump must be none/);
 });
 
-test('only the version line of the named table changes', () => {
+// The CLI parses TOML in Bun; retain Node's test/mocking semantics for the surrounding suites.
+function tomlTest(name, check) {
+  test(name, () => {
+    execFileSync(
+      'bun',
+      [
+        '--eval',
+        `
+      import assert from 'node:assert/strict';
+      import { setTomlVersion, tomlVersion } from ${JSON.stringify(new URL('./release-bump.mjs', import.meta.url).href)};
+      import { packageVersion } from ${JSON.stringify(new URL('./release-info.mjs', import.meta.url).href)};
+      (${check.toString()})();
+    `,
+      ],
+      { stdio: 'pipe' },
+    );
+  });
+}
+
+tomlTest('only the version line of the named table changes', () => {
   const root = `[workspace]
 members = ["a"]
 
@@ -229,6 +249,45 @@ serde = { version = "1.0.0" }
   assert.equal(tomlVersion(fw, 'package'), '0.1.0');
   assert.equal(tomlVersion(setTomlVersion(fw, 'package', '0.2.0'), 'package'), '0.2.0');
   assert.throws(() => tomlVersion(fw, 'workspace.package'), /no \[workspace\.package\]/);
+});
+
+tomlTest(
+  'TOML versions accept literal strings, header comments and CRLF without reformatting',
+  () => {
+    for (const table of ['package', 'workspace.package']) {
+      const text = `[ ${table.replace('.', ' . ')} ] # release version\r\n  version = '0.1.0' # keep me\r\n[dependencies]\r\nserde = { version = "1.0.0" }\r\n`;
+      assert.equal(tomlVersion(text, table), '0.1.0');
+      const updated = setTomlVersion(text, table, '0.2.0');
+      assert.equal(updated, text.replace("'0.1.0'", "'0.2.0'"));
+      assert.equal(tomlVersion(updated, table), '0.2.0');
+      if (table === 'package') assert.equal(packageVersion(text), '0.1.0');
+    }
+  },
+);
+
+tomlTest('version readers accept parsed TOML forms and reject inherited versions', () => {
+  assert.equal(tomlVersion("package.version = '0.3.0'\n", 'package'), '0.3.0');
+  assert.equal(packageVersion('[package]\nauthors = ["a"]\nversion = "0.1.0"\n'), '0.1.0');
+  assert.throws(
+    () => tomlVersion('[package]\nversion.workspace = true\n', 'package'),
+    /no version/,
+  );
+  assert.throws(
+    () => setTomlVersion("package = { version = '0.1.0' }\n", 'package', '0.2.0'),
+    /Cannot safely edit/,
+  );
+  assert.throws(
+    () => setTomlVersion('[package]\nversion = """0.1.0"""\n', 'package', '0.2.0'),
+    /Cannot safely edit/,
+  );
+  const both = '[workspace.package]\nversion = "0.1.0"\n[package]\nversion = "0.4.0"\n';
+  assert.equal(setTomlVersion(both, 'package', '0.5.0'), both.replace('"0.4.0"', '"0.5.0"'));
+});
+
+tomlTest('TOML version edits refuse fake table headers inside multiline strings', () => {
+  const text = `[metadata]\nnote = """\n[package]\nversion = "0.1.0"\n"""\n[package]\nversion = "0.1.0"\n`;
+  assert.throws(() => setTomlVersion(text, 'package', '0.2.0'), /Cannot safely edit/);
+  assert.equal(tomlVersion(text, 'package'), '0.1.0');
 });
 
 // --- release-info.mjs ---------------------------------------------------------------------------
@@ -412,10 +471,6 @@ See the [README](https://github.com/cunilab/Kivori/blob/v0.1.0/README.md) for wh
 });
 
 test('title and names come from the files', () => {
-  assert.equal(
-    packageVersion('[package]\nname = "x"\nversion = "0.1.0"\n[dependencies]\n'),
-    '0.1.0',
-  );
   assert.equal(
     productName('display_name = "Kivori Pip"\nshort_name = "Pip"\nmodel = "KV-P1"\n'),
     'Pip',

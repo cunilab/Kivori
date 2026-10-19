@@ -200,7 +200,10 @@ To try the pipeline without a tag, run the `release` workflow by hand (Actions, 
 uploads the installer as a workflow artifact and creates no release. Pull requests that touch
 packaging files run it too, and never read the signing secrets. The release scripts' tests:
 `node --test scripts/release-tools.test.mjs scripts/firmware-release-guard.test.mjs`
-(host CI and the Release button run both suites).
+(host CI and the Release button run both suites). TOML-specific cases invoke Bun, the release CLI's
+runtime. Version reads use the same TOML parser as the catalog; edits preserve quotes, comments and
+line endings. The editor requires a plain `version` assignment in the named table and refuses any
+edit that changes another parsed value, before writing manifests or workflow outputs.
 
 ## Verifying an app update end to end
 

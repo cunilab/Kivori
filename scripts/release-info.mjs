@@ -24,6 +24,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { releaseCatalog } from './release-catalog.mjs';
+import { tomlVersion } from './release-bump.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -136,9 +137,7 @@ export const isFirmwareCommit = (commit, product) => touches(commit, firmwareDir
 
 /** `version = "x"` of the `[package]` table. */
 export function packageVersion(cargoToml) {
-  const m = /\[package\][^[]*?^version\s*=\s*"([^"]+)"/ms.exec(cargoToml);
-  if (!m) throw new Error('no [package] version found');
-  return m[1];
+  return tomlVersion(cargoToml, 'package');
 }
 
 /** The product's `short_name`, the customer name without the brand. */

@@ -417,6 +417,86 @@ function twoProducts(t, options) {
   }
   return root;
 }
+test('release CLI keeps or bumps literal TOML versions without reformatting other products', (t) => {
+  for (const bumpLamp of [false, true]) {
+    const root = twoProducts(t);
+    const path = 'devices/lamp firmware/Cargo.toml';
+    const literal = readFileSync(join(root, path), 'utf8')
+      .replace('[package]', '[ package ] # lamp')
+      .replace('version = "0.4.0"', "version = '0.4.0' # release version")
+      .replaceAll('\n', '\r\n');
+    put(root, path, literal);
+    const appText = readFileSync(join(root, 'Cargo.toml'), 'utf8')
+      .replace('[workspace.package]', '[ workspace . package ] # app')
+      .replace('version = "0.1.0"', "version = '0.1.0'");
+    put(root, 'Cargo.toml', appText);
+    commit(root, 'test: valid TOML formatting');
+    git(root, 'tag', '-f', 'fw-pala-v0.1.0');
+    git(root, 'tag', '-f', 'fw-lamp-v0.4.0');
+    git(root, 'tag', 'v0.1.0');
+    const outputs = outputFile(t);
+    main(
+      [
+        '--app',
+        'patch',
+        '--firmware-overrides',
+        JSON.stringify({ pala: 'patch', lamp: bumpLamp ? '0.5.0' : 'none' }),
+        '--write',
+        '--outputs',
+        outputs,
+      ],
+      root,
+    );
+    assert.equal(
+      readFileSync(join(root, path), 'utf8'),
+      bumpLamp ? literal.replace("'0.4.0'", "'0.5.0'") : literal,
+    );
+    assert.equal(
+      readFileSync(join(root, 'Cargo.toml'), 'utf8'),
+      appText.replace("'0.1.0'", "'0.1.1'"),
+    );
+    const notes = info(['--version', '0.1.1', '--prev-tag', 'v0.1.0'], root);
+    assert.match(
+      notes,
+      bumpLamp ? /Lamp firmware 0.5.0.*was 0.4.0/ : /Lamp firmware 0.4.0.*unchanged/,
+    );
+    assert.deepEqual(JSON.parse(readOutputs(outputs).firmware_versions), {
+      pala: '0.1.1',
+      lamp: bumpLamp ? '0.5.0' : '0.4.0',
+    });
+  }
+});
+
+test('a multiline TOML decoy fails before release versions or outputs are written', (t) => {
+  const root = twoProducts(t);
+  const path = 'devices/lamp firmware/Cargo.toml';
+  const text = readFileSync(join(root, path), 'utf8');
+  put(root, path, '[workspace.metadata]\nnote = """\n[package]\nversion = "0.4.0"\n"""\n' + text);
+  commit(root, 'test: multiline table decoy');
+  git(root, 'tag', '-f', 'fw-lamp-v0.4.0');
+  const outputs = outputFile(t);
+  assert.throws(
+    () =>
+      main(
+        [
+          '--app',
+          'patch',
+          '--product',
+          'lamp',
+          '--firmware',
+          'patch',
+          '--write',
+          '--outputs',
+          outputs,
+        ],
+        root,
+      ),
+    /Cannot safely edit/,
+  );
+  assert.equal(git(root, 'status', '--porcelain'), '');
+  assert.equal(existsSync(outputs), false);
+});
+
 function outputFile(t) {
   const dir = mkdtempSync(join(tmpdir(), 'kivori-plan-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));

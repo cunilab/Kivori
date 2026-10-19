@@ -22,7 +22,7 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseArgs } from 'node:util';
+import { isDeepStrictEqual, parseArgs } from 'node:util';
 
 import { releaseCatalog } from './release-catalog.mjs';
 import { checkFirmwareRelease } from './firmware-release-guard.mjs';
@@ -96,37 +96,48 @@ export function latestTagVersion(tags, prefix) {
 }
 
 function tableBounds(lines, table) {
-  const start = lines.findIndex((l) => l.trim() === `[${table}]`);
-  if (start < 0) throw new Error(`no [${table}] table`);
+  const start = lines.findIndex((line) => {
+    const header = /^[ \t]*\[([^\]]+)\][ \t]*(?:#[^\r\n]*)?\r?$/.exec(line);
+    return header && header[1].replace(/\s/g, '') === table;
+  });
+  if (start < 0)
+    throw new Error(`Cannot safely edit version in [${table}]; use a plain version line`);
   let end = lines.findIndex((l, i) => i > start && /^\s*\[/.test(l));
   if (end < 0) end = lines.length;
   return [start, end];
 }
 
-const VERSION_LINE = /^(\s*version\s*=\s*")([^"]*)(".*)$/;
+const VERSION_LINE = /^(\s*version\s*=\s*)(["'])([^"']+)(\2[^\r\n]*\r?)$/;
 
-/** `version = "x"` of a TOML table (`workspace.package`, `package`). */
+/** The explicit version of a TOML table (`workspace.package`, `package`). Run with Bun. */
 export function tomlVersion(toml, table) {
-  const lines = toml.split('\n');
-  const [start, end] = tableBounds(lines, table);
-  for (let i = start + 1; i < end; i++) {
-    const m = VERSION_LINE.exec(lines[i]);
-    if (m) return m[2];
-  }
-  throw new Error(`no version in [${table}]`);
+  const value = table.split('.').reduce((value, key) => value?.[key], Bun.TOML.parse(toml));
+  if (!value) throw new Error(`no [${table}] table`);
+  if (typeof value.version !== 'string') throw new Error(`no version in [${table}]`);
+  return value.version;
 }
 
-/** The same TOML with only that table's `version` line changed. */
+/** Preserve formatting, refusing any edit that changes more than the intended version. */
 export function setTomlVersion(toml, table, version) {
+  parseSemver(version);
+  const expected = Bun.TOML.parse(toml);
+  tomlVersion(toml, table);
+  table.split('.').reduce((value, key) => value[key], expected).version = version;
   const lines = toml.split('\n');
   const [start, end] = tableBounds(lines, table);
   for (let i = start + 1; i < end; i++) {
     if (VERSION_LINE.test(lines[i])) {
-      lines[i] = lines[i].replace(VERSION_LINE, `$1${version}$3`);
-      return lines.join('\n');
+      lines[i] = lines[i].replace(
+        VERSION_LINE,
+        (_, prefix, quote, _old, suffix) => `${prefix}${quote}${version}${suffix}`,
+      );
+      const updated = lines.join('\n');
+      if (!isDeepStrictEqual(Bun.TOML.parse(updated), expected))
+        throw new Error(`Cannot safely edit version in [${table}]`);
+      return updated;
     }
   }
-  throw new Error(`no version in [${table}]`);
+  throw new Error(`Cannot safely edit version in [${table}]; use a plain version line`);
 }
 
 export const appTag = (version) => `v${version}`;
