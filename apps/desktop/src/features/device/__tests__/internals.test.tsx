@@ -322,11 +322,18 @@ describe('DeviceInternals card', () => {
     const clock = vi.spyOn(performance, 'now').mockReturnValue(100);
     try {
       setLatestInternals({ ...reporting, snapshotAgeMs: 4000 });
-      expect(internalsForBundle(1, true)).toMatchObject({
+      expect(internalsForBundle(1, true)).toEqual({
         status: 'fresh',
         ageMs: 4000,
-        data: { ...reporting, snapshotAgeMs: 4000 },
+        data: {
+          connected: true,
+          supported: true,
+          snapshot: reporting.snapshot,
+          snapshotAgeMs: 4000,
+        },
       });
+      expect(internalsForBundle(1, true).data).not.toHaveProperty('connectionGeneration');
+      expect(getLatestInternals()?.connectionGeneration).toBe(1);
       clock.mockReturnValue(1200);
       expect(internalsForBundle(1, true)).toEqual({ status: 'stale', ageMs: 5100, data: null });
       expect(internalsForBundle(2, true)).toEqual({

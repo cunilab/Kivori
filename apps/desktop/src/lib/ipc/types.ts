@@ -210,7 +210,8 @@ export type HostPresence = (typeof HOST_PRESENCES)[number];
 export const HOST_INPUT_PERMISSIONS = ['required', 'granted', 'notNeeded', 'unknown'] as const;
 
 /**
- * Everything the Diagnostics card shows and "Copy diagnostics" copies. Unknown values are `null`.
+ * Diagnostics for the card and clipboard projection. Unknown values are `null`.
+ * The clipboard omits the internal connection generation used to reject stale replies.
  * Carries no port, path or raw device id; the device is only its short hash.
  */
 export interface DiagnosticsDto {

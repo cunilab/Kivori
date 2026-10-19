@@ -111,25 +111,24 @@ export function Diagnostics({
     try {
       // Read the safe base on demand; this command never asks the device for internals.
       const base = await getDiagnostics();
+      const { generation: baseGeneration, ...connection } = base.connection;
+      const exported = { ...base, connection };
       const current = context.current;
       if (
         !mounted.current ||
         current.connection?.connectionGeneration !== started.connectionGeneration ||
         current.connection.connection !== started.connection ||
-        base.connection.generation !== started.connectionGeneration ||
+        baseGeneration !== started.connectionGeneration ||
         base.connection.state !== started.connection
       ) {
         throw new Error('Diagnostics session changed.');
       }
       const copied = current.devMode
         ? {
-            ...base,
-            internals: internalsForBundle(
-              base.connection.generation,
-              base.connection.state === 'connected',
-            ),
+            ...exported,
+            internals: internalsForBundle(baseGeneration, base.connection.state === 'connected'),
           }
-        : base;
+        : exported;
       await navigator.clipboard.writeText(JSON.stringify(copied, null, 2));
       setCopy('copied');
     } catch {
