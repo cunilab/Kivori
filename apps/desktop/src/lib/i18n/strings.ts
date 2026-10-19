@@ -764,6 +764,11 @@ export const strings = {
       tipsHeading: 'Cable tips',
       waiting: 'Looking for your Kivori…',
       connected: 'Your Kivori is connected.',
+      pending: 'Reading your Kivori’s identity…',
+      unknown:
+        'This Kivori is not supported by this app. Update the app, or skip this step to finish setup.',
+      attention:
+        'Your Kivori’s firmware needs attention. Skip this step and open Device after setup to check its matching firmware.',
       incompatible: 'Your Kivori needs a firmware update before it can work with this app.',
       stuck: 'Still cannot connect. You can restore your Kivori with its BOOT button.',
       restore: 'Restore with the BOOT button',
@@ -789,27 +794,37 @@ export const strings = {
     },
     tour: {
       title: 'Try your Kivori',
-      body: 'Use the real device. Each step ticks off when Kivori Desktop sees it.',
-      needDevice: 'Connect your Kivori to try these.',
-      skipTour: 'Skip the tour',
+      body: 'Try the controls listed here. Their actions follow your saved bindings in Controls. Continue whenever you are ready.',
+      needDevice:
+        'No device controls are available right now. You can continue setup and try them later.',
+      noControls: 'There are no controls to try in this guide. You can continue setup.',
       steps: {
-        knob: { name: 'Turn the knob', hint: 'Turn it either way to change the volume.' },
-        press: { name: 'Press the knob', hint: 'Press the knob straight down once.' },
-        buttons: { name: 'Press a button', hint: 'Press the left or right button.' },
+        rotate: {
+          name: 'Turn the rotary control',
+          hint: 'Turn it either way and try its assigned action.',
+        },
+        press: {
+          name: 'Press the push-switch',
+          hint: 'Try the action assigned to Press in Controls.',
+        },
+        button1: {
+          name: 'Press a context button',
+          hint: 'Try a button and check its assigned action in Controls.',
+        },
       },
-      done: 'Done',
-      waitingFor: 'Waiting for you…',
     },
     customize: {
       title: 'Make it yours',
       body: 'You can change all of this later.',
       autoHeading: 'Profiles switch on their own',
       autoBody:
-        'Kivori changes what the controls do to suit the app in front, for example media in a player, or in Zoom and Teams the left button mutes your microphones (the computer’s, not the call app’s own mute button). To stay on one profile, hold the middle button; hold it again to let Kivori follow your apps again.',
+        'Saved profiles choose bindings for each app. You can edit those bindings in Controls.',
+      pinBody:
+        'Hold the middle context button to stay on one profile. Hold it again to follow apps automatically.',
       viewHeading: 'Screen at start',
-      viewBody: 'What the screen shows when Kivori starts.',
+      viewBody: 'The saved default view for devices with display support.',
       intensityHeading: 'Buddy liveliness',
-      intensityBody: 'How lively your buddy is when nothing else is happening.',
+      intensityBody: 'The saved liveliness for devices with Buddy support.',
       saveFailed: 'Could not save that setting.',
       launchBody: 'Kivori starts quietly in the tray and reconnects your device.',
       launchLabel: {
@@ -821,7 +836,7 @@ export const strings = {
     },
     done: {
       title: 'You are all set',
-      body: 'Kivori is ready. You can run this setup again from the Device page.',
+      body: 'Choose Finish to complete setup. You can run it again from the Device page.',
       finish: 'Finish',
       finishing: 'Finishing…',
       launchFailed:
