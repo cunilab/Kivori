@@ -14,10 +14,12 @@ device. Unsupported control rows are marked **Saved only** after identity resolv
 **Test** actions retain the existing action catalog, permission checks and countdown; they do not
 require a connected device.
 
-Activity still requires developer mode. Device Studio requires both its build gate and developer
-mode. Its renderer, playback and reaction previews work offline. If a capability change removes the
-focused live control, focus moves to the current page title. If a page disappears when developer
-mode turns off, navigation and focus move to Home.
+Developer is always visible. Its master toggle defaults off and owns Diagnostics, Activity,
+Social reactions and Device Studio. Studio also requires its static frontend build gate and native
+build flag; its renderer, playback and reaction previews work offline. Device and Developer both
+expose basic Copy diagnostics with the toggle off. Only the active tool mounts, so leaving Internals
+or switching the toggle off stops its polling. A removed focused control returns focus to the page
+title; Developer itself stays available when its tools are turned off.
 
 ## Surface mapping
 
@@ -26,7 +28,7 @@ mode turns off, navigation and focus move to Home.
 | Home computer monitoring, microphone, media and last action | Host readings and host action outcomes; independent of device capabilities. Unknown readings retain their existing unavailable explanations. |
 | Home device screen illustration, Showing chip, Change view | `deskStatusV1`. Otherwise use a neutral device symbol, without a screen/knob claim. |
 | Home Buddy report | A current, resolved, usable session with an actual reported state. This is baseline protocol data, not proof of transient reaction support. |
-| Home Say hi and Display direct reactions | Developer mode and `mascotInteraction`. Hidden without effective support. |
+| Developer Social reactions | Developer mode and `mascotInteraction`. Direct reaction controls are absent from Home and Display. |
 | Display Show now | `deskStatusV1`, checked again by the backend. All five modes belong to this capability, including Buddy and Media. |
 | Saved default and secondary view | Always editable. Default view requires `deskStatusV1` to reach the device; secondary view requires physical input, push-switch and double-press support to be invoked. |
 | Saved brightness | Always editable; sent through `BuddySettings` only with `idleLifeV1`. |
@@ -37,7 +39,7 @@ mode turns off, navigation and focus move to Home.
 | Context buttons | `physicalInputV1` and `contextButtonsV1`. |
 | Device Studio reaction preview | Host renderer always; request device playback only with `mascotInteraction`. |
 | Device Studio Mirror | Sendable state and a usable live session. Pending, unknown, disconnected and identity-only recovery sessions cannot change a later device's desired state. |
-| Device Internals | Developer mode plus effective `deviceInternalsV1`; the existing visible-card polling and backend snapshot rules remain. |
+| Developer Device Internals | Active Diagnostics tool with developer mode on, plus effective `deviceInternalsV1`; the existing visible-card polling and backend snapshot rules remain. |
 
 `mediaInfoV1` adds now-playing title/artist messages. It is not a prerequisite for the Media view,
 whose playback state is in `Status`. `mascotInteraction` enables transient actions and acknowledgments;
@@ -68,7 +70,7 @@ identity pending/unknown/recovery, offline preview, binding retention and focus 
 sessions. Native session tests cover control-specific input refusal and Mirror refusing to stage
 state while pending or disconnected. Fake devices are injected in tests, never registered for shipping.
 
-Catalog-provided product art/control metadata, catalog-driven onboarding, Developer-page consolidation
+Catalog-provided product art/control metadata, catalog-driven onboarding
 and diagnostic snapshot freshness are separate M2.8 items. This mapping does not claim those are
 complete or that catalog metadata can implement a new interaction model. See
 [ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md) and the

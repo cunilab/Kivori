@@ -2,15 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { toast } from 'sonner';
 import {
-  Activity,
   Cpu,
-  FlaskConical,
   Gamepad2,
   House,
   LayoutGrid,
   Monitor,
   Moon,
   Sun,
+  Wrench,
   type LucideIcon,
 } from 'lucide-react';
 import { Badge } from '@kivori/ui/components/badge';
@@ -43,10 +42,9 @@ import {
 } from '@kivori/ui/components/sidebar';
 import { Toaster } from '@kivori/ui/components/sonner';
 import { TooltipProvider } from '@kivori/ui/components/tooltip';
-import { ActivityPage } from './features/activity/ActivityPage';
 import { ControlsPage } from './features/controls/ControlsPage';
+import { DeveloperPage } from './features/developer/DeveloperPage';
 import { DevicePage } from './features/device/DevicePage';
-import { DeviceStudio } from './features/device-studio/DeviceStudio';
 import { DisplayPage } from './features/display/DisplayPage';
 import { migrateLegacyBuddy } from './features/display/legacy-buddy';
 import { HomePage } from './features/home/HomePage';
@@ -70,11 +68,7 @@ import { format, strings } from './lib/i18n/strings';
 import { setTheme, useTheme, type ThemeChoice } from './lib/theme';
 import { cn } from '@kivori/ui/lib/utils';
 
-// The Device Studio route is served in dev builds only (FR-028). The backend independently gates its
-// dev-only IPC commands behind the `device-studio` Cargo feature, so both layers must agree.
-const DEVICE_STUDIO_BUILD = import.meta.env.DEV;
-
-type PageId = 'home' | 'controls' | 'display' | 'activity' | 'device' | 'studio';
+type PageId = 'home' | 'controls' | 'display' | 'developer' | 'device';
 
 const nav = strings.navigation;
 const PRIMARY: { id: PageId; label: string; Icon: LucideIcon }[] = [
@@ -83,8 +77,8 @@ const PRIMARY: { id: PageId; label: string; Icon: LucideIcon }[] = [
   { id: 'display', label: nav.display, Icon: LayoutGrid },
 ];
 const SECONDARY: { id: PageId; label: string; Icon: LucideIcon }[] = [
-  { id: 'activity', label: nav.activity, Icon: Activity },
   { id: 'device', label: nav.device, Icon: Cpu },
+  { id: 'developer', label: nav.developer, Icon: Wrench },
 ];
 
 const DOT: Record<UiConnection, string> = {
@@ -196,21 +190,6 @@ export function App(): ReactElement {
   }, [ui]);
 
   const devMode = useDevMode();
-  // Developer mode never reveals Device Studio in a production build: the build gate comes first.
-  const showStudio = DEVICE_STUDIO_BUILD && devMode && (appInfo?.deviceStudioEnabled ?? false);
-  const hidden = (id: PageId): boolean =>
-    (id === 'studio' && !showStudio) || (id === 'activity' && !devMode);
-  const current = hidden(page) ? 'home' : page;
-  // A page that just became hidden (developer mode turned off) lands on Home for good.
-  useEffect(() => {
-    if (current !== page) {
-      setPage(current);
-      requestAnimationFrame(() =>
-        document.querySelector<HTMLElement>('[data-page-title]')?.focus(),
-      );
-    }
-  }, [current, page]);
-
   const lastFocused = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const remember = (event: FocusEvent): void => {
@@ -219,7 +198,7 @@ export function App(): ReactElement {
     document.addEventListener('focusin', remember);
     return () => document.removeEventListener('focusin', remember);
   }, []);
-  const supportKey = `${connection?.connection}:${connection?.connectionGeneration}:${connection?.device?.identity?.known}:${connection?.capabilities.join(',')}:${devMode}`;
+  const supportKey = `${connection?.connection}:${connection?.connectionGeneration}:${connection?.device?.identity?.known}:${connection?.capabilities.join(',')}:${devMode}:${appInfo?.deviceStudioEnabled}`;
   useEffect(() => {
     if (
       lastFocused.current &&
@@ -241,8 +220,8 @@ export function App(): ReactElement {
   const item = ({ id, label, Icon }: { id: PageId; label: string; Icon: LucideIcon }) => (
     <SidebarMenuItem key={id}>
       <SidebarMenuButton
-        isActive={current === id}
-        aria-current={current === id ? 'page' : undefined}
+        isActive={page === id}
+        aria-current={page === id ? 'page' : undefined}
         tooltip={label}
         onClick={() => go(id)}
       >
@@ -253,10 +232,7 @@ export function App(): ReactElement {
   );
 
   const allItems = [...PRIMARY, ...SECONDARY];
-  const title =
-    current === 'studio'
-      ? nav.studio
-      : (allItems.find((entry) => entry.id === current)?.label ?? '');
+  const title = allItems.find((entry) => entry.id === page)?.label ?? '';
 
   if (onboarding.completed === false) {
     return (
@@ -299,19 +275,9 @@ export function App(): ReactElement {
               <SidebarGroup>
                 <SidebarGroupLabel>{nav.groups.system}</SidebarGroupLabel>
                 <SidebarGroupContent>
-                  <SidebarMenu>{SECONDARY.filter(({ id }) => !hidden(id)).map(item)}</SidebarMenu>
+                  <SidebarMenu>{SECONDARY.map(item)}</SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>
-              {showStudio ? (
-                <SidebarGroup>
-                  <SidebarGroupLabel>{nav.groups.developer}</SidebarGroupLabel>
-                  <SidebarGroupContent>
-                    <SidebarMenu>
-                      {item({ id: 'studio', label: nav.studio, Icon: FlaskConical })}
-                    </SidebarMenu>
-                  </SidebarGroupContent>
-                </SidebarGroup>
-              ) : null}
             </nav>
           </SidebarContent>
           <SidebarFooter>
@@ -337,20 +303,20 @@ export function App(): ReactElement {
             </div>
           </header>
           <div className="flex-1">
-            {current === 'home' ? (
+            {page === 'home' ? (
               <HomePage
                 connection={connection}
                 desk={desk}
                 updateAvailable={updateAvailable}
                 onNavigate={go}
               />
-            ) : current === 'controls' ? (
+            ) : page === 'controls' ? (
               <ControlsPage desk={desk} config={config} connection={connection} />
-            ) : current === 'display' ? (
+            ) : page === 'display' ? (
               <DisplayPage desk={desk} config={config} connection={connection} />
-            ) : current === 'activity' ? (
-              <ActivityPage />
-            ) : current === 'device' ? (
+            ) : page === 'developer' ? (
+              <DeveloperPage connection={connection} appInfo={appInfo} />
+            ) : page === 'device' ? (
               <DevicePage
                 connection={connection}
                 appInfo={appInfo}
@@ -358,8 +324,6 @@ export function App(): ReactElement {
                   onboarding.restart().catch(() => toast.error(strings.onboarding.runAgain.failed));
                 }}
               />
-            ) : showStudio ? (
-              <DeviceStudio connection={connection} />
             ) : null}
           </div>
         </SidebarInset>

@@ -302,8 +302,6 @@ export function DisplayPage({
 
       <CompanionControls
         config={config}
-        connected={connection?.connection === 'connected'}
-        supported={hasCapability(connection, 'mascotInteraction')}
         settingsSupported={
           !known ||
           hasCapability(connection, 'mascotInteraction') ||

@@ -30,7 +30,6 @@ import {
   TableRow,
 } from '@kivori/ui/components/table';
 import { ToggleGroup, ToggleGroupItem } from '@kivori/ui/components/toggle-group';
-import { Page } from '@/components/kivori/page';
 import { getActivityLog, onActivityLog, type Unlisten } from '@/lib/ipc';
 import type { ActivityEventDto, ActivitySeverity, ActivitySource } from '@/lib/ipc/types';
 import { format, strings } from '@/lib/i18n/strings';
@@ -173,10 +172,14 @@ export function ActivityPage(): ReactElement {
   };
 
   return (
-    <Page
-      title={t.heading}
-      description={t.description}
-      actions={
+    <section aria-labelledby="activity-heading" className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 id="activity-heading" className="text-lg font-semibold">
+            {t.heading}
+          </h2>
+          <p className="text-sm text-muted-foreground">{t.description}</p>
+        </div>
         <p
           role="status"
           aria-live="polite"
@@ -194,8 +197,7 @@ export function ActivityPage(): ReactElement {
           />
           {t.status[status]}
         </p>
-      }
-    >
+      </div>
       <Card className="gap-0 py-0">
         <CardHeader className="border-b py-3">
           <div
@@ -366,6 +368,6 @@ export function ActivityPage(): ReactElement {
         </CardContent>
       </Card>
       <p className="text-xs text-muted-foreground">{t.note}</p>
-    </Page>
+    </section>
   );
 }

@@ -35,7 +35,7 @@ beforeEach(() => {
 describe('CompanionControls', () => {
   it('shows the saved settings to everyone and saves a change through setBuddySettings', async () => {
     const user = userEvent.setup();
-    render(<CompanionControls config={config} connected supported />);
+    render(<CompanionControls config={config} />);
     expect(screen.getByRole('switch', { name: 'Reactions' })).toBeChecked();
     expect(screen.getByRole('button', { name: 'Normal' })).toHaveAttribute('aria-pressed', 'true');
     expect(h.setBuddy).not.toHaveBeenCalled();
@@ -51,12 +51,10 @@ describe('CompanionControls', () => {
   });
 
   it('follows the saved config once it arrives', () => {
-    const { rerender } = render(<CompanionControls config={config} connected supported />);
+    const { rerender } = render(<CompanionControls config={config} />);
     rerender(
       <CompanionControls
         config={{ ...config, revision: 2, buddy: { reactions: false, intensity: 'low' } }}
-        connected
-        supported
       />,
     );
     expect(screen.getByRole('switch', { name: 'Reactions' })).not.toBeChecked();
@@ -64,48 +62,23 @@ describe('CompanionControls', () => {
   });
 
   it('waits for the config before offering the settings', () => {
-    render(<CompanionControls config={null} connected supported />);
+    render(<CompanionControls config={null} />);
     expect(screen.getByRole('switch', { name: 'Reactions' })).toHaveAttribute(
       'aria-disabled',
       'true',
     );
   });
 
-  it('sends the direct social actions in developer mode only', async () => {
-    const user = userEvent.setup();
-    const { unmount } = render(<CompanionControls config={config} connected supported />);
-    expect(screen.queryByRole('button', { name: 'Greet' })).not.toBeInTheDocument();
-    unmount();
-
+  it('keeps direct reactions out of saved settings even in developer mode', () => {
     localStorage.setItem('kivori.developerMode', 'true');
-    render(<CompanionControls config={config} connected supported />);
-    for (const action of ['Greet', 'Pet', 'Tickle', 'Surprise', 'Comfort'] as const) {
-      await user.click(screen.getByRole('button', { name: action }));
-    }
-    expect(h.play.mock.calls.map(([action]) => action)).toEqual([
-      'greet',
-      'pet',
-      'tickle',
-      'surprise',
-      'comfort',
-    ]);
-  });
-
-  it('hides unsupported live reactions while keeping saved buddy settings editable', () => {
-    localStorage.setItem('kivori.developerMode', 'true');
-    render(<CompanionControls config={config} connected supported={false} />);
-    expect(screen.queryByText(/update kivori firmware/i)).not.toBeInTheDocument();
+    render(<CompanionControls config={config} />);
     expect(screen.queryByRole('button', { name: 'Greet' })).not.toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'Reactions' })).not.toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
   });
 
   it('reverts a failed save, says so, and retries the same settings', async () => {
     h.setBuddy.mockRejectedValueOnce(new Error('disk full'));
     const user = userEvent.setup();
-    render(<CompanionControls config={config} connected supported />);
+    render(<CompanionControls config={config} />);
 
     await user.click(screen.getByRole('button', { name: 'Low' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/could not save/i);
@@ -118,7 +91,7 @@ describe('CompanionControls', () => {
   });
 
   it('has no axe accessibility violations', async () => {
-    const { container } = render(<CompanionControls config={config} connected supported />);
+    const { container } = render(<CompanionControls config={config} />);
     const results = await axe.run(container, { rules: { 'color-contrast': { enabled: false } } });
     expect(results.violations).toEqual([]);
   });

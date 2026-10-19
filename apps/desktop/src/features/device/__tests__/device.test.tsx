@@ -56,7 +56,7 @@ const view = (s: ConnectionStatusDto): ReactElement => (
 beforeEach(() => localStorage.setItem('kivori.developerMode', 'true'));
 
 describe('DevicePage', () => {
-  it('shows connected device details and both buddy state axes', () => {
+  it('shows customer device details without developer protocol/state rows', () => {
     render(
       view(
         status({
@@ -74,9 +74,9 @@ describe('DevicePage', () => {
     );
     expect(screen.getByRole('status')).toHaveTextContent('Connected');
     expect(screen.getByTestId('device-firmware')).toHaveTextContent('0.1.2');
-    expect(screen.getByTestId('desired')).toHaveTextContent('Busy');
-    expect(screen.getByTestId('reported')).toHaveTextContent('Happy');
-    expect(screen.getByText('deadbeef')).toBeInTheDocument();
+    expect(screen.queryByText('Buddy (requested)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Protocol')).not.toBeInTheDocument();
+    expect(screen.queryByText('deadbeef')).not.toBeInTheDocument();
   });
 
   it('shows the product, board and identity source, with the revision unknown until provisioned', () => {
@@ -135,7 +135,6 @@ describe('DevicePage', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Reconnecting…');
     expect(screen.getByRole('status')).toHaveTextContent('3');
     expect(screen.getByTestId('device-firmware')).toHaveTextContent(/^—$/);
-    expect(screen.getByTestId('reported')).toHaveTextContent(/^—$/);
   });
 
   it('surfaces an incompatible reason', () => {
@@ -156,11 +155,9 @@ describe('DevicePage', () => {
     expect(results.violations).toEqual([]);
   });
 
-  it('shows the Device internals card only with developer mode on', () => {
+  it('keeps internals and the developer toggle on Developer, even with developer mode on', () => {
     render(view(status()));
-    expect(screen.getByRole('heading', { name: 'Device internals' })).toBeInTheDocument();
-    localStorage.removeItem('kivori.developerMode');
-    render(view(status()));
-    expect(screen.getAllByRole('heading', { name: 'Device internals' })).toHaveLength(1);
+    expect(screen.queryByRole('heading', { name: 'Device internals' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: 'Developer mode' })).not.toBeInTheDocument();
   });
 });
