@@ -397,6 +397,11 @@ fn device_loop(
                 flash_command @ (DeviceCommand::FlashFirmware
                 | DeviceCommand::RestoreFirmware
                 | DeviceCommand::RestoreFirmwareFor(_)) => {
+                    // A queued retry must not replace the active flash/reconnect target.
+                    if flash.is_busy() {
+                        publish_firmware_status(&firmware_status, &flash);
+                        continue;
+                    }
                     // A device that cannot be verified (wrong-major firmware, a unit in ROM download
                     // mode) is recovered by identity-free port rules instead of a verified handshake.
                     let chosen = match &flash_command {
@@ -407,16 +412,36 @@ fn device_loop(
                         || manager.state() == ConnectionState::Incompatible;
                     let mut refusal = firmware::FlashFailure::Unknown;
                     let image = firmware::bundled_image_identity();
+                    if image.is_none() {
+                        flash.fail_preparation_with(firmware::FlashFailure::ImageUnavailable);
+                        drain_firmware_activity(&app, &activity_log, &mut flash);
+                        publish_firmware_status(&firmware_status, &flash);
+                        continue;
+                    }
                     let requested = if recovery {
                         let candidates = enumerate();
                         let found = filter_candidates(&candidates, default_allowlist());
                         if found.is_empty() {
                             refusal = firmware::FlashFailure::NoDownloadMode;
                         }
-                        // No handshake, so no identity: with one product for this port it is used;
-                        // with several the user picks, and the pick must be the bundled image's.
+                        // Use this port's live identity when present; only an identity-free port
+                        // falls back to USB candidates and an explicit product choice.
                         let usb = found.first().and_then(|p| Some((p.vid?, p.pid?)));
-                        match decide_recovery(Catalog::embedded(), usb, chosen.as_deref(), image) {
+                        let reported = match found.as_slice() {
+                            [port]
+                                if connected_port.as_deref() == Some(port.port_name.as_str()) =>
+                            {
+                                session.identity()
+                            }
+                            _ => None,
+                        };
+                        match decide_recovery(
+                            Catalog::embedded(),
+                            usb,
+                            chosen.as_deref(),
+                            image,
+                            reported.as_ref(),
+                        ) {
                             RecoveryDecision::Proceed => flash.request_recovery(&candidates),
                             RecoveryDecision::Choose(options) if found.len() == 1 => {
                                 flash.ask_restore_choice(options);
@@ -424,8 +449,8 @@ fn device_loop(
                                 publish_firmware_status(&firmware_status, &flash);
                                 continue;
                             }
-                            RecoveryDecision::Refuse(wrong) if found.len() == 1 => {
-                                flash.fail_wrong_product(wrong);
+                            RecoveryDecision::Refuse(reason) if found.len() == 1 => {
+                                flash.refuse_recovery(reason);
                                 drain_firmware_activity(&app, &activity_log, &mut flash);
                                 publish_firmware_status(&firmware_status, &flash);
                                 continue;

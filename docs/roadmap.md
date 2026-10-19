@@ -289,7 +289,9 @@ the beta acceptance platform. Finish and review the docs before implementing the
   requires matching post-flash identity. Identity burns are limited to the implemented C3 backend.
   Firmware build target/features now live in the catalog; local build/bundle/provision recipes,
   PowerShell and release firmware CI share one validated, explicit-or-unambiguous build helper.
-  Multi-image packaging/release keeps this item open.
+  Recovery now refuses missing images, invalid/stale picks, absent candidates and ambiguous boards
+  before port reservation; image availability cannot decide hardware identity. Multi-image
+  packaging/release keeps this item open.
 - [ ] **Capability-driven UI:** document the capability-to-surface mapping; backend effective support
   combines current-session negotiation, resolved identity and host support, not catalog minimums.
   UI and command handling deny ordinary product actions while identity is pending/unknown. Cover
