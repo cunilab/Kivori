@@ -314,8 +314,8 @@ the beta acceptance platform. Finish and review the docs before implementing the
   guards. Setup now gates Plug-in readiness on known usable sessions, shows non-blocking guidance
   only for supported controls, and annotates offline/absent-feature settings without changing saved
   configuration on product switches. The old host-status completion heuristic is removed because it
-  cannot verify device input. Cross-surface product acceptance remains open; this step does not
-  close M2.8.
+  cannot verify device input. Cross-surface acceptance is verified by Product acceptance tests below;
+  this capability-driven UI item remains open for the final closure audit.
 - [x] **Hardware tiles:** reorganize the existing formatted metrics and usage bars into readable
   flash, RAM and run-loop/frame tiles. Label app image versus app partition, static RAM, stack
   headroom and run-loop busy time accurately; do not imply heap usage or whole-chip CPU load.
@@ -328,7 +328,7 @@ the beta acceptance platform. Finish and review the docs before implementing the
   late replies; test reconnect while the card stays mounted. Preserve privacy and clipboard errors.
 - [x] **Home health summary:** developer-only link state, consecutive retries and total reconnects,
   reusing existing status/diagnostics data; no internals polling or event-history dashboard on Home.
-- [ ] **Product acceptance tests:** Pip, a minimal fake product and mixed capabilities; supported
+- [x] **Product acceptance tests:** Pip, a minimal fake product and mixed capabilities; supported
   controls still work, unsupported controls/art are absent. Exercise missing art, old firmware,
   pending/unknown identity, known identity-only firmware, offline configuration and session switches.
   Test backend action refusal before identity resolves. Catalog/build tests prove additions using
@@ -336,8 +336,11 @@ the beta acceptance platform. Finish and review the docs before implementing the
   Isolate fake products/images from shipping discovery and test preservation of stored bindings.
   App-shell acceptance now exercises Pip, a synthetic dial and mixed capabilities through real
   navigation/hooks and browser IPC, including supported actions, saved bindings, offline edits and
-  pending/unknown/identity-only/legacy session changes. Backend refusal and catalog/build evidence
-  still need a final acceptance pass; this item remains open.
+  pending/unknown/identity-only/legacy session changes. Native tests now exercise the runtime's live
+  display/ordinary-flash admission and reaction refusal across identity resolution/reconnect.
+  Catalog generation and reversed image-set fixtures compile the generated sources outside shipping
+  roots. The [software acceptance evidence](./validation.md#m28-product-acceptance-evidence) maps
+  each criterion to its checks; real hardware rows remain open.
 - [x] **Product identifier guard:** scoped to shared app/tooling, catalog-derived identifiers,
   exact line/count exceptions and CLI positive controls on Ubuntu/Windows. Includes untracked files,
   filenames, camel/separator variants and production code after Rust test modules; real-repository

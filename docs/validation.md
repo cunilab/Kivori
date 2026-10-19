@@ -378,8 +378,8 @@ The offline dependency guard fixture uses mocked Cargo metadata with two firmwar
 including a custom path with spaces. It asserts all workspaces are checked, a network API in the
 second source root fails and catalog discovery errors fail closed. The mocked shell fixture runs
 on Unix; the real dependency guard still runs in both Rust CI jobs. No guard fixture flashes,
-burns identity or launches the desktop. These checks supplement the remaining product acceptance
-and hardware/recovery rows; a clean textual scan cannot prove capability behavior.
+burns identity or launches the desktop. These checks supplement behavioral acceptance
+and the remaining hardware/recovery rows; a clean textual scan cannot prove capability behavior.
 
 M2.8 pair recovery fixtures cover two boards with shared USB hints, exact-pair selection, stale/unknown
 choices, board-only refusal, live-identity precedence and unchanged busy reservations. UI tests prove
@@ -398,5 +398,26 @@ captions and a neutral figure. Product switches preserve a
 custom binding; an offline display edit preserves profile bindings. Pending, unknown and
 identity-only sessions remove live display controls; original firmware remains identified as legacy.
 These tests do not exercise the native Tauri event bridge, backend action refusal or real hardware.
-The existing IPC tests cover the bridge contract separately; the product acceptance roadmap item
-remains open for its backend/catalog acceptance pass.
+The existing IPC tests cover the bridge contract separately; the native/catalog evidence is mapped below.
+
+### M2.8 product acceptance evidence
+
+These automated checks close the product acceptance test item, not the hardware acceptance rows.
+Synthetic products and ELF bytes remain in test code or temporary directories outside shipping roots.
+
+| Criterion | Automated evidence |
+| --- | --- |
+| Pip, a minimal dial, mixed features, usable supported controls, missing art, offline edits and preserved bindings | `__tests__/product-acceptance.test.tsx` mounts the real App/hooks/navigation with parsed fixture sessions and browser IPC. |
+| Setup identity readiness, absent controls and saved-only settings | `features/onboarding/__tests__/capabilities.test.tsx` covers pending/unknown/identity-only/legacy and generation changes. |
+| Session switch with late internals reply while the card stays mounted | `features/device/__tests__/internals.test.tsx` clears the old card and refuses the old session's reply. |
+| No feature writes before identity resolves or for an unknown product | Native `tests/session.rs::every_feature_writer_is_inert_for_pending_and_unknown_identity` checks the writers and an empty wire. `reactions_require_current_identity_and_rejected_requests_are_never_replayed` adds a positive accepted action, reconnect-to-pending and unknown-board refusal without replay. |
+| Current-session display/flash admission | Native `tests/session.rs::runtime_display_and_flash_admission_follow_current_session_support` uses real handshakes and the helpers called by the device loop; covers pending, unknown product/board, identity-only, known, legacy, disconnected and busy display states, plus missing exact images. Existing flash workflow tests cover exclusive reservations. |
+| State versus preview intent | Native session tests prove saved desired state resyncs only when usable; Mirror never stages state for pending/unknown/identity-only/offline sessions. Frontend `features/controls/__tests__/controls.test.tsx` exercises host action tests against the disconnected browser backend. |
+| Catalog additions need no maintained shared-source list | `catalog_build.rs::second_product_is_generated_without_a_source_list_and_reservations_stay_inactive` adds a temporary product and compiles the generated constants and snapshot art. |
+| Exact images and complete packaging independent of order | `catalog_build.rs::firmware_set_generation_is_deterministic_and_compiles_with_exact_lookup`, native `tests/firmware_bundle.rs` and `tests/recovery_target.rs`, plus `scripts/build-firmware{,-set}.test.mjs`, validate identity, reversed inputs, complete sets, explicit selection and missing/mismatched refusal. |
+
+Native paths above are relative to `apps/desktop/src-tauri`; frontend paths are relative to
+`apps/desktop/src`. Rust fixtures compile generated source against synthetic marker-only ELF bytes; build-script fixtures
+use the real generators with simulated Cargo outputs. They do not build or flash a second physical product. Native Tauri event-bridge coverage remains
+separate from the app-shell browser tests. Request activity is intent, and queued commands use the
+execution-time session as documented in [desktop capabilities](./desktop-capabilities.md).

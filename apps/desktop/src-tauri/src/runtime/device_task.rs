@@ -35,6 +35,7 @@ use crate::device::serial::{enumerate, SerialPortLink};
 use crate::device::session::{Session, SessionConfig, SessionError};
 use crate::device::transport::SerialLink;
 use crate::firmware::{self, FirmwareStatus, FlashFailure, FlashWorkflow, ResumeTarget};
+use crate::firmware_bundle::{FirmwareBundle, FirmwareImage};
 use crate::firmware_offer::{OfferDevice, OfferInputs, OfferTracker};
 use crate::identity::{
     decide_recovery_for_port, missing_required_capabilities, DeviceIdentity, RecoveryDecision,
@@ -374,11 +375,11 @@ fn device_loop(
                     }
                 }
                 DeviceCommand::SetDisplayMode(mode)
-                    if manager.state().can_drive_device()
-                        && session
-                            .effective_caps()
-                            .contains(Capabilities::DESK_STATUS_V1)
-                        && !flash.is_busy() =>
+                    if admits_display_mode(
+                        manager.state(),
+                        session.effective_caps(),
+                        flash.is_busy(),
+                    ) =>
                 {
                     desk.set_mode(mode, &mut |observation| {
                         record_observations(&app, &activity_log, [observation]);
@@ -410,14 +411,6 @@ fn device_loop(
                     let recovery = flash_command != DeviceCommand::FlashFirmware
                         || manager.state() == ConnectionState::Incompatible;
                     let mut refusal = firmware::FlashFailure::Unknown;
-                    if !recovery
-                        && (!manager.state().can_drive_device() || session.identity().is_none())
-                    {
-                        flash.fail_preparation_with(firmware::FlashFailure::Unknown);
-                        drain_firmware_activity(&app, &activity_log, &mut flash);
-                        publish_firmware_status(&firmware_status, &flash);
-                        continue;
-                    }
                     let bundled = if recovery {
                         let candidates = enumerate();
                         let found = filter_candidates(&candidates, default_allowlist());
@@ -459,10 +452,19 @@ fn device_loop(
                         };
                         firmware::image_for(product, board).map(|image| (image, Some(candidates)))
                     } else {
-                        session
-                            .identity()
-                            .and_then(|device| firmware::image_for(device.product, device.board))
-                            .map(|image| (image, None))
+                        match select_ordinary_flash_image(
+                            manager.state(),
+                            session.identity(),
+                            firmware::bundled_images(),
+                        ) {
+                            Ok(image) => Some((image, None)),
+                            Err(reason) => {
+                                flash.fail_preparation_with(reason);
+                                drain_firmware_activity(&app, &activity_log, &mut flash);
+                                publish_firmware_status(&firmware_status, &flash);
+                                continue;
+                            }
+                        }
                     };
                     let Some((bundled, candidates)) = bundled else {
                         flash.select_image(None);
@@ -1469,6 +1471,35 @@ fn is_available(backend: &dyn VolumeBackend) -> bool {
 
 fn elapsed_ms(elapsed: Duration) -> u32 {
     u32::try_from(elapsed.as_millis()).unwrap_or(u32::MAX)
+}
+
+/// Live display changes use current effective support and never stage a mode while flashing.
+#[must_use]
+pub fn admits_display_mode(
+    state: ConnectionState,
+    effective_caps: Capabilities,
+    firmware_busy: bool,
+) -> bool {
+    state.can_drive_device()
+        && effective_caps.contains(Capabilities::DESK_STATUS_V1)
+        && !firmware_busy
+}
+
+/// Selects only the current connected identity's image for an ordinary flash, without reserving a port.
+///
+/// # Errors
+/// Pending/disconnected sessions are refused; an absent exact image never falls back to another pair.
+pub fn select_ordinary_flash_image<'bundle, 'image>(
+    state: ConnectionState,
+    identity: Option<DeviceIdentity>,
+    images: &'bundle FirmwareBundle<'image>,
+) -> Result<&'bundle FirmwareImage<'image>, FlashFailure> {
+    let identity = identity
+        .filter(|_| state.can_drive_device())
+        .ok_or(FlashFailure::Unknown)?;
+    images
+        .get(identity.product, identity.board)
+        .ok_or(FlashFailure::ImageUnavailable)
 }
 
 /// Maps the real device-command boundary through the shared runtime activity planner.

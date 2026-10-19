@@ -195,7 +195,15 @@ the Device firmware card hosts the pair chooser. These fixtures perform no devic
 
 ## Consequences
 
-This is a target contract, not an as-built claim. Implementation and checks are tracked in
+**As built (M2.8 automated product acceptance).** The app-shell scenarios and native session/runtime
+admission checks now cover the planned synthetic product matrix. Existing catalog and image-set
+generators compile their temporary multi-product fixtures and exact indexes without shared product
+lists. The [acceptance evidence map](../validation.md#m28-product-acceptance-evidence) identifies each
+check and its limits. Hardware rows remain open. Live queued commands use the execution-time
+session; activity request entries are not proof of application. Host action testing and staging the
+user's desired state remain available offline, unlike device reactions, live views and Studio Mirror.
+
+Implementation and checks for this contract are tracked in
 [M2.8](../roadmap.md#m28-desktop-organization-and-product-contract). Existing legacy identity rules
 and wrong-product/board flashing refusals remain mandatory.
 
@@ -253,8 +261,8 @@ firmware workspace and its source root, using NUL-delimited paths to preserve sp
 failure stops the check. Its fixtures verify a second custom crate is visited and a network API
 there is rejected. The identifier positive controls inject leaks in isolated Git repositories and
 require actual CLI failure, including untracked files, camelCase and production code after test
-modules. A separate test asserts the real repository is scanned and clean. These checks do not
-complete the remaining product acceptance or hardware/recovery rows.
+modules. A separate test asserts the real repository is scanned and clean. These guards supplement
+the behavioral acceptance evidence; they do not complete hardware/recovery rows.
 
 ## Alternatives considered
 

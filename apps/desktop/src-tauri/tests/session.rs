@@ -1281,6 +1281,176 @@ fn every_feature_writer_is_inert_for_pending_and_unknown_identity() {
 }
 
 #[test]
+fn reactions_require_current_identity_and_rejected_requests_are_never_replayed() {
+    let caps = Capabilities::PRODUCT_IDENTITY_V1.union(Capabilities::MASCOT_INTERACTION);
+    let (mut link, mut session, mut manager, mut orch) =
+        connect_with_caps(SendableState::Idle, caps);
+    let nonce = session.current_session().unwrap();
+    desktop_drain(&mut link);
+    assert!(!session
+        .play_mascot_action(
+            &mut link,
+            &manager,
+            MascotAction::Greet,
+            MascotPersonality::Calm,
+            41,
+        )
+        .unwrap());
+    assert!(link.to_device.is_empty());
+
+    device_push(&mut link, &identity_message(nonce, 1, 1), wire_version(), 1);
+    session.pump(&mut link, &mut manager, &mut orch).unwrap();
+    let resync = desktop_drain(&mut link);
+    assert!(matches!(resync.as_slice(), [Message::SetState(_)]));
+    assert!(session
+        .play_mascot_action(
+            &mut link,
+            &manager,
+            MascotAction::Greet,
+            MascotPersonality::Calm,
+            42,
+        )
+        .unwrap());
+    assert!(matches!(
+        desktop_drain(&mut link).as_slice(),
+        [Message::PlayMascotAction(action)]
+            if action.action == MascotAction::Greet && action.seed == 42
+    ));
+
+    session.close(&mut link, ByeReason::Shutdown).unwrap();
+    desktop_drain(&mut link);
+    manager.apply(ManagerEvent::PortRemoved);
+    session.open(&mut link, &mut manager).unwrap();
+    let nonce = hello_nonce(&desktop_drain(&mut link));
+    let Message::HelloAck(mut ack) = device_ack(nonce) else {
+        unreachable!()
+    };
+    ack.device_caps = caps;
+    device_push(&mut link, &Message::HelloAck(ack), wire_version(), 0);
+    session.pump(&mut link, &mut manager, &mut orch).unwrap();
+    desktop_drain(&mut link);
+    assert_eq!(session.identity(), None);
+    assert_eq!(session.effective_caps(), Capabilities::NONE);
+    assert!(!session
+        .play_mascot_action(
+            &mut link,
+            &manager,
+            MascotAction::Greet,
+            MascotPersonality::Calm,
+            43,
+        )
+        .unwrap());
+    assert!(link.to_device.is_empty());
+
+    // A known product with an unknown board cannot inherit the previous session's support.
+    device_push(
+        &mut link,
+        &identity_message(nonce, 1, 99),
+        wire_version(),
+        1,
+    );
+    session.pump(&mut link, &mut manager, &mut orch).unwrap();
+    assert!(!session
+        .play_mascot_action(
+            &mut link,
+            &manager,
+            MascotAction::Greet,
+            MascotPersonality::Calm,
+            44,
+        )
+        .unwrap());
+    assert!(link.to_device.is_empty());
+}
+
+#[test]
+fn runtime_display_and_flash_admission_follow_current_session_support() {
+    use kivori_desktop::firmware::FlashFailure;
+    use kivori_desktop::firmware_bundle::FirmwareBundle;
+    use kivori_desktop::runtime::device_task::{admits_display_mode, select_ordinary_flash_image};
+
+    let mut bytes = vec![0; 52];
+    bytes[..6].copy_from_slice(b"\x7fELF\x01\x01");
+    bytes[18] = 243;
+    bytes.extend_from_slice(b"KIVORI-FW-VERSION:0.1.0\0KIVORI-FW-IDENTITY:p=1;b=1;v=0.1.0;m=0.1\0");
+    let images = FirmwareBundle::parse(&[&bytes]).unwrap();
+    let empty = FirmwareBundle::parse(&[]).unwrap();
+    let display_caps = Capabilities::PRODUCT_IDENTITY_V1.union(Capabilities::DESK_STATUS_V1);
+    for (identity, caps, display, flash) in [
+        (None, display_caps, false, Err(FlashFailure::Unknown)),
+        (
+            Some((9, 1)),
+            display_caps,
+            false,
+            Err(FlashFailure::ImageUnavailable),
+        ),
+        (
+            Some((1, 99)),
+            display_caps,
+            false,
+            Err(FlashFailure::ImageUnavailable),
+        ),
+        (
+            Some((1, 1)),
+            Capabilities::PRODUCT_IDENTITY_V1,
+            false,
+            Ok(()),
+        ),
+        (Some((1, 1)), display_caps, true, Ok(())),
+        // Legacy state sync is usable without advertising a live display feature.
+        (None, Capabilities::NONE, false, Ok(())),
+    ] {
+        let (mut link, mut session, mut manager, mut orch) =
+            connect_with_caps(SendableState::Idle, caps);
+        let nonce = session.current_session().unwrap();
+        desktop_drain(&mut link);
+        if let Some((product, board)) = identity {
+            device_push(
+                &mut link,
+                &identity_message(nonce, product, board),
+                wire_version(),
+                1,
+            );
+            session.pump(&mut link, &mut manager, &mut orch).unwrap();
+        }
+        assert_eq!(
+            admits_display_mode(manager.state(), session.effective_caps(), false),
+            display
+        );
+        assert!(!admits_display_mode(
+            manager.state(),
+            session.effective_caps(),
+            true
+        ));
+        let selected = select_ordinary_flash_image(manager.state(), session.identity(), &images);
+        assert_eq!(
+            selected.map(|image| {
+                assert_eq!(image.bytes(), bytes);
+            }),
+            flash
+        );
+        if flash.is_ok() {
+            assert_eq!(
+                select_ordinary_flash_image(manager.state(), session.identity(), &empty)
+                    .unwrap_err(),
+                FlashFailure::ImageUnavailable
+            );
+        }
+        for state in [
+            ConnectionState::Disconnected,
+            ConnectionState::Connecting,
+            ConnectionState::Incompatible,
+            ConnectionState::Error,
+        ] {
+            assert!(!admits_display_mode(state, display_caps, false));
+            assert_eq!(
+                select_ordinary_flash_image(state, session.identity(), &images).unwrap_err(),
+                FlashFailure::Unknown
+            );
+        }
+    }
+}
+
+#[test]
 fn desk_session_starts_after_identity_and_invalidates_cached_output() {
     use kivori_desktop::desk::DeskRuntime;
     use kivori_desktop::platform::system::NoSystemProbe;

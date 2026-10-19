@@ -75,6 +75,7 @@ on Finish; Skip setup leaves it unchanged.
 | Surface | Current rule |
 | --- | --- |
 | Home computer monitoring, microphone, media and last action | Host readings and host action outcomes; independent of device capabilities. Unknown readings retain their existing unavailable explanations. |
+| Controls Test / rotary Test | Host action execution, available offline and before identity resolves. Normal action validation and protected-foreground rules still apply; device feedback uses effective session support. |
 | Home product figure and setup figures | Catalog name/model only for a current connected identity with both product and board known. Only that product’s bundled artwork, otherwise a neutral figure; never infer hardware art from capabilities. |
 | Setup Plug-in Continue | Known current usable session, including legacy baseline; pending/unknown/identity-only cannot pass as ready. Skip stays available. |
 | Setup Tour | Non-blocking guidance using the same rotary/push-switch/context-button rules as Controls; no hardware verification or progress inferred from host status. |
@@ -93,6 +94,17 @@ on Finish; Skip setup leaves it unchanged.
 | Device Studio reaction preview | Host renderer always; request device playback only with `mascotInteraction`. |
 | Device Studio Mirror | Sendable state and a usable live session. Pending, unknown, disconnected and identity-only recovery sessions cannot change a later device's desired state. |
 | Developer Device Internals | Active Diagnostics tool with developer mode on, plus effective `deviceInternalsV1`; the existing visible-card polling and backend snapshot rules remain. |
+
+Production desired-state changes retain the user's choice while offline or unresolved, then sync it
+only to a usable session. Studio Mirror deliberately does not stage state for a later device.
+Live display changes require current effective `deskStatusV1` and an idle flash workflow; an ordinary
+flash requires a connected identity and its exact validated bundled image. Known identity-only
+firmware can be flashed without authorizing ordinary display or mascot actions.
+
+Queued live commands are checked against the session present when the device thread executes them;
+they carry no originating connection generation. Activity request entries can precede refusal and
+do not prove that a device applied an action. Binding requests to their originating session or
+changing activity outcome semantics would require a separate implementation change.
 
 `mediaInfoV1` adds now-playing title/artist messages. It is not a prerequisite for the Media view,
 whose playback state is in `Status`. `mascotInteraction` enables transient actions and acknowledgments;
