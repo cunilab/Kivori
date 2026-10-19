@@ -451,3 +451,8 @@ from a connected session waiting for Identity. The runtime passes its connection
 the shared resolver: Connecting may use guarded USB/choice recovery, while Connected without
 identity remains refused. The fixtures cover explicit pairs, unknown product/board refusal and
 ambiguous targets still requiring a choice. This is policy evidence, not a real BOOT/flashing run.
+
+Diagnostics clipboard regression coverage checks that both ordinary and developer bundles omit
+internal session counters while preserving diagnostic values and fresh measurements. Session
+correlation remains in the IPC/cache data for rejecting stale replies; unavailable and stale
+measurements stay excluded. These are mocked clipboard tests, not a native app clipboard run.

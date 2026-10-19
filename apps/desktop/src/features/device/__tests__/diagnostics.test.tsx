@@ -10,7 +10,6 @@ import type {
 } from '../../../lib/ipc/types';
 import { mockGetDeviceInternals } from '../../../lib/ipc/mock';
 import { setDevMode } from '../../../lib/dev-mode';
-import { parseDiagnostics } from '../../../lib/ipc/validate';
 
 const bridge = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('../../../lib/ipc', () => ({ getDiagnostics: bridge.get }));
@@ -161,7 +160,7 @@ describe('Diagnostics card', () => {
     }
   });
 
-  it('copies the diagnostics as JSON that parses back to the same data', async () => {
+  it('copies diagnostics without the internal session counter', async () => {
     bridge.get.mockResolvedValue(connected);
     connection = connectionFixture();
     const writeText = vi.fn().mockResolvedValue(undefined);
@@ -174,7 +173,16 @@ describe('Diagnostics card', () => {
     await user.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
     await screen.findByText('Copied');
     const copied = JSON.parse(writeText.mock.calls[0][0] as string) as unknown;
-    expect(parseDiagnostics(copied)).toEqual(connected);
+    const exportedConnection = {
+      state: 'connected',
+      connectedForSecs: null,
+      reconnects: 0,
+      retryCount: 0,
+      lastPongAgeMs: 400,
+      rttMs: 6,
+    };
+    expect(copied).toEqual({ ...connected, connection: exportedConnection });
+    expect(connected.connection.generation).toBe(1);
     expect(Object.keys(copied as object)).toEqual([
       'versions',
       'connection',
@@ -182,7 +190,9 @@ describe('Diagnostics card', () => {
       'host',
       'config',
     ]);
-    expect(JSON.stringify(copied)).not.toMatch(/"(port|path|deviceId)"/i);
+    expect(JSON.stringify(copied)).not.toMatch(
+      /"(port|path|deviceId|generation|connectionGeneration)"/i,
+    );
   });
 
   it('refreshes basic diagnostics on copy and reports clipboard failures', async () => {
@@ -269,6 +279,8 @@ describe('Diagnostics card', () => {
         await user.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
         const bundle = JSON.parse(writeText.mock.lastCall![0] as string);
         expect(bundle.internals.status).toBe(status);
+        expect(JSON.stringify(bundle)).not.toMatch(/"(generation|connectionGeneration)"/);
+        expect(measurement.connectionGeneration).toBe(1);
         expect(bundle.internals.data?.snapshot ?? null).toEqual(
           status === 'fresh' ? measurement.snapshot : null,
         );

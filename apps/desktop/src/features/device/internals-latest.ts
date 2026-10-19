@@ -19,7 +19,7 @@ export function internalsForBundle(
 ): {
   status: 'fresh' | 'stale' | 'unavailable';
   ageMs: number | null;
-  data: DeviceInternalsDto | null;
+  data: Omit<DeviceInternalsDto, 'connectionGeneration'> | null;
 } {
   const entry = latest;
   if (
@@ -35,7 +35,12 @@ export function internalsForBundle(
   }
   const ageMs =
     entry.data.snapshotAgeMs + Math.max(0, Math.floor(performance.now() - entry.readAt));
+  const { connected: isConnected, supported, snapshot } = entry.data;
   return ageMs > INTERNALS_FRESH_MS
     ? { status: 'stale', ageMs, data: null }
-    : { status: 'fresh', ageMs, data: { ...entry.data, snapshotAgeMs: ageMs } };
+    : {
+        status: 'fresh',
+        ageMs,
+        data: { connected: isConnected, supported, snapshot, snapshotAgeMs: ageMs },
+      };
 }
