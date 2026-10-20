@@ -828,6 +828,7 @@ function runWorkflowStep(name, root, outputs, extra = {}) {
     const sha = git(root, 'rev-parse', 'HEAD');
     git(root, 'push', '--quiet', 'origin', 'main');
     const pr = {
+      user: { login: 'github-actions[bot]' },
       merged_at: '2026-10-20T00:00:00Z',
       merge_commit_sha: sha,
       title: 'chore(release): v0.1.1',
@@ -888,7 +889,6 @@ else {
         ...api,
         pr: { ...pr, title: 'chore(release): v9.9.9', head: { ...pr.head, ref: 'release/v9.9.9' } },
       },
-      { ...api, files: [...api.files, 'scripts/evil.mjs'] },
     ]) {
       writeFileSync(apiFile, JSON.stringify(bad));
       assert.throws(finalize);
@@ -908,6 +908,39 @@ else {
     finalize(); // Same-SHA retry is safe and doesn't move tags.
   },
 );
+
+test('version-only validation rejects manifest behavior changes, lock changes and extra files', (t) => {
+  const root = fixture(t);
+  const base = git(root, 'rev-parse', 'HEAD');
+  const script = new URL('./release-finalize.mjs', import.meta.url).href;
+  const check = () =>
+    execFileSync(
+      'bun',
+      [
+        '--eval',
+        `import { requireVersionOnly } from ${JSON.stringify(script)}; requireVersionOnly(process.argv[1], process.argv[2], [{crates:['firmware/pala']}]);`,
+        root,
+        git(root, 'rev-parse', 'HEAD'),
+      ],
+      { encoding: 'utf8', stdio: 'pipe' },
+    );
+  for (const [path, text] of [
+    [
+      'Cargo.toml',
+      readFileSync(join(root, 'Cargo.toml'), 'utf8') + '\n[profile.release]\nopt-level = 0\n',
+    ],
+    [
+      'Cargo.lock',
+      readFileSync(join(root, 'Cargo.lock'), 'utf8').replace('version = 4', 'version = 3'),
+    ],
+    ['surprise.txt', 'Not a version edit.\n'],
+  ]) {
+    git(root, 'reset', '--hard', base);
+    put(root, path, text);
+    commit(root, 'chore(release): unsafe edit');
+    assert.throws(check);
+  }
+});
 
 test('prepare refreshes all locks and pushes only a version branch with exact files', (t) => {
   const root = twoProducts(t);

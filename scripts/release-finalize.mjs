@@ -3,9 +3,9 @@
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseArgs } from 'node:util';
+import { isDeepStrictEqual, parseArgs } from 'node:util';
 import { main as planRelease, tomlVersion } from './release-bump.mjs';
 import { releaseCatalog } from './release-catalog.mjs';
 
@@ -20,6 +20,7 @@ const git = (root, ...args) => run(root, 'git', args);
 export function releaseCommit(pr, repository) {
   const version = /^release\/(v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/.exec(pr.head?.ref);
   if (
+    pr.user?.login !== 'github-actions[bot]' ||
     !pr.merged_at ||
     pr.base?.ref !== 'main' ||
     pr.base?.repo?.full_name !== repository ||
@@ -42,6 +43,74 @@ export function requireMainCi(sha, workflows) {
   }
 }
 
+/** Validate the actual squash commit, not the PR API's mutable file list. */
+export function requireVersionOnly(root, sha, products) {
+  const parents = git(root, 'rev-list', '--parents', '-n', '1', sha).split(' ');
+  if (parents.length !== 2) throw new Error('A version PR must be squash-merged with one parent.');
+  const parent = parents[1];
+  const manifestPaths = [
+    'Cargo.toml',
+    ...new Set(products.flatMap((p) => p.crates.map((c) => `${c}/Cargo.toml`))),
+  ];
+  const allowed = new Set(
+    manifestPaths.flatMap((path) => [path, path.replace(/Cargo\.toml$/, 'Cargo.lock')]),
+  );
+  const files = git(root, 'diff', '--name-only', '-z', parent, sha).split('\0').filter(Boolean);
+  if (!files.length || files.some((file) => !allowed.has(file)))
+    throw new Error('A version PR may change only catalog manifests and lockfiles.');
+  const read = (ref, path) => Bun.TOML.parse(git(root, 'show', `${ref}:${path}`));
+  const oldRoot = read(parent, 'Cargo.toml');
+  for (const path of manifestPaths) {
+    const before = read(parent, path);
+    const after = read(sha, path);
+    const table = path === 'Cargo.toml' ? 'workspace.package' : 'package';
+    const get = (value) => table.split('.').reduce((value, key) => value[key], value);
+    get(before).version = get(after).version;
+    if (!isDeepStrictEqual(before, after))
+      throw new Error(`Non-version manifest changes in ${path}.`);
+  }
+  const changes = [];
+  const seen = new Set();
+  for (const cwd of ['.', ...new Set(products.flatMap((p) => p.crates))]) {
+    const metadata = JSON.parse(
+      run(join(root, cwd), 'cargo', [
+        'metadata',
+        '--locked',
+        '--all-features',
+        '--format-version',
+        '1',
+      ]),
+    );
+    for (const pkg of metadata.packages) {
+      if (pkg.source || seen.has(pkg.manifest_path)) continue;
+      seen.add(pkg.manifest_path);
+      const path = relative(root, pkg.manifest_path).split(sep).join('/');
+      if (path.startsWith('../'))
+        throw new Error('Release path dependency is outside the checkout.');
+      const before = read(parent, path).package;
+      const old =
+        typeof before.version === 'string' ? before.version : oldRoot.workspace.package.version;
+      if (old !== pkg.version) changes.push({ name: pkg.name, old, next: pkg.version });
+    }
+  }
+  for (const path of files.filter((path) => path.endsWith('Cargo.lock'))) {
+    const before = read(parent, path);
+    const after = read(sha, path);
+    for (const pkg of before.package ?? []) {
+      for (const change of changes) {
+        if (!pkg.source && pkg.name === change.name && pkg.version === change.old)
+          pkg.version = change.next;
+        pkg.dependencies = pkg.dependencies?.map((dep) =>
+          dep === `${change.name} ${change.old}` ? `${change.name} ${change.next}` : dep,
+        );
+        if (pkg.dependencies === undefined) delete pkg.dependencies;
+      }
+    }
+    if (!isDeepStrictEqual(before, after))
+      throw new Error(`Non-version lockfile changes in ${path}.`);
+  }
+}
+
 export function pushReleaseTags(root, appTag, firmware) {
   const sha = git(root, 'rev-parse', 'HEAD');
   const tags = [appTag, ...firmware.map((p) => p.tag).filter(Boolean)];
@@ -58,9 +127,20 @@ export function pushReleaseTags(root, appTag, firmware) {
       missing.push(tag);
     }
   }
-  for (const tag of missing) git(root, 'tag', '-a', tag, '-m', tag);
-  if (missing.length)
-    git(root, 'push', '--atomic', 'origin', ...missing.map((tag) => `refs/tags/${tag}`));
+  for (const tag of missing)
+    git(
+      root,
+      '-c',
+      'user.name=github-actions[bot]',
+      '-c',
+      'user.email=41898282+github-actions[bot]@users.noreply.github.com',
+      'tag',
+      '-a',
+      tag,
+      '-m',
+      tag,
+    );
+  git(root, 'push', '--atomic', 'origin', ...tags.map((tag) => `refs/tags/${tag}`));
 }
 
 export function main(argv, root = process.cwd()) {
@@ -94,22 +174,7 @@ export function main(argv, root = process.cwd()) {
   )
     throw new Error('The release PR branch version does not match its merged workspace version.');
   const products = releaseCatalog(root);
-  const allowed = new Set([
-    'Cargo.toml',
-    'Cargo.lock',
-    ...products.flatMap((p) => p.crates.flatMap((c) => [`${c}/Cargo.toml`, `${c}/Cargo.lock`])),
-  ]);
-  const files = run(root, 'gh', [
-    'api',
-    '--paginate',
-    `repos/${repository}/pulls/${opt.pr}/files?per_page=100`,
-    '--jq',
-    '.[].filename',
-  ])
-    .split('\n')
-    .filter(Boolean);
-  if (!files.length || files.some((file) => !allowed.has(file)))
-    throw new Error('A version PR may change only catalog manifests and lockfiles.');
+  requireVersionOnly(root, sha, products);
   const directory = mkdtempSync(join(tmpdir(), 'kivori-finalize-'));
   try {
     let existing = '';
@@ -137,8 +202,6 @@ export function main(argv, root = process.cwd()) {
       );
       if (plan.app_tag !== tag || plan.commit_needed !== 'false')
         throw new Error('The merged release still needs version edits.');
-      git(root, 'config', 'user.name', 'github-actions[bot]');
-      git(root, 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com');
       pushReleaseTags(root, tag, JSON.parse(plan.firmware));
     }
     if (opt.outputs) appendFileSync(opt.outputs, `tag=${tag}\n`);

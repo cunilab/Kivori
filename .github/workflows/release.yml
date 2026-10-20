@@ -9,7 +9,7 @@ name: release
 on:
   push:
     tags: ['v*']
-  # Called by release-start.yml (the Release button) after it pushed the release commit and tags (a tag
+  # Called by release-start.yml (the Release button) after it finalized the merged version PR and pushed its tags (a tag
   # pushed with GITHUB_TOKEN does not trigger the push event above). `tag` is the new vX.Y.Z tag.
   workflow_call:
     inputs:

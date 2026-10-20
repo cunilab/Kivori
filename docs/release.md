@@ -179,8 +179,12 @@ an existing tag that names another commit is refused.
    merged commit to pass. Run **Release** again on `main` with `stage=finalize`, `release_pr` set to
    that PR number, and `dry_run=false`. Other version inputs apply only to prepare. Finalize requires
    a same-repository `release/vX.Y.Z` PR merged into `main` with only catalog manifest/lockfile edits.
-   Its merged commit must still be on `main`, with a matching workspace version and passing CI.
-   Missing/failed CI, version mismatches, unexpected files and conflicting tags stop before tag push.
+   The PR must be bot-authored and squash-merged. Its commit must still be on `main`, with a matching
+   workspace version and passing CI. Manifest contents may change only versions; lockfiles may
+   change only the corresponding local-package versions and dependency references.
+   Missing/failed CI, non-version edits, version mismatches, unexpected files and conflicting tags
+   stop before tag push. The script runs in the disposable CI checkout, which it leaves at the
+   approved SHA. Only one Release run executes at a time; wait for completion before another request.
 5. Finalize then calls `release.yml` with the tag, which builds the firmware, builds the installer, installs
    and uninstalls it on a clean runner, and creates the **draft** release (never a pre-release): title
    `Kivori X.Y.Z · Pip firmware A.B.C` for today's one-product catalog, adding each further

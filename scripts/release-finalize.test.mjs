@@ -8,6 +8,7 @@ import { releaseCommit, requireMainCi, pushReleaseTags } from './release-finaliz
 
 const sha = 'a'.repeat(40);
 const pr = {
+  user: { login: 'github-actions[bot]' },
   merged_at: '2026-10-20T00:00:00Z',
   title: 'chore(release): v0.2.0',
   merge_commit_sha: sha,
@@ -17,6 +18,7 @@ const pr = {
 test('only merged same-repository version PRs name a release commit', () => {
   assert.deepEqual(releaseCommit(pr, 'test/repo'), { sha, tag: 'v0.2.0' });
   for (const patch of [
+    { user: { login: 'someone' } },
     { merged_at: null },
     { merge_commit_sha: 'main' },
     { title: 'release me' },
@@ -91,6 +93,7 @@ test('finalize pushes only immutable tags, preserves main and retries the same S
     assert.equal(git(remote, 'rev-parse', `${tag}^{commit}`), current);
   assert.equal(git(remote, 'rev-parse', 'main'), before);
   pushReleaseTags(root, 'v0.2.0', firmware);
+  assert.equal(git(root, 'config', 'user.name'), 'Release test');
   git(root, 'checkout', '--quiet', 'main');
   assert.throws(() => pushReleaseTags(root, 'v0.2.0', firmware), /immutable/);
 });
@@ -100,4 +103,12 @@ test('a remote firmware tag race atomically refuses all new tags', (t) => {
   assert.throws(() => pushReleaseTags(root, 'v0.2.0', [{ tag: 'fw-dial-v0.1.1' }]));
   assert.equal(git(remote, 'tag', '--list', 'v0.2.0'), '');
   assert.equal(git(remote, 'rev-parse', 'main'), before);
+});
+
+test('retry pushes tags left local by a previously failed atomic push', (t) => {
+  const { root, remote } = fixture(t);
+  git(root, 'tag', 'v0.2.0');
+  git(root, 'tag', 'fw-dial-v0.1.1');
+  pushReleaseTags(root, 'v0.2.0', [{ tag: 'fw-dial-v0.1.1' }]);
+  assert.equal(git(remote, 'rev-parse', 'v0.2.0^{commit}'), git(root, 'rev-parse', 'HEAD'));
 });

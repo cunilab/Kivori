@@ -199,7 +199,7 @@ jobs:
           # The owner marks this draft ready; that user event starts required PR CI.
 
   finalize:
-    if: inputs.stage == 'finalize' && !inputs.dry_run
+    if: inputs.stage == 'finalize'
     runs-on: ubuntu-latest
     permissions:
       contents: write # immutable tags only, never main
@@ -221,6 +221,11 @@ jobs:
         with:
           node-version: 20
       - uses: dtolnay/rust-toolchain@stable
+      - name: Finalize cannot be a dry run
+        if: inputs.dry_run
+        run: |
+          echo '::error::Use stage=prepare for a dry run, or finalize with dry_run=false.' >&2
+          exit 1
       - name: Tag the approved release commit
         id: finalize
         env:
