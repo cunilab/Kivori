@@ -194,6 +194,13 @@ export const strings = {
     holdNote:
       'Hold actions on the three buttons work, but the device does not show them on screen yet.',
     howTitle: 'How controls work',
+    newProfileToggle: 'New profile',
+    tabsLabel: 'Controls sections',
+    tabs: {
+      controls: 'Controls',
+      macros: 'Macros',
+      more: 'Reset & help',
+    },
     groups: { knob: 'Knob', buttons: 'Buttons' },
     editRow: 'Edit {control}',
     moreActions: 'More actions for {control}',
@@ -448,6 +455,8 @@ export const strings = {
   display: {
     title: 'Display',
     description: 'Choose what Kivori’s screen shows and what a double press does.',
+    tabsLabel: 'Display sections',
+    tabs: { views: 'Views', showNow: 'Show now', brightness: 'Brightness', buddy: 'Buddy' },
     defaultView: {
       heading: 'Default view',
       body: 'What the screen shows when Kivori starts, and what a double press returns to.',

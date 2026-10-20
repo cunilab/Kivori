@@ -10,6 +10,9 @@ import {
   Ellipsis,
   Pencil,
   Pin,
+  Plus,
+  SlidersHorizontal,
+  Workflow,
   Hand,
   Lock,
   MousePointerClick,
@@ -56,6 +59,7 @@ import { Skeleton } from '@kivori/ui/components/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@kivori/ui/components/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@kivori/ui/components/tooltip';
 import { Page } from '@/components/kivori/page';
+import { PageTabs } from '@/components/kivori/page-tabs';
 import { ResultBadge } from '@/components/kivori/result-badge';
 import {
   deleteMacro,
@@ -245,6 +249,8 @@ export function ControlsPage({
   const [chosen, setChosen] = useState<ProfileId | null>(null);
   const [catalog, setCatalog] = useState<ActionCatalogEntryDto[] | null>(null);
   const [editing, setEditing] = useState<PickerTarget | null>(null);
+  // The New profile block under the profile chips.
+  const [newOpen, setNewOpen] = useState(false);
   const [confirm, setConfirm] = useState<'profile' | 'all' | null>(null);
   // `undefined` = closed, `null` = a new macro, else the macro being edited.
   const [editingMacro, setEditingMacro] = useState<MacroSpec | null | undefined>(undefined);
@@ -446,31 +452,34 @@ export function ControlsPage({
     </section>
   );
 
-  return (
-    <Page title={t.title} description={t.description}>
-      <details data-testid="controls-notes" className="group -mt-3 text-sm text-muted-foreground">
-        <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-          {t.howTitle}
-          <ChevronDown
-            className="size-3.5 transition-transform group-open:rotate-180"
-            aria-hidden="true"
-          />
-        </summary>
-        <div className="mt-2 space-y-2 rounded-lg bg-muted px-3 py-2.5 text-xs">
-          <p>{strings.savedConfiguration}</p>
-          <p data-testid="mic-scope-note">{t.micScope}</p>
-          <p>{t.holdNote}</p>
-          <p>{t.rotateTestNote}</p>
-        </div>
-      </details>
-      {config?.notice ? (
-        <Alert data-testid="config-notice">
-          <TriangleAlert aria-hidden="true" />
-          <AlertTitle>{t.notice[config.notice].title}</AlertTitle>
-          <AlertDescription>{t.notice[config.notice].body}</AlertDescription>
-        </Alert>
-      ) : null}
+  const notes = (
+    <details data-testid="controls-notes" className="group text-sm text-muted-foreground" open>
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+        {t.howTitle}
+        <ChevronDown
+          className="size-3.5 transition-transform group-open:rotate-180"
+          aria-hidden="true"
+        />
+      </summary>
+      <div className="mt-2 space-y-2 rounded-lg bg-muted px-3 py-2.5 text-xs">
+        <p>{strings.savedConfiguration}</p>
+        <p data-testid="mic-scope-note">{t.micScope}</p>
+        <p>{t.holdNote}</p>
+        <p>{t.rotateTestNote}</p>
+      </div>
+    </details>
+  );
 
+  const loadingRows = (
+    <div className="space-y-2" aria-label={t.loading}>
+      {Array.from({ length: 6 }, (_, i) => (
+        <Skeleton key={i} className="h-14 rounded-xl" />
+      ))}
+    </div>
+  );
+
+  const controlsTab = (
+    <>
       <div
         data-testid="active-profile"
         className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border bg-card px-3 py-2.5"
@@ -497,22 +506,62 @@ export function ControlsPage({
 
       {config ? (
         <Tabs value={selected} onValueChange={(value) => setChosen(value as ProfileId)}>
-          <TabsList aria-label={t.profilesLabel} className="h-auto flex-wrap">
+          {/* Chips, not an underline bar, so the profiles are not mistaken for the page tabs. */}
+          <TabsList
+            aria-label={t.profilesLabel}
+            className="h-auto w-full flex-wrap justify-start gap-1.5 bg-transparent p-0"
+          >
             {config.profiles.map((entry) => (
               <TabsTrigger
                 key={entry.id}
                 value={entry.id}
                 data-active-profile={desk?.profileId === entry.id}
+                className="h-8 flex-none rounded-full border-border px-3.5 hover:bg-muted data-active:border-primary data-active:bg-primary data-active:text-primary-foreground data-active:hover:bg-primary dark:data-active:border-primary dark:data-active:bg-primary dark:data-active:text-primary-foreground"
               >
                 {entry.name}
               </TabsTrigger>
             ))}
           </TabsList>
+          {profile ? (
+            <details
+              data-testid="new-profile"
+              open={newOpen}
+              onToggle={(event) => setNewOpen(event.currentTarget.open)}
+              className="group mt-3 text-sm"
+            >
+              <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-sm text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                <Plus className="size-3.5" aria-hidden="true" />
+                {t.newProfileToggle}
+                <ChevronDown
+                  className="size-3.5 transition-transform group-open:rotate-180"
+                  aria-hidden="true"
+                />
+              </summary>
+              <div className="mt-2 rounded-xl border bg-card p-3">
+                <ProfilesCard
+                  config={config}
+                  desk={desk}
+                  profile={profile}
+                  onShow={(id) => {
+                    setChosen(id);
+                    setNewOpen(false);
+                  }}
+                  part="new"
+                />
+              </div>
+            </details>
+          ) : null}
           {config.profiles
             .filter((entry) => entry.id === selected)
             .map((entry) => (
               <TabsContent key={entry.id} value={entry.id} className="mt-4">
-                <ProfilesCard config={config} desk={desk} profile={entry} onShow={setChosen}>
+                <ProfilesCard
+                  config={config}
+                  desk={desk}
+                  profile={entry}
+                  onShow={setChosen}
+                  part="profile"
+                >
                   <div className="space-y-4">
                     {entry.custom ? (
                       <p className="text-xs text-muted-foreground">{t.customProfileNote}</p>
@@ -525,55 +574,57 @@ export function ControlsPage({
             ))}
         </Tabs>
       ) : (
-        <div className="space-y-2" aria-label={t.loading}>
-          {Array.from({ length: 6 }, (_, i) => (
-            <Skeleton key={i} className="h-14 rounded-xl" />
-          ))}
-        </div>
+        loadingRows
       )}
+    </>
+  );
 
-      <Card data-testid="macros">
-        <CardHeader>
-          <CardTitle>{strings.controls.macros.title}</CardTitle>
-          <CardDescription>{strings.controls.macros.description}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {macros.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{strings.controls.macros.empty}</p>
-          ) : (
-            <ul className="space-y-2" aria-label={strings.controls.macros.title}>
-              {macros.map((m) => (
-                <li
-                  key={m.id}
-                  data-testid={`macro-${m.id}`}
-                  className="flex flex-wrap items-center gap-2 rounded-lg bg-muted px-3 py-2.5"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{m.name}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {m.steps.map(describeStep).join(' → ')}
-                    </p>
-                  </div>
-                  <Button size="sm" variant="outline" onClick={() => setEditingMacro(m)}>
-                    {strings.controls.macros.edit}
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => removeMacro(m)}>
-                    {strings.controls.macros.delete}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <Button
-            variant="outline"
-            disabled={!config || macros.length >= MACRO_LIMITS.macros}
-            onClick={() => setEditingMacro(null)}
-          >
-            {strings.controls.macros.create}
-          </Button>
-        </CardContent>
-      </Card>
+  const macrosTab = (
+    <Card data-testid="macros">
+      <CardHeader>
+        <CardTitle>{strings.controls.macros.title}</CardTitle>
+        <CardDescription>{strings.controls.macros.description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {macros.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{strings.controls.macros.empty}</p>
+        ) : (
+          <ul className="space-y-2" aria-label={strings.controls.macros.title}>
+            {macros.map((m) => (
+              <li
+                key={m.id}
+                data-testid={`macro-${m.id}`}
+                className="flex flex-wrap items-center gap-2 rounded-lg bg-muted px-3 py-2.5"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">{m.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {m.steps.map(describeStep).join(' → ')}
+                  </p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => setEditingMacro(m)}>
+                  {strings.controls.macros.edit}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => removeMacro(m)}>
+                  {strings.controls.macros.delete}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Button
+          variant="outline"
+          disabled={!config || macros.length >= MACRO_LIMITS.macros}
+          onClick={() => setEditingMacro(null)}
+        >
+          {strings.controls.macros.create}
+        </Button>
+      </CardContent>
+    </Card>
+  );
 
+  const moreTab = (
+    <>
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" disabled={!profile} onClick={() => setConfirm('profile')}>
           {profile?.custom ? t.resetCustomLabel : t.resetProfile}
@@ -588,6 +639,8 @@ export function ControlsPage({
         <AlertTitle>{t.recoveryTitle}</AlertTitle>
         <AlertDescription>{t.recovery}</AlertDescription>
       </Alert>
+
+      {notes}
 
       <Card>
         <CardHeader>
@@ -609,6 +662,33 @@ export function ControlsPage({
           </ItemGroup>
         </CardContent>
       </Card>
+    </>
+  );
+
+  return (
+    <Page title={t.title} description={t.description}>
+      {config?.notice ? (
+        <Alert data-testid="config-notice">
+          <TriangleAlert aria-hidden="true" />
+          <AlertTitle>{t.notice[config.notice].title}</AlertTitle>
+          <AlertDescription>{t.notice[config.notice].body}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      <PageTabs
+        id="controls"
+        label={t.tabsLabel}
+        tabs={[
+          {
+            value: 'controls',
+            label: t.tabs.controls,
+            Icon: SlidersHorizontal,
+            content: controlsTab,
+          },
+          { value: 'macros', label: t.tabs.macros, Icon: Workflow, content: macrosTab },
+          { value: 'more', label: t.tabs.more, Icon: CircleHelp, content: moreTab },
+        ]}
+      />
 
       <ActionPicker
         target={editing}

@@ -18,6 +18,7 @@ vi.mock('../../../lib/ipc', async (importOriginal) => {
 
 import * as ipc from '../../../lib/ipc';
 import * as mock from '../../../lib/ipc/mock';
+import { resetPageTabs } from '../../../components/kivori/page-tabs';
 import { ControlsPage } from '../ControlsPage';
 
 function Harness(): ReactElement {
@@ -39,8 +40,14 @@ async function show(user: ReturnType<typeof userEvent.setup>, name: string): Pro
   return screen.findByTestId(`profile-${name.toLowerCase()}`);
 }
 
+/** Expands the New profile block under the profile chips. */
+async function openNew(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(await screen.findByText('New profile', { selector: 'summary' }));
+}
+
 beforeEach(async () => {
   window.history.pushState({}, '', '/');
+  resetPageTabs();
   await ipc.resetConfig();
   act(() => mock.mockSetRecentApp(null));
 });
@@ -100,6 +107,7 @@ describe('ProfilesCard', () => {
 
   it('disables "Add the app in front of me" with an explanation until an app has been seen', async () => {
     render(<Harness />);
+    await openNew(userEvent.setup());
     const button = await screen.findByRole('button', { name: 'Add the app in front of me' });
     expect(button).toBeDisabled();
     expect(screen.getByText(/Switch to the app you want/)).toBeVisible();
@@ -111,6 +119,7 @@ describe('ProfilesCard', () => {
     const user = userEvent.setup();
     render(<Harness />);
     await screen.findByTestId('profile-list');
+    await openNew(user);
     act(() => mock.mockSetRecentApp({ id: 'figma.exe', name: 'Figma' }));
     await user.click(await screen.findByRole('button', { name: 'Add Figma' }));
     const added = await screen.findByTestId('profile-custom-1');
@@ -160,6 +169,7 @@ describe('ProfilesCard', () => {
   it('picks a running app for a new profile', async () => {
     const user = userEvent.setup();
     render(<Harness />);
+    await openNew(user);
     await user.click(await screen.findByRole('button', { name: 'Pick a running app' }));
     const dialog = await screen.findByRole('dialog');
     expect(await within(dialog).findByText('In Browser')).toBeVisible();
@@ -229,6 +239,7 @@ describe('ProfilesCard', () => {
 
   it('stops at 16 custom profiles', async () => {
     render(<Harness />);
+    await openNew(userEvent.setup());
     for (let n = 0; n < 16; n += 1) await ipc.addCustomProfile(`app${n}.exe`, `App ${n}`);
     act(() => mock.mockSetRecentApp({ id: 'figma.exe', name: 'Figma' }));
     expect(await screen.findByRole('button', { name: 'Add Figma' })).toBeDisabled();
@@ -243,10 +254,12 @@ describe('ProfilesCard', () => {
     await ipc.setBinding('custom-1', 'press', { action: { kind: 'nextTrack' } });
     await user.click(await screen.findByRole('tab', { name: 'Figma' }));
     expect(screen.getByTestId('gesture-press')).toHaveTextContent('Next track');
+    await user.click(screen.getByRole('tab', { name: 'Reset & help' }));
     await user.click(screen.getByRole('button', { name: 'Reset to General' }));
     await user.click(
       within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Reset' }),
     );
+    await user.click(screen.getByRole('tab', { name: 'Controls' }));
     await waitFor(() =>
       expect(screen.getByTestId('gesture-press')).toHaveTextContent('Play / Pause'),
     );

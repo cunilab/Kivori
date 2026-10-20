@@ -67,6 +67,7 @@ describe('product acceptance through the app shell', () => {
     render(<App />);
     expect(await screen.findByRole('img', { name: 'Kivori Pip · KV-P1' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Change view' }));
+    await user.click(await screen.findByRole('tab', { name: 'Show now' }));
     await user.click(
       within(await screen.findByRole('radiogroup', { name: 'Show now' })).getByRole('radio', {
         name: /^Clock/,
@@ -157,6 +158,7 @@ describe('product acceptance through the app shell', () => {
     expect(figure.querySelector('img')).toBeNull();
     expect(document.body).not.toHaveTextContent(/Kivori Pip|KV-P1/);
     await user.click(screen.getByRole('button', { name: 'Change view' }));
+    await user.click(await screen.findByRole('tab', { name: 'Show now' }));
     await user.click(
       within(await screen.findByRole('radiogroup', { name: 'Show now' })).getByRole('radio', {
         name: /^Media/,

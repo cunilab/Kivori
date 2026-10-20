@@ -15,6 +15,7 @@ vi.mock('../../../lib/ipc', async (importOriginal) => {
 });
 
 import * as ipc from '../../../lib/ipc';
+import { resetPageTabs } from '../../../components/kivori/page-tabs';
 import { ControlsPage } from '../ControlsPage';
 
 function Harness({ connection = null }: { connection?: ConnectionStatusDto | null }): ReactElement {
@@ -26,6 +27,11 @@ function Harness({ connection = null }: { connection?: ConnectionStatusDto | nul
       <Toaster />
     </>
   );
+}
+
+/** Opens a page tab (Controls, Macros or Reset & help). */
+async function openTab(user: ReturnType<typeof userEvent.setup>, name: string): Promise<void> {
+  await user.click(await screen.findByRole('tab', { name }));
 }
 
 const row = (key: string): HTMLElement => screen.getByTestId(`gesture-${key}`);
@@ -64,6 +70,7 @@ async function openPressEditor(user: ReturnType<typeof userEvent.setup>): Promis
 
 beforeEach(async () => {
   window.history.pushState({}, '', '/');
+  resetPageTabs();
   await ipc.resetConfig();
   vi.mocked(ipc.testAction).mockClear();
   vi.mocked(ipc.testRotate).mockClear();
@@ -108,9 +115,9 @@ describe('ControlsPage', () => {
     expect(row('hold')).toHaveTextContent('Mute');
     expect(row('button1')).toHaveTextContent('Previous track');
     expect(row('button1Hold')).toHaveTextContent('Not set');
-    // The disclaimers sit in one collapsed note, not above the controls.
-    expect(screen.getByTestId('controls-notes')).not.toHaveAttribute('open');
-    await userEvent.setup().click(screen.getByText('How controls work'));
+    // The disclaimers live under Reset & help, not above the controls.
+    expect(screen.queryByTestId('controls-notes')).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole('tab', { name: 'Reset & help' }));
     expect(screen.getByText(/not show them on screen yet/)).toBeVisible();
     expect(screen.getByTestId('mic-scope-note')).toBeVisible();
     expect(screen.queryByText('Custom')).not.toBeInTheDocument();
@@ -227,7 +234,9 @@ describe('ControlsPage', () => {
     const user = userEvent.setup();
     render(<Harness />);
     await screen.findByTestId('gesture-rotate');
+    await openTab(user, 'Reset & help');
     expect(screen.getByTestId('controls-notes')).toHaveTextContent('up and back down');
+    await openTab(user, 'Controls');
     await rowAction(user, 'rotate', 'Test');
     expect(ipc.testRotate).toHaveBeenCalledWith({ kind: 'systemVolume' });
     expect(ipc.testAction).not.toHaveBeenCalled();
@@ -292,16 +301,55 @@ describe('ControlsPage', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(row('press')).toHaveTextContent('Custom'));
 
+    await openTab(user, 'Reset & help');
     await user.click(screen.getByRole('button', { name: 'Reset profile' }));
     const dialog = await screen.findByRole('alertdialog');
     await user.click(within(dialog).getByRole('button', { name: 'Keep my settings' }));
+    await openTab(user, 'Controls');
     expect(row('press')).toHaveTextContent('Custom');
 
+    await openTab(user, 'Reset & help');
     await user.click(screen.getByRole('button', { name: 'Reset everything' }));
     await user.click(
       within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Reset' }),
     );
+    await openTab(user, 'Controls');
     await waitFor(() => expect(row('press')).not.toHaveTextContent('Custom'));
+  });
+});
+
+describe('ControlsPage tabs', () => {
+  it('splits the page into Controls, Macros and Reset & help, and tells them apart from the profile chips', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const tabs = await screen.findByRole('tablist', { name: 'Controls sections' });
+    expect(
+      within(tabs)
+        .getAllByRole('tab')
+        .map((tab) => tab.textContent),
+    ).toEqual(['Controls', 'Macros', 'Reset & help']);
+    // The first screen is controls: the profile chips and the rows, no explanations or resets.
+    expect(screen.getByRole('tablist', { name: 'Profile' })).toBeVisible();
+    expect(screen.getByTestId('gesture-press')).toBeVisible();
+    expect(screen.queryByTestId('macros')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reset everything' })).not.toBeInTheDocument();
+
+    await user.click(within(tabs).getByRole('tab', { name: 'Macros' }));
+    expect(await screen.findByTestId('macros')).toBeVisible();
+    await waitFor(() => expect(screen.queryByTestId('gesture-press')).not.toBeInTheDocument());
+
+    await user.click(within(tabs).getByRole('tab', { name: 'Reset & help' }));
+    expect(screen.getByRole('button', { name: 'Reset everything' })).toBeVisible();
+    expect(screen.getByText('How Kivori reports results')).toBeVisible();
+    expect(screen.getByText('Restart Kivori')).toBeVisible();
+  });
+
+  it('still switches profile from the chips', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(await screen.findByRole('tab', { name: 'Browser' }));
+    expect(await screen.findByRole('tab', { name: 'Browser', selected: true })).toBeVisible();
+    expect(screen.getByTestId('profile-browser')).toBeVisible();
   });
 });
 
@@ -326,6 +374,7 @@ describe('ControlsPage macros', () => {
     render(<Harness />);
     await screen.findByTestId('gesture-press');
 
+    await openTab(user, 'Macros');
     await user.click(screen.getByRole('button', { name: 'New macro' }));
     await user.type(await screen.findByLabelText('Name'), 'Standup');
     await addStep(user, /^Mute/);
@@ -353,6 +402,7 @@ describe('ControlsPage macros', () => {
     expect(saved).toHaveTextContent('Standup');
     expect(saved).toHaveTextContent('Mute → Play / Pause → Wait 500 ms');
 
+    await openTab(user, 'Controls');
     await openPressEditor(user);
     await user.click(screen.getByRole('radio', { name: /^Macro/ }));
     await user.selectOptions(screen.getByLabelText('Macro', { selector: 'select' }), 'Standup');
@@ -360,6 +410,7 @@ describe('ControlsPage macros', () => {
     await waitFor(() => expect(row('press')).toHaveTextContent('Macro: Standup'));
     expect(row('press')).toHaveTextContent('Custom');
 
+    await openTab(user, 'Macros');
     await user.click(
       within(screen.getByTestId('macro-standup')).getByRole('button', { name: 'Delete' }),
     );
@@ -369,8 +420,10 @@ describe('ControlsPage macros', () => {
     expect(screen.getByTestId('macro-standup')).toBeVisible();
 
     // Unbound, it can go.
+    await openTab(user, 'Controls');
     await rowAction(user, 'press', 'Reset');
     await waitFor(() => expect(row('press')).not.toHaveTextContent('Macro: Standup'));
+    await openTab(user, 'Macros');
     await user.click(
       within(screen.getByTestId('macro-standup')).getByRole('button', { name: 'Delete' }),
     );
@@ -380,6 +433,7 @@ describe('ControlsPage macros', () => {
   it('limits a macro to 8 steps and never offers a macro as a step', async () => {
     const user = userEvent.setup();
     render(<Harness />);
+    await openTab(user, 'Macros');
     await user.click(await screen.findByRole('button', { name: 'New macro' }));
     await user.type(await screen.findByLabelText('Name'), 'Many');
     for (let i = 0; i < 8; i += 1) await addStep(user, /^Next track/);
@@ -390,6 +444,7 @@ describe('ControlsPage macros', () => {
   it('keeps Save off until the macro has a name and an action, and checks the wait range', async () => {
     const user = userEvent.setup();
     render(<Harness />);
+    await openTab(user, 'Macros');
     await user.click(await screen.findByRole('button', { name: 'New macro' }));
     await user.type(await screen.findByLabelText('Name'), 'Pause only');
     expect(screen.getByRole('button', { name: 'Save macro' })).toBeDisabled();

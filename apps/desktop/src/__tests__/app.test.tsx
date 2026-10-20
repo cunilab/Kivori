@@ -87,6 +87,7 @@ describe('App shell', () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(await screen.findByRole('button', { name: 'Display' }));
+    await user.click(await screen.findByRole('tab', { name: 'Show now' }));
     const radio = within(await screen.findByRole('radiogroup', { name: 'Show now' })).getByRole(
       'radio',
       { name: /^Clock/ },
@@ -104,6 +105,7 @@ describe('App shell', () => {
     expect(navLabels()).toEqual(['Home', 'Controls', 'Display', 'Device', 'Settings']);
     act(() => publish?.(connectionFixture([], { connection: 'disconnected', device: null })));
     expect(screen.getByRole('heading', { level: 1, name: 'Display' })).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Buddy' }));
     expect(screen.getByRole('switch', { name: 'Reactions' })).not.toHaveAttribute(
       'aria-disabled',
       'true',
