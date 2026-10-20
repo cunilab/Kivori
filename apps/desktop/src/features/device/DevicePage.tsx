@@ -93,7 +93,8 @@ export function DevicePage({
             <CardContent className="space-y-4">
               {ui === 'loading' ? (
                 <Skeleton className="h-10 w-full" />
-              ) : (
+              ) : ui === 'disconnected' && !device ? null : (
+                // Disconnected, the empty state below already says so.
                 <StatusBanner ui={ui} retries={connection?.retryCount ?? 0} />
               )}
               {connection?.incompatibleReason ? (
