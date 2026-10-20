@@ -868,8 +868,7 @@ export const strings = {
       title: 'You are all set',
       body: 'Choose Finish to complete setup. You can run it again in Settings.',
       openTitle: 'Almost done',
-      openBody:
-        'You can finish now and do these later. Run setup again in Settings at any time.',
+      openBody: 'You can finish now and do these later. Run setup again in Settings at any time.',
       open: {
         plug: 'Plug in your Kivori. It connects by itself whenever you do.',
         permissions:
@@ -877,8 +876,7 @@ export const strings = {
       },
       finish: 'Finish',
       finishing: 'Finishing…',
-      launchFailed:
-        'Kivori could not change the startup setting. You can change it in Settings.',
+      launchFailed: 'Kivori could not change the startup setting. You can change it in Settings.',
       failed: 'Could not finish setup. Try again.',
     },
     runAgain: {
