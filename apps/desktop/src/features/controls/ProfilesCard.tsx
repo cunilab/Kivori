@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import type { FormEvent, ReactElement } from 'react';
+import type { FormEvent, ReactElement, ReactNode } from 'react';
 import { toast } from 'sonner';
+import { Ellipsis, Plus } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,12 +15,14 @@ import {
 import { Badge } from '@kivori/ui/components/badge';
 import { Button } from '@kivori/ui/components/button';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@kivori/ui/components/card';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@kivori/ui/components/dropdown-menu';
 import { Input } from '@kivori/ui/components/input';
 import { Label } from '@kivori/ui/components/label';
 import {
@@ -35,6 +38,7 @@ import {
   assignApp,
   deleteProfile,
   getAppIcon,
+  getStartupSettings,
   listRunningApps,
   renameProfile,
   setProfilePinCycle,
@@ -46,15 +50,21 @@ import type {
   DeskStatusDto,
   ProfileConfigDto,
   ProfileId,
+  StartupPlatform,
 } from '@/lib/ipc/types';
 import { format, strings } from '@/lib/i18n/strings';
 import { errorText } from '@/lib/utils';
+import { friendlyAppName, groupApps } from './app-names';
+import type { AppGroup } from './app-names';
+
+/** How many apps a profile shows before "+N more". */
+const APPS_SHOWN = 6;
 
 const t = strings.controls.profileList;
 
-/** What an app id reads as: `idea64.exe` -> `idea64`; a bundle id stays whole. */
+/** What an app id reads as: a friendly name (`idea64.exe` -> `IntelliJ IDEA`). */
 export function appLabel(id: string): string {
-  return id.replace(/\.exe$/, '');
+  return friendlyAppName(id);
 }
 
 /** The app's icon, or a neutral letter while there is none (or when this OS gives none). */
@@ -187,26 +197,44 @@ function AppPicker({
 }
 
 /**
- * Profiles and the apps they match: add the app in front of you (or a running one) as a new
- * profile, move apps between profiles, rename and delete your own, and choose which join the
- * middle button's pin cycle. Every change saves through the native core; the list re-renders
- * from the config it returns.
+ * The selected profile: its name and options, the apps it matches (each app once, however many ids
+ * the config stores for it), the controls passed as `children`, and the way to add a profile.
+ * Every change saves through the native core; the page re-renders from the config it returns.
  */
 export function ProfilesCard({
   config,
   desk,
+  profile,
   onShow,
+  children,
+  part = 'all',
 }: {
   config: ConfigDto;
   desk: DeskStatusDto | null;
+  profile: ProfileConfigDto;
   onShow: (id: ProfileId) => void;
+  children?: ReactNode;
+  /** `profile`: the apps panel and children; `new`: only the New profile block; `all`: both. */
+  part?: 'all' | 'profile' | 'new';
 }): ReactElement {
   const [picking, setPicking] = useState<ProfileConfigDto | null | undefined>(undefined);
   const [renaming, setRenaming] = useState<{ id: ProfileId; value: string } | null>(null);
   const [deleting, setDeleting] = useState<ProfileConfigDto | null>(null);
+  const [expanded, setExpanded] = useState<ProfileId | null>(null);
+  const [platform, setPlatform] = useState<StartupPlatform | null>(null);
   const customCount = config.profiles.filter((p) => p.custom).length;
   const full = customCount >= PROFILE_LIMITS.customProfiles;
   const recent = desk?.recentApp ?? null;
+
+  useEffect(() => {
+    let active = true;
+    getStartupSettings()
+      .then((settings) => active && setPlatform(settings.platform))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const fail = (error: unknown): void => {
     toast.error(t.failed, { description: errorText(error) });
@@ -230,6 +258,21 @@ export function ProfilesCard({
         ),
       )
       .catch(fail);
+  };
+  /** Moves every stored id of a merged app, so no alias is left behind. */
+  const moveGroup = async (target: ProfileConfigDto, group: AppGroup): Promise<void> => {
+    try {
+      for (const id of group.ids) await assignApp(target.id, id);
+      toast.success(
+        format(target.id === 'general' ? t.removed : t.moved, {
+          app: group.name,
+          from: profile.name,
+          profile: target.name,
+        }),
+      );
+    } catch (error) {
+      fail(error);
+    }
   };
   const createFor = (app: AppRefDto): void => {
     const from = ownerOf(app.id.toLowerCase());
@@ -269,14 +312,179 @@ export function ProfilesCard({
     return length > PROFILE_LIMITS.nameMax ? t.nameTooLong : null;
   };
 
+  const groups = groupApps(profile.apps, platform);
+  const showAll = expanded === profile.id;
+  const visible = showAll ? groups : groups.slice(0, APPS_SHOWN);
+  const hidden = groups.length - visible.length;
+  const others = config.profiles.filter((p) => p.id !== profile.id);
+
   return (
-    <Card data-testid="profile-list">
-      <CardHeader>
-        <CardTitle>{t.title}</CardTitle>
-        <CardDescription>{t.description}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-2">
+    <div data-testid={part === 'new' ? 'new-profile-list' : 'profile-list'} className="space-y-4">
+      {part !== 'new' ? (
+        <section
+          data-testid={`profile-${profile.id}`}
+          aria-label={profile.name}
+          className="space-y-3 rounded-xl border bg-card p-3 sm:p-4"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            {renaming?.id === profile.id ? (
+              <form onSubmit={saveName} className="flex flex-wrap items-center gap-2">
+                <Label htmlFor={`rename-${profile.id}`} className="sr-only">
+                  {t.renameLabel}
+                </Label>
+                <Input
+                  id={`rename-${profile.id}`}
+                  className="h-8 w-48"
+                  value={renaming.value}
+                  aria-invalid={nameProblem(renaming.value) !== null}
+                  onChange={(e) => setRenaming({ id: profile.id, value: e.target.value })}
+                />
+                <Button size="sm" type="submit" disabled={nameProblem(renaming.value) !== null}>
+                  {t.renameSave}
+                </Button>
+                <Button size="sm" type="button" variant="ghost" onClick={() => setRenaming(null)}>
+                  {t.renameCancel}
+                </Button>
+                <p role="status" className="basis-full text-xs text-muted-foreground">
+                  {nameProblem(renaming.value) ?? t.nameHint}
+                </p>
+              </form>
+            ) : (
+              <h2 className="text-base font-semibold">{profile.name}</h2>
+            )}
+            <Badge variant="outline">{profile.custom ? t.yourProfile : t.builtIn}</Badge>
+            <div className="ml-auto flex items-center gap-2">
+              {profile.custom ? (
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id={`cycle-${profile.id}`}
+                    checked={profile.inPinCycle}
+                    aria-describedby={`cycle-hint-${profile.id}`}
+                    onCheckedChange={(on) => {
+                      setProfilePinCycle(profile.id, on).catch(fail);
+                    }}
+                  />
+                  <Label htmlFor={`cycle-${profile.id}`} className="text-xs">
+                    {t.inPinCycle}
+                  </Label>
+                  <span id={`cycle-hint-${profile.id}`} className="sr-only">
+                    {t.inPinCycleHint}
+                  </span>
+                </div>
+              ) : null}
+              {profile.id !== 'general' ? (
+                <Button size="sm" variant="outline" onClick={() => setPicking(profile)}>
+                  <Plus data-icon="inline-start" aria-hidden="true" />
+                  {t.addApp}
+                  <span className="sr-only"> {profile.name}</span>
+                </Button>
+              ) : null}
+              {profile.custom ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label={format(t.profileOptions, { profile: profile.name })}
+                      />
+                    }
+                  >
+                    <Ellipsis aria-hidden="true" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-auto min-w-40">
+                    <DropdownMenuItem
+                      onClick={() => setRenaming({ id: profile.id, value: profile.name })}
+                    >
+                      {t.rename}
+                      <span className="sr-only"> {profile.name}</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem variant="destructive" onClick={() => setDeleting(profile)}>
+                      {t.delete}
+                      <span className="sr-only"> {profile.name}</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+            </div>
+          </div>
+
+          {profile.id === 'general' ? (
+            <p className="text-xs text-muted-foreground">{t.generalApps}</p>
+          ) : groups.length === 0 ? (
+            <p className="text-xs text-muted-foreground">{t.noApps}</p>
+          ) : (
+            <ul aria-label={t.appsLabel} className="flex flex-wrap gap-2">
+              {visible.map((group) => (
+                <li
+                  key={group.primary}
+                  data-testid={`app-${profile.id}-${group.primary}`}
+                  className="flex items-center gap-2 rounded-md bg-muted py-1 pr-1 pl-2 text-sm"
+                >
+                  <AppIcon id={group.primary} />
+                  <span>{group.name}</span>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          className="size-6"
+                          aria-label={format(t.appOptions, { app: group.name })}
+                        />
+                      }
+                    >
+                      <Ellipsis aria-hidden="true" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="max-h-72 w-auto min-w-44">
+                      {others
+                        .filter((p) => p.id !== 'general')
+                        .map((p) => (
+                          <DropdownMenuItem key={p.id} onClick={() => void moveGroup(p, group)}>
+                            {format(t.moveToItem, { profile: p.name })}
+                          </DropdownMenuItem>
+                        ))}
+                      {others.some((p) => p.id !== 'general') ? <DropdownMenuSeparator /> : null}
+                      <DropdownMenuGroup>
+                        <DropdownMenuLabel>{t.removeHint}</DropdownMenuLabel>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => {
+                            const general = config.profiles.find((p) => p.id === 'general');
+                            if (general) void moveGroup(general, group);
+                          }}
+                        >
+                          {format(t.remove, { app: group.name })}
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </li>
+              ))}
+              {groups.length > APPS_SHOWN ? (
+                <li>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    aria-expanded={showAll}
+                    onClick={() => setExpanded(showAll ? null : profile.id)}
+                  >
+                    {showAll ? t.fewerApps : format(t.moreApps, { count: hidden })}
+                  </Button>
+                </li>
+              ) : null}
+            </ul>
+          )}
+        </section>
+      ) : null}
+
+      {part !== 'new' ? children : null}
+
+      {part !== 'profile' ? (
+        <section aria-label={t.newProfileTitle} className="space-y-2">
+          <h2 className={part === 'new' ? 'sr-only' : 'text-sm font-medium'}>
+            {t.newProfileTitle}
+          </h2>
           <div className="flex flex-wrap items-center gap-2">
             <Button
               disabled={!recent || full}
@@ -299,147 +507,8 @@ export function ProfilesCard({
           <p className="text-xs text-muted-foreground">
             {format(t.limit, { count: customCount, max: PROFILE_LIMITS.customProfiles })}
           </p>
-        </div>
-
-        <ul aria-label={t.listLabel} className="space-y-3">
-          {config.profiles.map((profile) => (
-            <li
-              key={profile.id}
-              data-testid={`profile-${profile.id}`}
-              className="space-y-2 rounded-lg bg-muted px-3 py-2.5"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                {renaming?.id === profile.id ? (
-                  <form onSubmit={saveName} className="flex flex-wrap items-center gap-2">
-                    <Label htmlFor={`rename-${profile.id}`} className="sr-only">
-                      {t.renameLabel}
-                    </Label>
-                    <Input
-                      id={`rename-${profile.id}`}
-                      className="h-8 w-48"
-                      value={renaming.value}
-                      aria-invalid={nameProblem(renaming.value) !== null}
-                      onChange={(e) => setRenaming({ id: profile.id, value: e.target.value })}
-                    />
-                    <Button size="sm" type="submit" disabled={nameProblem(renaming.value) !== null}>
-                      {t.renameSave}
-                    </Button>
-                    <Button
-                      size="sm"
-                      type="button"
-                      variant="ghost"
-                      onClick={() => setRenaming(null)}
-                    >
-                      {t.renameCancel}
-                    </Button>
-                    <p role="status" className="basis-full text-xs text-muted-foreground">
-                      {nameProblem(renaming.value) ?? t.nameHint}
-                    </p>
-                  </form>
-                ) : (
-                  <span className="font-medium">{profile.name}</span>
-                )}
-                <Badge variant="outline">{profile.custom ? t.yourProfile : t.builtIn}</Badge>
-                <div className="ml-auto flex flex-wrap items-center gap-2">
-                  {profile.custom ? (
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        id={`cycle-${profile.id}`}
-                        checked={profile.inPinCycle}
-                        aria-describedby={`cycle-hint-${profile.id}`}
-                        onCheckedChange={(on) => {
-                          setProfilePinCycle(profile.id, on).catch(fail);
-                        }}
-                      />
-                      <Label htmlFor={`cycle-${profile.id}`} className="text-xs">
-                        {t.inPinCycle}
-                      </Label>
-                      <span id={`cycle-hint-${profile.id}`} className="sr-only">
-                        {t.inPinCycleHint}
-                      </span>
-                    </div>
-                  ) : null}
-                  <Button size="sm" variant="outline" onClick={() => onShow(profile.id)}>
-                    {t.showControls}
-                    <span className="sr-only"> {profile.name}</span>
-                  </Button>
-                  {profile.id !== 'general' ? (
-                    <Button size="sm" variant="outline" onClick={() => setPicking(profile)}>
-                      {t.addApp}
-                      <span className="sr-only"> {profile.name}</span>
-                    </Button>
-                  ) : null}
-                  {profile.custom ? (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setRenaming({ id: profile.id, value: profile.name })}
-                      >
-                        {t.rename}
-                        <span className="sr-only"> {profile.name}</span>
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setDeleting(profile)}>
-                        {t.delete}
-                        <span className="sr-only"> {profile.name}</span>
-                      </Button>
-                    </>
-                  ) : null}
-                </div>
-              </div>
-              {profile.id === 'general' ? (
-                <p className="text-xs text-muted-foreground">{t.generalApps}</p>
-              ) : profile.apps.length === 0 ? (
-                <p className="text-xs text-muted-foreground">{t.noApps}</p>
-              ) : (
-                <ul className="flex flex-wrap gap-2">
-                  {profile.apps.map((id) => (
-                    <li
-                      key={id}
-                      data-testid={`app-${profile.id}-${id}`}
-                      className="flex items-center gap-2 rounded-md bg-background px-2 py-1 text-sm"
-                    >
-                      <AppIcon id={id} />
-                      <span>{appLabel(id)}</span>
-                      <select
-                        aria-label={format(t.moveTo, { app: appLabel(id) })}
-                        className="h-7 rounded border bg-background text-xs"
-                        value=""
-                        onChange={(e) => {
-                          const target = config.profiles.find((p) => p.id === e.target.value);
-                          if (target) moveApp(target, { id, name: '' });
-                        }}
-                      >
-                        <option value="">{t.moveToPlaceholder}</option>
-                        {config.profiles
-                          .filter((p) => p.id !== profile.id)
-                          .map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name}
-                            </option>
-                          ))}
-                      </select>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 px-2"
-                        title={t.removeHint}
-                        aria-label={format(t.remove, { app: appLabel(id) })}
-                        onClick={() => {
-                          const general = config.profiles.find((p) => p.id === 'general');
-                          if (general) moveApp(general, { id, name: '' });
-                        }}
-                      >
-                        ×
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          ))}
-        </ul>
-      </CardContent>
+        </section>
+      ) : null}
 
       <AppPicker
         target={picking}
@@ -471,6 +540,6 @@ export function ProfilesCard({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Card>
+    </div>
   );
 }

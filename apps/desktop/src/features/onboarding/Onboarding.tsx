@@ -94,7 +94,7 @@ export function Onboarding({
         try {
           await setLaunchAtLogin(launch);
         } catch {
-          // Not a reason to keep the person in setup; the Device page can change it.
+          // Not a reason to keep the person in setup; Settings can change it.
           toast.error(t.done.launchFailed);
         }
       }

@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from '../App';
+import { resetPageTabs } from '../components/kivori/page-tabs';
 import { setDevMode } from '../lib/dev-mode';
 
 const DEV_MODE_KEY = 'kivori.developerMode';
@@ -14,14 +15,25 @@ const navLabels = (): (string | null)[] =>
   within(screen.getByRole('navigation', { name: 'Main navigation' }))
     .getAllByRole('button')
     .map((b) => b.textContent);
+const goSettings = (user: ReturnType<typeof userEvent.setup>) =>
+  user.click(screen.getByRole('button', { name: 'Settings' }));
+const goDeveloper = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
+  await goSettings(user);
+  await user.click(screen.getByRole('tab', { name: 'Developer' }));
+};
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  resetPageTabs();
+  localStorage.clear();
+});
 afterEach(() => vi.restoreAllMocks());
 
 describe('App shell', () => {
-  it('always offers Developer as one destination for technical tools', async () => {
+  it('offers four device pages with Settings last in the same landmark', async () => {
     render(<App />);
-    expect(navLabels()).toEqual(['Home', 'Controls', 'Display', 'Device', 'Developer']);
+    expect(navLabels()).toEqual(['Home', 'Controls', 'Display', 'Device', 'Settings']);
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Developer' })).not.toBeInTheDocument();
     expect(await screen.findByRole('heading', { level: 1, name: 'Home' })).toBeInTheDocument();
   });
 
@@ -34,10 +46,43 @@ describe('App shell', () => {
       'aria-current',
       'page',
     );
-    await user.click(screen.getByRole('button', { name: 'Developer' }));
+    await goSettings(user);
     await waitFor(() =>
-      expect(screen.getByRole('heading', { level: 1, name: 'Developer' })).toHaveFocus(),
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toHaveFocus(),
     );
+    expect(screen.getByRole('button', { name: 'Settings' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+  });
+
+  it('keeps the whole navigation on screen as an icon rail in a narrow window', async () => {
+    const width = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 400 });
+    try {
+      const user = userEvent.setup();
+      render(<App />);
+      await screen.findByRole('heading', { level: 1, name: 'Home' });
+      expect(screen.queryByRole('button', { name: 'Toggle sidebar' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('dialog', { name: 'Sidebar' })).not.toBeInTheDocument();
+      expect(navLabels()).toEqual(['Home', 'Controls', 'Display', 'Device', 'Settings']);
+      expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
+      await user.click(screen.getByRole('button', { name: 'Device' }));
+      expect(screen.getByRole('button', { name: 'Device' })).toHaveAttribute(
+        'aria-current',
+        'page',
+      );
+      expect(screen.getByRole('button', { name: 'Home' })).not.toHaveAttribute('aria-current');
+      await user.click(screen.getByRole('button', { name: 'Settings' }));
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toHaveFocus(),
+      );
+      expect(
+        document.querySelector('[data-slot="sidebar"][data-collapsible="icon"]'),
+      ).toBeInTheDocument();
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+    }
   });
 
   it('preserves configuration navigation and moves focus when a new device loses a focused live surface', async () => {
@@ -50,7 +95,11 @@ describe('App shell', () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(await screen.findByRole('button', { name: 'Display' }));
-    const radio = await screen.findByRole('radio', { name: /^Clock/ });
+    await user.click(await screen.findByRole('tab', { name: 'Show now' }));
+    const radio = within(await screen.findByRole('radiogroup', { name: 'Show now' })).getByRole(
+      'radio',
+      { name: /^Clock/ },
+    );
     radio.focus();
     expect(radio).toHaveFocus();
     act(() =>
@@ -60,10 +109,11 @@ describe('App shell', () => {
     );
     expect(screen.queryByRole('radiogroup', { name: 'Show now' })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1, name: 'Display' })).toHaveFocus();
-    expect(screen.getByRole('group', { name: 'Default view' })).toBeInTheDocument();
-    expect(navLabels()).toEqual(['Home', 'Controls', 'Display', 'Device', 'Developer']);
+    expect(screen.getByRole('radiogroup', { name: 'Default view' })).toBeInTheDocument();
+    expect(navLabels()).toEqual(['Home', 'Controls', 'Display', 'Device', 'Settings']);
     act(() => publish?.(connectionFixture([], { connection: 'disconnected', device: null })));
     expect(screen.getByRole('heading', { level: 1, name: 'Display' })).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Buddy' }));
     expect(screen.getByRole('switch', { name: 'Reactions' })).not.toHaveAttribute(
       'aria-disabled',
       'true',
@@ -77,36 +127,38 @@ describe('App shell', () => {
 });
 
 describe('Developer mode', () => {
-  it('starts off and keeps technical tools away from customer pages', async () => {
+  it('starts off and keeps technical tools away from the device and customer pages', async () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole('button', { name: 'Device' }));
-    expect(screen.getByTestId('device-firmware')).toBeInTheDocument();
+    expect(screen.getByTestId('device-empty')).toBeInTheDocument();
     expect(screen.queryByText('Protocol')).not.toBeInTheDocument();
     expect(screen.queryByRole('switch', { name: 'Developer mode' })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Developer' }));
+    await goDeveloper(user);
     expect(screen.getByRole('switch', { name: 'Developer mode' })).not.toBeChecked();
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Copy diagnostics' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Activity' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Diagnostics' }));
+    expect(await screen.findAllByRole('button', { name: 'Copy diagnostics' })).toHaveLength(1);
   });
 
-  it('consolidates tools behind its toggle and persists the choice', async () => {
+  it('keeps tools behind its switch on Settings and persists the choice', async () => {
     const user = userEvent.setup();
     const first = render(<App />);
-    await user.click(screen.getByRole('button', { name: 'Developer' }));
+    await goDeveloper(user);
     await user.click(screen.getByRole('switch', { name: 'Developer mode' }));
     expect(await screen.findByRole('tab', { name: 'Activity' })).toBeInTheDocument();
     expect(await screen.findByRole('tab', { name: 'Device Studio' })).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    await user.click(screen.getByRole('tab', { name: 'Social reactions' }));
     await user.click(screen.getByRole('tab', { name: 'Activity' }));
     expect(screen.getByRole('heading', { level: 2, name: 'Activity' })).toBeInTheDocument();
     first.unmount();
     render(<App />);
-    await user.click(screen.getByRole('button', { name: 'Developer' }));
+    await goDeveloper(user);
     expect(screen.getByRole('switch', { name: 'Developer mode' })).toBeChecked();
   });
 
-  it('restores focus while remaining on Developer when its active tools are removed', async () => {
+  it('shows protocol rows and internals on Device only while developer mode is on', async () => {
     localStorage.setItem(DEV_MODE_KEY, 'true');
     vi.spyOn(ipc, 'getConnectionStatus').mockResolvedValue(connectionFixture());
     vi.spyOn(ipc, 'onConnectionStatus').mockImplementation(async (handler) => {
@@ -115,19 +167,34 @@ describe('Developer mode', () => {
     });
     const user = userEvent.setup();
     render(<App />);
-    await user.click(screen.getByRole('button', { name: 'Developer' }));
+    await user.click(screen.getByRole('button', { name: 'Device' }));
+    await user.click(screen.getByRole('tab', { name: 'Internals' }));
+    expect(await screen.findByText('Protocol')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Device internals' })).toBeInTheDocument();
+    act(() => setDevMode(false));
+    expect(screen.queryByText('Protocol')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Device internals' })).not.toBeInTheDocument();
+  });
+
+  it('restores focus while remaining on Settings when its active tools are removed', async () => {
+    localStorage.setItem(DEV_MODE_KEY, 'true');
+    vi.spyOn(ipc, 'getConnectionStatus').mockResolvedValue(connectionFixture());
+    vi.spyOn(ipc, 'onConnectionStatus').mockImplementation(async (handler) => {
+      handler(connectionFixture());
+      return () => {};
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await goDeveloper(user);
     await user.click(screen.getByRole('tab', { name: 'Social reactions' }));
     const greet = screen.getByRole('button', { name: 'Greet' });
     greet.focus();
     act(() => setDevMode(false));
-    expect(screen.getByRole('heading', { level: 1, name: 'Developer' })).toHaveFocus();
+    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toHaveFocus();
     expect(screen.queryByRole('button', { name: 'Greet' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Activity' })).not.toBeInTheDocument();
     act(() => setDevMode(true));
-    expect(screen.getByRole('tab', { name: 'Diagnostics' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    expect(screen.getByRole('tab', { name: 'Activity' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('restores focus if native Studio availability removes its focused tab', async () => {
@@ -141,13 +208,13 @@ describe('Developer mode', () => {
     const availability = vi.spyOn(hooks, 'useAppInfo').mockReturnValue(info);
     const user = userEvent.setup();
     const page = render(<App />);
-    await user.click(screen.getByRole('button', { name: 'Developer' }));
+    await goDeveloper(user);
     const studio = screen.getByRole('tab', { name: 'Device Studio' });
     studio.focus();
     availability.mockReturnValue({ ...info, deviceStudioEnabled: false });
     page.rerender(<App />);
     expect(screen.queryByRole('tab', { name: 'Device Studio' })).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 1, name: 'Developer' })).toHaveFocus();
+    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toHaveFocus();
   });
 
   it('falls back to off when storage throws', async () => {
@@ -157,7 +224,7 @@ describe('Developer mode', () => {
     });
     const user = userEvent.setup();
     render(<App />);
-    await user.click(screen.getByRole('button', { name: 'Developer' }));
+    await goDeveloper(user);
     expect(screen.getByRole('switch', { name: 'Developer mode' })).not.toBeChecked();
   });
 });

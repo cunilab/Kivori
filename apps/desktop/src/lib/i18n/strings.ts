@@ -5,25 +5,44 @@ export const strings = {
   appTitle: 'Kivori',
   tagline: 'Desk controller',
   unknown: '—',
+  unknownValue: 'Unknown',
   navigation: {
     label: 'Main navigation',
-    groups: { device: 'Your Kivori', system: 'App' },
     home: 'Home',
     controls: 'Controls',
     display: 'Display',
     activity: 'Activity',
     device: 'Device',
-    developer: 'Developer',
+    settings: 'Settings',
     studio: 'Device Studio',
     toggle: 'Toggle sidebar',
     version: 'Kivori Desktop {version}',
   },
+  settings: {
+    title: 'Settings',
+    description: 'Appearance, startup, updates and tools for this computer.',
+    appearance: {
+      title: 'Appearance',
+      description: 'Choose how Kivori Desktop looks.',
+    },
+    updates: 'Updates',
+    support: 'Diagnostics',
+    tabsLabel: 'Settings sections',
+    tabs: {
+      general: 'General',
+      updates: 'Updates',
+      diagnostics: 'Diagnostics',
+      developer: 'Developer',
+    },
+  },
   developer: {
-    title: 'Developer',
-    description: 'Diagnostics and tools for investigating device behavior.',
+    title: 'Developer mode',
     toggleHint:
       'Off by default. Enable technical details, activity, internals and reaction tools on this computer.',
     tools: 'Developer tools',
+    offTitle: 'What developer mode shows',
+    offBody:
+      'Turn it on to reveal an activity log, device internals, protocol details and reaction tools. It changes nothing about how your Kivori works.',
     session: 'Protocol and state',
     appInfoWaiting: 'Waiting for app information.',
     reactionsUnavailable: 'Reactions are unavailable for the current device session.',
@@ -184,6 +203,23 @@ export const strings = {
     doublePressFixed: 'Fixed. Choose the views under Display.',
     holdNote:
       'Hold actions on the three buttons work, but the device does not show them on screen yet.',
+    howTitle: 'How controls work',
+    newProfileToggle: 'New profile',
+    tabsLabel: 'Controls sections',
+    tabs: {
+      controls: 'Controls',
+      macros: 'Macros',
+      more: 'Reset & help',
+    },
+    groups: { knob: 'Knob', buttons: 'Buttons' },
+    editRow: 'Edit {control}',
+    moreActions: 'More actions for {control}',
+    status: {
+      confirmed: 'Kivori can confirm this worked',
+      started: 'Kivori can tell the app started, not what it did next',
+      unverified: 'Kivori can’t tell whether this worked',
+      leastOfSteps: 'Only as certain as its least certain step',
+    },
     custom: 'Custom',
     edit: 'Edit',
     test: 'Test',
@@ -241,8 +277,14 @@ export const strings = {
       generalApps: 'Every app that no other profile lists.',
       showControls: 'Show controls',
       addApp: 'Add app',
-      moveTo: 'Move {app} to',
-      moveToPlaceholder: 'Move to…',
+      appsLabel: 'Apps in this profile',
+      removed: 'Removed {app} from {from}. It now follows General.',
+      moveToItem: 'Move to {profile}',
+      appOptions: 'Options for {app}',
+      moreApps: '+{count} more',
+      fewerApps: 'Show fewer',
+      profileOptions: 'Profile options for {profile}',
+      newProfileTitle: 'New profile',
       remove: 'Remove {app}',
       removeHint: 'Removing an app sends it back to General.',
       inPinCycle: 'In pin cycle',
@@ -423,6 +465,8 @@ export const strings = {
   display: {
     title: 'Display',
     description: 'Choose what Kivori’s screen shows and what a double press does.',
+    tabsLabel: 'Display sections',
+    tabs: { views: 'Views', showNow: 'Show now', brightness: 'Brightness', buddy: 'Buddy' },
     defaultView: {
       heading: 'Default view',
       body: 'What the screen shows when Kivori starts, and what a double press returns to.',
@@ -476,8 +520,17 @@ export const strings = {
   },
   device: {
     title: 'Device',
-    description: 'Connection, versions and firmware.',
+    description: 'Your Kivori: connection, details and firmware.',
+    tabsLabel: 'Device sections',
+    tabs: { overview: 'Overview', firmware: 'Firmware', internals: 'Internals' },
+    sessionDeviceOnly: 'Connect your Kivori to see its protocol and reported state.',
     connection: 'Connection',
+    details: 'Details',
+    empty: {
+      title: 'Connect your Kivori to see its details',
+      body: 'Plug it in with a USB cable. Its model, firmware and hardware appear here.',
+    },
+    unnamed: 'Kivori',
     firmware: 'Firmware',
     protocol: 'Protocol',
     product: 'Product',
@@ -499,7 +552,6 @@ export const strings = {
     appVersion: 'App version',
     appProtocol: 'App protocol',
     retries: 'Reconnect attempts',
-    notConnected: 'Connect Kivori to see its details.',
     startup: {
       title: 'Startup',
       label: { windows: 'Start with Windows', macos: 'Start with macOS', other: 'Start at login' },
@@ -571,6 +623,7 @@ export const strings = {
     copied: 'Copied',
     copyFailed: 'Could not copy',
     loadFailed: 'Diagnostics are unavailable right now.',
+    deviceOnly: 'Connect your Kivori to see device details.',
     groups: {
       versions: 'Versions',
       connection: 'Connection',
@@ -837,10 +890,9 @@ export const strings = {
     },
     done: {
       title: 'You are all set',
-      body: 'Choose Finish to complete setup. You can run it again from the Device page.',
+      body: 'Choose Finish to complete setup. You can run it again in Settings.',
       openTitle: 'Almost done',
-      openBody:
-        'You can finish now and do these later. Run setup again from the Device page at any time.',
+      openBody: 'You can finish now and do these later. Run setup again in Settings at any time.',
       open: {
         plug: 'Plug in your Kivori. It connects by itself whenever you do.',
         permissions:
@@ -848,8 +900,7 @@ export const strings = {
       },
       finish: 'Finish',
       finishing: 'Finishing…',
-      launchFailed:
-        'Kivori could not change the startup setting. You can change it on the Device page.',
+      launchFailed: 'Kivori could not change the startup setting. You can change it in Settings.',
       failed: 'Could not finish setup. Try again.',
     },
     runAgain: {

@@ -1,4 +1,6 @@
 import '@testing-library/jest-dom/vitest';
+import { afterEach } from 'vitest';
+import { resetPageTabs } from '@/components/kivori/page-tabs';
 
 // jsdom has no canvas backend and (in some versions) no `ImageData` constructor. The blit path only
 // needs `ImageData` to carry bytes, so provide a minimal polyfill — this keeps canvas tests free of a
@@ -58,3 +60,6 @@ if (typeof Element.prototype.getAnimations !== 'function') {
 
 // jsdom does not lay out pages, so `window.scrollTo` only logs "Not implemented". A no-op is enough.
 window.scrollTo = (() => {}) as typeof window.scrollTo;
+
+// Pages remember their open tab for the session; every test starts from each page's first tab.
+afterEach(() => resetPageTabs());

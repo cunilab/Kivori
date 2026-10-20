@@ -86,9 +86,9 @@ describe('Home link health', () => {
   it('keeps unknown status and totals unavailable rather than inventing zero', () => {
     setDevMode(true);
     render(view(null));
-    expect(total()).toHaveTextContent('—');
+    expect(total()).toHaveTextContent('Unknown');
     expect(
-      within(screen.getByRole('region', { name: 'Link health' })).getAllByLabelText(/^— /),
+      within(screen.getByRole('region', { name: 'Link health' })).getAllByLabelText(/^Unknown\. /),
     ).toHaveLength(3);
     expect(bridge.diagnostics).not.toHaveBeenCalled();
   });
@@ -98,11 +98,11 @@ describe('Home link health', () => {
     bridge.diagnostics.mockResolvedValue(report(2));
     const page = render(view());
     await waitFor(() => expect(bridge.diagnostics).toHaveBeenCalledOnce());
-    expect(total()).toHaveTextContent('—');
+    expect(total()).toHaveTextContent('Unknown');
     bridge.diagnostics.mockRejectedValue(new Error('Unavailable'));
     page.rerender(view(connectionFixture([], { connectionGeneration: 2 })));
     await waitFor(() => expect(bridge.diagnostics).toHaveBeenCalledTimes(2));
-    expect(total()).toHaveTextContent('—');
+    expect(total()).toHaveTextContent('Unknown');
   });
 
   it('removes a previously known total when reading diagnostics fails', async () => {
@@ -112,7 +112,7 @@ describe('Home link health', () => {
     await waitFor(() => expect(total()).toHaveTextContent(/^7$/));
     bridge.diagnostics.mockRejectedValue(new Error('Unavailable'));
     await act(() => vi.advanceTimersByTimeAsync(1100));
-    expect(total()).toHaveTextContent('—');
+    expect(total()).toHaveTextContent('Unknown');
   });
 
   it('clears ended-session totals and rejects an old in-flight reply after reconnect', async () => {
@@ -134,11 +134,11 @@ describe('Home link health', () => {
       }),
     );
     page.rerender(view(connectionFixture([], { connectionGeneration: 2 })));
-    expect(total()).toHaveTextContent('—');
+    expect(total()).toHaveTextContent('Unknown');
     await act(async () => {
       resolveOld(report());
     });
-    expect(total()).toHaveTextContent('—');
+    expect(total()).toHaveTextContent('Unknown');
     await act(async () => {
       resolveNew({ ...report(2), connection: { ...report(2).connection, reconnects: 8 } });
     });
@@ -161,7 +161,7 @@ describe('Home link health', () => {
     await act(async () => {
       resolve(report());
     });
-    expect(total()).toHaveTextContent('—');
+    expect(total()).toHaveTextContent('Unknown');
     page.unmount();
     hidden.mockReturnValue(false);
     bridge.diagnostics.mockReturnValueOnce(
@@ -187,7 +187,7 @@ describe('Home link health', () => {
     await waitFor(() => expect(total()).toHaveTextContent(/^7$/));
     const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
     act(() => document.dispatchEvent(new Event('visibilitychange')));
-    expect(total()).toHaveTextContent('—');
+    expect(total()).toHaveTextContent('Unknown');
     const calls = bridge.diagnostics.mock.calls.length;
     await act(() => vi.advanceTimersByTimeAsync(3000));
     expect(bridge.diagnostics).toHaveBeenCalledTimes(calls);

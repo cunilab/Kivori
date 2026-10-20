@@ -3,8 +3,16 @@ import type { ReactElement } from 'react';
 import { toast } from 'sonner';
 import {
   AppWindow,
+  ChevronDown,
+  CircleCheck,
   CircleDot,
+  CircleHelp,
+  Ellipsis,
+  Pencil,
   Pin,
+  Plus,
+  SlidersHorizontal,
+  Workflow,
   Hand,
   Lock,
   MousePointerClick,
@@ -35,6 +43,12 @@ import {
   CardTitle,
 } from '@kivori/ui/components/card';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@kivori/ui/components/dropdown-menu';
+import {
   Item,
   ItemContent,
   ItemDescription,
@@ -43,7 +57,9 @@ import {
 } from '@kivori/ui/components/item';
 import { Skeleton } from '@kivori/ui/components/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@kivori/ui/components/tabs';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@kivori/ui/components/tooltip';
 import { Page } from '@/components/kivori/page';
+import { PageTabs } from '@/components/kivori/page-tabs';
 import { ResultBadge } from '@/components/kivori/result-badge';
 import {
   deleteMacro,
@@ -187,6 +203,35 @@ function isKeyboard(
   return entry ? entry.scope === 'keyboard' : spec.kind === 'shortcut';
 }
 
+/** A subtle mark for how far Kivori can vouch for an action, with the reason on hover or focus. */
+function StatusMark({ verification }: { verification: ActionCatalogEntryDto['verification'] }) {
+  const text =
+    verification in t.status
+      ? t.status[verification as keyof typeof t.status]
+      : t.verificationHelp[verification];
+  const Icon = verification === 'confirmed' ? CircleCheck : CircleHelp;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        type="button"
+        aria-label={text}
+        data-verification={verification}
+        className="inline-flex shrink-0 cursor-help rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Icon
+          aria-hidden="true"
+          className={
+            verification === 'confirmed'
+              ? 'size-3.5 text-success'
+              : 'size-3.5 text-muted-foreground'
+          }
+        />
+      </TooltipTrigger>
+      <TooltipContent>{text}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 /**
  * Controls: what each control does in each profile. Rows edit the saved config (the page re-renders
  * from `config://changed`, so a failed save leaves the row as it was); Test runs the saved action
@@ -204,6 +249,8 @@ export function ControlsPage({
   const [chosen, setChosen] = useState<ProfileId | null>(null);
   const [catalog, setCatalog] = useState<ActionCatalogEntryDto[] | null>(null);
   const [editing, setEditing] = useState<PickerTarget | null>(null);
+  // The New profile block under the profile chips.
+  const [newOpen, setNewOpen] = useState(false);
   const [confirm, setConfirm] = useState<'profile' | 'all' | null>(null);
   // `undefined` = closed, `null` = a new macro, else the macro being edited.
   const [editingMacro, setEditingMacro] = useState<MacroSpec | null | undefined>(undefined);
@@ -279,242 +326,305 @@ export function ControlsPage({
     );
   };
 
-  return (
-    <Page title={t.title} description={t.description}>
-      <p className="text-sm text-muted-foreground">{strings.savedConfiguration}</p>
-      {config?.notice ? (
-        <Alert data-testid="config-notice">
-          <TriangleAlert aria-hidden="true" />
-          <AlertTitle>{t.notice[config.notice].title}</AlertTitle>
-          <AlertDescription>{t.notice[config.notice].body}</AlertDescription>
-        </Alert>
-      ) : null}
-
-      <p className="text-xs text-muted-foreground" data-testid="mic-scope-note">
-        {t.micScope}
-      </p>
-
-      <Card data-testid="active-profile">
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <AppWindow className="size-5" aria-hidden="true" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <CardDescription>{t.profile}</CardDescription>
-              {desk ? (
-                <CardTitle>{desk.profile ?? t.profileGeneral}</CardTitle>
-              ) : (
-                <Skeleton className="h-5 w-28" />
-              )}
-            </div>
-            {desk?.pinned && (
-              <Badge variant="secondary" className="h-6 gap-1.5 px-2.5">
-                <Pin data-icon="inline-start" aria-hidden="true" />
-                {t.pinned}
-              </Badge>
+  const renderRow = (entry: ProfileConfigDto, row: Row): ReactElement => {
+    const rowId = `${entry.id}:${row.key}`;
+    const bound = row.spec ?? null;
+    // Test runs the saved binding once: a discrete action, or for the knob one step up and back
+    // (a shortcut pair sends its clockwise key).
+    const testable: TestSpec | null = bound;
+    const counting = countdown?.row === rowId;
+    const entryInfo = bound ? catalog?.find((e) => e.id === catalogId(bound)) : undefined;
+    const name = t.gestures[row.key].name;
+    const edit = (): void => {
+      const { control } = row;
+      if (control === null) return;
+      setEditing({ profile: entry, control, name, spec: bound, label: row.label ?? null });
+    };
+    const text = row.fixed ?? describe(bound, macros);
+    const deviceNote =
+      bound && row.deviceLabel && row.deviceLabel !== text
+        ? format(t.deviceLabel, { label: row.deviceLabel })
+        : null;
+    return (
+      <li
+        key={row.key}
+        data-testid={`gesture-${row.key}`}
+        className="flex items-center gap-3 px-3 py-2.5"
+      >
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <row.Icon className="size-4" aria-hidden="true" />
+        </div>
+        {/* The text is a large click target for Edit; the Edit button is the keyboard route. */}
+        <div
+          className={row.control === null ? 'min-w-0 flex-1' : 'min-w-0 flex-1 cursor-pointer'}
+          onClick={row.control === null ? undefined : edit}
+        >
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className="text-xs font-medium text-muted-foreground">{name}</span>
+            {connection?.connection === 'connected' &&
+            connection.device?.identity?.known === true &&
+            !controlSupported(connection, row.key) ? (
+              <Badge variant="outline">{strings.savedOnly}</Badge>
+            ) : null}
+            {row.overridden && <Badge variant="secondary">{t.custom}</Badge>}
+            {tested === rowId && desk?.lastAction && (
+              <ResultBadge result={desk.lastAction.result} />
             )}
           </div>
-          <CardDescription>{desk?.pinned ? t.pinnedHint : t.followHint}</CardDescription>
-        </CardHeader>
-      </Card>
+          <div className="flex items-center gap-1.5">
+            <span className="truncate font-medium">{text}</span>
+            {row.control === null && row.key === 'button2Hold' && (
+              <Lock
+                className="size-3.5 shrink-0 text-muted-foreground"
+                aria-label={t.gestures.button2Hold.hint}
+              />
+            )}
+            {entryInfo && <StatusMark verification={entryInfo.verification} />}
+          </div>
+          {counting ? (
+            <p role="status" className="text-xs">
+              {format(t.countdown, { seconds: countdown.left })}{' '}
+              <span className="text-muted-foreground">{t.countdownHint}</span>
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {t.gestures[row.key].hint}
+              {deviceNote ? ` ${deviceNote}` : ''}
+            </p>
+          )}
+        </div>
+        {row.control !== null && (
+          <div className="flex shrink-0 items-center gap-1">
+            {counting && (
+              <Button size="sm" variant="ghost" onClick={stopCountdown}>
+                {t.cancelTest}
+              </Button>
+            )}
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label={format(t.editRow, { control: name })}
+              title={t.edit}
+              onClick={edit}
+            >
+              <Pencil aria-hidden="true" />
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={format(t.moreActions, { control: name })}
+                  />
+                }
+              >
+                <Ellipsis aria-hidden="true" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-auto min-w-32">
+                {testable && !counting ? (
+                  <DropdownMenuItem onClick={() => startTest(rowId, testable)}>
+                    {t.test}
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuItem
+                  disabled={!row.overridden}
+                  onClick={() => row.control && resetRow(row.control)}
+                >
+                  {t.reset}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
+      </li>
+    );
+  };
+
+  const renderGroup = (entry: ProfileConfigDto, title: string, list: Row[]): ReactElement => (
+    <section className="space-y-1.5">
+      <h2 className="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {title}
+      </h2>
+      <ul aria-label={title} className="divide-y rounded-xl border bg-card">
+        {list.map((row) => renderRow(entry, row))}
+      </ul>
+    </section>
+  );
+
+  const notes = (
+    <details data-testid="controls-notes" className="group text-sm text-muted-foreground" open>
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+        {t.howTitle}
+        <ChevronDown
+          className="size-3.5 transition-transform group-open:rotate-180"
+          aria-hidden="true"
+        />
+      </summary>
+      <div className="mt-2 space-y-2 rounded-lg bg-muted px-3 py-2.5 text-xs">
+        <p>{strings.savedConfiguration}</p>
+        <p data-testid="mic-scope-note">{t.micScope}</p>
+        <p>{t.holdNote}</p>
+        <p>{t.rotateTestNote}</p>
+      </div>
+    </details>
+  );
+
+  const loadingRows = (
+    <div className="space-y-2" aria-label={t.loading}>
+      {Array.from({ length: 6 }, (_, i) => (
+        <Skeleton key={i} className="h-14 rounded-xl" />
+      ))}
+    </div>
+  );
+
+  const controlsTab = (
+    <>
+      <div
+        data-testid="active-profile"
+        className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border bg-card px-3 py-2.5"
+      >
+        <AppWindow className="size-4 shrink-0 text-primary" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-muted-foreground">{t.profile}</p>
+          {desk ? (
+            <p className="font-medium">{desk.profile ?? t.profileGeneral}</p>
+          ) : (
+            <Skeleton className="h-5 w-28" />
+          )}
+        </div>
+        {desk?.pinned && (
+          <Badge variant="secondary" className="h-6 gap-1.5 px-2.5">
+            <Pin data-icon="inline-start" aria-hidden="true" />
+            {t.pinned}
+          </Badge>
+        )}
+        <p className="basis-full text-xs text-muted-foreground">
+          {desk?.pinned ? t.pinnedHint : t.followHint}
+        </p>
+      </div>
 
       {config ? (
         <Tabs value={selected} onValueChange={(value) => setChosen(value as ProfileId)}>
-          <TabsList aria-label={t.profilesLabel} className="h-auto flex-wrap">
+          {/* Chips, not an underline bar, so the profiles are not mistaken for the page tabs. */}
+          <TabsList
+            aria-label={t.profilesLabel}
+            className="w-full flex-wrap justify-start gap-1.5 bg-transparent p-0 group-data-horizontal/tabs:h-auto"
+          >
             {config.profiles.map((entry) => (
               <TabsTrigger
                 key={entry.id}
                 value={entry.id}
                 data-active-profile={desk?.profileId === entry.id}
+                className="h-8 flex-none rounded-full border-border px-3.5 hover:bg-muted data-active:border-primary data-active:bg-primary data-active:text-primary-foreground data-active:hover:bg-primary dark:data-active:border-primary dark:data-active:bg-primary dark:data-active:text-primary-foreground"
               >
                 {entry.name}
               </TabsTrigger>
             ))}
           </TabsList>
+          {profile ? (
+            <details
+              data-testid="new-profile"
+              open={newOpen}
+              onToggle={(event) => setNewOpen(event.currentTarget.open)}
+              className="group mt-3 text-sm"
+            >
+              <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-sm text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                <Plus className="size-3.5" aria-hidden="true" />
+                {t.newProfileToggle}
+                <ChevronDown
+                  className="size-3.5 transition-transform group-open:rotate-180"
+                  aria-hidden="true"
+                />
+              </summary>
+              <div className="mt-2 rounded-xl border bg-card p-3">
+                <ProfilesCard
+                  config={config}
+                  desk={desk}
+                  profile={profile}
+                  onShow={(id) => {
+                    setChosen(id);
+                    setNewOpen(false);
+                  }}
+                  part="new"
+                />
+              </div>
+            </details>
+          ) : null}
           {config.profiles
             .filter((entry) => entry.id === selected)
             .map((entry) => (
-              <TabsContent key={entry.id} value={entry.id} className="space-y-4">
-                {entry.custom ? (
-                  <p className="text-xs text-muted-foreground">{t.customProfileNote}</p>
-                ) : null}
-                <ul className="grid gap-4 sm:grid-cols-2" aria-label={t.title}>
-                  {rows(entry).map((row) => {
-                    const rowId = `${entry.id}:${row.key}`;
-                    const bound = row.spec ?? null;
-                    // Test runs the saved binding once: a discrete action, or for the knob one step
-                    // up and back (a shortcut pair sends its clockwise key).
-                    const testable: TestSpec | null = bound;
-                    const counting = countdown?.row === rowId;
-                    const entryInfo = bound
-                      ? catalog?.find((e) => e.id === catalogId(bound))
-                      : undefined;
-                    return (
-                      <li key={row.key}>
-                        <Card className="h-full" data-testid={`gesture-${row.key}`}>
-                          <CardHeader>
-                            <div className="flex items-center gap-3">
-                              <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                                <row.Icon className="size-5" aria-hidden="true" />
-                              </div>
-                              <div>
-                                <CardTitle>{t.gestures[row.key].name}</CardTitle>
-                                {connection?.connection === 'connected' &&
-                                connection.device?.identity?.known === true &&
-                                !controlSupported(connection, row.key) ? (
-                                  <Badge variant="outline">{strings.savedOnly}</Badge>
-                                ) : null}
-                                <CardDescription>{t.gestures[row.key].hint}</CardDescription>
-                              </div>
-                            </div>
-                          </CardHeader>
-                          <CardContent className="space-y-3">
-                            <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted px-3 py-2.5">
-                              <span className="font-medium">
-                                {row.fixed ?? describe(bound, macros)}
-                              </span>
-                              {row.control === null && row.key === 'button2Hold' && (
-                                <Lock
-                                  className="size-3.5 text-muted-foreground"
-                                  aria-label={t.gestures.button2Hold.hint}
-                                />
-                              )}
-                              {entryInfo && (
-                                <Badge
-                                  variant="outline"
-                                  title={t.verificationHelp[entryInfo.verification]}
-                                >
-                                  {t.verification[entryInfo.verification]}
-                                </Badge>
-                              )}
-                              {row.overridden && <Badge variant="secondary">{t.custom}</Badge>}
-                              {tested === rowId && desk?.lastAction && (
-                                <ResultBadge result={desk.lastAction.result} />
-                              )}
-                            </div>
-                            {bound &&
-                            row.deviceLabel &&
-                            row.deviceLabel !== describe(bound, macros) ? (
-                              <p className="text-xs text-muted-foreground">
-                                {format(t.deviceLabel, { label: row.deviceLabel })}
-                              </p>
-                            ) : null}
-                            {testable && row.control === 'rotate' ? (
-                              <p className="text-xs text-muted-foreground">{t.rotateTestNote}</p>
-                            ) : null}
-                            {counting ? (
-                              <p role="status" className="text-sm">
-                                {format(t.countdown, { seconds: countdown.left })}{' '}
-                                <span className="text-muted-foreground">{t.countdownHint}</span>
-                              </p>
-                            ) : null}
-                            {row.control !== null && (
-                              <div className="flex flex-wrap gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    const { control } = row;
-                                    if (control === null) return;
-                                    setEditing({
-                                      profile: entry,
-                                      control,
-                                      name: t.gestures[row.key].name,
-                                      spec: bound,
-                                      label: row.label ?? null,
-                                    });
-                                  }}
-                                >
-                                  {t.edit}
-                                </Button>
-                                {testable &&
-                                  (counting ? (
-                                    <Button size="sm" variant="ghost" onClick={stopCountdown}>
-                                      {t.cancelTest}
-                                    </Button>
-                                  ) : (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => startTest(rowId, testable)}
-                                    >
-                                      {t.test}
-                                    </Button>
-                                  ))}
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  disabled={!row.overridden}
-                                  onClick={() => row.control && resetRow(row.control)}
-                                >
-                                  {t.reset}
-                                </Button>
-                              </div>
-                            )}
-                          </CardContent>
-                        </Card>
-                      </li>
-                    );
-                  })}
-                </ul>
+              <TabsContent key={entry.id} value={entry.id} className="mt-4">
+                <ProfilesCard
+                  config={config}
+                  desk={desk}
+                  profile={entry}
+                  onShow={setChosen}
+                  part="profile"
+                >
+                  <div className="space-y-4">
+                    {entry.custom ? (
+                      <p className="text-xs text-muted-foreground">{t.customProfileNote}</p>
+                    ) : null}
+                    {renderGroup(entry, t.groups.knob, rows(entry).slice(0, 4))}
+                    {renderGroup(entry, t.groups.buttons, rows(entry).slice(4))}
+                  </div>
+                </ProfilesCard>
               </TabsContent>
             ))}
         </Tabs>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2" aria-label={t.loading}>
-          {Array.from({ length: 6 }, (_, i) => (
-            <Skeleton key={i} className="h-40 rounded-xl" />
-          ))}
-        </div>
+        loadingRows
       )}
+    </>
+  );
 
-      <p className="text-xs text-muted-foreground">{t.holdNote}</p>
+  const macrosTab = (
+    <Card data-testid="macros">
+      <CardHeader>
+        <CardTitle>{strings.controls.macros.title}</CardTitle>
+        <CardDescription>{strings.controls.macros.description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {macros.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{strings.controls.macros.empty}</p>
+        ) : (
+          <ul className="space-y-2" aria-label={strings.controls.macros.title}>
+            {macros.map((m) => (
+              <li
+                key={m.id}
+                data-testid={`macro-${m.id}`}
+                className="flex flex-wrap items-center gap-2 rounded-lg bg-muted px-3 py-2.5"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">{m.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {m.steps.map(describeStep).join(' → ')}
+                  </p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => setEditingMacro(m)}>
+                  {strings.controls.macros.edit}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => removeMacro(m)}>
+                  {strings.controls.macros.delete}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Button
+          variant="outline"
+          disabled={!config || macros.length >= MACRO_LIMITS.macros}
+          onClick={() => setEditingMacro(null)}
+        >
+          {strings.controls.macros.create}
+        </Button>
+      </CardContent>
+    </Card>
+  );
 
-      {config ? <ProfilesCard config={config} desk={desk} onShow={setChosen} /> : null}
-
-      <Card data-testid="macros">
-        <CardHeader>
-          <CardTitle>{strings.controls.macros.title}</CardTitle>
-          <CardDescription>{strings.controls.macros.description}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {macros.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{strings.controls.macros.empty}</p>
-          ) : (
-            <ul className="space-y-2" aria-label={strings.controls.macros.title}>
-              {macros.map((m) => (
-                <li
-                  key={m.id}
-                  data-testid={`macro-${m.id}`}
-                  className="flex flex-wrap items-center gap-2 rounded-lg bg-muted px-3 py-2.5"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{m.name}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {m.steps.map(describeStep).join(' → ')}
-                    </p>
-                  </div>
-                  <Button size="sm" variant="outline" onClick={() => setEditingMacro(m)}>
-                    {strings.controls.macros.edit}
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => removeMacro(m)}>
-                    {strings.controls.macros.delete}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <Button
-            variant="outline"
-            disabled={!config || macros.length >= MACRO_LIMITS.macros}
-            onClick={() => setEditingMacro(null)}
-          >
-            {strings.controls.macros.create}
-          </Button>
-        </CardContent>
-      </Card>
-
+  const moreTab = (
+    <>
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" disabled={!profile} onClick={() => setConfirm('profile')}>
           {profile?.custom ? t.resetCustomLabel : t.resetProfile}
@@ -529,6 +639,8 @@ export function ControlsPage({
         <AlertTitle>{t.recoveryTitle}</AlertTitle>
         <AlertDescription>{t.recovery}</AlertDescription>
       </Alert>
+
+      {notes}
 
       <Card>
         <CardHeader>
@@ -550,6 +662,33 @@ export function ControlsPage({
           </ItemGroup>
         </CardContent>
       </Card>
+    </>
+  );
+
+  return (
+    <Page title={t.title} description={t.description}>
+      {config?.notice ? (
+        <Alert data-testid="config-notice">
+          <TriangleAlert aria-hidden="true" />
+          <AlertTitle>{t.notice[config.notice].title}</AlertTitle>
+          <AlertDescription>{t.notice[config.notice].body}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      <PageTabs
+        id="controls"
+        label={t.tabsLabel}
+        tabs={[
+          {
+            value: 'controls',
+            label: t.tabs.controls,
+            Icon: SlidersHorizontal,
+            content: controlsTab,
+          },
+          { value: 'macros', label: t.tabs.macros, Icon: Workflow, content: macrosTab },
+          { value: 'more', label: t.tabs.more, Icon: CircleHelp, content: moreTab },
+        ]}
+      />
 
       <ActionPicker
         target={editing}

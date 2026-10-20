@@ -95,13 +95,34 @@ beforeEach(() => {
 });
 
 describe('Diagnostics card', () => {
-  it('shows unknown values as placeholders, never zero or a guess', async () => {
+  it('collapses the device-only rows into one muted line while no device is connected', async () => {
     view();
     await screen.findByText('0.1.0');
     expect(screen.getByRole('button', { name: 'Copy diagnostics' })).toBeEnabled();
+    expect(screen.getAllByText('Connect your Kivori to see device details.')).toHaveLength(1);
+    expect(screen.queryAllByLabelText(/^Unknown\. /)).toHaveLength(0);
+    for (const hidden of ['Product', 'Board', 'Firmware', 'Last reply', 'Free memory']) {
+      expect(screen.queryByText(hidden)).not.toBeInTheDocument();
+    }
+    // Known rows stay.
+    for (const known of ['App', 'Protocol version', 'State', 'Reconnects', 'Retry count']) {
+      expect(screen.getByText(known)).toBeInTheDocument();
+    }
+    expect(screen.queryByText('0 ms')).not.toBeInTheDocument();
+  });
+
+  it('shows unknown values as placeholders, never zero or a guess, while connected', async () => {
+    bridge.get.mockResolvedValue({
+      ...disconnected,
+      connection: { ...disconnected.connection, generation: 1, state: 'connected' },
+    });
+    connection = connectionFixture();
+    view();
+    await screen.findByText('0.1.0');
+    expect(screen.queryByText('Connect your Kivori to see device details.')).toBeNull();
     // product, board, revision, identity source, firmware, negotiated minor, hash, connected for,
     // last reply, rtt, uptime, memory
-    expect(screen.getAllByLabelText(/^— /)).toHaveLength(12);
+    expect(screen.getAllByLabelText(/^Unknown\. /)).toHaveLength(12);
     expect(screen.queryByText('0 ms')).not.toBeInTheDocument();
   });
 
@@ -125,7 +146,7 @@ describe('Diagnostics card', () => {
     expect(screen.getByTestId('diag-product')).toHaveTextContent('Kivori Pip');
     expect(screen.getByTestId('diag-board')).toHaveTextContent('C3 SuperMini');
     expect(screen.getByTestId('diag-identity-source')).toHaveTextContent('Not reported');
-    expect(screen.getByTestId('diag-hw-rev')).toHaveTextContent('—');
+    expect(screen.getByTestId('diag-hw-rev')).toHaveTextContent('Unknown');
     expect(screen.getByLabelText(/provisioned with a hardware revision/)).toBeInTheDocument();
   });
 

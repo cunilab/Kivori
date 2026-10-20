@@ -20,7 +20,7 @@ import { onUpdateDialogRequest } from './dialog-request';
 const t = strings.updates.dialog;
 
 // Versions whose dialog already opened by itself in this window. It opens once per version; the
-// tray item and the Device page's "View update" can always reopen it.
+// tray item and the Settings page's "View update" can always reopen it.
 const shown = new Set<string>();
 
 /** Tests only. */

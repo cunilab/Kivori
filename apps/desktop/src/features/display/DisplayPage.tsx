@@ -1,21 +1,22 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { toast } from 'sonner';
-import { LoaderCircle, MonitorSmartphone } from 'lucide-react';
+import { LoaderCircle, MonitorSmartphone, Sparkles, Sun, LayoutGrid } from 'lucide-react';
 import { Badge } from '@kivori/ui/components/badge';
 import { RadioGroup, RadioGroupItem } from '@kivori/ui/components/radio-group';
 import { Skeleton } from '@kivori/ui/components/skeleton';
 import { DeviceScreen } from '@/components/kivori/device-art';
 import { Page } from '@/components/kivori/page';
-import { ToggleGroup, ToggleGroupItem } from '@kivori/ui/components/toggle-group';
+import { PageTabs } from '@/components/kivori/page-tabs';
 import { setBrightness, setDisplayMode, setDisplaySettings } from '@/lib/ipc';
-import { BRIGHTNESS_STEPS, DISPLAY_MODES } from '@/lib/ipc/types';
+import { DISPLAY_MODES } from '@/lib/ipc/types';
 import type { ConfigDto, ConnectionStatusDto, DeskStatusDto, DisplayMode } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
 import { cn } from '@kivori/ui/lib/utils';
 import { errorText } from '@/lib/utils';
 import { hasCapability } from '@/lib/device-support';
 import { CompanionControls } from './CompanionControls';
+import { BrightnessPicker, ViewPicker } from './ViewPicker';
 
 const t = strings.display;
 
@@ -107,9 +108,8 @@ export function DisplayPage({
   useEffect(() => setPending(null), [connection?.connectionGeneration, canSetMode]);
   const selected = pending ?? desk?.mode ?? null;
 
-  return (
-    <Page title={t.title} description={t.description}>
-      <p className="text-sm text-muted-foreground">{strings.savedConfiguration}</p>
+  const views = (
+    <>
       <section aria-labelledby="default-view-heading" className="space-y-3">
         <div className="space-y-0.5">
           <h2 id="default-view-heading" className="text-base font-semibold">
@@ -122,23 +122,12 @@ export function DisplayPage({
             </p>
           ) : null}
         </div>
-        <ToggleGroup
-          aria-labelledby="default-view-heading"
-          value={settings ? [settings.defaultView] : []}
+        <ViewPicker
+          labelledBy="default-view-heading"
+          value={settings?.defaultView ?? null}
           disabled={settings === null}
-          onValueChange={(value) => {
-            const selected = value[0] as DisplayMode | undefined;
-            if (selected) chooseDefault(selected);
-          }}
-          variant="outline"
-          className="flex-wrap"
-        >
-          {DISPLAY_MODES.map((mode) => (
-            <ToggleGroupItem key={mode} value={mode} className="px-4">
-              {t.modes[mode].name}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+          onChange={(view) => view !== 'cycle' && chooseDefault(view)}
+        />
       </section>
 
       <section aria-labelledby="double-press-heading" className="space-y-3">
@@ -158,156 +147,150 @@ export function DisplayPage({
             </p>
           ) : null}
         </div>
-        <ToggleGroup
-          aria-labelledby="double-press-heading"
-          value={settings ? [settings.secondaryView] : []}
+        <ViewPicker
+          labelledBy="double-press-heading"
+          value={settings?.secondaryView ?? null}
           disabled={settings === null}
-          onValueChange={(value) => {
-            const selected = value[0] as DisplayMode | 'cycle' | undefined;
-            if (selected) chooseSecondary(selected);
-          }}
-          variant="outline"
-          className="flex-wrap"
-        >
-          {DISPLAY_MODES.map((mode) => (
-            <ToggleGroupItem
-              key={mode}
-              value={mode}
-              disabled={mode === settings?.defaultView}
-              className="px-4"
-            >
-              {t.modes[mode].name}
-            </ToggleGroupItem>
-          ))}
-          <ToggleGroupItem value="cycle" className="px-4">
-            {t.doublePress.cycle}
-          </ToggleGroupItem>
-        </ToggleGroup>
+          disabledViews={settings ? [settings.defaultView] : []}
+          withCycle
+          onChange={chooseSecondary}
+        />
       </section>
-
-      <section aria-labelledby="brightness-heading" className="space-y-3">
-        <div className="space-y-0.5">
-          <h2 id="brightness-heading" className="text-base font-semibold">
-            {t.brightness.heading}
-          </h2>
-          <p className="text-sm text-muted-foreground">{t.brightness.body}</p>
-          {known && !hasCapability(connection, 'idleLifeV1') ? (
-            <p className="text-xs text-muted-foreground" role="note">
-              {strings.savedOnly}
-            </p>
-          ) : null}
-        </div>
-        <ToggleGroup
-          aria-label={t.brightness.heading}
-          value={settings ? [String(pendingBrightness ?? settings.brightness)] : []}
-          disabled={settings === null}
-          onValueChange={(value) => {
-            if (value[0]) chooseBrightness(Number(value[0]));
-          }}
-          variant="outline"
-          className="flex-wrap"
-        >
-          {Array.from({ length: BRIGHTNESS_STEPS }, (_, i) => i + 1).map((step) => (
-            <ToggleGroupItem
-              key={step}
-              value={String(step)}
-              aria-label={t.brightness.step(step)}
-              className="px-4"
-            >
-              {step}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-      </section>
-
-      {canSetMode ? (
-        <section aria-labelledby="view-heading" className="space-y-3">
-          <div className="space-y-0.5">
-            <h2 id="view-heading" className="flex items-center gap-2 text-base font-semibold">
-              <MonitorSmartphone className="size-4 text-muted-foreground" aria-hidden="true" />
-              {t.view}
-            </h2>
-            <p className="text-sm text-muted-foreground">{t.viewBody}</p>
-          </div>
-          {desk ? (
-            <RadioGroup
-              aria-labelledby="view-heading"
-              value={selected}
-              onValueChange={(value) => choose(value as DisplayMode)}
-              className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5"
-            >
-              {DISPLAY_MODES.map((mode) => {
-                const isSelected = selected === mode;
-                const isPending = pending === mode;
-                const onDevice = desk.mode === mode;
-                return (
-                  <label
-                    key={mode}
-                    data-mode={mode}
-                    data-selected={isSelected}
-                    className={cn(
-                      'group relative flex cursor-pointer flex-col gap-3 rounded-xl bg-card p-3 ring-1 ring-foreground/10 transition-all hover:-translate-y-0.5 hover:shadow-md has-focus-visible:ring-2 has-focus-visible:ring-ring',
-                      isSelected && 'ring-2 ring-primary shadow-md shadow-primary/10',
-                    )}
-                  >
-                    <div aria-hidden="true">
-                      <DeviceScreen
-                        mode={mode}
-                        className={cn(
-                          'w-full transition-opacity',
-                          !isSelected && 'opacity-80 group-hover:opacity-100',
-                        )}
-                      />
-                    </div>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 space-y-0.5">
-                        <span className="block text-sm font-medium">{t.modes[mode].name}</span>
-                        <span className="block text-xs text-muted-foreground">
-                          {t.modes[mode].body}
-                        </span>
-                      </div>
-                      <RadioGroupItem value={mode} className="mt-0.5" />
-                    </div>
-                    {isPending ? (
-                      <Badge
-                        variant="secondary"
-                        className="absolute top-5 left-5 h-6 gap-1.5 px-2.5"
-                        role="status"
-                      >
-                        <LoaderCircle
-                          data-icon="inline-start"
-                          className="animate-spin"
-                          aria-hidden="true"
-                        />
-                        {t.applying}
-                      </Badge>
-                    ) : onDevice ? (
-                      <Badge className="absolute top-5 left-5 h-6 px-2.5" data-testid="on-device">
-                        {t.current}
-                      </Badge>
-                    ) : null}
-                  </label>
-                );
-              })}
-            </RadioGroup>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-              {DISPLAY_MODES.map((mode) => (
-                <Skeleton key={mode} className="aspect-[0.8] rounded-xl" />
-              ))}
-            </div>
-          )}
-        </section>
-      ) : null}
-
-      <CompanionControls
-        config={config}
-        settingsSupported={
-          !known ||
-          hasCapability(connection, 'mascotInteraction') ||
-          hasCapability(connection, 'idleLifeV1')
-        }
+    </>
+  );
+  const brightness = (
+    <section aria-labelledby="brightness-heading" className="space-y-3">
+      <div className="space-y-0.5">
+        <h2 id="brightness-heading" className="text-base font-semibold">
+          {t.brightness.heading}
+        </h2>
+        <p className="text-sm text-muted-foreground">{t.brightness.body}</p>
+        {known && !hasCapability(connection, 'idleLifeV1') ? (
+          <p className="text-xs text-muted-foreground" role="note">
+            {strings.savedOnly}
+          </p>
+        ) : null}
+      </div>
+      <BrightnessPicker
+        labelledBy="brightness-heading"
+        value={settings ? (pendingBrightness ?? settings.brightness) : null}
+        disabled={settings === null}
+        onChange={chooseBrightness}
       />
+    </section>
+  );
+  const showNow = (
+    <section aria-labelledby="view-heading" className="space-y-3">
+      <div className="space-y-0.5">
+        <h2 id="view-heading" className="flex items-center gap-2 text-base font-semibold">
+          <MonitorSmartphone className="size-4 text-muted-foreground" aria-hidden="true" />
+          {t.view}
+        </h2>
+        <p className="text-sm text-muted-foreground">{t.viewBody}</p>
+      </div>
+      {desk ? (
+        <RadioGroup
+          aria-labelledby="view-heading"
+          value={selected}
+          onValueChange={(value) => choose(value as DisplayMode)}
+          className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5"
+        >
+          {DISPLAY_MODES.map((mode) => {
+            const isSelected = selected === mode;
+            const isPending = pending === mode;
+            const onDevice = desk.mode === mode;
+            return (
+              <label
+                key={mode}
+                data-mode={mode}
+                data-selected={isSelected}
+                className={cn(
+                  'group relative flex cursor-pointer flex-col gap-3 rounded-xl bg-card p-3 ring-1 ring-foreground/10 transition-all hover:-translate-y-0.5 hover:shadow-md has-focus-visible:ring-2 has-focus-visible:ring-ring',
+                  isSelected && 'ring-2 ring-primary shadow-md shadow-primary/10',
+                )}
+              >
+                <div aria-hidden="true">
+                  <DeviceScreen
+                    mode={mode}
+                    className={cn(
+                      'w-full transition-opacity',
+                      !isSelected && 'opacity-80 group-hover:opacity-100',
+                    )}
+                  />
+                </div>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 space-y-0.5">
+                    <span className="block text-sm font-medium">{t.modes[mode].name}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {t.modes[mode].body}
+                    </span>
+                  </div>
+                  <RadioGroupItem value={mode} className="mt-0.5" />
+                </div>
+                {isPending ? (
+                  <Badge
+                    variant="secondary"
+                    className="absolute top-5 left-5 h-6 gap-1.5 px-2.5"
+                    role="status"
+                  >
+                    <LoaderCircle
+                      data-icon="inline-start"
+                      className="animate-spin"
+                      aria-hidden="true"
+                    />
+                    {t.applying}
+                  </Badge>
+                ) : onDevice ? (
+                  <Badge className="absolute top-5 left-5 h-6 px-2.5" data-testid="on-device">
+                    {t.current}
+                  </Badge>
+                ) : null}
+              </label>
+            );
+          })}
+        </RadioGroup>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+          {DISPLAY_MODES.map((mode) => (
+            <Skeleton key={mode} className="aspect-[0.8] rounded-xl" />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+  const buddy = (
+    <CompanionControls
+      config={config}
+      settingsSupported={
+        !known ||
+        hasCapability(connection, 'mascotInteraction') ||
+        hasCapability(connection, 'idleLifeV1')
+      }
+    />
+  );
+
+  return (
+    <Page title={t.title} description={t.description}>
+      <PageTabs
+        id="display"
+        label={t.tabsLabel}
+        tabs={[
+          { value: 'views', label: t.tabs.views, Icon: LayoutGrid, content: views },
+          ...(canSetMode
+            ? [
+                {
+                  value: 'show-now',
+                  label: t.tabs.showNow,
+                  Icon: MonitorSmartphone,
+                  content: showNow,
+                },
+              ]
+            : []),
+          { value: 'brightness', label: t.tabs.brightness, Icon: Sun, content: brightness },
+          { value: 'buddy', label: t.tabs.buddy, Icon: Sparkles, content: buddy },
+        ]}
+      />
+      <p className="text-xs text-muted-foreground">{strings.savedConfiguration}</p>
     </Page>
   );
 }

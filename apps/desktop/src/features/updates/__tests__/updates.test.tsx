@@ -168,7 +168,7 @@ describe('update dialog', () => {
   });
 });
 
-describe('app updates on the Device page', () => {
+describe('app updates in Settings', () => {
   it('shows the last check, the automatic switch and Check now', async () => {
     const user = userEvent.setup();
     render(<AppUpdates />);

@@ -44,6 +44,12 @@ async function navigate(user: ReturnType<typeof userEvent.setup>, name: string):
 
 const gesture = (name: string) => within(screen.getByTestId(`gesture-${name}`));
 
+/** Runs "Test" from a control row's overflow menu. */
+async function testRow(user: ReturnType<typeof userEvent.setup>, name: string): Promise<void> {
+  await user.click(gesture(name).getByRole('button', { name: /^More actions for/ }));
+  await user.click(await screen.findByRole('menuitem', { name: 'Test' }));
+}
+
 beforeEach(async () => {
   localStorage.clear();
   history.replaceState({}, '', '/');
@@ -61,7 +67,12 @@ describe('product acceptance through the app shell', () => {
     render(<App />);
     expect(await screen.findByRole('img', { name: 'Kivori Pip · KV-P1' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Change view' }));
-    await user.click(await screen.findByRole('radio', { name: /^Clock/ }));
+    await user.click(await screen.findByRole('tab', { name: 'Show now' }));
+    await user.click(
+      within(await screen.findByRole('radiogroup', { name: 'Show now' })).getByRole('radio', {
+        name: /^Clock/,
+      }),
+    );
     expect(setMode).toHaveBeenCalledWith('clock');
     await waitFor(() =>
       expect(screen.getByTestId('on-device').closest('label')).toHaveAttribute(
@@ -71,18 +82,18 @@ describe('product acceptance through the app shell', () => {
     );
     await navigate(user, 'Controls');
     await screen.findByTestId('gesture-press');
-    await user.click(gesture('press').getByRole('button', { name: 'Edit' }));
+    await user.click(gesture('press').getByRole('button', { name: /^Edit/ }));
     await user.click(await screen.findByRole('radio', { name: /^Mute/ }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.getByTestId('gesture-press')).toHaveTextContent('Custom'));
     const saved = await ipc.getConfig();
-    await user.click(gesture('press').getByRole('button', { name: 'Test' }));
+    await testRow(user, 'press');
     expect(testAction).toHaveBeenCalledWith({ kind: 'systemMute' });
 
     publish(dial(['productIdentityV1', 'physicalInputV1']));
     expect(screen.getByTestId('gesture-press')).toHaveTextContent('Saved only');
     expect(screen.getByTestId('gesture-rotate')).not.toHaveTextContent('Saved only');
-    await user.click(gesture('rotate').getByRole('button', { name: 'Test' }));
+    await testRow(user, 'rotate');
     expect(testRotate).toHaveBeenCalledWith({ kind: 'systemVolume' });
     await navigate(user, 'Home');
     expect(screen.getByRole('img', { name: 'Acceptance dial · KV-T2' })).toBeInTheDocument();
@@ -102,7 +113,7 @@ describe('product acceptance through the app shell', () => {
     );
     expect(screen.queryByRole('radiogroup', { name: 'Show now' })).not.toBeInTheDocument();
     await user.click(
-      within(screen.getByRole('group', { name: 'Default view' })).getByRole('button', {
+      within(screen.getByRole('radiogroup', { name: 'Default view' })).getByRole('radio', {
         name: 'Clock',
       }),
     );
@@ -147,14 +158,20 @@ describe('product acceptance through the app shell', () => {
     expect(figure.querySelector('img')).toBeNull();
     expect(document.body).not.toHaveTextContent(/Kivori Pip|KV-P1/);
     await user.click(screen.getByRole('button', { name: 'Change view' }));
-    await user.click(await screen.findByRole('radio', { name: /^Media/ }));
+    await user.click(await screen.findByRole('tab', { name: 'Show now' }));
+    await user.click(
+      within(await screen.findByRole('radiogroup', { name: 'Show now' })).getByRole('radio', {
+        name: /^Media/,
+      }),
+    );
     expect(setMode).toHaveBeenCalledWith('media');
     await navigate(user, 'Controls');
     expect(await screen.findByTestId('gesture-press')).toHaveTextContent('Saved only');
     expect(screen.getByTestId('gesture-button1')).not.toHaveTextContent('Saved only');
-    await user.click(gesture('button1').getByRole('button', { name: 'Test' }));
+    await testRow(user, 'button1');
     expect(testAction).toHaveBeenCalledWith({ kind: 'previousTrack' });
-    await navigate(user, 'Developer');
+    await navigate(user, 'Settings');
+    await user.click(screen.getByRole('tab', { name: 'Developer' }));
     await user.click(screen.getByRole('switch', { name: 'Developer mode' }));
     await user.click(screen.getByRole('tab', { name: 'Social reactions' }));
     expect(screen.queryByRole('button', { name: 'Greet' })).not.toBeInTheDocument();

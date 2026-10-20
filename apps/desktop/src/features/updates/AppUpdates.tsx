@@ -20,7 +20,7 @@ function when(iso: string | null): string {
 }
 
 /**
- * The Device page's app update rows (ADR-0015): last check, the automatic-check switch, "Check
+ * The Settings page's app update rows (ADR-0015): last check, the automatic-check switch, "Check
  * now", and the offer when there is one. A failed or offline check shows nothing (product.md).
  */
 export function AppUpdates(): ReactElement | null {
