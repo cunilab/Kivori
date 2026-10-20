@@ -1,6 +1,6 @@
 # Kivori enclosure, wire version (prototype v3, "big keycap")
 
-A clone of [`../enclosure`](../enclosure/) with the copper-tape traces replaced by **0.3 mm
+A clone of [`../enclosure-v1`](../enclosure-v1/) with the copper-tape traces replaced by **0.3 mm
 enamelled copper wire, no solder** (see [Wire wiring](#wire-wiring)). The case, the part positions and the pin
 map are the same; only the printed PCB's back and the assembly change.
 
@@ -65,13 +65,13 @@ the display pegs, so a staked head still fits.
 To rebuild after changing a parameter, run it headless from the repo root:
 
 ```bash
-/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd hardware/enclosure-wire/build_case.py
+/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd hardware/enclosure-v2/build_case.py
 ```
 
 or in FreeCAD's Python console (or through the FreeCAD MCP):
 
 ```python
-p = "<repo>/hardware/enclosure-wire/build_case.py"
+p = "<repo>/hardware/enclosure-v2/build_case.py"
 exec(open(p).read(), {"__file__": p, "__name__": "__main__"})
 ```
 
@@ -219,7 +219,7 @@ spare, scrape that end, then make the other joint. Do the encoder runs last (ass
 
 ## Wiring
 
-The same pin map as the copper-trace version in [`../enclosure`](../enclosure/). It follows the real
+The same pin map as the copper-trace version in [`../enclosure-v1`](../enclosure-v1/). It follows the real
 SuperMini layout: seen from its component side with USB-C at the top, the power row (5V, GND,
 3V3, IO4 to IO0) is on the right and the IO row (IO5 to IO10, IO20, IO21) on the left.
 

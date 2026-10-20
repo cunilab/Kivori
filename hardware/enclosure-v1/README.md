@@ -62,13 +62,13 @@ the display pegs, so a staked head still fits.
 To rebuild after changing a parameter, run it headless from the repo root:
 
 ```bash
-/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd hardware/enclosure/build_case.py
+/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd hardware/enclosure-v1/build_case.py
 ```
 
 or in FreeCAD's Python console (or through the FreeCAD MCP):
 
 ```python
-p = "<repo>/hardware/enclosure/build_case.py"
+p = "<repo>/hardware/enclosure-v1/build_case.py"
 exec(open(p).read(), {"__file__": p, "__name__": "__main__"})
 ```
 

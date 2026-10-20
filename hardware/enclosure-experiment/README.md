@@ -6,7 +6,7 @@ The screen sits still in the middle under a square window in a round black bezel
 it is the knob, and pressing the bezel is the click. The whole top surface is the four buttons:
 four quadrant tiles round the ring, split in a "+", the same colour as the body.
 
-It uses the same parts as [v1](../enclosure): the ST7789 1.3" square LCD, the HW-040 encoder
+It uses the same parts as [v1](../enclosure-v1): the ST7789 1.3" square LCD, the HW-040 encoder
 (with its own push switch), 12×12 push switches and the ESP32-C3 SuperMini with its pins soldered
 on. Like v1 it has no wires: everything connects through copper tape on one printed PCB, with the
 same GPIO map (issue #67) plus a fourth button.
