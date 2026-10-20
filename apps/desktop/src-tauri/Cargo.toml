@@ -45,7 +45,7 @@ serde = { version = "1", features = ["derive"] }
 # Config file (de)serialization and the now-playing adapter's JSON lines (ADR-0009). Already in the tree via tauri.
 serde_json = "1"
 # Product registry and catalog files (ADR-0014). Already in the tree via tauri.
-toml = "0.8"
+toml = "1.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 getrandom = "0.2"  # session-nonce freshness (Slice 002). NOT a security credential; not a network crate.
@@ -97,7 +97,7 @@ tauri-build = { version = "2", features = [] }
 # The build parses the product catalog and checks the bundled firmware against it (ADR-0014).
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-toml = "0.8"
+toml = "1.1"
 # Build-time only: compiles the canonical asset blob into OUT_DIR so the app bundles it (no runtime resvg).
 kivori-asset-compiler = { path = "../../../tools/asset-compiler" }
 
