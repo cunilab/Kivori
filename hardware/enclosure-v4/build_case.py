@@ -133,13 +133,15 @@ SW_TOTAL_H = SW_BOSS_H + SW_NECK_H + SW_HEAD_H  # head top 7.2 mm above the PCB
 CAP_WALL = 1.0              # hollow cap side wall
 # The cap clicks on like a bought round 12x12 cap: four fingers, 2 mm wide, hang from the cap top
 # round the head. A lip on each snaps in under the head, and a stop post on the cap top rests on
-# it, so the cap is held both ways without play and a press goes straight into the stem. The
-# short switch sits deep, so a square sleeve joins the fingers down to the head top: only their
-# ends round the head flex.
+# it, so the cap is held both ways without play and a press goes straight into the stem. Each
+# finger hangs free from the cap top, so the whole finger bends as the lip passes the head (v3 and
+# earlier tied the fingers together down to the head top, so only their last 2 mm bent: about 7%
+# strain, far past what printed PLA takes, and they snapped; free, it is about 0.5%).
 CAP_TOP_T = 1.2             # flat cap top; the cap prints top down, so the top comes off the bed
 CAP_FINGER = (2.0, 0.8)     # finger width (as on the reference cap), thickness
 CAP_SNAP = 0.3              # lip reach in under the head (the neck is 0.4 narrower per side)
 CAP_SNAP_CLR = 0.1          # finger to head side
+CAP_SNAP_DROP = 0.2         # lip catch this much lower than drawn (measured: the lip was 0.2 short of the head's underside)
 CAP_STOP_D = 2.6            # stop post on the head, round its centre hole
 SW_PADS = [(-6.25, -2.5), (6.25, -2.5), (-6.25, 2.5), (6.25, 2.5)]  # pin 1,1,2,2 (land pattern Ø1.5)
 BTN_GPIO = ["IO3", "IO4", "IO5"]  # left, middle, right (pin map, see README Wiring)
@@ -1062,7 +1064,7 @@ def cap_snap(z_ceil):
     w, t = CAP_FINGER
     r_i = SW_HEAD / 2 + CAP_SNAP_CLR
     r_o, r_l = r_i + t, SW_HEAD / 2 - CAP_SNAP
-    z_k = SW_PLUNGER_TOP - SW_HEAD_H - 0.05   # catch face, just under the head
+    z_k = SW_PLUNGER_TOP - SW_HEAD_H - 0.05 - CAP_SNAP_DROP  # catch face, just under the head
     z_b = z_k - 0.2 - (r_i - r_l)             # 45° lead-in below the lip
     prof = [(r_o, z_ceil + 0.01), (r_i, z_ceil + 0.01), (r_i, z_k), (r_l, z_k), (r_l, z_k - 0.2),
             (r_i, z_b), (r_o, z_b)]
@@ -1070,10 +1072,7 @@ def cap_snap(z_ceil):
     f.translate(V(0, -w / 2, 0))
     parts = [place(f, 0, 0, k * 90.0) for k in range(4)]
     parts.append(cyl(CAP_STOP_D, 0, 0, SW_PLUNGER_TOP, z_ceil + 0.01))
-    if z_ceil - SW_PLUNGER_TOP > 0.5:  # sleeve tying the fingers together above the head
-        parts.append(cbox(0, 0, 2 * r_o, 2 * r_o, SW_PLUNGER_TOP, z_ceil + 0.01).cut(
-            cbox(0, 0, 2 * r_i, 2 * r_i, SW_PLUNGER_TOP - 1, z_ceil - 0.01)))
-    return fuse_all(parts)
+    return fuse_all(parts)  # (no sleeve: the fingers hang free from the cap top and bend along their length)
 
 
 def make_cap(i):

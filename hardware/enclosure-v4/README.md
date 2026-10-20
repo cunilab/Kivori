@@ -56,7 +56,7 @@ How each part is held on the printed PCB, even with the case open:
 | HW-040 | It hangs behind the printed PCB from the EC11 itself, mounted like a panel encoder: the square EC11 body sits flat against the printed PCB's back, the M7 bushing goes through a round Ø7.6 hole that centres it, and the EC11's own nut (with its washer) on the printed PCB's front clamps it. A knob press goes into the printed PCB and on into the face posts; the back plate doesn't touch the encoder. Its five header pins stand straight up (no bend) into holes in the printed PCB, and the wire is wound round them in the 5.2 mm gap between the HW-040's header and the printed PCB. Sitting this deep (board front 19.9 mm behind the face) lets the long shaft end low. |
 | Display | Four standoffs whose pegs go through its four corner holes. |
 | SuperMini | Stands on the front on its soldered header strips; the long pins go through to the back (4 mm past it), where the wire is wound round them. The board end sits up against a hidden pocket in the far wall, which leaves 0.8 mm of wall round the receptacle, so the port outside is just a small pill-shaped hole (9.6 × 4 mm) and a cable still plugs in fully. |
-| 12×12 switches | Legs through the plate; a leg that takes a wire is folded flat over it on the back. Each cap clicks onto the switch like a bought round 12×12 cap. The stem is a 3.8 mm square head on a narrower neck; four 2 mm wide fingers hang from the cap top round the head, and a lip on each snaps in under it (45° lead-in below the lip). A stop post on the cap top rests on the head, so the cap is held both ways without play and a press goes straight into the switch. |
+| 12×12 switches | Legs through the plate; a leg that takes a wire is folded flat over it on the back. Each cap clicks onto the switch like a bought round 12×12 cap. The stem is a 3.8 mm square head on a narrower neck; four 2 mm wide fingers hang free from the cap top round the head, and a lip on each snaps in under it (45° lead-in below the lip). Because each finger is free over its whole length (about 9 mm), it bends gently as the lip passes the head instead of snapping. A stop post on the cap top rests on the head, so the cap is held both ways without play and a press goes straight into the switch. |
 
 The display pegs are 0.2 mm smaller than the holes (press fit) and stick out 1 mm past the module board.
 To lock a part for good, touch each peg tip with the soldering iron so it melts into a small head
@@ -113,7 +113,9 @@ Checked for FDM in each part's print orientation:
   checks it). Small text is gone from the bed sides; the wordmark is engraved.
 - **Fits:** FDM prints holes 0.1-0.2 mm small, so the fits allow for it: spigot 3.4 in 3.9, knob bore 6.25 on the 6 mm shaft, cap 13.4 in a 14 mm opening.
 - **Small parts:** the caps' snap
-  fingers are 0.8 mm: if one cracks, print the caps in PETG.
+  fingers are 0.8 mm thick and hang free over about 9 mm, so clicking a cap on bends them only
+  slightly (about 0.6% strain). Earlier versions tied them together down to the head, so only their
+  last 2 mm bent and they broke. If one still cracks, print the caps in PETG.
 
 | Part | Material | Orientation (already applied in the STL) |
 |---|---|---|
@@ -306,11 +308,12 @@ measured on the real parts from photos next to a ruler (about ±0.3–0.5 mm). T
    - Housing 11.7 × 11.7 × 3.6 mm with a round Ø6.4 platform up to 4.5 mm.
    - Stem: on the platform a 3.0 mm square neck only 1 mm tall, then the 3.8 × 3.8 mm square head
      (the grip), 1.7 mm tall, top at 7.2 mm. The cap's lips snap in under the head, into that
-     1 mm neck. The switch top sits 3.0 mm under the face, so a square sleeve inside the cap
-     reaches down to it and only the finger ends round the head flex.
-   - The cap's lips reach 0.3 mm under the head (`CAP_SNAP`). Measure your head: if the cap
-     falls off, raise `CAP_SNAP` a little (or lower `CAP_SNAP_CLR`); if it will not click on or a
-     finger cracks, lower it.
+     1 mm neck. The switch top sits 3.0 mm under the face; the fingers reach down to it from the
+     cap top, free over their whole length.
+   - The cap's lips reach 0.3 mm under the head (`CAP_SNAP`) and catch 0.2 mm lower than drawn
+     (`CAP_SNAP_DROP`, measured on a test print: the lip was 0.2 mm short of the head's
+     underside). If the cap falls off, raise `CAP_SNAP_DROP` or `CAP_SNAP` a little; if it will
+     not click on, lower `CAP_SNAP`.
    - Pins on a 12.5 × 5 mm grid (land pattern Ø1.5). Legs 3.5 mm long (measured, `SW_LEG`).
      Some 12 × 12 switches (Omron B3F) have locating bosses; TS-G005 and TS13 show none, so
      there are no holes for them.
