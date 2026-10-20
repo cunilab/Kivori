@@ -19,8 +19,13 @@
     "format:write": "prettier --write ."
   },
   "devDependencies": {
+<<<<<<< HEAD
     "@eslint/js": "^10.0.1",
     "eslint": "^9.10.0",
+=======
+    "@eslint/js": "^9.10.0",
+    "eslint": "^10.13.0",
+>>>>>>> ae51e3e774ce378a81698c08c4ddddf9ad465b21
     "prettier": "^3.3.3",
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.6.0"
