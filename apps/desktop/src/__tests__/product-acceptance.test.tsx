@@ -67,7 +67,11 @@ describe('product acceptance through the app shell', () => {
     render(<App />);
     expect(await screen.findByRole('img', { name: 'Kivori Pip · KV-P1' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Change view' }));
-    await user.click(await screen.findByRole('radio', { name: /^Clock/ }));
+    await user.click(
+      within(await screen.findByRole('radiogroup', { name: 'Show now' })).getByRole('radio', {
+        name: /^Clock/,
+      }),
+    );
     expect(setMode).toHaveBeenCalledWith('clock');
     await waitFor(() =>
       expect(screen.getByTestId('on-device').closest('label')).toHaveAttribute(
@@ -108,7 +112,7 @@ describe('product acceptance through the app shell', () => {
     );
     expect(screen.queryByRole('radiogroup', { name: 'Show now' })).not.toBeInTheDocument();
     await user.click(
-      within(screen.getByRole('group', { name: 'Default view' })).getByRole('button', {
+      within(screen.getByRole('radiogroup', { name: 'Default view' })).getByRole('radio', {
         name: 'Clock',
       }),
     );
@@ -153,7 +157,11 @@ describe('product acceptance through the app shell', () => {
     expect(figure.querySelector('img')).toBeNull();
     expect(document.body).not.toHaveTextContent(/Kivori Pip|KV-P1/);
     await user.click(screen.getByRole('button', { name: 'Change view' }));
-    await user.click(await screen.findByRole('radio', { name: /^Media/ }));
+    await user.click(
+      within(await screen.findByRole('radiogroup', { name: 'Show now' })).getByRole('radio', {
+        name: /^Media/,
+      }),
+    );
     expect(setMode).toHaveBeenCalledWith('media');
     await navigate(user, 'Controls');
     expect(await screen.findByTestId('gesture-press')).toHaveTextContent('Saved only');

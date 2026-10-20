@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { ReactElement } from 'react';
+import type { CSSProperties, ReactElement } from 'react';
 import {
   Cpu,
   LoaderCircle,
@@ -152,14 +152,17 @@ export function DeviceScreen({
   values,
   busy = false,
   className,
+  style,
 }: {
   mode: DisplayMode;
   values?: Values | undefined;
   busy?: boolean | undefined;
   className?: string;
+  style?: CSSProperties;
 }): ReactElement {
   return (
     <div
+      style={style}
       className={cn(
         '@container relative aspect-square overflow-hidden rounded-[8%] bg-panel ring-1 ring-white/10',
         className,
@@ -181,6 +184,24 @@ export function DeviceScreen({
       ) : (
         <SystemView values={values} />
       )}
+    </div>
+  );
+}
+
+/** "Every view in turn": three neutral screens fanned out. Illustration only. */
+export function CycleScreens({ className }: { className?: string }): ReactElement {
+  const stack: DisplayMode[] = ['system', 'media', 'clock'];
+  return (
+    <div className={cn('relative aspect-square', className)}>
+      {stack.map((mode, index) => (
+        <DeviceScreen
+          key={mode}
+          mode={mode}
+          className="absolute w-[68%] shadow-md"
+          // Back to front: each screen sits lower-left to upper-right of the one in front.
+          style={{ left: `${index * 16}%`, top: `${(2 - index) * 16}%`, zIndex: index }}
+        />
+      ))}
     </div>
   );
 }

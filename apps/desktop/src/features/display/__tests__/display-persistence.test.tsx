@@ -21,14 +21,14 @@ describe('display and buddy settings through the browser mock', () => {
   it('persists a double-press view and a default view offline', async () => {
     const user = userEvent.setup();
     render(<Page />);
-    const double = await screen.findByRole('group', { name: 'Double press shows' });
+    const double = await screen.findByRole('radiogroup', { name: 'Double press shows' });
     await waitFor(() =>
-      expect(within(double).getByRole('button', { name: 'System' })).toHaveAttribute(
-        'aria-pressed',
+      expect(within(double).getByRole('radio', { name: 'System' })).toHaveAttribute(
+        'aria-checked',
         'true',
       ),
     );
-    await user.click(within(double).getByRole('button', { name: 'Media' }));
+    await user.click(within(double).getByRole('radio', { name: 'Media' }));
     await waitFor(async () =>
       expect((await getConfig()).display).toEqual({
         defaultView: 'buddy',
@@ -37,8 +37,8 @@ describe('display and buddy settings through the browser mock', () => {
       }),
     );
 
-    const defaults = screen.getByRole('group', { name: 'Default view' });
-    await user.click(within(defaults).getByRole('button', { name: 'Clock' }));
+    const defaults = screen.getByRole('radiogroup', { name: 'Default view' });
+    await user.click(within(defaults).getByRole('radio', { name: 'Clock' }));
     await waitFor(async () => expect((await getConfig()).display.defaultView).toBe('clock'));
     expect(screen.queryByTestId('on-device')).not.toBeInTheDocument();
   });
@@ -46,21 +46,21 @@ describe('display and buddy settings through the browser mock', () => {
   it('persists the brightness across a remount and keeps it when a view is changed', async () => {
     const user = userEvent.setup();
     const first = render(<Page />);
-    const group = await screen.findByRole('group', { name: 'Brightness' });
-    await user.click(within(group).getByRole('button', { name: 'Step 2' }));
+    const group = await screen.findByRole('radiogroup', { name: 'Brightness' });
+    await user.click(within(group).getByRole('radio', { name: 'Step 2' }));
     await waitFor(async () => expect((await getConfig()).display.brightness).toBe(2));
     first.unmount();
 
     render(<Page />);
-    const defaults = await screen.findByRole('group', { name: 'Default view' });
-    await user.click(within(defaults).getByRole('button', { name: 'Clock' }));
+    const defaults = await screen.findByRole('radiogroup', { name: 'Default view' });
+    await user.click(within(defaults).getByRole('radio', { name: 'Clock' }));
     await waitFor(async () => expect((await getConfig()).display.defaultView).toBe('clock'));
     expect((await getConfig()).display.brightness).toBe(2);
     expect(
-      within(screen.getByRole('group', { name: 'Brightness' })).getByRole('button', {
+      within(screen.getByRole('radiogroup', { name: 'Brightness' })).getByRole('radio', {
         name: 'Step 2',
       }),
-    ).toHaveAttribute('aria-pressed', 'true');
+    ).toHaveAttribute('aria-checked', 'true');
   });
 
   it('persist the buddy settings across a remount', async () => {
