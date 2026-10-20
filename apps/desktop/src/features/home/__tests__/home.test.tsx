@@ -92,6 +92,13 @@ describe('HomePage', () => {
     expect(screen.getByText('Plug in your Kivori')).toBeInTheDocument();
   });
 
+  it('tints a meter by its level', () => {
+    render(view(desk({ cpuPercent: 31, ramPercent: 83, volumePercent: 95 })));
+    expect(screen.getByTestId('desk-cpu')).toHaveAttribute('data-tone', 'normal');
+    expect(screen.getByTestId('desk-ram')).toHaveAttribute('data-tone', 'warning');
+    expect(screen.getByTestId('desk-volume')).toHaveAttribute('data-tone', 'danger');
+  });
+
   it('renders every null as an explicit "—" with a reason, never 0', async () => {
     render(view(desk()));
     for (const id of ['desk-volume', 'desk-cpu', 'desk-ram', 'desk-media', 'desk-title']) {

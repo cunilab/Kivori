@@ -7,15 +7,15 @@ import { RadioGroup, RadioGroupItem } from '@kivori/ui/components/radio-group';
 import { Skeleton } from '@kivori/ui/components/skeleton';
 import { DeviceScreen } from '@/components/kivori/device-art';
 import { Page } from '@/components/kivori/page';
-import { ToggleGroup, ToggleGroupItem } from '@kivori/ui/components/toggle-group';
 import { setBrightness, setDisplayMode, setDisplaySettings } from '@/lib/ipc';
-import { BRIGHTNESS_STEPS, DISPLAY_MODES } from '@/lib/ipc/types';
+import { DISPLAY_MODES } from '@/lib/ipc/types';
 import type { ConfigDto, ConnectionStatusDto, DeskStatusDto, DisplayMode } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
 import { cn } from '@kivori/ui/lib/utils';
 import { errorText } from '@/lib/utils';
 import { hasCapability } from '@/lib/device-support';
 import { CompanionControls } from './CompanionControls';
+import { BrightnessPicker, ViewPicker } from './ViewPicker';
 
 const t = strings.display;
 
@@ -122,23 +122,12 @@ export function DisplayPage({
             </p>
           ) : null}
         </div>
-        <ToggleGroup
-          aria-labelledby="default-view-heading"
-          value={settings ? [settings.defaultView] : []}
+        <ViewPicker
+          labelledBy="default-view-heading"
+          value={settings?.defaultView ?? null}
           disabled={settings === null}
-          onValueChange={(value) => {
-            const selected = value[0] as DisplayMode | undefined;
-            if (selected) chooseDefault(selected);
-          }}
-          variant="outline"
-          className="flex-wrap"
-        >
-          {DISPLAY_MODES.map((mode) => (
-            <ToggleGroupItem key={mode} value={mode} className="px-4">
-              {t.modes[mode].name}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+          onChange={(view) => view !== 'cycle' && chooseDefault(view)}
+        />
       </section>
 
       <section aria-labelledby="double-press-heading" className="space-y-3">
@@ -158,31 +147,14 @@ export function DisplayPage({
             </p>
           ) : null}
         </div>
-        <ToggleGroup
-          aria-labelledby="double-press-heading"
-          value={settings ? [settings.secondaryView] : []}
+        <ViewPicker
+          labelledBy="double-press-heading"
+          value={settings?.secondaryView ?? null}
           disabled={settings === null}
-          onValueChange={(value) => {
-            const selected = value[0] as DisplayMode | 'cycle' | undefined;
-            if (selected) chooseSecondary(selected);
-          }}
-          variant="outline"
-          className="flex-wrap"
-        >
-          {DISPLAY_MODES.map((mode) => (
-            <ToggleGroupItem
-              key={mode}
-              value={mode}
-              disabled={mode === settings?.defaultView}
-              className="px-4"
-            >
-              {t.modes[mode].name}
-            </ToggleGroupItem>
-          ))}
-          <ToggleGroupItem value="cycle" className="px-4">
-            {t.doublePress.cycle}
-          </ToggleGroupItem>
-        </ToggleGroup>
+          disabledViews={settings ? [settings.defaultView] : []}
+          withCycle
+          onChange={chooseSecondary}
+        />
       </section>
 
       <section aria-labelledby="brightness-heading" className="space-y-3">
@@ -197,27 +169,12 @@ export function DisplayPage({
             </p>
           ) : null}
         </div>
-        <ToggleGroup
-          aria-label={t.brightness.heading}
-          value={settings ? [String(pendingBrightness ?? settings.brightness)] : []}
+        <BrightnessPicker
+          labelledBy="brightness-heading"
+          value={settings ? (pendingBrightness ?? settings.brightness) : null}
           disabled={settings === null}
-          onValueChange={(value) => {
-            if (value[0]) chooseBrightness(Number(value[0]));
-          }}
-          variant="outline"
-          className="flex-wrap"
-        >
-          {Array.from({ length: BRIGHTNESS_STEPS }, (_, i) => i + 1).map((step) => (
-            <ToggleGroupItem
-              key={step}
-              value={String(step)}
-              aria-label={t.brightness.step(step)}
-              className="px-4"
-            >
-              {step}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+          onChange={chooseBrightness}
+        />
       </section>
 
       {canSetMode ? (

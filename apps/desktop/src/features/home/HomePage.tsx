@@ -2,6 +2,7 @@ import type { ReactElement, ReactNode } from 'react';
 import {
   Cpu,
   LayoutGrid,
+  Monitor,
   LoaderCircle,
   MemoryStick,
   Mic,
@@ -12,7 +13,6 @@ import {
   ShieldAlert,
   Square,
   TriangleAlert,
-  Usb,
   Volume2,
   VolumeX,
   Zap,
@@ -27,17 +27,10 @@ import {
   CardDescription,
   CardHeader,
 } from '@kivori/ui/components/card';
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@kivori/ui/components/empty';
 import { Progress } from '@kivori/ui/components/progress';
 import { Skeleton } from '@kivori/ui/components/skeleton';
 import { ProductArt } from '@/components/kivori/product-art';
+import { IconChip } from '@/components/kivori/icon-chip';
 import { Known } from '@/components/kivori/known';
 import { Page } from '@/components/kivori/page';
 import { ResultBadge } from '@/components/kivori/result-badge';
@@ -47,6 +40,7 @@ import type { ConnectionStatusDto, DeskStatusDto } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
 import { useDevMode } from '@/lib/dev-mode';
 import { LinkHealth } from './LinkHealth';
+import { TONE_BAR, TONE_TEXT, meterTone } from './meter-tone';
 import { cn } from '@kivori/ui/lib/utils';
 
 export type NavigateTo = (page: 'display' | 'device') => void;
@@ -83,21 +77,22 @@ function Hero({
 
   if (ui === 'disconnected') {
     return (
-      <Card>
-        <Empty className="py-10">
-          <EmptyHeader>
-            <EmptyMedia>
-              <div className="relative flex items-center gap-3 text-muted-foreground">
-                <div className="flex size-14 items-center justify-center rounded-2xl bg-muted">
-                  <Usb className="size-7" aria-hidden="true" />
-                </div>
-              </div>
-            </EmptyMedia>
-            <EmptyTitle className="text-xl">{t.empty.title}</EmptyTitle>
-            <EmptyDescription>{t.empty.body}</EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent className="max-w-md">
-            <ol className="w-full space-y-2 text-left text-sm">
+      <Card className="gap-0 py-0">
+        <div
+          className="flex items-center gap-2 border-b bg-gradient-to-r from-primary/15 via-primary/5 to-transparent px-5 py-2.5 text-xs text-muted-foreground"
+          role="status"
+        >
+          <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />
+          {t.empty.searching}
+        </div>
+        <div className="grid items-center gap-5 p-5 sm:grid-cols-[minmax(0,11rem)_1fr] sm:gap-8 sm:p-6">
+          <ProductArt connection={connection} className="mx-auto max-w-28 sm:max-w-none" />
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <h2 className="text-xl font-semibold tracking-tight">{t.empty.title}</h2>
+              <p className="text-sm text-muted-foreground">{t.empty.body}</p>
+            </div>
+            <ol className="space-y-2 text-sm">
               {t.empty.steps.map((step, index) => (
                 <li key={step} className="flex items-start gap-3">
                   <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
@@ -107,12 +102,8 @@ function Hero({
                 </li>
               ))}
             </ol>
-            <p className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
-              <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />
-              {t.empty.searching}
-            </p>
-          </EmptyContent>
-        </Empty>
+          </div>
+        </div>
       </Card>
     );
   }
@@ -151,7 +142,7 @@ function Hero({
   const modeName = strings.display.modes[desk.mode].name;
 
   return (
-    <Card className="relative overflow-hidden p-6">
+    <Card className="relative overflow-hidden bg-gradient-to-br from-primary/10 via-card to-card p-6">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute -top-24 -right-24 size-72 rounded-full bg-primary/10 blur-3xl"
@@ -237,6 +228,7 @@ function Metric({
   badge,
   hint,
   danger,
+  className,
 }: {
   icon: ReactNode;
   label: string;
@@ -246,18 +238,24 @@ function Metric({
   badge?: ReactNode;
   hint?: ReactNode;
   danger?: boolean;
+  className?: string;
 }): ReactElement {
+  const tone = meterTone(value, danger);
   return (
-    <Card size="sm" className="gap-3">
+    <Card size="sm" className={cn('gap-3', className)}>
       <CardHeader>
         <CardDescription className="flex items-center gap-2 text-sm">
-          {icon}
+          <IconChip>{icon}</IconChip>
           {label}
         </CardDescription>
         {badge ? <CardAction>{badge}</CardAction> : null}
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-3xl font-semibold tracking-tight tabular-nums" data-testid={testId}>
+        <p
+          className={cn('text-3xl font-semibold tracking-tight tabular-nums', TONE_TEXT[tone])}
+          data-testid={testId}
+          data-tone={tone}
+        >
           <Known value={value} why={why}>
             {(known) => `${known}%`}
           </Known>
@@ -272,10 +270,7 @@ function Metric({
           <Progress
             value={value}
             aria-label={label}
-            className={cn(
-              '[&_[data-slot=progress-track]]:h-1.5',
-              danger && '[&_[data-slot=progress-indicator]]:bg-destructive',
-            )}
+            className={cn('[&_[data-slot=progress-track]]:h-1.5', TONE_BAR[tone])}
           />
         )}
         {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
@@ -290,7 +285,9 @@ function NowPlaying({ desk }: { desk: DeskStatusDto }): ReactElement {
     <Card size="sm">
       <CardHeader>
         <CardDescription className="flex items-center gap-2 text-sm">
-          <Music2 className="size-4" aria-hidden="true" />
+          <IconChip>
+            <Music2 />
+          </IconChip>
           {t.nowPlaying}
         </CardDescription>
         <CardAction data-testid="desk-media">
@@ -332,7 +329,9 @@ function Microphone({ desk }: { desk: DeskStatusDto }): ReactElement {
     <Card size="sm">
       <CardHeader>
         <CardDescription className="flex items-center gap-2 text-sm">
-          <Icon className="size-4" aria-hidden="true" />
+          <IconChip>
+            <Icon />
+          </IconChip>
           {t.microphone}
         </CardDescription>
         <CardAction className="flex gap-1.5">
@@ -388,7 +387,9 @@ function LastAction({ desk }: { desk: DeskStatusDto }): ReactElement {
     <Card size="sm">
       <CardHeader>
         <CardDescription className="flex items-center gap-2 text-sm">
-          <Zap className="size-4" aria-hidden="true" />
+          <IconChip>
+            <Zap />
+          </IconChip>
           {t.lastAction}
         </CardDescription>
       </CardHeader>
@@ -442,14 +443,17 @@ export function HomePage({
 
       <section aria-labelledby="monitoring-heading" className="space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 id="monitoring-heading" className="text-base font-semibold">
+          <h2 id="monitoring-heading" className="flex items-center gap-2 text-base font-semibold">
+            <IconChip>
+              <Monitor />
+            </IconChip>
             {t.monitoring}
           </h2>
           <p className="text-xs text-muted-foreground">{t.monitoringNote}</p>
         </div>
         {desk ? (
           <>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 lg:gap-4">
               <Metric
                 icon={<Cpu className="size-4" aria-hidden="true" />}
                 label={t.cpu}
@@ -484,6 +488,7 @@ export function HomePage({
                 value={desk.volumePercent}
                 why={strings.why.volume}
                 testId="desk-volume"
+                className="col-span-2 lg:col-span-1"
                 badge={
                   desk.muted === true ? (
                     <Badge variant="secondary" className="h-6 gap-1 px-2.5">
@@ -508,7 +513,7 @@ export function HomePage({
             </div>
           </>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 lg:gap-4">
             {[0, 1, 2].map((index) => (
               <Skeleton key={index} className="h-36 rounded-xl" />
             ))}

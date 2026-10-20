@@ -60,6 +60,9 @@ const config: ConfigDto = {
 
 const connection = connectionFixture(['deskStatusV1']);
 
+const live = (): ReturnType<typeof within> =>
+  within(screen.getByRole('radiogroup', { name: 'Show now' }));
+
 function view(d: DeskStatusDto, c: ConfigDto | null = config): ReactElement {
   return (
     <>
@@ -85,7 +88,7 @@ describe('DisplayPage', () => {
       expect(screen.queryByRole('radiogroup', { name: 'Show now' })).not.toBeInTheDocument();
       expect(screen.queryByTestId('on-device')).not.toBeInTheDocument();
       await user.click(
-        within(screen.getByRole('group', { name: 'Brightness' })).getByRole('button', {
+        within(screen.getByRole('radiogroup', { name: 'Brightness' })).getByRole('radio', {
           name: 'Step 3',
         }),
       );
@@ -120,27 +123,27 @@ describe('DisplayPage', () => {
       />,
     );
     expect(screen.queryByText('Applying…')).not.toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /^Buddy/ })).toHaveAttribute('aria-checked', 'true');
+    expect(live().getByRole('radio', { name: /^Buddy/ })).toHaveAttribute('aria-checked', 'true');
   });
 
   it('checks the mode the device reports', () => {
     render(view(desk));
-    expect(screen.getByRole('radio', { name: /^Buddy/ })).toHaveAttribute('aria-checked', 'true');
+    expect(live().getByRole('radio', { name: /^Buddy/ })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByTestId('on-device').closest('label')).toHaveAttribute('data-mode', 'buddy');
   });
 
   it('shows the saved brightness step and saves a new one at once', async () => {
     const user = userEvent.setup();
     render(view(desk));
-    const group = screen.getByRole('group', { name: 'Brightness' });
-    expect(within(group).getByRole('button', { name: 'Step 5' })).toHaveAttribute(
-      'aria-pressed',
+    const group = screen.getByRole('radiogroup', { name: 'Brightness' });
+    expect(within(group).getByRole('radio', { name: 'Step 5' })).toHaveAttribute(
+      'aria-checked',
       'true',
     );
-    await user.click(within(group).getByRole('button', { name: 'Step 1' }));
+    await user.click(within(group).getByRole('radio', { name: 'Step 1' }));
     expect(h.setBrightness).toHaveBeenCalledWith(1);
-    expect(within(group).getByRole('button', { name: 'Step 1' })).toHaveAttribute(
-      'aria-pressed',
+    expect(within(group).getByRole('radio', { name: 'Step 1' })).toHaveAttribute(
+      'aria-checked',
       'true',
     );
   });
@@ -148,9 +151,9 @@ describe('DisplayPage', () => {
   it('calls setDisplayMode, highlights optimistically, then follows desk://status', async () => {
     const user = userEvent.setup();
     const { rerender } = render(view(desk));
-    await user.click(screen.getByRole('radio', { name: /^Clock/ }));
+    await user.click(live().getByRole('radio', { name: /^Clock/ }));
     expect(h.setMode).toHaveBeenCalledWith('clock');
-    expect(screen.getByRole('radio', { name: /^Clock/ })).toHaveAttribute('aria-checked', 'true');
+    expect(live().getByRole('radio', { name: /^Clock/ })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByText('Applying…')).toBeInTheDocument();
     // The device still shows Buddy until the native status says otherwise.
     expect(screen.getByTestId('on-device').closest('label')).toHaveAttribute('data-mode', 'buddy');
@@ -163,9 +166,9 @@ describe('DisplayPage', () => {
     h.setMode.mockRejectedValueOnce('unknown display mode: clock');
     const user = userEvent.setup();
     render(view(desk));
-    await user.click(screen.getByRole('radio', { name: /^Clock/ }));
+    await user.click(live().getByRole('radio', { name: /^Clock/ }));
     expect(await screen.findByText('unknown display mode: clock')).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /^Buddy/ })).toHaveAttribute('aria-checked', 'true');
+    expect(live().getByRole('radio', { name: /^Buddy/ })).toHaveAttribute('aria-checked', 'true');
   });
 
   it('falls back to the reported mode when no status arrives in time', async () => {
@@ -173,16 +176,18 @@ describe('DisplayPage', () => {
     try {
       render(view(desk));
       await act(async () => {
-        screen.getByRole('radio', { name: /^System/ }).click();
+        live()
+          .getByRole('radio', { name: /^System/ })
+          .click();
       });
-      expect(screen.getByRole('radio', { name: /^System/ })).toHaveAttribute(
+      expect(live().getByRole('radio', { name: /^System/ })).toHaveAttribute(
         'aria-checked',
         'true',
       );
       await act(async () => {
         await vi.advanceTimersByTimeAsync(5000);
       });
-      expect(screen.getByRole('radio', { name: /^Buddy/ })).toHaveAttribute('aria-checked', 'true');
+      expect(live().getByRole('radio', { name: /^Buddy/ })).toHaveAttribute('aria-checked', 'true');
     } finally {
       vi.useRealTimers();
     }
@@ -190,25 +195,28 @@ describe('DisplayPage', () => {
 
   it('shows the saved default and double-press views', () => {
     render(view(desk));
-    const defaults = screen.getByRole('group', { name: 'Default view' });
-    expect(within(defaults).getByRole('button', { name: 'Buddy' })).toHaveAttribute(
-      'aria-pressed',
+    const defaults = screen.getByRole('radiogroup', { name: 'Default view' });
+    expect(within(defaults).getByRole('radio', { name: 'Buddy' })).toHaveAttribute(
+      'aria-checked',
       'true',
     );
-    const double = screen.getByRole('group', { name: 'Double press shows' });
-    expect(within(double).getByRole('button', { name: 'System' })).toHaveAttribute(
-      'aria-pressed',
+    const double = screen.getByRole('radiogroup', { name: 'Double press shows' });
+    expect(within(double).getByRole('radio', { name: 'System' })).toHaveAttribute(
+      'aria-checked',
       'true',
     );
     // A double press toggling a view with itself would do nothing.
-    expect(within(double).getByRole('button', { name: 'Buddy' })).toBeDisabled();
+    expect(within(double).getByRole('radio', { name: 'Buddy' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
   });
 
   it('saves a new default view', async () => {
     const user = userEvent.setup();
     render(view(desk));
     await user.click(
-      within(screen.getByRole('group', { name: 'Default view' })).getByRole('button', {
+      within(screen.getByRole('radiogroup', { name: 'Default view' })).getByRole('radio', {
         name: 'Clock',
       }),
     );
@@ -219,7 +227,7 @@ describe('DisplayPage', () => {
     const user = userEvent.setup();
     render(view(desk));
     await user.click(
-      within(screen.getByRole('group', { name: 'Default view' })).getByRole('button', {
+      within(screen.getByRole('radiogroup', { name: 'Default view' })).getByRole('radio', {
         name: 'System',
       }),
     );
@@ -229,10 +237,10 @@ describe('DisplayPage', () => {
   it('saves a new double-press view, including cycling through every view', async () => {
     const user = userEvent.setup();
     render(view(desk));
-    const double = screen.getByRole('group', { name: 'Double press shows' });
-    await user.click(within(double).getByRole('button', { name: 'Media' }));
+    const double = screen.getByRole('radiogroup', { name: 'Double press shows' });
+    await user.click(within(double).getByRole('radio', { name: 'Media' }));
     expect(h.setSettings).toHaveBeenLastCalledWith('buddy', 'media');
-    await user.click(within(double).getByRole('button', { name: 'Every view in turn' }));
+    await user.click(within(double).getByRole('radio', { name: 'Every view in turn' }));
     expect(h.setSettings).toHaveBeenLastCalledWith('buddy', 'cycle');
   });
 
@@ -240,11 +248,11 @@ describe('DisplayPage', () => {
     h.setSettings.mockRejectedValueOnce('Settings could not be saved. Nothing was changed.');
     const user = userEvent.setup();
     render(view(desk));
-    const defaults = screen.getByRole('group', { name: 'Default view' });
-    await user.click(within(defaults).getByRole('button', { name: 'Clock' }));
+    const defaults = screen.getByRole('radiogroup', { name: 'Default view' });
+    await user.click(within(defaults).getByRole('radio', { name: 'Clock' }));
     expect(await screen.findByText(/Nothing was changed/)).toBeInTheDocument();
-    expect(within(defaults).getByRole('button', { name: 'Buddy' })).toHaveAttribute(
-      'aria-pressed',
+    expect(within(defaults).getByRole('radio', { name: 'Buddy' })).toHaveAttribute(
+      'aria-checked',
       'true',
     );
   });

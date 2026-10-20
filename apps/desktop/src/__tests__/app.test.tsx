@@ -50,7 +50,10 @@ describe('App shell', () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(await screen.findByRole('button', { name: 'Display' }));
-    const radio = await screen.findByRole('radio', { name: /^Clock/ });
+    const radio = within(await screen.findByRole('radiogroup', { name: 'Show now' })).getByRole(
+      'radio',
+      { name: /^Clock/ },
+    );
     radio.focus();
     expect(radio).toHaveFocus();
     act(() =>
@@ -60,7 +63,7 @@ describe('App shell', () => {
     );
     expect(screen.queryByRole('radiogroup', { name: 'Show now' })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1, name: 'Display' })).toHaveFocus();
-    expect(screen.getByRole('group', { name: 'Default view' })).toBeInTheDocument();
+    expect(screen.getByRole('radiogroup', { name: 'Default view' })).toBeInTheDocument();
     expect(navLabels()).toEqual(['Home', 'Controls', 'Display', 'Device', 'Developer']);
     act(() => publish?.(connectionFixture([], { connection: 'disconnected', device: null })));
     expect(screen.getByRole('heading', { level: 1, name: 'Display' })).toBeInTheDocument();
