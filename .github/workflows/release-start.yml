@@ -79,7 +79,7 @@ jobs:
           bun-version: 1.4.2
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
       - uses: dtolnay/rust-toolchain@stable
       - name: Test the release scripts
         run: node --test scripts/release-tools.test.mjs scripts/firmware-release-guard.test.mjs scripts/release-finalize.test.mjs
@@ -219,7 +219,7 @@ jobs:
           bun-version: 1.4.2
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
       - uses: dtolnay/rust-toolchain@stable
       - name: Finalize cannot be a dry run
         if: inputs.dry_run

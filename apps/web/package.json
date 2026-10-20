@@ -36,12 +36,7 @@
     "tailwindcss": "^4.3.3",
     "three": "0.186.1",
     "typescript": "^5.6.0",
-<<<<<<< HEAD
-    "vitest": "^2.1.0",
-    "wrangler": "4.151.1"
-=======
     "vitest": "^5.0.5",
-    "wrangler": "4.149.0"
->>>>>>> b89df1624ce7c7cafb7edbc35296df4b0abc7b32
+    "wrangler": "4.151.1"
   }
 }
