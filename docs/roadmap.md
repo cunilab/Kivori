@@ -83,8 +83,8 @@ stays the beta platform and its rows are tracked in a GitHub issue.
 Software complete and host-tested (S1–S7); the hardware rows and gates below remain.
 
 - [x] Three contextual buttons (#9), software done and host-tested end to end:
-  - pins GPIO20, GPIO10, GPIO5 to GND (moved from GPIO0/1/20 for the copper-tape PCB, #67), internal pull-ups, no resistors; GPIO21 stays the UART0 boot
-    log, GPIO9 stays unused (download mode)
+  - pins GPIO9, GPIO8, GPIO10 to GND (moved to match the enclosure's wiring, #123), internal pull-ups, no resistors; GPIO21 stays the UART0 boot
+    log; B1 on GPIO9 doubles as BOOT (held at reset: download mode)
   - same edge interrupt as the encoder (ADR-0007); each button gives Press and Hold, never recovery;
     one gesture owns all input, so no chords and nothing during a recovery hold
   - wire: `ControlId::ContextButton(0..3)`, `CONTEXT_BUTTONS_V1`; labels in `ControlLabels.buttons`
@@ -181,7 +181,7 @@ in [architecture.md](./architecture.md) (ADR-0011 to ADR-0013); hardware rows ar
   - new idle moments: glance left/right, look at a control when it is touched, slower blinks late in
     the evening (local clock from Desktop); the eyes never fully close outside Sleeping
   - deterministic: driven by the integer timebase and a per-unit seed, so golden frames stay exact
-  - a brightness setting: backlight PWM on GPIO8 (today always on); no automatic night dim
+  - a brightness setting: backlight PWM on GPIO0 (GPIO8 before #123); no automatic night dim
 - [x] **Quiet Unverified:**
   - a trigger-only action (media key, shortcut, or a macro whose weakest step is one) gets a neutral acknowledgement:
     the keycap press and a label pulse, no amber "?" badge and never a success look (gate 1 holds)

@@ -2,6 +2,11 @@
 //!
 //! [`physical_st7789`] is the hardware-validated ESP32-C3 + ST7789 240x240 profile. Changes to it
 //! require validation against real hardware.
+//!
+//! The pin map follows the enclosure's wiring (#123): seen from the SuperMini's component side
+//! with USB-C at the top, the right row is 5V, GND, 3V3, IO4..IO0 and the left row is IO5..IO10,
+//! IO20, IO21. The display sits on the right row (IO4..IO0), the encoder and the buttons on the
+//! left row (IO5..IO10), so no wire crosses between the rows.
 
 /// Verified physical ESP32-C3 + ST7789 240x240 hardware profile.
 ///
@@ -20,20 +25,22 @@ pub mod physical_st7789 {
         options::{ColorInversion, ColorOrder, Orientation, Rotation},
     };
 
-    /// SPI clock pin.
-    pub const SCK: u8 = 6;
+    /// SPI clock pin (display SCL).
+    pub const SCK: u8 = 4;
 
-    /// SPI MOSI pin.
-    pub const MOSI: u8 = 7;
+    /// SPI MOSI pin (display SDA).
+    pub const MOSI: u8 = 3;
 
-    /// Display data/command pin.
-    pub const DC: u8 = 2;
+    /// Display data/command pin. GPIO1 is an XTAL_32K pin: a plain GPIO only on a board without
+    /// a 32.768 kHz crystal (validation row 5.1).
+    pub const DC: u8 = 1;
 
-    /// Display reset pin.
-    pub const RST: u8 = 3;
+    /// Display reset pin. GPIO2 is a strapping pin; RES is an input on the display, so the pin
+    /// is left alone at reset, as on a bare board.
+    pub const RST: u8 = 2;
 
-    /// Display backlight pin.
-    pub const BL: u8 = 8;
+    /// Display backlight pin. GPIO0 is an XTAL_32K pin, like [`DC`].
+    pub const BL: u8 = 0;
 
     /// This physical panel does not use chip select.
     pub const CS: Option<u8> = None;
@@ -134,28 +141,21 @@ pub mod physical_st7789 {
     /// `sw` is sampled by the adapter and consumed by the push-switch gesture machine
     /// (`input::gesture`).
     ///
-    /// **This is a SPECIFICATION, not measured evidence.** Unlike the rest of this module
-    /// (`SCK`/`MOSI`/`DC`/`RST`/`BL`, all verified against a real board), nobody has verified
-    /// continuity of this rotary wiring on physical hardware yet — the maintainer is wiring the
-    /// HW-040 module to these GPIOs, and `docs/validation.md` row 3.15 carries the verification. Do not read this
-    /// struct as confirmed hardware fact.
+    /// **This is a SPECIFICATION, not measured evidence.** The whole pin map moved to match the
+    /// enclosure (#123), so until `docs/validation.md` rows 3.15 and 5.1 are checked on a board
+    /// wired to an enclosure PCB, none of these GPIOs is confirmed hardware fact. The panel
+    /// parameters (geometry, SPI mode, orientation, colour order, inversion) stay verified.
     ///
     /// Pin choices, decided deliberately:
     ///
-    /// * **CLK = GPIO4, DT = GPIO0, SW = GPIO1.** All three sit on the SuperMini's left pin row,
-    ///   next to the encoder, so the copper-tape PCB needs no trace crossing between the rows.
-    /// * **GPIO9 was rejected for `sw`** despite being the devkit BOOT button. Holding GPIO9 low
-    ///   at reset enters ROM download mode, and the encoder switch is Kivori's recovery control —
-    ///   a user power-cycling while holding it for recovery would land in the downloader instead
-    ///   of booting Kivori.
-    /// * GPIO2 and GPIO8 are strapping pins and already taken (D/C, backlight). GPIO20, GPIO10
-    ///   and GPIO5 carry the contextual buttons (see [`CONTEXT_BUTTONS`]); GPIO21 stays free as
-    ///   the UART0 TX boot / log console.
-    /// * **GPIO0 and GPIO1** are the XTAL_32K pair. They are plain GPIOs only when no 32.768 kHz
-    ///   crystal is fitted: check the devkit first (validation row 5.1).
-    /// * None of the three is a strapping pin, and all three are in GPIO0-5, so any of them can
-    ///   wake the C3 from deep sleep if that is ever wanted (Kivori's Display Sleep is panel
-    ///   blanking with the MCU awake).
+    /// * **CLK = GPIO7, DT = GPIO6, SW = GPIO5.** All three sit on the SuperMini's left pin row,
+    ///   next to the encoder, so the enclosure needs no wire crossing between the rows.
+    /// * **GPIO9 stays off `sw`** despite being the devkit BOOT button. Holding GPIO9 low at reset
+    ///   enters ROM download mode, and the encoder switch is Kivori's recovery control: a user
+    ///   power-cycling while holding it for recovery would land in the downloader instead of
+    ///   booting Kivori. GPIO9 carries button B1 instead (see [`CONTEXT_BUTTONS`]).
+    /// * None of the three is a strapping pin. GPIO21 stays free as the UART0 TX boot / log
+    ///   console, and GPIO20 is free.
     ///
     /// The three lines are wired active-low (HW-040 COM to GND) and read with internal pull-ups;
     /// the adapter in `physical_rotary` inverts them to logical levels.
@@ -171,26 +171,28 @@ pub mod physical_st7789 {
 
     /// HW-040 wiring specification decided for this board (see [`RotaryProfile`]).
     pub const ROTARY: RotaryProfile = RotaryProfile {
-        clk: 4,
-        dt: 0,
-        sw: 1,
+        clk: 7,
+        dt: 6,
+        sw: 5,
     };
 
     /// The three contextual buttons, left to right. Each is a plain momentary switch from the
     /// GPIO to GND, read active-low with the internal pull-up; no external parts.
     ///
-    /// These are the only free GPIOs left, decided deliberately:
+    /// Pin choices, decided deliberately:
     ///
-    /// * All three sit on the SuperMini's right pin row, next to the buttons, so the copper-tape
-    ///   PCB needs no trace crossing between the rows.
-    /// * **GPIO20** is UART0 RX. Kivori never reads UART0 (the data link is USB Serial/JTAG and
-    ///   `esp-println` only writes TX), so the boot log on GPIO21 keeps working.
-    /// * **GPIO9 stays unused**: pressed at reset it would enter ROM download mode.
-    /// * None of the three is a strapping pin, so a button held at power-on cannot change how the
-    ///   chip boots.
+    /// * **B1 / B2 / B3 = GPIO9 / GPIO8 / GPIO10.** All three sit on the SuperMini's left pin
+    ///   row, next to the buttons, so the enclosure needs no wire crossing between the rows.
+    /// * **GPIO9 (BOOT) is B1.** Holding B1 while the board resets enters ROM download mode,
+    ///   exactly like the SuperMini's own BOOT button. That is harmless and sometimes handy;
+    ///   recovery is unaffected because it belongs to the encoder switch, which is not on GPIO9.
+    /// * **GPIO8 is B2**, a strapping pin that only matters for download mode (it must be high
+    ///   then), so do not hold B2 while flashing. On the SuperMini it also drives the onboard
+    ///   LED, which can light while B2 is pressed.
+    /// * Holding B2 or B3 alone at power-on boots Kivori normally.
     ///
     /// Like the encoder map, a specification until physically verified.
-    pub const CONTEXT_BUTTONS: [u8; 3] = [20, 10, 5];
+    pub const CONTEXT_BUTTONS: [u8; 3] = [9, 8, 10];
 
     #[cfg(all(test, feature = "host-sim"))]
     mod tests {

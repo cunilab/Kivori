@@ -143,18 +143,18 @@ impl<S: DisplaySink> DisplaySink for Backlit<S> {
 /// If somebody changes a pin in `profile.rs` without updating this file, the
 /// physical firmware build fails instead of silently using the wrong wiring.
 const _: () = {
-    assert!(hw::SCK == 6);
-    assert!(hw::MOSI == 7);
-    assert!(hw::DC == 2);
-    assert!(hw::RST == 3);
-    assert!(hw::BL == 8);
+    assert!(hw::SCK == 4);
+    assert!(hw::MOSI == 3);
+    assert!(hw::DC == 1);
+    assert!(hw::RST == 2);
+    assert!(hw::BL == 0);
     assert!(hw::CS.is_none());
-    assert!(hw::ROTARY.clk == 4);
-    assert!(hw::ROTARY.dt == 0);
-    assert!(hw::ROTARY.sw == 1);
-    assert!(hw::CONTEXT_BUTTONS[0] == 20);
-    assert!(hw::CONTEXT_BUTTONS[1] == 10);
-    assert!(hw::CONTEXT_BUTTONS[2] == 5);
+    assert!(hw::ROTARY.clk == 7);
+    assert!(hw::ROTARY.dt == 6);
+    assert!(hw::ROTARY.sw == 5);
+    assert!(hw::CONTEXT_BUTTONS[0] == 9);
+    assert!(hw::CONTEXT_BUTTONS[1] == 8);
+    assert!(hw::CONTEXT_BUTTONS[2] == 10);
 };
 
 /// Runs Kivori on the verified physical ESP32-C3 + ST7789 hardware.
@@ -183,9 +183,9 @@ pub fn run_mode(
     // -------------------------------------------------------------------------
     // SPI2
     //
-    // Verified physical wiring:
-    //   SCK  -> GPIO6
-    //   MOSI -> GPIO7
+    // Physical wiring (the enclosure's map, #123):
+    //   SCK  -> GPIO4
+    //   MOSI -> GPIO3
     //
     // No MISO is needed because the display path is write-only.
     // -------------------------------------------------------------------------
@@ -197,8 +197,8 @@ pub fn run_mode(
             .with_mode(hw::spi_mode()),
     )
     .expect("SPI config")
-    .with_sck(peripherals.GPIO6)
-    .with_mosi(peripherals.GPIO7);
+    .with_sck(peripherals.GPIO4)
+    .with_mosi(peripherals.GPIO3);
 
     // The panel is write-only, so SPI DMA needs only a transmit buffer. The
     // 4 KiB transfer buffer replaces the previous 512-byte CPU-driven bursts;
@@ -219,20 +219,20 @@ pub fn run_mode(
     // -------------------------------------------------------------------------
     // Display control pins
     //
-    // Verified physical wiring:
-    //   DC  -> GPIO2
-    //   RST -> GPIO3
-    //   BL  -> GPIO8
+    // Physical wiring (the enclosure's map, #123):
+    //   DC  -> GPIO1
+    //   RST -> GPIO2
+    //   BL  -> GPIO0
     // -------------------------------------------------------------------------
 
-    let dc = Output::new(peripherals.GPIO2, Level::High, OutputConfig::default());
+    let dc = Output::new(peripherals.GPIO1, Level::High, OutputConfig::default());
 
-    let rst = Output::new(peripherals.GPIO3, Level::High, OutputConfig::default());
+    let rst = Output::new(peripherals.GPIO2, Level::High, OutputConfig::default());
 
-    // The backlight is plainly on while the panel initialises. GPIO8 is a strapping pin, sampled
-    // only at reset, so it is handed to the LEDC PWM below, after boot, once the panel is up.
+    // The backlight is plainly on while the panel initialises, and handed to the LEDC PWM below
+    // once the panel is up.
     let backlight = Output::new(
-        peripherals.GPIO8,
+        peripherals.GPIO0,
         hw::backlight_level(),
         OutputConfig::default(),
     );
@@ -280,7 +280,7 @@ pub fn run_mode(
     let display = MipidsiSink::new(display, hw::geometry());
 
     // -------------------------------------------------------------------------
-    // Backlight PWM (GPIO8, LEDC low-speed channel 0)
+    // Backlight PWM (GPIO0, LEDC low-speed channel 0)
     //
     // Starts at full brightness, exactly what the plain output gave, and follows the desktop's
     // brightness setting from then on. 24 kHz is above hearing; 8-bit duty is far finer than the
@@ -318,9 +318,9 @@ pub fn run_mode(
     //
     // Wiring specification (unverified on physical hardware; see
     // `profile::physical_st7789::ROTARY`):
-    //   CLK -> GPIO4
-    //   DT  -> GPIO0
-    //   SW  -> GPIO1
+    //   CLK -> GPIO7
+    //   DT  -> GPIO6
+    //   SW  -> GPIO5
     //
     // All three lines are active-low (HW-040 COM to GND), so they are read with
     // internal pull-ups. `PhysicalRotary` only reads and inverts pin levels; all
@@ -328,15 +328,15 @@ pub fn run_mode(
     // -------------------------------------------------------------------------
 
     let rotary_pull = InputConfig::default().with_pull(Pull::Up);
-    let rotary_clk = Input::new(peripherals.GPIO4, rotary_pull);
-    let rotary_dt = Input::new(peripherals.GPIO0, rotary_pull);
-    let rotary_sw = Input::new(peripherals.GPIO1, rotary_pull);
-    // Contextual buttons: GPIO20 / GPIO10 / GPIO5 to GND, same pull-up active-low reading
+    let rotary_clk = Input::new(peripherals.GPIO7, rotary_pull);
+    let rotary_dt = Input::new(peripherals.GPIO6, rotary_pull);
+    let rotary_sw = Input::new(peripherals.GPIO5, rotary_pull);
+    // Contextual buttons: GPIO9 / GPIO8 / GPIO10 to GND, same pull-up active-low reading
     // (`profile::physical_st7789::CONTEXT_BUTTONS`).
     let keys = [
-        Input::new(peripherals.GPIO20, rotary_pull),
+        Input::new(peripherals.GPIO9, rotary_pull),
+        Input::new(peripherals.GPIO8, rotary_pull),
         Input::new(peripherals.GPIO10, rotary_pull),
-        Input::new(peripherals.GPIO5, rotary_pull),
     ];
     let mut io = Io::new(peripherals.IO_MUX);
     let mut rotary = PhysicalRotary::new(&mut io, rotary_clk, rotary_dt, rotary_sw, keys);

@@ -124,15 +124,15 @@ external UART bridge.
 
 | Signal | GPIO | Notes |
 |---|---:|---|
-| SPI SCK | 6 | SPI2, 20 MHz, Mode 3 |
-| SPI MOSI | 7 | |
-| Display D/C | 2 | strapping pin, driven after boot |
-| Display RST | 3 | |
-| Backlight | 8 | active-high, PWM for the brightness setting; strapping pin, must be high at reset anyway |
-| Encoder CLK (A) | 4 | |
-| Encoder DT (B) | 0 | XTAL_32K pin: needs a board without a 32 kHz crystal |
-| Encoder SW | 1 | XTAL_32K pin, as DT; push switch: Press, Hold, Double press, ~10 s recovery reboot |
-| Button left / middle / right | 20 / 10 / 5 | to GND, internal pull-up, no resistor; none is a strapping pin |
+| SPI SCK (display SCL) | 4 | SPI2, 20 MHz, Mode 3 |
+| SPI MOSI (display SDA) | 3 | |
+| Display D/C | 1 | XTAL_32K pin: needs a board without a 32 kHz crystal |
+| Display RST | 2 | strapping pin; an input on the display, so it is left alone at reset |
+| Backlight | 0 | active-high, PWM for the brightness setting; XTAL_32K pin, as D/C |
+| Encoder CLK (A) | 7 | |
+| Encoder DT (B) | 6 | |
+| Encoder SW | 5 | push switch: Press, Hold, Double press, ~10 s recovery reboot |
+| Button left / middle / right (B1 / B2 / B3) | 9 / 8 / 10 | to GND, internal pull-up, no resistor; B1 doubles as BOOT, see below |
 | USB D− / D+ | 18 / 19 | native USB Serial/JTAG, `0x303A:0x1001` |
 
 Encoder COM to **GND**, VCC to **3V3**. **Not 5V: ESP32-C3 GPIOs are not 5 V tolerant.** Firmware
@@ -141,15 +141,18 @@ your HW-040 board populates its own pull-ups.
 
 ### Two things worth knowing about these pins
 
-**GPIO9 is deliberately avoided for the switch**, even though it is the BOOT button on most
-devkits. Holding GPIO9 low at reset enters the ROM download mode, and the encoder switch is
-Kivori's recovery control: a user power-cycling while holding it for recovery would land in the
-downloader instead of booting Kivori.
+**GPIO9 (BOOT) is the left button, B1, and never the encoder switch.** Holding GPIO9 low at
+reset enters the ROM download mode. The encoder switch is Kivori's recovery control, so it stays
+off GPIO9: a user power-cycling while holding it for recovery boots Kivori. Holding **B1** while
+plugging in or resetting enters download mode, just like the SuperMini's own BOOT button. GPIO8
+(B2) is a strapping pin too; it only matters in download mode, so don't hold B2 while flashing.
+Holding B2 or B3 alone at power-on boots normally.
 
-**The display pins are measured evidence; the encoder pins are not.** The display profile was
-physically verified on 2026-08-11 and is recorded in [`docs/validation.md`](docs/validation.md)
-(rows 1.9, 1.24, 1.25). The encoder pin map is a *specification* wired to on request, pending
-physical confirmation (row 3.15 of the same checklist). Do not treat the two as equally settled.
+**The panel parameters are measured evidence; the pin map is not.** The display profile (offset,
+colour order, inversion, SPI mode) was physically verified on 2026-08-11 and is recorded in
+[`docs/validation.md`](docs/validation.md) (rows 1.9, 1.24, 1.25). The pin map moved to match the
+enclosure's wiring (#123) and is a *specification* until rows 3.15, 5.1 and 5.2 of the same
+checklist are ticked on a board wired to an enclosure PCB.
 
 Both live in one place, [`firmware/pala/src/profile.rs`](firmware/pala/src/profile.rs), so a
 rewire is a single constant change. The case and its printed carrier plate are in

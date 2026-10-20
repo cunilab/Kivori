@@ -1620,10 +1620,16 @@ fn the_rotary_profile_does_not_collide_with_the_display_profile() {
     assert_ne!(ROTARY.clk, ROTARY.dt);
     assert_ne!(ROTARY.clk, ROTARY.sw);
     assert_ne!(ROTARY.dt, ROTARY.sw);
+
+    // GPIO9 low at reset enters ROM download mode, so the recovery switch must never sit on it.
+    assert_ne!(
+        ROTARY.sw, 9,
+        "the recovery switch must not be the BOOT strap"
+    );
 }
 
 #[test]
-fn the_context_buttons_are_free_non_strapping_pins() {
+fn the_context_buttons_are_free_pins() {
     use kivori_firmware::profile::physical_st7789::{
         BL, CONTEXT_BUTTONS, DC, MOSI, ROTARY, RST, SCK,
     };
@@ -1635,11 +1641,9 @@ fn the_context_buttons_are_free_non_strapping_pins() {
             !CONTEXT_BUTTONS[..i].contains(&pin),
             "button pin {pin} is used twice"
         );
-        // GPIO2/8/9 are strapping pins: a button held at power-on must not change the boot mode.
-        assert!(
-            ![2, 8, 9].contains(&pin),
-            "button pin {pin} is a strapping pin"
-        );
+        // GPIO2 is a strapping pin that must not be pulled low at reset. GPIO8/9 are allowed on
+        // purpose: B1 on GPIO9 doubles as BOOT, and GPIO8 only matters in download mode.
+        assert_ne!(pin, 2, "button pin {pin} is a strapping pin");
         // GPIO18/19 are native USB, GPIO21 the UART0 boot log.
         assert!(
             ![18, 19, 21].contains(&pin),
