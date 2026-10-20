@@ -5,6 +5,7 @@ import axe from 'axe-core';
 import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Toaster } from '@kivori/ui/components/sonner';
+import { resetPageTabs } from '../../../components/kivori/page-tabs';
 import type { ConfigDto, DeskStatusDto } from '../../../lib/ipc/types';
 
 const h = vi.hoisted(() => ({
@@ -60,6 +61,11 @@ const config: ConfigDto = {
 
 const connection = connectionFixture(['deskStatusV1']);
 
+/** Opens a page tab (Views, Show now, Brightness or Buddy). */
+function openTab(name: string): void {
+  act(() => screen.getByRole('tab', { name }).click());
+}
+
 const live = (): ReturnType<typeof within> =>
   within(screen.getByRole('radiogroup', { name: 'Show now' }));
 
@@ -77,6 +83,7 @@ beforeEach(() => {
   h.setSettings.mockReset().mockResolvedValue(undefined);
   h.setBrightness.mockReset().mockResolvedValue(undefined);
   localStorage.clear();
+  resetPageTabs();
 });
 
 describe('DisplayPage', () => {
@@ -87,6 +94,7 @@ describe('DisplayPage', () => {
       render(<DisplayPage desk={desk} config={config} connection={status} />);
       expect(screen.queryByRole('radiogroup', { name: 'Show now' })).not.toBeInTheDocument();
       expect(screen.queryByTestId('on-device')).not.toBeInTheDocument();
+      openTab('Brightness');
       await user.click(
         within(screen.getByRole('radiogroup', { name: 'Brightness' })).getByRole('radio', {
           name: 'Step 3',
@@ -100,6 +108,7 @@ describe('DisplayPage', () => {
   it('desk status alone supports all five live views, without advertising reaction or media-text support', async () => {
     const user = userEvent.setup();
     render(view(desk));
+    openTab('Show now');
     const live = screen.getByRole('radiogroup', { name: 'Show now' });
     expect(within(live).getAllByRole('radio')).toHaveLength(5);
     await user.click(within(live).getByRole('radio', { name: /^Media/ }));
@@ -109,6 +118,7 @@ describe('DisplayPage', () => {
   it('drops pending live selections when the session generation changes', async () => {
     const user = userEvent.setup();
     const page = render(<DisplayPage desk={desk} config={config} connection={connection} />);
+    openTab('Show now');
     await user.click(
       within(screen.getByRole('radiogroup', { name: 'Show now' })).getByRole('radio', {
         name: /^Media/,
@@ -128,6 +138,7 @@ describe('DisplayPage', () => {
 
   it('checks the mode the device reports', () => {
     render(view(desk));
+    openTab('Show now');
     expect(live().getByRole('radio', { name: /^Buddy/ })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByTestId('on-device').closest('label')).toHaveAttribute('data-mode', 'buddy');
   });
@@ -135,6 +146,7 @@ describe('DisplayPage', () => {
   it('shows the saved brightness step and saves a new one at once', async () => {
     const user = userEvent.setup();
     render(view(desk));
+    openTab('Brightness');
     const group = screen.getByRole('radiogroup', { name: 'Brightness' });
     expect(within(group).getByRole('radio', { name: 'Step 5' })).toHaveAttribute(
       'aria-checked',
@@ -151,6 +163,7 @@ describe('DisplayPage', () => {
   it('calls setDisplayMode, highlights optimistically, then follows desk://status', async () => {
     const user = userEvent.setup();
     const { rerender } = render(view(desk));
+    openTab('Show now');
     await user.click(live().getByRole('radio', { name: /^Clock/ }));
     expect(h.setMode).toHaveBeenCalledWith('clock');
     expect(live().getByRole('radio', { name: /^Clock/ })).toHaveAttribute('aria-checked', 'true');
@@ -166,6 +179,7 @@ describe('DisplayPage', () => {
     h.setMode.mockRejectedValueOnce('unknown display mode: clock');
     const user = userEvent.setup();
     render(view(desk));
+    openTab('Show now');
     await user.click(live().getByRole('radio', { name: /^Clock/ }));
     expect(await screen.findByText('unknown display mode: clock')).toBeInTheDocument();
     expect(live().getByRole('radio', { name: /^Buddy/ })).toHaveAttribute('aria-checked', 'true');
@@ -175,6 +189,7 @@ describe('DisplayPage', () => {
     vi.useFakeTimers();
     try {
       render(view(desk));
+      openTab('Show now');
       await act(async () => {
         live()
           .getByRole('radio', { name: /^System/ })
@@ -191,6 +206,28 @@ describe('DisplayPage', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('splits the page into tabs and opens on the views', () => {
+    render(view(desk));
+    const tabs = within(screen.getByRole('tablist', { name: 'Display sections' }));
+    expect(tabs.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Views',
+      'Show now',
+      'Brightness',
+      'Buddy',
+    ]);
+    expect(screen.getByRole('radiogroup', { name: 'Default view' })).toBeVisible();
+    expect(screen.queryByRole('radiogroup', { name: 'Brightness' })).toBeNull();
+    openTab('Buddy');
+    expect(screen.getByRole('switch')).toBeVisible();
+    // The saved-on-this-computer sentence appears once, not in every tab.
+    expect(screen.getAllByText(/Settings are saved on this computer/)).toHaveLength(1);
+  });
+
+  it('has no Show now tab without live view support', () => {
+    render(<DisplayPage desk={desk} config={config} connection={null} />);
+    expect(screen.queryByRole('tab', { name: 'Show now' })).not.toBeInTheDocument();
   });
 
   it('shows the saved default and double-press views', () => {

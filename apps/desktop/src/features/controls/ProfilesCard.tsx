@@ -207,12 +207,15 @@ export function ProfilesCard({
   profile,
   onShow,
   children,
+  part = 'all',
 }: {
   config: ConfigDto;
   desk: DeskStatusDto | null;
   profile: ProfileConfigDto;
   onShow: (id: ProfileId) => void;
   children?: ReactNode;
+  /** `profile`: the apps panel and children; `new`: only the New profile block; `all`: both. */
+  part?: 'all' | 'profile' | 'new';
 }): ReactElement {
   const [picking, setPicking] = useState<ProfileConfigDto | null | undefined>(undefined);
   const [renaming, setRenaming] = useState<{ id: ProfileId; value: string } | null>(null);
@@ -316,190 +319,196 @@ export function ProfilesCard({
   const others = config.profiles.filter((p) => p.id !== profile.id);
 
   return (
-    <div data-testid="profile-list" className="space-y-4">
-      <section
-        data-testid={`profile-${profile.id}`}
-        aria-label={profile.name}
-        className="space-y-3 rounded-xl border bg-card p-3 sm:p-4"
-      >
-        <div className="flex flex-wrap items-center gap-2">
-          {renaming?.id === profile.id ? (
-            <form onSubmit={saveName} className="flex flex-wrap items-center gap-2">
-              <Label htmlFor={`rename-${profile.id}`} className="sr-only">
-                {t.renameLabel}
-              </Label>
-              <Input
-                id={`rename-${profile.id}`}
-                className="h-8 w-48"
-                value={renaming.value}
-                aria-invalid={nameProblem(renaming.value) !== null}
-                onChange={(e) => setRenaming({ id: profile.id, value: e.target.value })}
-              />
-              <Button size="sm" type="submit" disabled={nameProblem(renaming.value) !== null}>
-                {t.renameSave}
-              </Button>
-              <Button size="sm" type="button" variant="ghost" onClick={() => setRenaming(null)}>
-                {t.renameCancel}
-              </Button>
-              <p role="status" className="basis-full text-xs text-muted-foreground">
-                {nameProblem(renaming.value) ?? t.nameHint}
-              </p>
-            </form>
-          ) : (
-            <h2 className="text-base font-semibold">{profile.name}</h2>
-          )}
-          <Badge variant="outline">{profile.custom ? t.yourProfile : t.builtIn}</Badge>
-          <div className="ml-auto flex items-center gap-2">
-            {profile.custom ? (
-              <div className="flex items-center gap-2">
-                <Switch
-                  id={`cycle-${profile.id}`}
-                  checked={profile.inPinCycle}
-                  aria-describedby={`cycle-hint-${profile.id}`}
-                  onCheckedChange={(on) => {
-                    setProfilePinCycle(profile.id, on).catch(fail);
-                  }}
-                />
-                <Label htmlFor={`cycle-${profile.id}`} className="text-xs">
-                  {t.inPinCycle}
+    <div data-testid={part === 'new' ? 'new-profile-list' : 'profile-list'} className="space-y-4">
+      {part !== 'new' ? (
+        <section
+          data-testid={`profile-${profile.id}`}
+          aria-label={profile.name}
+          className="space-y-3 rounded-xl border bg-card p-3 sm:p-4"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            {renaming?.id === profile.id ? (
+              <form onSubmit={saveName} className="flex flex-wrap items-center gap-2">
+                <Label htmlFor={`rename-${profile.id}`} className="sr-only">
+                  {t.renameLabel}
                 </Label>
-                <span id={`cycle-hint-${profile.id}`} className="sr-only">
-                  {t.inPinCycleHint}
-                </span>
-              </div>
-            ) : null}
-            {profile.id !== 'general' ? (
-              <Button size="sm" variant="outline" onClick={() => setPicking(profile)}>
-                <Plus data-icon="inline-start" aria-hidden="true" />
-                {t.addApp}
-                <span className="sr-only"> {profile.name}</span>
-              </Button>
-            ) : null}
-            {profile.custom ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      aria-label={format(t.profileOptions, { profile: profile.name })}
-                    />
-                  }
-                >
-                  <Ellipsis aria-hidden="true" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-auto min-w-40">
-                  <DropdownMenuItem
-                    onClick={() => setRenaming({ id: profile.id, value: profile.name })}
-                  >
-                    {t.rename}
-                    <span className="sr-only"> {profile.name}</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem variant="destructive" onClick={() => setDeleting(profile)}>
-                    {t.delete}
-                    <span className="sr-only"> {profile.name}</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : null}
-          </div>
-        </div>
-
-        {profile.id === 'general' ? (
-          <p className="text-xs text-muted-foreground">{t.generalApps}</p>
-        ) : groups.length === 0 ? (
-          <p className="text-xs text-muted-foreground">{t.noApps}</p>
-        ) : (
-          <ul aria-label={t.appsLabel} className="flex flex-wrap gap-2">
-            {visible.map((group) => (
-              <li
-                key={group.primary}
-                data-testid={`app-${profile.id}-${group.primary}`}
-                className="flex items-center gap-2 rounded-md bg-muted py-1 pr-1 pl-2 text-sm"
-              >
-                <AppIcon id={group.primary} />
-                <span>{group.name}</span>
+                <Input
+                  id={`rename-${profile.id}`}
+                  className="h-8 w-48"
+                  value={renaming.value}
+                  aria-invalid={nameProblem(renaming.value) !== null}
+                  onChange={(e) => setRenaming({ id: profile.id, value: e.target.value })}
+                />
+                <Button size="sm" type="submit" disabled={nameProblem(renaming.value) !== null}>
+                  {t.renameSave}
+                </Button>
+                <Button size="sm" type="button" variant="ghost" onClick={() => setRenaming(null)}>
+                  {t.renameCancel}
+                </Button>
+                <p role="status" className="basis-full text-xs text-muted-foreground">
+                  {nameProblem(renaming.value) ?? t.nameHint}
+                </p>
+              </form>
+            ) : (
+              <h2 className="text-base font-semibold">{profile.name}</h2>
+            )}
+            <Badge variant="outline">{profile.custom ? t.yourProfile : t.builtIn}</Badge>
+            <div className="ml-auto flex items-center gap-2">
+              {profile.custom ? (
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id={`cycle-${profile.id}`}
+                    checked={profile.inPinCycle}
+                    aria-describedby={`cycle-hint-${profile.id}`}
+                    onCheckedChange={(on) => {
+                      setProfilePinCycle(profile.id, on).catch(fail);
+                    }}
+                  />
+                  <Label htmlFor={`cycle-${profile.id}`} className="text-xs">
+                    {t.inPinCycle}
+                  </Label>
+                  <span id={`cycle-hint-${profile.id}`} className="sr-only">
+                    {t.inPinCycleHint}
+                  </span>
+                </div>
+              ) : null}
+              {profile.id !== 'general' ? (
+                <Button size="sm" variant="outline" onClick={() => setPicking(profile)}>
+                  <Plus data-icon="inline-start" aria-hidden="true" />
+                  {t.addApp}
+                  <span className="sr-only"> {profile.name}</span>
+                </Button>
+              ) : null}
+              {profile.custom ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     render={
                       <Button
                         size="icon-sm"
                         variant="ghost"
-                        className="size-6"
-                        aria-label={format(t.appOptions, { app: group.name })}
+                        aria-label={format(t.profileOptions, { profile: profile.name })}
                       />
                     }
                   >
                     <Ellipsis aria-hidden="true" />
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="max-h-72 w-auto min-w-44">
-                    {others
-                      .filter((p) => p.id !== 'general')
-                      .map((p) => (
-                        <DropdownMenuItem key={p.id} onClick={() => void moveGroup(p, group)}>
-                          {format(t.moveToItem, { profile: p.name })}
-                        </DropdownMenuItem>
-                      ))}
-                    {others.some((p) => p.id !== 'general') ? <DropdownMenuSeparator /> : null}
-                    <DropdownMenuGroup>
-                      <DropdownMenuLabel>{t.removeHint}</DropdownMenuLabel>
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onClick={() => {
-                          const general = config.profiles.find((p) => p.id === 'general');
-                          if (general) void moveGroup(general, group);
-                        }}
-                      >
-                        {format(t.remove, { app: group.name })}
-                      </DropdownMenuItem>
-                    </DropdownMenuGroup>
+                  <DropdownMenuContent align="end" className="w-auto min-w-40">
+                    <DropdownMenuItem
+                      onClick={() => setRenaming({ id: profile.id, value: profile.name })}
+                    >
+                      {t.rename}
+                      <span className="sr-only"> {profile.name}</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem variant="destructive" onClick={() => setDeleting(profile)}>
+                      {t.delete}
+                      <span className="sr-only"> {profile.name}</span>
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-              </li>
-            ))}
-            {groups.length > APPS_SHOWN ? (
-              <li>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  aria-expanded={showAll}
-                  onClick={() => setExpanded(showAll ? null : profile.id)}
+              ) : null}
+            </div>
+          </div>
+
+          {profile.id === 'general' ? (
+            <p className="text-xs text-muted-foreground">{t.generalApps}</p>
+          ) : groups.length === 0 ? (
+            <p className="text-xs text-muted-foreground">{t.noApps}</p>
+          ) : (
+            <ul aria-label={t.appsLabel} className="flex flex-wrap gap-2">
+              {visible.map((group) => (
+                <li
+                  key={group.primary}
+                  data-testid={`app-${profile.id}-${group.primary}`}
+                  className="flex items-center gap-2 rounded-md bg-muted py-1 pr-1 pl-2 text-sm"
                 >
-                  {showAll ? t.fewerApps : format(t.moreApps, { count: hidden })}
-                </Button>
-              </li>
-            ) : null}
-          </ul>
-        )}
-      </section>
+                  <AppIcon id={group.primary} />
+                  <span>{group.name}</span>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          className="size-6"
+                          aria-label={format(t.appOptions, { app: group.name })}
+                        />
+                      }
+                    >
+                      <Ellipsis aria-hidden="true" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="max-h-72 w-auto min-w-44">
+                      {others
+                        .filter((p) => p.id !== 'general')
+                        .map((p) => (
+                          <DropdownMenuItem key={p.id} onClick={() => void moveGroup(p, group)}>
+                            {format(t.moveToItem, { profile: p.name })}
+                          </DropdownMenuItem>
+                        ))}
+                      {others.some((p) => p.id !== 'general') ? <DropdownMenuSeparator /> : null}
+                      <DropdownMenuGroup>
+                        <DropdownMenuLabel>{t.removeHint}</DropdownMenuLabel>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => {
+                            const general = config.profiles.find((p) => p.id === 'general');
+                            if (general) void moveGroup(general, group);
+                          }}
+                        >
+                          {format(t.remove, { app: group.name })}
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </li>
+              ))}
+              {groups.length > APPS_SHOWN ? (
+                <li>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    aria-expanded={showAll}
+                    onClick={() => setExpanded(showAll ? null : profile.id)}
+                  >
+                    {showAll ? t.fewerApps : format(t.moreApps, { count: hidden })}
+                  </Button>
+                </li>
+              ) : null}
+            </ul>
+          )}
+        </section>
+      ) : null}
 
-      {children}
+      {part !== 'new' ? children : null}
 
-      <section aria-label={t.newProfileTitle} className="space-y-2">
-        <h2 className="text-sm font-medium">{t.newProfileTitle}</h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            disabled={!recent || full}
-            onClick={() => recent && createFor(recent)}
-            aria-describedby="add-front-hint"
-          >
-            {recent ? format(t.addFrontNamed, { app: recent.name }) : t.addFront}
-          </Button>
-          <Button variant="outline" disabled={full} onClick={() => setPicking(null)}>
-            {t.pickRunning}
-          </Button>
-        </div>
-        <p id="add-front-hint" className="text-xs text-muted-foreground">
-          {full
-            ? t.limitReached
-            : recent
-              ? format(t.addFrontHint, { app: recent.name })
-              : t.addFrontNone}
-        </p>
-        <p className="text-xs text-muted-foreground">
-          {format(t.limit, { count: customCount, max: PROFILE_LIMITS.customProfiles })}
-        </p>
-      </section>
+      {part !== 'profile' ? (
+        <section aria-label={t.newProfileTitle} className="space-y-2">
+          <h2 className={part === 'new' ? 'sr-only' : 'text-sm font-medium'}>
+            {t.newProfileTitle}
+          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              disabled={!recent || full}
+              onClick={() => recent && createFor(recent)}
+              aria-describedby="add-front-hint"
+            >
+              {recent ? format(t.addFrontNamed, { app: recent.name }) : t.addFront}
+            </Button>
+            <Button variant="outline" disabled={full} onClick={() => setPicking(null)}>
+              {t.pickRunning}
+            </Button>
+          </div>
+          <p id="add-front-hint" className="text-xs text-muted-foreground">
+            {full
+              ? t.limitReached
+              : recent
+                ? format(t.addFrontHint, { app: recent.name })
+                : t.addFrontNone}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {format(t.limit, { count: customCount, max: PROFILE_LIMITS.customProfiles })}
+          </p>
+        </section>
+      ) : null}
 
       <AppPicker
         target={picking}
