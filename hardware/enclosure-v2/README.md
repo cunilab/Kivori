@@ -90,7 +90,7 @@ Checked for FDM in each part's print orientation:
   sides are 45° to the bed, and the knob's grip grooves run out of the skirt edge.
 - **Thin features:** nothing thinner than 0.7 mm (about two nozzle widths). On the printed PCB's
   back (on the bed) the wire channels are 0.8 mm wide and the leg pockets 1.4 mm, so the layer
-  over each is a short bridge; the grooves along the pin rows have 45° sides, so they need no bridge.
+  over each is a short bridge. The back is flat along the pin rows.
   Every channel keeps at least 0.7 mm of plastic to anything that is not its own (the build
   checks it). Small text is gone from the bed sides; the wordmark is engraved.
 - **Fits:** FDM prints holes 0.1-0.2 mm small, so the fits allow for it: spigot 3.4 in 3.9, visor
@@ -116,7 +116,7 @@ different filaments, so no filament change mid-print is needed.
 | Part | Notes |
 |---|---|
 | ESP32-C3 SuperMini | On the front of the printed PCB, components facing the face, on its own soldered header strips (long pins down through the printed PCB). |
-| ST7789 1.3" 240×240, 7-pin | On four standoffs with pegs, glass in a 0.6 mm pocket behind the window, its soldered header pins through the printed PCB. |
+| ST7789 1.3" 240×240, 7-pin | On four standoffs with pegs, glass in a 0.6 mm pocket behind the window, its header pins through the printed PCB. Fit a **long-pin header** (2.54 mm, 7 pins, about 17 mm long overall, long side down): the usual header is too short to wind the wire on. Buy the display without a header, or swap it once. |
 | HW-040 rotary encoder | Hangs behind the printed PCB (see above). Straighten its five right-angle pins with pliers, or fit a straight 5-pin header. The nut is not used (the bushing ends inside the face). |
 | 3 × 12×12 mm push switch, 7.3 mm tall | Legs go through the printed PCB. |
 | Enamelled copper wire, 0.3 mm, about 1 m | The wiring. |
@@ -190,12 +190,12 @@ short pieces of Kapton or masking tape across the channel.
 
 **Joints, no solder:**
 
-- **Header pins (SuperMini, display):** scrape about 12 mm of enamel off the wire end, then wind
-  4 tight turns round the pin (1.2 mm of pin) with tweezers, starting at the bottom of the
-  groove. The square pin's corners bite into the copper. Every pin row (both SuperMini rows and
-  the display) sits in the same 45° V-groove, 2.4 mm wide and 1.2 mm deep, so every pin is wound
-  the same way: the turns sit 0.45 mm down in it. The SuperMini pins stand 4 mm past the back,
-  the display pins only 1.2 mm, which still leaves 0.55 mm of pin above the top turn. Keep
+- **Header pins (SuperMini, display):** the same open-air joint as at the encoder. Scrape about
+  12 mm of enamel off the wire end, lift it out of its channel at the pin and wind 4 tight turns
+  round the pin (1.2 mm of pin) with tweezers, right behind the printed PCB. The square pin's
+  corners bite into the copper. The SuperMini pins stand 4 mm past the back; the display sits on
+  a long-pin header, so its pins stand 6.2 mm past the back (the usual header reaches only
+  1.2 mm). Keep
   each winding neat and round its own pin: neighbouring pins are only 2.54 mm apart, and the
   scraped turns are bare. A dot of nail varnish over each finished winding keeps it from
   unwinding (optional).
@@ -260,9 +260,9 @@ measured on the real parts from photos next to a ruler (about ±0.3–0.5 mm). T
      left edge).
    - Header row 2.2 mm in from its end, header on the right as mounted (`DISP_HEADER_SIDE`), its
      centre 0.1 mm towards the far edge from the board centre (`DISP_HDR_V`, measured).
-   - Header pins 6 mm past the plastic (`DISP_PIN_L`, NOMINAL: the usual header). That puts the
-     tips 1.2 mm past the printed PCB's back, 1.75 mm above where the turns sit in the V-groove:
-     enough for 4 turns. If yours are shorter, measure them before printing.
+   - Long-pin header: 11 mm past the plastic (`DISP_PIN_L`, NOMINAL: a 2.54 mm header 17 mm
+     long overall). That puts the tips 6.2 mm past the printed PCB's back. Measure yours: at
+     least 1.5 mm past the back is needed for 4 turns.
 2. **HW-040** (`HW040_*`, in the module's own frame, origin at the board centre):
    - Board 26 × 18.5 × 1.3 mm.
    - Shaft at (−2.3, +1.8) (measured).

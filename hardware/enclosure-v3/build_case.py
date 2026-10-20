@@ -200,9 +200,9 @@ C_TAB_PAST = 1.5            # tab edges past the outer pin rows
 
 # Wiring, no solder: 0.3 mm enamelled copper wire laid in channels on the printed PCB's back. Each
 # run is one piece of wire from a pin to a pin (wire_layout). At a header pin the scraped wire end
-# is wound tight round the pin (its square corners bite into the copper), in a 45° V-groove along
-# each pin row (no overhang on the bed side): the turns sit lower, which the short display pins
-# need, and every row is wired the same way. At a switch the leg is folded flat over the wire end into a pocket and pressed. The
+# is wound tight round the pin (its square corners bite into the copper), in open air just behind
+# the printed PCB, the same way as at the HW-040: every header pin stands well past the back (the
+# display on a long-pin header), so the back stays flat at the pin rows. At a switch the leg is folded flat over the wire end into a pocket and pressed. The
 # encoder pins are wrapped in the gap between the HW-040 and the printed PCB. The enamel insulates,
 # so runs may cross: there the lower channel dips deeper.
 WIRE_D = 0.3                # wire diameter (stand-in)
@@ -212,10 +212,11 @@ WIRE_CROSS = (4.0, 1.3)     # where two runs cross, the lower channel dips: leng
 WIRE_RIDGE_MIN = 0.7        # plastic between two channels, or a channel and a hole, pin row or the edge
 WRAP_TURNS = 4              # turns round each header pin (1.2 mm of pin)
 WRAP_OD = 1.5               # the turns round a 0.64 mm square pin, outside
-PIN_ROW = (2.4, 0.9)        # 45° V-groove along each wrapped header row (1.2 deep): width, past the
-                            # end pins. The turns sit 0.45 mm down in the V; the display pins reach
-                            # only 1.2 mm past the back, so they need it
-DISP_PIN_L = 6.0            # display header: long pin past the plastic (NOMINAL, the usual header)
+PIN_ROW = (2.4, 0.9)        # room kept clear for the turns along each wrapped header row: width, past
+                            # the end pins (no other channel runs there)
+DISP_PIN_L = 11.0           # display header: long pin past the plastic. A long-pin header (2.54 mm,
+                            # 17 mm total, NOMINAL) puts the tips 6.2 mm past the back; the usual
+                            # 6 mm header reaches only 1.2 mm, too short to wind on
 LEG_POCKET = (1.4, 3.0)     # pocket the folded switch leg lies in, over the wire end: width, length
 # RST: a needle hole through the visor and the face over the SuperMini's RST button, with a guide
 # tube down to just above the button
@@ -840,16 +841,6 @@ def row_len(n):
     return (n - 1) * 2.54 + 2 * PIN_ROW[1]
 
 
-def v_groove(x, y, n):
-    """45° V-groove along a pin row on the back (prints on the bed without overhang)."""
-    w, z0 = PIN_ROW[0], C_BACK - 1
-    prof = [(x - w / 2 - 1, z0), (x + w / 2 + 1, z0), (x + w / 2, C_BACK), (x, C_BACK + w / 2), (x - w / 2, C_BACK)]
-    f = Part.Face(Part.makePolygon([V(px, 0, pz) for (px, pz) in prof + [prof[0]]]))
-    g = f.extrude(V(0, row_len(n), 0))
-    g.translate(V(0, y - row_len(n) / 2, 0))
-    return g
-
-
 def leg_ends():
     """Switch legs a run ends on: (leg, the unit direction the run arrives from)."""
     out = []
@@ -931,14 +922,13 @@ def wire_crossings():
 
 def wire_cuts():
     """Everything cut into the printed PCB's back for the wiring: the channels, the dips under the
-    crossings, a V-groove along each pin row and a pocket at each switch leg the wire ends on."""
+    crossings and a pocket at each switch leg the wire ends on."""
     z0, w, dep = C_BACK - 1, WIRE_CH[0], WIRE_CH[1]
     cuts = [band(pts, w, z0, C_BACK + dep) for _, pts in wire_layout()]
     for (x, y, _, _, (dx, dy)) in wire_crossings():
         L = WIRE_CROSS[0]
         cuts.append(place(box(-L / 2, -w / 2, z0, L / 2, w / 2, C_BACK + WIRE_CROSS[1]), x, y,
                           math.degrees(math.atan2(dy, dx))))
-    cuts += [v_groove(*r) for r in header_rows()]
     for ((x, y), (dx, dy)) in leg_ends():  # the leg folds back along the arriving wire
         a = math.degrees(math.atan2(dy, dx))
         cuts.append(place(box(0, -LEG_POCKET[0] / 2, z0, LEG_POCKET[1], LEG_POCKET[0] / 2, C_BACK + dep), x, y, a))
@@ -1161,8 +1151,8 @@ def dummy_supermini():
 
 
 def dummy_wire():
-    """The wire: in the bottom of each channel, wound round each header pin it ends on (down in
-    the V-groove; at the encoder just under the printed PCB, in the gap to the HW-040)."""
+    """The wire: in the bottom of each channel, wound round each header pin it ends on, in open
+    air just behind the printed PCB (at the encoder, in the gap to the HW-040)."""
     zc = C_BACK + WIRE_CH[1] - WIRE_D / 2
     parts = []
     for _, pts in wire_layout():
@@ -1178,10 +1168,9 @@ def dummy_wire():
     for _, pts in wire_layout():
         for p in (pts[0], pts[-1]):
             wrapped.add((round(p[0], 4), round(p[1], 4)))
-    seat = (PIN_ROW[0] - WRAP_OD) / 2                  # where the turns sit in the V-groove
     for (x, y) in list(sm_pins.values()) + list(disp_pins.values()):
         if (round(x, 4), round(y, 4)) in wrapped:
-            parts.append(ring(x, y, C_BACK + seat - tall, C_BACK + seat))
+            parts.append(ring(x, y, C_BACK - 0.3 - tall, C_BACK - 0.3))
     for (x, y) in enc_pins.values():
         parts.append(ring(x, y, C_BACK - 0.5 - tall, C_BACK - 0.5))
     return Part.makeCompound(parts)  # (runs sharing a channel overlap: no fuse)
