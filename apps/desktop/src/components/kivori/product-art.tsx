@@ -43,7 +43,7 @@ export function ProductArt({
           : strings.productArt.neutral
       }
       className={cn(
-        'flex aspect-square w-full flex-col items-center justify-center gap-4 rounded-2xl bg-muted p-4',
+        'flex aspect-square w-full flex-col items-center justify-center gap-4 rounded-2xl bg-[radial-gradient(circle_at_50%_40%,var(--accent),var(--muted)_70%)] p-4',
         className,
       )}
     >

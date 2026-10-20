@@ -211,6 +211,8 @@ export function App(): ReactElement {
 
   const go = (next: PageId): void => {
     setPage(next);
+    // A new page starts at its top, not at the previous page's scroll position.
+    window.scrollTo({ top: 0 });
     // Move focus to the new page title so keyboard and screen-reader users land in context.
     requestAnimationFrame(() =>
       document.querySelector<HTMLElement>('[data-page-title]')?.focus({ preventScroll: true }),
@@ -290,9 +292,12 @@ export function App(): ReactElement {
         </Sidebar>
 
         <SidebarInset>
-          <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+          <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur-md supports-[backdrop-filter]:bg-background/85">
             <SidebarTrigger aria-label={nav.toggle} className="-ml-1" />
-            <Separator orientation="vertical" className="mr-1 h-4" />
+            <Separator
+              orientation="vertical"
+              className="mr-1 data-vertical:h-4 data-vertical:self-center"
+            />
             <span className="text-sm font-medium" aria-hidden="true">
               {title}
             </span>

@@ -55,3 +55,6 @@ if (typeof window.PointerEvent === 'undefined') {
 if (typeof Element.prototype.getAnimations !== 'function') {
   Element.prototype.getAnimations = () => [];
 }
+
+// jsdom does not lay out pages, so `window.scrollTo` only logs "Not implemented". A no-op is enough.
+window.scrollTo = (() => {}) as typeof window.scrollTo;

@@ -115,10 +115,14 @@ export function Onboarding({
   };
   const { ready, skippable } = gate[step];
   const last = step === 'done';
+  // Skippable steps left behind and still not ready: shown in amber and listed on the last step.
+  const pending = (id: StepId, position: number): boolean =>
+    position < index && gate[id].skippable && !gate[id].ready;
+  const open = steps.filter((id, position) => pending(id, position));
 
   return (
-    <div className="flex min-h-svh flex-col bg-background text-foreground">
-      <header className="flex items-center gap-3 border-b px-4 py-3 sm:px-6">
+    <div className="flex h-svh flex-col bg-background text-foreground">
+      <header className="flex shrink-0 items-center gap-3 border-b px-4 py-3 sm:px-6">
         <img src={brandIconUrl} alt="" draggable={false} className="-m-1 size-10 select-none" />
         <span className="font-semibold tracking-tight">{strings.appTitle}</span>
         <Button variant="ghost" size="sm" className="ml-auto" disabled={busy} onClick={skipSetup}>
@@ -126,45 +130,56 @@ export function Onboarding({
         </Button>
       </header>
 
-      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center gap-6 px-4 py-8 sm:px-6">
-        <div className="flex items-center gap-3" data-testid="onboarding-progress">
-          <ol aria-hidden="true" className="flex gap-1.5">
-            {steps.map((id, position) => (
-              <li
-                key={id}
-                className={cn(
-                  'h-1.5 w-8 rounded-full bg-muted transition-colors',
-                  position <= index && 'bg-primary',
-                )}
-              />
-            ))}
-          </ol>
-          <span className="text-xs text-muted-foreground">
-            {format(t.progress, { current: index + 1, total: steps.length })}
-          </span>
+      {/* Auto margins centre short steps but never push the top of a long one out of reach. */}
+      <main className="flex flex-1 flex-col overflow-y-auto">
+        <div className="mx-auto my-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6">
+          <div className="flex items-center gap-3" data-testid="onboarding-progress">
+            <ol aria-hidden="true" className="flex gap-1.5">
+              {steps.map((id, position) => (
+                <li
+                  key={id}
+                  data-pending={pending(id, position) || undefined}
+                  className={cn(
+                    'h-1.5 w-8 rounded-full bg-muted transition-colors',
+                    position <= index && 'bg-primary',
+                    pending(id, position) && 'bg-warning',
+                  )}
+                />
+              ))}
+            </ol>
+            <span className="text-xs text-muted-foreground">
+              {format(t.progress, { current: index + 1, total: steps.length })}
+            </span>
+          </div>
+
+          {step === 'welcome' ? (
+            <Welcome connection={connection} />
+          ) : step === 'plug' ? (
+            <PlugIn connection={connection} updateAvailable={updateAvailable} />
+          ) : step === 'permissions' ? (
+            <Permissions state={accessibility.state} onChange={accessibility.refresh} />
+          ) : step === 'tour' ? (
+            <Tour connection={connection} />
+          ) : step === 'customize' ? (
+            <Customize
+              connection={connection}
+              config={config}
+              startup={startup}
+              launchAtLogin={launch}
+              onLaunchAtLogin={setLaunch}
+            />
+          ) : (
+            <Done
+              error={finishError}
+              open={open.filter((id): id is 'plug' | 'permissions' => id !== 'done')}
+            />
+          )}
         </div>
+      </main>
 
-        {step === 'welcome' ? (
-          <Welcome connection={connection} />
-        ) : step === 'plug' ? (
-          <PlugIn connection={connection} updateAvailable={updateAvailable} />
-        ) : step === 'permissions' ? (
-          <Permissions state={accessibility.state} onChange={accessibility.refresh} />
-        ) : step === 'tour' ? (
-          <Tour connection={connection} />
-        ) : step === 'customize' ? (
-          <Customize
-            connection={connection}
-            config={config}
-            startup={startup}
-            launchAtLogin={launch}
-            onLaunchAtLogin={setLaunch}
-          />
-        ) : (
-          <Done error={finishError} />
-        )}
-
-        <div className="flex flex-wrap items-center gap-2">
+      {/* The step buttons stay in one place on every step and at every window size. */}
+      <footer className="shrink-0 border-t bg-background px-4 py-3 sm:px-6">
+        <div className="mx-auto flex w-full max-w-2xl flex-wrap items-center gap-2">
           {index > 0 ? (
             <Button variant="ghost" disabled={busy} onClick={() => go(index - 1)}>
               {t.back}
@@ -187,7 +202,7 @@ export function Onboarding({
             )}
           </div>
         </div>
-      </main>
+      </footer>
     </div>
   );
 }
