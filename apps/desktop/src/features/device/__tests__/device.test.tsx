@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import axe from 'axe-core';
 import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@kivori/ui/components/tooltip';
+import { setDevMode } from '../../../lib/dev-mode';
 import type { ConnectionStatusDto } from '../../../lib/ipc/types';
 
 vi.mock('../../../lib/ipc', () => ({
@@ -52,8 +53,7 @@ const view = (s: ConnectionStatusDto): ReactElement => (
   </TooltipProvider>
 );
 
-// These cases cover the technical rows, which only developer mode shows (app.test covers the gate).
-beforeEach(() => localStorage.setItem('kivori.developerMode', 'true'));
+beforeEach(() => localStorage.clear());
 
 describe('DevicePage', () => {
   it('shows customer device details without developer protocol/state rows', () => {
@@ -75,6 +75,7 @@ describe('DevicePage', () => {
     );
     expect(screen.getByRole('status')).toHaveTextContent('Connected');
     expect(screen.getByTestId('device-firmware')).toHaveTextContent('0.1.2');
+    expect(screen.getByTestId('device-product')).toHaveTextContent('Kivori');
     expect(screen.queryByText('Buddy (requested)')).not.toBeInTheDocument();
     expect(screen.queryByText('Protocol')).not.toBeInTheDocument();
     expect(screen.queryByText('deadbeef')).not.toBeInTheDocument();
@@ -133,11 +134,16 @@ describe('DevicePage', () => {
     expect(screen.getByTestId('device-identity-source')).toHaveTextContent('Chip');
   });
 
-  it('shows reconnecting with the attempt count and unknown versions as "—"', () => {
+  it('shows reconnecting with the attempt count and an empty state instead of blank rows', () => {
     render(view(status({ retryCount: 3 })));
     expect(screen.getByRole('status')).toHaveTextContent('Reconnecting…');
     expect(screen.getByRole('status')).toHaveTextContent('3');
-    expect(screen.getByTestId('device-firmware')).toHaveTextContent(/^—$/);
+    expect(screen.getByTestId('device-empty')).toHaveTextContent(
+      'Connect your Kivori to see its details',
+    );
+    expect(screen.queryByTestId('device-firmware')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('device-board')).not.toBeInTheDocument();
+    expect(screen.queryByText('—')).not.toBeInTheDocument();
   });
 
   it('surfaces an incompatible reason', () => {
@@ -158,9 +164,29 @@ describe('DevicePage', () => {
     expect(results.violations).toEqual([]);
   });
 
-  it('keeps internals and the developer toggle on Developer, even with developer mode on', () => {
-    render(view(status()));
-    expect(screen.queryByRole('heading', { name: 'Device internals' })).not.toBeInTheDocument();
+  it('keeps the developer switch on Settings, and shows protocol rows and internals only in developer mode', async () => {
+    const connected = status({
+      connection: 'connected',
+      desired: 'busy',
+      device: {
+        presentation: null,
+        firmwareVersion: '0.1.2',
+        protocolVersion: { major: 0, minor: 1 },
+        deviceIdHashShort: 'deadbeef',
+        identity: null,
+      },
+    });
+    const page = render(view(connected));
     expect(screen.queryByRole('switch', { name: 'Developer mode' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Device internals' })).not.toBeInTheDocument();
+    act(() => setDevMode(true));
+    expect(screen.getByText('Protocol')).toBeInTheDocument();
+    expect(screen.getByText('Buddy (requested)')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Device internals' })).toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: 'Developer mode' })).not.toBeInTheDocument();
+    const results = await axe.run(page.container, {
+      rules: { 'color-contrast': { enabled: false } },
+    });
+    expect(results.violations).toEqual([]);
   });
 });

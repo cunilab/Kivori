@@ -7,20 +7,28 @@ export const strings = {
   unknown: '—',
   navigation: {
     label: 'Main navigation',
-    groups: { device: 'Your Kivori', system: 'App' },
     home: 'Home',
     controls: 'Controls',
     display: 'Display',
     activity: 'Activity',
     device: 'Device',
-    developer: 'Developer',
+    settings: 'Settings',
     studio: 'Device Studio',
     toggle: 'Toggle sidebar',
     version: 'Kivori Desktop {version}',
   },
+  settings: {
+    title: 'Settings',
+    description: 'Appearance, startup, updates and tools for this computer.',
+    appearance: {
+      title: 'Appearance',
+      description: 'Choose how Kivori Desktop looks.',
+    },
+    updates: 'Updates',
+    support: 'Diagnostics',
+  },
   developer: {
-    title: 'Developer',
-    description: 'Diagnostics and tools for investigating device behavior.',
+    title: 'Developer mode',
     toggleHint:
       'Off by default. Enable technical details, activity, internals and reaction tools on this computer.',
     tools: 'Developer tools',
@@ -476,8 +484,14 @@ export const strings = {
   },
   device: {
     title: 'Device',
-    description: 'Connection, versions and firmware.',
+    description: 'Your Kivori: connection, details and firmware.',
     connection: 'Connection',
+    details: 'Details',
+    empty: {
+      title: 'Connect your Kivori to see its details',
+      body: 'Plug it in with a USB cable. Its model, firmware and hardware appear here.',
+    },
+    unnamed: 'Kivori',
     firmware: 'Firmware',
     protocol: 'Protocol',
     product: 'Product',
@@ -499,7 +513,6 @@ export const strings = {
     appVersion: 'App version',
     appProtocol: 'App protocol',
     retries: 'Reconnect attempts',
-    notConnected: 'Connect Kivori to see its details.',
     startup: {
       title: 'Startup',
       label: { windows: 'Start with Windows', macos: 'Start with macOS', other: 'Start at login' },

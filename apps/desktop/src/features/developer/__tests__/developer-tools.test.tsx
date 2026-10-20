@@ -25,7 +25,7 @@ vi.mock('../../../lib/ipc', () => ({
 vi.mock('../../device-studio/DeviceStudio', () => ({
   DeviceStudio: () => <h2>Studio preview</h2>,
 }));
-import { DeveloperPage } from '../DeveloperPage';
+import { DeveloperTools } from '../DeveloperTools';
 
 const appInfo: AppInfoDto = {
   appVersion: '0.1.0',
@@ -35,7 +35,7 @@ const appInfo: AppInfoDto = {
 };
 const view = (info = appInfo, connection = connectionFixture()) => (
   <TooltipProvider>
-    <DeveloperPage appInfo={info} connection={connection} />
+    <DeveloperTools appInfo={info} connection={connection} />
   </TooltipProvider>
 );
 beforeEach(() => {
@@ -60,23 +60,17 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('Developer page', () => {
-  it('offers basic diagnostics while off, without requesting internals or exposing tools', async () => {
-    const user = userEvent.setup();
-    const copy = vi.spyOn(navigator.clipboard, 'writeText');
+describe('Developer tools', () => {
+  it('stays hidden while off, without requesting internals or activity', async () => {
     render(view());
     expect(screen.getByRole('switch', { name: 'Developer mode' })).not.toBeChecked();
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
-    expect(screen.queryByText('Protocol')).not.toBeInTheDocument();
     await act(async () => {});
-    await user.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
-    expect(copy).toHaveBeenCalled();
-    expect(JSON.parse(copy.mock.calls[0]![0])).not.toHaveProperty('internals');
     expect(bridge.internals).not.toHaveBeenCalled();
     expect(bridge.activity).not.toHaveBeenCalled();
   });
 
-  it('stops internals polling on tab changes, leaving Developer, and turning the master toggle off', async () => {
+  it('stops activity streaming on tab changes, turning the toggle off, and leaving the page', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const click = async (element: HTMLElement): Promise<void> => {
       await act(async () => {
@@ -85,35 +79,28 @@ describe('Developer page', () => {
     };
     const page = render(view());
     await click(screen.getByRole('switch', { name: 'Developer mode' }));
-    expect(bridge.internals).toHaveBeenCalledTimes(1);
-    await act(async () => vi.advanceTimersByTimeAsync(1000));
-    expect(bridge.internals).toHaveBeenCalledTimes(2);
-    await click(screen.getByRole('tab', { name: 'Activity' }));
-    await act(async () => vi.advanceTimersByTimeAsync(3000));
-    expect(bridge.internals).toHaveBeenCalledTimes(2);
     expect(bridge.activity).toHaveBeenCalledTimes(1);
-    await click(screen.getByRole('tab', { name: 'Diagnostics' }));
+    await click(screen.getByRole('tab', { name: 'Social reactions' }));
     expect(bridge.stopActivity).toHaveBeenCalledTimes(1);
-    expect(bridge.internals).toHaveBeenCalledTimes(3);
+    await click(screen.getByRole('tab', { name: 'Activity' }));
+    expect(bridge.activity).toHaveBeenCalledTimes(2);
     await click(screen.getByRole('switch', { name: 'Developer mode' }));
-    await act(async () => vi.advanceTimersByTimeAsync(3000));
-    expect(bridge.internals).toHaveBeenCalledTimes(3);
-    expect(screen.queryByRole('heading', { name: 'Device internals' })).not.toBeInTheDocument();
+    expect(bridge.stopActivity).toHaveBeenCalledTimes(2);
     await click(screen.getByRole('switch', { name: 'Developer mode' }));
-    expect(bridge.internals).toHaveBeenCalledTimes(4);
+    expect(bridge.activity).toHaveBeenCalledTimes(3);
     page.unmount();
-    await act(async () => vi.advanceTimersByTimeAsync(3000));
-    expect(bridge.internals).toHaveBeenCalledTimes(4);
+    expect(bridge.stopActivity).toHaveBeenCalledTimes(3);
+    expect(bridge.internals).not.toHaveBeenCalled();
   });
 
   it('supports keyboard navigation between tool tabs', async () => {
     const user = userEvent.setup();
     render(view());
     await user.click(screen.getByRole('switch', { name: 'Developer mode' }));
-    screen.getByRole('tab', { name: 'Diagnostics' }).focus();
+    screen.getByRole('tab', { name: 'Activity' }).focus();
     await user.keyboard('{ArrowRight}');
-    expect(screen.getByRole('tab', { name: 'Activity' })).toHaveFocus();
-    await user.keyboard('{Enter}');
+    expect(screen.getByRole('tab', { name: 'Social reactions' })).toHaveFocus();
+    await user.keyboard('{ArrowLeft}{Enter}');
     expect(screen.getByRole('heading', { level: 2, name: 'Activity' })).toBeInTheDocument();
   });
 
@@ -133,7 +120,7 @@ describe('Developer page', () => {
       'comfort',
     ]);
     expect(screen.queryByRole('switch', { name: 'Reactions' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
   });
 
   it('refuses reactions without current effective support', async () => {
@@ -156,13 +143,10 @@ describe('Developer page', () => {
     await user.click(screen.getByRole('switch', { name: 'Developer mode' }));
     expect(screen.queryByRole('heading', { name: 'Studio preview' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('switch', { name: 'Developer mode' }));
-    expect(screen.getByRole('tab', { name: 'Diagnostics' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    expect(screen.getByRole('tab', { name: 'Activity' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('has one page title and no accessibility violations in its default and enabled states', async () => {
+  it('has no accessibility violations in its default and enabled states', async () => {
     const page = render(view());
     await act(async () => {});
     expect(
@@ -170,7 +154,6 @@ describe('Developer page', () => {
         .violations,
     ).toEqual([]);
     act(() => setDevMode(true));
-    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     expect(
       (await axe.run(page.container, { rules: { 'color-contrast': { enabled: false } } }))
         .violations,

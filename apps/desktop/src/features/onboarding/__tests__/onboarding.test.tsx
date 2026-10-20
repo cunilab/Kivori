@@ -292,12 +292,12 @@ describe('in the app', () => {
     expect(screen.queryByRole('heading', { name: 'Welcome to Kivori' })).not.toBeInTheDocument();
   });
 
-  it('runs again from the Device page', async () => {
+  it('runs again from Settings', async () => {
     scenario('disconnected');
     mockResetOnboarding(true);
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByRole('button', { name: 'Device' }));
+    await user.click(await screen.findByRole('button', { name: 'Settings' }));
     await user.click(await screen.findByRole('button', { name: 'Run setup again' }));
     await heading('Welcome to Kivori');
   });
