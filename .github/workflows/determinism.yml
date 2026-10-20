@@ -17,7 +17,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       # Code-scene + asset-backed golden frame-hashes must match the committed manifest on every OS.
       - run: cargo test -p kivori-golden-frames
@@ -25,7 +25,7 @@ jobs:
   asset-reproducibility:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       # The compiled asset blob must be byte-identical across repeated compiles.
       - run: cargo test -p kivori-asset-compiler

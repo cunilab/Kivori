@@ -15,7 +15,7 @@ jobs:
   no-std-isolation:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: riscv32imc-unknown-none-elf
@@ -55,7 +55,7 @@ jobs:
     # target is overridden with the host triple so std + the asset compiler (dev-dep) are available.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
