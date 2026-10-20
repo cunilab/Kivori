@@ -13,6 +13,11 @@ export interface PageTab {
 // The tab each page last showed, kept while the app runs so coming back lands in the same place.
 const remembered = new Map<string, string>();
 
+/** Opens `tab` the next time page `id` shows (for links that land on one section). */
+export function openPageTab(id: string, tab: string): void {
+  remembered.set(id, tab);
+}
+
 /** For tests: forget every page's remembered tab. */
 export function resetPageTabs(): void {
   remembered.clear();

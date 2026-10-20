@@ -1,4 +1,5 @@
 import type { ReactElement, ReactNode } from 'react';
+import { openPageTab } from '@/components/kivori/page-tabs';
 import {
   Cpu,
   LayoutGrid,
@@ -198,7 +199,13 @@ function Hero({
                 {t.hero.openDevice}
               </Button>
             ) : display ? (
-              <Button onClick={() => onNavigate('display')}>
+              <Button
+                onClick={() => {
+                  // Lands on "Show now" when the device has it; PageTabs falls back to Views otherwise.
+                  openPageTab('display', 'show-now');
+                  onNavigate('display');
+                }}
+              >
                 <LayoutGrid data-icon="inline-start" aria-hidden="true" />
                 {t.hero.changeView}
               </Button>
