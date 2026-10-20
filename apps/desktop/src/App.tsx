@@ -256,7 +256,8 @@ export function App(): ReactElement {
           <SidebarRailHandle />
         </Sidebar>
 
-        <SidebarInset>
+        {/* min-w-0: a wide child (a long tab bar) scrolls inside the page instead of widening it. */}
+        <SidebarInset className="min-w-0">
           <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur-md supports-[backdrop-filter]:bg-background/85">
             <HeaderTrigger />
             <span className="truncate text-sm font-medium" aria-hidden="true">

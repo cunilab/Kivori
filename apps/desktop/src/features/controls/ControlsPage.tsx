@@ -509,7 +509,7 @@ export function ControlsPage({
           {/* Chips, not an underline bar, so the profiles are not mistaken for the page tabs. */}
           <TabsList
             aria-label={t.profilesLabel}
-            className="h-auto w-full flex-wrap justify-start gap-1.5 bg-transparent p-0"
+            className="w-full flex-wrap justify-start gap-1.5 bg-transparent p-0 group-data-horizontal/tabs:h-auto"
           >
             {config.profiles.map((entry) => (
               <TabsTrigger
