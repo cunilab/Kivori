@@ -31,7 +31,7 @@ pub struct OsNonceSource;
 impl NonceSource for OsNonceSource {
     fn next_nonce(&mut self) -> Result<u32, NonceError> {
         let mut buf = [0u8; 4];
-        getrandom::getrandom(&mut buf).map_err(|_| NonceError::Unavailable)?;
+        getrandom::fill(&mut buf).map_err(|_| NonceError::Unavailable)?;
         Ok(u32::from_le_bytes(buf))
     }
 }

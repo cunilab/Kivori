@@ -6,8 +6,9 @@
 
 use std::ffi::c_void;
 
+use windows::core::BOOL;
 use windows::core::HSTRING;
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM};
 use windows::Win32::Graphics::Gdi::{
     GetDC, GetDIBits, GetObjectW, ReleaseDC, BITMAP, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
     DIB_RGB_COLORS, HBITMAP, HGDIOBJ,
@@ -134,7 +135,7 @@ unsafe fn bitmap_bgra(bitmap: HBITMAP) -> Option<(u32, u32, Vec<u8>)> {
         ..BITMAPINFO::default()
     };
     let mut pixels = vec![0u8; (w as usize) * (h as usize) * 4];
-    let dc = GetDC(HWND::default());
+    let dc = GetDC(None);
     let lines = GetDIBits(
         dc,
         bitmap,
@@ -144,7 +145,7 @@ unsafe fn bitmap_bgra(bitmap: HBITMAP) -> Option<(u32, u32, Vec<u8>)> {
         &mut info,
         DIB_RGB_COLORS,
     );
-    ReleaseDC(HWND::default(), dc);
+    ReleaseDC(None, dc);
     (lines != 0).then_some((w as u32, h as u32, pixels))
 }
 

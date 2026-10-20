@@ -62,8 +62,7 @@ libc = "0.2"
 [target.'cfg(windows)'.dependencies]
 # Windows Core Audio (WASAPI) master-volume backend (Task 12), CPU/RAM and local time (M1), and
 # the media session manager for observing playback (M1).
-windows = { version = "0.58", features = [
-  "implement",
+windows = { version = "0.62", features = [
   "Foundation",
   "Media_Control",
   "Win32_Devices_FunctionDiscovery",

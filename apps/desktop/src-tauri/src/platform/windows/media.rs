@@ -3,7 +3,7 @@
 //! THREADING: a dedicated `kivori-media` thread joins the MTA, owns every WinRT object, and polls
 //! the current session once a second (playback status, plus title and artist from the media
 //! properties), storing the mapped result for the (Sync) public API. The blocking
-//! `RequestAsync().get()` / `TryGetMediaPropertiesAsync().get()` are acceptable there because
+//! `RequestAsync().join()` / `TryGetMediaPropertiesAsync().join()` are acceptable there because
 //! nothing else runs on that thread. Titles and artists are never logged (ADR-0005).
 //! The thread stops (within ~100 ms of its sleep slice) when the observer is dropped.
 
@@ -118,7 +118,7 @@ fn poll(manager: &Manager, prev: Option<MediaStatus>) -> windows::core::Result<V
     // only the title is unknown, so this failure does not reset the manager.
     let now = session
         .TryGetMediaPropertiesAsync()
-        .and_then(|op| op.get())
+        .and_then(|op| op.join())
         .and_then(|props| Ok((props.Title()?, props.Artist()?)))
         .ok()
         .and_then(|(title, artist)| {
@@ -143,7 +143,7 @@ fn poll_loop(shared: &Shared, stop: &AtomicBool) {
     let mut manager: Option<Manager> = None;
     while !stop.load(Ordering::SeqCst) {
         if manager.is_none() {
-            manager = Manager::RequestAsync().and_then(|op| op.get()).ok();
+            manager = Manager::RequestAsync().and_then(|op| op.join()).ok();
         }
         let prev = shared.lock().expect("media status mutex").0;
         let next = match manager.as_ref().map(|m| poll(m, prev)) {

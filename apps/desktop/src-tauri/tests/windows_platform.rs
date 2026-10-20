@@ -67,7 +67,7 @@ mod host_events {
         // SAFETY: the handle is the watcher's live message-only window.
         unsafe {
             PostMessageW(
-                HWND(watcher.window_handle() as *mut _),
+                Some(HWND(watcher.window_handle() as *mut _)),
                 WM_WTSSESSION_CHANGE,
                 WPARAM(code as usize),
                 LPARAM(1),
