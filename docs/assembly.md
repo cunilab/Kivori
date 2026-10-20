@@ -37,7 +37,7 @@ flush cutters, tweezers, a needle or SIM pin, and a computer with a repo checkou
 ## A · Before you start
 
 1. **Check the SuperMini.** Look at the board next to GPIO0/GPIO1. If a small metal-can or
-   two-pad 32.768 kHz crystal is fitted, put that board aside: on it, the encoder's DT and SW pins
+   two-pad 32.768 kHz crystal is fitted, put that board aside: on it, the display's BLK and DC pins
    do not work (validation 5.1).
 2. **Print the parts** (settings in the enclosure README). The `Carrier` must be **PETG** (PLA
    softens under the iron), the `BackPlate` PETG, the `RubberDots` TPU, the `Spacers` with a brim.
@@ -79,13 +79,13 @@ Do this with the USB cable unplugged.
 
     | SuperMini | Goes to |
     |---|---|
-    | IO6 / IO7 | display SCL / SDA |
-    | IO2 / IO3 | display DC / RES |
-    | IO8 | display BLK |
+    | IO4 / IO3 | display SCL / SDA |
+    | IO1 / IO2 | display DC / RES |
+    | IO0 | display BLK |
     | 3V3 | display VCC, encoder + |
     | GND | display GND, encoder GND, one leg of each switch |
-    | IO4 / IO0 / IO1 | encoder CLK / DT / SW |
-    | IO20 / IO10 / IO5 | left / middle / right switch |
+    | IO7 / IO6 / IO5 | encoder CLK / DT / SW |
+    | IO9 / IO8 / IO10 | left / middle / right switch |
 
 16. **Switches:** each switch beeps between its pin and GND only while pressed.
 

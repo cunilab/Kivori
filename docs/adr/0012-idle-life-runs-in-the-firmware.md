@@ -15,7 +15,7 @@ Self-play scheduling moves into `kivori-model` (`no_std`, beside `MascotAnimator
 
 New idle moments reuse existing eye frames by moving the eye layer (glances, looking towards a control). The face-uniqueness test extends to every idle pose.
 
-The brightness setting drives the backlight on GPIO8 with LEDC PWM, started after boot (GPIO8 is a strapping pin, sampled only at reset); there is no time-based dimming.
+The brightness setting drives the backlight on GPIO8 with LEDC PWM, started after boot (GPIO8 is a strapping pin, sampled only at reset); there is no time-based dimming. (The backlight moved to GPIO0 in #123; the PWM setup is unchanged.)
 
 ## Consequences
 

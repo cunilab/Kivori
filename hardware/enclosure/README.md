@@ -114,17 +114,17 @@ These are the pins from [`profile.rs`](../../firmware/pala/src/profile.rs) and t
 
 | SuperMini | Net | Goes to |
 |---|---|---|
-| IO6 | SCL | display SCL |
-| IO7 | SDA | display SDA |
-| IO2 | DC | display DC |
-| IO3 | RES | display RES |
-| IO8 | BLK | display BLK (backlight) |
+| IO4 | SCL | display SCL |
+| IO3 | SDA | display SDA |
+| IO1 | DC | display DC |
+| IO2 | RES | display RES |
+| IO0 | BLK | display BLK (backlight) |
 | 3V3 | 3V3 | display VCC, encoder + (**never 5 V**) |
 | GND | GND | display GND, encoder GND, one leg of each switch |
-| IO4 | CLK | encoder CLK |
-| IO0 | DT | encoder DT |
-| IO1 | SW | encoder SW |
-| IO20 / IO10 / IO5 | B1 / B2 / B3 | left / middle / right switch, other leg |
+| IO7 | CLK | encoder CLK |
+| IO6 | DT | encoder DT |
+| IO5 | SW | encoder SW |
+| IO9 / IO8 / IO10 | B1 / B2 / B3 | left / middle / right switch, other leg |
 
 Validation row 5.1 still applies: check that the SuperMini has no 32.768 kHz crystal on
 GPIO0/GPIO1.
