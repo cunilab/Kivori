@@ -263,10 +263,11 @@ product using existing features can be added without product-specific branches i
 code. Design: [ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md), reviewed from
 [issue #76](https://github.com/cunilab/Kivori/issues/76).
 
-The software checklist below is implemented and covered by automated acceptance checks in the
-M2.8 review stack. This is not a merge, release or hardware-acceptance claim. M2.7 hardware rows and
-M3 owner/hardware blockers remain open; Windows remains the beta acceptance platform. The
-[closure audit](./validation.md#m28-software-closure-audit) records the evidence and remaining limits.
+The software checklist below is implemented and merged into `main` through PRs #77–#103 on
+2026-10-19. Post-merge host, firmware and determinism CI passed. M2.7 hardware rows and M3
+owner/hardware blockers remain open; Windows remains the beta acceptance platform. The
+[closure audit](./validation.md#m28-software-closure-audit) records the merge and CI evidence and
+remaining limits. No release or hardware acceptance is claimed.
 
 - [x] **Developer page:** always visible in the sidebar, master toggle off by default; consolidate
   Activity, protocol details, internals and direct reaction tools. Device Studio requires both its
@@ -366,8 +367,8 @@ M3 owner/hardware blockers remain open; Windows remains the beta acceptance plat
 
 Written policy: [release promises and M2.8 guard requirements](./release.md#release-policy), and
 [protocol change discipline](./adr/0002-one-wire-protocol-crate.md). These policies are recorded;
-the checked boxes record verified software implementation in the review stack. Review and merging
-remain separate; no new hardware evidence is claimed.
+the checked boxes record verified, merged software implementation. Hardware acceptance and ADR
+approval remain separate; no new hardware evidence is claimed.
 
 Out of scope: multi-device UI, a device-gallery Home, visual redesign of customer pages, new
 firmware instrumentation, runtime plugins, cloud sync, downgrade guarantees, update channels,
