@@ -40,6 +40,29 @@ describe('App shell', () => {
     );
   });
 
+  it.each(['Home', 'Controls'])(
+    'dismisses the narrow-window sidebar and focuses %s',
+    async (page) => {
+      const width = window.innerWidth;
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 400 });
+      try {
+        const user = userEvent.setup();
+        render(<App />);
+        await user.click(await screen.findByRole('button', { name: 'Toggle sidebar' }));
+        const sidebar = await screen.findByRole('dialog', { name: 'Sidebar' });
+        await user.click(within(sidebar).getByRole('button', { name: page }));
+        await waitFor(() =>
+          expect(screen.queryByRole('dialog', { name: 'Sidebar' })).not.toBeInTheDocument(),
+        );
+        await waitFor(() =>
+          expect(screen.getByRole('heading', { level: 1, name: page })).toHaveFocus(),
+        );
+      } finally {
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+      }
+    },
+  );
+
   it('preserves configuration navigation and moves focus when a new device loses a focused live surface', async () => {
     let publish: ((status: ConnectionStatusDto) => void) | undefined;
     vi.spyOn(ipc, 'getConnectionStatus').mockResolvedValue(connectionFixture());
