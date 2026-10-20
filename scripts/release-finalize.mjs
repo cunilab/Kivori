@@ -13,6 +13,7 @@ const run = (root, command, args) =>
   execFileSync(command, args, {
     cwd: root,
     encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'pipe'],
   }).trim();
 const git = (root, ...args) => run(root, 'git', args);

@@ -866,6 +866,22 @@ else {
 `,
     );
     chmodSync(gh, 0o755);
+    const realCargo = execFileSync('which', ['cargo'], { encoding: 'utf8' }).trim();
+    const cargo = join(bin, 'cargo');
+    writeFileSync(
+      cargo,
+      `#!/usr/bin/env node
+const { execFileSync } = require('node:child_process');
+const args = process.argv.slice(2);
+const output = execFileSync(process.env.REAL_CARGO, args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+if (args[0] === 'metadata') {
+ const data = JSON.parse(output);
+ data.metadata = { padding: 'x'.repeat(2 * 1024 * 1024) };
+ process.stdout.write(JSON.stringify(data));
+} else process.stdout.write(output);
+`,
+    );
+    chmodSync(cargo, 0o755);
     const finalize = () =>
       execFileSync(
         'bun',
@@ -878,6 +894,7 @@ else {
             ...process.env,
             GITHUB_REPOSITORY: 'test/repo',
             RELEASE_API_FIXTURE: apiFile,
+            REAL_CARGO: realCargo,
             PATH: `${bin}:${process.env.PATH}`,
           },
         },
