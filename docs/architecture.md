@@ -618,6 +618,11 @@ On a normal launch the main window stays hidden and `setup` starts a watcher thr
 
 ### Release pipeline (M3 S5)
 
+- Trunk-based release requests: the manual Release button prepares an on-demand version PR into
+  protected `main`; it never pushes directly to `main`. After squash merge and successful host,
+  firmware and determinism push CI, its finalize stage tags the exact merged SHA and calls the
+  draft builder. App and product firmware tags remain independent. See [release.md](./release.md).
+
 - Versions: the Cargo workspace version is the only app version. `tauri.conf.json` has no `version`, so Tauri takes it from `kivori-desktop`; the installer name, `CFBundleShortVersionString` and the tag check all follow it.
 - Config split: the base `tauri.conf.json` stays dev-safe (`bundle.active: false`, no `externalBin` or `resources`), because Tauri's build script checks those paths at compile time and would break every dev and CI `cargo build`. Packaging lives in `tauri.release.conf.json` (NSIS, per-user install, embedded WebView2 bootstrapper, the `espflash` sidecar, `THIRD_PARTY_NOTICES.md`) and `tauri.release.macos.conf.json` (app and dmg, the adapter resource, `Info.plist`, `Entitlements.plist`, hardened runtime), merged with `tauri build --config`. Release builds pass `-- --no-default-features`, so Device Studio and the PATH fallback are compiled out.
 - Sidecar: `scripts/fetch-espflash.{sh,ps1}` download espflash 4.6.0 from the official GitHub release, check a pinned SHA-256 and write `src-tauri/binaries/espflash-<triple>[.exe]` (gitignored). Tauri installs it as `espflash[.exe]` next to the app, which is where `find_espflash` looks first. Bump the version and hashes together, in both scripts and `release.yml`.

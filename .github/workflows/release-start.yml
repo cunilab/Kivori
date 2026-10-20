@@ -1,19 +1,20 @@
-# The Release button (docs/release.md, ADR-0014). Releases start only when the owner runs this by hand:
-# Actions, Release, Run workflow. It bumps the app (and optionally the firmware) version on main,
-# refreshes all catalog Cargo.lock files, commits `chore(release): vX.Y.Z` as github-actions[bot], tags
-# `vX.Y.Z` and each new `fw-<product>-vA.B.C` lineage tag, pushes
-# commit and tags together, then calls release.yml, which builds the installer and fills a DRAFT
-# release. Nothing is published. Each version must be greater than the latest tag of its component;
-# with no tag yet the current Cargo.toml version may be released as it is (`none`), and when neither
-# version changes there is no commit: the current main commit is tagged. Tags pushed with
-# GITHUB_TOKEN start no workflows, hence the direct call. A dry run only prints the plan and the
-# release notes it would produce.
+# Trunk-based release: prepare opens an on-demand version PR; finalize tags its exact merged,
+# CI-green main commit and builds a draft. Neither stage pushes to main or publishes a release.
 name: Release
 on:
   workflow_dispatch:
     inputs:
+      stage:
+        description: 'prepare opens the version PR; finalize tags its merged, CI-green commit'
+        type: choice
+        options: [prepare, finalize]
+        default: prepare
+      release_pr:
+        description: 'Merged version PR number (required for finalize)'
+        type: string
+        default: ''
       app_bump:
-        description: 'App version bump; none releases the Cargo.toml version as it is (only while it has no tag, e.g. the first release). Below 1.0.0 a major is still a real major (0.x -> 1.0.0).'
+        description: 'App version bump for prepare. A reviewable version edit is required; exact app_version overrides this. Below 1.0.0, major still gives 1.0.0.'
         type: choice
         options: [none, patch, minor, major]
         # none, so a careless click never skips a version: once the current version is tagged, none
@@ -59,11 +60,11 @@ concurrency:
 
 jobs:
   start:
+    if: inputs.stage == 'prepare'
     runs-on: ubuntu-latest
     permissions:
-      contents: write # push the release commit and tags to main
-    outputs:
-      tag: ${{ steps.plan.outputs.app_tag }}
+      contents: write # push the version branch, never main
+      pull-requests: write # on-demand version PR
     steps:
       - name: Only from main
         if: github.ref != 'refs/heads/main'
@@ -81,7 +82,7 @@ jobs:
           node-version: 20
       - uses: dtolnay/rust-toolchain@stable
       - name: Test the release scripts
-        run: node --test scripts/release-tools.test.mjs scripts/firmware-release-guard.test.mjs
+        run: node --test scripts/release-tools.test.mjs scripts/firmware-release-guard.test.mjs scripts/release-finalize.test.mjs
       - name: Compute the versions
         id: plan
         env:
@@ -151,64 +152,92 @@ jobs:
           }
           JS
           git diff --stat
-      - name: Commit, tag and push
+      - name: Commit version branch
         if: ${{ !inputs.dry_run }}
+        id: request
         env:
-          APP_VERSION: ${{ steps.plan.outputs.app_version }}
           APP_TAG: ${{ steps.plan.outputs.app_tag }}
-          FIRMWARE: ${{ steps.plan.outputs.firmware }}
           RELEASE_FILES: ${{ steps.plan.outputs.release_files }}
           COMMIT_BODY: ${{ steps.plan.outputs.commit_body }}
           COMMIT_NEEDED: ${{ steps.plan.outputs.commit_needed }}
         run: |
           set -euo pipefail
+          if [ "$COMMIT_NEEDED" != true ]; then
+            echo '::error::No version changes to review. Choose a new app version or bump.' >&2
+            exit 1
+          fi
+          branch="release/${APP_TAG}"
+          if [ -n "$(git ls-remote --heads origin 'refs/heads/release/v*')" ]; then
+            echo '::error::A release branch already exists. Finish or discard its PR first.' >&2
+            exit 1
+          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          refs=()
-          if [ "$COMMIT_NEEDED" = true ]; then
-            node --input-type=module <<'JS'
+          git switch -c "$branch"
+          node --input-type=module <<'JS'
           import { execFileSync } from 'node:child_process';
           execFileSync('git', ['add', '--', ...JSON.parse(process.env.RELEASE_FILES)], { stdio: 'inherit' });
           JS
-            git commit -m "chore(release): ${APP_TAG}" -m "$COMMIT_BODY"
-            refs+=("HEAD:refs/heads/main")
-          else
-            # The versions in Cargo.toml are the ones released (a first release): no version commit,
-            # the tags go on the main commit this run started from.
-            if [ -n "$(git status --porcelain)" ]; then
-              echo "::error::Unexpected changes in the checkout; a release without a version commit changes nothing." >&2
-              exit 1
-            fi
-            echo "Versions unchanged: tagging $(git rev-parse --short HEAD) without a commit."
-          fi
-          git tag -a "$APP_TAG" -m "Kivori ${APP_VERSION}"
-          refs+=("refs/tags/${APP_TAG}")
-          node --input-type=module <<'JS' > "$RUNNER_TEMP/firmware-refs"
-          import { execFileSync } from 'node:child_process';
-          for (const { name, version, tag } of JSON.parse(process.env.FIRMWARE)) {
-            if (!tag) continue;
-            execFileSync('git', ['tag', '-a', tag, '-m', `${name} firmware ${version}`]);
-            console.log(`refs/tags/${tag}`);
-          }
-          JS
-          while IFS= read -r ref; do refs+=("$ref"); done < "$RUNNER_TEMP/firmware-refs"
+          git commit -m "chore(release): ${APP_TAG}" -m "$COMMIT_BODY"
           if [ -n "$(git status --porcelain)" ]; then
-            echo '::error::Unexpected changes remain after preparing the release commit.' >&2
+            echo '::error::Unexpected changes remain after preparing the version commit.' >&2
             exit 1
           fi
-          # Atomic: the commit and the tags land together or not at all.
-          if ! git push --atomic origin "${refs[@]}"; then
-            echo "::error title=Push to main rejected::Could not push the release commit and tags to main. If main moved since this run started, run the workflow again. If a branch protection rule or ruleset blocks it, allow github-actions[bot] (GitHub Actions) to push to main, or remove the rule. If a tag was rejected, it already exists on GitHub." >&2
-            exit 1
-          fi
-          echo "Pushed ${refs[*]} ($(git rev-parse --short HEAD))."
+          git push origin "HEAD:refs/heads/${branch}"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+      - name: Open draft version PR
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_BRANCH: ${{ steps.request.outputs.branch }}
+          APP_TAG: ${{ steps.plan.outputs.app_tag }}
+          COMMIT_BODY: ${{ steps.plan.outputs.commit_body }}
+        run: |
+          set -euo pipefail
+          printf '%s\n\n%s\n' "$COMMIT_BODY" 'Mark ready for review to start PR CI. Squash-merge after CI and owner approval, then run Release with stage=finalize and this PR number. No tags or release have been created.' > "$RUNNER_TEMP/version-pr.md"
+          gh pr create --draft --base main --head "$RELEASE_BRANCH" --title "chore(release): ${APP_TAG}" --body-file "$RUNNER_TEMP/version-pr.md"
+          # The owner marks this draft ready; that user event starts required PR CI.
+
+  finalize:
+    if: inputs.stage == 'finalize'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # immutable tags only, never main
+      pull-requests: read
+      actions: read
+    outputs:
+      tag: ${{ steps.finalize.outputs.tag }}
+    steps:
+      - name: Only from main
+        if: github.ref != 'refs/heads/main'
+        run: exit 1
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Finalize cannot be a dry run
+        if: inputs.dry_run
+        run: |
+          echo '::error::Use stage=prepare for a dry run, or finalize with dry_run=false.' >&2
+          exit 1
+      - name: Tag the approved release commit
+        id: finalize
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PR: ${{ inputs.release_pr }}
+        run: bun scripts/release-finalize.mjs --pr "$RELEASE_PR" --outputs "$GITHUB_OUTPUT"
 
   release:
-    needs: start
-    if: ${{ !inputs.dry_run }}
+    needs: finalize
     permissions:
       contents: write # the draft release
     uses: ./.github/workflows/release.yml
     with:
-      tag: ${{ needs.start.outputs.tag }}
+      tag: ${{ needs.finalize.outputs.tag }}
     secrets: inherit

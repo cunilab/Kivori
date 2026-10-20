@@ -1,9 +1,10 @@
 # Cutting a release
 
-Releases start only when you decide: there is no standing release PR and nothing happens on a merge.
-Two workflows do the work: `.github/workflows/release-start.yml` (the **Release** button: versions,
-lockfiles, release commit, tags) and `.github/workflows/release.yml` (build, smoke test, sign for the
-updater, attach files to a draft). Nothing is published until you publish the draft. Windows code
+Releases start only when you decide. There is no standing release PR, and merging ordinary work
+never cuts a release. `.github/workflows/release-start.yml` (the **Release** button) has two stages:
+`prepare` opens an on-demand version PR; `finalize` tags its exact merged, CI-green commit.
+`.github/workflows/release.yml` builds, smoke-tests, signs for the updater and attaches files to a
+draft. Nothing is published until you publish the draft. Windows code
 signing still waits on owner certificates (#36); see
 [architecture.md](./architecture.md#release-pipeline-m3-s5) and ADR-0014/0015.
 
@@ -110,21 +111,41 @@ updatable" and no `.sig` or `latest.json` is produced.
    (key id `B53242CE79304D17`). With the `TAURI_SIGNING_PRIVATE_KEY` secret set, `release.yml` refuses to
    build a release while that key is empty ("Updater public key missing"), so a rotated key and its
    secret always change together.
-5. The Release button pushes a commit and tags to `main` as `github-actions[bot]`. Nothing protects
-   `main` today; if you add a branch protection rule or ruleset later, let GitHub Actions bypass it,
-   or the push step fails with "Push to main rejected". The "Allow GitHub Actions to create and
-   approve pull requests" setting is no longer needed (leaving it on is harmless).
+5. Enable Actions' permission to create pull requests (Settings, Actions, General). The prepare
+   job needs contents and pull-request write access; finalize needs only tag writes plus
+   PR/Actions reads. No personal token, GitHub App or bypass of `main` protection is required.
+6. Protect `main`: require PRs and the always-running host, firmware and determinism checks; block
+   force pushes and deletion. Keep squash merging enabled and automatically delete merged branches.
+   Do not require path-filtered website or packaging jobs for every PR. With one maintainer, the
+   owner's explicit merge decision is the review gate; requiring a GitHub approval also requires
+   someone other than the PR author. Release preparation is bot-authored, so the owner can approve it.
+
+## Trunk and version tags
+
+`main` is the single development trunk. Small topic branches target it, pass CI and are squash-merged
+frequently, then deleted. There is no permanent `develop` or release branch. App versions live in
+`[workspace.package]`; product firmware versions live in the catalog firmware crates. A merge does
+not bump them automatically. App tags `vX.Y.Z` and independent `fw-<product>-vA.B.C` tags identify
+immutable commits; never move or reuse a tag. Release-request branches are temporary PR branches.
+
+Prepare creates a draft version PR because a PR created with `GITHUB_TOKEN` does not trigger normal
+PR CI, and manually dispatched job checks do not satisfy PR rulesets. The owner marks the draft ready
+for review; this user-originated event starts normal host, firmware and determinism PR checks.
+After the owner squash-merges, ordinary `main` push CI validates the exact squash commit. Finalize requires those three workflows to pass on that
+SHA, not on the source branch or a newer `main` commit. It reruns version/firmware guards, tags that
+SHA and pushes all new tags atomically without pushing a branch. A retry may rebuild the same draft;
+an existing tag that names another commit is refused.
 
 ## Windows
 
 1. Merge pull requests with conventional commit titles (`feat:`, `fix:`, `perf:`, scoped like
    `feat(mic): ...`); they become the release notes.
-2. When you want a release: Actions, **Release**, Run workflow, on `main`. Pick:
+2. When you want a release: Actions, **Release**, Run workflow, on `main`, with `stage=prepare`. Pick:
    - `app_bump`: `none` (default), `patch`, `minor` or `major`. A bump starts from the version in
      `Cargo.toml`; below 1.0.0 a major is a real major (0.4.2 becomes 1.0.0). `none` releases the
-     `Cargo.toml` version as it is, which is only possible while it has no `v` tag: that is how the
-     first release ships 0.1.0. After that, `none` is refused, so every later release needs a bump
-     you chose on purpose. `app_version`: an exact `X.Y.Z` instead. Whatever you pick must be
+     `Cargo.toml` version as it is, which is only possible while it has no `v` tag. Preparation
+     requires at least one version edit to create a reviewable PR; a versionless request is refused.
+     For the first release, choose an explicit bump if all versions are still unchanged. `app_version`: an exact `X.Y.Z` instead. Whatever you pick must be
      greater than the latest `v*` tag (with no tag yet, the current version itself is allowed) and is
      never below the version in `Cargo.toml`;
    - `product`: optional active product id for the single-product firmware controls. With one
@@ -150,18 +171,26 @@ updatable" and no `.sig` or `latest.json` is produced.
      with `cargo update --workspace`, even for products whose firmware keeps its version (the app
      version can change shared-crate lock entries). Fails on changes outside the planned manifests
      and lockfiles;
-   - commits `chore(release): vX.Y.Z` (the body names the firmware version) as `github-actions[bot]`,
-     tags `vX.Y.Z` and every new `fw-<product>-vA.B.C` (which gets no GitHub Release), and pushes commit and
-     tags to `main` in one atomic push. If `main` moved after you pressed the button, the push is
-     rejected and nothing lands: run it again. When no version changes (the first release with
-     `none`), there is no version commit: the current `main` commit is tagged as it is and only the
-     tags are pushed.
-4. It then calls `release.yml` with the tag, which builds the firmware, builds the installer, installs
+   - commits `chore(release): vX.Y.Z` on `release/vX.Y.Z`, pushes only that branch, opens a version
+     draft PR into `main`. Mark it ready for review to start CI. No tags or draft release are created. An existing `release/v*` branch
+     blocks another request: finish or discard that PR first. If PR creation fails, the
+     owner can open the existing branch's PR or close/reopen it to start missing PR CI; do not force-push it.
+4. Mark the draft ready for review, review and squash-merge the version PR after required PR CI passes. Wait for host, firmware and determinism push CI on its
+   merged commit to pass. Run **Release** again on `main` with `stage=finalize`, `release_pr` set to
+   that PR number, and `dry_run=false`. Other version inputs apply only to prepare. Finalize requires
+   a same-repository `release/vX.Y.Z` PR merged into `main` with only catalog manifest/lockfile edits.
+   The PR must be bot-authored and squash-merged. Its commit must still be on `main`, with a matching
+   workspace version and passing CI. Manifest contents may change only versions; lockfiles may
+   change only the corresponding local-package versions and dependency references.
+   Missing/failed CI, non-version edits, version mismatches, unexpected files and conflicting tags
+   stop before tag push. The script runs in the disposable CI checkout, which it leaves at the
+   approved SHA. Only one Release run executes at a time; wait for completion before another request.
+5. Finalize then calls `release.yml` with the tag, which builds the firmware, builds the installer, installs
    and uninstalls it on a clean runner, and creates the **draft** release (never a pre-release): title
    `Kivori X.Y.Z · Pip firmware A.B.C` for today's one-product catalog, adding each further
    product and independent firmware version in registry wire order. Notes cover every product; files are `Kivori_X.Y.Z_x64-setup.exe`, its
    `.sig`, `latest.json` and `SHA256SUMS`.
-5. Open Releases on GitHub, check the draft (edit the notes if a line reads badly), and publish it as a
+6. Open Releases on GitHub, check the draft (edit the notes if a line reads badly), and publish it as a
    normal release (never tick pre-release; the updater ignores pre-releases). Installed apps see it
    within a day. Do the [validation.md](./validation.md) Phase 10 rows on a real machine first for a
    beta build.
@@ -199,7 +228,7 @@ it the same way. A re-run for the same tag updates the draft; a published releas
 To try the pipeline without a tag, run the `release` workflow by hand (Actions, Run workflow); it
 uploads the installer as a workflow artifact and creates no release. Pull requests that touch
 packaging files run it too, and never read the signing secrets. The release scripts' tests:
-`node --test scripts/release-tools.test.mjs scripts/firmware-release-guard.test.mjs`
+`node --test scripts/release-tools.test.mjs scripts/firmware-release-guard.test.mjs scripts/release-finalize.test.mjs`
 (host CI and the Release button run both suites). TOML-specific cases invoke Bun, the release CLI's
 runtime. Version reads use the same TOML parser as the catalog; edits preserve quotes, comments and
 line endings. The editor requires a plain `version` assignment in the named table and refuses any
@@ -297,7 +326,8 @@ Unset inputs embed no firmware. Single-pair selection never narrows a desktop pa
 These commands build software. Provisioning/flashing remains a separate explicit operation.
 Release planning and titles/notes consume the same complete catalog. The Release button validates
 every lineage before writes, refreshes every unique lockfile, stages only planned paths, and atomically
-pushes the app tag and all new product firmware tags with any version commit. Preview notes receive
+pushes the app tag and all new product firmware tags only after the version PR merges and its exact
+commit passes main CI. Version commits travel through PRs, never a direct push to main. Preview notes receive
 the complete planned version map, so dry-run and written-version notes agree. Release CLIs require
 Bun for the shared TOML catalog reader; the Node test suites invoke that real reader through Bun.
 

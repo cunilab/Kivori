@@ -243,6 +243,18 @@ just web-dev           # website dev server on :3000
 
 ## Contributing
 
+- Use trunk-based development: `main` is the only long-lived development branch. Start small,
+  short-lived branches from current `main`, target PRs at `main`, and merge frequently rather than
+  collecting a milestone-sized stack. Keep incomplete work safe behind existing capability/build
+  gates or split it into usable increments.
+- Squash-merge after required CI passes and owner review, using the conventional PR title as the
+  commit subject; delete the merged branch. Do not push directly to `main`, force-push it or rewrite
+  release tags. A solo owner's merge decision supplies approval; a separate reviewer is needed if
+  GitHub approval counts are enabled.
+- Releases are on demand: the **Release** button prepares a version PR, then its `finalize` stage
+  tags the exact merged, CI-green commit and builds a draft. App tags are `vX.Y.Z`; firmware tags
+  remain independent per product. See [release.md](docs/release.md).
+
 - A new post-handshake wire message or appended wire-enum variant bumps `PROTOCOL_MINOR` and
   declares its negotiated capability gate. Minor is a descriptive revision, not a feature gate.
   Changing existing wire layouts, including pre-negotiation handshake layouts, requires a protocol

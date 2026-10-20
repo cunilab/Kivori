@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
 
 jobs:
   firmware-build-recipes:
@@ -35,7 +39,7 @@ jobs:
         with:
           node-version: 20
       - uses: dtolnay/rust-toolchain@stable
-      - run: node --test scripts/release-tools.test.mjs scripts/firmware-release-guard.test.mjs
+      - run: node --test scripts/release-tools.test.mjs scripts/firmware-release-guard.test.mjs scripts/release-finalize.test.mjs
 
   rust:
     strategy:
