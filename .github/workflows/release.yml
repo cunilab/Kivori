@@ -81,7 +81,7 @@ jobs:
   firmware:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Build the exact finalized release tag, not the workflow dispatch's moving main ref.
           ref: ${{ inputs.tag || github.ref }}
@@ -102,7 +102,7 @@ jobs:
           set -euo pipefail
           unset KIVORI_FIRMWARE_PATH
           bun scripts/build-firmware-set.mjs --out-dir "$RUNNER_TEMP/firmware-set" --manifest-out "$RUNNER_TEMP/firmware-manifest.json"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: firmware-elfs
           path: ${{ runner.temp }}/firmware-set/*.elf
@@ -117,7 +117,7 @@ jobs:
       # Set the repository variable WINDOWS_SIGNING=true once the signing step below is filled in.
       WINDOWS_SIGNING: ${{ vars.WINDOWS_SIGNING }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0 # the previous app tag is needed for the release notes
@@ -167,14 +167,14 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
       - uses: dtolnay/rust-toolchain@stable
       - name: Fetch the pinned espflash sidecar
         shell: pwsh
         run: ./scripts/fetch-espflash.ps1
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: firmware-elfs
           path: ${{ runner.temp }}/firmware
@@ -304,7 +304,7 @@ jobs:
             --notes "$RUNNER_TEMP/release-info/notes-short.md" --repo '${{ github.repository }}' \
             --out target/release/bundle/nsis/latest.json
           cat target/release/bundle/nsis/latest.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-installer
           path: |
@@ -356,13 +356,13 @@ jobs:
       APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
       - uses: dtolnay/rust-toolchain@stable
       # Catalog crate toolchains must match stable, as in the firmware job.
       - name: Install catalog firmware targets
@@ -382,7 +382,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ci "$RUNNER_TEMP/build.keychain"
       - name: Build the macOS bundle
         run: bash scripts/bundle-macos.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos-bundle
           path: |

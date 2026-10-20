@@ -28,6 +28,7 @@ use std::thread::JoinHandle;
 
 use windows::core::{implement, w, Result as WinResult, GUID, PCWSTR, PWSTR};
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
+use windows::Win32::Foundation::PROPERTYKEY;
 use windows::Win32::Foundation::WIN32_ERROR;
 use windows::Win32::Media::Audio::Endpoints::{
     IAudioEndpointVolume, IAudioEndpointVolumeCallback, IAudioEndpointVolumeCallback_Impl,
@@ -46,7 +47,6 @@ use windows::Win32::System::Registry::{
     RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, KEY_READ,
     REG_VALUE_TYPE,
 };
-use windows::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 
 use crate::platform::{
     ActionAvailability, BackendError, ChangeOrigin, ConfirmationClass, MicBackend, MicChange,
@@ -494,7 +494,7 @@ fn is_ok(error: WIN32_ERROR) -> bool {
 fn open_key(parent: HKEY, path: PCWSTR) -> Option<HKEY> {
     let mut key = HKEY::default();
     // SAFETY: `path` is NUL-terminated and outlives the call; `key` is a valid out pointer.
-    is_ok(unsafe { RegOpenKeyExW(parent, path, 0, KEY_READ, &mut key) }).then_some(key)
+    is_ok(unsafe { RegOpenKeyExW(parent, path, Some(0), KEY_READ, &mut key) }).then_some(key)
 }
 
 /// The names of `key`'s subkeys, each NUL-terminated, or `None` if it cannot be listed.
@@ -508,10 +508,10 @@ fn subkeys(key: HKEY) -> Option<Vec<Vec<u16>>> {
             RegEnumKeyExW(
                 key,
                 index,
-                PWSTR(buffer.as_mut_ptr()),
+                Some(PWSTR(buffer.as_mut_ptr())),
                 &mut length,
                 None,
-                PWSTR::null(),
+                None,
                 None,
                 None,
             )

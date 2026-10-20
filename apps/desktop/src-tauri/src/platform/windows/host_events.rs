@@ -29,9 +29,9 @@ use windows::Win32::System::RemoteDesktop::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW, PostMessageW,
-    PostQuitMessage, RegisterClassW, UnregisterClassW, DEVICE_NOTIFY_CALLBACK, HMENU, HWND_MESSAGE,
-    MSG, PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMESUSPEND, PBT_APMSUSPEND, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WM_CLOSE, WM_DESTROY, WM_WTSSESSION_CHANGE, WNDCLASSW, WTS_CONSOLE_CONNECT,
+    PostQuitMessage, RegisterClassW, UnregisterClassW, DEVICE_NOTIFY_CALLBACK, HWND_MESSAGE, MSG,
+    PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMESUSPEND, PBT_APMSUSPEND, WINDOW_EX_STYLE, WINDOW_STYLE,
+    WM_CLOSE, WM_DESTROY, WM_WTSSESSION_CHANGE, WNDCLASSW, WTS_CONSOLE_CONNECT,
     WTS_CONSOLE_DISCONNECT, WTS_SESSION_LOCK, WTS_SESSION_UNLOCK,
 };
 
@@ -146,7 +146,7 @@ impl Drop for WindowsHostEvents {
             drop(Box::from_raw(self.power_params));
             drop(Box::from_raw(self.power_context));
             let _ = PostMessageW(
-                HWND(self.hwnd as *mut c_void),
+                Some(HWND(self.hwnd as *mut c_void)),
                 WM_CLOSE,
                 WPARAM(0),
                 LPARAM(0),
@@ -264,21 +264,21 @@ fn session_thread(tx: Sender<HostSignal>, ready: &Sender<Result<isize, String>>)
             0,
             0,
             0,
-            HWND_MESSAGE,
-            HMENU::default(),
-            hinstance,
+            Some(HWND_MESSAGE),
+            None,
+            Some(hinstance),
             None,
         ) {
             Ok(hwnd) => hwnd,
             Err(error) => {
-                let _ = UnregisterClassW(class, hinstance);
+                let _ = UnregisterClassW(class, Some(hinstance));
                 let _ = ready.send(Err(format!("CreateWindowExW failed: {error}")));
                 return;
             }
         };
         if let Err(error) = WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION) {
             let _ = DestroyWindow(hwnd);
-            let _ = UnregisterClassW(class, hinstance);
+            let _ = UnregisterClassW(class, Some(hinstance));
             let _ = ready.send(Err(format!(
                 "WTSRegisterSessionNotification failed: {error}"
             )));
@@ -287,11 +287,11 @@ fn session_thread(tx: Sender<HostSignal>, ready: &Sender<Result<isize, String>>)
         let _ = ready.send(Ok(hwnd.0 as isize));
 
         let mut message = MSG::default();
-        while GetMessageW(&mut message, HWND::default(), 0, 0).0 > 0 {
+        while GetMessageW(&mut message, None, 0, 0).0 > 0 {
             DispatchMessageW(&message);
         }
         let _ = WTSUnRegisterSessionNotification(hwnd);
-        let _ = UnregisterClassW(class, hinstance);
+        let _ = UnregisterClassW(class, Some(hinstance));
     }
 }
 

@@ -71,15 +71,15 @@ jobs:
         run: |
           echo "::error title=Release only from main::Run the Release workflow on the main branch (it was started on ${GITHUB_REF})."
           exit 1
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # all history and tags: tag checks and the release notes need them
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
       - uses: dtolnay/rust-toolchain@stable
       - name: Test the release scripts
         run: node --test scripts/release-tools.test.mjs scripts/firmware-release-guard.test.mjs scripts/release-finalize.test.mjs
@@ -211,15 +211,15 @@ jobs:
       - name: Only from main
         if: github.ref != 'refs/heads/main'
         run: exit 1
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
       - uses: dtolnay/rust-toolchain@stable
       - name: Finalize cannot be a dry run
         if: inputs.dry_run

@@ -33,6 +33,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use windows::core::{implement, Result as WinResult, GUID, PCWSTR};
+use windows::Win32::Foundation::PROPERTYKEY;
 use windows::Win32::Media::Audio::Endpoints::{
     IAudioEndpointVolume, IAudioEndpointVolumeCallback, IAudioEndpointVolumeCallback_Impl,
 };
@@ -43,7 +44,6 @@ use windows::Win32::Media::Audio::{
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED,
 };
-use windows::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 
 use crate::platform::{
     ActionAvailability, AppVolumeBackend, AppVolumeError, BackendError, ChangeOrigin,

@@ -45,10 +45,10 @@ serde = { version = "1", features = ["derive"] }
 # Config file (de)serialization and the now-playing adapter's JSON lines (ADR-0009). Already in the tree via tauri.
 serde_json = "1"
 # Product registry and catalog files (ADR-0014). Already in the tree via tauri.
-toml = "0.8"
+toml = "1.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-getrandom = "0.2"  # session-nonce freshness (Slice 002). NOT a security credential; not a network crate.
+getrandom = "0.4"  # session-nonce freshness (Slice 002). NOT a security credential; not a network crate.
 
 [target.'cfg(any(windows, target_os = "macos"))'.dependencies]
 # Media keys and keyboard shortcuts (M1): SendInput on Windows, Quartz events on macOS. Linux
@@ -62,8 +62,7 @@ libc = "0.2"
 [target.'cfg(windows)'.dependencies]
 # Windows Core Audio (WASAPI) master-volume backend (Task 12), CPU/RAM and local time (M1), and
 # the media session manager for observing playback (M1).
-windows = { version = "0.58", features = [
-  "implement",
+windows = { version = "0.62", features = [
   "Foundation",
   "Media_Control",
   "Win32_Devices_FunctionDiscovery",
@@ -88,7 +87,7 @@ windows = { version = "0.58", features = [
 # The `implement` attribute macro (used to author `IAudioEndpointVolumeCallback` /
 # `IMMNotificationClient`) expands to paths rooted at `::windows_core`, so that crate name must
 # also resolve directly, not just via `windows::core`.
-windows-core = "0.58"
+windows-core = "0.62"
 
 [build-dependencies]
 # Build-time validation of bounded, static product artwork; already in the asset compiler tree.
@@ -97,7 +96,7 @@ tauri-build = { version = "2", features = [] }
 # The build parses the product catalog and checks the bundled firmware against it (ADR-0014).
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-toml = "0.8"
+toml = "1.1"
 # Build-time only: compiles the canonical asset blob into OUT_DIR so the app bundles it (no runtime resvg).
 kivori-asset-compiler = { path = "../../../tools/asset-compiler" }
 

@@ -32,7 +32,7 @@ export function ProductArt({
   // A late lookup for another product can never appear in this session's figure.
   const url = art && loaded?.art === art ? loaded.url : null;
   return (
-    <figure
+    <div
       role="img"
       aria-label={
         presentation
@@ -65,11 +65,11 @@ export function ProductArt({
         />
       )}
       {presentation ? (
-        <figcaption className="space-y-1 text-center">
+        <div className="space-y-1 text-center">
           <p className="font-medium">{presentation.displayName}</p>
           <p className="text-sm text-muted-foreground">{presentation.model}</p>
-        </figcaption>
+        </div>
       ) : null}
-    </figure>
+    </div>
   );
 }
