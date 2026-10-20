@@ -424,7 +424,14 @@ execution-time session as documented in [desktop capabilities](./desktop-capabil
 
 ### M2.8 software closure audit
 
-The Product contract and Capability-driven UI items are implemented in the M2.8 review stack.
+The M2.8 software stack ([PR #77](https://github.com/cunilab/Kivori/pull/77) through
+[PR #103](https://github.com/cunilab/Kivori/pull/103)) merged into `main` on 2026-10-19, ending at
+[`a0355b9`](https://github.com/cunilab/Kivori/commit/a0355b93a5f47ea4e555aeb9d9ea942025d1af10).
+Post-merge [host](https://github.com/cunilab/Kivori/actions/runs/39260985475),
+[firmware](https://github.com/cunilab/Kivori/actions/runs/39260985385) and
+[determinism](https://github.com/cunilab/Kivori/actions/runs/39260985155) workflows all passed.
+
+The Product contract and Capability-driven UI items are implemented in that merged software.
 The audit reuses the product-acceptance evidence above and checks the broader contract boundaries:
 
 | Item | Implementation and evidence |
@@ -440,11 +447,11 @@ outputs do not validate a second physical product, and browser UI tests do not e
 serial hardware or the Tauri event bridge. The documented extension boundary still requires feature
 work for a new transport, flash method or interaction model; metadata cannot provide those.
 
-All M2.8 software checklist items are checked on this branch. The stacked PRs still require review
-and merging; no issue closure, release, signing, real BOOT recovery, flashing or eFuse burn follows
-from these checks. Existing M2.7/M3 owner and hardware rows remain open. ADR approval status is
-separate from implementation status. Execution-time command checks and request-intent activity
-semantics remain the documented limits above.
+All M2.8 software checklist items are checked and merged. This evidence does not close issue #76
+or claim a release, signing, real BOOT recovery, flashing or eFuse burn. Existing M2.7/M3 owner and
+hardware rows remain open. ADR approval status is separate from implementation status.
+Execution-time command checks and request-intent activity semantics remain the documented limits
+above.
 
 BOOT recovery regression coverage distinguishes an allowlisted port still attempting its handshake
 from a connected session waiting for Identity. The runtime passes its connection state directly to
