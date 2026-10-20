@@ -264,6 +264,10 @@ Run `just bundle-macos` (or `scripts/bundle-macos.sh`) on a Mac with Xcode Comma
 `.app` and `.dmg` land in `target/release/bundle/`. Set `APPLE_SIGNING_IDENTITY` to sign. To build it
 in CI, run the workflow by hand with `macos` ticked.
 
+The macOS override disables updater artifacts: automatic app updates currently support Windows
+only, so a local Mac bundle does not need the updater signing private key. Without an Apple
+signing identity the bundle is not Developer ID signed; notarization is not implemented.
+
 ## Updating espflash
 
 Change `ESPFLASH_VERSION` and the SHA-256 in `scripts/fetch-espflash.sh`, `scripts/fetch-espflash.ps1`
