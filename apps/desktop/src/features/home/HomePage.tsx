@@ -229,6 +229,7 @@ function Metric({
   hint,
   danger,
   className,
+  neutral,
 }: {
   icon: ReactNode;
   label: string;
@@ -239,8 +240,10 @@ function Metric({
   hint?: ReactNode;
   danger?: boolean;
   className?: string;
+  /** Not a load: a high value is not a warning (volume). */
+  neutral?: boolean;
 }): ReactElement {
-  const tone = meterTone(value, danger);
+  const tone = neutral ? 'normal' : meterTone(value, danger);
   return (
     <Card size="sm" className={cn('gap-3', className)}>
       <CardHeader>
@@ -488,6 +491,7 @@ export function HomePage({
                 value={desk.volumePercent}
                 why={strings.why.volume}
                 testId="desk-volume"
+                neutral
                 className="col-span-2 lg:col-span-1"
                 badge={
                   desk.muted === true ? (

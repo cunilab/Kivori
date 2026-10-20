@@ -96,7 +96,7 @@ describe('HomePage', () => {
     render(view(desk({ cpuPercent: 31, ramPercent: 83, volumePercent: 95 })));
     expect(screen.getByTestId('desk-cpu')).toHaveAttribute('data-tone', 'normal');
     expect(screen.getByTestId('desk-ram')).toHaveAttribute('data-tone', 'warning');
-    expect(screen.getByTestId('desk-volume')).toHaveAttribute('data-tone', 'danger');
+    expect(screen.getByTestId('desk-volume')).toHaveAttribute('data-tone', 'normal');
   });
 
   it('renders every null as an explicit "—" with a reason, never 0', async () => {
