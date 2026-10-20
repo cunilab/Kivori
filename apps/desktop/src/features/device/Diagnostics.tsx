@@ -48,6 +48,11 @@ function Group({ title, children }: { title: string; children: ReactNode }): Rea
   );
 }
 
+/** One quiet line standing in for every device-only row while no device is connected. */
+function DeviceOnly(): ReactElement {
+  return <p className="py-2 text-sm text-muted-foreground">{t.deviceOnly}</p>;
+}
+
 const seconds = (s: number): string => {
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
@@ -137,6 +142,9 @@ export function Diagnostics({
     setTimeout(() => setCopy('idle'), 2000);
   };
 
+  // Without a device its rows can only say "Unknown"; say it once instead. A device that is
+  // connected (or incompatible, but still identified) keeps every row and its reason.
+  const hasDevice = state === 'connected' || state === 'incompatible';
   const d =
     data?.connection.generation === generation && data?.connection.state === state ? data : null;
   return (
@@ -153,82 +161,101 @@ export function Diagnostics({
           <>
             <Group title={t.groups.versions}>
               <Row label={t.rows.app}>{d?.versions.app ?? unknown}</Row>
-              <Row label={t.rows.product} testId="diag-product">
-                <Known value={d?.versions.identity?.product} why={t.why.device}>
-                  {(x) => x}
-                </Known>
-              </Row>
-              <Row label={t.rows.board} testId="diag-board">
-                <Known value={d?.versions.identity?.board} why={t.why.device}>
-                  {(x) => x}
-                </Known>
-              </Row>
-              <Row label={t.rows.hardwareRevision} testId="diag-hw-rev">
-                <Known
-                  value={d?.versions.identity?.hwRev}
-                  why={d?.versions.identity ? t.why.revision : t.why.device}
-                >
-                  {(x) => x}
-                </Known>
-              </Row>
-              <Row label={t.rows.identitySource} testId="diag-identity-source">
-                <Known value={d?.versions.identity?.source} why={t.why.device}>
-                  {(x) => strings.device.identity.sources[x]}
-                </Known>
-              </Row>
-              <Row label={t.rows.firmware}>
-                <Known value={d?.versions.firmware} why={t.why.device}>
-                  {(x) => x}
-                </Known>
-              </Row>
+              {hasDevice ? (
+                <>
+                  <Row label={t.rows.product} testId="diag-product">
+                    <Known value={d?.versions.identity?.product} why={t.why.device}>
+                      {(x) => x}
+                    </Known>
+                  </Row>
+                  <Row label={t.rows.board} testId="diag-board">
+                    <Known value={d?.versions.identity?.board} why={t.why.device}>
+                      {(x) => x}
+                    </Known>
+                  </Row>
+                  <Row label={t.rows.hardwareRevision} testId="diag-hw-rev">
+                    <Known
+                      value={d?.versions.identity?.hwRev}
+                      why={d?.versions.identity ? t.why.revision : t.why.device}
+                    >
+                      {(x) => x}
+                    </Known>
+                  </Row>
+                  <Row label={t.rows.identitySource} testId="diag-identity-source">
+                    <Known value={d?.versions.identity?.source} why={t.why.device}>
+                      {(x) => strings.device.identity.sources[x]}
+                    </Known>
+                  </Row>
+                  <Row label={t.rows.firmware}>
+                    <Known value={d?.versions.firmware} why={t.why.device}>
+                      {(x) => x}
+                    </Known>
+                  </Row>
+                </>
+              ) : null}
               <Row label={t.rows.protocol}>{d?.versions.protocol ?? unknown}</Row>
-              <Row label={t.rows.negotiatedMinor}>
-                <Known value={d?.versions.negotiatedMinor} why={t.why.device}>
-                  {(x) => x}
-                </Known>
-              </Row>
-              <Row label={t.rows.capabilities}>
-                <Known value={d?.versions.capabilities} why={t.why.device}>
-                  {(names) => (names.length ? names.join(', ') : v.none)}
-                </Known>
-              </Row>
-              <Row label={t.rows.deviceHash}>
-                <Known value={d?.versions.deviceHash} why={t.why.device}>
-                  {(x) => <span className="font-mono">{x}</span>}
-                </Known>
-              </Row>
+              {hasDevice ? (
+                <>
+                  <Row label={t.rows.negotiatedMinor}>
+                    <Known value={d?.versions.negotiatedMinor} why={t.why.device}>
+                      {(x) => x}
+                    </Known>
+                  </Row>
+                  <Row label={t.rows.capabilities}>
+                    <Known value={d?.versions.capabilities} why={t.why.device}>
+                      {(names) => (names.length ? names.join(', ') : v.none)}
+                    </Known>
+                  </Row>
+                  <Row label={t.rows.deviceHash}>
+                    <Known value={d?.versions.deviceHash} why={t.why.device}>
+                      {(x) => <span className="font-mono">{x}</span>}
+                    </Known>
+                  </Row>
+                </>
+              ) : null}
+              {hasDevice ? null : <DeviceOnly />}
             </Group>
             <Group title={t.groups.connection}>
               <Row label={t.rows.state}>{d?.connection.state ?? unknown}</Row>
-              <Row label={t.rows.connectedFor}>
-                <Known value={d?.connection.connectedForSecs} why={t.why.device}>
-                  {seconds}
-                </Known>
-              </Row>
+              {hasDevice ? (
+                <Row label={t.rows.connectedFor}>
+                  <Known value={d?.connection.connectedForSecs} why={t.why.device}>
+                    {seconds}
+                  </Known>
+                </Row>
+              ) : null}
               <Row label={t.rows.reconnects}>{d?.connection.reconnects ?? unknown}</Row>
               <Row label={t.rows.retries}>{d?.connection.retryCount ?? unknown}</Row>
-              <Row label={t.rows.lastPong}>
-                <Known value={d?.connection.lastPongAgeMs} why={t.why.pong}>
-                  {(ms) => `${ms} ms ago`}
-                </Known>
-              </Row>
-              <Row label={t.rows.rtt}>
-                <Known value={d?.connection.rttMs} why={t.why.pong}>
-                  {(ms) => `${ms} ms`}
-                </Known>
-              </Row>
+              {hasDevice ? (
+                <>
+                  <Row label={t.rows.lastPong}>
+                    <Known value={d?.connection.lastPongAgeMs} why={t.why.pong}>
+                      {(ms) => `${ms} ms ago`}
+                    </Known>
+                  </Row>
+                  <Row label={t.rows.rtt}>
+                    <Known value={d?.connection.rttMs} why={t.why.pong}>
+                      {(ms) => `${ms} ms`}
+                    </Known>
+                  </Row>
+                </>
+              ) : null}
             </Group>
             <Group title={t.groups.health}>
-              <Row label={t.rows.uptime}>
-                <Known value={d?.health.deviceUptimeMs} why={t.why.pong}>
-                  {(ms) => seconds(Math.floor(ms / 1000))}
-                </Known>
-              </Row>
-              <Row label={t.rows.freeMemory}>
-                <Known value={d?.health.freeBytes} why={t.why.health}>
-                  {kib}
-                </Known>
-              </Row>
+              {hasDevice ? (
+                <>
+                  <Row label={t.rows.uptime}>
+                    <Known value={d?.health.deviceUptimeMs} why={t.why.pong}>
+                      {(ms) => seconds(Math.floor(ms / 1000))}
+                    </Known>
+                  </Row>
+                  <Row label={t.rows.freeMemory}>
+                    <Known value={d?.health.freeBytes} why={t.why.health}>
+                      {kib}
+                    </Known>
+                  </Row>
+                </>
+              ) : null}
               <Row label={t.rows.malformed}>{d?.health.malformedFrames ?? unknown}</Row>
               <Row label={t.rows.gaps}>{d?.health.sequenceGaps ?? unknown}</Row>
               <Row label={t.rows.deviceErrors}>{d?.health.deviceErrors ?? unknown}</Row>

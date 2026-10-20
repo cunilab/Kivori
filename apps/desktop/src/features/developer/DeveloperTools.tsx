@@ -76,7 +76,11 @@ export function DeveloperTools({
             </TabsContent>
           ) : null}
         </Tabs>
-      ) : null}
+      ) : (
+        <p data-testid="developer-off" className="text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">{t.offTitle}.</span> {t.offBody}
+        </p>
+      )}
     </section>
   );
 }

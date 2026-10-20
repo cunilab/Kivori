@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from '../App';
+import { resetPageTabs } from '../components/kivori/page-tabs';
 import { setDevMode } from '../lib/dev-mode';
 
 const DEV_MODE_KEY = 'kivori.developerMode';
@@ -16,8 +17,15 @@ const navLabels = (): (string | null)[] =>
     .map((b) => b.textContent);
 const goSettings = (user: ReturnType<typeof userEvent.setup>) =>
   user.click(screen.getByRole('button', { name: 'Settings' }));
+const goDeveloper = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
+  await goSettings(user);
+  await user.click(screen.getByRole('tab', { name: 'Developer' }));
+};
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  resetPageTabs();
+  localStorage.clear();
+});
 afterEach(() => vi.restoreAllMocks());
 
 describe('App shell', () => {
@@ -124,36 +132,41 @@ describe('Developer mode', () => {
     expect(screen.getByTestId('device-empty')).toBeInTheDocument();
     expect(screen.queryByText('Protocol')).not.toBeInTheDocument();
     expect(screen.queryByRole('switch', { name: 'Developer mode' })).not.toBeInTheDocument();
-    await goSettings(user);
+    await goDeveloper(user);
     expect(screen.getByRole('switch', { name: 'Developer mode' })).not.toBeChecked();
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Activity' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Diagnostics' }));
     expect(await screen.findAllByRole('button', { name: 'Copy diagnostics' })).toHaveLength(1);
   });
 
   it('keeps tools behind its switch on Settings and persists the choice', async () => {
     const user = userEvent.setup();
     const first = render(<App />);
-    await goSettings(user);
+    await goDeveloper(user);
     await user.click(screen.getByRole('switch', { name: 'Developer mode' }));
     expect(await screen.findByRole('tab', { name: 'Activity' })).toBeInTheDocument();
     expect(await screen.findByRole('tab', { name: 'Device Studio' })).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
-    expect(screen.getAllByRole('button', { name: 'Copy diagnostics' })).toHaveLength(1);
     await user.click(screen.getByRole('tab', { name: 'Social reactions' }));
     await user.click(screen.getByRole('tab', { name: 'Activity' }));
     expect(screen.getByRole('heading', { level: 2, name: 'Activity' })).toBeInTheDocument();
     first.unmount();
     render(<App />);
-    await goSettings(user);
+    await goDeveloper(user);
     expect(screen.getByRole('switch', { name: 'Developer mode' })).toBeChecked();
   });
 
   it('shows protocol rows and internals on Device only while developer mode is on', async () => {
     localStorage.setItem(DEV_MODE_KEY, 'true');
     vi.spyOn(ipc, 'getConnectionStatus').mockResolvedValue(connectionFixture());
+    vi.spyOn(ipc, 'onConnectionStatus').mockImplementation(async (handler) => {
+      handler(connectionFixture());
+      return () => {};
+    });
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole('button', { name: 'Device' }));
+    await user.click(screen.getByRole('tab', { name: 'Internals' }));
     expect(await screen.findByText('Protocol')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Device internals' })).toBeInTheDocument();
     act(() => setDevMode(false));
@@ -170,14 +183,14 @@ describe('Developer mode', () => {
     });
     const user = userEvent.setup();
     render(<App />);
-    await goSettings(user);
+    await goDeveloper(user);
     await user.click(screen.getByRole('tab', { name: 'Social reactions' }));
     const greet = screen.getByRole('button', { name: 'Greet' });
     greet.focus();
     act(() => setDevMode(false));
     expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toHaveFocus();
     expect(screen.queryByRole('button', { name: 'Greet' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Activity' })).not.toBeInTheDocument();
     act(() => setDevMode(true));
     expect(screen.getByRole('tab', { name: 'Activity' })).toHaveAttribute('aria-selected', 'true');
   });
@@ -193,7 +206,7 @@ describe('Developer mode', () => {
     const availability = vi.spyOn(hooks, 'useAppInfo').mockReturnValue(info);
     const user = userEvent.setup();
     const page = render(<App />);
-    await goSettings(user);
+    await goDeveloper(user);
     const studio = screen.getByRole('tab', { name: 'Device Studio' });
     studio.focus();
     availability.mockReturnValue({ ...info, deviceStudioEnabled: false });
@@ -209,7 +222,7 @@ describe('Developer mode', () => {
     });
     const user = userEvent.setup();
     render(<App />);
-    await goSettings(user);
+    await goDeveloper(user);
     expect(screen.getByRole('switch', { name: 'Developer mode' })).not.toBeChecked();
   });
 });

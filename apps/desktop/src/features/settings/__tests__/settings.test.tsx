@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -19,6 +19,7 @@ vi.mock('../../../lib/ipc', () => ({
 }));
 
 import { SettingsPage } from '../SettingsPage';
+import { resetPageTabs } from '../../../components/kivori/page-tabs';
 
 const appInfo: AppInfoDto = {
   appVersion: '1.2.3',
@@ -38,21 +39,46 @@ const view = (onRunSetupAgain = vi.fn()) => (
 );
 
 beforeEach(() => {
+  resetPageTabs();
   localStorage.clear();
   document.documentElement.classList.remove('dark');
 });
 
 describe('SettingsPage', () => {
-  it('holds the app settings once: appearance, updates, setup, diagnostics and developer mode', () => {
+  it('splits Settings into General, Updates, Diagnostics and Developer tabs', async () => {
+    const user = userEvent.setup();
     render(view());
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument();
+    const tabs = within(screen.getByRole('tablist', { name: 'Settings sections' })).getAllByRole(
+      'tab',
+    );
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      'General',
+      'Updates',
+      'Diagnostics',
+      'Developer',
+    ]);
     expect(screen.getByRole('radiogroup', { name: 'Appearance' })).toBeInTheDocument();
-    expect(screen.getByTestId('app-version')).toHaveTextContent('1.2.3');
     expect(screen.getByRole('button', { name: 'Run setup again' })).toBeInTheDocument();
+    expect(screen.queryByTestId('app-version')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Updates' }));
+    expect(screen.getByTestId('app-version')).toHaveTextContent('1.2.3');
+    await waitFor(() =>
+      expect(screen.queryByRole('radiogroup', { name: 'Appearance' })).not.toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole('tab', { name: 'Diagnostics' }));
     expect(screen.getAllByRole('heading', { name: 'Diagnostics' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Copy diagnostics' })).toBeInTheDocument();
+  });
+
+  it('keeps the Developer tab visible and explains developer mode while it is off', async () => {
+    const user = userEvent.setup();
+    render(view());
+    await user.click(screen.getByRole('tab', { name: 'Developer' }));
     expect(screen.getByRole('switch', { name: 'Developer mode' })).not.toBeChecked();
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.getByTestId('developer-off')).toHaveTextContent('What developer mode shows');
+    expect(screen.queryByRole('tab', { name: 'Activity' })).not.toBeInTheDocument();
   });
 
   it('switches the theme between light, dark and system', async () => {
@@ -78,11 +104,14 @@ describe('SettingsPage', () => {
     expect(again).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the developer tools as a section once developer mode is on', async () => {
+  it('shows the developer tools in the Developer tab once developer mode is on', async () => {
     const user = userEvent.setup();
     render(view());
+    await user.click(screen.getByRole('tab', { name: 'Developer' }));
     await user.click(screen.getByRole('switch', { name: 'Developer mode' }));
     expect(screen.getByRole('tab', { name: 'Activity' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Social reactions' })).toBeInTheDocument();
+    expect(screen.queryByTestId('developer-off')).not.toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
   });
 

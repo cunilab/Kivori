@@ -1,8 +1,10 @@
-import { act, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import axe from 'axe-core';
 import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@kivori/ui/components/tooltip';
+import { resetPageTabs } from '../../../components/kivori/page-tabs';
 import { setDevMode } from '../../../lib/dev-mode';
 import type { ConnectionStatusDto } from '../../../lib/ipc/types';
 
@@ -53,7 +55,10 @@ const view = (s: ConnectionStatusDto): ReactElement => (
   </TooltipProvider>
 );
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  resetPageTabs();
+  localStorage.clear();
+});
 
 describe('DevicePage', () => {
   it('shows customer device details without developer protocol/state rows', () => {
@@ -164,6 +169,33 @@ describe('DevicePage', () => {
     expect(results.violations).toEqual([]);
   });
 
+  it('splits the page into Overview and Firmware tabs', async () => {
+    const user = userEvent.setup();
+    render(view(status({ connection: 'disconnected', device: null })));
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Overview',
+      'Firmware',
+    ]);
+    expect(screen.getAllByTestId('device-empty')).toHaveLength(1);
+    expect(screen.queryByRole('heading', { name: 'Firmware update' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Firmware' }));
+    await waitFor(() => expect(screen.queryByTestId('device-empty')).not.toBeInTheDocument());
+    expect(screen.getByText('Connect your device to enable flashing.')).toBeInTheDocument();
+  });
+
+  it('collapses device-only Internals rows into one line while disconnected', async () => {
+    setDevMode(true);
+    const user = userEvent.setup();
+    render(view(status({ connection: 'disconnected', device: null })));
+    await user.click(screen.getByRole('tab', { name: 'Internals' }));
+    expect(screen.getByText('Buddy (requested)')).toBeInTheDocument();
+    expect(
+      screen.getByText('Connect your Kivori to see its protocol and reported state.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Protocol')).not.toBeInTheDocument();
+    expect(screen.queryByText('Buddy (reported)')).not.toBeInTheDocument();
+  });
+
   it('keeps the developer switch on Settings, and shows protocol rows and internals only in developer mode', async () => {
     const connected = status({
       connection: 'connected',
@@ -179,7 +211,9 @@ describe('DevicePage', () => {
     const page = render(view(connected));
     expect(screen.queryByRole('switch', { name: 'Developer mode' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Device internals' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Internals' })).not.toBeInTheDocument();
     act(() => setDevMode(true));
+    await userEvent.setup().click(screen.getByRole('tab', { name: 'Internals' }));
     expect(screen.getByText('Protocol')).toBeInTheDocument();
     expect(screen.getByText('Buddy (requested)')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Device internals' })).toBeInTheDocument();
