@@ -88,7 +88,7 @@ Checked for FDM in each part's print orientation:
 - **Thin features:** nothing thinner than 0.7 mm (about two nozzle widths). On the printed PCB's
   copper side every gap along a trace is 0.95 mm wide (the cut lines between neighbouring pins
   0.74 mm) with straight walls, so the layer over it is only a short bridge (the widest gap is
-  2.0 mm, a short one at a switch), and plastic left between two gaps is at least 1 mm. Small text is gone from the bed sides; the wordmark is engraved.
+  1.7 mm, a short one between two switches), and plastic left between two gaps is at least 1 mm. Small text is gone from the bed sides; the wordmark is engraved.
 - **Fits:** FDM prints holes 0.1-0.2 mm small, so the fits allow for it: spigot 3.4 in 3.9, visor
   peg 1.8 in 2.3, knob bore 6.25 on the 6 mm shaft, cap 13.4 in a 14 mm opening.
 - **Small parts:** the caps' snap
@@ -118,7 +118,6 @@ different filaments, so no filament change mid-print is needed.
 | Thin wire (26–30 AWG) | Point to point on the back. |
 | 4 × M2 × 12 self-tapping screws, pan head up to Ø4 | From under the plinth into the face posts. |
 | 2 × M2 × 12 self-tapping screws, pan head up to Ø4 | Copper-trace version: HW-040 onto the printed PCB (hand-wired version: 2 × M2 × 8 into the back plate). |
-| Kapton (polyimide) tape, a few cm | Copper-trace version: the two crossover patches. |
 
 ## Assembly
 
@@ -160,46 +159,50 @@ PCB: parts on the front, copper on the back. Each trace and pad is flush with th
 rest. Every trace and pad has square corners and runs along x or y, so every cut is a straight
 knife line. Traces are 1.8 mm wide, as wide as the pin pads (no step where a trace leaves its pad), so
 traces leaving neighbouring pins side by side are 0.74 mm apart, like the pins; elsewhere they
-keep a 0.95 mm gap, except VCC, GND and B3 down the right edge, which share the room between the
-display pins and the snap-hook cut-out (0.8 mm gaps). B3 runs along the top edge, where the board edge trims its outer side, and keeps
-1 mm of plastic to the post hole there; the SuperMini's last pins (IO5, 5V) sit on a tab whose
-edge runs straight across both rows, flush with their pads, so no thin strip of plastic is left
-past them to overhang. Between the SuperMini rows the
-GND lane runs one gap from the right row's pads, so the gap line along that row stays straight,
-also past the unused pins. Wherever two gaps would leave less than 1 mm of plastic between them
+keep a 0.95 mm gap. Every trace stays inside the board with its full gap; the SuperMini's last
+pins (IO5, 5V) sit on a tab whose edge runs straight across both rows, flush with their pads, so
+no thin strip of plastic is left past them to overhang. Between the SuperMini rows the two outer
+lanes run one gap from the rows' pads, so the gap lines along both rows stay straight, also past
+the unused pins. Wherever two gaps would leave less than 1 mm of plastic between them
 (or to a hole or the edge), that strip becomes gap too, and so does any island of plastic under
 6 mm² between the gaps; gaps thinner than 0.35 mm are filled in. The clean-up runs on a 0.05 mm
 grid of the back and every change is a rectangle snapped onto the traces' edges, so all corners
 stay square, and only plastic touching a gap changes. So nothing small or thin prints.
 The gaps are on the bed side with straight (90°) walls, so the blade has a square edge to follow;
-the layer over each gap bridges it, so every gap is kept narrow (0.95 mm, the widest 2.0 mm; the
+the layer over each gap bridges it, so every gap is kept narrow (0.95 mm, the widest 1.7 mm; a
 switch's facing GND and signal pads grow towards each other to one gap). The plastic round the post
 holes stays whole. In the 2.54 mm
 pin rows (SuperMini, display, encoder) each used pin has a 3.0 × 1.8 mm square pad with a 0.74 mm
 cut line to its neighbours (about 0.3 mm of plastic is left round each hole there). The unused
-SuperMini pins (5V, IO9, IO21) get a plain pad with no trace, so every pin row looks the same.
-The leg of each switch next to the one that carries its button signal (internally joined) gets
-no copper and no outline, and the plastic round its hole stays whole. The switch legs have 2.8 mm square pads.
+SuperMini pins (5V, IO20, IO21) get a plain pad with no trace, so every pin row looks the same.
+A switch leg with no trace (both left legs of the left switch, the upper-left leg of the middle
+one, the upper-right leg of the right one; each is joined inside the switch to a leg that has
+copper) gets no copper and no outline, and the plastic round its hole stays whole. The switch
+legs have 2.8 mm square pads.
 
 The SuperMini stands on the front on its own soldered header strips (components towards the face,
-USB-C at the far edge), and its pins come through to the copper. On the back its left pin row
-(5V, GND, 3V3, IO4 to IO0) faces the knob side and its right row (IO5 to IO21) faces the display.
-The pin map is chosen for that (see Wiring, and issue #67 for the firmware change):
+USB-C at the far edge), and its pins come through to the copper. Seen from its component side
+with USB-C at the top, its power row (5V, GND, 3V3, IO4 to IO0) is on the right and its IO row
+(IO5 to IO10, IO20, IO21) on the left; it faces the face, so seen from the face too the power
+row is on the display side and the IO row on the knob side. The pin map is chosen for that (see
+Wiring):
 
-- Display: SCL, SDA, RES, DC and BLK leave the right row side by side and step down onto the
-  display pins in order. VCC and GND come in from the right.
-- Encoder: DT, SW, 3V3 and GND run down between the rows (the only four traces there) and into its
-  pins from the east; CLK runs down the outside of the left row into its pin from the west.
-- B1 and B2 go round the outside of the knob and along the bottom edge, and rise into their
-  switches between the switch legs (the switch's own pin pairs bridge over them). B3 runs along
-  the top edge and down the right edge.
-- GND runs from the encoder down to the left switch, from switch to switch through each switch's
-  lower pin pair (joined inside the switch), and up the right edge to the display.
+- Display: IO4 to IO0 leave the power row side by side and step down onto SCL, SDA, RES, DC and
+  BLK in order. 3V3 and GND leave it just above them, run on east and step down onto VCC and GND.
+- Encoder: four lanes run down between the rows (the only traces there) and into its pins from
+  the east: CLK, DT and SW from the IO row (IO7, IO6, IO5), and 3V3 from the power row (the 3V3
+  pin feeds the display one way and the encoder the other).
+- GND runs on from the display's GND pin down the right edge to the right switch; on the way a
+  branch runs west under the display onto the encoder's GND pin, below the four lanes. From
+  switch to switch it runs through each switch's lower pin pair (joined inside the switch).
+- B1, B2 and B3 (IO9, IO8, IO10) go west round the outside of the knob, B2 outermost. B1 and B2
+  run on along the bottom edge and rise into their switches between the lower legs (the switch's
+  own pin pairs bridge over them). B3 turns east above the switches, under the GND run, and drops
+  onto the right switch's upper-left leg (joined inside to the upper-right one, which is boxed in
+  by GND and the snap-hook cut-out).
 
-One crossover, shown amber in the model (`Dummy_Kapton`): VCC over GND just below the SuperMini.
-The gaps draw both lines in full, so there the two lines meet in a "+": after peeling, cut VCC's
-copper off across the GND line (one cut along each side of GND), cover the GND copper there with a
-small piece of Kapton tape and lay a short strip of copper over it to join VCC's two ends.
+No crossovers, so no Kapton tape is needed. (`copper_layout()` still takes crossover patches: one
+added later shows amber in the model as `Dummy_Kapton`.)
 
 The back plate holds the HW-040 on two pillars with pegs through its holes, and its four corners
 sit in small brackets. Its five header pins are not bent: they stand straight up from the header
@@ -215,20 +218,17 @@ glue or a quick touch of solder.
 1. Print the printed PCB in **PETG** (PLA softens under the iron).
 2. Lay copper tape flat over the back and rub it down so the gaps show through.
 3. Run a fresh blade along every gap (the gap guides it) and peel the copper off everything that is
-   not a trace or pad, including along the cut lines between neighbouring pins. At the
-   crossover, cut VCC's copper off where it crosses the GND line. The pin and switch leg holes go
-   right through: cut an X in the tape over each one with the blade tip. (`PIN_SKIN` > 0 prints
-   them blind instead.)
-4. Stick a piece of Kapton tape over the GND line there, then lay a short strip of copper across it,
-   joining VCC's copper on both sides; trim it to the trace width.
-5. Fit the display, the three switches and the SuperMini from the front, pressing each pin
-   straight through its X so the petals fold along it. One leg of each switch has no pad: clip it
-   short so it cannot touch a trace.
-6. Check each pin to its trace with a meter.
-7. Set the EC11 bushing into its round hole and push the HW-040's straight pin tips up through
+   not a trace or pad, including along the cut lines between neighbouring pins. The pin and switch
+   leg holes go right through: cut an X in the tape over each one with the blade tip. (`PIN_SKIN`
+   > 0 prints them blind instead.)
+4. Fit the display, the three switches and the SuperMini from the front, pressing each pin
+   straight through its X so the petals fold along it. The switch legs with no pad (two on the
+   left switch, one on each of the others): clip them short so they cannot touch a trace.
+5. Check each pin to its trace with a meter.
+6. Set the EC11 bushing into its round hole and push the HW-040's straight pin tips up through
    their X's (its board 8 mm off the printed PCB). The back plate's pegs then
    locate it when the case closes.
-8. To solder instead: bend the switch legs over onto their pads, solder
+7. To solder instead: bend the switch legs over onto their pads, solder
    every pin on the back with low-temperature solder (Sn42Bi58, about 140 °C) and quick touches.
 
 The SuperMini faces the face, so RST is reached through a Ø1 needle hole in the visor with a guide
@@ -242,23 +242,26 @@ Pins of the copper-trace version (the hand-wired version uses the current [`prof
 
 | SuperMini | Net | Goes to |
 |---|---|---|
-| IO6 | SCL | display SCL |
-| IO7 | SDA | display SDA |
-| IO8 | RES | display RES (hand-wired: IO3) |
-| IO10 | DC | display DC (hand-wired: IO2) |
-| IO20 | BLK | display BLK, backlight (hand-wired: IO8) |
+| IO4 | SCL | display SCL (hand-wired: IO6) |
+| IO3 | SDA | display SDA (hand-wired: IO7) |
+| IO2 | RES | display RES (hand-wired: IO3) |
+| IO1 | DC | display DC (hand-wired: IO2) |
+| IO0 | BLK | display BLK, backlight (hand-wired: IO8) |
 | 3V3 | 3V3 | display VCC, encoder + (**never 5 V**) |
-| GND | GND | display GND, encoder GND, one leg of each switch |
-| IO2 | CLK | encoder CLK (hand-wired: IO4) |
-| IO0 | DT | encoder DT (hand-wired: IO5) |
-| IO1 | SW | encoder SW (hand-wired: IO10) |
-| IO3 / IO4 / IO5 | B1 / B2 / B3 | left / middle / right switch, other leg (hand-wired: IO0 / IO1 / IO20) |
+| GND | GND | display GND, encoder GND, one lower leg of each switch (the lower pair is joined inside) |
+| IO7 | CLK | encoder CLK (hand-wired: IO4) |
+| IO6 | DT | encoder DT (hand-wired: IO5) |
+| IO5 | SW | encoder SW (hand-wired: IO10) |
+| IO9 / IO8 / IO10 | B1 / B2 / B3 | left / middle / right switch, an upper leg: upper-right on the left and middle switch, upper-left on the right one (hand-wired: IO0 / IO1 / IO20) |
+| IO20, IO21, 5V | none | IO20 / IO21 stay free for the serial port |
 
-The firmware change is issue #67 (display `RST = 8, DC = 10, BL = 20`; `ROTARY = { clk: 2, dt: 0,
-sw: 1 }`; `CONTEXT_BUTTONS = [3, 4, 5]`). All buttons stay on non-strapping pins. Encoder CLK is on
-strapping pin GPIO2, which must be high at reset: the HW-040's pull-ups keep it high whenever the
-knob rests at a detent. Validation row 5.1 still applies: check that the SuperMini has no
-32.768 kHz crystal on GPIO0/GPIO1 (now the encoder).
+Firmware for this map: display `SCL = 4, SDA = 3, RST = 2, DC = 1, BL = 0`; `ROTARY = { clk: 7,
+dt: 6, sw: 5 }`; `CONTEXT_BUTTONS = [9, 8, 10]` (this replaces the pin map first planned in issue
+#67). Strapping pins: GPIO2 must not be low at reset; it drives the display's RES input, which
+only listens (high impedance), so it floats as on a bare board and is not pulled low. GPIO9 is
+the BOOT pin: holding B1 while pressing reset starts the download mode, which is harmless.
+Validation row 5.1 still applies: check that the SuperMini has no 32.768 kHz crystal on
+GPIO0/GPIO1 (now the display's DC and BLK).
 
 ## Dimensions to verify (NOMINAL in `build_case.py`)
 
@@ -273,12 +276,13 @@ measured on the real parts from photos next to a ruler (about ±0.3–0.5 mm). T
      header (measured). The visible area is centred 1.85 mm from the board centre towards the
      header, and the window is centred on it (measured: v1 showed the blue ledge at the window's
      left edge).
-   - Header row 2.2 mm in from its end, header on the right as mounted (`DISP_HEADER_SIDE`).
+   - Header row 2.2 mm in from its end, header on the right as mounted (`DISP_HEADER_SIDE`), its
+     centre 0.1 mm towards the far edge from the board centre (`DISP_HDR_V`, measured).
 2. **HW-040** (`HW040_*`, in the module's own frame, origin at the board centre):
    - Board 26 × 18.5 × 1.3 mm.
    - Shaft at (−2.3, +1.8) (measured).
    - M3 holes, Ø3.2, at (−8.55, −6.9) and (+8.55, −6.9) (measured).
-   - Header row at x = +10.35.
+   - Header row at x = +10.25 (`HW040_HDR_X`, measured: 0.1 mm nearer the shaft than drawn).
    - Above the board front (measured from a side photo, scale checked on the 6 mm shaft): body
      top 7.7, bushing thread ends 16.2, shaft round to 22.1, then a 7.1 mm D-flat to the tip at
      29.2. The knob height follows the shaft tip (`EC11_SHAFT_H`), so the shaft is never cut.

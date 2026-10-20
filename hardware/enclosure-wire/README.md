@@ -2,8 +2,7 @@
 
 A clone of [`../enclosure`](../enclosure/) with the copper-tape traces replaced by **0.3 mm
 enamelled copper wire, no solder** (see [Wire wiring](#wire-wiring)). The case, the part positions and the pin
-map are the same; only the printed PCB's back, a new printed part (`PinCaps`) and the assembly
-change.
+map are the same; only the printed PCB's back and the assembly change.
 
 A 110 × 70 mm wedge case (32.7 mm thick at the far edge, 20.7 mm at the near edge, so the face tilts
 about 10° towards you). It follows the blueprints in [`docs/assets/`](../../docs/assets/) and is
@@ -89,10 +88,11 @@ Checked for FDM in each part's print orientation:
   holes and the top of the USB hole) and the caps' 0.3 mm snap lips. The face bevel is a true 45°
   once the wall lean is added, the cap flanges slope 45° (the caps print top down), the plinth's
   sides are 45° to the bed, and the knob's grip grooves run out of the skirt edge.
-- **Thin features:** nothing thinner than 0.7 mm (about two nozzle widths), except the cap
-  strips' 0.6 mm fins. On the printed PCB's back (on the bed) the wire channels are 0.8 mm wide
-  and the pin trenches 2.2 mm, so the layer over each is a short bridge, and every channel keeps
-  at least 0.7 mm of plastic to anything that is not its own (the build checks it). Small text is gone from the bed sides; the wordmark is engraved.
+- **Thin features:** nothing thinner than 0.7 mm (about two nozzle widths). On the printed PCB's
+  back (on the bed) the wire channels are 0.8 mm wide and the leg pockets 1.4 mm, so the layer
+  over each is a short bridge; the grooves along the pin rows have 45° sides, so they need no bridge.
+  Every channel keeps at least 0.7 mm of plastic to anything that is not its own (the build
+  checks it). Small text is gone from the bed sides; the wordmark is engraved.
 - **Fits:** FDM prints holes 0.1-0.2 mm small, so the fits allow for it: spigot 3.4 in 3.9, visor
   peg 1.8 in 2.3, knob bore 6.25 on the 6 mm shaft, cap 13.4 in a 14 mm opening.
 - **Small parts:** the caps' snap
@@ -104,7 +104,6 @@ Checked for FDM in each part's print orientation:
 | `Visor` | black PLA; a smooth PEI sheet gives it a glossy face | top down |
 | `BackPlate` (with the plinth) | black **PETG** (the hooks crack in PLA) | desk side down |
 | `Carrier` (printed PCB) | PETG preferred (the folded switch legs and pegs press on it for years); PLA works | back down, pegs and standoffs up |
-| `PinCaps` (all three strips in one file) | any, black | outer face down, fins up |
 | `Knob` | black PLA | top down |
 | `CapLeft` / `CapMiddle` / `CapRight` | accent-colour PLA (PETG if the fingers crack) | top down |
 | `RubberDots` (all four in one file) | **TPU** (95A), black | flat, plugs up |
@@ -139,7 +138,7 @@ everything after that is solderless.
 4. Wire the back (see [Wire wiring](#wire-wiring)): every run except the encoder's.
 5. Push the HW-040's straightened pins up into their five holes (it hangs on them) and wrap the
    encoder runs onto them, in the gap under the printed PCB.
-6. Press the three cap strips over the pin rows. Check every run with a meter.
+6. Check every run with a meter.
 7. Drop the three caps into the face openings from inside the shell, flange first.
 8. Lower the printed PCB over the four spigots and press it down onto the posts: each switch head
    clicks into its cap. The spigots stick out past the back and locate the back plate's columns.
@@ -163,15 +162,17 @@ carries the pin and button names next to their holes.
 ## Wire wiring
 
 The back of the printed PCB carries 18 wire channels, one per run, each one piece of 0.3 mm
-enamelled wire from a pin to a pin (`wire_layout()` in `build_case.py`). The runs follow the old copper
-traces:
+enamelled wire from a pin to a pin (`wire_layout()` in `build_case.py`). Seen from the face, the
+SuperMini's power row (5V, GND, 3V3, IO4 to IO0) is on the right, next to the display, and its IO
+row (IO5 to IO10, IO20, IO21) on the left, next to the knob:
 
-- Display: SCL, SDA, RES, DC and BLK leave the SuperMini's right row side by side and step down onto
-  the display pins in order. VCC and GND come in from the right.
-- Encoder: DT, SW, 3V3 and GND run down four lanes between the SuperMini rows and onto its pins
-  from the east; CLK runs down the outside of the left row onto its pin from the west.
-- B1 and B2 go round the outside of the knob and along the bottom edge, and rise into their
-  switches between the legs. B3 runs along the top edge and down the right edge.
+- Display: IO4 to IO0 leave the power row side by side and step down onto SCL, SDA, RES, DC and
+  BLK in order. VCC and GND come in from the right.
+- Encoder: five lanes between the SuperMini rows, onto its pins from the east: CLK, DT and SW from
+  the IO row, 3V3 and GND from the power row.
+- B1, B2 and B3 go west round the outside of the knob and along the bottom edge (B2 outermost,
+  B3 innermost). B1 and B2 rise into their switches between the legs; B3 runs on under them to
+  the right switch.
 - GND: SuperMini to the encoder, then a second wire from the encoder to the left switch, one
   from switch to switch (each switch joins its lower leg pair inside) and one from the right
   switch up the right edge to the display.
@@ -180,22 +181,24 @@ traces:
 Without solder there is nowhere to join two wires in the middle of a run, so a net that splits does it at a pin:
 the encoder's GND and + pins each take two wires (two windings, one above the other). Where two
 runs of one net leave a pin together they share a channel (0.8 mm wide: room for two wires).
-The enamel insulates, so runs may cross: there is one crossing, 3V3 under GND below the
-SuperMini, and there the 3V3 channel dips to 1.3 mm deep for 4 mm so the two wires don't
-press on each other. Every bend is rounded (1.5 mm radius at the wire) so the wire does not kink.
+The enamel insulates, so runs may cross. There are five crossings: 3V3 under GND twice (at the
+top of the lanes and below them), and B3 under B1, B2 and GND near the switches. At each, the
+lower channel dips to 1.3 mm deep for 4 mm so the two wires don't press on each other. Every bend is rounded (1.5 mm radius at the wire) so the wire does not kink.
 
 The channels are 0.8 × 0.7 mm. The wire lies loose in them, so hold long stretches down with
 short pieces of Kapton or masking tape across the channel.
 
 **Joints, no solder:**
 
-- **Header pins (SuperMini, display):** each pin row sits in a trench 2.2 mm wide and 1.4 mm deep
-  (the display pins reach only 1.2 mm past the back; in the trench they have 2.6 mm). Scrape
-  about 12 mm of enamel off the wire end, then wind 4 tight turns round the pin (1.2 mm of pin)
-  with tweezers, starting at the trench floor. The square pin's corners bite into the copper.
-  Then press the cap strip over the row: a ring round each hole presses on the top turn, and a fin
-  between each two pins keeps neighbouring turns apart. The SuperMini strips grip their long
-  pins; the display strip also pegs into the back at both ends.
+- **Header pins (SuperMini, display):** scrape about 12 mm of enamel off the wire end, then wind
+  4 tight turns round the pin (1.2 mm of pin) with tweezers, starting at the bottom of the
+  groove. The square pin's corners bite into the copper. Every pin row (both SuperMini rows and
+  the display) sits in the same 45° V-groove, 2.4 mm wide and 1.2 mm deep, so every pin is wound
+  the same way: the turns sit 0.45 mm down in it. The SuperMini pins stand 4 mm past the back,
+  the display pins only 1.2 mm, which still leaves 0.55 mm of pin above the top turn. Keep
+  each winding neat and round its own pin: neighbouring pins are only 2.54 mm apart, and the
+  scraped turns are bare. A dot of nail varnish over each finished winding keeps it from
+  unwinding (optional).
 - **Encoder pins:** the same 4 turns, in the 5.5 mm gap between the HW-040's header and the printed
   PCB. The turns can't slip off: the header is below them and the printed PCB above.
 - **Switch legs (wrap, then fold):** each 12×12 switch has two pairs of legs joined inside. The
@@ -216,27 +219,31 @@ spare, scrape that end, then make the other joint. Do the encoder runs last (ass
 
 ## Wiring
 
-The same pin map as the copper-trace version in [`../enclosure`](../enclosure/) (the hand-wired version there uses the current [`profile.rs`](../../firmware/esp32-c3/src/profile.rs)).
+The same pin map as the copper-trace version in [`../enclosure`](../enclosure/). It follows the real
+SuperMini layout: seen from its component side with USB-C at the top, the power row (5V, GND,
+3V3, IO4 to IO0) is on the right and the IO row (IO5 to IO10, IO20, IO21) on the left.
 
 | SuperMini | Net | Goes to |
 |---|---|---|
-| IO6 | SCL | display SCL |
-| IO7 | SDA | display SDA |
-| IO8 | RES | display RES (hand-wired: IO3) |
-| IO10 | DC | display DC (hand-wired: IO2) |
-| IO20 | BLK | display BLK, backlight (hand-wired: IO8) |
+| IO4 | SCL | display SCL |
+| IO3 | SDA | display SDA |
+| IO2 | RES | display RES |
+| IO1 | DC | display DC |
+| IO0 | BLK | display BLK, backlight |
 | 3V3 | 3V3 | display VCC, encoder + (**never 5 V**) |
-| GND | GND | display GND, encoder GND, one leg of each switch |
-| IO2 | CLK | encoder CLK (hand-wired: IO4) |
-| IO0 | DT | encoder DT (hand-wired: IO5) |
-| IO1 | SW | encoder SW (hand-wired: IO10) |
-| IO3 / IO4 / IO5 | B1 / B2 / B3 | left / middle / right switch, other leg (hand-wired: IO0 / IO1 / IO20) |
+| GND | GND | display GND, encoder GND, one lower leg of each switch |
+| IO7 | CLK | encoder CLK |
+| IO6 | DT | encoder DT |
+| IO5 | SW | encoder SW |
+| IO9 / IO8 / IO10 | B1 / B2 / B3 | left / middle / right switch, upper-right leg |
+| IO20, IO21, 5V | none | IO20 / IO21 stay free for the serial port |
 
-The firmware change is issue #67 (display `RST = 8, DC = 10, BL = 20`; `ROTARY = { clk: 2, dt: 0,
-sw: 1 }`; `CONTEXT_BUTTONS = [3, 4, 5]`). All buttons stay on non-strapping pins. Encoder CLK is on
-strapping pin GPIO2, which must be high at reset: the HW-040's pull-ups keep it high whenever the
-knob rests at a detent. Validation row 5.1 still applies: check that the SuperMini has no
-32.768 kHz crystal on GPIO0/GPIO1 (now the encoder).
+Firmware: display `SCL = 4, SDA = 3, RST = 2, DC = 1, BL = 0`; `ROTARY = { clk: 7, dt: 6, sw: 5 }`;
+`CONTEXT_BUTTONS = [9, 8, 10]` (this replaces the pin map first planned in issue #67). Strapping
+pins: GPIO2 must not be low at reset; it drives the display's RES input, which only listens, so
+it floats as on a bare board. GPIO9 is the BOOT pin: holding B1 while pressing reset starts the
+download mode, which is harmless. Validation row 5.1 still applies: check that the SuperMini has
+no 32.768 kHz crystal on GPIO0/GPIO1 (now the display's DC and BLK).
 
 ## Dimensions to verify (NOMINAL in `build_case.py`)
 
@@ -251,15 +258,16 @@ measured on the real parts from photos next to a ruler (about ±0.3–0.5 mm). T
      header (measured). The visible area is centred 1.85 mm from the board centre towards the
      header, and the window is centred on it (measured: v1 showed the blue ledge at the window's
      left edge).
-   - Header row 2.2 mm in from its end, header on the right as mounted (`DISP_HEADER_SIDE`).
+   - Header row 2.2 mm in from its end, header on the right as mounted (`DISP_HEADER_SIDE`), its
+     centre 0.1 mm towards the far edge from the board centre (`DISP_HDR_V`, measured).
    - Header pins 6 mm past the plastic (`DISP_PIN_L`, NOMINAL: the usual header). That puts the
-     tips 1.2 mm past the printed PCB's back, 2.6 mm above the trench floor: enough for 4 turns
-     and the cap strip. If yours are shorter, measure them before printing.
+     tips 1.2 mm past the printed PCB's back, 1.75 mm above where the turns sit in the V-groove:
+     enough for 4 turns. If yours are shorter, measure them before printing.
 2. **HW-040** (`HW040_*`, in the module's own frame, origin at the board centre):
    - Board 26 × 18.5 × 1.3 mm.
    - Shaft at (−2.3, +1.8) (measured).
    - M3 holes, Ø3.2, at (−8.55, −6.9) and (+8.55, −6.9) (measured).
-   - Header row at x = +10.35.
+   - Header row at x = +10.25 (`HW040_HDR_X`, measured: 0.1 mm nearer the shaft than drawn).
    - Above the board front (measured from a side photo, scale checked on the 6 mm shaft): body
      top 7.7, bushing thread ends 16.2, shaft round to 22.1, then a 7.1 mm D-flat to the tip at
      29.2. The knob height follows the shaft tip (`EC11_SHAFT_H`), so the shaft is never cut.

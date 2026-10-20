@@ -73,7 +73,7 @@ HW040 = (26.0, 18.5, 1.3)   # board length, width, thickness
 HW040_SHAFT = (-2.3, 1.8)   # shaft centre
 HW040_HOLES = [(-8.55, -6.9), (8.55, -6.9)]  # two M3 holes along the long edge, 17.1 mm apart, centred
 HW040_HOLE_D = 3.2
-HW040_HDR_X = 10.35         # right-angle header pin row (pins point +x, along the board)
+HW040_HDR_X = 10.25         # header pin row (measured on the module: 0.1 nearer the shaft than drawn)
 HW040_BACK_KEEPOUT = (-9.0, 9.0, -4.0, 6.0)  # shaft-relative: EC11 legs + 3 pull-up resistors underneath
 HW040_BACK_PARTS = 2.0      # how far those (and the header joints) stick out of its back
 # The HW-040 hangs behind the printed PCB, on two back-plate columns whose pegs go through its M3
@@ -105,6 +105,7 @@ DISP_GLASS = (28.0, 26.3, 1.4)    # glass incl. the FPC ledge at the end away fr
 DISP_ACTIVE_U = 1.85              # visible-area centre from the board centre, along u (measured)
 DISP_GLASS_U = 0.8                # glass centre from the board centre, along u (measured)
 DISP_HDR_U = 2.2                  # 7-pin header row, from the header end
+DISP_HDR_V = 0.1                  # header row centre past the board centre, towards the far (USB) edge (measured)
 DISP_POCKET = 0.6           # glass pocket depth into the back of the faceplate
 DISP_HEADER_SIDE = +1       # +1 header on the right end, -1 on the left end
 DISP_HOLE_D = 2.0          # four corner holes, NOMINAL ("mounting holes: 2 mm")
@@ -143,7 +144,7 @@ CAP_STOP_D = 2.6            # stop post on the head, round its centre hole
 SW_PADS = [(-6.25, -2.5), (6.25, -2.5), (-6.25, 2.5), (6.25, 2.5)]  # pin 1,1,2,2 (land pattern Ø1.5)
 SW_PEGS = [(0.0, -4.5), (0.0, 4.5)]  # clearance for locating bosses some 12x12 switches have (B3F)
 SW_PEG_HOLE_D = 2.0
-BTN_GPIO = ["IO3", "IO4", "IO5"]  # left, middle, right (copper-trace pin map, see README Wiring)
+BTN_GPIO = ["IO9", "IO8", "IO10"]  # left, middle, right (copper-trace pin map, see README Wiring)
 
 # Printed PCB ("carrier"): same plane as a future real PCB
 C_FRONT = -10.2             # printed PCB front (the 7.2 mm switch top ends 3.0 below the face: the caps reach down)
@@ -184,10 +185,12 @@ USB_HOLE_CHAMFER = 0.0      # chamfer round the outside edge: off, it thinned th
 USB_FRONT_CLR = 0.15        # receptacle front to the pocket face
 SM_ROW = 15.24              # header row spacing
 SM_PIN_MARGIN = (SM[1] - 7 * 2.54) / 2  # NOMINAL first pin from the USB end
-# Columns as seen from the BACK (component side up, USB at the top). Seen from the face they
-# mirror, so the "left" column sits at +x in the face frame.
-SM_COL_A = ["5V", "GND", "3V3", "IO4", "IO3", "IO2", "IO1", "IO0"]    # at x = SM_X + row/2
-SM_COL_B = ["IO5", "IO6", "IO7", "IO8", "IO9", "IO10", "IO20", "IO21"]  # at x = SM_X - row/2
+# Pin rows, from the USB end, seen from the component side with USB-C at the top: the power row
+# on the right, the IO row on the left (board photo; the GPIO numbers are printed on the underside).
+# With copper traces the board faces the face, so seen from the face too the power row is at +x;
+# hand-wired it faces the back plate, so seen from the face it mirrors (power row at -x).
+SM_COL_A = ["5V", "GND", "3V3", "IO4", "IO3", "IO2", "IO1", "IO0"]    # power row
+SM_COL_B = ["IO5", "IO6", "IO7", "IO8", "IO9", "IO10", "IO20", "IO21"]  # IO row
 # Soldered pin headers: the black plastic strip lies on the carrier side and drops into a slot,
 # so the board still sits flat on the carrier; the long pins point to the face (measured).
 SM_HDR = (2.54, 8 * 2.54, 2.5, 6.0)  # strip width, length, plastic height, long pin past the plastic
@@ -208,7 +211,7 @@ C_TAB_CLR = 0.4             # carrier tab under the SuperMini header ends, to th
 # off the rest. The gaps are on the bed side (gaps in the first layers, short bridges over them).
 # Every trace and pad is square-cornered and runs along x or y, so each cut is a straight knife
 # line. Only pins that carry a signal get copper (no pad on unused pins or switch legs).
-# One crossover remains (copper_layout).
+# No crossovers (copper_layout); any added later get a Kapton patch (crossovers, Dummy_Kapton).
 COPPER_TRACES = True        # False: the hand-wired version (header strips in slots)
 TRACE_GROOVE = (0.95, 0.6)  # gap along both sides of every trace and pad: width, depth
 # 2.54 mm pin rows: a square pad round each pin, as wide as the traces (no step where a trace
@@ -479,7 +482,8 @@ glass_z0 = -FACE_T + DISP_POCKET          # glass front
 glass_z1 = glass_z0 - DISP_GLASS[2]       # glass back = module PCB front
 dpcb_z1 = glass_z1 - DISP_PCB[2]          # module PCB back
 disp_hdr_x = dpcb_c[0] + DISP_HEADER_SIDE * (DISP_PCB[0] / 2 - DISP_HDR_U)
-disp_pins = {n: (disp_hdr_x, dpcb_c[1] + (3 - i) * 2.54) for i, n in enumerate(DISP_PINS)}
+disp_hdr_y = dpcb_c[1] + DISP_HDR_V
+disp_pins = {n: (disp_hdr_x, disp_hdr_y + (3 - i) * 2.54) for i, n in enumerate(DISP_PINS)}
 disp_holes = [(dpcb_c[0] + su * (DISP_PCB[0] / 2 - DISP_HOLE_INSET), dpcb_c[1] + sv * (DISP_PCB[1] / 2 - DISP_HOLE_INSET))
               for su in (-1, 1) for sv in (-1, 1)]
 
@@ -493,15 +497,15 @@ enc_x = hw_hdr[0] + HW040_PIN_BEND         # where its pins come up through the 
 enc_pins = {n: (enc_x, hw_hdr[1] + (2 - i) * 2.54) for i, n in enumerate(["CLK", "DT", "SW", "+", "GND"])}
 
 sm_c = (SM_X, SM_USB_END - SM[1] / 2)
-if SM_FRONT:  # on its header strips on the carrier front, components up: column A on the left
+if SM_FRONT:  # on its header strips on the carrier front, components up: power row on the right
     sm_lo = C_FRONT + SM_HDR[2]
     sm_hi = sm_lo + SM[2]
     usb_lo, usb_hi = sm_hi, sm_hi + SM_USB[2]
-    xa_, xb_ = SM_X - SM_ROW / 2, SM_X + SM_ROW / 2
-else:  # behind the carrier, components towards the back plate
+    xa_, xb_ = SM_X + SM_ROW / 2, SM_X - SM_ROW / 2   # power row, IO row
+else:  # behind the carrier, components towards the back plate: seen from the face it mirrors
     sm_lo, sm_hi = C_BACK - SM[2], C_BACK
     usb_lo, usb_hi = sm_lo - SM_USB[2], sm_lo
-    xa_, xb_ = SM_X + SM_ROW / 2, SM_X - SM_ROW / 2
+    xa_, xb_ = SM_X - SM_ROW / 2, SM_X + SM_ROW / 2   # power row, IO row
 sm_z_comp = sm_lo                          # component side (hand-wired version)
 sm_pins = {}
 for i, n in enumerate(SM_COL_A):
@@ -509,6 +513,7 @@ for i, n in enumerate(SM_COL_A):
 for i, n in enumerate(SM_COL_B):
     sm_pins[n] = (xb_, SM_USB_END - SM_PIN_MARGIN - i * 2.54)
 sm_rows = [xa_, xb_]
+sm_x_pw, sm_x_io = xa_, xb_
 sm_hdr_y = SM_USB_END - SM_PIN_MARGIN - 3.5 * 2.54
 _bx = SM_BTN_DX if SM_FRONT else -SM_BTN_DX     # RST, BOOT (NOMINAL; the board mirrors when it faces up)
 sm_btns = [(SM_X + _bx, SM_USB_END - SM_BTN_FROM_USB), (SM_X - _bx, SM_USB_END - SM_BTN_FROM_USB)]
@@ -773,12 +778,12 @@ def carrier_outline():
     hw = SM[0] / 2 + 1.0
     if not (COPPER_TRACES and SM_FRONT):
         return c.fuse(box(SM_X - hw, H / 2, C_BACK, SM_X + hw, y_tab, C_FRONT)).removeSplitter()
-    # copper: one straight edge across both rows, flush with their last pads (B3's runs on along the
-    # edge), so no thin strip of plastic is left past a pad's gap (it would turn to gap and leave
+    # copper: one straight edge across both rows, flush with their last pads (and SW's run between
+    # them), so no thin strip of plastic is left past a pad's gap (it would turn to gap and leave
     # the board above it hanging over); the tab spans the rows from pad edge to pad edge
-    xa, xb = sm_rows
+    x0, x1 = min(sm_rows), max(sm_rows)
     y_pad = max(y for (x, y) in sm_pins.values()) + TRACE_PAD[1] / 2
-    return c.fuse(box(xa - TRACE_PAD[0] / 2, H / 2, C_BACK, xb + TRACE_PAD[0] / 2, y_pad, C_FRONT)).removeSplitter()
+    return c.fuse(box(x0 - TRACE_PAD[0] / 2, H / 2, C_BACK, x1 + TRACE_PAD[0] / 2, y_pad, C_FRONT)).removeSplitter()
 
 
 def carrier_through_cuts(pcb=False):
@@ -796,7 +801,7 @@ def carrier_through_cuts(pcb=False):
     if COPPER_TRACES:  # a hole per display pin, each in a pad
         cuts += [cyl(HOLE_D, x, y, zp, C_FRONT + 1) for (x, y) in disp_pins.values()]
     else:
-        cuts.append(cbox(disp_hdr_x, dpcb_c[1], 2.6, 7 * 2.54 + 1.0, C_BACK - 1, C_FRONT + 1))
+        cuts.append(cbox(disp_hdr_x, disp_hdr_y, 2.6, 7 * 2.54 + 1.0, C_BACK - 1, C_FRONT + 1))
     for i in range(3):
         for p in range(4):
             x, y = btn_pin(i, p)
@@ -838,105 +843,101 @@ def copper_layout():
     Pads: ("rect", x, y, size_x, size_y), square-cornered. Traces: point lists, or ("w", width,
     points), every segment along x or y. Crossovers: [(x0, y0, x1, y1), [nets on top]].
 
-    Pin map chosen for this board (README, Wiring): the right SuperMini row feeds the whole display
-    and the right button; the left row feeds the encoder and the other two buttons. The unused
-    SuperMini pins (5V, IO9, IO21) get a plain pad with no trace, so every pin row looks the same and
-    its cut lines run on unbroken; the unused leg of each switch's signal pair gets no copper.
-    - Display: SCL, SDA, RES, DC, BLK leave the right row side by side and step down onto the
-      display pins in order; VCC and GND come in from the right.
-    - Encoder: DT, SW, 3V3 and GND run down between the rows and into its pins from the east,
-      CLK down the outside of the left row onto its pin from the west.
-    - B1 and B2 go round the outside of the knob and along the bottom edge, rising into their
-      switches between the switch legs (the switch's own pin pairs bridge them). B3 runs along
-      the top edge and down the right edge.
-    - GND runs from the encoder down to the switches, from switch to switch through each switch's
-      lower pin pair, and up the right edge to the display. VCC crosses GND once (crossover)."""
-    xa, xb = sm_rows                                  # left / right pin row
+    Pin map for this board (README, Wiring). Seen from the face the SuperMini's power row (5V, GND,
+    3V3, IO4..IO0) is on the right, next to the display; its IO row (IO5..IO10, IO20, IO21) on the
+    left, next to the knob. The unused SuperMini pins (5V, IO20, IO21) get a plain pad with no
+    trace, so every pin row looks the same and its cut lines run on unbroken; switch legs with no
+    trace get no copper. No crossovers:
+    - Display: IO4..IO0 leave the power row side by side and step down onto SCL, SDA, RES, DC, BLK
+      in order. 3V3 and GND leave it above them, run on east and step down onto VCC and GND.
+    - Encoder: four lanes between the rows, onto its pins from the east: CLK, DT, SW from the IO
+      row (IO7, IO6, IO5) and 3V3 from the power row (its pin feeds both ways).
+    - GND goes on from the display GND pin down the right edge to the right switch; on the way a
+      branch runs west under the display onto the encoder's GND pin, below the lanes. Switch to
+      switch it runs through each switch's lower pin pair (joined inside the switch).
+    - B1, B2, B3 (IO9, IO8, IO10) go west round the outside of the knob, B2 outermost. B1 and B2
+      run on along the bottom edge and rise into their switches between the lower legs (the
+      switch's own pin pairs bridge over them); B3 turns east above the switches, under the GND
+      run, and drops onto the right switch's upper-left leg (its signal pair is joined inside,
+      and the upper-right leg is boxed in by the GND run and the snap-hook cut-out)."""
+    x_io, x_pw = sm_x_io, sm_x_pw                     # IO row (left), power row (right)
     ys = {n: p[1] for n, p in sm_pins.items()}
     yd = {n: p[1] for n, p in disp_pins.items()}
     ye = {n: p[1] for n, p in enc_pins.items()}
     leg = lambda i, k: btn_pin(i, k)                  # k: 0/1 lower pin pair, 2/3 upper pair
+    gr = TRACE_GROOVE[0]
 
-    def sw(i, k):  # square pad; the right-hand pair (GND below, signal above) grow towards each
-        x, y = leg(i, k)  # other until one gap is left, so no wide gap opens between them
-        if k not in (1, 3):
+    def sw(i, k, mate=None):  # square pad; next to a pad of the other net on the same side of the
+        x, y = leg(i, k)      # switch (mate) both grow towards each other until one gap is left,
+        if mate is None:      # so no wide gap opens between them
             return ("rect", x, y, TRACE_PAD_D, TRACE_PAD_D)
-        oy = leg(i, 4 - k)[1]
-        ext = (abs(oy - y) - TRACE_PAD_D - TRACE_GROOVE[0]) / 2
+        oy = leg(i, mate)[1]
+        ext = (abs(oy - y) - TRACE_PAD_D - gr) / 2
         return ("rect", x, y + math.copysign(ext / 2, oy - y), TRACE_PAD_D, TRACE_PAD_D + ext)
     pin = lambda x, y: ("rect", x, y, TRACE_PAD[0], TRACE_PAD[1])  # every pin row runs along y
     sm = lambda n: pin(*sm_pins[n])
     dd = lambda n: pin(*disp_pins[n])
     ep = lambda n: pin(*enc_pins[n])
-    P = TRACE_W + TRACE_GROOVE[0]                     # pitch of side-by-side traces: one gap apart
-    # between the rows: four lanes, DT SW 3V3 GND. GND runs one gap from the right row's pads, so
-    # its gap lines up with theirs (also by the unused pins there); DT passes the encoder's CLK pad
-    # with TRACE_RIDGE_MIN of plastic between the two gaps; SW and 3V3 spread evenly between them
-    gr = TRACE_GROOVE[0]
-    l0 = max(xa + TRACE_PAD[0] / 2 + gr, enc_x + TRACE_PAD[0] / 2 + 2 * gr + TRACE_RIDGE_MIN) + TRACE_W / 2
-    l3 = xb - TRACE_PAD[0] / 2 - gr - TRACE_W / 2
+    P = TRACE_W + gr                                  # pitch of side-by-side traces: one gap apart
+    # between the rows: four lanes, CLK DT SW 3V3, the outer two one gap from the rows' pads (so
+    # the gap lines along both rows stay straight, also past the unused pins), evenly spread
+    l0 = x_io + TRACE_PAD[0] / 2 + gr + TRACE_W / 2
+    l3 = x_pw - TRACE_PAD[0] / 2 - gr - TRACE_W / 2
     lane = [l0 + k * (l3 - l0) / 3 for k in range(4)]
 
-    def down(n, k, y_end):  # from a left-row pin east into lane k, down, and west onto the encoder
-        return [(xa, ys[n]), (lane[k], ys[n]), (lane[k], y_end), (enc_x, y_end)]
+    def down(n, k, e):  # from a SuperMini pin into lane k, down, and west onto encoder pin e
+        return [sm_pins[n], (lane[k], ys[n]), (lane[k], ye[e]), enc_pins[e]]
 
-    # display fan: right-row pins east, then down at these x, then east onto the display pins
+    # display fan: power-row pins east, then down at these x, then east onto the display pins;
+    # 3V3 and GND above them, stepping down further east
     xf = 64.0
-    fan = {"SCL": ("IO6", xf + 4 * P), "SDA": ("IO7", xf + 3 * P), "RES": ("IO8", xf + 2 * P),
-           "DC": ("IO10", xf + P), "BLK": ("IO20", xf)}
-    yv = yd["BLK"] - P                                # VCC's run under the display
-    # VCC up the east side of the display pins, GND outside it, B3 outside that: evenly spaced (one
-    # gap, or less where it must) between the display pads and the right snap-hook cut-out
-    x_l, x_r = disp_hdr_x + TRACE_PAD[0] / 2, W - WALL - 2.8
-    gc = min(TRACE_GROOVE[0], (x_r - x_l - 3 * TRACE_W) / 3)
-    xv = x_l + gc + TRACE_W / 2
-    xg, x5 = xv + TRACE_W + gc, xv + 2 * (TRACE_W + gc)
-    # B3 keeps 1 mm of plastic between its gap and the top-right post hole
-    post = POSTS[2]
-    keep = SPIGOT_HOLE_D / 2 + TRACE_RIDGE_MIN + TRACE_GROOVE[0] + TRACE_W / 2
-    # ... and its run under the post lies one gap above GND's run onto the display (any further
-    # up, the plastic strip left between the two gaps is too thin and turns into one wide gap)
-    xb3, yb3 = post[0] - keep, min(post[1] - keep, yd["GND"] + P)
-    xc = xa - TRACE_PAD[0] / 2 - TRACE_GROOVE[0] - TRACE_W / 2  # CLK down the outside of the left row
-    # GND down to the switches, 1 mm of plastic clear of the left switch's unused leg
-    xge = btn_pin(0, 2)[0] - SW_HOLE_D / 2 - TRACE_RIDGE_MIN - TRACE_GROOVE[0] - TRACE_W / 2
-    bl3 = leg(0, 0)[1] - TRACE_PAD_D / 2 - TRACE_GROOVE[0] - TRACE_W / 2  # B1 along the bottom, under switch 1
-    bl2 = bl3 - P                                     # B2 below it
-    xw3 = 13.6                                        # B1 down the left side ...
-    xw2 = xw3 - P                                     # ... B2 outside it
-    b1x = (leg(0, 0)[0] + leg(0, 1)[0]) / 2           # rise between the legs of switch 1 ...
-    b2x = (leg(1, 0)[0] + leg(1, 1)[0]) / 2           # ... and 2
-    y_sw = (leg(0, 1)[1] + leg(1, 0)[1]) / 2          # GND from switch to switch, inside both pads
-    y_gx = leg(2, 3)[1] + TRACE_PAD_D / 2 + TRACE_GROOVE[0] + TRACE_W / 2  # GND steps over the right switch's pad
-    xgl = leg(2, 3)[0] - TRACE_PAD_D / 2 - TRACE_GROOVE[0] - TRACE_W / 2  # ... after rising one gap west of it
+    fan = {"BLK": ("IO0", xf), "DC": ("IO1", xf + P), "RES": ("IO2", xf + 2 * P),
+           "SDA": ("IO3", xf + 3 * P), "SCL": ("IO4", xf + 4 * P)}
+    xv, xg = xf + 5 * P, xf + 6 * P
+    # GND down the right edge, one gap east of the display pads (1 mm of plastic or more to the
+    # right switch's bare upper-right leg), onto the right switch's lower-right leg
+    x_r = disp_hdr_x + TRACE_PAD[0] / 2 + gr + TRACE_W / 2
+    # B's down the left side: B2 outermost, clear of the bottom-left post hole by 1 mm of plastic
+    post = POSTS[0]
+    xw2 = post[0] + SPIGOT_HOLE_D / 2 + TRACE_RIDGE_MIN + gr + TRACE_W / 2
+    xw = {"B2": xw2, "B1": xw2 + P, "B3": xw2 + 2 * P}
+    # B1 and B2 along the bottom, B1 one gap plus 1 mm of plastic under the left switch's bare
+    # lower-left leg, B2 below it
+    yb1 = leg(0, 0)[1] - SW_HOLE_D / 2 - TRACE_RIDGE_MIN - gr - TRACE_W / 2
+    yb2 = yb1 - P
+    # B1, B2 rise between the lower legs of switch 1 and 2, one gap west of the lower-right (GND)
+    # pad, so the gap along it runs straight on up past the signal pad
+    b1x, b2x = [leg(i, 1)[0] - TRACE_PAD_D / 2 - gr - TRACE_W / 2 for i in (0, 1)]
+    # B3 above the switches, one gap over their highest pad (the middle switch's B2 pad)
+    yb3 = max(leg(i, k)[1] for i in range(3) for k in (2, 3)) + TRACE_PAD_D / 2 + gr + TRACE_W / 2
+    yr = yb3 - P                                      # B1, B2 rise to one gap under B3, then onto their pads
+    ysw1 = (leg(0, 1)[1] + leg(1, 0)[1]) / 2          # GND from switch to switch, inside both pads
+    ysw2 = (leg(1, 1)[1] + leg(2, 0)[1]) / 2
     nets = {
-        "GND": ([sm("GND"), dd("GND"), ep("GND")] + [sw(i, k) for i in range(3) for k in (0, 1)],
-                [down("GND", 3, ye["GND"]),
-                 # to the left switch's lower-left leg, west of its unused upper-left leg
-                 [(xge, ye["GND"]), (xge, leg(0, 0)[1]), leg(0, 0)],
-                 [leg(0, 1), (leg(0, 1)[0], y_sw), (leg(1, 0)[0], y_sw), leg(1, 0)],
-                 [leg(1, 1), (leg(1, 1)[0], y_sw), (leg(2, 0)[0], y_sw), leg(2, 0)],
-                 [leg(2, 1), (xgl, leg(2, 1)[1]), (xgl, y_gx), (xg, y_gx), (xg, yd["GND"]), (disp_hdr_x, yd["GND"])]]),
+        "GND": ([sm("GND"), dd("GND"), ep("GND"), sw(0, 1, 3), sw(1, 0), sw(1, 1, 3), sw(2, 0, 2), sw(2, 1)],
+                [[sm_pins["GND"], (xg, ys["GND"]), (xg, yd["GND"]), (x_r, yd["GND"]), (x_r, leg(2, 1)[1]), leg(2, 1)],
+                 [(x_r, ye["GND"]), enc_pins["GND"]],
+                 [leg(2, 0), (leg(2, 0)[0], ysw2), (leg(1, 1)[0], ysw2), leg(1, 1)],
+                 [leg(1, 0), (leg(1, 0)[0], ysw1), (leg(0, 1)[0], ysw1), leg(0, 1)]]),
         "3V3": ([sm("3V3"), dd("VCC"), ep("+")],
-                [down("3V3", 2, ye["+"]),
-                 [(lane[2], yv), (xv, yv), (xv, yd["VCC"]), (disp_hdr_x, yd["VCC"])]]),
-        "DT": ([sm("IO0"), ep("DT")], [down("IO0", 0, ye["DT"])]),
-        "SW": ([sm("IO1"), ep("SW")], [down("IO1", 1, ye["SW"])]),
-        "CLK": ([sm("IO2"), ep("CLK")], [[(xa, ys["IO2"]), (xc, ys["IO2"]), (xc, ye["CLK"])]]),
-        "B1": ([sm("IO3"), sw(0, 3)],
-               [[(xa, ys["IO3"]), (xw3, ys["IO3"]), (xw3, bl3), (b1x, bl3), (b1x, leg(0, 3)[1]), leg(0, 3)]]),
-        "B2": ([sm("IO4"), sw(1, 3)],
-               [[(xa, ys["IO4"]), (xw2, ys["IO4"]), (xw2, bl2), (b2x, bl2), (b2x, leg(1, 3)[1]), leg(1, 3)]]),
-        # along the top edge (the board edge trims its outer side), down the right edge
-        "B3": ([sm("IO5"), sw(2, 3)],
-               [[(xb, ys["IO5"]), (xb3, ys["IO5"]), (xb3, yb3), (x5, yb3), (x5, leg(2, 3)[1])]]),
+                [down("3V3", 3, "+"),
+                 [sm_pins["3V3"], (xv, ys["3V3"]), (xv, yd["VCC"]), disp_pins["VCC"]]]),
+        "CLK": ([sm("IO7"), ep("CLK")], [down("IO7", 0, "CLK")]),
+        "DT": ([sm("IO6"), ep("DT")], [down("IO6", 1, "DT")]),
+        "SW": ([sm("IO5"), ep("SW")], [down("IO5", 2, "SW")]),
+        "B1": ([sm("IO9"), sw(0, 3, 1)],
+               [[sm_pins["IO9"], (xw["B1"], ys["IO9"]), (xw["B1"], yb1), (b1x, yb1), (b1x, yr), (leg(0, 3)[0], yr), leg(0, 3)]]),
+        "B2": ([sm("IO8"), sw(1, 3, 1)],
+               [[sm_pins["IO8"], (xw["B2"], ys["IO8"]), (xw["B2"], yb2), (b2x, yb2), (b2x, yr), (leg(1, 3)[0], yr), leg(1, 3)]]),
+        "B3": ([sm("IO10"), sw(2, 2, 0)],
+               [[sm_pins["IO10"], (xw["B3"], ys["IO10"]), (xw["B3"], yb3), (leg(2, 2)[0], yb3), leg(2, 2)]]),
     }
     for name, (p, x) in fan.items():
         y0, y1 = ys[p], yd[name]
-        nets[name] = ([sm(p), dd(name)], [[(xb, y0), (x, y0), (x, y1), (disp_hdr_x, y1)]])
-    for p in ("5V", "IO9", "IO21"):  # unused: a pad alone, each its own net
+        nets[name] = ([sm(p), dd(name)], [[sm_pins[p], (x, y0), (x, y1), disp_pins[name]]])
+    for p in ("5V", "IO20", "IO21"):  # unused: a pad alone, each its own net
         nets["NC_" + p] = ([sm(p)], [])
-    crossovers = [((lane[3] - 2.1, yv - 1.6, lane[3] + 2.1, yv + 1.6), ["3V3"])]  # VCC over GND
+    crossovers = []
     return nets, crossovers
 
 
@@ -1209,9 +1210,9 @@ def make_carrier():
         adds.append(peg(x, y, DISP_HOLE_D, dpcb_z1 - 0.01, glass_z1 + PEG_PROUD))
     c = c.fuse(adds)
     # keep the display header clear of the standoffs
-    c = c.cut(cbox(disp_hdr_x, dpcb_c[1], 2.6, 7 * 2.54 + 1.0, C_FRONT, C_FRONT + 6))
+    c = c.cut(cbox(disp_hdr_x, disp_hdr_y, 2.6, 7 * 2.54 + 1.0, C_FRONT, C_FRONT + 6))
     if not COPPER_TRACES:
-        c = c.cut(cbox(disp_hdr_x, dpcb_c[1], 2.6, 7 * 2.54 + 1.0, C_BACK - 1, C_FRONT + 1))
+        c = c.cut(cbox(disp_hdr_x, disp_hdr_y, 2.6, 7 * 2.54 + 1.0, C_BACK - 1, C_FRONT + 1))
     else:
         c = c.cut(copper_grooves())
 
@@ -1339,11 +1340,11 @@ def dummy_display():
     glass = cbox(glass_c[0], glass_c[1], DISP_GLASS[0], DISP_GLASS[1], glass_z1, glass_z0)
     pcb = cbox(dpcb_c[0], dpcb_c[1], DISP_PCB[0], DISP_PCB[1], dpcb_z1, glass_z1)
     pcb = pcb.cut([cyl(DISP_HOLE_D, x, y, dpcb_z1 - 1, glass_z1 + 1) for (x, y) in disp_holes])
-    hdr = cbox(disp_hdr_x, dpcb_c[1], 2.5, 7 * 2.54, dpcb_z1 - 2.5, dpcb_z1)
+    hdr = cbox(disp_hdr_x, disp_hdr_y, 2.5, 7 * 2.54, dpcb_z1 - 2.5, dpcb_z1)
     if COPPER_TRACES:  # one pin per hole
         pins = fuse_all([cbox(x, y, 0.64, 0.64, C_BACK - 2.5, dpcb_z1 - 2.5) for (x, y) in disp_pins.values()])
     else:
-        pins = cbox(disp_hdr_x, dpcb_c[1], 0.64, 7 * 2.54 - 1.9, C_BACK - 2.5, dpcb_z1 - 2.5)
+        pins = cbox(disp_hdr_x, disp_hdr_y, 0.64, 7 * 2.54 - 1.9, C_BACK - 2.5, dpcb_z1 - 2.5)
     return fuse_all([glass, pcb, hdr, pins])
 
 
@@ -1385,7 +1386,7 @@ def dummy_copper():
     for rect, names in crossovers:  # (the tape itself: Dummy_Kapton)
         for nm in names:
             parts.append(net_solid(nets[nm], f - 2 * t - k, f - t - k).common(patch_box(rect, C_BACK - 5, C_BACK + 5)))
-    footprint = carrier_outline()  # the board edge trims the tape (B3 along the top edge)
+    footprint = carrier_outline()  # the board edge trims the tape (the pads at the tab edge)
     footprint.translate(V(0, 0, -C_T / 2))
     return fuse_all(parts).common(footprint).cut(carrier_through_cuts() + pin_skins())  # (drilled)
 
@@ -1431,7 +1432,8 @@ def build():
     DUMMIES["Dummy_SuperMini"] = dummy_supermini()
     if COPPER_TRACES:
         DUMMIES["Dummy_Copper"] = dummy_copper()
-        DUMMIES["Dummy_Kapton"] = dummy_kapton()
+        if copper_layout()[1]:  # crossover patches, if any
+            DUMMIES["Dummy_Kapton"] = dummy_kapton()
     for i, n in enumerate(["Dummy_SwitchLeft", "Dummy_SwitchMiddle", "Dummy_SwitchRight"]):
         DUMMIES[n] = dummy_switch(i)
 
