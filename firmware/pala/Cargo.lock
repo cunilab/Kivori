@@ -1050,7 +1050,7 @@ dependencies = [
 
 [[package]]
 name = "kivori-asset-compiler"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "heapless 0.8.0",
  "kivori-assets",
@@ -1061,7 +1061,7 @@ dependencies = [
 
 [[package]]
 name = "kivori-assets"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "heapless 0.8.0",
  "kivori-model",
@@ -1071,7 +1071,7 @@ dependencies = [
 
 [[package]]
 name = "kivori-firmware"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "critical-section",
  "embedded-graphics-core",
@@ -1095,7 +1095,7 @@ dependencies = [
 
 [[package]]
 name = "kivori-framebuffer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "embedded-graphics-core",
  "kivori-model",
@@ -1103,14 +1103,14 @@ dependencies = [
 
 [[package]]
 name = "kivori-model"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "kivori-protocol"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "heapless 0.8.0",
  "kivori-model",
@@ -1120,7 +1120,7 @@ dependencies = [
 
 [[package]]
 name = "kivori-renderer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "embedded-graphics",
  "kivori-assets",
