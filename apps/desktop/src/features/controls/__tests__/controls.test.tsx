@@ -30,9 +30,35 @@ function Harness({ connection = null }: { connection?: ConnectionStatusDto | nul
 
 const row = (key: string): HTMLElement => screen.getByTestId(`gesture-${key}`);
 
+/** Runs an item of a row's overflow menu (Test or Reset). */
+async function rowAction(
+  user: ReturnType<typeof userEvent.setup>,
+  key: string,
+  item: string,
+): Promise<void> {
+  await user.click(within(row(key)).getByRole('button', { name: /^More actions for/ }));
+  await user.click(await screen.findByRole('menuitem', { name: item }));
+}
+
+/**
+ * Like `rowAction`, for tests that fake the interval timers: the menu opens on real timers (the
+ * queries poll), then the click that starts the countdown runs on fake ones.
+ */
+async function rowActionFake(
+  user: ReturnType<typeof userEvent.setup>,
+  key: string,
+  item: string,
+): Promise<void> {
+  vi.useRealTimers();
+  await user.click(within(row(key)).getByRole('button', { name: /^More actions for/ }));
+  const entry = await screen.findByRole('menuitem', { name: item });
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  await user.click(entry);
+}
+
 async function openPressEditor(user: ReturnType<typeof userEvent.setup>): Promise<void> {
   await screen.findByTestId('gesture-press');
-  await user.click(within(row('press')).getByRole('button', { name: 'Edit' }));
+  await user.click(within(row('press')).getByRole('button', { name: /^Edit/ }));
   await screen.findByRole('dialog');
 }
 
@@ -63,7 +89,12 @@ describe('ControlsPage', () => {
     );
     expect(row('press')).toHaveTextContent('Saved only');
     expect(row('rotate')).not.toHaveTextContent('Saved only');
-    expect(within(row('press')).getByRole('button', { name: 'Test' })).not.toBeDisabled();
+    await user.click(within(row('press')).getByRole('button', { name: /^More actions for/ }));
+    expect(await screen.findByRole('menuitem', { name: 'Test' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    await user.keyboard('{Escape}');
     page.rerender(<Harness connection={null} />);
     expect(row('press')).toHaveTextContent('Keyboard shortcut: Ctrl+Alt+K');
     expect(await ipc.getConfig()).toEqual(saved);
@@ -77,8 +108,50 @@ describe('ControlsPage', () => {
     expect(row('hold')).toHaveTextContent('Mute');
     expect(row('button1')).toHaveTextContent('Previous track');
     expect(row('button1Hold')).toHaveTextContent('Not set');
+    // The disclaimers sit in one collapsed note, not above the controls.
+    expect(screen.getByTestId('controls-notes')).not.toHaveAttribute('open');
+    await userEvent.setup().click(screen.getByText('How controls work'));
     expect(screen.getByText(/not show them on screen yet/)).toBeVisible();
+    expect(screen.getByTestId('mic-scope-note')).toBeVisible();
     expect(screen.queryByText('Custom')).not.toBeInTheDocument();
+  });
+
+  it('groups the rows under Knob and Buttons and keeps Test and Reset in an overflow menu', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await screen.findByTestId('gesture-press');
+    const knob = screen.getByRole('list', { name: 'Knob' });
+    const buttons = screen.getByRole('list', { name: 'Buttons' });
+    expect(within(knob).getAllByRole('listitem')).toHaveLength(4);
+    expect(within(buttons).getAllByRole('listitem')).toHaveLength(6);
+    // Test and Reset are not on the row itself.
+    expect(within(row('press')).queryByRole('button', { name: 'Test' })).toBeNull();
+    expect(within(row('press')).queryByRole('button', { name: 'Reset' })).toBeNull();
+    await user.click(within(row('press')).getByRole('button', { name: 'More actions for Press' }));
+    expect(await screen.findByRole('menuitem', { name: 'Test' })).toBeVisible();
+    expect(screen.getByRole('menuitem', { name: 'Reset' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+  });
+
+  it('opens the editor when the row text is clicked', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await screen.findByTestId('gesture-press');
+    await user.click(within(row('press')).getByText('Play / Pause'));
+    expect(await screen.findByRole('dialog')).toBeVisible();
+  });
+
+  it('shows a friendly status mark instead of a Confirmed / Result unknown badge', async () => {
+    render(<Harness />);
+    await screen.findByTestId('gesture-hold');
+    const mark = within(row('hold')).getByLabelText('Kivori can confirm this worked');
+    expect(mark).toHaveAttribute('data-verification', 'confirmed');
+    expect(
+      within(row('press')).getByLabelText('Kivori can’t tell whether this worked'),
+    ).toHaveAttribute('data-verification', 'unverified');
+    expect(within(row('hold')).queryByText('Result unknown')).toBeNull();
   });
 
   it('marks an edited Press as Custom and Reset brings the built-in back', async () => {
@@ -92,7 +165,7 @@ describe('ControlsPage', () => {
     await waitFor(() => expect(row('press')).toHaveTextContent('Custom'));
     expect(row('press')).toHaveTextContent('Keyboard shortcut: Ctrl+Alt+K');
 
-    await user.click(within(row('press')).getByRole('button', { name: 'Reset' }));
+    await rowAction(user, 'press', 'Reset');
     await waitFor(() => expect(row('press')).not.toHaveTextContent('Custom'));
     expect(row('press')).toHaveTextContent('Play / Pause');
   });
@@ -129,7 +202,7 @@ describe('ControlsPage', () => {
     const user = userEvent.setup();
     render(<Harness />);
     await screen.findByTestId('gesture-rotate');
-    await user.click(within(row('rotate')).getByRole('button', { name: 'Edit' }));
+    await user.click(within(row('rotate')).getByRole('button', { name: /^Edit/ }));
     await screen.findByRole('dialog');
     expect(screen.getByRole('radio', { name: /System volume/ })).toBeEnabled();
     expect(screen.getByRole('radio', { name: /Two shortcuts/ })).toBeEnabled();
@@ -143,7 +216,7 @@ describe('ControlsPage', () => {
     const user = userEvent.setup();
     render(<Harness />);
     await screen.findByTestId('gesture-hold');
-    await user.click(within(row('hold')).getByRole('button', { name: 'Test' }));
+    await rowAction(user, 'hold', 'Test');
     expect(ipc.testAction).toHaveBeenCalledWith({ kind: 'systemMute' });
     expect(
       await within(row('hold')).findByText('Confirmed', { selector: '[data-result]' }),
@@ -154,8 +227,8 @@ describe('ControlsPage', () => {
     const user = userEvent.setup();
     render(<Harness />);
     await screen.findByTestId('gesture-rotate');
-    expect(row('rotate')).toHaveTextContent('up and back down');
-    await user.click(within(row('rotate')).getByRole('button', { name: 'Test' }));
+    expect(screen.getByTestId('controls-notes')).toHaveTextContent('up and back down');
+    await rowAction(user, 'rotate', 'Test');
     expect(ipc.testRotate).toHaveBeenCalledWith({ kind: 'systemVolume' });
     expect(ipc.testAction).not.toHaveBeenCalled();
     expect(
@@ -174,8 +247,7 @@ describe('ControlsPage', () => {
     await ipc.setRotate('general', pair);
     render(<Harness />);
     await screen.findByTestId('gesture-rotate');
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
-    await user.click(within(row('rotate')).getByRole('button', { name: 'Test' }));
+    await rowActionFake(user, 'rotate', 'Test');
     expect(within(row('rotate')).getByRole('status')).toHaveTextContent('Running in 3');
     expect(ipc.testRotate).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(3000));
@@ -186,9 +258,8 @@ describe('ControlsPage', () => {
     const user = userEvent.setup();
     render(<Harness />);
     await user.click(await screen.findByRole('tab', { name: 'Browser' }));
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
 
-    await user.click(within(row('button1')).getByRole('button', { name: 'Test' }));
+    await rowActionFake(user, 'button1', 'Test');
     expect(within(row('button1')).getByRole('status')).toHaveTextContent('Running in 3');
     act(() => vi.advanceTimersByTime(2000));
     expect(within(row('button1')).getByRole('status')).toHaveTextContent('Running in 1');
@@ -198,7 +269,7 @@ describe('ControlsPage', () => {
     expect(within(row('button1')).queryByRole('status')).not.toBeInTheDocument();
 
     vi.mocked(ipc.testAction).mockClear();
-    await user.click(within(row('button1')).getByRole('button', { name: 'Test' }));
+    await rowActionFake(user, 'button1', 'Test');
     await user.click(within(row('button1')).getByRole('button', { name: 'Cancel' }));
     act(() => vi.advanceTimersByTime(5000));
     expect(ipc.testAction).not.toHaveBeenCalled();
@@ -210,7 +281,7 @@ describe('ControlsPage', () => {
     await screen.findByTestId('gesture-button2Hold');
     expect(row('button2Hold')).toHaveTextContent('Pin profile');
     expect(within(row('button2Hold')).queryByRole('button')).not.toBeInTheDocument();
-    expect(within(row('button1Hold')).getByRole('button', { name: 'Edit' })).toBeVisible();
+    expect(within(row('button1Hold')).getByRole('button', { name: /^Edit/ })).toBeVisible();
   });
 
   it('asks before resetting a profile or everything', async () => {
@@ -298,7 +369,7 @@ describe('ControlsPage macros', () => {
     expect(screen.getByTestId('macro-standup')).toBeVisible();
 
     // Unbound, it can go.
-    await user.click(within(row('press')).getByRole('button', { name: 'Reset' }));
+    await rowAction(user, 'press', 'Reset');
     await waitFor(() => expect(row('press')).not.toHaveTextContent('Macro: Standup'));
     await user.click(
       within(screen.getByTestId('macro-standup')).getByRole('button', { name: 'Delete' }),
