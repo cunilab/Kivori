@@ -1,15 +1,15 @@
 import type { ReactElement, ReactNode } from 'react';
 import { CircleCheck, LoaderCircle, TriangleAlert, Unplug } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { Button } from '@kivori/ui/components/button';
 import { Alert, AlertDescription, AlertTitle } from '@kivori/ui/components/alert';
+import { Card, CardContent, CardHeader, CardTitle } from '@kivori/ui/components/card';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@kivori/ui/components/card';
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@kivori/ui/components/empty';
 import { Skeleton } from '@kivori/ui/components/skeleton';
 import { Known } from '@/components/kivori/known';
 import { Page } from '@/components/kivori/page';
@@ -17,10 +17,9 @@ import { uiConnection, type UiConnection } from '@/hooks/use-kivori';
 import type { AppInfoDto, ConnectionStatusDto } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
 import { cn } from '@kivori/ui/lib/utils';
-import { Diagnostics } from './Diagnostics';
+import { useDevMode } from '@/lib/dev-mode';
+import { DeviceInternals } from './DeviceInternals';
 import { FirmwareUpdate } from './FirmwareUpdate';
-import { StartupCard } from './StartupCard';
-import { AppUpdates } from '../updates/AppUpdates';
 
 const t = strings.device;
 
@@ -51,104 +50,141 @@ function Row({
   );
 }
 
-/** Device: connection health, versions, and the user-initiated firmware update. */
+/** Device: everything about the hardware: who it is, how it is connected, and its firmware. */
 export function DevicePage({
   connection,
   appInfo,
-  onRunSetupAgain,
 }: {
   connection: ConnectionStatusDto | null;
   appInfo: AppInfoDto | null;
-  /** Reopens first-run setup; the "Run setup again" card is shown only when this is given. */
-  onRunSetupAgain?: () => void;
 }): ReactElement {
   const ui = uiConnection(connection);
   const device = connection?.device ?? null;
+  const devMode = useDevMode();
+  const version = (value: { major: number; minor: number } | undefined): string | null =>
+    value ? `${value.major}.${value.minor}` : null;
+  const session: [string, string | null, string][] = [
+    [strings.device.protocol, version(device?.protocolVersion), strings.why.firmware],
+    [
+      strings.device.appProtocol,
+      version(appInfo?.protocolVersion),
+      strings.developer.appInfoWaiting,
+    ],
+    [
+      strings.device.buddyRequested,
+      connection ? strings.studio.states[connection.desired] : null,
+      strings.why.buddy,
+    ],
+    [
+      strings.device.buddyReported,
+      connection?.reported ? strings.studio.states[connection.reported] : null,
+      strings.why.buddy,
+    ],
+  ];
 
   return (
     <Page title={t.title} description={t.description}>
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t.connection}</CardTitle>
-            {ui !== 'connected' ? <CardDescription>{t.notConnected}</CardDescription> : null}
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {ui === 'loading' ? (
-              <Skeleton className="h-10 w-full" />
-            ) : (
-              <StatusBanner ui={ui} retries={connection?.retryCount ?? 0} />
-            )}
-            {connection?.incompatibleReason ? (
-              <Alert variant="destructive">
-                <TriangleAlert aria-hidden="true" />
-                <AlertTitle>{strings.connection.status.incompatible}</AlertTitle>
-                <AlertDescription>{connection.incompatibleReason}</AlertDescription>
-              </Alert>
-            ) : null}
-            <dl className="divide-y">
-              <Row label={t.product} testId="device-product">
-                <Known value={device?.identity?.product} why={t.identity.why}>
-                  {(name) => name}
-                </Known>
-              </Row>
-              <Row label={t.board} testId="device-board">
-                <Known value={device?.identity?.board} why={t.identity.why}>
-                  {(name) => name}
-                </Known>
-              </Row>
-              <Row label={t.hardwareRevision} testId="device-hw-rev">
-                <Known
-                  value={device?.identity?.hwRev}
-                  why={device ? t.identity.revisionWhy : t.identity.why}
-                >
-                  {(rev) => rev}
-                </Known>
-              </Row>
-              <Row label={t.identitySource} testId="device-identity-source">
-                <Known value={device?.identity?.source} why={t.identity.why}>
-                  {(source) => t.identity.sources[source]}
-                </Known>
-              </Row>
-              <Row label={t.firmware} testId="device-firmware">
-                <Known value={device?.firmwareVersion} why={strings.why.firmware}>
-                  {(v) => v}
-                </Known>
-              </Row>
-            </dl>
-          </CardContent>
-        </Card>
-
         <div className="flex flex-col gap-4">
-          <FirmwareUpdate connected={ui === 'connected'} incompatible={ui === 'incompatible'} />
-          <StartupCard />
-          {onRunSetupAgain ? (
-            <Card size="sm">
+          <Card>
+            <CardHeader>
+              <CardTitle>{t.connection}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {ui === 'loading' ? (
+                <Skeleton className="h-10 w-full" />
+              ) : (
+                <StatusBanner ui={ui} retries={connection?.retryCount ?? 0} />
+              )}
+              {connection?.incompatibleReason ? (
+                <Alert variant="destructive">
+                  <TriangleAlert aria-hidden="true" />
+                  <AlertTitle>{strings.connection.status.incompatible}</AlertTitle>
+                  <AlertDescription>{connection.incompatibleReason}</AlertDescription>
+                </Alert>
+              ) : null}
+              {device ? (
+                <>
+                  <div className="space-y-0.5" data-testid="device-summary">
+                    <p
+                      className="text-lg font-semibold tracking-tight"
+                      data-testid="device-product"
+                    >
+                      {device.identity?.product ?? t.unnamed}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {t.firmware}{' '}
+                      <span data-testid="device-firmware">
+                        <Known value={device.firmwareVersion} why={strings.why.firmware}>
+                          {(v) => v}
+                        </Known>
+                      </span>
+                    </p>
+                  </div>
+                  <section aria-labelledby="device-details-heading" className="space-y-1">
+                    <h2
+                      id="device-details-heading"
+                      className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                    >
+                      {t.details}
+                    </h2>
+                    <dl className="divide-y">
+                      <Row label={t.board} testId="device-board">
+                        <Known value={device.identity?.board} why={t.identity.why}>
+                          {(name) => name}
+                        </Known>
+                      </Row>
+                      <Row label={t.hardwareRevision} testId="device-hw-rev">
+                        <Known value={device.identity?.hwRev} why={t.identity.revisionWhy}>
+                          {(rev) => rev}
+                        </Known>
+                      </Row>
+                      <Row label={t.identitySource} testId="device-identity-source">
+                        <Known value={device.identity?.source} why={t.identity.why}>
+                          {(source) => t.identity.sources[source]}
+                        </Known>
+                      </Row>
+                    </dl>
+                  </section>
+                </>
+              ) : ui !== 'loading' ? (
+                <Empty className="border-0 p-2" data-testid="device-empty">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <Unplug aria-hidden="true" />
+                    </EmptyMedia>
+                    <EmptyTitle>{t.empty.title}</EmptyTitle>
+                    <EmptyDescription>{t.empty.body}</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              ) : null}
+            </CardContent>
+          </Card>
+          {devMode ? (
+            <Card>
               <CardHeader>
-                <CardTitle>{strings.onboarding.runAgain.title}</CardTitle>
-                <CardDescription>{strings.onboarding.runAgain.body}</CardDescription>
+                <CardTitle role="heading" aria-level={2}>
+                  {strings.developer.session}
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <Button variant="outline" onClick={onRunSetupAgain}>
-                  {strings.onboarding.runAgain.action}
-                </Button>
+                <dl className="divide-y">
+                  {session.map(([label, value, why]) => (
+                    <Row key={label} label={label}>
+                      <Known value={value} why={why}>
+                        {(known) => known}
+                      </Known>
+                    </Row>
+                  ))}
+                </dl>
               </CardContent>
             </Card>
           ) : null}
-          <Diagnostics technical={false} connection={connection} />
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle>{t.app}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl className="divide-y">
-                <Row label={t.appVersion}>
-                  {appInfo ? appInfo.appVersion : <Skeleton className="h-4 w-16" />}
-                </Row>
-              </dl>
-              <AppUpdates />
-            </CardContent>
-          </Card>
+        </div>
+
+        <div className="flex flex-col gap-4">
+          <FirmwareUpdate connected={ui === 'connected'} incompatible={ui === 'incompatible'} />
+          {devMode ? <DeviceInternals connection={connection} /> : null}
         </div>
       </div>
     </Page>

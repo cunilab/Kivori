@@ -168,7 +168,7 @@ describe('product acceptance through the app shell', () => {
     expect(screen.getByTestId('gesture-button1')).not.toHaveTextContent('Saved only');
     await testRow(user, 'button1');
     expect(testAction).toHaveBeenCalledWith({ kind: 'previousTrack' });
-    await navigate(user, 'Developer');
+    await navigate(user, 'Settings');
     await user.click(screen.getByRole('switch', { name: 'Developer mode' }));
     await user.click(screen.getByRole('tab', { name: 'Social reactions' }));
     expect(screen.queryByRole('button', { name: 'Greet' })).not.toBeInTheDocument();
