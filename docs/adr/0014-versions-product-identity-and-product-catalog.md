@@ -50,6 +50,16 @@ Naming (2026-10-12): products get an Indonesian-spice codename as machine id (`p
 
 **As built (release start).** release-please, its config and manifest, and `release-please.yml` are gone, replaced by a manual Release workflow (`release-start.yml`, owner decision 2026-10-12): a standing release PR kept growing on every merge, while releases should happen only when the owner chooses one. The owner runs it on `main` with an app bump (`patch`, `minor`, `major`; a major below 1.0.0 gives 1.0.0) or an exact version, and a firmware bump (`none` by default) or an exact version, optionally as a dry run. `scripts/release-bump.mjs` reads the versions from `Cargo.toml` (`[workspace.package]`) and `firmware/pala/Cargo.toml`, refuses a version that is not greater or whose tag exists, and writes them; the job refreshes both lockfiles with `cargo update --workspace` (the firmware lockfile also records the shared crates, which carry the app version), commits `chore(release): vX.Y.Z` as `github-actions[bot]`, pushes it with `vX.Y.Z` (and `fw-pala-vA.B.C` when the firmware moved) in one atomic push, and calls `release.yml`. Which component changed is now the owner's call, not path rules. There are no changelog files: `scripts/release-info.mjs` builds the notes from `git log` since the previous `v*` tag, grouped as Features, Fixes, Performance and Breaking changes, with a Firmware section ("unchanged", or the commits touching the firmware folder when its version changed); the draft rule, title and firmware tags are as before, except that the title names the product by the catalog's `short_name` (`Kivori X.Y.Z · Pip firmware A.B.C`). The `bootstrap-sha` point above no longer applies.
 
+**As built (trunk-based releases, 2026-10-20).** The direct-main release push described above is
+superseded. `main` is the only permanent development branch; small PRs are squash-merged after CI
+and owner review. The manual Release button's `prepare` stage opens a temporary `release/vX.Y.Z`
+draft version PR. The owner marks it ready for review to start normal PR CI. After its squash merge and successful host, firmware and
+determinism push CI, `finalize` validates that PR and tags its exact merged commit. Only tag refs
+are pushed; `main` protection needs no automation bypass. The existing independent firmware tags,
+input guards and manual draft publication remain. No standing release PR or per-merge release is
+introduced. A versionless prepare request is refused because it cannot produce a reviewable diff.
+See [release.md](../release.md#trunk-and-version-tags).
+
 **As built (M2.8 firmware release guard, 2026-10-15).** The Release button now refuses an unchanged
 firmware version when its committed build inputs differ from the last firmware tag. The owner
 still chooses the version, but the input check replaces the earlier owner-only bump heuristic.

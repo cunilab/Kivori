@@ -15,9 +15,9 @@
 // `--firmware none` keeps the firmware; while no `fw-<product>-v*` tag exists yet, the release also
 // tags `fw-<product>-v<current>` so the firmware lineage starts tagged. Below 1.0.0 a major bump is
 // still a real major (0.4.2 -> 1.0.0). The run fails when a resulting tag already exists. When neither
-// version changes there is no version commit (`commit_needed=false`): the workflow tags the current
-// main commit as it is. --write edits the Cargo.toml files whose version changes (the lockfiles are
-// refreshed by cargo in the workflow); --outputs appends `key=value` lines for $GITHUB_OUTPUT.
+// version changes, `commit_needed=false`: finalize validates the merged version PR without edits.
+// Prepare requires a reviewable version change. --write edits changed Cargo.toml versions (lockfiles
+// are refreshed by cargo in prepare); --outputs appends `key=value` lines for $GITHUB_OUTPUT.
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';

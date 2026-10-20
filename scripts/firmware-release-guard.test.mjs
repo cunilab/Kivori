@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  existsSync,
+  chmodSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { test } from 'node:test';
@@ -783,6 +791,7 @@ function runWorkflowStep(name, root, outputs, extra = {}) {
       Object.entries(readOutputs(outputs)).map(([k, v]) => [k.toUpperCase(), v]),
     ),
     RUNNER_TEMP: dirname(outputs),
+    GITHUB_OUTPUT: outputs,
     ...extra,
   };
   return execFileSync('bash', ['-c', workflowStep(name)], {
@@ -793,13 +802,121 @@ function runWorkflowStep(name, root, outputs, extra = {}) {
   });
 }
 
-test('actual release workflow refreshes all locks, commits exact files and atomically pushes every tag', (t) => {
+(process.platform === 'win32' ? test.skip : test)(
+  'finalize CLI checks merged PR and exact main CI before tagging the reviewed SHA',
+  (t) => {
+    const root = twoProducts(t);
+    const outputs = outputFile(t);
+    const remote = join(dirname(outputs), 'origin.git');
+    execFileSync('git', ['init', '--bare', '--quiet', remote]);
+    git(root, 'remote', 'add', 'origin', remote);
+    git(root, 'push', '--quiet', 'origin', 'main', '--tags');
+    main(
+      [
+        '--app',
+        'patch',
+        '--firmware-overrides',
+        '{"pala":"patch","lamp":"patch"}',
+        '--write',
+        '--outputs',
+        outputs,
+      ],
+      root,
+    );
+    runWorkflowStep('Refresh all Cargo.lock files', root, outputs);
+    commit(root, 'chore(release): v0.1.1');
+    const sha = git(root, 'rev-parse', 'HEAD');
+    git(root, 'push', '--quiet', 'origin', 'main');
+    const pr = {
+      merged_at: '2026-10-20T00:00:00Z',
+      merge_commit_sha: sha,
+      title: 'chore(release): v0.1.1',
+      head: { ref: 'release/v0.1.1', repo: { full_name: 'test/repo' } },
+      base: { ref: 'main', repo: { full_name: 'test/repo' } },
+    };
+    const good = {
+      head_sha: sha,
+      head_branch: 'main',
+      event: 'push',
+      status: 'completed',
+      conclusion: 'success',
+    };
+    const api = {
+      pr,
+      files: JSON.parse(readOutputs(outputs).release_files),
+      runs: { host: [good], firmware: [good], determinism: [good] },
+    };
+    const bin = join(dirname(outputs), 'bin');
+    mkdirSync(bin);
+    const apiFile = join(dirname(outputs), 'api.json');
+    const gh = join(bin, 'gh');
+    writeFileSync(
+      gh,
+      `#!/usr/bin/env node
+const fs = require('node:fs');
+const data = JSON.parse(fs.readFileSync(process.env.RELEASE_API_FIXTURE, 'utf8'));
+const route = process.argv.find(x => x.startsWith('repos/'));
+if (route.includes('/files?')) process.stdout.write(data.files.join('\\n'));
+else if (route.includes('/pulls/')) process.stdout.write(JSON.stringify(data.pr));
+else {
+ const name = /workflows\\/(.+)\\.yml/.exec(route)[1];
+ process.stdout.write(JSON.stringify({ workflow_runs: data.runs[name] }));
+}
+`,
+    );
+    chmodSync(gh, 0o755);
+    const finalize = () =>
+      execFileSync(
+        'bun',
+        [fileURLToPath(new URL('./release-finalize.mjs', import.meta.url)), '--pr', '123'],
+        {
+          cwd: root,
+          encoding: 'utf8',
+          stdio: 'pipe',
+          env: {
+            ...process.env,
+            GITHUB_REPOSITORY: 'test/repo',
+            RELEASE_API_FIXTURE: apiFile,
+            PATH: `${bin}:${process.env.PATH}`,
+          },
+        },
+      );
+    for (const bad of [
+      { ...api, pr: { ...pr, merged_at: null } },
+      { ...api, runs: { ...api.runs, firmware: [{ ...good, conclusion: 'failure' }] } },
+      {
+        ...api,
+        pr: { ...pr, title: 'chore(release): v9.9.9', head: { ...pr.head, ref: 'release/v9.9.9' } },
+      },
+      { ...api, files: [...api.files, 'scripts/evil.mjs'] },
+    ]) {
+      writeFileSync(apiFile, JSON.stringify(bad));
+      assert.throws(finalize);
+      assert.equal(git(remote, 'tag', '--list', 'v0.1.1', 'fw-pala-v0.1.1', 'fw-lamp-v0.4.1'), '');
+    }
+    // Newer main work must not change the commit being released.
+    git(root, 'checkout', '--quiet', 'main');
+    put(root, 'README.md', 'Later main work.\n');
+    commit(root, 'docs: later work');
+    const newerMain = git(root, 'rev-parse', 'HEAD');
+    git(root, 'push', '--quiet', 'origin', 'main');
+    writeFileSync(apiFile, JSON.stringify(api));
+    finalize();
+    for (const tag of ['v0.1.1', 'fw-pala-v0.1.1', 'fw-lamp-v0.4.1'])
+      assert.equal(git(remote, 'rev-parse', `${tag}^{commit}`), sha);
+    assert.equal(git(remote, 'rev-parse', 'main'), newerMain);
+    finalize(); // Same-SHA retry is safe and doesn't move tags.
+  },
+);
+
+test('prepare refreshes all locks and pushes only a version branch with exact files', (t) => {
   const root = twoProducts(t);
   const outputs = outputFile(t);
   const remote = join(dirname(outputs), 'origin.git');
   execFileSync('git', ['init', '--bare', '--quiet', remote]);
   git(root, 'remote', 'add', 'origin', remote);
   git(root, 'push', '--quiet', 'origin', 'main');
+  const before = git(root, 'rev-parse', 'HEAD');
   main(
     [
       '--app',
@@ -818,18 +935,18 @@ test('actual release workflow refreshes all locks, commits exact files and atomi
       readFileSync(join(root, crate, 'Cargo.lock'), 'utf8'),
       /name = "test-shared"\nversion = "0.1.1"/,
     );
-  runWorkflowStep('Commit, tag and push', root, outputs);
+  runWorkflowStep('Commit version branch', root, outputs);
   assert.equal(git(root, 'status', '--porcelain'), '');
-  assert.equal(git(remote, 'rev-parse', 'main'), git(root, 'rev-parse', 'HEAD'));
-  for (const tag of ['v0.1.1', 'fw-pala-v0.1.1', 'fw-lamp-v0.5.0'])
-    assert.equal(git(remote, 'rev-parse', `${tag}^{commit}`), git(root, 'rev-parse', 'HEAD'));
+  assert.equal(git(remote, 'rev-parse', 'main'), before);
+  assert.equal(git(remote, 'rev-parse', 'release/v0.1.1'), git(root, 'rev-parse', 'HEAD'));
+  assert.equal(git(remote, 'tag', '--list'), '');
   const changed = git(root, 'diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD')
     .split('\n')
     .sort();
   assert.deepEqual(changed, JSON.parse(readOutputs(outputs).release_files).sort());
 });
 
-test('actual first-release workflow tags without a version commit', (t) => {
+test('prepare refuses a versionless first-release PR without pushing anything', (t) => {
   const root = twoProducts(t, { tagged: false });
   const before = git(root, 'rev-parse', 'HEAD');
   const outputs = outputFile(t);
@@ -838,13 +955,16 @@ test('actual first-release workflow tags without a version commit', (t) => {
   git(root, 'remote', 'add', 'origin', remote);
   git(root, 'push', '--quiet', 'origin', 'main');
   main(['--app', 'none', '--write', '--outputs', outputs], root);
-  runWorkflowStep('Commit, tag and push', root, outputs);
+  assert.throws(
+    () => runWorkflowStep('Commit version branch', root, outputs),
+    /No version changes/,
+  );
   assert.equal(git(root, 'rev-parse', 'HEAD'), before);
-  for (const tag of ['v0.1.0', 'fw-pala-v0.1.0', 'fw-lamp-v0.4.0'])
-    assert.equal(git(remote, 'rev-parse', `${tag}^{commit}`), before);
+  assert.equal(git(remote, 'tag', '--list'), '');
+  assert.equal(git(remote, 'branch', '--list', 'release/*'), '');
 });
 
-test('unexpected lock-refresh edits are refused and remote tag races push nothing', (t) => {
+test('unexpected lock-refresh edits and an existing release branch are refused', (t) => {
   const root = twoProducts(t);
   const outputs = outputFile(t);
   const remote = join(dirname(outputs), 'origin.git');
@@ -871,10 +991,10 @@ test('unexpected lock-refresh edits are refused and remote tag races push nothin
   );
   rmSync(join(root, 'surprise.txt'));
   runWorkflowStep('Refresh all Cargo.lock files', root, outputs);
-  git(remote, 'update-ref', 'refs/tags/fw-lamp-v0.4.1', before);
+  git(remote, 'update-ref', 'refs/heads/release/v0.1.1', before);
   assert.throws(
-    () => runWorkflowStep('Commit, tag and push', root, outputs),
-    /Push to main rejected/,
+    () => runWorkflowStep('Commit version branch', root, outputs),
+    /release branch already exists/,
   );
   assert.equal(git(remote, 'rev-parse', 'main'), before);
   assert.equal(git(remote, 'tag', '--list', 'v0.1.1', 'fw-pala-v0.1.1'), '');

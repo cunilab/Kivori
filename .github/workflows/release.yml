@@ -42,6 +42,7 @@ on:
         type: boolean
         default: false
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - '.github/workflows/release.yml'
       - 'scripts/release-info.mjs'
@@ -82,7 +83,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # When called, github.ref is the commit the Release button started from, before its bump.
+          # Build the exact finalized release tag, not the workflow dispatch's moving main ref.
           ref: ${{ inputs.tag || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: oven-sh/setup-bun@v2
