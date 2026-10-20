@@ -44,6 +44,12 @@ async function navigate(user: ReturnType<typeof userEvent.setup>, name: string):
 
 const gesture = (name: string) => within(screen.getByTestId(`gesture-${name}`));
 
+/** Runs "Test" from a control row's overflow menu. */
+async function testRow(user: ReturnType<typeof userEvent.setup>, name: string): Promise<void> {
+  await user.click(gesture(name).getByRole('button', { name: /^More actions for/ }));
+  await user.click(await screen.findByRole('menuitem', { name: 'Test' }));
+}
+
 beforeEach(async () => {
   localStorage.clear();
   history.replaceState({}, '', '/');
@@ -71,18 +77,18 @@ describe('product acceptance through the app shell', () => {
     );
     await navigate(user, 'Controls');
     await screen.findByTestId('gesture-press');
-    await user.click(gesture('press').getByRole('button', { name: 'Edit' }));
+    await user.click(gesture('press').getByRole('button', { name: /^Edit/ }));
     await user.click(await screen.findByRole('radio', { name: /^Mute/ }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.getByTestId('gesture-press')).toHaveTextContent('Custom'));
     const saved = await ipc.getConfig();
-    await user.click(gesture('press').getByRole('button', { name: 'Test' }));
+    await testRow(user, 'press');
     expect(testAction).toHaveBeenCalledWith({ kind: 'systemMute' });
 
     publish(dial(['productIdentityV1', 'physicalInputV1']));
     expect(screen.getByTestId('gesture-press')).toHaveTextContent('Saved only');
     expect(screen.getByTestId('gesture-rotate')).not.toHaveTextContent('Saved only');
-    await user.click(gesture('rotate').getByRole('button', { name: 'Test' }));
+    await testRow(user, 'rotate');
     expect(testRotate).toHaveBeenCalledWith({ kind: 'systemVolume' });
     await navigate(user, 'Home');
     expect(screen.getByRole('img', { name: 'Acceptance dial · KV-T2' })).toBeInTheDocument();
@@ -152,7 +158,7 @@ describe('product acceptance through the app shell', () => {
     await navigate(user, 'Controls');
     expect(await screen.findByTestId('gesture-press')).toHaveTextContent('Saved only');
     expect(screen.getByTestId('gesture-button1')).not.toHaveTextContent('Saved only');
-    await user.click(gesture('button1').getByRole('button', { name: 'Test' }));
+    await testRow(user, 'button1');
     expect(testAction).toHaveBeenCalledWith({ kind: 'previousTrack' });
     await navigate(user, 'Developer');
     await user.click(screen.getByRole('switch', { name: 'Developer mode' }));
