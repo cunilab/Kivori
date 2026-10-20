@@ -133,7 +133,7 @@ different filaments, so no filament change mid-print is needed.
 | 3 × 12×12 mm push switch, 7.3 mm tall | Legs go through the printed PCB. |
 | Enamelled copper wire, 0.3 mm, about 1 m | The wiring. |
 | 400-grit sandpaper or a craft knife | Scraping the enamel off the wire ends (no heat). |
-| Kapton (or masking) tape, a few cm | Holding the wire down in long channels. |
+| Kapton (polyimide) tape, a few cm | Five 2 × 2 mm squares at the wire crossings; short strips also hold the wire down in long channels. |
 | 4 × M2 × 12 self-tapping screws, pan head up to Ø4 | From under the plinth into the face posts. |
 
 The SuperMini and display arrive with their header pins soldered (or have them soldered once);
@@ -195,7 +195,12 @@ the encoder's GND and + pins each take two wires (two windings, one above the ot
 runs of one net leave a pin together they share a channel (0.8 mm wide: room for two wires).
 The enamel insulates, so runs may cross. There are five crossings: 3V3 under GND twice (at the
 top of the lanes and below them), and B3 under B1, B2 and GND near the switches. At each, the
-lower channel dips to 1.3 mm deep for 4 mm so the two wires don't press on each other. Every bend is rounded (1.5 mm radius at the wire) so the wire does not kink.
+lower channel dips to 1.3 mm deep for 4 mm, and a 2 × 2 mm square of Kapton tape goes over the
+lower wire in a small flat pocket, so the upper wire crosses on the tape. The enamel alone
+insulates, but a wire nicked while it is laid could short at a crossing; the Kapton rules that
+out. In the FreeCAD model the Kapton squares are `Dummy_Kapton` (yellow), and the lower wire is
+drawn down in its dip. Where two runs of one net share a channel (GND and 3V3 next to the
+encoder), the two wires lie side by side; they need no tape. Every bend is rounded (1.5 mm radius at the wire) so the wire does not kink.
 
 The channels are 0.8 × 0.7 mm. The wire lies loose in them, so hold long stretches down with
 short pieces of Kapton or masking tape across the channel.
@@ -227,7 +232,10 @@ turning it, or scrape it with a blade held at 90°, until it is bright salmon-pi
 check from the pin to the far end of the wire: under 1 Ω.
 
 Order: wind one end on its pin, lay the wire along its channel (tape it), cut it with 12 mm to
-spare, scrape that end, then make the other joint. Do the encoder runs last (assembly step 5).
+spare, scrape that end, then make the other joint. At a crossing, lay the lower run first (down
+in the dip), stick the Kapton square over it in its pocket, then lay the upper run across. The
+lower runs are 3V3 (both of its crossings with GND) and B3 (under B1, B2 and GND), so lay those
+first. Do the encoder runs last (assembly step 5).
 
 ## Wiring
 

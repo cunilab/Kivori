@@ -209,6 +209,9 @@ WIRE_D = 0.3                # wire diameter (stand-in)
 WIRE_CH = (0.8, 0.7)        # channel width, depth: room for two wires side by side where runs share it
 WIRE_BEND_R = 1.5           # channel centre-line radius at every bend (a sharp corner kinks the wire)
 WIRE_CROSS = (4.0, 1.3)     # where two runs cross, the lower channel dips: length, depth
+KAPTON = (2.0, 0.06)        # Kapton square over the lower wire at each crossing: side, thickness. It
+                            # lies in a pocket as deep as the channel plus the tape, so the upper
+                            # wire runs on over it at its own channel depth
 WIRE_RIDGE_MIN = 0.7        # plastic between two channels, or a channel and a hole, pin row or the edge
 WRAP_TURNS = 4              # turns round each header pin (1.2 mm of pin)
 WRAP_OD = 1.5               # the turns round a 0.64 mm square pin, outside
@@ -941,6 +944,7 @@ def wire_cuts():
         L = WIRE_CROSS[0]
         cuts.append(place(box(-L / 2, -w / 2, z0, L / 2, w / 2, C_BACK + WIRE_CROSS[1]), x, y,
                           math.degrees(math.atan2(dy, dx))))
+    cuts += kapton_squares(z0, C_BACK + dep + KAPTON[1])  # a flat seat for the Kapton square
     for ((x, y), (dx, dy)) in leg_ends():  # the leg folds back along the arriving wire
         a = math.degrees(math.atan2(dy, dx))
         cuts.append(place(box(0, -LEG_POCKET[0] / 2, z0, LEG_POCKET[1], LEG_POCKET[0] / 2, C_BACK + dep), x, y, a))
@@ -1162,18 +1166,75 @@ def dummy_supermini():
     return fuse_all([pcb, usb, chip] + btns + hdr + pins)
 
 
+def shared_offsets():
+    """Side-by-side offsets for runs of one net that share a channel: {(run, segment): mm}, one
+    wire to each side of the channel's centre line."""
+    runs = wire_layout()
+    segs = [(k, i, a, b) for k, (_, pts) in enumerate(runs) for i, (a, b) in enumerate(zip(pts, pts[1:]))]
+    off = {}
+    for n, (k1, i1, a1, b1) in enumerate(segs):
+        for (k2, i2, a2, b2) in segs[n + 1:]:
+            if k1 == k2 or runs[k1][0] != runs[k2][0]:
+                continue
+            d1 = (b1[0] - a1[0], b1[1] - a1[1])
+            L1 = math.hypot(*d1)
+            u = (d1[0] / L1, d1[1] / L1)
+            cross = lambda p: (p[0] - a1[0]) * u[1] - (p[1] - a1[1]) * u[0]
+            if abs(cross(a2)) > 1e-6 or abs(cross(b2)) > 1e-6:
+                continue  # not on the same line
+            t = sorted([(a2[0] - a1[0]) * u[0] + (a2[1] - a1[1]) * u[1], (b2[0] - a1[0]) * u[0] + (b2[1] - a1[1]) * u[1]])
+            if min(L1, t[1]) - max(0.0, t[0]) > 0.5:  # they overlap: one wire each side
+                s = (WIRE_CH[0] - WIRE_D) / 2 - 0.05
+                off[(k1, i1)], off[(k2, i2)] = -s, s
+    return off
+
+
+def offset_run(pts, k, off):
+    """A run's points with its shared segments moved sideways (see shared_offsets)."""
+    P = [list(p) for p in pts]
+    for i, (a, b) in enumerate(zip(pts, pts[1:])):
+        d = off.get((k, i))
+        if d:
+            L = math.hypot(b[0] - a[0], b[1] - a[1])
+            nx, ny = -(b[1] - a[1]) / L * d, (b[0] - a[0]) / L * d
+            for p in (P[i], P[i + 1]):
+                p[0] += nx
+                p[1] += ny
+    return [tuple(p) for p in P]
+
+
 def dummy_wire():
     """The wire: in the bottom of each channel, wound round each header pin it ends on, in open
-    air just behind the printed PCB (at the encoder, in the gap to the HW-040)."""
+    air just behind the printed PCB (at the encoder, in the gap to the HW-040). Where two runs
+    cross, the lower one dips into the deeper channel under the Kapton; where two runs of one net
+    share a channel, they lie side by side."""
     zc = C_BACK + WIRE_CH[1] - WIRE_D / 2
+    zd = C_BACK + WIRE_CROSS[1] - WIRE_D / 2       # in the dip under a crossing
+    r = WIRE_D / 2
+    off = shared_offsets()
+    dips = {}
+    for (x, y, _, kb, d) in wire_crossings():
+        dips.setdefault(kb, []).append((x, y, d))
     parts = []
-    for _, pts in wire_layout():
-        path = Part.Wire(run_edges(pts, zc))
+    for k, (_, pts) in enumerate(wire_layout()):
+        P = offset_run(pts, k, off)
+        path = Part.Wire(run_edges(P, zc))
         e0 = path.OrderedEdges[0]
-        d = e0.tangentAt(e0.FirstParameter)
-        prof = Part.Wire(Part.makeCircle(WIRE_D / 2, e0.Vertexes[0].Point, d))
+        prof = Part.Wire(Part.makeCircle(r, e0.Vertexes[0].Point, e0.tangentAt(e0.FirstParameter)))
         # it leaves the channel at the pin (down onto the turns), not through it
-        parts.append(path.makePipeShell([prof], True, True).cut([cyl(1.0, x, y, zc - 1, zc + 1) for (x, y) in (pts[0], pts[-1])]))
+        w = path.makePipeShell([prof], True, True).cut([cyl(1.0, x, y, zc - 1, zc + 1) for (x, y) in (pts[0], pts[-1])])
+        for (x, y, (dx, dy)) in dips.get(k, []):
+            # the segment's sideways offset, so the dip lines up with the wire
+            j = min(range(len(pts) - 1), key=lambda i: Part.LineSegment(V(*pts[i], 0), V(*pts[i + 1], 0)).toShape()
+                    .distToShape(Part.Vertex(V(x, y, 0)))[0])
+            px, py = x + (P[j][0] - pts[j][0]), y + (P[j][1] - pts[j][1])
+            h = WIRE_CROSS[0] / 2
+            w = w.cut(place(box(-h, -1, zc - 1, h, 1, zc + 1), px, py, math.degrees(math.atan2(dy, dx))))
+            pp = [V(px + dx * s, py + dy * s, z) for (s, z) in ((-h, zc), (-h + 0.8, zd), (h - 0.8, zd), (h, zc))]
+            for a, b in zip(pp, pp[1:]):
+                w = w.fuse(Part.makeCylinder(r, (b - a).Length, a, b - a))
+            w = w.fuse([Part.makeSphere(r, q) for q in pp])
+        parts.append(w)
     ring = lambda x, y, z0, z1: cyl(WRAP_OD, x, y, z0, z1).cut(cyl(0.95, x, y, z0 - 1, z1 + 1))
     tall = WRAP_TURNS * WIRE_D
     wrapped = set()
@@ -1185,7 +1246,20 @@ def dummy_wire():
             parts.append(ring(x, y, C_BACK - 0.3 - tall, C_BACK - 0.3))
     for (x, y) in enc_pins.values():
         parts.append(ring(x, y, C_BACK - 0.5 - tall, C_BACK - 0.5))
-    return Part.makeCompound(parts)  # (runs sharing a channel overlap: no fuse)
+    return Part.makeCompound(parts)
+
+
+def kapton_squares(z0, z1):
+    """A Kapton square at each crossing, square to the lower run, from z0 to z1."""
+    s = KAPTON[0] / 2
+    return [place(box(-s, -s, z0, s, s, z1), x, y, math.degrees(math.atan2(dy, dx)))
+            for (x, y, _, _, (dx, dy)) in wire_crossings()]
+
+
+def dummy_kapton():
+    """The Kapton squares, on the floor of their pockets, between the lower and the upper wire."""
+    z = C_BACK + WIRE_CH[1]
+    return Part.makeCompound(kapton_squares(z, z + KAPTON[1]))
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1200,7 +1274,7 @@ COLORS = {  # two-tone: light matte shell; black visor, knob and plinth; warm ac
     "LightRing": (0.35, 0.85, 1.0),
     "Carrier": (0.12, 0.45, 0.25), "Knob": (0.10, 0.10, 0.11), "Cap": (0.95, 0.50, 0.18),
     "Dummy": (0.30, 0.45, 0.85), "RubberDots": (0.20, 0.20, 0.22),
-    "Dummy_Wire": (0.85, 0.45, 0.20),
+    "Dummy_Wire": (0.85, 0.45, 0.20), "Dummy_Kapton": (0.95, 0.70, 0.15),
 }
 
 
@@ -1221,6 +1295,8 @@ def build():
     DUMMIES["Dummy_Display"] = dummy_display()
     DUMMIES["Dummy_SuperMini"] = dummy_supermini()
     DUMMIES["Dummy_Wire"] = dummy_wire()
+    if wire_crossings():
+        DUMMIES["Dummy_Kapton"] = dummy_kapton()
     for i, n in enumerate(["Dummy_SwitchLeft", "Dummy_SwitchMiddle", "Dummy_SwitchRight"]):
         DUMMIES[n] = dummy_switch(i)
 
