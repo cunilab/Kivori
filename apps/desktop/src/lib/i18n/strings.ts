@@ -838,6 +838,14 @@ export const strings = {
     done: {
       title: 'You are all set',
       body: 'Choose Finish to complete setup. You can run it again from the Device page.',
+      openTitle: 'Almost done',
+      openBody:
+        'You can finish now and do these later. Run setup again from the Device page at any time.',
+      open: {
+        plug: 'Plug in your Kivori. It connects by itself whenever you do.',
+        permissions:
+          'Allow Accessibility so shortcuts and media keys work. Switch Kivori on in System Settings, Privacy & Security, Accessibility.',
+      },
       finish: 'Finish',
       finishing: 'Finishing…',
       launchFailed:

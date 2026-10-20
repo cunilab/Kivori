@@ -225,6 +225,21 @@ describe('finishing', () => {
     expect(mockGetStartupSettings().launchAtLogin).toBe(false);
   });
 
+  it('lists a skipped step that is still open instead of claiming all is set', async () => {
+    scenario('disconnected');
+    const user = userEvent.setup();
+    render(<Harness onComplete={() => Promise.resolve()} />);
+    await next(user, 'Get started');
+    await next(user, 'Skip this step');
+    await next(user);
+    await next(user);
+    await heading('Almost done');
+    expect(screen.getByTestId('onboarding-open-steps')).toHaveTextContent('Plug in your Kivori');
+    const bars = screen.getByTestId('onboarding-progress').querySelectorAll('li');
+    expect(bars[1]).toHaveAttribute('data-pending', 'true');
+    expect(screen.getByRole('button', { name: 'Finish' })).toBeEnabled();
+  });
+
   it('stays on the last step with an error when setup cannot be saved', async () => {
     scenario('disconnected');
     const user = userEvent.setup();
