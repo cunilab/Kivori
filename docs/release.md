@@ -1,5 +1,22 @@
 # Cutting a release
 
+## How to release (checklist)
+
+1. GitHub, Actions, **Release**, Run workflow on `main`: `stage=prepare`, pick `app_bump` (and a
+   firmware bump if firmware changed), tick `dry_run`. Check the versions and notes in the run summary.
+2. Run it again without `dry_run`. It opens a draft PR `chore(release): vX.Y.Z`.
+3. Mark that PR **Ready for review** (this starts CI). When it is green, squash-merge it.
+4. Wait until host, firmware and determinism CI pass on `main` for that merge commit.
+5. Run **Release** again: `stage=finalize`, `release_pr=<that PR number>`, `dry_run` off. It tags the
+   commit and builds a draft release.
+6. Releases: check the draft and its notes, then **Publish** (never as a pre-release). For a beta,
+   do the [validation.md](./validation.md) Phase 10 rows on a real machine first.
+
+Hotfix: merge the fix to `main` like any change, then release as above. The details of every step
+follow below.
+
+## How it works
+
 Releases start only when you decide. There is no standing release PR, and merging ordinary work
 never cuts a release. `.github/workflows/release-start.yml` (the **Release** button) has two stages:
 `prepare` opens an on-demand version PR; `finalize` tags its exact merged, CI-green commit.
