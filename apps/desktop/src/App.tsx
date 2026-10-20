@@ -39,6 +39,7 @@ import {
   SidebarProvider,
   SidebarRail,
   SidebarTrigger,
+  useSidebar,
 } from '@kivori/ui/components/sidebar';
 import { Toaster } from '@kivori/ui/components/sonner';
 import { TooltipProvider } from '@kivori/ui/components/tooltip';
@@ -80,6 +81,34 @@ const SECONDARY: { id: PageId; label: string; Icon: LucideIcon }[] = [
   { id: 'device', label: nav.device, Icon: Cpu },
   { id: 'developer', label: nav.developer, Icon: Wrench },
 ];
+
+function NavigationItem({
+  entry: { id, label, Icon },
+  page,
+  onNavigate,
+}: {
+  entry: (typeof PRIMARY)[number];
+  page: PageId;
+  onNavigate: (page: PageId) => void;
+}): ReactElement {
+  const { setOpenMobile } = useSidebar();
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        isActive={page === id}
+        aria-current={page === id ? 'page' : undefined}
+        tooltip={label}
+        onClick={() => {
+          setOpenMobile(false);
+          onNavigate(id);
+        }}
+      >
+        <Icon aria-hidden="true" />
+        <span>{label}</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
 
 const DOT: Record<UiConnection, string> = {
   loading: 'bg-muted-foreground/40',
@@ -217,18 +246,8 @@ export function App(): ReactElement {
     );
   };
 
-  const item = ({ id, label, Icon }: { id: PageId; label: string; Icon: LucideIcon }) => (
-    <SidebarMenuItem key={id}>
-      <SidebarMenuButton
-        isActive={page === id}
-        aria-current={page === id ? 'page' : undefined}
-        tooltip={label}
-        onClick={() => go(id)}
-      >
-        <Icon aria-hidden="true" />
-        <span>{label}</span>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
+  const item = (entry: (typeof PRIMARY)[number]) => (
+    <NavigationItem key={entry.id} entry={entry} page={page} onNavigate={go} />
   );
 
   const allItems = [...PRIMARY, ...SECONDARY];
