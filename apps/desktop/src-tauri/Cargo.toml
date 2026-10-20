@@ -48,7 +48,7 @@ serde_json = "1"
 toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-getrandom = "0.2"  # session-nonce freshness (Slice 002). NOT a security credential; not a network crate.
+getrandom = "0.4"  # session-nonce freshness (Slice 002). NOT a security credential; not a network crate.
 
 [target.'cfg(any(windows, target_os = "macos"))'.dependencies]
 # Media keys and keyboard shortcuts (M1): SendInput on Windows, Quartz events on macOS. Linux
