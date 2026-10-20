@@ -329,8 +329,9 @@ describe('ControlsPage tabs', () => {
         .map((tab) => tab.textContent),
     ).toEqual(['Controls', 'Macros', 'Reset & help']);
     // The first screen is controls: the profile chips and the rows, no explanations or resets.
-    expect(screen.getByRole('tablist', { name: 'Profile' })).toBeVisible();
-    expect(screen.getByTestId('gesture-press')).toBeVisible();
+    // The profile chips wait for the config, which loads after the page frame.
+    expect(await screen.findByRole('tablist', { name: 'Profile' })).toBeVisible();
+    expect(await screen.findByTestId('gesture-press')).toBeVisible();
     expect(screen.queryByTestId('macros')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Reset everything' })).not.toBeInTheDocument();
 
@@ -339,7 +340,7 @@ describe('ControlsPage tabs', () => {
     await waitFor(() => expect(screen.queryByTestId('gesture-press')).not.toBeInTheDocument());
 
     await user.click(within(tabs).getByRole('tab', { name: 'Reset & help' }));
-    expect(screen.getByRole('button', { name: 'Reset everything' })).toBeVisible();
+    expect(await screen.findByRole('button', { name: 'Reset everything' })).toBeVisible();
     expect(screen.getByText('How Kivori reports results')).toBeVisible();
     expect(screen.getByText('Restart Kivori')).toBeVisible();
   });
