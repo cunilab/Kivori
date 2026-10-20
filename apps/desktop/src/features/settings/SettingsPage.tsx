@@ -1,5 +1,14 @@
 import type { ReactElement } from 'react';
-import { Monitor, Moon, Sun, type LucideIcon } from 'lucide-react';
+import {
+  Code,
+  Download,
+  Monitor,
+  Moon,
+  SlidersHorizontal,
+  Stethoscope,
+  Sun,
+  type LucideIcon,
+} from 'lucide-react';
 import { Button } from '@kivori/ui/components/button';
 import {
   Card,
@@ -11,6 +20,7 @@ import {
 import { RadioGroup, RadioGroupItem } from '@kivori/ui/components/radio-group';
 import { Skeleton } from '@kivori/ui/components/skeleton';
 import { Page } from '@/components/kivori/page';
+import { PageTabs, type PageTab } from '@/components/kivori/page-tabs';
 import { useDevMode } from '@/lib/dev-mode';
 import type { AppInfoDto, ConnectionStatusDto } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
@@ -77,45 +87,72 @@ export function SettingsPage({
   onRunSetupAgain: () => void;
 }): ReactElement {
   const devMode = useDevMode();
+  const tabs: PageTab[] = [
+    {
+      value: 'general',
+      label: t.tabs.general,
+      Icon: SlidersHorizontal,
+      content: (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="flex flex-col gap-4">
+            <Appearance />
+            <StartupCard />
+          </div>
+          <div className="flex flex-col gap-4">
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle>{strings.onboarding.runAgain.title}</CardTitle>
+                <CardDescription>{strings.onboarding.runAgain.body}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button variant="outline" onClick={onRunSetupAgain}>
+                  {strings.onboarding.runAgain.action}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      ),
+    },
+    {
+      value: 'updates',
+      label: t.tabs.updates,
+      Icon: Download,
+      content: (
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle>{t.updates}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <dl className="divide-y">
+              <div className="flex items-center justify-between gap-4 py-2.5 text-sm">
+                <dt className="text-muted-foreground">{strings.device.app}</dt>
+                <dd className="text-right font-medium" data-testid="app-version">
+                  {appInfo ? appInfo.appVersion : <Skeleton className="h-4 w-16" />}
+                </dd>
+              </div>
+            </dl>
+            <AppUpdates />
+          </CardContent>
+        </Card>
+      ),
+    },
+    {
+      value: 'diagnostics',
+      label: t.tabs.diagnostics,
+      Icon: Stethoscope,
+      content: <Diagnostics technical={devMode} connection={connection} />,
+    },
+    {
+      value: 'developer',
+      label: t.tabs.developer,
+      Icon: Code,
+      content: <DeveloperTools connection={connection} appInfo={appInfo} />,
+    },
+  ];
   return (
     <Page title={t.title} description={t.description}>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="flex flex-col gap-4">
-          <Appearance />
-          <StartupCard />
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle>{t.updates}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl className="divide-y">
-                <div className="flex items-center justify-between gap-4 py-2.5 text-sm">
-                  <dt className="text-muted-foreground">{strings.device.app}</dt>
-                  <dd className="text-right font-medium" data-testid="app-version">
-                    {appInfo ? appInfo.appVersion : <Skeleton className="h-4 w-16" />}
-                  </dd>
-                </div>
-              </dl>
-              <AppUpdates />
-            </CardContent>
-          </Card>
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle>{strings.onboarding.runAgain.title}</CardTitle>
-              <CardDescription>{strings.onboarding.runAgain.body}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button variant="outline" onClick={onRunSetupAgain}>
-                {strings.onboarding.runAgain.action}
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-        <div className="flex flex-col gap-4">
-          <Diagnostics technical={devMode} connection={connection} />
-        </div>
-      </div>
-      <DeveloperTools connection={connection} appInfo={appInfo} />
+      <PageTabs id="settings" label={t.tabsLabel} tabs={tabs} />
     </Page>
   );
 }

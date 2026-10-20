@@ -27,12 +27,22 @@ export const strings = {
     },
     updates: 'Updates',
     support: 'Diagnostics',
+    tabsLabel: 'Settings sections',
+    tabs: {
+      general: 'General',
+      updates: 'Updates',
+      diagnostics: 'Diagnostics',
+      developer: 'Developer',
+    },
   },
   developer: {
     title: 'Developer mode',
     toggleHint:
       'Off by default. Enable technical details, activity, internals and reaction tools on this computer.',
     tools: 'Developer tools',
+    offTitle: 'What developer mode shows',
+    offBody:
+      'Turn it on to reveal an activity log, device internals, protocol details and reaction tools. It changes nothing about how your Kivori works.',
     session: 'Protocol and state',
     appInfoWaiting: 'Waiting for app information.',
     reactionsUnavailable: 'Reactions are unavailable for the current device session.',
@@ -502,6 +512,9 @@ export const strings = {
   device: {
     title: 'Device',
     description: 'Your Kivori: connection, details and firmware.',
+    tabsLabel: 'Device sections',
+    tabs: { overview: 'Overview', firmware: 'Firmware', internals: 'Internals' },
+    sessionDeviceOnly: 'Connect your Kivori to see its protocol and reported state.',
     connection: 'Connection',
     details: 'Details',
     empty: {
@@ -601,6 +614,7 @@ export const strings = {
     copied: 'Copied',
     copyFailed: 'Could not copy',
     loadFailed: 'Diagnostics are unavailable right now.',
+    deviceOnly: 'Connect your Kivori to see device details.',
     groups: {
       versions: 'Versions',
       connection: 'Connection',
