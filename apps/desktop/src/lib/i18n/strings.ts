@@ -5,6 +5,7 @@ export const strings = {
   appTitle: 'Kivori',
   tagline: 'Desk controller',
   unknown: '—',
+  unknownValue: 'Unknown',
   navigation: {
     label: 'Main navigation',
     home: 'Home',

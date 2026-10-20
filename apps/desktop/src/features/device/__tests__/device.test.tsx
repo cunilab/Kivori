@@ -104,7 +104,7 @@ describe('DevicePage', () => {
     );
     expect(screen.getByTestId('device-product')).toHaveTextContent('Kivori Pip');
     expect(screen.getByTestId('device-board')).toHaveTextContent('C3 SuperMini');
-    expect(screen.getByTestId('device-hw-rev')).toHaveTextContent(/^—$/);
+    expect(screen.getByTestId('device-hw-rev')).toHaveTextContent(/^Unknown$/);
     expect(screen.getByTestId('device-identity-source')).toHaveTextContent('Firmware build');
   });
 
@@ -143,7 +143,7 @@ describe('DevicePage', () => {
     );
     expect(screen.queryByTestId('device-firmware')).not.toBeInTheDocument();
     expect(screen.queryByTestId('device-board')).not.toBeInTheDocument();
-    expect(screen.queryByText('—')).not.toBeInTheDocument();
+    expect(screen.queryByText('Unknown')).not.toBeInTheDocument();
   });
 
   it('surfaces an incompatible reason', () => {

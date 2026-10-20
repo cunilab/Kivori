@@ -99,10 +99,10 @@ describe('HomePage', () => {
     expect(screen.getByTestId('desk-volume')).toHaveAttribute('data-tone', 'normal');
   });
 
-  it('renders every null as an explicit "—" with a reason, never 0', async () => {
+  it('renders every null as an explicit "Unknown" with a reason, never 0', async () => {
     render(view(desk()));
     for (const id of ['desk-volume', 'desk-cpu', 'desk-ram', 'desk-media', 'desk-title']) {
-      expect(screen.getByTestId(id)).toHaveTextContent(/^—$/);
+      expect(screen.getByTestId(id)).toHaveTextContent(/^Unknown$/);
     }
     expect(screen.queryByText('0%')).not.toBeInTheDocument();
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();

@@ -101,7 +101,7 @@ describe('Diagnostics card', () => {
     expect(screen.getByRole('button', { name: 'Copy diagnostics' })).toBeEnabled();
     // product, board, revision, identity source, firmware, negotiated minor, hash, connected for,
     // last reply, rtt, uptime, memory
-    expect(screen.getAllByLabelText(/^— /)).toHaveLength(12);
+    expect(screen.getAllByLabelText(/^Unknown\. /)).toHaveLength(12);
     expect(screen.queryByText('0 ms')).not.toBeInTheDocument();
   });
 
@@ -125,7 +125,7 @@ describe('Diagnostics card', () => {
     expect(screen.getByTestId('diag-product')).toHaveTextContent('Kivori Pip');
     expect(screen.getByTestId('diag-board')).toHaveTextContent('C3 SuperMini');
     expect(screen.getByTestId('diag-identity-source')).toHaveTextContent('Not reported');
-    expect(screen.getByTestId('diag-hw-rev')).toHaveTextContent('—');
+    expect(screen.getByTestId('diag-hw-rev')).toHaveTextContent('Unknown');
     expect(screen.getByLabelText(/provisioned with a hardware revision/)).toBeInTheDocument();
   });
 
