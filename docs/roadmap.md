@@ -403,10 +403,14 @@ completion and physical acceptance are recorded separately in [validation.md](./
   notification failure, recovery and immediate state invalidation. Both notification subscriptions
   retry without disabling read/write. See [software evidence and Windows runtime limits](./validation.md#m29-microphone-coverage-software-acceptance);
   physical microphone acceptance remains open in S4 and Phase 13.
-- [ ] **Expire queued keyboard input** (`platform/synth.rs`): a main-thread timeout must cancel
+- [x] **Expire queued keyboard input** (`platform/synth.rs`): a main-thread timeout must cancel
   input that has not started. Check deadline, current session and foreground/protected context
   at dispatch on Windows and macOS. A fake dispatcher that runs a job after timeout or session/
   context change must inject nothing; execution already started must have an honest outcome.
+  Software implemented with owned session/target/deadline checks through dispatch and atomic
+  cancellation before the first native event. Unfinished input reports Unverified and stops the
+  remaining macro steps; admitted macros keep their intentional delays. See
+  [software evidence and native input limits](./validation.md#m29-queued-input-software-acceptance).
 - [ ] **Exclude app installation from firmware flashing** (`updater/mod.rs`, `runtime/state.rs`):
   reserve both operations through the same native synchronization boundary, rather than checking
   busy and starting separately. Deterministic tests cover both admission orders, failure releasing

@@ -248,6 +248,8 @@ pub enum ActionError {
     NotImplemented { target: &'static str },
     /// The OS refused or failed the request.
     Failed(String),
+    /// Input began, but its completion could not be observed before the caller stopped waiting.
+    Uncertain,
 }
 
 /// Synthesized key input: media keys and keyboard shortcuts. Ok means the input was dispatched;
@@ -260,9 +262,30 @@ pub enum MediaKey {
     Next,
 }
 
+/// Owned checks carried all the way to actual input dispatch, including main-thread queueing.
+#[derive(Clone)]
+pub struct InputGuard {
+    pub deadline: Option<std::time::Instant>,
+    pub current: std::sync::Arc<dyn Fn() -> bool + Send + Sync>,
+}
+
+impl InputGuard {
+    pub fn check(&self) -> Result<(), ActionError> {
+        if !(self.current)()
+            || self
+                .deadline
+                .is_some_and(|deadline| std::time::Instant::now() >= deadline)
+        {
+            Err(ActionError::Failed("input is no longer current".into()))
+        } else {
+            Ok(())
+        }
+    }
+}
+
 pub trait InputSynth: Send + Sync {
-    fn send_media_key(&self, key: MediaKey) -> Result<(), ActionError>;
-    fn send_shortcut(&self, shortcut: &Shortcut) -> Result<(), ActionError>;
+    fn send_media_key(&self, key: MediaKey, guard: InputGuard) -> Result<(), ActionError>;
+    fn send_shortcut(&self, shortcut: &Shortcut, guard: InputGuard) -> Result<(), ActionError>;
 }
 
 /// What is playing, as the OS (or player) reports it. Either part may be empty.
@@ -721,7 +744,8 @@ impl FakeInputSynth {
 }
 
 impl InputSynth for FakeInputSynth {
-    fn send_media_key(&self, key: MediaKey) -> Result<(), ActionError> {
+    fn send_media_key(&self, key: MediaKey, guard: InputGuard) -> Result<(), ActionError> {
+        guard.check()?;
         let name = match key {
             MediaKey::PlayPause => "media-play-pause",
             MediaKey::Previous => "media-previous",
@@ -734,7 +758,8 @@ impl InputSynth for FakeInputSynth {
         self.result.clone()
     }
 
-    fn send_shortcut(&self, shortcut: &Shortcut) -> Result<(), ActionError> {
+    fn send_shortcut(&self, shortcut: &Shortcut, guard: InputGuard) -> Result<(), ActionError> {
+        guard.check()?;
         self.sent
             .lock()
             .expect("fake synth mutex")

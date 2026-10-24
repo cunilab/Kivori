@@ -120,13 +120,21 @@ pub struct UnimplementedInputSynth {
 }
 
 impl InputSynth for UnimplementedInputSynth {
-    fn send_media_key(&self, _key: super::MediaKey) -> Result<(), ActionError> {
+    fn send_media_key(
+        &self,
+        _key: super::MediaKey,
+        _guard: super::InputGuard,
+    ) -> Result<(), ActionError> {
         Err(ActionError::NotImplemented {
             target: self.target,
         })
     }
 
-    fn send_shortcut(&self, _shortcut: &Shortcut) -> Result<(), ActionError> {
+    fn send_shortcut(
+        &self,
+        _shortcut: &Shortcut,
+        _guard: super::InputGuard,
+    ) -> Result<(), ActionError> {
         Err(ActionError::NotImplemented {
             target: self.target,
         })

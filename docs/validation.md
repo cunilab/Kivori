@@ -499,5 +499,49 @@ Local validation:
 
 The full `x86_64-pc-windows-msvc` cross-check stopped in `ring` because Windows SDK C headers
 (`assert.h`) are unavailable on this Mac. Host tests model subscription failure; they do not
-exercise real COM registration, callback teardown or physical microphone hotplug. Windows CI
-integration and the real-device Phase 13 checks must supply that evidence before beta acceptance.
+exercise real COM registration, callback teardown or physical microphone hotplug. The real-device
+Phase 13 checks must supply that evidence before beta acceptance.
+
+Full host CI for the microphone implementation (`1509a87`) subsequently passed, including
+[Windows Rust integration](https://github.com/cunilab/Kivori/actions/runs/40081910499/job/120837033069)
+and Windows startup. This closes the software integration uncertainty for that commit, not the
+real-device microphone checks above.
+
+## M2.9 queued input software acceptance
+
+Implemented the second S1 item on `feat/m2.9-reliability` for PR #127, 2026-10-24.
+These checks use fake dispatchers and input effects; no real keyboard or media input was injected.
+
+The action worker retains the request's original foreground app, session epoch and admission
+deadline through main-thread queueing. Input is checked before and after connection/permission
+preparation. An atomic pending/start/cancel decision prevents a timed-out pending or preparing
+job from injecting later; the earlier of the request deadline and the two-second dispatch timeout
+controls the wait. Input already started reports uncertain completion as Unverified, not Error.
+Shortcuts refuse a changed/protected target; system media keys retain session/deadline checks
+without depending on the foreground app. Worker shutdown invalidates pending input too.
+
+An admitted macro keeps its intentional delays beyond the original admission deadline, with
+session and target checks retained for later steps. An unfinished native input step stops further
+steps as Unverified so it cannot overlap a later launch; a completed write with unknown read-back
+can still continue. Product and architecture documentation record this distinction.
+
+Permanent regressions in `platform/synth.rs` and `desk/actions.rs` cover late callbacks after
+timeout, timeout during preparation, timeout after input starts, exactly-once normal dispatch,
+request expiry, slow guards, session/app/protected-context changes, worker queue target retention,
+macro delays, uncertain macro cutoff and completed-write continuation. Unsupported keys still fail
+before queueing or opening a native input connection.
+
+Local validation on Andress-MacBook-Air:
+
+- `cargo test -p kivori-desktop --lib --locked -j 2`: 301 passed, three intentionally ignored.
+- `cargo test -p kivori-desktop --test input_freshness --test runtime --test ipc_vocabulary --locked -j 2`:
+  17 passed across the three integration suites.
+- `cargo clippy -p kivori-desktop --lib --tests --locked -j 2 -- -D warnings`: passed.
+- An isolated Windows-target Clippy check of the production synth, shortcut and copied production
+  guard/error/trait definitions against Enigo's real Windows backend passed with warnings denied.
+- Rust formatting, documentation formatting and `git diff --check`: passed.
+
+Independent review found and verified the correction for uncertain macro continuation. Windows CI
+must still validate this increment's full application integration. Native Windows/macOS delivery,
+permission prompts and real scheduling require runtime acceptance; OS focus changes after the last
+check cannot be made atomic with global keyboard injection.

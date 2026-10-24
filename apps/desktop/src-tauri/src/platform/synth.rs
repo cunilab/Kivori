@@ -5,14 +5,15 @@
 //! [`ActionError::PermissionRequired`] (and asks the OS to show its prompt), and sends nothing:
 //! a missing permission is a capability state, never a reason to try another mechanism.
 
-use std::sync::mpsc;
-use std::time::Duration;
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::{mpsc, Arc};
+use std::time::{Duration, Instant};
 
 use enigo::{Direction, Enigo, Key, Keyboard, NewConError, Settings};
 
-use super::{ActionError, InputSynth, MainThread, MediaKey, Shortcut, ShortcutKey};
+use super::{ActionError, InputGuard, InputSynth, MainThread, MediaKey, Shortcut, ShortcutKey};
 
-/// How long a synthesized input may wait for the main thread before it counts as failed.
+/// How long to wait before cancelling pending input or reporting uncertain completion.
 const MAIN_THREAD_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Key synthesis for the current desktop session.
@@ -27,19 +28,62 @@ impl EnigoInputSynth {
         Self { main }
     }
 
-    fn on_main(
+    fn on_main<P: 'static>(
         &self,
-        input: impl FnOnce() -> Result<(), ActionError> + Send + 'static,
+        guard: InputGuard,
+        prepare: impl FnOnce() -> Result<P, ActionError> + Send + 'static,
+        input: impl FnOnce(P) -> Result<(), ActionError> + Send + 'static,
     ) -> Result<(), ActionError> {
-        let Some(run) = &self.main else {
-            return input();
-        };
+        self.on_main_for(guard, MAIN_THREAD_TIMEOUT, prepare, input)
+    }
+
+    fn on_main_for<P: 'static>(
+        &self,
+        mut guard: InputGuard,
+        timeout: Duration,
+        prepare: impl FnOnce() -> Result<P, ActionError> + Send + 'static,
+        input: impl FnOnce(P) -> Result<(), ActionError> + Send + 'static,
+    ) -> Result<(), ActionError> {
+        let timeout_end = Instant::now() + timeout;
+        let end = guard
+            .deadline
+            .map_or(timeout_end, |deadline| deadline.min(timeout_end));
+        guard.deadline = Some(end);
+        // Only the winner of Pending→Started or Pending→Cancelled may decide whether input runs.
+        const PENDING: u8 = 0;
+        const STARTED: u8 = 1;
+        const CANCELLED: u8 = 2;
+        let state = Arc::new(AtomicU8::new(PENDING));
+        let queued = Arc::clone(&state);
         let (tx, rx) = mpsc::channel();
-        run(Box::new(move || {
-            let _ = tx.send(input());
-        }));
-        rx.recv_timeout(MAIN_THREAD_TIMEOUT)
-            .unwrap_or_else(|_| Err(ActionError::Failed("the app did not respond".into())))
+        let job: Box<dyn FnOnce() + Send> = Box::new(move || {
+            let result = (|| {
+                guard.check()?;
+                let prepared = prepare()?;
+                // Connecting can prompt/block. Recheck after it, before the first native event.
+                guard.check()?;
+                queued
+                    .compare_exchange(PENDING, STARTED, Ordering::SeqCst, Ordering::SeqCst)
+                    .map_err(|_| ActionError::Failed("input was cancelled".into()))?;
+                input(prepared)
+            })();
+            let _ = tx.send(result);
+        });
+        if let Some(run) = &self.main {
+            run(job);
+        } else {
+            job();
+        }
+        match rx.recv_timeout(end.saturating_duration_since(Instant::now())) {
+            Ok(result) => result,
+            Err(_) => {
+                match state.compare_exchange(PENDING, CANCELLED, Ordering::SeqCst, Ordering::SeqCst)
+                {
+                    Ok(_) => Err(ActionError::Failed("the app did not respond".into())),
+                    Err(_) => Err(ActionError::Uncertain),
+                }
+            }
+        }
     }
 }
 
@@ -104,25 +148,28 @@ fn key_of(key: ShortcutKey) -> Result<Key, ActionError> {
 }
 
 impl InputSynth for EnigoInputSynth {
-    fn send_media_key(&self, key: MediaKey) -> Result<(), ActionError> {
+    fn send_media_key(&self, key: MediaKey, guard: InputGuard) -> Result<(), ActionError> {
         let key = match key {
             MediaKey::PlayPause => Key::MediaPlayPause,
             MediaKey::Previous => Key::MediaPrevTrack,
             MediaKey::Next => Key::MediaNextTrack,
         };
-        self.on_main(move || connect()?.key(key, Direction::Click).map_err(failed))
+        self.on_main(guard, connect, move |mut enigo| {
+            enigo.key(key, Direction::Click).map_err(failed)
+        })
     }
 
-    fn send_shortcut(&self, shortcut: &Shortcut) -> Result<(), ActionError> {
+    fn send_shortcut(&self, shortcut: &Shortcut, guard: InputGuard) -> Result<(), ActionError> {
         let shortcut = *shortcut;
-        self.on_main(move || send_shortcut(&shortcut))
+        let key = key_of(shortcut.key)?;
+        self.on_main(guard, connect, move |mut enigo| {
+            send_shortcut(&mut enigo, &shortcut, key)
+        })
     }
 }
 
-fn send_shortcut(shortcut: &Shortcut) -> Result<(), ActionError> {
+fn send_shortcut(enigo: &mut Enigo, shortcut: &Shortcut, key: Key) -> Result<(), ActionError> {
     {
-        let key = key_of(shortcut.key)?;
-        let mut enigo = connect()?;
         let modifiers: Vec<Key> = [
             (shortcut.ctrl, Key::Control),
             (shortcut.alt, Key::Alt),
@@ -151,5 +198,230 @@ fn send_shortcut(shortcut: &Shortcut) -> Result<(), ActionError> {
             result = result.and(released);
         }
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::AtomicBool;
+
+    type Job = Box<dyn FnOnce() + Send>;
+    const TEST_TIMEOUT: Duration = Duration::from_millis(50);
+
+    fn dispatcher() -> (EnigoInputSynth, mpsc::Receiver<Job>) {
+        let (tx, rx) = mpsc::channel();
+        (
+            EnigoInputSynth::new(Some(Arc::new(move |job| tx.send(job).unwrap()))),
+            rx,
+        )
+    }
+
+    fn guard() -> InputGuard {
+        InputGuard {
+            deadline: None,
+            current: Arc::new(|| true),
+        }
+    }
+
+    #[test]
+    fn an_unsupported_key_is_rejected_before_queueing_or_connecting() {
+        let (synth, jobs) = dispatcher();
+        let mut shortcut: Shortcut = "Ctrl+M".parse().unwrap();
+        shortcut.key = ShortcutKey::Function(u8::MAX);
+        assert!(matches!(
+            synth.send_shortcut(&shortcut, guard()),
+            Err(ActionError::Failed(_))
+        ));
+        assert!(matches!(jobs.try_recv(), Err(mpsc::TryRecvError::Empty)));
+    }
+
+    #[test]
+    fn timeout_cancels_a_job_that_the_main_thread_runs_later() {
+        let (synth, jobs) = dispatcher();
+        let sent = Arc::new(AtomicBool::new(false));
+        let effect = sent.clone();
+        let caller = std::thread::spawn(move || {
+            synth.on_main_for(
+                guard(),
+                TEST_TIMEOUT,
+                || Ok(()),
+                move |()| {
+                    effect.store(true, Ordering::SeqCst);
+                    Ok(())
+                },
+            )
+        });
+        let job = jobs.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(matches!(
+            caller.join().unwrap(),
+            Err(ActionError::Failed(_))
+        ));
+        job();
+        assert!(!sent.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn request_deadline_cancels_waiting_before_the_main_thread_timeout() {
+        let (synth, jobs) = dispatcher();
+        let started = Instant::now();
+        let guard = InputGuard {
+            deadline: Some(started + TEST_TIMEOUT),
+            ..guard()
+        };
+        let caller = std::thread::spawn(move || {
+            synth.on_main_for(
+                guard,
+                Duration::from_secs(2),
+                || Ok(()),
+                |()| panic!("injected input after request deadline"),
+            )
+        });
+        let job = jobs.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(matches!(
+            caller.join().unwrap(),
+            Err(ActionError::Failed(_))
+        ));
+        assert!(started.elapsed() < Duration::from_secs(1));
+        job();
+    }
+
+    #[test]
+    fn timeout_during_preparation_cancels_before_the_first_event() {
+        let (synth, jobs) = dispatcher();
+        let (preparing, started) = mpsc::channel();
+        let (release, resume) = mpsc::channel();
+        let sent = Arc::new(AtomicBool::new(false));
+        let effect = sent.clone();
+        let caller = std::thread::spawn(move || {
+            synth.on_main_for(
+                guard(),
+                MAIN_THREAD_TIMEOUT,
+                move || {
+                    preparing.send(()).unwrap();
+                    resume.recv().unwrap();
+                    Ok(())
+                },
+                move |()| {
+                    effect.store(true, Ordering::SeqCst);
+                    Ok(())
+                },
+            )
+        });
+        let job = jobs.recv_timeout(Duration::from_secs(2)).unwrap();
+        let main = std::thread::spawn(job);
+        started.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(matches!(
+            caller.join().unwrap(),
+            Err(ActionError::Failed(_))
+        ));
+        release.send(()).unwrap();
+        main.join().unwrap();
+        assert!(!sent.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn timeout_after_input_started_reports_uncertainty() {
+        let (synth, jobs) = dispatcher();
+        let (injecting, started) = mpsc::channel();
+        let (release, resume) = mpsc::channel();
+        let caller = std::thread::spawn(move || {
+            synth.on_main_for(
+                guard(),
+                MAIN_THREAD_TIMEOUT,
+                || Ok(()),
+                move |()| {
+                    injecting.send(()).unwrap();
+                    resume.recv().unwrap();
+                    Ok(())
+                },
+            )
+        });
+        let job = jobs.recv_timeout(Duration::from_secs(2)).unwrap();
+        let main = std::thread::spawn(job);
+        started.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert_eq!(caller.join().unwrap(), Err(ActionError::Uncertain));
+        release.send(()).unwrap();
+        main.join().unwrap();
+    }
+
+    #[test]
+    fn successful_main_dispatch_injects_exactly_once() {
+        let (synth, jobs) = dispatcher();
+        let sent = Arc::new(AtomicU8::new(0));
+        let effect = sent.clone();
+        let caller = std::thread::spawn(move || {
+            synth.on_main_for(
+                guard(),
+                Duration::from_secs(2),
+                || Ok(()),
+                move |()| {
+                    effect.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                },
+            )
+        });
+        jobs.recv_timeout(Duration::from_secs(2)).unwrap()();
+        assert_eq!(caller.join().unwrap(), Ok(()));
+        assert_eq!(sent.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn expired_request_deadline_blocks_input_even_without_main_queueing() {
+        let synth = EnigoInputSynth::new(None);
+        let guard = InputGuard {
+            deadline: Some(Instant::now()),
+            ..guard()
+        };
+        assert!(matches!(
+            synth.on_main(
+                guard,
+                || panic!("prepared expired input"),
+                |(): ()| panic!("injected expired input")
+            ),
+            Err(ActionError::Failed(_))
+        ));
+    }
+
+    #[test]
+    fn session_or_context_change_during_preparation_blocks_injection() {
+        let synth = EnigoInputSynth::new(None);
+        let current = Arc::new(AtomicBool::new(true));
+        let active = current.clone();
+        let guard = InputGuard {
+            current: Arc::new(move || active.load(Ordering::SeqCst)),
+            ..guard()
+        };
+        assert!(matches!(
+            synth.on_main(
+                guard,
+                move || {
+                    current.store(false, Ordering::SeqCst);
+                    Ok(())
+                },
+                |()| panic!("injected after session or foreground changed"),
+            ),
+            Err(ActionError::Failed(_))
+        ));
+    }
+
+    #[test]
+    fn a_guard_that_blocks_cannot_admit_input_after_its_deadline() {
+        let synth = EnigoInputSynth::new(None);
+        let guard = InputGuard {
+            deadline: Some(Instant::now() + Duration::from_millis(5)),
+            current: Arc::new(|| {
+                std::thread::sleep(Duration::from_millis(10));
+                true
+            }),
+        };
+        assert!(matches!(
+            synth.on_main(
+                guard,
+                || Ok(()),
+                |()| panic!("injected after blocking guard")
+            ),
+            Err(ActionError::Failed(_))
+        ));
     }
 }
