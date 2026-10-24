@@ -65,6 +65,36 @@ fn save_then_reopen_round_trips_and_leaves_no_temp_file() {
     assert_eq!(reopened.notice(), None);
 }
 
+#[test]
+fn function_keys_save_only_when_supported_by_the_platform() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = ConfigStore::open(dir.path());
+    store.save(changed(&store)).unwrap();
+    let max = if cfg!(target_os = "windows") { 24 } else { 20 };
+    for n in 0..=25 {
+        let before = store.file().clone();
+        let revision = store.revision();
+        let bytes = fs::read(dir.path().join("config.json")).unwrap();
+        let next = store.edited(|file| {
+            file.profiles.entry(ProfileId::General).or_default().press = Some(SlotSpec {
+                action: Some(ActionSpec::Shortcut {
+                    keys: format!("Ctrl+F{n}"),
+                }),
+                label: None,
+            });
+        });
+        if (1..=max).contains(&n) {
+            store.save(next.clone()).unwrap();
+            assert_eq!(ConfigStore::open(dir.path()).file(), &next);
+        } else {
+            assert!(matches!(store.save(next), Err(ConfigError::Invalid(_))));
+            assert_eq!(store.file(), &before);
+            assert_eq!(store.revision(), revision);
+            assert_eq!(fs::read(dir.path().join("config.json")).unwrap(), bytes);
+        }
+    }
+}
+
 fn large_macro_config(target: &str) -> ConfigFile {
     ConfigFile {
         macros: (0..32)

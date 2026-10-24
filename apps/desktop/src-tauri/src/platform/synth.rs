@@ -128,6 +128,14 @@ fn key_of(key: ShortcutKey) -> Result<Key, ActionError> {
             18 => Key::F18,
             19 => Key::F19,
             20 => Key::F20,
+            #[cfg(target_os = "windows")]
+            21 => Key::F21,
+            #[cfg(target_os = "windows")]
+            22 => Key::F22,
+            #[cfg(target_os = "windows")]
+            23 => Key::F23,
+            #[cfg(target_os = "windows")]
+            24 => Key::F24,
             _ => return Err(ActionError::Failed(format!("F{n} cannot be sent here"))),
         },
         ShortcutKey::Enter => Key::Return,
@@ -234,6 +242,51 @@ mod tests {
             Err(ActionError::Failed(_))
         ));
         assert!(matches!(jobs.try_recv(), Err(mpsc::TryRecvError::Empty)));
+    }
+
+    #[test]
+    fn accepted_function_keys_match_the_native_sender() {
+        let keys = [
+            Key::F1,
+            Key::F2,
+            Key::F3,
+            Key::F4,
+            Key::F5,
+            Key::F6,
+            Key::F7,
+            Key::F8,
+            Key::F9,
+            Key::F10,
+            Key::F11,
+            Key::F12,
+            Key::F13,
+            Key::F14,
+            Key::F15,
+            Key::F16,
+            Key::F17,
+            Key::F18,
+            Key::F19,
+            Key::F20,
+            #[cfg(target_os = "windows")]
+            Key::F21,
+            #[cfg(target_os = "windows")]
+            Key::F22,
+            #[cfg(target_os = "windows")]
+            Key::F23,
+            #[cfg(target_os = "windows")]
+            Key::F24,
+        ];
+        for n in 0..=u8::MAX {
+            let parsed = format!("Ctrl+F{n}").parse::<Shortcut>();
+            if let Some(expected) = n.checked_sub(1).and_then(|i| keys.get(usize::from(i))) {
+                let shortcut = parsed.unwrap();
+                assert_eq!(key_of(shortcut.key).unwrap(), *expected, "F{n}");
+                assert_eq!(shortcut.to_string(), format!("Ctrl+F{n}"));
+            } else {
+                assert!(parsed.is_err(), "unsupported F{n} was accepted");
+                assert!(key_of(ShortcutKey::Function(n)).is_err(), "F{n}");
+            }
+        }
     }
 
     #[test]

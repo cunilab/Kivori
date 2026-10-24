@@ -446,9 +446,11 @@ completion and physical acceptance are recorded separately in [validation.md](./
   original bytes survive. Software implemented with pending preservation, save/reset retries,
   fresh backup names, protected pruning and an honest failure notice. See
   [fault-injection and preservation evidence](./validation.md#m29-recovery-backup-software-acceptance).
-- [ ] **Match shortcut validation to execution** (`platform/shortcut.rs`, `platform/synth.rs`):
+- [x] **Match shortcut validation to execution** (`platform/shortcut.rs`, `platform/synth.rs`):
   F21–F24 must either execute through the supported backend or be rejected before saving. Check
   the full accepted function-key range against the sender on each implemented platform.
+  Software implemented with Windows F1–F24 mappings and macOS F1–F20 validation. See
+  [range, persistence and backend evidence](./validation.md#m29-shortcut-execution-software-acceptance).
 
 ### S3: Recovery UX, action results and website readiness
 

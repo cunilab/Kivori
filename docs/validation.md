@@ -735,3 +735,35 @@ The prior size-limit commit `dddf9fc` passed full CI, including Windows Rust, pa
 Real Windows permission/antivirus failures, visual UI inspection and power-loss durability remain
 unverified. File-copy synchronization is tested through software outcomes; this is not a power-cut
 proof for filesystem directory updates.
+
+
+## M2.9 shortcut execution software acceptance
+
+Implemented the fifth S2 item on `feat/m2.9-reliability` for PR #127, 2026-10-25.
+The installed Enigo 0.6.1 source exposes and maps F21–F24 to Windows virtual keys, but its
+macOS key enum and Quartz mapping end at F20. The Windows sender now maps the missing four
+keys. The shared parser accepts F1–F24 on Windows and F1–F20 elsewhere. Bindings, knob pairs,
+macro steps and test requests already use this parser, so unsupported keys fail native validation
+before save/dispatch; no separate frontend key parser was added.
+
+The regression first failed on the old macOS code with “unsupported F21 was accepted.” Parser
+and sender tests cover F0 through F255, checking every accepted key against its exact Enigo
+variant, canonical text, and rejection outside the platform range. A store regression exercises
+F0 through F25: supported shortcuts save and reopen unchanged; unsupported shortcuts preserve
+the previous file bytes, live configuration and revision. Tests do not connect Enigo or inject keys.
+A Windows configuration containing F21–F24 is not portable to macOS: on open it follows the
+existing invalid-config preservation/recovery path rather than retaining a non-runnable binding.
+
+Local validation on Andress-MacBook-Air:
+
+- `cargo test -p kivori-desktop --lib --test config_store --test config_persistence --test runtime --test ipc_vocabulary --locked -j 2`:
+  316 library and 54 integration tests passed; three library tests intentionally ignored.
+- Native desktop library/tests Clippy with warnings denied: passed.
+- Isolated Windows-target Clippy compiled the production shortcut parser, sender and their tests
+  against Enigo's real Windows backend with warnings denied. This is compilation, not Windows
+  test execution; the full desktop cross-build still requires Windows SDK headers unavailable here.
+- Independent review passed and separately ran all three new regressions without native input.
+- Rust formatting, local documentation links and `git diff --check`: passed.
+
+Actual key delivery, OS permission handling and receiving-application behavior were not exercised.
+Windows runtime coverage remains a CI/platform check; Linux input remains unimplemented.
