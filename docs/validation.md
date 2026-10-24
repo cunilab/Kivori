@@ -617,3 +617,43 @@ Physical contact bounce, interrupt capture and sustained board behavior remain M
 acceptance. Existing limits outside this change include capture-queue overflow and a complete
 ten-second hold/release without any intervening poll: recovery may miss reboot during such a loop
 stall. Continuous-held recovery and captured release-before-deadline cancellation are tested.
+
+## M2.9 receive burst software acceptance
+
+Implemented the second S2 item on `feat/m2.9-reliability` for PR #127, 2026-10-24.
+These checks use fake transports and the production dispatcher/runtime; no physical USB or board
+was exercised.
+
+The original dispatcher read a complete available burst before parsing, erasing buffered valid
+packets on overflow. The permanent 100-Ping regression reproduced exactly 41 replies on that code.
+The replacement decodes at each delimiter and answers all 100 once, in order, across multiple
+ticks. Processing stops after 512 inbound bytes per tick, retaining a partial packet and leaving
+unread bytes in the transport. Storage needs only one packet, reducing `RX_CAPACITY` from 1,060
+to 530 bytes; the temporary packet stays within its previous capacity, without allocation.
+
+Oversized delimiterless packets are discarded through their delimiter, never interpreting a valid
+looking tail as a new frame. One framing rejection is recorded per overflow. Empty delimiters are
+ignored; malformed complete frames still use the existing typed decoder. Link loss clears partial
+and discard state. Sequence suppression and existing latest-value pending-message policies remain
+in force.
+
+Five new regressions cover the 100-frame burst, partial frames spanning the tick budget with
+one-/seven-/128-byte reads, overflow with a valid-looking tail followed by malformed and valid
+frames, link reset from partial/discard state, and endless valid or delimiterless traffic. The last
+test drives the actual runtime through ten seconds of recovery, asserting every tick samples input,
+renders on cadence and requests reboot on time even though reads never return empty.
+
+Local validation on Andress-MacBook-Air:
+
+- Full firmware host simulation: 207 passed (49 library and 158 integration tests), no failures or
+  ignored tests, using `cargo test --manifest-path firmware/pala/Cargo.toml --locked --features host-sim --target aarch64-apple-darwin`.
+- Host all-target and RISC-V `physical-st7789` library Clippy with warnings denied: passed.
+- Shipping `physical-st7789` release firmware compiled and linked for RISC-V using the consistent
+  rustup/LLVM environment described above; the existing local optional debug-strip warning remains.
+- Independent review passed, including a separate 35-test dispatcher/runtime run and a 16-test
+  dispatcher rerun after reducing the buffer capacity.
+- Rust/document formatting and `git diff --check`: passed.
+
+Physical USB buffering/backpressure, receive throughput, and stack high-water remain hardware
+acceptance. The byte budget bounds receive work, rather than promising a measured wall-clock
+latency. Traffic beyond transport capacity can still be dropped below this dispatcher.

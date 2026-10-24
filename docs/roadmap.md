@@ -427,11 +427,13 @@ completion and physical acceptance are recorded separately in [validation.md](./
   bounce, negotiated double press, recovery and session boundaries. Software implemented with
   interval settlement before replacement and cross-control ownership checks, plus capture-time
   rejection of old-session button downs. See [software evidence and hardware limits](./validation.md#m29-buffered-button-software-acceptance).
-- [ ] **Decode receive bursts incrementally** (`firmware/pala/src/proto.rs`): parse complete frames
+- [x] **Decode receive bursts incrementally** (`firmware/pala/src/proto.rs`): parse complete frames
   before accumulation overflow and bound receive work per tick so input/render/recovery still run.
   The audit's fake transport supplied 100 valid Ping frames (1,800 bytes) to a 1,060-byte buffer;
   only 41 were accepted. Regression checks require every valid frame to be handled exactly once
   across a burst larger than the buffer, plus malformed-frame resynchronization and sustained input.
+  Software implemented with delimiter-time decoding, a 512-byte tick budget and discard-through-
+  delimiter overflow recovery. See [software evidence and transport limits](./validation.md#m29-receive-burst-software-acceptance).
 - [ ] **Align saved and loaded configuration limits** (`config/store.rs`): reject an oversized
   serialized configuration before replacing the current file, with a clear capacity error. The
   allowed 32 macros × 8 launch steps × 1,024-byte targets serialized to 300,618 bytes, above the

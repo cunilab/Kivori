@@ -113,6 +113,13 @@ Constants: `PROTOCOL_MAJOR` 0, `PROTOCOL_MINOR` 1. The numbers restarted at 0.1 
 
 Every decode failure is a typed `ProtoError` (`BufferOverflow, Cobs, TooShort, BadMagic, UnsupportedVersion, PayloadTooLarge, LengthMismatch, BadCrc, Postcard`). The decoder never panics, always makes forward progress, and never dispatches a frame that failed CRC.
 
+The firmware dispatcher decodes each complete packet as its delimiter arrives, retaining at most
+one partial packet in `RX_CAPACITY = MAX_WIRE` (530 bytes). Each tick reads at most 512 bytes
+(`RX_BYTES_PER_POLL`); remaining bytes stay in the transport and partial packets continue next tick,
+so sustained inbound traffic cannot monopolize the receive loop. An overflowing packet is discarded
+through its next delimiter, with one safe framing rejection; its tail cannot become a new packet.
+Transport link loss clears both partial-packet and discard state before a new stream begins.
+
 ### Handshake
 
 ```text

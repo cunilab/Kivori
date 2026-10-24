@@ -3,7 +3,9 @@
 
 use heapless::Vec as HVec;
 use kivori_firmware::ports::Transport;
-use kivori_firmware::proto::{DeviceIdentity, DispatchError, Dispatcher};
+use kivori_firmware::proto::{
+    DeviceIdentity, DispatchError, Dispatcher, RX_BYTES_PER_POLL, RX_CAPACITY,
+};
 use kivori_firmware::sim::SimPipe;
 use kivori_firmware::state::{DeviceEvent, DeviceState};
 use kivori_model::{Capabilities, CompanionState, ProtocolVersion, SendableState};
@@ -143,6 +145,177 @@ fn ping_is_answered_with_pong_echo() {
             assert_eq!(pong.uptime_ms, 900);
         }
         other => panic!("expected a single Pong, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_burst_larger_than_receive_capacity_answers_every_ping_once() {
+    let mut pipe = SimPipe::new();
+    let mut device = DeviceState::new();
+    let mut dispatcher = Dispatcher::new(identity());
+    host_write(
+        &mut pipe,
+        &Message::Hello(Hello {
+            desktop_version: FirmwareVersion {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            desktop_caps: Capabilities::NONE,
+            nonce: 7,
+        }),
+        0,
+    );
+    dispatcher.poll(&mut pipe, &mut device, 0).unwrap();
+    let _ = host_drain(&mut pipe);
+
+    for i in 0..100 {
+        host_write(&mut pipe, &Message::Ping(Ping { t_ms: i }), i as u16 + 1);
+    }
+    let mut echoes = Vec::new();
+    for now in 1..=10 {
+        dispatcher.poll(&mut pipe, &mut device, now).unwrap();
+        echoes.extend(
+            host_drain(&mut pipe)
+                .into_iter()
+                .map(|message| match message {
+                    Message::Pong(pong) => pong.t_ms_echo,
+                    other => panic!("unexpected reply: {other:?}"),
+                }),
+        );
+    }
+    assert_eq!(echoes, (0..100).collect::<Vec<_>>());
+    assert_eq!(dispatcher.inbound_frames(), 101);
+    assert_eq!(dispatcher.rejected_frames(), 0);
+}
+
+struct ReadLimitedPipe {
+    pipe: SimPipe,
+    max_read: usize,
+    bytes_read: usize,
+}
+
+impl Transport for ReadLimitedPipe {
+    type Error = <SimPipe as Transport>::Error;
+
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        let limit = buf.len().min(self.max_read);
+        let n = self.pipe.read(&mut buf[..limit])?;
+        self.bytes_read += n;
+        Ok(n)
+    }
+
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+        self.pipe.write(buf)
+    }
+
+    fn discard_unsent(&mut self) {
+        self.pipe.discard_unsent();
+    }
+}
+
+#[test]
+fn partial_frames_survive_budget_boundaries_and_short_reads() {
+    for max_read in [1, 7, 128] {
+        let mut transport = ReadLimitedPipe {
+            pipe: SimPipe::new(),
+            max_read,
+            bytes_read: 0,
+        };
+        let mut device = DeviceState::new();
+        device.apply(DeviceEvent::BootComplete);
+        let mut dispatcher = Dispatcher::new(identity());
+        transport
+            .pipe
+            .host_send(&vec![0; RX_BYTES_PER_POLL - 3])
+            .unwrap();
+        host_write(
+            &mut transport.pipe,
+            &Message::SetState(SetState {
+                desired: SendableState::Happy,
+                at_ms: None,
+            }),
+            0,
+        );
+        dispatcher.poll(&mut transport, &mut device, 0).unwrap();
+        assert_eq!(transport.bytes_read, RX_BYTES_PER_POLL);
+        assert_eq!(device.current(), CompanionState::Offline);
+        assert!(host_drain(&mut transport.pipe).is_empty());
+        transport.bytes_read = 0;
+        dispatcher.poll(&mut transport, &mut device, 1).unwrap();
+        assert!(transport.bytes_read <= RX_BYTES_PER_POLL);
+        assert_eq!(device.current(), CompanionState::Happy);
+        assert!(matches!(
+            host_drain(&mut transport.pipe).as_slice(),
+            [Message::StateReport(_)]
+        ));
+        dispatcher.poll(&mut transport, &mut device, 2).unwrap();
+        assert!(host_drain(&mut transport.pipe).is_empty());
+        assert_eq!(dispatcher.inbound_frames(), 1);
+        assert_eq!(dispatcher.rejected_frames(), 0);
+    }
+}
+
+#[test]
+fn oversized_frames_discard_their_valid_looking_tail_then_resynchronize() {
+    let mut pipe = SimPipe::new();
+    let mut device = DeviceState::new();
+    let mut dispatcher = Dispatcher::new(identity());
+    pipe.host_send(&vec![0x55; RX_CAPACITY]).unwrap();
+    // This otherwise valid frame is the tail of one oversized delimiterless packet.
+    host_write(
+        &mut pipe,
+        &Message::SetState(SetState {
+            desired: SendableState::Happy,
+            at_ms: None,
+        }),
+        0,
+    );
+    pipe.host_send(&[0, 0, 0x02, 0xFF, 0]).unwrap();
+    host_write(
+        &mut pipe,
+        &Message::SetState(SetState {
+            desired: SendableState::Busy,
+            at_ms: None,
+        }),
+        1,
+    );
+    for now in 0..10 {
+        dispatcher.poll(&mut pipe, &mut device, now).unwrap();
+    }
+    assert_eq!(device.current(), CompanionState::Busy);
+    assert!(
+        matches!(host_drain(&mut pipe).as_slice(), [Message::StateReport(report)] if report.reported == CompanionState::Busy)
+    );
+    assert_eq!(dispatcher.inbound_frames(), 1);
+    assert_eq!(dispatcher.rejected_frames(), 2);
+}
+
+#[test]
+fn link_loss_clears_partial_and_oversized_receive_state() {
+    for prefix in [3, RX_CAPACITY + 1] {
+        let mut pipe = SimPipe::new();
+        let mut device = DeviceState::new();
+        let mut dispatcher = Dispatcher::new(identity());
+        pipe.host_send(&vec![0x55; prefix]).unwrap();
+        for now in 0..3 {
+            dispatcher.poll(&mut pipe, &mut device, now).unwrap();
+        }
+        dispatcher.link_lost();
+        host_write(
+            &mut pipe,
+            &Message::SetState(SetState {
+                desired: SendableState::Happy,
+                at_ms: None,
+            }),
+            0,
+        );
+        dispatcher.poll(&mut pipe, &mut device, 4).unwrap();
+        assert_eq!(device.current(), CompanionState::Happy);
+        assert!(matches!(
+            host_drain(&mut pipe).as_slice(),
+            [Message::StateReport(_)]
+        ));
     }
 }
 
