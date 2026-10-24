@@ -386,10 +386,15 @@ fn device_loop(
                     });
                 }
                 DeviceCommand::SetDisplayMode(_) => {}
-                DeviceCommand::TestAction(action) => {
-                    desk.test(action, started.elapsed(), &mut |observation| {
-                        record_observations(&app, &activity_log, [observation]);
-                    });
+                DeviceCommand::TestAction(action, reply) => {
+                    desk.test(
+                        action,
+                        started.elapsed(),
+                        &mut |observation| {
+                            record_observations(&app, &activity_log, [observation]);
+                        },
+                        reply,
+                    );
                 }
                 flash_command @ (DeviceCommand::FlashFirmware
                 | DeviceCommand::RestoreFirmware
@@ -408,7 +413,7 @@ fn device_loop(
                         }
                         _ => (None, None),
                     };
-                    let recovery = flash_command != DeviceCommand::FlashFirmware
+                    let recovery = !matches!(flash_command, DeviceCommand::FlashFirmware)
                         || manager.state() == ConnectionState::Incompatible;
                     let mut refusal = firmware::FlashFailure::Unknown;
                     let bundled = if recovery {
@@ -1534,7 +1539,7 @@ pub fn plan_device_request(
         | DeviceCommand::Refresh
         | DeviceCommand::RequestInternals
         | DeviceCommand::SetDisplayMode(_)
-        | DeviceCommand::TestAction(_)
+        | DeviceCommand::TestAction(_, _)
         | DeviceCommand::ApplyConfig(_) => None,
     };
     request.map_or_else(Vec::new, |request| activity_planner.requests(request))

@@ -461,9 +461,11 @@ completion and physical acceptance are recorded separately in [validation.md](./
   Software implemented by reusing native-polled firmware recovery, including disconnected retry,
   explicit board confirmation and stale-error cleanup. See
   [flow coverage and browser limits](./validation.md#m29-onboarding-recovery-software-acceptance).
-- [ ] **Correlate control-test results** (`controls/ControlsPage.tsx`): show pending until the tested
+- [x] **Correlate control-test results** (`controls/ControlsPage.tsx`): show pending until the tested
   request has its own result. A prior success, rejected request or unrelated hardware action must
-  never become that row's result; clear or replace stale feedback explicitly.
+  never become that row's result; clear or replace stale feedback explicitly. Software implemented
+  with per-invocation native completion replies and guarded local row feedback. See
+  [correlation, cancellation and browser evidence](./validation.md#m29-control-test-correlation-software-acceptance).
 - [ ] **Keep dialogs usable in small windows** (`packages/ui/src/components/alert-dialog.tsx`):
   constrain dialog height to the viewport and allow scrolling. Visually verify update/recovery
   dialogs with long content at 400×480, the 360×420 minimum and increased text scale; keyboard

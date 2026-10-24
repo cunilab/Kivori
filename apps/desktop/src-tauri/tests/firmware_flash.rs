@@ -78,7 +78,7 @@ fn app_state_reserves_flash_before_queuing_a_second_request() {
     assert!(rx.try_recv().is_err());
     state.firmware_status.lock().unwrap().available = true;
     assert!(state.queue_firmware_flash().is_ok());
-    assert_eq!(rx.recv().unwrap(), DeviceCommand::FlashFirmware);
+    assert!(matches!(rx.recv().unwrap(), DeviceCommand::FlashFirmware));
     let mut idle = FlashWorkflow::new(true, 0);
     let reserved = state.firmware_status.lock().unwrap().clone();
     idle.refresh_image(None, None, &mut state.firmware_status.lock().unwrap());
@@ -335,7 +335,7 @@ fn app_state_with_connection(connection: &str) -> (AppState, mpsc::Receiver<Devi
 fn flashing_is_allowed_from_incompatible_but_not_from_disconnected() {
     let (state, rx) = app_state_with_connection("incompatible");
     assert!(state.queue_firmware_flash().is_ok());
-    assert_eq!(rx.recv().unwrap(), DeviceCommand::FlashFirmware);
+    assert!(matches!(rx.recv().unwrap(), DeviceCommand::FlashFirmware));
     state.shutdown();
 
     let (state, rx) = app_state_with_connection("disconnected");
@@ -349,7 +349,7 @@ fn flashing_is_allowed_from_incompatible_but_not_from_disconnected() {
 fn restore_queues_from_any_connection_but_not_twice() {
     let (state, rx) = app_state_with_connection("disconnected");
     assert!(state.queue_firmware_restore().is_ok());
-    assert_eq!(rx.recv().unwrap(), DeviceCommand::RestoreFirmware);
+    assert!(matches!(rx.recv().unwrap(), DeviceCommand::RestoreFirmware));
     assert!(state.queue_firmware_restore().is_err());
     state.shutdown();
 }
@@ -604,9 +604,8 @@ fn a_restore_for_a_picked_product_is_queued_with_its_id() {
     assert!(state
         .queue_firmware_restore_for("pala".into(), None)
         .is_ok());
-    assert_eq!(
-        rx.recv().unwrap(),
-        DeviceCommand::RestoreFirmwareFor("pala".into(), None)
+    assert!(
+        matches!(rx.recv().unwrap(), DeviceCommand::RestoreFirmwareFor(product, None) if product == "pala")
     );
     state.shutdown();
 }
@@ -617,9 +616,8 @@ fn a_restore_pair_is_queued_and_cannot_replace_an_existing_reservation() {
     state
         .queue_firmware_restore_for("fixture".into(), Some("board-b".into()))
         .unwrap();
-    assert_eq!(
-        rx.recv().unwrap(),
-        DeviceCommand::RestoreFirmwareFor("fixture".into(), Some("board-b".into()))
+    assert!(
+        matches!(rx.recv().unwrap(), DeviceCommand::RestoreFirmwareFor(product, Some(board)) if product == "fixture" && board == "board-b")
     );
     assert!(state
         .queue_firmware_restore_for("other".into(), Some("board-a".into()))

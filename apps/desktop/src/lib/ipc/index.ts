@@ -31,6 +31,7 @@ import type {
   RotateSpec,
   SlotSpec,
   MacroSpec,
+  DeskActionDto,
   DeskStatusDto,
   DisplayMode,
   Intensity,
@@ -40,6 +41,7 @@ import {
   parseCatalog,
   parseConfig,
   parseConnectionStatus,
+  parseDeskAction,
   parseDeskStatus,
   parseDeviceInternals,
   parseDiagnostics,
@@ -653,10 +655,10 @@ export async function onActivityLog(
 /**
  * Tries the knob's binding once. A volume knob steps one detent up and back, so the volume ends
  * where it started; two shortcuts send the clockwise one once. The outcome arrives in the desk
- * status; rejects with the native error string.
+ * status and is returned for this invocation; rejects with the native error string.
  */
-export async function testRotate(rotate: RotateSpec): Promise<void> {
-  if (isTauri()) return invoke<void>('test_rotate', { rotate });
+export async function testRotate(rotate: RotateSpec): Promise<DeskActionDto> {
+  if (isTauri()) return parseDeskAction(await invoke<unknown>('test_rotate', { rotate }));
   if (import.meta.env.DEV) return (await devMock()).mockTestRotate(rotate);
   return unavailable();
 }
@@ -684,10 +686,10 @@ export async function listActionCatalog(): Promise<ActionCatalogEntryDto[]> {
 
 /**
  * Tries one action now, as if its control fired; rejects with the native error string. The outcome
- * arrives in the desk status `lastAction`. Under a protected foreground only system actions run.
+ * is returned for this invocation. Under a protected foreground only system actions run.
  */
-export async function testAction(action: ActionSpec): Promise<void> {
-  if (isTauri()) return invoke<void>('test_action', { action });
+export async function testAction(action: ActionSpec): Promise<DeskActionDto> {
+  if (isTauri()) return parseDeskAction(await invoke<unknown>('test_action', { action }));
   if (import.meta.env.DEV) return (await devMock()).mockTestAction(action);
   return unavailable();
 }

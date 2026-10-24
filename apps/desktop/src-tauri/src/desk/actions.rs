@@ -598,8 +598,18 @@ pub struct Finished {
     pub outcome: Outcome,
 }
 
-/// One queued action: id, session epoch, admission deadline, original foreground and action.
-type Request = (u64, u64, Option<Instant>, Foreground, Action);
+/// One invocation owns this bounded completion channel; dropping it cancels the wait.
+pub type TestReply = tauri::async_runtime::Sender<Outcome>;
+
+/// One queued action, its admission context and optional UI completion reply.
+type Request = (
+    u64,
+    u64,
+    Option<Instant>,
+    Foreground,
+    Action,
+    Option<TestReply>,
+);
 
 /// Runs actions one at a time on a `kivori-actions` thread, so a slow action never stalls the
 /// device link. Dropping it stops the thread after the action in progress.
@@ -629,7 +639,7 @@ impl ActionWorker {
         let thread = std::thread::Builder::new()
             .name("kivori-actions".to_string())
             .spawn(move || {
-                while let Ok((id, stamped, deadline, start, action)) = request_rx.recv() {
+                while let Ok((id, stamped, deadline, start, action, reply)) = request_rx.recv() {
                     if stamped != current.load(Ordering::SeqCst) {
                         continue;
                     }
@@ -643,6 +653,9 @@ impl ActionWorker {
                     let active: Arc<dyn Fn() -> bool + Send + Sync> =
                         Arc::new(move || stamped == epoch.load(Ordering::SeqCst));
                     let outcome = execute_while(&action, &platform, &active, deadline, &start);
+                    if let Some(reply) = reply {
+                        let _ = reply.try_send(outcome);
+                    }
                     let finished = Finished {
                         id,
                         action: action.token(),
@@ -672,10 +685,32 @@ impl ActionWorker {
     /// Like [`Self::request`], but the action is skipped (see [`Self::try_expired`]) if it has
     /// not started by `deadline`.
     pub fn request_by(&self, id: u64, action: Action, deadline: Option<Instant>) -> bool {
+        self.queue(id, action, deadline, None)
+    }
+
+    /// A UI test owns its reply independently of the global last action and feedback ladder.
+    pub fn request_test(&self, id: u64, action: Action, reply: TestReply) -> bool {
+        self.queue(id, action, None, Some(reply))
+    }
+
+    fn queue(
+        &self,
+        id: u64,
+        action: Action,
+        deadline: Option<Instant>,
+        reply: Option<TestReply>,
+    ) -> bool {
         let epoch = self.epoch.load(Ordering::SeqCst);
         self.requests.as_ref().is_some_and(|tx| {
-            tx.send((id, epoch, deadline, self.foreground.foreground(), action))
-                .is_ok()
+            tx.send((
+                id,
+                epoch,
+                deadline,
+                self.foreground.foreground(),
+                action,
+                reply,
+            ))
+            .is_ok()
         })
     }
 
@@ -1220,7 +1255,8 @@ mod tests {
         let worker = ActionWorker::spawn(p);
         assert!(worker.request(1, Action::Launch("Slow".into())));
         let tight = Instant::now() + Duration::from_millis(20);
-        assert!(worker.request_by(2, Action::PlayPause, Some(tight)));
+        let (reply, mut response) = tauri::async_runtime::channel(1);
+        assert!(worker.queue(2, Action::PlayPause, Some(tight), Some(reply)));
         assert!(worker.request_by(
             3,
             Action::PlayPause,
@@ -1240,6 +1276,8 @@ mod tests {
         }
         assert_eq!(finished, [1, 3], "the late job never ran");
         assert_eq!(expired, [2]);
+        assert!(response.is_closed());
+        assert!(response.try_recv().is_err());
     }
 
     fn macro_of(steps: Vec<Step>) -> Action {
@@ -1368,6 +1406,58 @@ mod tests {
         let result = finished(&worker);
         assert_eq!(result.id, 2);
         assert_eq!(result.outcome.kind, FeedbackKind::Error);
+    }
+
+    #[test]
+    fn test_replies_are_independent_of_hardware_and_other_test_outcomes() {
+        let (p, _) = platform(
+            Err(ActionError::PermissionRequired),
+            None,
+            FakeVolumeBackend::new(20),
+        );
+        let worker = ActionWorker::spawn(p);
+        let (mute, mut mute_result) = tauri::async_runtime::channel(1);
+        let (keys, mut keys_result) = tauri::async_runtime::channel(1);
+        assert!(worker.request_test(1, Action::ToggleMute, mute));
+        assert!(worker.request(2, Action::Launch("Calculator".into())));
+        assert!(worker.request_test(3, Action::PlayPause, keys));
+        let outcomes = [finished(&worker), finished(&worker), finished(&worker)];
+        assert_eq!(outcomes.map(|f| f.id), [1, 2, 3]);
+        assert_eq!(mute_result.try_recv().unwrap(), outcomes[0].outcome);
+        assert_eq!(keys_result.try_recv().unwrap(), outcomes[2].outcome);
+        assert_eq!(outcomes[0].outcome.kind, FeedbackKind::StateConfirmed);
+        assert_eq!(outcomes[1].outcome.kind, FeedbackKind::ExecutionConfirmed);
+        assert!(outcomes[2].outcome.permission_required);
+    }
+
+    #[test]
+    fn a_session_cancel_drops_the_queued_test_reply_without_running_it() {
+        let (p, _, queued, resume) = deferred();
+        let volume = Arc::clone(&p.volume);
+        let worker = ActionWorker::spawn(p);
+        assert!(worker.request(1, Action::PlayPause));
+        queued.recv_timeout(Duration::from_secs(2)).unwrap();
+        let (reply, mut response) = tauri::async_runtime::channel(1);
+        assert!(worker.request_test(2, Action::ToggleMute, reply));
+        worker.cancel_pending();
+        assert!(worker.request(3, Action::Launch("Calculator".into())));
+        resume.send(()).unwrap();
+        assert_eq!(finished(&worker).id, 1);
+        assert_eq!(finished(&worker).id, 3);
+        assert!(response.is_closed());
+        assert!(response.try_recv().is_err());
+        assert_eq!(volume.read_mute(), Ok(false));
+    }
+
+    #[test]
+    fn a_missing_worker_drops_the_test_reply() {
+        let (p, _) = platform(Ok(()), None, FakeVolumeBackend::new(0));
+        let mut worker = ActionWorker::spawn(p);
+        worker.requests = None;
+        let (reply, mut response) = tauri::async_runtime::channel(1);
+        assert!(!worker.request_test(1, Action::PlayPause, reply));
+        assert!(response.is_closed());
+        assert!(response.try_recv().is_err());
     }
 
     #[test]

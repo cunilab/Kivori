@@ -807,3 +807,48 @@ Previous commit `39f27df` passed all required CI, including Windows Rust, packag
 the macOS CI job was skipped. Native/firmware source was unchanged in this increment, so the
 previous 316-library/54-integration native baseline was not rerun locally. Actual Windows USB
 recovery and small-window/large-text layout acceptance remain open in later roadmap items.
+
+
+## M2.9 control-test correlation software acceptance
+
+Implemented the second S3 item on `feat/m2.9-reliability` for PR #127, 2026-10-25.
+`test_action` and `test_rotate` now return the existing `DeskActionDto` for their own invocation
+after the action completes. Each owns a bounded async channel, moved through the device command
+and worker request. The worker sends the exact outcome independently of global `Finished` events
+and the replaceable feedback ladder. Protected refusal replies immediately; rejected enqueue,
+worker shutdown and skipped requests drop the sender and reject the waiting command. Awaiting the
+reply keeps the main thread available for macOS input dispatch and holds no configuration lock.
+Global desk status, feedback and activity reporting remain in use for general device activity.
+
+Controls displays Processing until that invocation resolves. It replaces stale success with an
+error on rejection, ignores global `lastAction` changes, and discards replies superseded by a new
+test/countdown, configuration/profile change or unmount. Countdown cancellation still sends no
+request. The IPC bridge validates each reply using the same action parser as desk status; browser
+mocks return their own outcome while retaining global desk updates. Device Studio still accepts
+the same parameters and can ignore the returned result.
+
+Native regressions interleave two test replies with a separate hardware-style worker request and
+verify exact outcomes and permission fields. They also prove queued session cancellation runs no
+stale action, unavailable workers close replies, protected refusal replies immediately, and an
+expired request closes its reply. UI/IPC regressions cover old/global results while pending,
+unrelated later actions, rejected and superseded tests, new countdowns, changed bindings/profiles,
+unmount and malformed reply payloads.
+
+Local validation on Andress-MacBook-Air:
+
+- `cargo test -p kivori-desktop --lib --test config_store --test config_persistence --test runtime --test ipc_vocabulary --test firmware_flash --locked -j 2`:
+  319 library and 79 integration tests passed; three library tests intentionally ignored.
+- Native desktop library/tests Clippy with warnings denied: passed.
+- `bun run --cwd apps/desktop test src/features/controls/__tests__/controls.test.tsx src/lib/ipc/__tests__/ipc.test.ts src/features/device-studio/__tests__/test-action.test.tsx`:
+  119 frontend tests passed across three files. TypeScript, targeted ESLint, frontend Prettier,
+  Rust formatting, local documentation links and `git diff --check`: passed.
+- Independent review passed and separately ran five native correlation/protection/cancellation
+  checks and 115 Controls/IPC tests.
+- Browser mock smoke at 1200×767: a Press test stayed Unverified after an unrelated mock mute
+  changed the global result to State Confirmed. The result was asserted in the browser and its
+  screenshot visually inspected. Browser evidence remains local under `/tmp`.
+
+No real native input or hardware actions were exercised. There is no new test timeout: an OS
+backend that blocks can leave tests pending. Epoch cancellation closes queued replies when the
+worker dequeues them, so cancellation is not prompt behind a blocked backend. Pending is retained
+rather than borrowing another action's result or claiming completion from a timer.

@@ -26,7 +26,7 @@ use crate::platform::host_events::{HostEventsGuard, HostSignal};
 use crate::window_lifecycle::WindowLifecycle;
 
 /// A message from a Tauri command (UI thread) to the background device thread.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum DeviceCommand {
     /// Set the desired sendable state; transmitted to the device when connected (FR-012).
     SetDesired(SendableState),
@@ -51,7 +51,7 @@ pub enum DeviceCommand {
     SetDisplayMode(kivori_model::desk::DisplayMode),
     /// Try one desk action now, exactly as if its control fired (the Test button). A protected
     /// foreground still suspends everything but system actions.
-    TestAction(crate::desk::Action),
+    TestAction(crate::desk::Action, crate::desk::actions::TestReply),
 }
 
 /// Keeps the OS sleep/wake and lock source running for the life of the app (managed by Tauri, never
@@ -533,7 +533,17 @@ mod installation_tests {
         ] {
             let (state, rx, cancel) = state();
             state.reserve_and_queue(command.clone()).unwrap();
-            assert_eq!(rx.recv().unwrap(), command);
+            match (rx.recv().unwrap(), command) {
+                (DeviceCommand::FlashFirmware, DeviceCommand::FlashFirmware)
+                | (DeviceCommand::RestoreFirmware, DeviceCommand::RestoreFirmware) => {}
+                (
+                    DeviceCommand::RestoreFirmwareFor(a, b),
+                    DeviceCommand::RestoreFirmwareFor(c, d),
+                ) => {
+                    assert_eq!((a, b), (c, d));
+                }
+                other => panic!("unexpected commands: {other:?}"),
+            }
             std::thread::scope(|scope| {
                 scope.spawn(|| {
                     assert!(state.try_reserve_app_install().is_none());
@@ -576,7 +586,7 @@ mod installation_tests {
         };
         assert!(install().is_err());
         state.queue_firmware_flash().unwrap();
-        assert_eq!(rx.recv().unwrap(), DeviceCommand::FlashFirmware);
+        assert!(matches!(rx.recv().unwrap(), DeviceCommand::FlashFirmware));
         state.shutdown();
     }
 

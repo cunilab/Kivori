@@ -4,9 +4,10 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { Toaster } from '@kivori/ui/components/sonner';
 import { useConfig, useDeskStatus } from '../../../hooks/use-kivori';
-import type { ConfigDto } from '../../../lib/ipc/types';
+import type { DeskActionDto, ConfigDto } from '../../../lib/ipc/types';
 
 // The browser mock behind the real IPC wrappers; `testAction` and `testRotate` are spied on.
 vi.mock('../../../lib/ipc', async (importOriginal) => {
@@ -228,6 +229,129 @@ describe('ControlsPage', () => {
     expect(
       await within(row('hold')).findByText('Confirmed', { selector: '[data-result]' }),
     ).toBeVisible();
+  });
+
+  it('keeps pending test feedback independent of old and unrelated desk actions', async () => {
+    const user = userEvent.setup();
+    await ipc.testRotate({ kind: 'systemVolume' });
+    let finish!: (outcome: DeskActionDto) => void;
+    vi.mocked(ipc.testAction).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(<Harness />);
+    await screen.findByTestId('gesture-hold');
+    await rowAction(user, 'hold', 'Test');
+    expect(row('hold').querySelector('[data-result]')).toHaveAttribute('data-result', 'processing');
+    await act(async () => {
+      await ipc.testRotate({ kind: 'systemVolume' });
+    });
+    expect(row('hold').querySelector('[data-result]')).toHaveAttribute('data-result', 'processing');
+    await act(async () =>
+      finish({ action: 'mute', result: 'unverified', permissionRequired: false }),
+    );
+    expect(row('hold').querySelector('[data-result]')).toHaveAttribute('data-result', 'unverified');
+    await act(async () => {
+      await ipc.testRotate({ kind: 'systemVolume' });
+    });
+    expect(row('hold').querySelector('[data-result]')).toHaveAttribute('data-result', 'unverified');
+  });
+
+  it('replaces a prior success when a later test rejects', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await screen.findByTestId('gesture-hold');
+    await rowAction(user, 'hold', 'Test');
+    await waitFor(() =>
+      expect(row('hold').querySelector('[data-result]')).toHaveAttribute(
+        'data-result',
+        'stateConfirmed',
+      ),
+    );
+    vi.mocked(ipc.testAction).mockRejectedValueOnce(new Error('failed test'));
+    await rowAction(user, 'hold', 'Test');
+    await waitFor(() =>
+      expect(row('hold').querySelector('[data-result]')).toHaveAttribute('data-result', 'error'),
+    );
+    expect(await screen.findByText('failed test')).toBeVisible();
+  });
+
+  it('ignores superseded replies and clears old feedback when a countdown starts', async () => {
+    const user = userEvent.setup();
+    await ipc.setBinding('general', 'press', { action: { kind: 'shortcut', keys: 'Ctrl+K' } });
+    let finish!: (outcome: DeskActionDto) => void;
+    vi.mocked(ipc.testAction).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(<Harness />);
+    await screen.findByTestId('gesture-hold');
+    await rowAction(user, 'hold', 'Test');
+    await rowAction(user, 'rotate', 'Test');
+    await waitFor(() =>
+      expect(row('rotate').querySelector('[data-result]')).toHaveAttribute(
+        'data-result',
+        'stateConfirmed',
+      ),
+    );
+    await act(async () => finish({ action: 'mute', result: 'error', permissionRequired: false }));
+    expect(row('hold').querySelector('[data-result]')).toBeNull();
+    expect(row('rotate').querySelector('[data-result]')).toHaveAttribute(
+      'data-result',
+      'stateConfirmed',
+    );
+    await rowActionFake(user, 'press', 'Test');
+    expect(row('rotate').querySelector('[data-result]')).toBeNull();
+    expect(within(row('press')).getByRole('status')).toHaveTextContent('Running in 3');
+    await user.click(within(row('press')).getByRole('button', { name: 'Cancel' }));
+    act(() => vi.advanceTimersByTime(5000));
+    vi.useRealTimers();
+  });
+
+  it('invalidates a pending reply when the saved binding changes', async () => {
+    const user = userEvent.setup();
+    let finish!: (outcome: DeskActionDto) => void;
+    vi.mocked(ipc.testAction).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(<Harness />);
+    await screen.findByTestId('gesture-hold');
+    await rowAction(user, 'hold', 'Test');
+    await act(async () => {
+      await ipc.setBinding('general', 'hold', { action: { kind: 'playPause' } });
+    });
+    await act(async () =>
+      finish({ action: 'mute', result: 'stateConfirmed', permissionRequired: false }),
+    );
+    expect(row('hold').querySelector('[data-result]')).toBeNull();
+  });
+
+  it.each(['profile', 'unmount'])('ignores a late rejection after %s changes', async (change) => {
+    const user = userEvent.setup();
+    let reject!: (error: Error) => void;
+    vi.mocked(ipc.testAction).mockImplementationOnce(
+      () =>
+        new Promise((_, fail) => {
+          reject = fail;
+        }),
+    );
+    const page = render(<Harness />);
+    await screen.findByTestId('gesture-hold');
+    await rowAction(user, 'hold', 'Test');
+    if (change === 'unmount') page.unmount();
+    else await user.click(screen.getByRole('tab', { name: 'Browser' }));
+    const errorToast = vi.spyOn(toast, 'error');
+    await act(async () => reject(new Error('obsolete test')));
+    expect(errorToast).not.toHaveBeenCalled();
+    errorToast.mockRestore();
+    if (change === 'profile') expect(row('hold').querySelector('[data-result]')).toBeNull();
   });
 
   it('tests a volume knob at once, as a step up and back, and shows the result', async () => {

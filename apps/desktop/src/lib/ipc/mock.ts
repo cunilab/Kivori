@@ -26,6 +26,7 @@ import type {
   ConnectionStatusDto,
   ControlRef,
   DeskActionToken,
+  DeskActionDto,
   DeskStatusDto,
   DisplayMode,
   Intensity,
@@ -530,7 +531,7 @@ const ACTION_TOKENS: Record<ActionSpec['kind'], DeskActionToken> = {
 };
 
 /** Mirrors native rules loosely: a shortcut/launch needs its text; the outcome is "unverified". */
-export function mockTestAction(action: ActionSpec): void {
+export function mockTestAction(action: ActionSpec): DeskActionDto {
   if (action.kind === 'shortcut' && !action.keys.trim()) {
     throw new Error('not a valid shortcut');
   }
@@ -565,30 +566,36 @@ export function mockTestAction(action: ActionSpec): void {
       },
     });
   }
+  const outcome: DeskActionDto = {
+    action: ACTION_TOKENS[action.kind],
+    result,
+    permissionRequired: false,
+  };
   updateDesk({
     muted: action.kind === 'systemMute' ? !deskStatus.muted : deskStatus.muted,
-    lastAction: { action: ACTION_TOKENS[action.kind], result, permissionRequired: false },
+    lastAction: outcome,
   });
+  return outcome;
 }
 
 /** Mirrors the native rotate test: a volume nudge that ends where it began, or the cw shortcut. */
-export function mockTestRotate(rotate: RotateSpec): void {
+export function mockTestRotate(rotate: RotateSpec): DeskActionDto {
   if (rotate.kind === 'shortcuts' && !rotate.cw.trim()) throw new Error('not a valid shortcut');
   if (rotate.kind === 'appVolume' && !rotate.app.trim()) throw new Error('an app cannot be empty');
   // Per-app volume does not exist on macOS: an error, never a fallback to the system volume.
   const unsupported = rotate.kind === 'appVolume' && scenario() === 'mac';
-  updateDesk({
-    lastAction: {
-      action:
-        rotate.kind === 'shortcuts'
-          ? 'shortcut'
-          : rotate.kind === 'appVolume'
-            ? 'appVolume'
-            : 'volume',
-      result: unsupported ? 'error' : rotate.kind === 'shortcuts' ? 'unverified' : 'stateConfirmed',
-      permissionRequired: false,
-    },
-  });
+  const outcome: DeskActionDto = {
+    action:
+      rotate.kind === 'shortcuts'
+        ? 'shortcut'
+        : rotate.kind === 'appVolume'
+          ? 'appVolume'
+          : 'volume',
+    result: unsupported ? 'error' : rotate.kind === 'shortcuts' ? 'unverified' : 'stateConfirmed',
+    permissionRequired: false,
+  };
+  updateDesk({ lastAction: outcome });
+  return outcome;
 }
 
 const catalogEntry = (

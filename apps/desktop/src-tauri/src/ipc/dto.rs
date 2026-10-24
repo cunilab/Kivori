@@ -1381,7 +1381,7 @@ pub fn display_mode_from_token(token: &str) -> Option<kivori_model::desk::Displa
         .find(|mode| display_mode_token(*mode) == token)
 }
 
-const fn feedback_token(kind: kivori_model::desk::FeedbackKind) -> &'static str {
+pub(super) const fn feedback_token(kind: kivori_model::desk::FeedbackKind) -> &'static str {
     use kivori_model::desk::FeedbackKind;
     match kind {
         FeedbackKind::Processing => "processing",
