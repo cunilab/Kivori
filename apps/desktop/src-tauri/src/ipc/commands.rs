@@ -758,15 +758,15 @@ pub fn list_action_catalog(app: State<'_, AppState>) -> Vec<dto::ActionCatalogEn
 
 /// Tries one action now, exactly as if its control fired (all builds). The spec is validated
 /// here, at the trust boundary, with the same rules as saving a binding. The outcome arrives via
-/// `desk://status` `lastAction`. A protected foreground refuses everything but system actions.
+/// this invocation's reply. A protected foreground refuses everything but system actions.
 ///
 /// # Errors
 /// Returns an error string for an invalid spec or an unavailable device runtime.
 #[tauri::command]
-pub fn test_action(
+pub async fn test_action(
     app: State<'_, AppState>,
     action: crate::config::ActionSpec,
-) -> Result<(), String> {
+) -> Result<dto::DeskActionDto, String> {
     let macros = app
         .config
         .lock()
@@ -776,21 +776,39 @@ pub fn test_action(
         .clone();
     let action =
         crate::config::resolve::resolve_action(&action, &macros).map_err(str::to_string)?;
-    app.send_command(DeviceCommand::TestAction(action))
+    run_test(&app, action).await
 }
 
 /// Tries the knob's binding once (all builds). A volume knob (system or one app) goes one detent
 /// clockwise and back to exactly where it was, so the net change is zero; a shortcut pair sends
 /// its clockwise shortcut once. Validated and refused like [`test_action`]: a protected foreground
-/// refuses the shortcut. The outcome arrives via `desk://status` `lastAction`.
+/// refuses the shortcut. The outcome is returned only to this invocation.
 ///
 /// # Errors
 /// Returns an error string for an invalid spec or an unavailable device runtime.
 #[tauri::command]
-pub fn test_rotate(
+pub async fn test_rotate(
     app: State<'_, AppState>,
     rotate: crate::config::RotateSpec,
-) -> Result<(), String> {
+) -> Result<dto::DeskActionDto, String> {
     let action = crate::config::resolve::resolve_rotate_test(&rotate).map_err(str::to_string)?;
-    app.send_command(DeviceCommand::TestAction(action))
+    run_test(&app, action).await
+}
+
+async fn run_test(
+    app: &AppState,
+    action: crate::desk::Action,
+) -> Result<dto::DeskActionDto, String> {
+    let token = action.token();
+    let (reply, mut result) = tauri::async_runtime::channel(1);
+    app.send_command(DeviceCommand::TestAction(action, reply))?;
+    let outcome = result
+        .recv()
+        .await
+        .ok_or("The test was cancelled or the action worker stopped.")?;
+    Ok(dto::DeskActionDto {
+        action: dto::desk_action_token(token),
+        result: dto::feedback_token(outcome.kind),
+        permission_required: outcome.permission_required,
+    })
 }

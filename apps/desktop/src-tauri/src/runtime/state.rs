@@ -26,7 +26,7 @@ use crate::platform::host_events::{HostEventsGuard, HostSignal};
 use crate::window_lifecycle::WindowLifecycle;
 
 /// A message from a Tauri command (UI thread) to the background device thread.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum DeviceCommand {
     /// Set the desired sendable state; transmitted to the device when connected (FR-012).
     SetDesired(SendableState),
@@ -51,7 +51,7 @@ pub enum DeviceCommand {
     SetDisplayMode(kivori_model::desk::DisplayMode),
     /// Try one desk action now, exactly as if its control fired (the Test button). A protected
     /// foreground still suspends everything but system actions.
-    TestAction(crate::desk::Action),
+    TestAction(crate::desk::Action, crate::desk::actions::TestReply),
 }
 
 /// Keeps the OS sleep/wake and lock source running for the life of the app (managed by Tauri, never
@@ -104,8 +104,22 @@ pub struct AppState {
     #[cfg(feature = "device-studio")]
     pub previews: Arc<crate::ipc::channels::PreviewStreams>,
     commands: Mutex<Sender<DeviceCommand>>,
+    // Lock order: installation admission, then firmware status. Never held across device shutdown.
+    app_installing: Mutex<bool>,
     cancel: Arc<AtomicBool>,
     device_thread: Mutex<Option<JoinHandle<()>>>,
+}
+
+/// Keeps firmware admission closed until the installer returns or exits the process.
+#[must_use]
+pub struct AppInstallGuard<'a> {
+    state: &'a AppState,
+}
+
+impl Drop for AppInstallGuard<'_> {
+    fn drop(&mut self) {
+        *self.state.app_installing.lock().expect("installation lock") = false;
+    }
 }
 
 impl AppState {
@@ -157,6 +171,7 @@ impl AppState {
             #[cfg(feature = "device-studio")]
             previews: Arc::new(crate::ipc::channels::PreviewStreams::new()),
             commands: Mutex::new(commands),
+            app_installing: Mutex::new(false),
             cancel,
             device_thread: Mutex::new(Some(device_thread)),
         }
@@ -381,6 +396,10 @@ impl AppState {
     }
 
     fn reserve_and_queue(&self, command: DeviceCommand) -> Result<(), String> {
+        let installing = self.app_installing.lock().expect("installation lock");
+        if *installing {
+            return Err("An app update is being installed. Try again after restarting.".into());
+        }
         let previous = {
             let mut status = self.firmware_status.lock().expect("firmware status lock");
             if !status.available {
@@ -410,6 +429,28 @@ impl AppState {
         Ok(())
     }
 
+    /// Reserves installer launch against every flash/restore admission, including queued Preparing.
+    /// Dropping the guard releases the reservation after an installation failure.
+    #[must_use]
+    pub fn try_reserve_app_install(&self) -> Option<AppInstallGuard<'_>> {
+        let mut installing = self.app_installing.lock().expect("installation lock");
+        if *installing || self.firmware_busy() {
+            return None;
+        }
+        *installing = true;
+        Some(AppInstallGuard { state: self })
+    }
+
+    /// The updater exit hook may stop the runtime only while installation owns admission.
+    #[must_use]
+    pub fn shutdown_for_app_install(&self) -> bool {
+        if !*self.app_installing.lock().expect("installation lock") {
+            return false;
+        }
+        self.shutdown();
+        true
+    }
+
     /// Sends a command to the device thread.
     ///
     /// # Errors
@@ -432,5 +473,141 @@ impl AppState {
         if let Some(handle) = self.device_thread.lock().expect("thread lock").take() {
             let _ = handle.join();
         }
+    }
+}
+
+#[cfg(test)]
+mod installation_tests {
+    use super::*;
+    use std::sync::mpsc::{self, Receiver};
+
+    fn state() -> (AppState, Receiver<DeviceCommand>, Arc<AtomicBool>) {
+        let (tx, rx) = mpsc::channel();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let stopped = Arc::clone(&cancel);
+        let thread = std::thread::spawn(move || {
+            while !stopped.load(Ordering::SeqCst) {
+                std::thread::park_timeout(std::time::Duration::from_millis(1));
+            }
+        });
+        let mut status = dto::initial_status();
+        status.connection = "connected".into();
+        let state = AppState::new(
+            false,
+            Arc::new(Mutex::new(status)),
+            Arc::new(ActivityLog::new(8)),
+            tx,
+            Arc::clone(&cancel),
+            thread,
+        );
+        state.firmware_status.lock().unwrap().available = true;
+        (state, rx, cancel)
+    }
+
+    #[test]
+    fn installation_admitted_first_refuses_every_firmware_path() {
+        let (state, rx, _) = state();
+        let reservation = state.try_reserve_app_install().unwrap();
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                assert!(state.queue_firmware_flash().is_err());
+                assert!(state.queue_firmware_restore().is_err());
+                assert!(state
+                    .queue_firmware_restore_for("pala".into(), None)
+                    .is_err());
+            });
+        });
+        assert!(rx.try_recv().is_err());
+        assert_eq!(state.firmware_status_snapshot().phase, FirmwarePhase::Idle);
+        assert!(state.try_reserve_app_install().is_none());
+        drop(reservation);
+        state.shutdown();
+    }
+
+    #[test]
+    fn firmware_admitted_first_refuses_installation_and_updater_shutdown() {
+        for command in [
+            DeviceCommand::FlashFirmware,
+            DeviceCommand::RestoreFirmware,
+            DeviceCommand::RestoreFirmwareFor("pala".into(), None),
+        ] {
+            let (state, rx, cancel) = state();
+            state.reserve_and_queue(command.clone()).unwrap();
+            match (rx.recv().unwrap(), command) {
+                (DeviceCommand::FlashFirmware, DeviceCommand::FlashFirmware)
+                | (DeviceCommand::RestoreFirmware, DeviceCommand::RestoreFirmware) => {}
+                (
+                    DeviceCommand::RestoreFirmwareFor(a, b),
+                    DeviceCommand::RestoreFirmwareFor(c, d),
+                ) => {
+                    assert_eq!((a, b), (c, d));
+                }
+                other => panic!("unexpected commands: {other:?}"),
+            }
+            std::thread::scope(|scope| {
+                scope.spawn(|| {
+                    assert!(state.try_reserve_app_install().is_none());
+                    assert!(!state.shutdown_for_app_install());
+                });
+            });
+            assert!(!cancel.load(Ordering::SeqCst));
+            assert_eq!(
+                state.firmware_status_snapshot().phase,
+                FirmwarePhase::Preparing
+            );
+            state.shutdown();
+        }
+    }
+
+    #[test]
+    fn installation_waits_for_all_busy_firmware_phases() {
+        let (state, _rx, _) = state();
+        for phase in [
+            FirmwarePhase::Preparing,
+            FirmwarePhase::Flashing,
+            FirmwarePhase::Reconnecting,
+        ] {
+            state.firmware_status.lock().unwrap().phase = phase;
+            assert!(state.try_reserve_app_install().is_none());
+        }
+        for phase in [FirmwarePhase::Succeeded, FirmwarePhase::Failed] {
+            state.firmware_status.lock().unwrap().phase = phase;
+            assert!(state.try_reserve_app_install().is_some());
+        }
+        state.shutdown();
+    }
+
+    #[test]
+    fn failed_installer_releases_firmware_admission() {
+        let (state, rx, _) = state();
+        let install = || -> Result<(), ()> {
+            let _reservation = state.try_reserve_app_install().unwrap();
+            Err(())
+        };
+        assert!(install().is_err());
+        state.queue_firmware_flash().unwrap();
+        assert!(matches!(rx.recv().unwrap(), DeviceCommand::FlashFirmware));
+        state.shutdown();
+    }
+
+    #[test]
+    fn failed_firmware_queue_releases_installation_admission() {
+        let (state, rx, _) = state();
+        drop(rx);
+        assert!(state.queue_firmware_restore().is_err());
+        assert_eq!(state.firmware_status_snapshot().phase, FirmwarePhase::Idle);
+        assert!(state.try_reserve_app_install().is_some());
+        state.shutdown();
+    }
+
+    #[test]
+    fn reserved_installer_can_stop_runtime_without_reopening_admission() {
+        let (state, rx, cancel) = state();
+        let reservation = state.try_reserve_app_install().unwrap();
+        assert!(state.shutdown_for_app_install());
+        assert!(cancel.load(Ordering::SeqCst));
+        assert!(state.queue_firmware_restore().is_err());
+        assert!(rx.try_recv().is_err());
+        drop(reservation);
     }
 }

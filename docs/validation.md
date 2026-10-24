@@ -463,3 +463,392 @@ Diagnostics clipboard regression coverage checks that both ordinary and develope
 internal session counters while preserving diagnostic values and fresh measurements. Session
 correlation remains in the IPC/cache data for rejecting stale replies; unavailable and stale
 measurements stay excluded. These are mocked clipboard tests, not a native app clipboard run.
+
+## M2.9 microphone coverage software acceptance
+
+Implemented the first S1 item on `feat/m2.9-reliability` for PR #127, 2026-10-24.
+This is software evidence from Andress-MacBook-Air; Phase 13 and M2.9 S4 Windows hardware checks
+remain open.
+
+Windows discovery now retains usable bindings when enumeration or identity inspection is
+incomplete. An unreadable coverage entry prevents aggregate Muted and State Confirmed while
+healthy microphones remain controllable. Endpoint and device-list notification registration retry
+on subsequent scans; failed subscription never removes the ability to read/write mute. Reads,
+writes and notification-driven rescans publish changed snapshots, including unknown coverage,
+instead of retaining a previously confirmed state after failure.
+
+Permanent regressions:
+
+- `platform/mic_coverage.rs`: production reconciliation and observation helpers cover unknown
+  collection-item/device-id results, activation failure, failed whole scans, retained bindings,
+  missing notifications, restored coverage and a known empty device list.
+- `desk/actions.rs`: incomplete coverage cannot confirm either mute or unmute; a known failure
+  still takes precedence over an unknown result.
+- `desk/mod.rs`: an incomplete-coverage event clears an already muted wire state before the next
+  periodic sample, and a later complete observation restores it.
+
+Local validation:
+
+- `cargo test -p kivori-desktop --lib mic --locked -j 2`: 18 passed, one intentionally ignored.
+- `cargo test -p kivori-desktop --lib --locked -j 2`: 286 passed, three intentionally ignored.
+- `cargo clippy -p kivori-desktop --lib --tests --locked -j 2 -- -D warnings`: passed.
+- `cargo fmt --all --check` and `git diff --check`: passed.
+- An isolated `x86_64-pc-windows-msvc` Clippy check of the production microphone backend,
+  coverage helper and copied production boundary types against the real Windows APIs passed
+  with warnings denied. This checks the changed Windows code, not the full Tauri application.
+
+The full `x86_64-pc-windows-msvc` cross-check stopped in `ring` because Windows SDK C headers
+(`assert.h`) are unavailable on this Mac. Host tests model subscription failure; they do not
+exercise real COM registration, callback teardown or physical microphone hotplug. The real-device
+Phase 13 checks must supply that evidence before beta acceptance.
+
+Full host CI for the microphone implementation (`1509a87`) subsequently passed, including
+[Windows Rust integration](https://github.com/cunilab/Kivori/actions/runs/40081910499/job/120837033069)
+and Windows startup. This closes the software integration uncertainty for that commit, not the
+real-device microphone checks above.
+
+## M2.9 queued input software acceptance
+
+Implemented the second S1 item on `feat/m2.9-reliability` for PR #127, 2026-10-24.
+These checks use fake dispatchers and input effects; no real keyboard or media input was injected.
+
+The action worker retains the request's original foreground app, session epoch and admission
+deadline through main-thread queueing. Input is checked before and after connection/permission
+preparation. An atomic pending/start/cancel decision prevents a timed-out pending or preparing
+job from injecting later; the earlier of the request deadline and the two-second dispatch timeout
+controls the wait. Input already started reports uncertain completion as Unverified, not Error.
+Shortcuts refuse a changed/protected target; system media keys retain session/deadline checks
+without depending on the foreground app. Worker shutdown invalidates pending input too.
+
+An admitted macro keeps its intentional delays beyond the original admission deadline, with
+session and target checks retained for later steps. An unfinished native input step stops further
+steps as Unverified so it cannot overlap a later launch; a completed write with unknown read-back
+can still continue. Product and architecture documentation record this distinction.
+
+Permanent regressions in `platform/synth.rs` and `desk/actions.rs` cover late callbacks after
+timeout, timeout during preparation, timeout after input starts, exactly-once normal dispatch,
+request expiry, slow guards, session/app/protected-context changes, worker queue target retention,
+macro delays, uncertain macro cutoff and completed-write continuation. Unsupported keys still fail
+before queueing or opening a native input connection.
+
+Local validation on Andress-MacBook-Air:
+
+- `cargo test -p kivori-desktop --lib --locked -j 2`: 301 passed, three intentionally ignored.
+- `cargo test -p kivori-desktop --test input_freshness --test runtime --test ipc_vocabulary --locked -j 2`:
+  17 passed across the three integration suites.
+- `cargo clippy -p kivori-desktop --lib --tests --locked -j 2 -- -D warnings`: passed.
+- An isolated Windows-target Clippy check of the production synth, shortcut and copied production
+  guard/error/trait definitions against Enigo's real Windows backend passed with warnings denied.
+- Rust formatting, documentation formatting and `git diff --check`: passed.
+
+Independent review found and verified the correction for uncertain macro continuation. Full CI,
+including Windows Rust and startup, passed for commit `e1c08e8`
+([Windows Rust job](https://github.com/cunilab/Kivori/actions/runs/40083766099/job/120842418793)). Native Windows/macOS delivery,
+permission prompts and real scheduling require runtime acceptance; OS focus changes after the last
+check cannot be made atomic with global keyboard injection.
+
+## M2.9 installation and flashing software acceptance
+
+Implemented the third S1 item on `feat/m2.9-reliability` for PR #127, 2026-10-24.
+These checks use a stand-in device thread and command receiver; they launch no installer or flasher.
+
+An installation admission lock serializes the final firmware-busy check and installation reservation
+with every flash/restore reservation and queue send. Download and signature verification still
+precede reservation. Installation waits for firmware preparation, programming and reconnect to end,
+and for an idle knob gesture. Once admitted, an RAII guard refuses new firmware work until the
+plugin returns an error or exits/restarts the process. The updater exit hook requires installation
+ownership before stopping the runtime. Device-thread startup no longer overwrites the shared
+initial status, which could erase an early queued `Preparing` reservation.
+
+Six deterministic regressions in `runtime/state.rs` cover both admission orders on separate threads,
+all three flash/restore paths, all busy firmware phases, failed installer scope releasing admission,
+failed firmware queue rolling back status, and updater exit refusing to cancel an admitted flash.
+They also prove that reserved installer shutdown keeps firmware admission closed.
+
+Local validation on Andress-MacBook-Air:
+
+- `cargo test -p kivori-desktop --lib --test firmware_flash --test updater_policy --test firmware_offer --test runtime --locked -j 2`:
+  307 library tests and 72 integration tests passed; three library tests intentionally ignored.
+- Native Clippy with warnings denied, Rust/document formatting and `git diff --check`: passed.
+- Independent review passed for admission, lock ordering, production callers and guard lifetime.
+
+The locked updater plugin invokes its exit hook before launching the Windows installer. If that
+launch fails after shutdown, the reservation is released, but the device runtime stays stopped;
+restart the app to resume device use. This existing lifecycle limitation is not runtime recovery
+evidence. Real Windows installer launch, process exit and simultaneous hardware flashing remain
+part of M2.9 S4 acceptance.
+
+Full CI, including Windows Rust and startup, passed for installation-exclusion commit `0cc1f09`
+([Windows Rust job](https://github.com/cunilab/Kivori/actions/runs/40086016590/job/120849005963)).
+
+## M2.9 buffered button software acceptance
+
+Implemented the first S2 item on `feat/m2.9-reliability` for PR #127, 2026-10-24.
+Tests use timestamped fake input snapshots through the production firmware runtime and wire
+decoder; no GPIO, interrupt timing or physical switch was exercised.
+
+`ButtonGesture::update` settles the previous raw interval before replacing its level/timestamp.
+The runtime polls every button at each captured sample before checking control ownership, clearing
+a released control before admitting another. A session boundary also makes queued button downs
+captured at or before that boundary ineligible for Press/Hold, including an old down whose release
+comes in the new session. Equal-ms downs are suppressed conservatively. Signed wrapping arithmetic
+handles rollover; the boundary check ends once the chronological drain reaches current levels,
+while per-press eligibility stays latched. Recovery is still independent of session eligibility.
+
+Four new gesture tests first failed on the original code, then passed: a complete 100–200 ms press
+polled at 230 ms, two 420 ms presses separated by a 30 ms release, captured contact bounce, and
+eligibility retained from the raw down. Eight new runtime regressions cover every switch, negotiated
+double press, cross-control release/ownership, recovery cancellation, debouncing across a session
+change, wholly unconsumed old/equal-time presses, old-down recovery, and uptime wrap. The unconsumed
+old-session regression also failed before the capture-time guard was added.
+
+Local validation on Andress-MacBook-Air:
+
+- Full firmware host simulation: 202 passed (49 library and 153 integration tests), no failures or
+  ignored tests, using `cargo test --manifest-path firmware/pala/Cargo.toml --locked --features host-sim --target aarch64-apple-darwin`.
+- Host-sim Clippy for all targets and RISC-V `physical-st7789` library Clippy, both with warnings
+  denied: passed.
+- Shipping `physical-st7789` release firmware compiled and linked for `riscv32imc-unknown-none-elf`.
+  A consistent rustup toolchain and its LLVM library search path were required locally; Cargo
+  reported an optional debug-stripping warning from the earlier mixed-toolchain attempt.
+- Independent review passed; the reviewer separately reran runtime and reconnect/wrap regressions.
+
+Physical contact bounce, interrupt capture and sustained board behavior remain M2.9 S4 hardware
+acceptance. Existing limits outside this change include capture-queue overflow and a complete
+ten-second hold/release without any intervening poll: recovery may miss reboot during such a loop
+stall. Continuous-held recovery and captured release-before-deadline cancellation are tested.
+
+## M2.9 receive burst software acceptance
+
+Implemented the second S2 item on `feat/m2.9-reliability` for PR #127, 2026-10-24.
+These checks use fake transports and the production dispatcher/runtime; no physical USB or board
+was exercised.
+
+The original dispatcher read a complete available burst before parsing, erasing buffered valid
+packets on overflow. The permanent 100-Ping regression reproduced exactly 41 replies on that code.
+The replacement decodes at each delimiter and answers all 100 once, in order, across multiple
+ticks. Processing stops after 512 inbound bytes per tick, retaining a partial packet and leaving
+unread bytes in the transport. Storage needs only one packet, reducing `RX_CAPACITY` from 1,060
+to 530 bytes; the temporary packet stays within its previous capacity, without allocation.
+
+Oversized delimiterless packets are discarded through their delimiter, never interpreting a valid
+looking tail as a new frame. One framing rejection is recorded per overflow. Empty delimiters are
+ignored; malformed complete frames still use the existing typed decoder. Link loss clears partial
+and discard state. Sequence suppression and existing latest-value pending-message policies remain
+in force.
+
+Five new regressions cover the 100-frame burst, partial frames spanning the tick budget with
+one-/seven-/128-byte reads, overflow with a valid-looking tail followed by malformed and valid
+frames, link reset from partial/discard state, and endless valid or delimiterless traffic. The last
+test drives the actual runtime through ten seconds of recovery, asserting every tick samples input,
+renders on cadence and requests reboot on time even though reads never return empty.
+
+Local validation on Andress-MacBook-Air:
+
+- Full firmware host simulation: 207 passed (49 library and 158 integration tests), no failures or
+  ignored tests, using `cargo test --manifest-path firmware/pala/Cargo.toml --locked --features host-sim --target aarch64-apple-darwin`.
+- Host all-target and RISC-V `physical-st7789` library Clippy with warnings denied: passed.
+- Shipping `physical-st7789` release firmware compiled and linked for RISC-V using the consistent
+  rustup/LLVM environment described above; the existing local optional debug-strip warning remains.
+- Independent review passed, including a separate 35-test dispatcher/runtime run and a 16-test
+  dispatcher rerun after reducing the buffer capacity.
+- Rust/document formatting and `git diff --check`: passed.
+
+Physical USB buffering/backpressure, receive throughput, and stack high-water remain hardware
+acceptance. The byte budget bounds receive work, rather than promising a measured wall-clock
+latency. Traffic beyond transport capacity can still be dropped below this dispatcher.
+
+## M2.9 configuration capacity software acceptance
+
+Implemented the third S2 item on `feat/m2.9-reliability` for PR #127, 2026-10-24.
+Checks use temporary directories and the production configuration store; no existing user settings
+were changed.
+
+The shared atomic writer checks the complete serialized UTF-8 byte length, including indentation,
+JSON escaping and the final newline, against the loader's existing 262,144-byte limit. It rejects
+oversized settings with `ConfigError::TooLarge` and a fixed capacity message before creating a
+directory or touching the temporary/current file. Save and reset propagate that error instead of
+converting it to a generic I/O failure. Cache publication and revision changes still follow a
+successful atomic write. Migration write-back uses the same size gate and retains its existing
+retry-on-next-open behavior when writing fails.
+
+The oversized-macro regression first failed on the old code because save returned success. Three
+new regressions cover oversized ASCII, UTF-8 and JSON-escaped launch targets; preservation of the
+existing file, temporary-file sentinel, cached configuration and revision; accepted files at
+262,143 and 262,144 bytes reopening unchanged; and rejection at 262,145 bytes without creating
+the settings directory. The exact-size cases include the trailing newline, catching an off-by-one
+serialization check.
+
+Local validation on Andress-MacBook-Air:
+
+- `cargo test -p kivori-desktop --lib --test config_store --test config_persistence --test runtime --locked -j 2`:
+  307 library and 52 integration tests passed; three library tests intentionally ignored.
+- Native Clippy for the desktop library and tests with warnings denied: passed.
+- Independent review passed; the reviewer separately ran the 43 configuration tests.
+- Rust/document formatting, local documentation links and `git diff --check`: passed.
+
+Windows filesystem behavior and the live UI presentation of the error remain untested locally.
+The following acceptance section covers preservation when recovery backups fail.
+
+
+## M2.9 recovery backup software acceptance
+
+Implemented the fourth S2 item on `feat/m2.9-reliability` for PR #127, 2026-10-25.
+Tests use temporary directories, injected backup operations and a synthetic migration result;
+no existing user settings were changed. The released schema still has no real migration steps,
+so the private loader seam exercises the production migration branch without changing versions.
+
+The store retains a pending preservation reason when quarantine or migration backup fails.
+Defaults remain usable for corrupt/newer files; converted valid settings remain usable in memory.
+Every save/reset retries preservation before replacing the original, and refuses the change while
+that retry fails. Candidate validation and serialized size checks precede save-side backup work.
+A successful backup clears the gate, while active settings and revision still change only after
+an atomic write succeeds.
+
+Quarantine first tries rename, then copies into a fresh file, preserves source permissions and
+flushes the copy before removing the source. Failed copies attempt partial-output cleanup and do
+not authorize replacement. Migration backup collisions get fresh names, preserving earlier
+originals. Cleanup runs only after quarantine succeeds and explicitly protects the new original,
+even when existing backup timestamps are in the future. `backupFailed` travels through native
+DTOs, parsing, the Controls notice and diagnostics; startup logs failure rather than recovery.
+The notice no longer claims a backup exists when preservation failed.
+
+Seven new native regressions cover failed move/copy, save/reset refusal and subsequent successful
+preservation; migration failure with usable converted settings; preservation of prior migration
+backups; failed write-back after a successful backup; fallback copy; failed partial copy cleanup;
+clock-skew-safe pruning; and size rejection before pending preservation. Initial injected
+PermissionDenied failures keep the original at its path. Public save/reset retry failures use a
+source parked elsewhere inside the test directory, then restore it for a successful real retry;
+these are deterministic guard checks, rather than real OS permission/antivirus tests.
+
+Local validation on Andress-MacBook-Air:
+
+- `cargo test -p kivori-desktop --lib --test config_store --test config_persistence --test runtime --test ipc_vocabulary --locked -j 2`:
+  314 library and 53 integration tests passed; three library tests intentionally ignored.
+- Targeted frontend IPC, Controls and legacy-settings tests: 110 passed, including the new notice.
+- Native Clippy with warnings denied, targeted frontend ESLint, desktop TypeScript, Rust/document
+  formatting, local documentation links and `git diff --check`: passed.
+- Independent review passed and separately reran all eight store unit tests.
+
+The prior size-limit commit `dddf9fc` passed full CI, including Windows Rust, packaging and startup
+([Windows Rust job](https://github.com/cunilab/Kivori/actions/runs/40113384294/job/120929570116)).
+Real Windows permission/antivirus failures, visual UI inspection and power-loss durability remain
+unverified. File-copy synchronization is tested through software outcomes; this is not a power-cut
+proof for filesystem directory updates.
+
+
+## M2.9 shortcut execution software acceptance
+
+Implemented the fifth S2 item on `feat/m2.9-reliability` for PR #127, 2026-10-25.
+The installed Enigo 0.6.1 source exposes and maps F21–F24 to Windows virtual keys, but its
+macOS key enum and Quartz mapping end at F20. The Windows sender now maps the missing four
+keys. The shared parser accepts F1–F24 on Windows and F1–F20 elsewhere. Bindings, knob pairs,
+macro steps and test requests already use this parser, so unsupported keys fail native validation
+before save/dispatch; no separate frontend key parser was added.
+
+The regression first failed on the old macOS code with “unsupported F21 was accepted.” Parser
+and sender tests cover F0 through F255, checking every accepted key against its exact Enigo
+variant, canonical text, and rejection outside the platform range. A store regression exercises
+F0 through F25: supported shortcuts save and reopen unchanged; unsupported shortcuts preserve
+the previous file bytes, live configuration and revision. Tests do not connect Enigo or inject keys.
+A Windows configuration containing F21–F24 is not portable to macOS: on open it follows the
+existing invalid-config preservation/recovery path rather than retaining a non-runnable binding.
+
+Local validation on Andress-MacBook-Air:
+
+- `cargo test -p kivori-desktop --lib --test config_store --test config_persistence --test runtime --test ipc_vocabulary --locked -j 2`:
+  316 library and 54 integration tests passed; three library tests intentionally ignored.
+- Native desktop library/tests Clippy with warnings denied: passed.
+- Isolated Windows-target Clippy compiled the production shortcut parser, sender and their tests
+  against Enigo's real Windows backend with warnings denied. This is compilation, not Windows
+  test execution; the full desktop cross-build still requires Windows SDK headers unavailable here.
+- Independent review passed and separately ran all three new regressions without native input.
+- Rust formatting, local documentation links and `git diff --check`: passed.
+
+Actual key delivery, OS permission handling and receiving-application behavior were not exercised.
+Windows runtime coverage remains a CI/platform check; Linux input remains unimplemented.
+
+
+## M2.9 onboarding recovery software acceptance
+
+Implemented the first S3 item on `feat/m2.9-reliability` for PR #127, 2026-10-25.
+Plug in now embeds the existing Device firmware component in recovery-only mode instead of
+keeping a local restoring flag after command enqueueing. The component stays mounted while
+its card is hidden, so its existing 750 ms native polling observes preparation, flashing,
+reconnection, success, failure and product/board choices. Reopening setup reads native progress.
+Normal setup hides flash controls; Continue still requires a known usable session.
+
+Disconnected terminal failures retain BOOT retry. Ambiguous targets use the existing catalog
+choices and a fresh confirmation naming both product and board; unplugging for BOOT does not
+discard the choice, while a changed native choice list does. Pending requests cannot queue a
+second restore. A usable reconnect clears inactive recovery and request errors, including an
+older request rejecting after the reconnect. Device-page behavior keeps its default presentation.
+
+The seven initial recovery regressions failed against the old onboarding flow. The final 18
+regressions cover native progress through success, every failure token, disconnected retry,
+product/board selection and cancel, stale choices, reopening setup, duplicate submission,
+status polling failure/recovery, normal setup and both request-error/reconnect orderings.
+Independent review identified the missing disconnected-request retry and stale-error transitions;
+these were fixed and covered before acceptance.
+
+Local validation on Andress-MacBook-Air:
+
+- `bun run --cwd apps/desktop test src/features/onboarding/__tests__/recovery.test.tsx src/features/onboarding/__tests__/onboarding.test.tsx src/features/onboarding/__tests__/capabilities.test.tsx src/features/device/__tests__/firmware.test.tsx src/features/device/__tests__/recovery.test.tsx`:
+  65 tests passed across five files, including all 18 new recovery cases.
+- Desktop TypeScript, targeted ESLint with warnings denied, frontend Prettier, local documentation
+  links and `git diff --check`: passed.
+- Independent review passed and separately reran all 18 recovery tests.
+- Local browser smoke at 1200×767 with the incompatible-device mock: the recovery card and BOOT
+  instructions rendered, Continue remained disabled, and confirmation produced the expected
+  native-runtime-unavailable error with retry still available. The dialog screenshot was visually
+  inspected; no device command reached hardware. Browser artifacts remain local under `/tmp`.
+
+Previous commit `39f27df` passed all required CI, including Windows Rust, packaging and startup;
+the macOS CI job was skipped. Native/firmware source was unchanged in this increment, so the
+previous 316-library/54-integration native baseline was not rerun locally. Actual Windows USB
+recovery and small-window/large-text layout acceptance remain open in later roadmap items.
+
+
+## M2.9 control-test correlation software acceptance
+
+Implemented the second S3 item on `feat/m2.9-reliability` for PR #127, 2026-10-25.
+`test_action` and `test_rotate` now return the existing `DeskActionDto` for their own invocation
+after the action completes. Each owns a bounded async channel, moved through the device command
+and worker request. The worker sends the exact outcome independently of global `Finished` events
+and the replaceable feedback ladder. Protected refusal replies immediately; rejected enqueue,
+worker shutdown and skipped requests drop the sender and reject the waiting command. Awaiting the
+reply keeps the main thread available for macOS input dispatch and holds no configuration lock.
+Global desk status, feedback and activity reporting remain in use for general device activity.
+
+Controls displays Processing until that invocation resolves. It replaces stale success with an
+error on rejection, ignores global `lastAction` changes, and discards replies superseded by a new
+test/countdown, configuration/profile change or unmount. Countdown cancellation still sends no
+request. The IPC bridge validates each reply using the same action parser as desk status; browser
+mocks return their own outcome while retaining global desk updates. Device Studio still accepts
+the same parameters and can ignore the returned result.
+
+Native regressions interleave two test replies with a separate hardware-style worker request and
+verify exact outcomes and permission fields. They also prove queued session cancellation runs no
+stale action, unavailable workers close replies, protected refusal replies immediately, and an
+expired request closes its reply. UI/IPC regressions cover old/global results while pending,
+unrelated later actions, rejected and superseded tests, new countdowns, changed bindings/profiles,
+unmount and malformed reply payloads.
+
+Local validation on Andress-MacBook-Air:
+
+- `cargo test -p kivori-desktop --lib --test config_store --test config_persistence --test runtime --test ipc_vocabulary --test firmware_flash --locked -j 2`:
+  319 library and 79 integration tests passed; three library tests intentionally ignored.
+- Native desktop library/tests Clippy with warnings denied: passed.
+- `bun run --cwd apps/desktop test src/features/controls/__tests__/controls.test.tsx src/lib/ipc/__tests__/ipc.test.ts src/features/device-studio/__tests__/test-action.test.tsx`:
+  119 frontend tests passed across three files. TypeScript, targeted ESLint, frontend Prettier,
+  Rust formatting, local documentation links and `git diff --check`: passed.
+- Independent review passed and separately ran five native correlation/protection/cancellation
+  checks and 115 Controls/IPC tests.
+- Browser mock smoke at 1200×767: a Press test stayed Unverified after an unrelated mock mute
+  changed the global result to State Confirmed. The result was asserted in the browser and its
+  screenshot visually inspected. Browser evidence remains local under `/tmp`.
+
+No real native input or hardware actions were exercised. There is no new test timeout: an OS
+backend that blocks can leave tests pending. Epoch cancellation closes queued replies when the
+worker dequeues them, so cancellation is not prompt behind a blocked backend. Pending is retained
+rather than borrowing another action's result or claiming completion from a timer.

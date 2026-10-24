@@ -428,9 +428,18 @@ fn run_install(app: &AppHandle, update: Option<&Update>) {
     };
     with_machine(app, Machine::downloaded);
     publish(app);
-    while busy(app).any() {
+    let Some(state) = app.try_state::<AppState>() else {
+        fail(app);
+        return;
+    };
+    let _reservation = loop {
+        if !busy(app).gesture {
+            if let Some(reservation) = state.try_reserve_app_install() {
+                break reservation;
+            }
+        }
         std::thread::sleep(IDLE_POLL);
-    }
+    };
     // On Windows this exits the app once the installer has started.
     match update.install(bytes) {
         Ok(()) => app.restart(),
@@ -450,8 +459,12 @@ fn fail(app: &AppHandle) {
 fn before_exit(app: &AppHandle) -> impl Fn() + Send + Sync + 'static {
     let app = app.clone();
     move || {
-        if let Some(state) = app.try_state::<AppState>() {
-            state.shutdown();
+        if !app
+            .try_state::<AppState>()
+            .is_some_and(|state| state.shutdown_for_app_install())
+        {
+            tracing::error!("updater exit refused without an installation reservation");
+            return;
         }
         app.cleanup_before_exit();
     }

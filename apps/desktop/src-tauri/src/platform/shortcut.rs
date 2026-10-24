@@ -8,7 +8,7 @@ use std::fmt;
 pub enum ShortcutKey {
     /// An ASCII letter (stored lowercase), a digit, or one of [`PUNCTUATION`].
     Char(char),
-    /// F1..=F24.
+    /// F1..=F24 on Windows; F1..=F20 elsewhere.
     Function(u8),
     Enter,
     Tab,
@@ -90,7 +90,9 @@ fn parse_key(token: &str) -> Option<ShortcutKey> {
             .then(|| ShortcutKey::Char(c.to_ascii_lowercase()));
     }
     if let Some(n) = token.strip_prefix('f').and_then(|n| n.parse::<u8>().ok()) {
-        return (1..=24).contains(&n).then_some(ShortcutKey::Function(n));
+        // Enigo's macOS backend has no F21–F24 keys.
+        let max = if cfg!(target_os = "windows") { 24 } else { 20 };
+        return (1..=max).contains(&n).then_some(ShortcutKey::Function(n));
     }
     NAMED
         .iter()
@@ -103,8 +105,8 @@ impl std::str::FromStr for Shortcut {
 
     /// Parses `+`-separated tokens, case-insensitively, ignoring surrounding spaces:
     /// `ctrl`/`control`, `alt`/`option`/`opt`, `shift`, `meta`/`cmd`/`command`/`win`/`super`,
-    /// then one key: a letter, a digit, `` ` ``, `[`, `]`, `F1`..`F24`, or a named key (`Enter`,
-    /// `Space`, `Up`...).
+    /// then one key: a letter, a digit, `` ` ``, `[`, `]`, a function key (`F1`..`F24` on Windows,
+    /// `F1`..`F20` elsewhere), or a named key (`Enter`, `Space`, `Up`...).
     fn from_str(text: &str) -> Result<Self, Self::Err> {
         let (mut ctrl, mut alt, mut shift, mut meta) = (false, false, false, false);
         let mut key = None;
@@ -224,5 +226,16 @@ mod tests {
             parse("Ctrl+Hyper"),
             Err(ShortcutError::UnknownToken("Hyper".into()))
         );
+    }
+
+    #[test]
+    fn function_keys_are_limited_to_the_platforms_supported_range() {
+        let max = if cfg!(target_os = "windows") { 24 } else { 20 };
+        for n in 0..=u8::MAX {
+            assert_eq!(
+                parse(&format!("Shift+F{n}")).is_ok(),
+                (1..=max).contains(&n)
+            );
+        }
     }
 }

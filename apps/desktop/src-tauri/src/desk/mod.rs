@@ -501,14 +501,21 @@ impl DeskRuntime {
         action: Action,
         now: Duration,
         observe: &mut impl FnMut(SessionActivity),
+        reply: actions::TestReply,
     ) {
         // Deliberate, like device input: classify Protected from the live foreground first.
         self.poll_focus(now);
         self.context.commit_pending();
         if self.context.protected() && !action.is_system() {
             self.refuse(&action, now, observe);
+            let _ = reply.try_send(Outcome::error());
         } else {
-            self.run_within(action, now, None, observe);
+            let token = action.token();
+            let id = self.ladder.start_as(token, action.wire_kind(), now);
+            observe(desk_activity(ActivityEventKind::DeskActionRequested, token));
+            if !self.worker.request_test(id, action, reply) {
+                self.fail(id, token, observe);
+            }
         }
     }
 
@@ -1289,10 +1296,22 @@ mod tests {
         *fg.0.lock().unwrap() = Foreground::Protected;
         let shortcut: Shortcut = "Ctrl+M".parse().unwrap();
         let mut log = Vec::new();
-        desk.test(Action::Shortcut(shortcut), ms(0), &mut |o| log.push(o.kind));
-        desk.test(Action::Launch("Calculator".into()), ms(1), &mut |o| {
-            log.push(o.kind);
-        });
+        let (reply, mut response) = tauri::async_runtime::channel(1);
+        desk.test(
+            Action::Shortcut(shortcut),
+            ms(0),
+            &mut |o| log.push(o.kind),
+            reply,
+        );
+        assert_eq!(response.try_recv().unwrap(), Outcome::error());
+        desk.test(
+            Action::Launch("Calculator".into()),
+            ms(1),
+            &mut |o| {
+                log.push(o.kind);
+            },
+            tauri::async_runtime::channel(1).0,
+        );
         let out = desk.tick(ms(2), &mut |_| {});
         assert_eq!(
             out.feedback.last().map(|f| f.kind),
@@ -1312,7 +1331,12 @@ mod tests {
             Some((ActionToken::Launch, FeedbackKind::Error))
         );
         // A system action still runs, and no key ever reached the protected surface.
-        desk.test(Action::ToggleMute, ms(10), &mut |_| {});
+        desk.test(
+            Action::ToggleMute,
+            ms(10),
+            &mut |_| {},
+            tauri::async_runtime::channel(1).0,
+        );
         let feedback = settle(&mut desk, ms(20), |f| !f.is_empty());
         assert_eq!(feedback[0].kind, FeedbackKind::StateConfirmed);
         assert!(sent(&synth).is_empty());
@@ -1326,13 +1350,23 @@ mod tests {
         *fg.0.lock().unwrap() = Foreground::Protected;
         // The shortcut pair is refused, no key sent; the volume nudge is a system action and runs.
         let shortcut: Shortcut = "Ctrl+M".parse().unwrap();
-        desk.test(Action::Shortcut(shortcut), ms(0), &mut |_| {});
+        desk.test(
+            Action::Shortcut(shortcut),
+            ms(0),
+            &mut |_| {},
+            tauri::async_runtime::channel(1).0,
+        );
         assert_eq!(
             desk.last_action().map(|l| l.kind),
             Some(FeedbackKind::Error)
         );
         let _ = desk.tick(ms(5), &mut |_| {});
-        desk.test(Action::VolumeNudge { app: None }, ms(10), &mut |_| {});
+        desk.test(
+            Action::VolumeNudge { app: None },
+            ms(10),
+            &mut |_| {},
+            tauri::async_runtime::channel(1).0,
+        );
         let feedback = settle(&mut desk, ms(20), |f| !f.is_empty());
         assert_eq!(feedback[0].action, ActionKind::Volume);
         assert_eq!(feedback[0].kind, FeedbackKind::StateConfirmed);
@@ -1346,7 +1380,12 @@ mod tests {
         let mut desk = desk_with(&fg, &synth);
         focus(&fg, "chrome.exe");
         let shortcut: Shortcut = "Ctrl+M".parse().unwrap();
-        desk.test(Action::Shortcut(shortcut), ms(0), &mut |_| {});
+        desk.test(
+            Action::Shortcut(shortcut),
+            ms(0),
+            &mut |_| {},
+            tauri::async_runtime::channel(1).0,
+        );
         let feedback = settle(&mut desk, ms(10), |f| !f.is_empty());
         assert_eq!(feedback[0].kind, FeedbackKind::Triggered);
         assert_eq!(sent(&synth), ["Ctrl+M"]);
@@ -2138,6 +2177,34 @@ mod mic_tests {
     }
 
     #[test]
+    fn incomplete_coverage_clears_confirmed_mute_before_the_next_sample() {
+        let mic = two_mics();
+        let mut desk = desk(&mic);
+        let _ = tick(&mut desk, 0);
+        mic.set_mute(true).unwrap();
+        assert_eq!(tick(&mut desk, 1_100).mic.unwrap().muted, Some(true));
+
+        let mut devices = mic.devices().unwrap();
+        devices.push(MicDevice {
+            name: "Unverified microphone coverage".into(),
+            mute: crate::platform::MicMute::Unreadable,
+            capturing: None,
+        });
+        desk.on_mic_change(MicChange {
+            devices,
+            origin: crate::platform::ChangeOrigin::EndpointRebind,
+        });
+        assert_eq!(tick(&mut desk, 1_110).mic, Some(MicState::UNKNOWN));
+        assert_eq!(desk.mic().0.muted, None);
+
+        desk.on_mic_change(MicChange {
+            devices: mic.devices().unwrap(),
+            origin: crate::platform::ChangeOrigin::EndpointRebind,
+        });
+        assert_eq!(tick(&mut desk, 1_120).mic.unwrap().muted, Some(true));
+    }
+
+    #[test]
     fn mic_mute_confirms_only_when_every_device_reads_muted_and_names_what_stayed_live() {
         let mic = Arc::new(
             FakeMicBackend::new()
@@ -2146,7 +2213,12 @@ mod mic_tests {
         );
         let mut desk = desk(&mic);
         let _ = tick(&mut desk, 0);
-        desk.test(Action::ToggleMicMute, ms(50), &mut |_| {});
+        desk.test(
+            Action::ToggleMicMute,
+            ms(50),
+            &mut |_| {},
+            tauri::async_runtime::channel(1).0,
+        );
         let (out, at) = wait_for_outcome(&mut desk, 50);
         assert_eq!(
             out.feedback.last().map(|f| f.kind),
@@ -2178,7 +2250,12 @@ mod mic_tests {
         let mic = two_mics();
         let mut desk = desk(&mic);
         let _ = tick(&mut desk, 0);
-        desk.test(Action::ToggleMicMute, ms(50), &mut |_| {});
+        desk.test(
+            Action::ToggleMicMute,
+            ms(50),
+            &mut |_| {},
+            tauri::async_runtime::channel(1).0,
+        );
         let (out, at) = wait_for_outcome(&mut desk, 50);
         assert_eq!(
             out.feedback.last().map(|f| f.kind),
@@ -2187,7 +2264,12 @@ mod mic_tests {
         assert_eq!(out.mic.map(|m| m.muted), Some(Some(true)));
         assert_eq!(desk.mic().0.muted, Some(true));
         // Pressing again unmutes them all.
-        desk.test(Action::ToggleMicMute, ms(at + 10), &mut |_| {});
+        desk.test(
+            Action::ToggleMicMute,
+            ms(at + 10),
+            &mut |_| {},
+            tauri::async_runtime::channel(1).0,
+        );
         let (out, _) = wait_for_outcome(&mut desk, at + 10);
         assert_eq!(
             out.feedback.last().map(|f| f.kind),

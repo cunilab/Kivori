@@ -78,6 +78,7 @@ import type {
   ConfigDto,
   ControlRef,
   MacroSpec,
+  DeskResult,
   DeskStatusDto,
   ProfileConfigDto,
   ProfileId,
@@ -235,7 +236,7 @@ function StatusMark({ verification }: { verification: ActionCatalogEntryDto['ver
 /**
  * Controls: what each control does in each profile. Rows edit the saved config (the page re-renders
  * from `config://changed`, so a failed save leaves the row as it was); Test runs the saved action
- * and shows the outcome from the desk status.
+ * and shows the outcome returned for that invocation.
  */
 export function ControlsPage({
   desk,
@@ -254,8 +255,8 @@ export function ControlsPage({
   const [confirm, setConfirm] = useState<'profile' | 'all' | null>(null);
   // `undefined` = closed, `null` = a new macro, else the macro being edited.
   const [editingMacro, setEditingMacro] = useState<MacroSpec | null | undefined>(undefined);
-  // The row last tested (its result badge shows desk.lastAction) and the one counting down.
-  const [tested, setTested] = useState<string | null>(null);
+  const [tested, setTested] = useState<{ row: string; result: DeskResult } | null>(null);
+  const invocation = useRef(0);
   const [countdown, setCountdown] = useState<{ row: string; left: number } | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -274,7 +275,6 @@ export function ControlsPage({
     timer.current = null;
     setCountdown(null);
   };
-  useEffect(() => () => stopCountdown(), []);
 
   const has = (id: ProfileId | null | undefined): id is ProfileId =>
     !!id && !!config?.profiles.some((candidate) => candidate.id === id);
@@ -283,14 +283,35 @@ export function ControlsPage({
   const profile = config?.profiles.find((candidate) => candidate.id === selected) ?? null;
   const macros = config?.macros ?? [];
 
+  useEffect(() => {
+    invocation.current += 1;
+    setTested(null);
+    stopCountdown();
+    return () => {
+      invocation.current += 1;
+      if (timer.current) clearInterval(timer.current);
+      timer.current = null;
+    };
+  }, [config, selected]);
+
   const runTest = (rowId: string, spec: TestSpec): void => {
-    setTested(rowId);
-    (isRotateSpec(spec) ? testRotate(spec) : testAction(spec)).catch((error: unknown) =>
-      toast.error(t.testFailed, { description: errorText(error) }),
+    const current = ++invocation.current;
+    setTested({ row: rowId, result: 'processing' });
+    (isRotateSpec(spec) ? testRotate(spec) : testAction(spec)).then(
+      (outcome) => {
+        if (current === invocation.current) setTested({ row: rowId, result: outcome.result });
+      },
+      (error: unknown) => {
+        if (current !== invocation.current) return;
+        setTested({ row: rowId, result: 'error' });
+        toast.error(t.testFailed, { description: errorText(error) });
+      },
     );
   };
   const startTest = (rowId: string, spec: TestSpec): void => {
     stopCountdown();
+    invocation.current += 1;
+    setTested(null);
     if (!isKeyboard(spec, catalog, macros)) {
       runTest(rowId, spec);
       return;
@@ -367,9 +388,7 @@ export function ControlsPage({
               <Badge variant="outline">{strings.savedOnly}</Badge>
             ) : null}
             {row.overridden && <Badge variant="secondary">{t.custom}</Badge>}
-            {tested === rowId && desk?.lastAction && (
-              <ResultBadge result={desk.lastAction.result} />
-            )}
+            {tested?.row === rowId && <ResultBadge result={tested.result} />}
           </div>
           <div className="flex items-center gap-1.5">
             <span className="truncate font-medium">{text}</span>

@@ -20,8 +20,8 @@ use super::catalog::ActionToken;
 use crate::action::volume::apply_step;
 use crate::platform::{
     mics_muted, ActionAvailability, ActionError, AppVolumeBackend, AppVolumeError, BackendError,
-    Foreground, ForegroundObserver, InputSynth, MediaKey, MediaObserver, MicBackend, MicDevice,
-    MicMute, Shortcut, VolumeBackend,
+    Foreground, ForegroundObserver, InputGuard, InputSynth, MediaKey, MediaObserver, MicBackend,
+    MicDevice, MicMute, Shortcut, VolumeBackend,
 };
 
 /// The user's macros by id. A binding holds the same `Arc` the table does.
@@ -255,7 +255,11 @@ impl Outcome {
 
     fn from_error(error: &ActionError) -> Self {
         Self {
-            kind: FeedbackKind::Error,
+            kind: if matches!(error, ActionError::Uncertain) {
+                FeedbackKind::Unverified
+            } else {
+                FeedbackKind::Error
+            },
             permission_required: matches!(error, ActionError::PermissionRequired),
         }
     }
@@ -276,14 +280,40 @@ pub struct Platform {
 /// Runs `action` and classifies what is known about its outcome. Call it on the action worker,
 /// never the device thread (a launch can take a moment).
 pub fn execute(action: &Action, platform: &Platform) -> Outcome {
-    execute_while(action, platform, &|| true)
+    let current: Arc<dyn Fn() -> bool + Send + Sync> = Arc::new(|| true);
+    execute_while(
+        action,
+        platform,
+        &current,
+        None,
+        &platform.foreground.foreground(),
+    )
 }
 
-/// [`execute`] for an action that may outlive its session: `current` says whether the request is
-/// still wanted (the worker epoch has not moved). Only a macro, which spans several steps, asks.
-pub fn execute_while(action: &Action, platform: &Platform, current: &dyn Fn() -> bool) -> Outcome {
+/// Carries the session and original target through worker and main-thread queueing.
+fn execute_while(
+    action: &Action,
+    platform: &Platform,
+    current: &Arc<dyn Fn() -> bool + Send + Sync>,
+    deadline: Option<Instant>,
+    start: &Foreground,
+) -> Outcome {
+    if !current() || deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+        return Outcome::error();
+    }
+    let input_guard = |targeted: bool| {
+        let current = Arc::clone(current);
+        let foreground = Arc::clone(&platform.foreground);
+        let start = start.clone();
+        InputGuard {
+            deadline,
+            current: Arc::new(move || {
+                (!targeted || same_place(&start, &foreground.foreground())) && current()
+            }),
+        }
+    };
     match action {
-        Action::Macro(m) => execute_macro(m, platform, current),
+        Action::Macro(m) => execute_macro(m, platform, current, start),
         // A media key's effect cannot be tied to this press: the observer's state may be stale
         // or changed by something else, so a matching state is never proof. Always Triggered (the
         // quiet Unverified: named so in words, never success); the media indicator and view show the playback the OS actually reports.
@@ -293,7 +323,7 @@ pub fn execute_while(action: &Action, platform: &Platform, current: &dyn Fn() ->
                 Action::NextTrack => MediaKey::Next,
                 _ => MediaKey::PlayPause,
             };
-            match platform.synth.send_media_key(key) {
+            match platform.synth.send_media_key(key, input_guard(false)) {
                 Ok(()) => Outcome::of(FeedbackKind::Triggered),
                 Err(error) => Outcome::from_error(&error),
             }
@@ -353,10 +383,12 @@ pub fn execute_while(action: &Action, platform: &Platform, current: &dyn Fn() ->
             }
         }
         Action::VolumeNudge { app } => nudge_volume(platform, app.as_deref()),
-        Action::Shortcut(shortcut) => match platform.synth.send_shortcut(shortcut) {
-            Ok(()) => Outcome::of(FeedbackKind::Triggered),
-            Err(error) => Outcome::from_error(&error),
-        },
+        Action::Shortcut(shortcut) => {
+            match platform.synth.send_shortcut(shortcut, input_guard(true)) {
+                Ok(()) => Outcome::of(FeedbackKind::Triggered),
+                Err(error) => Outcome::from_error(&error),
+            }
+        }
         Action::Launch(target) => match (platform.launch)(target) {
             Ok(()) => Outcome::of(FeedbackKind::ExecutionConfirmed),
             Err(error) => Outcome::from_error(&error),
@@ -501,14 +533,18 @@ fn same_place(start: &Foreground, now: &Foreground) -> bool {
 }
 
 /// Runs a macro's steps in order and keeps the least-confirmed outcome (Error < Unverified <
-/// Triggered < Started < Confirmed). The first Error stops it and nothing is rolled back.
+/// Triggered < Started < Confirmed). Error or unfinished native input stops it; no rollback.
 ///
 /// It also stops, as an Error, when `current` goes false between steps (the session ended), and
 /// before a shortcut or launch step when the foreground became Protected or is no longer the app
 /// the macro started in (invariants 9 and 12): no key or launch lands somewhere the user did not
-/// press. A system action never needs that check; it injects nothing.
-fn execute_macro(m: &Macro, platform: &Platform, current: &dyn Fn() -> bool) -> Outcome {
-    let start = platform.foreground.foreground();
+/// press. System actions do not depend on the foreground target.
+fn execute_macro(
+    m: &Macro,
+    platform: &Platform,
+    current: &Arc<dyn Fn() -> bool + Send + Sync>,
+    start: &Foreground,
+) -> Outcome {
     let mut least: Option<Outcome> = None;
     for (index, step) in m.steps.iter().enumerate() {
         if index > 0 && !current() {
@@ -516,7 +552,7 @@ fn execute_macro(m: &Macro, platform: &Platform, current: &dyn Fn() -> bool) -> 
         }
         let outcome = match step {
             Step::Delay(wait) => {
-                if !pause(*wait, current) {
+                if !pause(*wait, current.as_ref()) {
                     return Outcome::error();
                 }
                 continue;
@@ -525,10 +561,23 @@ fn execute_macro(m: &Macro, platform: &Platform, current: &dyn Fn() -> bool) -> 
             Step::Run(Action::Macro(_)) => Outcome::error(),
             Step::Run(action) => {
                 let injects = matches!(action, Action::Shortcut(_) | Action::Launch(_));
-                if injects && !same_place(&start, &platform.foreground.foreground()) {
+                if injects && !same_place(start, &platform.foreground.foreground()) {
                     return Outcome::error();
                 }
-                execute_while(action, platform, current)
+                let outcome = execute_while(action, platform, current, None, start);
+                if outcome.kind == FeedbackKind::Unverified
+                    && matches!(
+                        action,
+                        Action::Shortcut(_)
+                            | Action::PlayPause
+                            | Action::PreviousTrack
+                            | Action::NextTrack
+                    )
+                {
+                    // Unfinished input must not overlap the next macro step.
+                    return outcome;
+                }
+                outcome
             }
         };
         if outcome.kind == FeedbackKind::Error {
@@ -549,9 +598,18 @@ pub struct Finished {
     pub outcome: Outcome,
 }
 
-/// One queued action: its id, the epoch it was queued under, the latest moment it may still start
-/// (`None` = never expires), and the action itself.
-type Request = (u64, u64, Option<Instant>, Action);
+/// One invocation owns this bounded completion channel; dropping it cancels the wait.
+pub type TestReply = tauri::async_runtime::Sender<Outcome>;
+
+/// One queued action, its admission context and optional UI completion reply.
+type Request = (
+    u64,
+    u64,
+    Option<Instant>,
+    Foreground,
+    Action,
+    Option<TestReply>,
+);
 
 /// Runs actions one at a time on a `kivori-actions` thread, so a slow action never stalls the
 /// device link. Dropping it stops the thread after the action in progress.
@@ -565,6 +623,7 @@ pub struct ActionWorker {
     expired: Receiver<u64>,
     /// Requests stamped with an older epoch are skipped, not run.
     epoch: Arc<AtomicU64>,
+    foreground: Arc<dyn ForegroundObserver>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -576,10 +635,11 @@ impl ActionWorker {
         let (expired_tx, expired_rx) = mpsc::channel();
         let epoch = Arc::new(AtomicU64::new(0));
         let current = Arc::clone(&epoch);
+        let foreground = Arc::clone(&platform.foreground);
         let thread = std::thread::Builder::new()
             .name("kivori-actions".to_string())
             .spawn(move || {
-                while let Ok((id, stamped, deadline, action)) = request_rx.recv() {
+                while let Ok((id, stamped, deadline, start, action, reply)) = request_rx.recv() {
                     if stamped != current.load(Ordering::SeqCst) {
                         continue;
                     }
@@ -589,9 +649,13 @@ impl ActionWorker {
                         }
                         continue;
                     }
-                    let outcome = execute_while(&action, &platform, &|| {
-                        stamped == current.load(Ordering::SeqCst)
-                    });
+                    let epoch = Arc::clone(&current);
+                    let active: Arc<dyn Fn() -> bool + Send + Sync> =
+                        Arc::new(move || stamped == epoch.load(Ordering::SeqCst));
+                    let outcome = execute_while(&action, &platform, &active, deadline, &start);
+                    if let Some(reply) = reply {
+                        let _ = reply.try_send(outcome);
+                    }
                     let finished = Finished {
                         id,
                         action: action.token(),
@@ -608,6 +672,7 @@ impl ActionWorker {
             finished: finished_rx,
             expired: expired_rx,
             epoch,
+            foreground,
             thread,
         }
     }
@@ -620,10 +685,33 @@ impl ActionWorker {
     /// Like [`Self::request`], but the action is skipped (see [`Self::try_expired`]) if it has
     /// not started by `deadline`.
     pub fn request_by(&self, id: u64, action: Action, deadline: Option<Instant>) -> bool {
+        self.queue(id, action, deadline, None)
+    }
+
+    /// A UI test owns its reply independently of the global last action and feedback ladder.
+    pub fn request_test(&self, id: u64, action: Action, reply: TestReply) -> bool {
+        self.queue(id, action, None, Some(reply))
+    }
+
+    fn queue(
+        &self,
+        id: u64,
+        action: Action,
+        deadline: Option<Instant>,
+        reply: Option<TestReply>,
+    ) -> bool {
         let epoch = self.epoch.load(Ordering::SeqCst);
-        self.requests
-            .as_ref()
-            .is_some_and(|tx| tx.send((id, epoch, deadline, action)).is_ok())
+        self.requests.as_ref().is_some_and(|tx| {
+            tx.send((
+                id,
+                epoch,
+                deadline,
+                self.foreground.foreground(),
+                action,
+                reply,
+            ))
+            .is_ok()
+        })
     }
 
     /// Every request queued so far is skipped instead of run.
@@ -646,6 +734,7 @@ impl ActionWorker {
 
 impl Drop for ActionWorker {
     fn drop(&mut self) {
+        self.cancel_pending();
         self.requests = None;
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
@@ -769,6 +858,24 @@ mod tests {
                 FeedbackKind::Error,
                 "{quirk:?}"
             );
+        }
+    }
+
+    #[test]
+    fn incomplete_mic_coverage_never_confirms_a_mute_action() {
+        for (mute, target, expected) in [
+            (MicMute::Muted, true, FeedbackKind::Unverified),
+            (MicMute::Live, false, FeedbackKind::Unverified),
+            (MicMute::Live, true, FeedbackKind::Error),
+            (MicMute::Muted, false, FeedbackKind::Error),
+        ] {
+            let devices = [mute, MicMute::Unreadable].map(|mute| MicDevice {
+                name: "mic or unresolved coverage".into(),
+                mute,
+                capturing: None,
+            });
+            assert_ne!(mics_muted(&devices), Some(true));
+            assert_eq!(mic_outcome(target, &devices), expected);
         }
     }
 
@@ -1148,7 +1255,8 @@ mod tests {
         let worker = ActionWorker::spawn(p);
         assert!(worker.request(1, Action::Launch("Slow".into())));
         let tight = Instant::now() + Duration::from_millis(20);
-        assert!(worker.request_by(2, Action::PlayPause, Some(tight)));
+        let (reply, mut response) = tauri::async_runtime::channel(1);
+        assert!(worker.queue(2, Action::PlayPause, Some(tight), Some(reply)));
         assert!(worker.request_by(
             3,
             Action::PlayPause,
@@ -1168,6 +1276,8 @@ mod tests {
         }
         assert_eq!(finished, [1, 3], "the late job never ran");
         assert_eq!(expired, [2]);
+        assert!(response.is_closed());
+        assert!(response.try_recv().is_err());
     }
 
     fn macro_of(steps: Vec<Step>) -> Action {
@@ -1204,6 +1314,221 @@ mod tests {
             ..platform(Ok(()), None, FakeVolumeBackend::new(0)).0
         };
         (p, synth, foreground)
+    }
+
+    /// A fake main-thread wait: receives the production guard and checks it only on release.
+    struct DeferredSynth {
+        queued: Sender<InputGuard>,
+        resume: std::sync::Mutex<Receiver<()>>,
+    }
+
+    impl DeferredSynth {
+        fn dispatch(&self, guard: InputGuard) -> Result<(), ActionError> {
+            self.queued.send(guard.clone()).unwrap();
+            self.resume.lock().unwrap().recv().unwrap();
+            guard.check()
+        }
+    }
+
+    impl InputSynth for DeferredSynth {
+        fn send_media_key(&self, _: MediaKey, guard: InputGuard) -> Result<(), ActionError> {
+            self.dispatch(guard)
+        }
+        fn send_shortcut(&self, _: &Shortcut, guard: InputGuard) -> Result<(), ActionError> {
+            self.dispatch(guard)
+        }
+    }
+
+    fn deferred() -> (
+        Platform,
+        Arc<FakeForeground>,
+        Receiver<InputGuard>,
+        Sender<()>,
+    ) {
+        let (mut platform, _, foreground) = watched();
+        let (queued, waiting) = mpsc::channel();
+        let (resume, release) = mpsc::channel();
+        platform.synth = Arc::new(DeferredSynth {
+            queued,
+            resume: std::sync::Mutex::new(release),
+        });
+        (platform, foreground, waiting, resume)
+    }
+
+    fn finished(worker: &ActionWorker) -> Finished {
+        worker
+            .finished
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap()
+    }
+
+    #[test]
+    fn delayed_input_rechecks_session_and_foreground_but_media_does_not_target_an_app() {
+        for action in [chord(), Action::PlayPause] {
+            for change in ["session", "app", "protected"] {
+                let (platform, foreground, waiting, resume) = deferred();
+                let targeted = matches!(action, Action::Shortcut(_));
+                let worker = ActionWorker::spawn(platform);
+                assert!(worker.request(1, action.clone()));
+                waiting.recv_timeout(Duration::from_secs(2)).unwrap();
+                match change {
+                    "session" => worker.cancel_pending(),
+                    "app" => *foreground.0.lock().unwrap() = app("other.exe"),
+                    _ => *foreground.0.lock().unwrap() = Foreground::Protected,
+                }
+                resume.send(()).unwrap();
+                let expected = if change == "session" || targeted {
+                    FeedbackKind::Error
+                } else {
+                    FeedbackKind::Triggered
+                };
+                assert_eq!(
+                    finished(&worker).outcome.kind,
+                    expected,
+                    "{action:?}: {change}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_shortcut_keeps_the_app_captured_before_waiting_in_the_worker_queue() {
+        let (platform, foreground, waiting, resume) = deferred();
+        let worker = ActionWorker::spawn(platform);
+        assert!(worker.request(1, Action::PlayPause));
+        waiting.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(worker.request(2, chord()));
+        *foreground.0.lock().unwrap() = app("other.exe");
+        resume.send(()).unwrap();
+        assert_eq!(finished(&worker).id, 1);
+        waiting.recv_timeout(Duration::from_secs(2)).unwrap();
+        resume.send(()).unwrap();
+        let result = finished(&worker);
+        assert_eq!(result.id, 2);
+        assert_eq!(result.outcome.kind, FeedbackKind::Error);
+    }
+
+    #[test]
+    fn test_replies_are_independent_of_hardware_and_other_test_outcomes() {
+        let (p, _) = platform(
+            Err(ActionError::PermissionRequired),
+            None,
+            FakeVolumeBackend::new(20),
+        );
+        let worker = ActionWorker::spawn(p);
+        let (mute, mut mute_result) = tauri::async_runtime::channel(1);
+        let (keys, mut keys_result) = tauri::async_runtime::channel(1);
+        assert!(worker.request_test(1, Action::ToggleMute, mute));
+        assert!(worker.request(2, Action::Launch("Calculator".into())));
+        assert!(worker.request_test(3, Action::PlayPause, keys));
+        let outcomes = [finished(&worker), finished(&worker), finished(&worker)];
+        assert_eq!(outcomes.map(|f| f.id), [1, 2, 3]);
+        assert_eq!(mute_result.try_recv().unwrap(), outcomes[0].outcome);
+        assert_eq!(keys_result.try_recv().unwrap(), outcomes[2].outcome);
+        assert_eq!(outcomes[0].outcome.kind, FeedbackKind::StateConfirmed);
+        assert_eq!(outcomes[1].outcome.kind, FeedbackKind::ExecutionConfirmed);
+        assert!(outcomes[2].outcome.permission_required);
+    }
+
+    #[test]
+    fn a_session_cancel_drops_the_queued_test_reply_without_running_it() {
+        let (p, _, queued, resume) = deferred();
+        let volume = Arc::clone(&p.volume);
+        let worker = ActionWorker::spawn(p);
+        assert!(worker.request(1, Action::PlayPause));
+        queued.recv_timeout(Duration::from_secs(2)).unwrap();
+        let (reply, mut response) = tauri::async_runtime::channel(1);
+        assert!(worker.request_test(2, Action::ToggleMute, reply));
+        worker.cancel_pending();
+        assert!(worker.request(3, Action::Launch("Calculator".into())));
+        resume.send(()).unwrap();
+        assert_eq!(finished(&worker).id, 1);
+        assert_eq!(finished(&worker).id, 3);
+        assert!(response.is_closed());
+        assert!(response.try_recv().is_err());
+        assert_eq!(volume.read_mute(), Ok(false));
+    }
+
+    #[test]
+    fn a_missing_worker_drops_the_test_reply() {
+        let (p, _) = platform(Ok(()), None, FakeVolumeBackend::new(0));
+        let mut worker = ActionWorker::spawn(p);
+        worker.requests = None;
+        let (reply, mut response) = tauri::async_runtime::channel(1);
+        assert!(!worker.request_test(1, Action::PlayPause, reply));
+        assert!(response.is_closed());
+        assert!(response.try_recv().is_err());
+    }
+
+    #[test]
+    fn a_worker_deadline_reaches_the_delayed_dispatch() {
+        let (platform, _, waiting, resume) = deferred();
+        let worker = ActionWorker::spawn(platform);
+        let deadline = Instant::now() + Duration::from_secs(1);
+        assert!(worker.request_by(1, Action::PlayPause, Some(deadline)));
+        let guard = waiting.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert_eq!(guard.deadline, Some(deadline));
+        worker.cancel_pending();
+        resume.send(()).unwrap();
+        assert_eq!(finished(&worker).outcome.kind, FeedbackKind::Error);
+    }
+
+    #[test]
+    fn an_admitted_macro_can_delay_past_its_original_admission_deadline() {
+        let (platform, synth, _) = watched();
+        let current: Arc<dyn Fn() -> bool + Send + Sync> = Arc::new(|| true);
+        let action = macro_of(vec![Step::Delay(Duration::from_millis(150)), run(chord())]);
+        let outcome = execute_while(
+            &action,
+            &platform,
+            &current,
+            Some(Instant::now() + Duration::from_millis(100)),
+            &app("code.exe"),
+        );
+        assert_eq!(outcome.kind, FeedbackKind::Triggered);
+        assert_eq!(synth.sent.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn uncertain_input_remains_unverified_in_actions_and_macros() {
+        let (platform, _) = platform(Err(ActionError::Uncertain), None, FakeVolumeBackend::new(0));
+        assert_eq!(kind(&chord(), &platform), FeedbackKind::Unverified);
+        assert_eq!(
+            kind(&Action::PlayPause, &platform),
+            FeedbackKind::Unverified
+        );
+        for action in [
+            chord(),
+            Action::PlayPause,
+            Action::PreviousTrack,
+            Action::NextTrack,
+        ] {
+            assert_eq!(
+                kind(
+                    &macro_of(vec![run(action), run(Action::ToggleMute)]),
+                    &platform
+                ),
+                FeedbackKind::Unverified
+            );
+            assert_eq!(platform.volume.read_mute(), Ok(false));
+        }
+    }
+
+    #[test]
+    fn completed_write_with_unknown_readback_does_not_stop_later_macro_steps() {
+        let (mut platform, _) =
+            platform(Ok(()), None, FakeVolumeBackend::unreadable_after_write(50));
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        platform.synth = synth.clone();
+        assert_eq!(
+            kind(
+                &macro_of(vec![run(Action::ToggleMute), run(chord())]),
+                &platform
+            ),
+            FeedbackKind::Unverified
+        );
+        assert_eq!(platform.volume.read_mute(), Ok(true));
+        assert_eq!(*synth.sent.lock().unwrap(), ["Ctrl+M"]);
     }
 
     #[test]

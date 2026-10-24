@@ -133,6 +133,8 @@ impl ButtonGesture {
         at_ms: u32,
         other_gesture_open: bool,
     ) -> [Option<ButtonEvent>; 2] {
+        // Settle the previous interval before a captured edge replaces its level and timestamp.
+        let settled = self.settle(at_ms);
         if pressed != self.raw {
             self.raw = pressed;
             self.raw_since_ms = at_ms;
@@ -140,7 +142,7 @@ impl ButtonGesture {
                 self.raw_other_open = other_gesture_open;
             }
         }
-        [self.settle(at_ms), self.poll(at_ms)]
+        [settled, self.poll(at_ms)]
     }
 
     /// Advances time with no new sample. Emits `RecoveryStarted` and `Reboot` on time, and a
@@ -548,5 +550,66 @@ mod tests {
         let _ = b.poll(start.wrapping_add(30));
         let _ = b.update(false, start.wrapping_add(300), false);
         assert_eq!(b.poll(start.wrapping_add(330)), Some(ButtonEvent::Press));
+    }
+
+    #[test]
+    fn a_complete_press_captured_between_polls_is_retained() {
+        let mut b = ButtonGesture::new();
+        assert_eq!(b.update(true, 100, false), [None, None]);
+        assert_eq!(b.update(false, 200, false), [Some(ButtonEvent::Down), None]);
+        assert_eq!(b.poll(230), Some(ButtonEvent::Press));
+        assert_eq!(b.poll(900), None);
+    }
+
+    #[test]
+    fn a_stable_buffered_release_separates_two_short_presses() {
+        for double in [false, true] {
+            let mut b = ButtonGesture::new();
+            b.set_double_press(double);
+            let _ = b.update(true, 100, false);
+            assert_eq!(b.update(false, 520, false), [Some(ButtonEvent::Down), None]);
+            assert_eq!(
+                b.update(true, 550, false),
+                [
+                    Some(if double {
+                        ButtonEvent::Released
+                    } else {
+                        ButtonEvent::Press
+                    }),
+                    None
+                ]
+            );
+            assert_eq!(b.update(false, 970, false), [Some(ButtonEvent::Down), None]);
+            assert_eq!(
+                b.poll(1_000),
+                Some(if double {
+                    ButtonEvent::DoublePress
+                } else {
+                    ButtonEvent::Press
+                })
+            );
+            assert_eq!(b.poll(2_000), None);
+        }
+    }
+
+    #[test]
+    fn buffered_contact_bounce_does_not_create_an_extra_press() {
+        let mut b = ButtonGesture::new();
+        for (down, at) in [(true, 100), (false, 105), (true, 108)] {
+            assert_eq!(b.update(down, at, false), [None, None]);
+        }
+        assert_eq!(b.update(false, 300, false), [Some(ButtonEvent::Down), None]);
+        assert_eq!(b.update(true, 305, false), [None, None]);
+        assert_eq!(b.update(false, 308, false), [None, None]);
+        assert_eq!(b.poll(328), Some(ButtonEvent::Press));
+        assert_eq!(b.poll(800), None);
+    }
+
+    #[test]
+    fn a_buffered_press_retains_eligibility_from_its_raw_down_edge() {
+        let mut b = ButtonGesture::new();
+        let _ = b.update(true, 100, true);
+        assert_eq!(b.update(false, 200, false), [Some(ButtonEvent::Down), None]);
+        assert_eq!(b.poll(230), Some(ButtonEvent::Released));
     }
 }

@@ -18,8 +18,10 @@ use kivori_protocol::{
     PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
-/// Inbound accumulation capacity: room for a partial packet plus one full wire packet.
-pub const RX_CAPACITY: usize = MAX_WIRE * 2;
+/// Bounded storage for one inbound packet awaiting its delimiter.
+pub const RX_CAPACITY: usize = MAX_WIRE;
+/// Maximum inbound bytes processed per tick, leaving time for input, rendering and recovery.
+pub const RX_BYTES_PER_POLL: usize = 512;
 
 /// What a `Bye` told the device the host is doing (needs `HOST_TAKEOVERS_V1`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,6 +63,8 @@ pub enum DispatchError<E> {
 /// The device protocol dispatcher.
 pub struct Dispatcher {
     rx: Vec<u8, RX_CAPACITY>,
+    /// An oversized packet owns the stream until its delimiter; never decode its tail.
+    discarding_rx: bool,
     tracker: SequenceTracker,
     tx_seq: u16,
     identity: DeviceIdentity,
@@ -119,6 +123,7 @@ impl Dispatcher {
     pub fn new(identity: DeviceIdentity) -> Self {
         Self {
             rx: Vec::new(),
+            discarding_rx: false,
             tracker: SequenceTracker::new(),
             tx_seq: 0,
             identity,
@@ -337,6 +342,8 @@ impl Dispatcher {
     /// the caller's decoder/gesture state — exactly as they were, letting a gesture opened before
     /// the drop keep emitting under the stale session once the link recovers.
     pub fn link_lost(&mut self) {
+        self.rx.clear();
+        self.discarding_rx = false;
         self.tracker = SequenceTracker::new();
         self.accepted_session = None;
         self.negotiated_caps = Capabilities::NONE;
@@ -357,8 +364,9 @@ impl Dispatcher {
         self.send(transport, message)
     }
 
-    /// Drains all currently-available inbound bytes, handling each complete frame and writing any
-    /// responses. `now_ms` is the device uptime (used for `Pong` / `StateReport`).
+    /// Processes at most [`RX_BYTES_PER_POLL`] inbound bytes, handling frames as their delimiters
+    /// arrive. Partial packets and unread transport bytes continue on the next tick. `now_ms` is
+    /// the device uptime (used for `Pong` / `StateReport`).
     ///
     /// # Errors
     /// Returns a [`DispatchError`] if reading, encoding a reply, or complete reply delivery fails.
@@ -368,49 +376,33 @@ impl Dispatcher {
         device: &mut DeviceState,
         now_ms: u32,
     ) -> Result<(), DispatchError<T::Error>> {
-        self.fill_rx(transport)?;
-        while let Some(pos) = self.rx.iter().position(|&b| b == 0) {
-            if pos > 0 && pos <= MAX_WIRE {
-                // Copy the packet out (without the delimiter) so the borrow of `self.rx` ends before
-                // we drop the consumed bytes and handle the message.
-                let mut packet: Vec<u8, MAX_WIRE> = Vec::new();
-                let _ = packet.extend_from_slice(&self.rx[..pos]);
-                self.consume_rx(pos + 1);
-                self.handle_packet(&packet, transport, device, now_ms)?;
-            } else {
-                // Empty (consecutive delimiter) or oversized packet: skip it and resync.
-                self.consume_rx(pos + 1);
-            }
-        }
-        Ok(())
-    }
-
-    /// Reads all available bytes into the accumulation buffer. On overflow the buffer is reset (a
-    /// frame that large is unrecoverable garbage; we resync on the next delimiter).
-    fn fill_rx<T: Transport>(&mut self, transport: &mut T) -> Result<(), DispatchError<T::Error>> {
+        let mut remaining = RX_BYTES_PER_POLL;
         let mut chunk = [0u8; 128];
-        loop {
+        while remaining > 0 {
+            let limit = remaining.min(chunk.len());
             let n = transport
-                .read(&mut chunk)
+                .read(&mut chunk[..limit])
                 .map_err(DispatchError::Transport)?;
             if n == 0 {
-                return Ok(());
+                break;
             }
+            remaining -= n;
             for &b in &chunk[..n] {
-                if self.rx.push(b).is_err() {
+                if b == 0 {
+                    if !self.rx.is_empty() {
+                        let packet = core::mem::take(&mut self.rx);
+                        self.handle_packet(&packet, transport, device, now_ms)?;
+                    }
+                    self.discarding_rx = false;
+                } else if !self.discarding_rx && self.rx.push(b).is_err() {
                     self.rx.clear();
-                    let _ = self.rx.push(b);
+                    self.discarding_rx = true;
+                    self.rejected = self.rejected.saturating_add(1);
+                    self.pending = Some(DeviceDiagnostic::FrameRejected(RejectReason::Framing));
                 }
             }
         }
-    }
-
-    /// Removes the first `count` bytes from the accumulation buffer.
-    fn consume_rx(&mut self, count: usize) {
-        let count = count.min(self.rx.len());
-        let mut tail: Vec<u8, RX_CAPACITY> = Vec::new();
-        let _ = tail.extend_from_slice(&self.rx[count..]);
-        self.rx = tail;
+        Ok(())
     }
 
     fn handle_packet<T: Transport>(

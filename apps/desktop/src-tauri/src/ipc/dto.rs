@@ -1381,7 +1381,7 @@ pub fn display_mode_from_token(token: &str) -> Option<kivori_model::desk::Displa
         .find(|mode| display_mode_token(*mode) == token)
 }
 
-const fn feedback_token(kind: kivori_model::desk::FeedbackKind) -> &'static str {
+pub(super) const fn feedback_token(kind: kivori_model::desk::FeedbackKind) -> &'static str {
     use kivori_model::desk::FeedbackKind;
     match kind {
         FeedbackKind::Processing => "processing",
@@ -1540,7 +1540,7 @@ pub struct ConfigDto {
     pub version: u32,
     /// Counts saves and resets in this run, so the UI can tell a stale copy from a fresh one.
     pub revision: u64,
-    /// `recoveredCorrupt`, `recoveredNewerVersion` or `migrated`; `null` = nothing to report.
+    /// `recoveredCorrupt`, `recoveredNewerVersion`, `migrated` or `backupFailed`; `null` = nothing to report.
     pub notice: Option<&'static str>,
     /// Every built-in profile as resolved (built-ins with the user's overrides), General first.
     pub profiles: Vec<ProfileConfigDto>,
@@ -1632,6 +1632,7 @@ fn config_notice_token(notice: crate::config::ConfigNotice) -> &'static str {
         ConfigNotice::RecoveredCorrupt => "recoveredCorrupt",
         ConfigNotice::RecoveredNewerVersion => "recoveredNewerVersion",
         ConfigNotice::Migrated => "migrated",
+        ConfigNotice::BackupFailed => "backupFailed",
     }
 }
 
@@ -1962,7 +1963,7 @@ pub struct HostServicesDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigDiagnosticsDto {
-    /// `ok`, or the config notice token (`recoveredCorrupt`, `recoveredNewerVersion`, `migrated`).
+    /// `ok`, or a config notice (`recoveredCorrupt`, `recoveredNewerVersion`, `migrated`, `backupFailed`).
     pub status: &'static str,
     pub schema_version: u32,
     /// Controls the user rebound (rotate, press, hold and button overrides across profiles).

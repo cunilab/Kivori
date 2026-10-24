@@ -375,11 +375,150 @@ firmware instrumentation, runtime plugins, cloud sync, downgrade guarantees, upd
 independent per-product profile stores and platform work already scheduled for M4/Later.
 M2.8 does not relax any paid-beta gate.
 
+## M2.9: Reliability, truthful feedback and beta readiness
+
+**Outcome:** controls execute only while they are still valid, confirmation reflects what Kivori
+can actually observe, settings survive restart, and an unfamiliar Windows user can set up and
+recover a real unit without developer help.
+
+Planned from the 2026-10-23 app, firmware, architecture and UX audit of `main` at `57f1403`.
+Implementation status is tracked below; physical acceptance remains open in S4. The audit
+reproduced buffered-button errors and receive-buffer frame
+loss against the firmware source, and serialized an allowed configuration above the loader's
+size limit. Other defects were traced through code; their Windows hardware frequency was not
+measured. Small-window layout concerns still need visual verification. Keep the existing shared
+crates, protocol, renderer and capability boundaries; this milestone repairs their behavior.
+
+**Order:** S1 → S2 → S3 → S4. Each software fix includes a focused regression test; software
+completion and physical acceptance are recorded separately in [validation.md](./validation.md).
+
+### S1: Confirmation, action lifetime and update exclusion
+
+- [x] **Complete microphone coverage** (`platform/windows/mic.rs`): retain unknown/unbound active
+  endpoints in the observed coverage instead of silently excluding them. Optional notification
+  registration must not decide whether an endpoint can be read or muted. A healthy muted mic
+  plus an endpoint whose enumeration, identity, activation or notification binding fails must
+  never yield global Muted or State Confirmed; a failed rescan must also invalidate stale certainty.
+  Software implemented with regression coverage for incomplete discovery, retained usable endpoints,
+  notification failure, recovery and immediate state invalidation. Both notification subscriptions
+  retry without disabling read/write. See [software evidence and Windows runtime limits](./validation.md#m29-microphone-coverage-software-acceptance);
+  physical microphone acceptance remains open in S4 and Phase 13.
+- [x] **Expire queued keyboard input** (`platform/synth.rs`): a main-thread timeout must cancel
+  input that has not started. Check deadline, current session and foreground/protected context
+  at dispatch on Windows and macOS. A fake dispatcher that runs a job after timeout or session/
+  context change must inject nothing; execution already started must have an honest outcome.
+  Software implemented with owned session/target/deadline checks through dispatch and atomic
+  cancellation before the first native event. Unfinished input reports Unverified and stops the
+  remaining macro steps; admitted macros keep their intentional delays. See
+  [software evidence and native input limits](./validation.md#m29-queued-input-software-acceptance).
+- [x] **Exclude app installation from firmware flashing** (`updater/mod.rs`, `runtime/state.rs`):
+  reserve both operations through the same native synchronization boundary, rather than checking
+  busy and starting separately. Deterministic tests cover both admission orders, failure releasing
+  the reservation and updater exit never cancelling an admitted flash. Software implemented with
+  one admission lock and an installation guard held through installer exit; all flash/restore
+  paths share admission. See [software evidence and installer limits](./validation.md#m29-installation-and-flashing-software-acceptance).
+
+### S2: Firmware input, transport and settings durability
+
+- [x] **Preserve buffered button intervals** (`firmware/pala/src/input/button.rs`): settle the
+  previous raw interval before replacing its level. Replay captured edges in one input drain:
+  down at 100 ms, up at 200 ms, then poll at 230 ms must retain a short press; two short presses
+  separated by a stable 30 ms release must not become Hold. Cover the knob and contextual buttons,
+  bounce, negotiated double press, recovery and session boundaries. Software implemented with
+  interval settlement before replacement and cross-control ownership checks, plus capture-time
+  rejection of old-session button downs. See [software evidence and hardware limits](./validation.md#m29-buffered-button-software-acceptance).
+- [x] **Decode receive bursts incrementally** (`firmware/pala/src/proto.rs`): parse complete frames
+  before accumulation overflow and bound receive work per tick so input/render/recovery still run.
+  The audit's fake transport supplied 100 valid Ping frames (1,800 bytes) to a 1,060-byte buffer;
+  only 41 were accepted. Regression checks require every valid frame to be handled exactly once
+  across a burst larger than the buffer, plus malformed-frame resynchronization and sustained input.
+  Software implemented with delimiter-time decoding, a 512-byte tick budget and discard-through-
+  delimiter overflow recovery. See [software evidence and transport limits](./validation.md#m29-receive-burst-software-acceptance).
+- [x] **Align saved and loaded configuration limits** (`config/store.rs`): reject an oversized
+  serialized configuration before replacing the current file, with a clear capacity error. The
+  allowed 32 macros × 8 launch steps × 1,024-byte targets serialized to 300,618 bytes, above the
+  262,144-byte read limit. Test the boundary and prove every successful save can reopen unchanged.
+  Software implemented with one read/write byte limit, checked after serialization and before
+  writer filesystem mutation. See [capacity and preservation evidence](./validation.md#m29-configuration-capacity-software-acceptance).
+- [x] **Preserve settings before recovery writes** (`config/store.rs`): if quarantine or migration
+  backup fails, keep defaults usable but refuse replacement until the original is safely preserved.
+  Fault-injection checks force move/copy failure, then a later successful write, and prove the
+  original bytes survive. Software implemented with pending preservation, save/reset retries,
+  fresh backup names, protected pruning and an honest failure notice. See
+  [fault-injection and preservation evidence](./validation.md#m29-recovery-backup-software-acceptance).
+- [x] **Match shortcut validation to execution** (`platform/shortcut.rs`, `platform/synth.rs`):
+  F21–F24 must either execute through the supported backend or be rejected before saving. Check
+  the full accepted function-key range against the sender on each implemented platform.
+  Software implemented with Windows F1–F24 mappings and macOS F1–F20 validation. See
+  [range, persistence and backend evidence](./validation.md#m29-shortcut-execution-software-acceptance).
+
+### S3: Recovery UX, action results and website readiness
+
+- [x] **Observe recovery through completion** (`onboarding/steps/PlugIn.tsx`): reuse the existing
+  firmware status and recovery behavior after command enqueueing. Asynchronous failure restores
+  retry, ambiguous hardware exposes product/board selection and BOOT confirmation, and successful
+  reconnect clears restoring. Test accepted enqueue followed by each terminal or choice state.
+  Software implemented by reusing native-polled firmware recovery, including disconnected retry,
+  explicit board confirmation and stale-error cleanup. See
+  [flow coverage and browser limits](./validation.md#m29-onboarding-recovery-software-acceptance).
+- [x] **Correlate control-test results** (`controls/ControlsPage.tsx`): show pending until the tested
+  request has its own result. A prior success, rejected request or unrelated hardware action must
+  never become that row's result; clear or replace stale feedback explicitly. Software implemented
+  with per-invocation native completion replies and guarded local row feedback. See
+  [correlation, cancellation and browser evidence](./validation.md#m29-control-test-correlation-software-acceptance).
+- [ ] **Keep dialogs usable in small windows** (`packages/ui/src/components/alert-dialog.tsx`):
+  constrain dialog height to the viewport and allow scrolling. Visually verify update/recovery
+  dialogs with long content at 400×480, the 360×420 minimum and increased text scale; keyboard
+  focus and all actions remain reachable. This audit concern is not yet visually confirmed.
+- [ ] **Do not reject signup for hidden attribution** (`apps/web/components/waitlist-form.tsx`,
+  `apps/web/lib/waitlist.ts`): truncate or discard oversized optional campaign/referrer fields while
+  retaining validation on user input. A valid email with a 101-character campaign still signs up.
+- [ ] **Finish public website configuration**: verify the deployed environment uses a real
+  Turnstile widget/secret and a working contact address on the privacy page before public signup
+  acquisition. The audited committed configuration has an always-pass test site key and an empty
+  contact address; deployed overrides were not inspected. Record a real signup and deletion request.
+
+### S4: Windows hardware and usability acceptance
+
+- [ ] **Establish a clean software baseline**: run the affected native, firmware host-sim, shared
+  crate and frontend suites with the pinned toolchains, plus required CI and release-surface checks.
+  Resolve or explain desktop test timeouts before closure; the audit's focused desktop run was
+  36 passed / 28 failed, mostly timeouts, and did not establish product regressions. Shared-crate
+  tests (178), button unit tests (18), website tests (85) and both frontend typechecks passed; full
+  native/firmware suites and visual checks were not completed.
+- [ ] **Exercise a real Windows unit**: record measured detent-to-feedback latency, press/hold/
+  double-press fidelity, microphone mute across multiple devices and hotplug, repeated USB
+  disconnect/reconnect, sleep/wake and lock/unlock. Re-run affected existing rows in
+  [validation.md](./validation.md), including no false confirmation and no stale replay.
+- [ ] **Prove installation and recovery**: on a clean Windows machine, install the signed beta
+  package, launch at login, update the app, update firmware and recover through BOOT after an
+  interrupted flash. Verify app installation and firmware flashing cannot overlap. Signing and
+  other owner requirements remain tracked in M3.
+- [ ] **Run sustained use before paid beta**: complete an 8 h idle soak and 10 workdays of actual
+  Windows use. Record build, unit, duration, disconnects, missed/wrong inputs, stale indicators,
+  crashes and recovery outcomes; fix blockers and repeat affected checks.
+- [ ] **Observe an unfamiliar user**: have someone install, configure, use and recover the device
+  without developer coaching. Check discovery of button Hold, middle-button profile pin and
+  double press, whether the 250 ms single-press wait feels acceptable, and whether the screen's
+  labels/results explain what happened. Record friction and resolve blockers before acceptance.
+- [ ] **Verify the assembled enclosure**: measure real component fit, cap travel, knob clearance,
+  USB insertion force and access to BOOT/RST. The nominal CAD dimensions are not physical proof;
+  update assembly/validation evidence from the actual unit.
+
+**Exit:** S1–S3 regressions pass, S4 evidence is recorded and reviewed, and no unresolved issue can
+falsely confirm an action, execute stale input, discard successfully saved settings or block common
+recovery. M2.9 does not close earlier hardware rows or M3 signing, cost, assembly and selling gates
+without their own evidence.
+
+Out of scope: architecture rewrite, new platforms, new product features, controller migration,
+cloud services and a broad visual redesign. Use beta evidence to choose those investments later.
+
 ## M3: Paid beta
 
 **Outcome:** an external user receives Kivori, installs it, configures it, recovers from common
 problems and uses it without developer help. Start charging for beta units here.
 
+- [ ] M2.9 reliability, recovery, usability and sustained Windows-use acceptance complete
 - [ ] Enclosure (keeps the USB port and the ESP32-C3 BOOT path reachable for recovery; the three
   buttons sit in a row directly under the screen, centres one third of the panel's active width
   apart, each under its 80 px label column (#14))
@@ -415,7 +554,7 @@ before demand is proven.
 - Update channels (beta / stable) and, if firmware cadence demands it, firmware fetched apart from
   the app through the same catalog format (ADR-0014)
 - macOS auto-update, with Mac signing
-- Long-term reliability: 8 h idle soak, display idle and burn-in protection, 10 workdays of real use
+- Display idle and burn-in protection; baseline soak and sustained Windows use are required in M2.9
 
 ## Later
 

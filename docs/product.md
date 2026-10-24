@@ -153,8 +153,11 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
 - **Unverified (Triggered):** dispatched, effect unknown (a shortcut). Never shown as success.
 - Acknowledge < 50 ms; Processing at ~500 ms; timeout at ~1,500 ms. Known failure ->
   Error; unknown outcome -> Unverified. Timeout alone is never Error.
+  A confirmed cancellation before input starts is a known non-execution and may be Error.
 - Macros report their least-confirmed required step; a known step failure makes the
   macro Error / Partial Failure. No automatic rollback of earlier steps.
+  Native input whose completion is still unknown stops further steps as Unverified, so an
+  unfinished chord cannot overlap a later launch. Completed writes with unknown read-back may continue.
 - **Mic mute** mutes every active capture device at the OS level, below any app, and reads each one
   back. It is State Confirmed only when every device reads muted; a device that stays live makes it
   Error and names that device. A device with no mute control (a phone's Continuity microphone)
