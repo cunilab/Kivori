@@ -18,7 +18,7 @@ use crate::desk::profile::builtins;
 const FILE: &str = "config.json";
 const TMP: &str = "config.json.tmp";
 const BEFORE_RESET: &str = "config.before-reset.json";
-/// A larger file is never a config Kivori wrote.
+/// Serialized file limit, including formatting and the final newline, shared by reads and writes.
 const MAX_BYTES: u64 = 256 * 1024;
 /// How many quarantined `config.*-*.json` files are kept.
 const KEEP_BACKUPS: usize = 5;
@@ -43,6 +43,8 @@ pub enum ConfigError {
     Invalid(&'static str),
     /// There is nowhere to store settings on this computer.
     Unavailable,
+    /// The serialized settings exceed the loader's capacity; nothing changed.
+    TooLarge,
     /// The file could not be written; nothing changed.
     Io,
 }
@@ -52,6 +54,9 @@ impl std::fmt::Display for ConfigError {
         match self {
             Self::Invalid(reason) => f.write_str(reason),
             Self::Unavailable => f.write_str("Settings cannot be stored on this computer."),
+            Self::TooLarge => f.write_str(
+                "Settings exceed the 256 KiB limit. Reduce macros or profile customizations and try again.",
+            ),
             Self::Io => f.write_str("Settings could not be saved. Nothing was changed."),
         }
     }
@@ -186,7 +191,7 @@ impl ConfigStore {
         next.validate().map_err(ConfigError::Invalid)?;
         let resolved = resolve(builtins(), &next)?;
         let dir = self.dir.as_deref().ok_or(ConfigError::Unavailable)?;
-        write_atomic(dir, &next).map_err(|()| ConfigError::Io)?;
+        write_atomic(dir, &next)?;
         self.file = next;
         self.resolved = Arc::new(resolved);
         self.revision += 1;
@@ -318,7 +323,7 @@ impl ConfigStore {
             onboarding: self.file.onboarding,
             ..ConfigFile::default()
         };
-        write_atomic(dir, &defaults).map_err(|()| ConfigError::Io)?;
+        write_atomic(dir, &defaults)?;
         self.file = defaults;
         self.resolved = Arc::default();
         self.revision += 1;
@@ -341,10 +346,13 @@ fn read(path: &Path) -> Read {
 /// Writes `config.json.tmp`, flushes it to disk, then renames it over `config.json`. The rename is
 /// retried briefly because antivirus or an indexer can hold the target for a moment on Windows.
 /// There is deliberately no non-atomic fallback.
-fn write_atomic(dir: &Path, file: &ConfigFile) -> Result<(), ()> {
-    fs::create_dir_all(dir).map_err(|_| ())?;
-    let mut bytes = serde_json::to_vec_pretty(file).map_err(|_| ())?;
+fn write_atomic(dir: &Path, file: &ConfigFile) -> Result<(), ConfigError> {
+    let mut bytes = serde_json::to_vec_pretty(file).map_err(|_| ConfigError::Io)?;
     bytes.push(b'\n');
+    if bytes.len() as u64 > MAX_BYTES {
+        return Err(ConfigError::TooLarge);
+    }
+    fs::create_dir_all(dir).map_err(|_| ConfigError::Io)?;
     let tmp = dir.join(TMP);
     let written = fs::File::create(&tmp).and_then(|mut f| {
         f.write_all(&bytes)?;
@@ -352,7 +360,7 @@ fn write_atomic(dir: &Path, file: &ConfigFile) -> Result<(), ()> {
     });
     if written.is_err() {
         let _ = fs::remove_file(&tmp);
-        return Err(());
+        return Err(ConfigError::Io);
     }
     let target = dir.join(FILE);
     for attempt in 1..=RENAME_ATTEMPTS {
@@ -364,7 +372,7 @@ fn write_atomic(dir: &Path, file: &ConfigFile) -> Result<(), ()> {
         }
     }
     let _ = fs::remove_file(&tmp);
-    Err(())
+    Err(ConfigError::Io)
 }
 
 /// Moves a file Kivori cannot use to `config.<tag>-<unix_secs>.json` (copying if the move fails,

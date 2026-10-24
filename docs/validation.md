@@ -657,3 +657,35 @@ Local validation on Andress-MacBook-Air:
 Physical USB buffering/backpressure, receive throughput, and stack high-water remain hardware
 acceptance. The byte budget bounds receive work, rather than promising a measured wall-clock
 latency. Traffic beyond transport capacity can still be dropped below this dispatcher.
+
+## M2.9 configuration capacity software acceptance
+
+Implemented the third S2 item on `feat/m2.9-reliability` for PR #127, 2026-10-24.
+Checks use temporary directories and the production configuration store; no existing user settings
+were changed.
+
+The shared atomic writer checks the complete serialized UTF-8 byte length, including indentation,
+JSON escaping and the final newline, against the loader's existing 262,144-byte limit. It rejects
+oversized settings with `ConfigError::TooLarge` and a fixed capacity message before creating a
+directory or touching the temporary/current file. Save and reset propagate that error instead of
+converting it to a generic I/O failure. Cache publication and revision changes still follow a
+successful atomic write. Migration write-back uses the same size gate and retains its existing
+retry-on-next-open behavior when writing fails.
+
+The oversized-macro regression first failed on the old code because save returned success. Three
+new regressions cover oversized ASCII, UTF-8 and JSON-escaped launch targets; preservation of the
+existing file, temporary-file sentinel, cached configuration and revision; accepted files at
+262,143 and 262,144 bytes reopening unchanged; and rejection at 262,145 bytes without creating
+the settings directory. The exact-size cases include the trailing newline, catching an off-by-one
+serialization check.
+
+Local validation on Andress-MacBook-Air:
+
+- `cargo test -p kivori-desktop --lib --test config_store --test config_persistence --test runtime --locked -j 2`:
+  307 library and 52 integration tests passed; three library tests intentionally ignored.
+- Native Clippy for the desktop library and tests with warnings denied: passed.
+- Independent review passed; the reviewer separately ran the 43 configuration tests.
+- Rust/document formatting, local documentation links and `git diff --check`: passed.
+
+Windows filesystem behavior and the live UI presentation of the error remain untested locally.
+Existing quarantine/migration-backup failure behavior is the next roadmap item and is unchanged.

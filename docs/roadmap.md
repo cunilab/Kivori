@@ -434,10 +434,12 @@ completion and physical acceptance are recorded separately in [validation.md](./
   across a burst larger than the buffer, plus malformed-frame resynchronization and sustained input.
   Software implemented with delimiter-time decoding, a 512-byte tick budget and discard-through-
   delimiter overflow recovery. See [software evidence and transport limits](./validation.md#m29-receive-burst-software-acceptance).
-- [ ] **Align saved and loaded configuration limits** (`config/store.rs`): reject an oversized
+- [x] **Align saved and loaded configuration limits** (`config/store.rs`): reject an oversized
   serialized configuration before replacing the current file, with a clear capacity error. The
   allowed 32 macros × 8 launch steps × 1,024-byte targets serialized to 300,618 bytes, above the
   262,144-byte read limit. Test the boundary and prove every successful save can reopen unchanged.
+  Software implemented with one read/write byte limit, checked after serialization and before
+  writer filesystem mutation. See [capacity and preservation evidence](./validation.md#m29-configuration-capacity-software-acceptance).
 - [ ] **Preserve settings before recovery writes** (`config/store.rs`): if quarantine or migration
   backup fails, keep defaults usable but refuse replacement until the original is safely preserved.
   Fault-injection checks force move/copy failure, then a later successful write, and prove the
