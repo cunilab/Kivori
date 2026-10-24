@@ -382,7 +382,8 @@ can actually observe, settings survive restart, and an unfamiliar Windows user c
 recover a real unit without developer help.
 
 Planned from the 2026-10-23 app, firmware, architecture and UX audit of `main` at `57f1403`.
-Every item below is open. The audit reproduced buffered-button errors and receive-buffer frame
+Implementation status is tracked below; physical acceptance remains open in S4. The audit
+reproduced buffered-button errors and receive-buffer frame
 loss against the firmware source, and serialized an allowed configuration above the loader's
 size limit. Other defects were traced through code; their Windows hardware frequency was not
 measured. Small-window layout concerns still need visual verification. Keep the existing shared
@@ -393,11 +394,15 @@ completion and physical acceptance are recorded separately in [validation.md](./
 
 ### S1: Confirmation, action lifetime and update exclusion
 
-- [ ] **Complete microphone coverage** (`platform/windows/mic.rs`): retain unknown/unbound active
+- [x] **Complete microphone coverage** (`platform/windows/mic.rs`): retain unknown/unbound active
   endpoints in the observed coverage instead of silently excluding them. Optional notification
   registration must not decide whether an endpoint can be read or muted. A healthy muted mic
   plus an endpoint whose enumeration, identity, activation or notification binding fails must
   never yield global Muted or State Confirmed; a failed rescan must also invalidate stale certainty.
+  Software implemented with regression coverage for incomplete discovery, retained usable endpoints,
+  notification failure, recovery and immediate state invalidation. Both notification subscriptions
+  retry without disabling read/write. See [software evidence and Windows runtime limits](./validation.md#m29-microphone-coverage-software-acceptance);
+  physical microphone acceptance remains open in S4 and Phase 13.
 - [ ] **Expire queued keyboard input** (`platform/synth.rs`): a main-thread timeout must cancel
   input that has not started. Check deadline, current session and foreground/protected context
   at dispatch on Windows and macOS. A fake dispatcher that runs a job after timeout or session/

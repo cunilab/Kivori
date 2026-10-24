@@ -15,6 +15,8 @@ pub mod host_events;
 pub mod launch;
 #[cfg(target_os = "macos")]
 pub mod macos;
+#[cfg(any(windows, test))]
+mod mic_coverage;
 pub mod permissions;
 pub mod png;
 pub mod shortcut;
@@ -136,7 +138,8 @@ pub enum MicMute {
     Unsettable,
 }
 
-/// One active capture device. The name is user data: shown in the app, never logged (ADR-0005).
+/// One active capture device, or an Unreadable entry for unresolved discovery coverage.
+/// The name is user data: shown in the app, never logged (ADR-0005).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MicDevice {
     pub name: String,

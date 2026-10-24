@@ -2138,6 +2138,34 @@ mod mic_tests {
     }
 
     #[test]
+    fn incomplete_coverage_clears_confirmed_mute_before_the_next_sample() {
+        let mic = two_mics();
+        let mut desk = desk(&mic);
+        let _ = tick(&mut desk, 0);
+        mic.set_mute(true).unwrap();
+        assert_eq!(tick(&mut desk, 1_100).mic.unwrap().muted, Some(true));
+
+        let mut devices = mic.devices().unwrap();
+        devices.push(MicDevice {
+            name: "Unverified microphone coverage".into(),
+            mute: crate::platform::MicMute::Unreadable,
+            capturing: None,
+        });
+        desk.on_mic_change(MicChange {
+            devices,
+            origin: crate::platform::ChangeOrigin::EndpointRebind,
+        });
+        assert_eq!(tick(&mut desk, 1_110).mic, Some(MicState::UNKNOWN));
+        assert_eq!(desk.mic().0.muted, None);
+
+        desk.on_mic_change(MicChange {
+            devices: mic.devices().unwrap(),
+            origin: crate::platform::ChangeOrigin::EndpointRebind,
+        });
+        assert_eq!(tick(&mut desk, 1_120).mic.unwrap().muted, Some(true));
+    }
+
+    #[test]
     fn mic_mute_confirms_only_when_every_device_reads_muted_and_names_what_stayed_live() {
         let mic = Arc::new(
             FakeMicBackend::new()

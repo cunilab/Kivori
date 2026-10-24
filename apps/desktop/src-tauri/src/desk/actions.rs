@@ -773,6 +773,24 @@ mod tests {
     }
 
     #[test]
+    fn incomplete_mic_coverage_never_confirms_a_mute_action() {
+        for (mute, target, expected) in [
+            (MicMute::Muted, true, FeedbackKind::Unverified),
+            (MicMute::Live, false, FeedbackKind::Unverified),
+            (MicMute::Live, true, FeedbackKind::Error),
+            (MicMute::Muted, false, FeedbackKind::Error),
+        ] {
+            let devices = [mute, MicMute::Unreadable].map(|mute| MicDevice {
+                name: "mic or unresolved coverage".into(),
+                mute,
+                capturing: None,
+            });
+            assert_ne!(mics_muted(&devices), Some(true));
+            assert_eq!(mic_outcome(target, &devices), expected);
+        }
+    }
+
+    #[test]
     fn an_unmutable_device_counts_as_muted_only_while_observed_idle() {
         let dev = |mute, capturing| MicDevice {
             name: "d".into(),

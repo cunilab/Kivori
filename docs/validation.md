@@ -463,3 +463,41 @@ Diagnostics clipboard regression coverage checks that both ordinary and develope
 internal session counters while preserving diagnostic values and fresh measurements. Session
 correlation remains in the IPC/cache data for rejecting stale replies; unavailable and stale
 measurements stay excluded. These are mocked clipboard tests, not a native app clipboard run.
+
+## M2.9 microphone coverage software acceptance
+
+Implemented the first S1 item on `feat/m2.9-reliability` for PR #127, 2026-10-24.
+This is software evidence from Andress-MacBook-Air; Phase 13 and M2.9 S4 Windows hardware checks
+remain open.
+
+Windows discovery now retains usable bindings when enumeration or identity inspection is
+incomplete. An unreadable coverage entry prevents aggregate Muted and State Confirmed while
+healthy microphones remain controllable. Endpoint and device-list notification registration retry
+on subsequent scans; failed subscription never removes the ability to read/write mute. Reads,
+writes and notification-driven rescans publish changed snapshots, including unknown coverage,
+instead of retaining a previously confirmed state after failure.
+
+Permanent regressions:
+
+- `platform/mic_coverage.rs`: production reconciliation and observation helpers cover unknown
+  collection-item/device-id results, activation failure, failed whole scans, retained bindings,
+  missing notifications, restored coverage and a known empty device list.
+- `desk/actions.rs`: incomplete coverage cannot confirm either mute or unmute; a known failure
+  still takes precedence over an unknown result.
+- `desk/mod.rs`: an incomplete-coverage event clears an already muted wire state before the next
+  periodic sample, and a later complete observation restores it.
+
+Local validation:
+
+- `cargo test -p kivori-desktop --lib mic --locked -j 2`: 18 passed, one intentionally ignored.
+- `cargo test -p kivori-desktop --lib --locked -j 2`: 286 passed, three intentionally ignored.
+- `cargo clippy -p kivori-desktop --lib --tests --locked -j 2 -- -D warnings`: passed.
+- `cargo fmt --all --check` and `git diff --check`: passed.
+- An isolated `x86_64-pc-windows-msvc` Clippy check of the production microphone backend,
+  coverage helper and copied production boundary types against the real Windows APIs passed
+  with warnings denied. This checks the changed Windows code, not the full Tauri application.
+
+The full `x86_64-pc-windows-msvc` cross-check stopped in `ring` because Windows SDK C headers
+(`assert.h`) are unavailable on this Mac. Host tests model subscription failure; they do not
+exercise real COM registration, callback teardown or physical microphone hotplug. Windows CI
+integration and the real-device Phase 13 checks must supply that evidence before beta acceptance.

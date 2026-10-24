@@ -48,6 +48,7 @@ use windows::Win32::System::Registry::{
     REG_VALUE_TYPE,
 };
 
+use crate::platform::mic_coverage;
 use crate::platform::{
     ActionAvailability, BackendError, ChangeOrigin, ConfirmationClass, MicBackend, MicChange,
     MicDevice, MicMute,
@@ -69,7 +70,7 @@ enum Command {
 pub struct WindowsMicBackend {
     commands: Sender<Command>,
     changes: Mutex<Receiver<MicChange>>,
-    /// At least one active capture endpoint exists.
+    /// At least one endpoint exists, or discovery cannot establish their absence.
     available: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
@@ -173,7 +174,7 @@ struct Endpoint {
     id: String,
     name: String,
     volume: IAudioEndpointVolume,
-    callback: IAudioEndpointVolumeCallback,
+    callback: Option<IAudioEndpointVolumeCallback>,
 }
 
 impl Endpoint {
@@ -202,9 +203,27 @@ impl Endpoint {
         }
     }
 
-    fn release(self) {
-        // SAFETY: the callback was registered on this thread, on this object.
-        let _ = unsafe { self.volume.UnregisterControlChangeNotify(&self.callback) };
+    fn subscribe(&mut self, commands: &Sender<Command>) {
+        if self.callback.is_some() {
+            return;
+        }
+        let callback: IAudioEndpointVolumeCallback = MicCallback {
+            commands: commands.clone(),
+        }
+        .into();
+        // SAFETY: the callback is a fresh COM object; failure does not disable read/write.
+        if unsafe { self.volume.RegisterControlChangeNotify(&callback) }.is_ok() {
+            self.callback = Some(callback);
+        }
+    }
+}
+
+impl Drop for Endpoint {
+    fn drop(&mut self) {
+        if let Some(callback) = &self.callback {
+            // SAFETY: the callback was registered on this thread, on this object.
+            let _ = unsafe { self.volume.UnregisterControlChangeNotify(callback) };
+        }
     }
 }
 
@@ -212,7 +231,10 @@ impl Endpoint {
 struct Mic {
     enumerator: IMMDeviceEnumerator,
     commands: Sender<Command>,
+    notifications: Option<IMMNotificationClient>,
     endpoints: Vec<Endpoint>,
+    /// False when discovery or notification coverage could hide an active microphone.
+    coverage_complete: bool,
     /// Mic mute is on: an endpoint that arrives is muted too.
     hold_muted: bool,
     /// Last device state sent on `changes`; notifications that do not change it are dropped.
@@ -223,94 +245,108 @@ struct Mic {
 impl Mic {
     /// Aligns the bound endpoints with the active capture devices: binds new ones (muting them if
     /// mic mute is on) and releases those that went away.
-    fn rescan(&mut self) -> Result<(), BackendError> {
-        // SAFETY: standard endpoint enumeration; failure is a handled `Err`.
-        let collection = unsafe {
-            self.enumerator
-                .EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE)
-        }
-        .map_err(|err| BackendError::Os(err.to_string()))?;
-        // SAFETY: `collection` is live.
-        let count =
-            unsafe { collection.GetCount() }.map_err(|err| BackendError::Os(err.to_string()))?;
-
-        let mut present = Vec::new();
-        for index in 0..count {
-            // SAFETY: `index` is below the count just read.
-            let Ok(device) = (unsafe { collection.Item(index) }) else {
-                continue;
-            };
-            let Some(id) = endpoint_id(&device) else {
-                continue;
-            };
-            if !self.endpoints.iter().any(|e| e.id == id) {
-                if let Some(endpoint) = self.bind(&device, id.clone()) {
-                    if self.hold_muted {
-                        let _ = endpoint.write(true);
-                    }
-                    self.endpoints.push(endpoint);
-                }
+    fn rescan(&mut self) {
+        if self.notifications.is_none() {
+            let client: IMMNotificationClient = MicNotificationClient {
+                commands: self.commands.clone(),
             }
-            present.push(id);
+            .into();
+            // SAFETY: the client stays alive until it is unregistered on this owning thread.
+            if unsafe {
+                self.enumerator
+                    .RegisterEndpointNotificationCallback(&client)
+            }
+            .is_ok()
+            {
+                self.notifications = Some(client);
+            }
         }
-
-        let (keep, gone): (Vec<_>, Vec<_>) = std::mem::take(&mut self.endpoints)
-            .into_iter()
-            .partition(|e| present.contains(&e.id));
-        self.endpoints = keep;
-        for endpoint in gone {
-            endpoint.release();
+        let scan = (|| {
+            // SAFETY: standard endpoint enumeration; all failures invalidate coverage below.
+            let collection = unsafe {
+                self.enumerator
+                    .EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE)
+            }
+            .map_err(|_| ())?;
+            let count = unsafe { collection.GetCount() }.map_err(|_| ())?;
+            Ok((0..count)
+                .map(|index| {
+                    let device = unsafe { collection.Item(index) }.map_err(|_| ())?;
+                    let id = endpoint_id(&device).ok_or(())?;
+                    Ok((id, device))
+                })
+                .collect())
+        })();
+        let hold_muted = self.hold_muted;
+        self.coverage_complete = mic_coverage::reconcile(
+            &mut self.endpoints,
+            scan,
+            |endpoint| &endpoint.id,
+            |device, id| {
+                // SAFETY: `device` is a live endpoint; activation can fail independently.
+                let volume =
+                    unsafe { device.Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None) }.ok()?;
+                let endpoint = Endpoint {
+                    id,
+                    name: friendly_name(&device).unwrap_or_else(|| "Microphone".to_string()),
+                    volume,
+                    callback: None,
+                };
+                if hold_muted {
+                    let _ = endpoint.write(true);
+                }
+                Some(endpoint)
+            },
+        );
+        self.coverage_complete &= self.notifications.is_some();
+        for endpoint in &mut self.endpoints {
+            endpoint.subscribe(&self.commands);
+            self.coverage_complete &= endpoint.callback.is_some();
         }
-        Ok(())
-    }
-
-    fn bind(&self, device: &IMMDevice, id: String) -> Option<Endpoint> {
-        // SAFETY: `device` is a live endpoint; activation failure is a handled `Err`.
-        let volume: IAudioEndpointVolume =
-            unsafe { device.Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None) }.ok()?;
-        let callback: IAudioEndpointVolumeCallback = MicCallback {
-            commands: self.commands.clone(),
-        }
-        .into();
-        // SAFETY: `callback` is a valid, freshly constructed COM object of the right interface.
-        unsafe { volume.RegisterControlChangeNotify(&callback) }.ok()?;
-        Some(Endpoint {
-            id,
-            name: friendly_name(device).unwrap_or_else(|| "Microphone".to_string()),
-            volume,
-            callback,
-        })
     }
 
     fn snapshot(&self) -> Vec<MicDevice> {
-        self.endpoints.iter().map(|e| e.device(e.read())).collect()
+        self.observe(self.endpoints.iter().map(|e| e.device(e.read())).collect())
+    }
+
+    fn observe(&self, devices: Vec<MicDevice>) -> Vec<MicDevice> {
+        mic_coverage::observed(devices, self.coverage_complete)
+    }
+
+    fn available(&self) -> bool {
+        !self.endpoints.is_empty() || !self.coverage_complete
     }
 
     fn devices(&mut self) -> Result<Vec<MicDevice>, BackendError> {
-        self.rescan()?;
-        Ok(self.snapshot())
+        self.rescan();
+        let devices = self.snapshot();
+        self.report(devices.clone(), ChangeOrigin::EndpointRebind);
+        Ok(devices)
     }
 
     fn set_mute(&mut self, muted: bool) -> Result<Vec<MicDevice>, BackendError> {
-        self.rescan()?;
-        if self.endpoints.is_empty() {
+        self.rescan();
+        if !self.available() {
+            self.report(Vec::new(), ChangeOrigin::EndpointRebind);
             return Err(BackendError::NoEndpoint);
         }
         self.hold_muted = muted;
-        let devices: Vec<_> = self
-            .endpoints
-            .iter()
-            .map(|e| e.device(e.write(muted)))
-            .collect();
-        self.reported = Some(devices.clone());
+        let devices = self.observe(
+            self.endpoints
+                .iter()
+                .map(|e| e.device(e.write(muted)))
+                .collect(),
+        );
+        self.report(devices.clone(), ChangeOrigin::Kivori);
         Ok(devices)
     }
 
     fn publish(&mut self, origin: ChangeOrigin) {
-        if self.rescan().is_err() {
-            return;
-        }
-        let devices = self.snapshot();
+        self.rescan();
+        self.report(self.snapshot(), origin);
+    }
+
+    fn report(&mut self, devices: Vec<MicDevice>, origin: ChangeOrigin) {
         if self.reported.as_ref() == Some(&devices) {
             return;
         }
@@ -365,40 +401,40 @@ fn mic_thread(
         return;
     };
 
-    let client: IMMNotificationClient = MicNotificationClient {
-        commands: self_commands.clone(),
-    }
-    .into();
-    // SAFETY: `client` is a valid, freshly constructed COM object of the right interface.
-    let registered = unsafe { enumerator.RegisterEndpointNotificationCallback(&client) }.is_ok();
-
     let mut mic = Mic {
         enumerator,
         commands: self_commands,
+        notifications: None,
         endpoints: Vec::new(),
+        coverage_complete: false,
         hold_muted: false,
         reported: None,
         changes,
     };
-    let _ = mic.rescan();
-    available.store(!mic.endpoints.is_empty(), Ordering::SeqCst);
+    mic.rescan();
+    available.store(mic.available(), Ordering::SeqCst);
     let _ = ready.send(());
 
     loop {
         match commands.recv() {
             Ok(Command::Devices(reply)) => {
                 let result = mic.devices();
-                available.store(!mic.endpoints.is_empty(), Ordering::SeqCst);
+                available.store(mic.available(), Ordering::SeqCst);
                 let _ = reply.send(result);
             }
             Ok(Command::SetMute(muted, reply)) => {
-                let _ = reply.send(mic.set_mute(muted));
+                let result = mic.set_mute(muted);
+                available.store(mic.available(), Ordering::SeqCst);
+                let _ = reply.send(result);
             }
             Ok(Command::Rescan) => {
                 mic.publish(ChangeOrigin::EndpointRebind);
-                available.store(!mic.endpoints.is_empty(), Ordering::SeqCst);
+                available.store(mic.available(), Ordering::SeqCst);
             }
-            Ok(Command::Changed(origin)) => mic.publish(origin),
+            Ok(Command::Changed(origin)) => {
+                mic.publish(origin);
+                available.store(mic.available(), Ordering::SeqCst);
+            }
             Ok(Command::Shutdown) | Err(_) => break,
         }
     }
@@ -407,17 +443,15 @@ fn mic_thread(
     // released before `CoUninitialize`. Endpoint callbacks first, then the notification client,
     // then the enumerator, and only then `CoUninitialize`. The explicit `drop()`s are what
     // release them on this side of that line.
-    for endpoint in std::mem::take(&mut mic.endpoints) {
-        endpoint.release();
-    }
-    if registered {
+    mic.endpoints.clear();
+    if let Some(client) = mic.notifications.take() {
         // SAFETY: registered on this same thread above.
         let _ = unsafe {
             mic.enumerator
                 .UnregisterEndpointNotificationCallback(&client)
         };
+        drop(client);
     }
-    drop(client);
     let Mic { enumerator, .. } = mic;
     drop(enumerator);
     // SAFETY: matches the `CoInitializeEx` call above, on the same thread.
