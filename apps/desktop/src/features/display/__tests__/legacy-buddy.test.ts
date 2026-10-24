@@ -63,8 +63,13 @@ describe('migrateLegacyBuddy', () => {
     expect(left()).toEqual([null, null]);
   });
 
-  it('never overrides a recovered or migrated config', () => {
-    for (const notice of ['recoveredCorrupt', 'recoveredNewerVersion', 'migrated'] as const) {
+  it('never overrides recovered, migrated or unpreserved settings', () => {
+    for (const notice of [
+      'recoveredCorrupt',
+      'recoveredNewerVersion',
+      'migrated',
+      'backupFailed',
+    ] as const) {
       localStorage.setItem(KEYS[0]!, 'playful');
       migrateLegacyBuddy({ ...config, notice });
       expect(left()).toEqual([null, null]);

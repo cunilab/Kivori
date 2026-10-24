@@ -497,7 +497,12 @@ describe('config ipc', () => {
   it('accepts the mock defaults and every notice, and rejects unknown tokens', async () => {
     const config = await resetConfig();
     expect(() => parseConfig(config)).not.toThrow();
-    for (const notice of ['recoveredCorrupt', 'recoveredNewerVersion', 'migrated']) {
+    for (const notice of [
+      'recoveredCorrupt',
+      'recoveredNewerVersion',
+      'migrated',
+      'backupFailed',
+    ]) {
       expect(parseConfig({ ...validConfig, notice }).notice).toBe(notice);
     }
     for (const bad of [

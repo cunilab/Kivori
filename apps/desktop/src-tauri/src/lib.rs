@@ -77,6 +77,9 @@ pub fn run() {
                 ) => {
                     activity_log.record(activity::ActivityEventKind::ConfigRecovered, None);
                 }
+                Some(config::ConfigNotice::BackupFailed) => {
+                    activity_log.record(activity::ActivityEventKind::ConfigSaveFailed, None);
+                }
                 Some(config::ConfigNotice::Migrated) => {
                     activity_log.record(activity::ActivityEventKind::ConfigSaved, None);
                 }

@@ -688,4 +688,50 @@ Local validation on Andress-MacBook-Air:
 - Rust/document formatting, local documentation links and `git diff --check`: passed.
 
 Windows filesystem behavior and the live UI presentation of the error remain untested locally.
-Existing quarantine/migration-backup failure behavior is the next roadmap item and is unchanged.
+The following acceptance section covers preservation when recovery backups fail.
+
+
+## M2.9 recovery backup software acceptance
+
+Implemented the fourth S2 item on `feat/m2.9-reliability` for PR #127, 2026-10-25.
+Tests use temporary directories, injected backup operations and a synthetic migration result;
+no existing user settings were changed. The released schema still has no real migration steps,
+so the private loader seam exercises the production migration branch without changing versions.
+
+The store retains a pending preservation reason when quarantine or migration backup fails.
+Defaults remain usable for corrupt/newer files; converted valid settings remain usable in memory.
+Every save/reset retries preservation before replacing the original, and refuses the change while
+that retry fails. Candidate validation and serialized size checks precede save-side backup work.
+A successful backup clears the gate, while active settings and revision still change only after
+an atomic write succeeds.
+
+Quarantine first tries rename, then copies into a fresh file, preserves source permissions and
+flushes the copy before removing the source. Failed copies attempt partial-output cleanup and do
+not authorize replacement. Migration backup collisions get fresh names, preserving earlier
+originals. Cleanup runs only after quarantine succeeds and explicitly protects the new original,
+even when existing backup timestamps are in the future. `backupFailed` travels through native
+DTOs, parsing, the Controls notice and diagnostics; startup logs failure rather than recovery.
+The notice no longer claims a backup exists when preservation failed.
+
+Seven new native regressions cover failed move/copy, save/reset refusal and subsequent successful
+preservation; migration failure with usable converted settings; preservation of prior migration
+backups; failed write-back after a successful backup; fallback copy; failed partial copy cleanup;
+clock-skew-safe pruning; and size rejection before pending preservation. Initial injected
+PermissionDenied failures keep the original at its path. Public save/reset retry failures use a
+source parked elsewhere inside the test directory, then restore it for a successful real retry;
+these are deterministic guard checks, rather than real OS permission/antivirus tests.
+
+Local validation on Andress-MacBook-Air:
+
+- `cargo test -p kivori-desktop --lib --test config_store --test config_persistence --test runtime --test ipc_vocabulary --locked -j 2`:
+  314 library and 53 integration tests passed; three library tests intentionally ignored.
+- Targeted frontend IPC, Controls and legacy-settings tests: 110 passed, including the new notice.
+- Native Clippy with warnings denied, targeted frontend ESLint, desktop TypeScript, Rust/document
+  formatting, local documentation links and `git diff --check`: passed.
+- Independent review passed and separately reran all eight store unit tests.
+
+The prior size-limit commit `dddf9fc` passed full CI, including Windows Rust, packaging and startup
+([Windows Rust job](https://github.com/cunilab/Kivori/actions/runs/40113384294/job/120929570116)).
+Real Windows permission/antivirus failures, visual UI inspection and power-loss durability remain
+unverified. File-copy synchronization is tested through software outcomes; this is not a power-cut
+proof for filesystem directory updates.

@@ -1,7 +1,7 @@
 //! Loading, recovering and atomically saving `config.json`.
 
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -32,8 +32,10 @@ pub enum ConfigNotice {
     RecoveredCorrupt,
     /// The file came from a newer Kivori; it was set aside and defaults are in use.
     RecoveredNewerVersion,
-    /// An older file was upgraded in place (information only).
+    /// Older settings were converted for use and the original was backed up.
     Migrated,
+    /// The original could not be preserved; replacement writes remain blocked.
+    BackupFailed,
 }
 
 /// Why a change could not be saved. The text is fixed and path-free.
@@ -45,6 +47,8 @@ pub enum ConfigError {
     Unavailable,
     /// The serialized settings exceed the loader's capacity; nothing changed.
     TooLarge,
+    /// The original settings must be preserved before they can be replaced.
+    BackupFailed,
     /// The file could not be written; nothing changed.
     Io,
 }
@@ -56,6 +60,9 @@ impl std::fmt::Display for ConfigError {
             Self::Unavailable => f.write_str("Settings cannot be stored on this computer."),
             Self::TooLarge => f.write_str(
                 "Settings exceed the 256 KiB limit. Reduce macros or profile customizations and try again.",
+            ),
+            Self::BackupFailed => f.write_str(
+                "The original settings could not be backed up. Nothing was changed. Try saving again.",
             ),
             Self::Io => f.write_str("Settings could not be saved. Nothing was changed."),
         }
@@ -73,6 +80,58 @@ pub struct ConfigStore {
     /// Counts successful saves and resets in this process.
     revision: u64,
     notice: Option<ConfigNotice>,
+    pending_backup: Option<Backup>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Backup {
+    Corrupt,
+    Newer(u32),
+    Migration(u32),
+}
+
+impl Backup {
+    fn notice(self) -> ConfigNotice {
+        match self {
+            Self::Corrupt => ConfigNotice::RecoveredCorrupt,
+            Self::Newer(_) => ConfigNotice::RecoveredNewerVersion,
+            Self::Migration(_) => ConfigNotice::Migrated,
+        }
+    }
+
+    fn preserve(self, dir: &Path) -> io::Result<()> {
+        self.preserve_with(dir, |from, to| fs::rename(from, to), copy_backup)
+    }
+
+    fn preserve_with(
+        self,
+        dir: &Path,
+        rename: impl FnOnce(&Path, &Path) -> io::Result<()>,
+        copy: impl FnOnce(&Path, &Path) -> io::Result<()>,
+    ) -> io::Result<()> {
+        let source = dir.join(FILE);
+        if let Self::Migration(from) = self {
+            return copy(
+                &source,
+                &backup_path(dir, &format!("config.v{from}"), "bak"),
+            );
+        }
+        let tag = match self {
+            Self::Corrupt => "corrupt".to_string(),
+            Self::Newer(version) => format!("v{version}"),
+            Self::Migration(_) => unreachable!(),
+        };
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        let target = backup_path(dir, &format!("config.{tag}-{secs}"), "json");
+        if rename(&source, &target).is_err() {
+            copy(&source, &target)?;
+            let _ = fs::remove_file(&source);
+        }
+        prune(dir, &target);
+        Ok(())
+    }
 }
 
 enum Read {
@@ -86,6 +145,14 @@ impl ConfigStore {
     /// usable config and, if something was set aside or upgraded, a [`ConfigNotice`].
     #[must_use]
     pub fn open(dir: &Path) -> Self {
+        Self::open_with(dir, migrate, Backup::preserve)
+    }
+
+    fn open_with(
+        dir: &Path,
+        migrate: impl FnOnce(Value) -> Result<(ConfigFile, Option<u32>), LoadError>,
+        preserve: impl FnOnce(Backup, &Path) -> io::Result<()>,
+    ) -> Self {
         let _ = fs::remove_file(dir.join(TMP));
         let mut store = Self {
             dir: Some(dir.to_path_buf()),
@@ -93,6 +160,7 @@ impl ConfigStore {
             resolved: Arc::default(),
             revision: 0,
             notice: None,
+            pending_backup: None,
         };
         let path = dir.join(FILE);
         // A valid file written before the `onboarding` field existed belongs to someone who has
@@ -124,20 +192,21 @@ impl ConfigStore {
                 store.resolved = Arc::new(resolved);
             }
             Ok((file, resolved, Some(from))) => {
-                let _ = fs::copy(&path, dir.join(format!("config.v{from}.bak")));
+                store.pending_backup = Some(Backup::Migration(from));
+                if store.preserve_pending(preserve).is_ok() {
+                    // A failed write-back leaves the original and its backup for the next open.
+                    let _ = serialize(&file).and_then(|bytes| write_atomic(dir, &bytes));
+                }
                 store.file = file;
                 store.resolved = Arc::new(resolved);
-                // A failed write-back is harmless: the next open migrates again.
-                let _ = write_atomic(dir, &store.file);
-                store.notice = Some(ConfigNotice::Migrated);
             }
             Err(LoadError::Newer(version)) => {
-                quarantine(dir, &path, &format!("v{version}"));
-                store.notice = Some(ConfigNotice::RecoveredNewerVersion);
+                store.pending_backup = Some(Backup::Newer(version));
+                let _ = store.preserve_pending(preserve);
             }
             Err(LoadError::Corrupt) => {
-                quarantine(dir, &path, "corrupt");
-                store.notice = Some(ConfigNotice::RecoveredCorrupt);
+                store.pending_backup = Some(Backup::Corrupt);
+                let _ = store.preserve_pending(preserve);
             }
         }
         store
@@ -152,6 +221,7 @@ impl ConfigStore {
             resolved: Arc::default(),
             revision: 0,
             notice: None,
+            pending_backup: None,
         }
     }
 
@@ -190,8 +260,10 @@ impl ConfigStore {
     pub fn save(&mut self, next: ConfigFile) -> Result<(), ConfigError> {
         next.validate().map_err(ConfigError::Invalid)?;
         let resolved = resolve(builtins(), &next)?;
+        let bytes = serialize(&next)?;
+        self.preserve_pending(Backup::preserve)?;
         let dir = self.dir.as_deref().ok_or(ConfigError::Unavailable)?;
-        write_atomic(dir, &next)?;
+        write_atomic(dir, &bytes)?;
         self.file = next;
         self.resolved = Arc::new(resolved);
         self.revision += 1;
@@ -313,28 +385,54 @@ impl ConfigStore {
     /// # Errors
     /// [`ConfigError`]; on any error the stored config is unchanged.
     pub fn reset(&mut self) -> Result<(), ConfigError> {
-        let dir = self.dir.as_deref().ok_or(ConfigError::Unavailable)?;
-        let path = dir.join(FILE);
-        if path.exists() {
-            fs::copy(&path, dir.join(BEFORE_RESET)).map_err(|_| ConfigError::Io)?;
-        }
         // Resetting settings does not send a set-up user back through first-run setup.
         let defaults = ConfigFile {
             onboarding: self.file.onboarding,
             ..ConfigFile::default()
         };
-        write_atomic(dir, &defaults)?;
+        let bytes = serialize(&defaults)?;
+        self.preserve_pending(Backup::preserve)?;
+        let dir = self.dir.as_deref().ok_or(ConfigError::Unavailable)?;
+        let path = dir.join(FILE);
+        if path.exists() {
+            fs::copy(&path, dir.join(BEFORE_RESET)).map_err(|_| ConfigError::Io)?;
+        }
+        write_atomic(dir, &bytes)?;
         self.file = defaults;
         self.resolved = Arc::default();
         self.revision += 1;
         self.notice = None;
         Ok(())
     }
+
+    fn preserve_pending(
+        &mut self,
+        preserve: impl FnOnce(Backup, &Path) -> io::Result<()>,
+    ) -> Result<(), ConfigError> {
+        let Some(backup) = self.pending_backup else {
+            return Ok(());
+        };
+        let dir = self.dir.as_deref().ok_or(ConfigError::Unavailable)?;
+        if preserve(backup, dir).is_err() {
+            self.notice = Some(ConfigNotice::BackupFailed);
+            return Err(ConfigError::BackupFailed);
+        }
+        self.pending_backup = None;
+        self.notice = Some(backup.notice());
+        Ok(())
+    }
 }
 
 fn read(path: &Path) -> Read {
     match fs::metadata(path) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Read::Missing,
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+            ) =>
+        {
+            Read::Missing
+        }
         Ok(meta) if meta.is_file() && meta.len() <= MAX_BYTES => match fs::read(path) {
             Ok(bytes) => Read::Bytes(bytes),
             Err(_) => Read::Unreadable,
@@ -343,19 +441,22 @@ fn read(path: &Path) -> Read {
     }
 }
 
-/// Writes `config.json.tmp`, flushes it to disk, then renames it over `config.json`. The rename is
-/// retried briefly because antivirus or an indexer can hold the target for a moment on Windows.
-/// There is deliberately no non-atomic fallback.
-fn write_atomic(dir: &Path, file: &ConfigFile) -> Result<(), ConfigError> {
+fn serialize(file: &ConfigFile) -> Result<Vec<u8>, ConfigError> {
     let mut bytes = serde_json::to_vec_pretty(file).map_err(|_| ConfigError::Io)?;
     bytes.push(b'\n');
     if bytes.len() as u64 > MAX_BYTES {
         return Err(ConfigError::TooLarge);
     }
+    Ok(bytes)
+}
+
+/// Writes the already-validated bytes, flushes to disk, then atomically replaces `config.json`.
+/// Rename retries accommodate short antivirus/indexer locks on Windows; there is no fallback.
+fn write_atomic(dir: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
     fs::create_dir_all(dir).map_err(|_| ConfigError::Io)?;
     let tmp = dir.join(TMP);
     let written = fs::File::create(&tmp).and_then(|mut f| {
-        f.write_all(&bytes)?;
+        f.write_all(bytes)?;
         f.sync_all()
     });
     if written.is_err() {
@@ -375,22 +476,43 @@ fn write_atomic(dir: &Path, file: &ConfigFile) -> Result<(), ConfigError> {
     Err(ConfigError::Io)
 }
 
-/// Moves a file Kivori cannot use to `config.<tag>-<unix_secs>.json` (copying if the move fails,
-/// so the original is never left to be overwritten), then prunes old backups.
-fn quarantine(dir: &Path, path: &Path, tag: &str) {
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
-    let mut target = dir.join(format!("config.{tag}-{secs}.json"));
+/// Selects a fresh name so a retry never overwrites an earlier original or partial copy.
+fn backup_path(dir: &Path, stem: &str, extension: &str) -> PathBuf {
+    let mut target = dir.join(format!("{stem}.{extension}"));
     let mut n = 1;
     while target.exists() {
-        target = dir.join(format!("config.{tag}-{secs}-{n}.json"));
+        target = dir.join(format!("{stem}-{n}.{extension}"));
         n += 1;
     }
-    if fs::rename(path, &target).is_err() && fs::copy(path, &target).is_ok() {
-        let _ = fs::remove_file(path);
+    target
+}
+
+fn copy_backup(source: &Path, target: &Path) -> io::Result<()> {
+    copy_backup_with(source, target, |source, backup| {
+        io::copy(source, backup).map(|_| ())
+    })
+}
+
+fn copy_backup_with(
+    source: &Path,
+    target: &Path,
+    copy: impl FnOnce(&mut fs::File, &mut fs::File) -> io::Result<()>,
+) -> io::Result<()> {
+    let mut source = fs::File::open(source)?;
+    let mut backup = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(target)?;
+    let copied = (|| {
+        copy(&mut source, &mut backup)?;
+        backup.set_permissions(source.metadata()?.permissions())?;
+        backup.sync_all()
+    })();
+    if copied.is_err() {
+        drop(backup);
+        let _ = fs::remove_file(target);
     }
-    prune(dir);
+    copied
 }
 
 /// `(unix_secs, collision counter)` of a `config.<tag>-<secs>[-<n>].json` backup name.
@@ -403,21 +525,22 @@ fn backup_key(name: &str) -> Option<(u64, u32)> {
     parts.next().is_none().then_some((secs, n))
 }
 
-/// Keeps the newest [`KEEP_BACKUPS`] quarantined files. `config.before-reset.json` and the
-/// `.bak` migration copies are not in this set.
-fn prune(dir: &Path) {
+/// Keeps the newly preserved original plus the newest remaining quarantine backups, at most
+/// [`KEEP_BACKUPS`] total. Reset and migration `.bak` copies are outside this set.
+fn prune(dir: &Path, preserved: &Path) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
     let mut backups: Vec<((u64, u32), PathBuf)> = entries
         .filter_map(Result::ok)
+        .filter(|entry| entry.path() != preserved)
         .filter_map(|entry| {
             let key = backup_key(entry.file_name().to_str()?)?;
             Some((key, entry.path()))
         })
         .collect();
     backups.sort();
-    let excess = backups.len().saturating_sub(KEEP_BACKUPS);
+    let excess = backups.len().saturating_sub(KEEP_BACKUPS - 1);
     for (_, path) in backups.into_iter().take(excess) {
         let _ = fs::remove_file(path);
     }
@@ -425,7 +548,218 @@ fn prune(dir: &Path) {
 
 #[cfg(test)]
 mod tests {
-    use super::backup_key;
+    use super::*;
+
+    fn fail_backup(backup: Backup, dir: &Path) -> io::Result<()> {
+        backup.preserve_with(
+            dir,
+            |_, _| Err(io::ErrorKind::PermissionDenied.into()),
+            |_, _| Err(io::ErrorKind::PermissionDenied.into()),
+        )
+    }
+
+    // The released schema is still v1; inject migration output to exercise its real store branch.
+    fn migrated(raw: Value) -> Result<(ConfigFile, Option<u32>), LoadError> {
+        let mut file: ConfigFile = serde_json::from_value(raw).map_err(|_| LoadError::Corrupt)?;
+        file.buddy.intensity = super::super::Intensity::High;
+        Ok((file, Some(1)))
+    }
+
+    fn assert_copy_exists(dir: &Path, bytes: &[u8]) {
+        assert!(
+            fs::read_dir(dir)
+                .unwrap()
+                .filter_map(Result::ok)
+                .any(|entry| {
+                    entry.file_name() != FILE
+                        && fs::read(entry.path()).ok().as_deref() == Some(bytes)
+                }),
+            "original bytes must survive in a separate backup"
+        );
+    }
+
+    #[test]
+    fn quarantine_failure_blocks_save_and_reset_until_the_original_is_preserved() {
+        for original in [
+            b"damaged settings".as_slice(),
+            br#"{"version":99}"#.as_slice(),
+        ] {
+            for reset in [false, true] {
+                let dir = tempfile::tempdir().unwrap();
+                let path = dir.path().join(FILE);
+                fs::write(&path, original).unwrap();
+                let mut store = ConfigStore::open_with(dir.path(), migrate, fail_backup);
+                assert_eq!(fs::read(&path).unwrap(), original);
+                assert_eq!(store.file(), &ConfigFile::default());
+                assert_eq!(store.notice(), Some(ConfigNotice::BackupFailed));
+                assert_eq!(
+                    crate::ipc::dto::config_dto(&store).notice,
+                    Some("backupFailed")
+                );
+                let cache = store.resolved();
+                let next = store.edited(|f| f.buddy.reactions = false);
+                // The source remains unavailable on retry, while its bytes stay safely in the rig.
+                let parked = dir.path().join("parked-original");
+                fs::rename(&path, &parked).unwrap();
+                let error = if reset {
+                    store.reset()
+                } else {
+                    store.save(next.clone())
+                }
+                .unwrap_err();
+                assert_eq!(error, ConfigError::BackupFailed);
+                assert!(!error.to_string().contains(dir.path().to_str().unwrap()));
+                assert!(!path.exists());
+                assert!(!dir.path().join(TMP).exists());
+                assert!(Arc::ptr_eq(&cache, &store.resolved()));
+                assert_eq!(store.revision(), 0);
+                assert_eq!(fs::read(&parked).unwrap(), original);
+                fs::rename(&parked, &path).unwrap();
+                if reset {
+                    store.reset().unwrap();
+                } else {
+                    store.save(next).unwrap();
+                }
+                assert_copy_exists(dir.path(), original);
+                assert_eq!(store.revision(), 1);
+                assert_ne!(store.notice(), Some(ConfigNotice::BackupFailed));
+                assert_eq!(ConfigStore::open(dir.path()).file(), store.file());
+            }
+        }
+    }
+
+    #[test]
+    fn migration_backup_failure_blocks_replacement_and_retains_usable_settings() {
+        for reset in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join(FILE);
+            let original = br#"{"version":1,"onboarding":{"completed":true}}"#;
+            fs::write(&path, original).unwrap();
+            fs::write(dir.path().join("config.v1.bak"), b"earlier original").unwrap();
+            let mut store = ConfigStore::open_with(dir.path(), migrated, fail_backup);
+            assert_eq!(fs::read(&path).unwrap(), original);
+            assert_eq!(store.file().buddy.intensity, super::super::Intensity::High);
+            assert_eq!(store.notice(), Some(ConfigNotice::BackupFailed));
+            let next = store.file().clone();
+            let parked = dir.path().join("parked-original");
+            fs::rename(&path, &parked).unwrap();
+            assert_eq!(
+                if reset {
+                    store.reset()
+                } else {
+                    store.save(next.clone())
+                },
+                Err(ConfigError::BackupFailed)
+            );
+            assert!(!path.exists());
+            assert_eq!(store.revision(), 0);
+            fs::rename(&parked, &path).unwrap();
+            if reset {
+                store.reset().unwrap();
+            } else {
+                store.save(next).unwrap();
+            }
+            assert_eq!(
+                fs::read(dir.path().join("config.v1.bak")).unwrap(),
+                b"earlier original"
+            );
+            assert_eq!(
+                fs::read(dir.path().join("config.v1-1.bak")).unwrap(),
+                original
+            );
+            assert_eq!(ConfigStore::open(dir.path()).file(), store.file());
+        }
+    }
+
+    #[test]
+    fn failed_migration_writeback_keeps_its_backup_and_can_retry_without_replacing_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = br#"{"version":1,"onboarding":{"completed":true}}"#;
+        fs::write(dir.path().join(FILE), original).unwrap();
+        // Opening removes stale temp files, but this directory keeps the atomic write from starting.
+        fs::create_dir(dir.path().join(TMP)).unwrap();
+        let mut store = ConfigStore::open_with(dir.path(), migrated, Backup::preserve);
+        assert_eq!(store.notice(), Some(ConfigNotice::Migrated));
+        assert_eq!(fs::read(dir.path().join(FILE)).unwrap(), original);
+        assert_eq!(
+            fs::read(dir.path().join("config.v1.bak")).unwrap(),
+            original
+        );
+        assert_eq!(store.revision(), 0);
+        fs::remove_dir(dir.path().join(TMP)).unwrap();
+        store.save(store.file().clone()).unwrap();
+        assert_eq!(
+            fs::read(dir.path().join("config.v1.bak")).unwrap(),
+            original
+        );
+        assert!(!dir.path().join("config.v1-1.bak").exists());
+    }
+
+    #[test]
+    fn quarantine_copy_fallback_preserves_bytes_when_rename_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = b"keep every original byte";
+        fs::write(dir.path().join(FILE), original).unwrap();
+        Backup::Corrupt
+            .preserve_with(
+                dir.path(),
+                |_, _| Err(io::ErrorKind::PermissionDenied.into()),
+                copy_backup,
+            )
+            .unwrap();
+        assert_copy_exists(dir.path(), original);
+        assert!(!dir.path().join(FILE).exists());
+    }
+
+    #[test]
+    fn a_failed_copy_removes_its_partial_output_and_never_clobbers_an_existing_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join(FILE);
+        let target = dir.path().join("original.bak");
+        fs::write(&source, b"original").unwrap();
+        assert!(copy_backup_with(&source, &target, |_, output| {
+            output.write_all(b"partial")?;
+            Err(io::ErrorKind::WriteZero.into())
+        })
+        .is_err());
+        assert!(!target.exists());
+        assert_eq!(fs::read(&source).unwrap(), b"original");
+        fs::write(&target, b"earlier original").unwrap();
+        assert!(copy_backup(&source, &target).is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"earlier original");
+    }
+
+    #[test]
+    fn pruning_never_deletes_the_new_original_even_if_older_backups_have_future_times() {
+        let dir = tempfile::tempdir().unwrap();
+        for n in 1..=8 {
+            fs::write(
+                dir.path()
+                    .join(format!("config.corrupt-{}.json", u64::MAX - n)),
+                b"old",
+            )
+            .unwrap();
+        }
+        let original = b"current original";
+        fs::write(dir.path().join(FILE), original).unwrap();
+        Backup::Corrupt.preserve(dir.path()).unwrap();
+        assert_copy_exists(dir.path(), original);
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), KEEP_BACKUPS);
+    }
+
+    #[test]
+    fn an_oversized_candidate_does_not_attempt_pending_preservation() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = b"original";
+        fs::write(dir.path().join(FILE), original).unwrap();
+        let mut store = ConfigStore::open_with(dir.path(), migrate, fail_backup);
+        let next =
+            store.edited(|f| f.updates.skipped_version = Some("x".repeat(MAX_BYTES as usize)));
+        assert_eq!(store.save(next), Err(ConfigError::TooLarge));
+        assert_eq!(store.notice(), Some(ConfigNotice::BackupFailed));
+        assert_eq!(fs::read(dir.path().join(FILE)).unwrap(), original);
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
 
     #[test]
     fn only_quarantine_names_are_backups() {

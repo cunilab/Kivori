@@ -478,6 +478,15 @@ describe('ControlsPage notice', () => {
     };
   }
 
+  it('explains a failed backup without claiming recovery succeeded', () => {
+    render(<ControlsPage desk={null} config={withNotice('backupFailed')} />);
+    const notice = screen.getByTestId('config-notice');
+    expect(notice).toHaveTextContent('Your original settings need a backup');
+    expect(notice).toHaveTextContent('They have not been replaced');
+    expect(notice).toHaveTextContent('will retry the backup first');
+    expect(notice).not.toHaveTextContent('kept a backup');
+  });
+
   it('explains a recovered corrupt file in plain language', () => {
     render(<ControlsPage desk={null} config={withNotice('recoveredCorrupt')} />);
     expect(screen.getByTestId('config-notice')).toHaveTextContent('Your settings were damaged');

@@ -440,10 +440,12 @@ completion and physical acceptance are recorded separately in [validation.md](./
   262,144-byte read limit. Test the boundary and prove every successful save can reopen unchanged.
   Software implemented with one read/write byte limit, checked after serialization and before
   writer filesystem mutation. See [capacity and preservation evidence](./validation.md#m29-configuration-capacity-software-acceptance).
-- [ ] **Preserve settings before recovery writes** (`config/store.rs`): if quarantine or migration
+- [x] **Preserve settings before recovery writes** (`config/store.rs`): if quarantine or migration
   backup fails, keep defaults usable but refuse replacement until the original is safely preserved.
   Fault-injection checks force move/copy failure, then a later successful write, and prove the
-  original bytes survive.
+  original bytes survive. Software implemented with pending preservation, save/reset retries,
+  fresh backup names, protected pruning and an honest failure notice. See
+  [fault-injection and preservation evidence](./validation.md#m29-recovery-backup-software-acceptance).
 - [ ] **Match shortcut validation to execution** (`platform/shortcut.rs`, `platform/synth.rs`):
   F21–F24 must either execute through the supported backend or be rejected before saving. Check
   the full accepted function-key range against the sender on each implemented platform.
