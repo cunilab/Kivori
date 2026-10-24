@@ -541,7 +541,39 @@ Local validation on Andress-MacBook-Air:
   guard/error/trait definitions against Enigo's real Windows backend passed with warnings denied.
 - Rust formatting, documentation formatting and `git diff --check`: passed.
 
-Independent review found and verified the correction for uncertain macro continuation. Windows CI
-must still validate this increment's full application integration. Native Windows/macOS delivery,
+Independent review found and verified the correction for uncertain macro continuation. Full CI,
+including Windows Rust and startup, passed for commit `e1c08e8`
+([Windows Rust job](https://github.com/cunilab/Kivori/actions/runs/40083766099/job/120842418793)). Native Windows/macOS delivery,
 permission prompts and real scheduling require runtime acceptance; OS focus changes after the last
 check cannot be made atomic with global keyboard injection.
+
+## M2.9 installation and flashing software acceptance
+
+Implemented the third S1 item on `feat/m2.9-reliability` for PR #127, 2026-10-24.
+These checks use a stand-in device thread and command receiver; they launch no installer or flasher.
+
+An installation admission lock serializes the final firmware-busy check and installation reservation
+with every flash/restore reservation and queue send. Download and signature verification still
+precede reservation. Installation waits for firmware preparation, programming and reconnect to end,
+and for an idle knob gesture. Once admitted, an RAII guard refuses new firmware work until the
+plugin returns an error or exits/restarts the process. The updater exit hook requires installation
+ownership before stopping the runtime. Device-thread startup no longer overwrites the shared
+initial status, which could erase an early queued `Preparing` reservation.
+
+Six deterministic regressions in `runtime/state.rs` cover both admission orders on separate threads,
+all three flash/restore paths, all busy firmware phases, failed installer scope releasing admission,
+failed firmware queue rolling back status, and updater exit refusing to cancel an admitted flash.
+They also prove that reserved installer shutdown keeps firmware admission closed.
+
+Local validation on Andress-MacBook-Air:
+
+- `cargo test -p kivori-desktop --lib --test firmware_flash --test updater_policy --test firmware_offer --test runtime --locked -j 2`:
+  307 library tests and 72 integration tests passed; three library tests intentionally ignored.
+- Native Clippy with warnings denied, Rust/document formatting and `git diff --check`: passed.
+- Independent review passed for admission, lock ordering, production callers and guard lifetime.
+
+The locked updater plugin invokes its exit hook before launching the Windows installer. If that
+launch fails after shutdown, the reservation is released, but the device runtime stays stopped;
+restart the app to resume device use. This existing lifecycle limitation is not runtime recovery
+evidence. Real Windows installer launch, process exit and simultaneous hardware flashing remain
+part of M2.9 S4 acceptance.

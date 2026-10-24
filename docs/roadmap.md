@@ -411,10 +411,12 @@ completion and physical acceptance are recorded separately in [validation.md](./
   cancellation before the first native event. Unfinished input reports Unverified and stops the
   remaining macro steps; admitted macros keep their intentional delays. See
   [software evidence and native input limits](./validation.md#m29-queued-input-software-acceptance).
-- [ ] **Exclude app installation from firmware flashing** (`updater/mod.rs`, `runtime/state.rs`):
+- [x] **Exclude app installation from firmware flashing** (`updater/mod.rs`, `runtime/state.rs`):
   reserve both operations through the same native synchronization boundary, rather than checking
   busy and starting separately. Deterministic tests cover both admission orders, failure releasing
-  the reservation and updater exit never cancelling an admitted flash.
+  the reservation and updater exit never cancelling an admitted flash. Software implemented with
+  one admission lock and an installation guard held through installer exit; all flash/restore
+  paths share admission. See [software evidence and installer limits](./validation.md#m29-installation-and-flashing-software-acceptance).
 
 ### S2: Firmware input, transport and settings durability
 

@@ -220,7 +220,7 @@ fn device_loop(
     let mut brightness = config.display.brightness;
     let mut buddy_sent: Option<(u32, u32, MascotPersonality, bool, u8)> = None;
     let mut flash = FlashWorkflow::new(!firmware::bundled_images().images().is_empty(), 0);
-    publish_firmware_status(&firmware_status, &flash);
+    // Setup initialized the shared status; publishing Idle here could erase a queued reservation.
     drain_firmware_activity(&app, &activity_log, &mut flash);
     let started = Instant::now();
 
