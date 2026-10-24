@@ -767,3 +767,43 @@ Local validation on Andress-MacBook-Air:
 
 Actual key delivery, OS permission handling and receiving-application behavior were not exercised.
 Windows runtime coverage remains a CI/platform check; Linux input remains unimplemented.
+
+
+## M2.9 onboarding recovery software acceptance
+
+Implemented the first S3 item on `feat/m2.9-reliability` for PR #127, 2026-10-25.
+Plug in now embeds the existing Device firmware component in recovery-only mode instead of
+keeping a local restoring flag after command enqueueing. The component stays mounted while
+its card is hidden, so its existing 750 ms native polling observes preparation, flashing,
+reconnection, success, failure and product/board choices. Reopening setup reads native progress.
+Normal setup hides flash controls; Continue still requires a known usable session.
+
+Disconnected terminal failures retain BOOT retry. Ambiguous targets use the existing catalog
+choices and a fresh confirmation naming both product and board; unplugging for BOOT does not
+discard the choice, while a changed native choice list does. Pending requests cannot queue a
+second restore. A usable reconnect clears inactive recovery and request errors, including an
+older request rejecting after the reconnect. Device-page behavior keeps its default presentation.
+
+The seven initial recovery regressions failed against the old onboarding flow. The final 18
+regressions cover native progress through success, every failure token, disconnected retry,
+product/board selection and cancel, stale choices, reopening setup, duplicate submission,
+status polling failure/recovery, normal setup and both request-error/reconnect orderings.
+Independent review identified the missing disconnected-request retry and stale-error transitions;
+these were fixed and covered before acceptance.
+
+Local validation on Andress-MacBook-Air:
+
+- `bun run --cwd apps/desktop test src/features/onboarding/__tests__/recovery.test.tsx src/features/onboarding/__tests__/onboarding.test.tsx src/features/onboarding/__tests__/capabilities.test.tsx src/features/device/__tests__/firmware.test.tsx src/features/device/__tests__/recovery.test.tsx`:
+  65 tests passed across five files, including all 18 new recovery cases.
+- Desktop TypeScript, targeted ESLint with warnings denied, frontend Prettier, local documentation
+  links and `git diff --check`: passed.
+- Independent review passed and separately reran all 18 recovery tests.
+- Local browser smoke at 1200×767 with the incompatible-device mock: the recovery card and BOOT
+  instructions rendered, Continue remained disabled, and confirmation produced the expected
+  native-runtime-unavailable error with retry still available. The dialog screenshot was visually
+  inspected; no device command reached hardware. Browser artifacts remain local under `/tmp`.
+
+Previous commit `39f27df` passed all required CI, including Windows Rust, packaging and startup;
+the macOS CI job was skipped. Native/firmware source was unchanged in this increment, so the
+previous 316-library/54-integration native baseline was not rerun locally. Actual Windows USB
+recovery and small-window/large-text layout acceptance remain open in later roadmap items.

@@ -454,10 +454,13 @@ completion and physical acceptance are recorded separately in [validation.md](./
 
 ### S3: Recovery UX, action results and website readiness
 
-- [ ] **Observe recovery through completion** (`onboarding/steps/PlugIn.tsx`): reuse the existing
+- [x] **Observe recovery through completion** (`onboarding/steps/PlugIn.tsx`): reuse the existing
   firmware status and recovery behavior after command enqueueing. Asynchronous failure restores
   retry, ambiguous hardware exposes product/board selection and BOOT confirmation, and successful
   reconnect clears restoring. Test accepted enqueue followed by each terminal or choice state.
+  Software implemented by reusing native-polled firmware recovery, including disconnected retry,
+  explicit board confirmation and stale-error cleanup. See
+  [flow coverage and browser limits](./validation.md#m29-onboarding-recovery-software-acceptance).
 - [ ] **Correlate control-test results** (`controls/ControlsPage.tsx`): show pending until the tested
   request has its own result. A prior success, rejected request or unrelated hardware action must
   never become that row's result; clear or replace stale feedback explicitly.

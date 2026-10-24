@@ -1,13 +1,8 @@
-import { useState } from 'react';
 import type { ReactElement } from 'react';
-import { toast } from 'sonner';
 import { CircleCheck, LoaderCircle, TriangleAlert } from 'lucide-react';
-import { Alert, AlertDescription } from '@kivori/ui/components/alert';
-import { Button } from '@kivori/ui/components/button';
-import { RecoveryDialog } from '@/features/device/RecoveryDialog';
+import { FirmwareUpdate } from '@/features/device/FirmwareUpdate';
 import { uiConnection } from '@/hooks/use-kivori';
 import { sessionState } from '@/lib/device-support';
-import { restoreFirmware } from '@/lib/ipc';
 import type { ConnectionStatusDto } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
 import { StepFrame } from './frame';
@@ -38,8 +33,6 @@ export function PlugIn({
   updateAvailable: boolean;
 }): ReactElement {
   const ui = uiConnection(connection);
-  const [recovering, setRecovering] = useState(false);
-  const [restoring, setRestoring] = useState(false);
   const recovery = needsRecovery(connection);
   const session = sessionState(connection);
   const warning = ui === 'incompatible' || session === 'unknown' || session === 'attention';
@@ -54,20 +47,9 @@ export function PlugIn({
             ? t.attention
             : ui === 'incompatible'
               ? t.incompatible
-              : restoring
-                ? t.restoring
-                : recovery
-                  ? t.stuck
-                  : t.waiting;
-
-  const restore = (): void => {
-    setRecovering(false);
-    setRestoring(true);
-    restoreFirmware().catch(() => {
-      setRestoring(false);
-      toast.error(t.restoreFailed);
-    });
-  };
+              : recovery
+                ? t.stuck
+                : t.waiting;
 
   return (
     <StepFrame title={t.title} body={t.body}>
@@ -96,19 +78,7 @@ export function PlugIn({
         </p>
       ) : null}
 
-      {recovery && !restoring ? (
-        <Alert variant="destructive">
-          <TriangleAlert aria-hidden="true" />
-          <AlertDescription className="space-y-2">
-            <span>{ui === 'incompatible' ? t.incompatible : t.stuck}</span>
-            <span className="block">
-              <Button variant="outline" size="sm" onClick={() => setRecovering(true)}>
-                {t.restore}
-              </Button>
-            </span>
-          </AlertDescription>
-        </Alert>
-      ) : null}
+      <FirmwareUpdate connected={session === 'ready'} incompatible={recovery} recoveryOnly />
 
       {ui !== 'connected' ? (
         <div className="space-y-2">
@@ -120,8 +90,6 @@ export function PlugIn({
           </ul>
         </div>
       ) : null}
-
-      <RecoveryDialog open={recovering} onOpenChange={setRecovering} onRestore={restore} />
     </StepFrame>
   );
 }

@@ -830,9 +830,6 @@ export const strings = {
         'Your Kivori’s firmware needs attention. Skip this step and open Device after setup to check its matching firmware.',
       incompatible: 'Your Kivori needs a firmware update before it can work with this app.',
       stuck: 'Still cannot connect. You can restore your Kivori with its BOOT button.',
-      restore: 'Restore with the BOOT button',
-      restoring: 'Restoring your Kivori. Keep it plugged in.',
-      restoreFailed: 'Could not start the restore.',
       updateHint:
         'Your Kivori can be updated. You can do that from the Device page once setup is done.',
     },
