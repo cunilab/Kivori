@@ -577,3 +577,43 @@ launch fails after shutdown, the reservation is released, but the device runtime
 restart the app to resume device use. This existing lifecycle limitation is not runtime recovery
 evidence. Real Windows installer launch, process exit and simultaneous hardware flashing remain
 part of M2.9 S4 acceptance.
+
+Full CI, including Windows Rust and startup, passed for installation-exclusion commit `0cc1f09`
+([Windows Rust job](https://github.com/cunilab/Kivori/actions/runs/40086016590/job/120849005963)).
+
+## M2.9 buffered button software acceptance
+
+Implemented the first S2 item on `feat/m2.9-reliability` for PR #127, 2026-10-24.
+Tests use timestamped fake input snapshots through the production firmware runtime and wire
+decoder; no GPIO, interrupt timing or physical switch was exercised.
+
+`ButtonGesture::update` settles the previous raw interval before replacing its level/timestamp.
+The runtime polls every button at each captured sample before checking control ownership, clearing
+a released control before admitting another. A session boundary also makes queued button downs
+captured at or before that boundary ineligible for Press/Hold, including an old down whose release
+comes in the new session. Equal-ms downs are suppressed conservatively. Signed wrapping arithmetic
+handles rollover; the boundary check ends once the chronological drain reaches current levels,
+while per-press eligibility stays latched. Recovery is still independent of session eligibility.
+
+Four new gesture tests first failed on the original code, then passed: a complete 100–200 ms press
+polled at 230 ms, two 420 ms presses separated by a 30 ms release, captured contact bounce, and
+eligibility retained from the raw down. Eight new runtime regressions cover every switch, negotiated
+double press, cross-control release/ownership, recovery cancellation, debouncing across a session
+change, wholly unconsumed old/equal-time presses, old-down recovery, and uptime wrap. The unconsumed
+old-session regression also failed before the capture-time guard was added.
+
+Local validation on Andress-MacBook-Air:
+
+- Full firmware host simulation: 202 passed (49 library and 153 integration tests), no failures or
+  ignored tests, using `cargo test --manifest-path firmware/pala/Cargo.toml --locked --features host-sim --target aarch64-apple-darwin`.
+- Host-sim Clippy for all targets and RISC-V `physical-st7789` library Clippy, both with warnings
+  denied: passed.
+- Shipping `physical-st7789` release firmware compiled and linked for `riscv32imc-unknown-none-elf`.
+  A consistent rustup toolchain and its LLVM library search path were required locally; Cargo
+  reported an optional debug-stripping warning from the earlier mixed-toolchain attempt.
+- Independent review passed; the reviewer separately reran runtime and reconnect/wrap regressions.
+
+Physical contact bounce, interrupt capture and sustained board behavior remain M2.9 S4 hardware
+acceptance. Existing limits outside this change include capture-queue overflow and a complete
+ten-second hold/release without any intervening poll: recovery may miss reboot during such a loop
+stall. Continuous-held recovery and captured release-before-deadline cancellation are tested.

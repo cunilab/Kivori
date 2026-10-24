@@ -420,11 +420,13 @@ completion and physical acceptance are recorded separately in [validation.md](./
 
 ### S2: Firmware input, transport and settings durability
 
-- [ ] **Preserve buffered button intervals** (`firmware/pala/src/input/button.rs`): settle the
+- [x] **Preserve buffered button intervals** (`firmware/pala/src/input/button.rs`): settle the
   previous raw interval before replacing its level. Replay captured edges in one input drain:
   down at 100 ms, up at 200 ms, then poll at 230 ms must retain a short press; two short presses
   separated by a stable 30 ms release must not become Hold. Cover the knob and contextual buttons,
-  bounce, negotiated double press, recovery and session boundaries.
+  bounce, negotiated double press, recovery and session boundaries. Software implemented with
+  interval settlement before replacement and cross-control ownership checks, plus capture-time
+  rejection of old-session button downs. See [software evidence and hardware limits](./validation.md#m29-buffered-button-software-acceptance).
 - [ ] **Decode receive bursts incrementally** (`firmware/pala/src/proto.rs`): parse complete frames
   before accumulation overflow and bound receive work per tick so input/render/recovery still run.
   The audit's fake transport supplied 100 valid Ping frames (1,800 bytes) to a 1,060-byte buffer;

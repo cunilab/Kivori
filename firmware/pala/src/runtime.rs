@@ -435,6 +435,8 @@ pub struct Runtime<'a> {
     keys: [ButtonGesture; 3],
     /// Identifier of the last push-switch event sent; session-unique, never 0.
     button_id: u16,
+    /// Session-boundary time until captured history is drained; older raw downs cannot act.
+    input_boundary_ms: Option<ElapsedMs>,
     /// Session-scoped desk status and feedback.
     desk: DeskState,
     /// A switch edge or recovery step wants the panel redrawn on this tick.
@@ -483,6 +485,7 @@ impl<'a> Runtime<'a> {
                 ButtonGesture::new(),
             ],
             button_id: 0,
+            input_boundary_ms: None,
             desk: DeskState::default(),
             redraw: false,
             reboot: false,
@@ -619,7 +622,7 @@ impl<'a> Runtime<'a> {
         // A `Bye`, a transport failure, or a new `Hello` this poll closed/opened a session: a
         // gesture (or partial motion) from the old session must never complete in a new one
         // (no-stale-replay invariant).
-        self.apply_session_boundary();
+        self.apply_session_boundary(now);
         if let Some(status) = self.dispatcher.take_status() {
             self.redraw |= self.desk.apply_status(&status, now);
         }
@@ -663,7 +666,7 @@ impl<'a> Runtime<'a> {
         self.button
             .set_double_press(self.dispatcher.double_press_enabled());
         self.pump_input(now, transport, input);
-        if self.apply_session_boundary() {
+        if self.apply_session_boundary(now) {
             self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
             tick.link_dropped = true;
         }
@@ -686,15 +689,8 @@ impl<'a> Runtime<'a> {
         //    tiles reach the panel (FR-013).
         // A switch edge also renders at once: the press acknowledgement is the device's own
         // < 50 ms feedback and must not wait out the frame interval.
-        if let Some(event) = self.button.poll(now) {
-            self.on_button(transport, event, now);
-        }
-        for index in 0..self.keys.len() {
-            if let Some(event) = self.keys[index].poll(now) {
-                self.on_key(transport, index, event, now);
-            }
-        }
-        if self.apply_session_boundary() {
+        self.poll_buttons(transport, now);
+        if self.apply_session_boundary(now) {
             self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
             tick.link_dropped = true;
             self.animator.set_state(self.device.current(), now);
@@ -831,7 +827,7 @@ impl<'a> Runtime<'a> {
         if outbound_failed {
             self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
             self.dispatcher.link_lost();
-            self.apply_session_boundary();
+            self.apply_session_boundary(now);
             let state = self.device.current();
             if self.animator.target() != state {
                 self.animator.set_state(state, now);
@@ -899,14 +895,17 @@ impl<'a> Runtime<'a> {
             self.close_idle_gesture(transport, at_ms);
             self.on_levels(transport, levels, at_ms);
         }
+        // Drain ends at current levels, so no pre-boundary history remains; eligibility is latched.
+        self.input_boundary_ms = None;
         self.close_idle_gesture(transport, now);
     }
 
     /// Applies one pending session boundary and returns whether it closed the active session.
-    fn apply_session_boundary(&mut self) -> bool {
+    fn apply_session_boundary(&mut self, now_ms: ElapsedMs) -> bool {
         if !self.dispatcher.take_session_ended() {
             return false;
         }
+        self.input_boundary_ms = Some(now_ms);
         self.decoder.reset();
         self.gesture.reset();
         let session = self.dispatcher.accepted_session();
@@ -950,6 +949,12 @@ impl<'a> Runtime<'a> {
         levels: InputLevels,
         at_ms: ElapsedMs,
     ) {
+        // Settle every previous level before deciding whether another control still owns input.
+        self.poll_buttons(transport, at_ms);
+        // Equal-ms captures are ambiguous; only a strictly later raw down may act in this session.
+        let stale = self
+            .input_boundary_ms
+            .is_some_and(|boundary| (at_ms.wrapping_sub(boundary) as i32) <= 0);
         let rotary_open = self.gesture.is_open();
         // One gesture owns all input: a switch that goes down while any other control is busy
         // (raw or debounced) can never fire, so two buttons at once never make a chord.
@@ -957,7 +962,7 @@ impl<'a> Runtime<'a> {
         let keys_busy = (0..3).any(|i| key_busy(&self.keys, i));
         for event in self
             .button
-            .update(levels.sw, at_ms, rotary_open || keys_busy)
+            .update(levels.sw, at_ms, stale || rotary_open || keys_busy)
             .into_iter()
             .flatten()
         {
@@ -969,7 +974,7 @@ impl<'a> Runtime<'a> {
             let events = self.keys[index].update(
                 levels.keys[index],
                 at_ms,
-                rotary_open || switch_busy || others,
+                stale || rotary_open || switch_busy || others,
             );
             for event in events.into_iter().flatten() {
                 self.on_key(transport, index, event, at_ms);
@@ -1012,6 +1017,17 @@ impl<'a> Runtime<'a> {
             #[cfg(feature = "latency-probe")]
             if _sent {
                 self.latency.on_detent(at_ms);
+            }
+        }
+    }
+
+    fn poll_buttons<T: Transport>(&mut self, transport: &mut T, at_ms: ElapsedMs) {
+        if let Some(event) = self.button.poll(at_ms) {
+            self.on_button(transport, event, at_ms);
+        }
+        for index in 0..self.keys.len() {
+            if let Some(event) = self.keys[index].poll(at_ms) {
+                self.on_key(transport, index, event, at_ms);
             }
         }
     }
