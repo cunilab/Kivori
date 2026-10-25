@@ -122,7 +122,8 @@ export function UpdateDialog(): ReactElement | null {
           {/* Plain text on purpose: release notes are never rendered as HTML. */}
           <p
             data-testid="release-notes"
-            className="max-h-48 overflow-y-auto rounded-md border bg-muted/30 p-3 text-xs break-words whitespace-pre-wrap text-muted-foreground"
+            tabIndex={0}
+            className="max-h-[min(12rem,50dvh)] overflow-y-auto rounded-md border bg-muted/30 p-3 text-xs break-words whitespace-pre-wrap text-muted-foreground"
           >
             {release.notes || t.noNotes}
           </p>

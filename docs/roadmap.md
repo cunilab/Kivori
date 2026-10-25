@@ -466,10 +466,12 @@ completion and physical acceptance are recorded separately in [validation.md](./
   never become that row's result; clear or replace stale feedback explicitly. Software implemented
   with per-invocation native completion replies and guarded local row feedback. See
   [correlation, cancellation and browser evidence](./validation.md#m29-control-test-correlation-software-acceptance).
-- [ ] **Keep dialogs usable in small windows** (`packages/ui/src/components/alert-dialog.tsx`):
+- [x] **Keep dialogs usable in small windows** (`packages/ui/src/components/alert-dialog.tsx`):
   constrain dialog height to the viewport and allow scrolling. Visually verify update/recovery
   dialogs with long content at 400×480, the 360×420 minimum and increased text scale; keyboard
-  focus and all actions remain reachable. This audit concern is not yet visually confirmed.
+  focus and all actions remain reachable. Implemented with a shared viewport height cap, vertical
+  scrolling and keyboard-accessible release notes. The clipping was reproduced, then all 18 browser
+  combinations passed. See [visual and keyboard evidence](./validation.md#m29-small-window-dialog-software-acceptance).
 - [ ] **Do not reject signup for hidden attribution** (`apps/web/components/waitlist-form.tsx`,
   `apps/web/lib/waitlist.ts`): truncate or discard oversized optional campaign/referrer fields while
   retaining validation on user input. A valid email with a 101-character campaign still signs up.

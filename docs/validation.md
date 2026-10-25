@@ -852,3 +852,53 @@ No real native input or hardware actions were exercised. There is no new test ti
 backend that blocks can leave tests pending. Epoch cancellation closes queued replies when the
 worker dequeues them, so cancellation is not prompt behind a blocked backend. Pending is retained
 rather than borrowing another action's result or claiming completion from a timer.
+
+
+## M2.9 small-window dialog software acceptance
+
+Implemented the third S3 item on `feat/m2.9-reliability` for PR #127, 2026-10-25.
+The clipping concern is now reproduced: the app-update dialog at 360×420 extended from −1.5 to
+421.5 px at default text size. Enlarging the root font from 16 to 32 px (200%) made it 787 px high,
+extending from −183.5 to 603.5 px, with no vertical scroll container.
+
+Shared `AlertDialogContent` now caps height at `calc(100dvh - 2rem)` and scrolls vertically.
+Base UI still owns focus trapping and dismissal, and footer actions stay in normal scroll flow.
+App-update release notes gain a keyboard tab stop and cap their own pane at the smaller of 12 rem
+and half the viewport height, so the nested pane also fits at enlarged text sizes. Notes remain
+plain text. The implementation changes two component files, with no new resize handlers or
+layout helpers.
+
+Local browser checks on Andress-MacBook-Air exercised the real app's app-update, required-firmware
+and BOOT-recovery dialogs at 400×480 and the configured 360×420 minimum. Each ran with 16, 24 and
+32 px root fonts (100%, 150%, 200%), for 18 combinations. App-update notes were temporarily replaced
+in the browser DOM with 40 copies of the existing mock notes to exercise long content; no shipping
+mock or production data changed. Firmware/recovery checks used their actual instructions.
+
+| Dialog | Height at 400×480: 100% / 150% / 200% | Height at 360×420: 100% / 150% / 200% |
+| --- | --- | --- |
+| App update, long notes | 448 / 432 / 416 px | 388 / 372 / 356 px |
+| Required firmware offer | 207 / 376 / 416 px | 207 / 372 / 356 px |
+| BOOT recovery | 387 / 432 / 416 px | 387 / 372 / 356 px |
+
+Every measured popup stayed inside the viewport with no horizontal overflow. Tab cycling stayed
+inside the popup and scrolled every enabled action fully into view. The release-notes pane could
+receive keyboard focus and scroll with End; repeated Page Up returned recovery instructions to
+the top. Measurements waited for CSS transitions/focus restoration and allowed a one-pixel scroll
+rounding tolerance. Screenshots were captured for every combination; the 200% screenshots at both
+sizes were visually inspected, including recovery instructions and footer actions. Artifacts remain
+local under `/tmp/kivori-m29-dialog-browser-4a4b63f`. The Browser skill reported no connected browser;
+automated Chromium supplied these local checks instead.
+
+Local validation:
+
+- `bun run --cwd apps/desktop test src/features/updates/__tests__/updates.test.tsx src/features/updates/__tests__/firmware-offer.test.tsx src/features/device/__tests__/firmware.test.tsx src/features/device/__tests__/recovery.test.tsx src/features/onboarding/__tests__/recovery.test.tsx`:
+  71 tests passed across five files.
+- Desktop and shared UI TypeScript, targeted ESLint with warnings denied, frontend Prettier,
+  local documentation links and `git diff --check`: passed.
+- Independent review passed and separately ran all 26 update/firmware-offer tests.
+- Previous commit `4a4b63f` passed all required CI, including Windows Rust, packaging and startup;
+  the macOS job was skipped. Native and firmware code were unchanged in this increment.
+
+These are browser viewport/root-font checks, not native Windows WebView2, OS display-scaling,
+screen-reader or full browser-zoom verification. No installer, firmware flash or hardware action
+was run. Native platform and unfamiliar-user acceptance remain in S4.
