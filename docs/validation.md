@@ -1309,8 +1309,22 @@ are resolved. Idle soak hours do not substitute for days of actual use, or vice 
 Item 18 preparation, 2026-10-25, Andress-MacBook-Air. No participant was recruited or observed and
 no physical usability session ran. Item 18 remains unchecked; M2.9 remains 13/19. Automated UI
 tests, developer walkthroughs and a prepared task sheet do not count as unfamiliar-user evidence.
-Preparation checks passed for new links/anchors, seven NOT RUN tasks, guide/source consistency,
-the 13/19 checklist and `git diff --check`. Runtime suites were not rerun for this docs-only edit.
+Initial preparation checks passed for new links/anchors, seven NOT RUN tasks, guide/source consistency,
+the 13/19 checklist and `git diff --check`. Runtime suites were not rerun for that docs-only edit.
+
+### Local walkthrough correction: profile pin instructions
+
+On 2026-10-25, a source/UI review of the pin/Auto task found that Customize promised a second
+middle-button Hold would return to automatic switching. The native `Context::cycle_pin` instead
+visits the enabled profiles before returning to Auto. Updated the onboarding instruction to explain
+that each further hold advances through the cycle, then returns to Auto. Controls guidance and the
+user guide already describe cycling; their behavior and the pin implementation are unchanged.
+
+On Andress-MacBook-Air, all 38 existing onboarding UI tests across three files passed with two
+workers. The two native tests for built-in wrap-to-Auto and marked-custom-profile inclusion passed.
+Desktop UI typecheck, targeted ESLint/Prettier and diff checks passed. No browser visual inspection,
+physical gesture or unfamiliar participant session ran; this correction does not close item 18.
+Progress remains 13/19.
 
 ### Session setup
 
