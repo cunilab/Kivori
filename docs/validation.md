@@ -12,17 +12,18 @@ measurement or observation on the same line. A phase closes only when all its ro
 **You need:** the board, a Windows PC and a Mac, one unrelated USB-serial device (Arduino or UART
 adapter), and a phone that films slow motion (backup for latency only).
 
-Pins (source of truth: `firmware/pala/src/profile.rs`). Display pins are measured; encoder pins are a
-specification until row 3.15 is ticked.
+Current wiring specification (source of truth: `firmware/pala/src/profile.rs`). The GPIO map moved
+for the enclosure; earlier display measurements do not verify this map. Check continuity against
+the current profile and complete rows 3.15 and 5.1 before powering/flashing an assembled unit.
 
 | Signal | GPIO | Signal | GPIO |
 |---|---:|---|---:|
-| SPI SCK (SPI2, 20 MHz, Mode 3) | 6 | Encoder CLK | 4 |
-| SPI MOSI | 7 | Encoder DT | 5 |
-| Display D/C | 2 | Encoder SW | 10 |
-| Display RST | 3 | USB D- / D+ | 18 / 19 |
-| Backlight (active-high) | 8 | Encoder COM / VCC | GND / **3V3** (never 5 V) |
-| Button left / middle / right | 0 / 1 / 20 | Button other leg | GND (no resistor) |
+| SPI SCK (SPI2, 20 MHz, Mode 3) | 4 | Encoder CLK | 7 |
+| SPI MOSI | 3 | Encoder DT | 6 |
+| Display D/C | 1 | Encoder SW | 5 |
+| Display RST | 2 | USB D- / D+ | 18 / 19 |
+| Backlight (active-high) | 0 | Encoder COM / VCC | GND / **3V3** (never 5 V) |
+| Button left / middle / right | 9 / 8 / 10 | Button other leg | GND (no resistor) |
 
 1. Once per machine: `bun install`, `cargo install espflash`, install `just`.
 2. Flash the product firmware: `just fw-flash` (builds with `physical-st7789`, then flashes and monitors).
@@ -36,7 +37,7 @@ specification until row 3.15 is ticked.
    Accessibility.
 4. Latency only: `just fw-flash-latency` (dev-only probe build), then `just fw-flash` to restore the product build.
 
-Suggested order: wiring (3.15) and flash, then Phase 1 (Windows, then macOS), Phase 2, Phase 3, latency,
+Suggested order: wiring/crystal checks (3.15 and 5.1) and flash, then Phase 1 (Windows, then macOS), Phase 2, Phase 3, latency,
 then Phase 4 (M1), then Phases 5 to 12 in order (5b is the Config UI half of the M2 rows; 7 to 12 are the M3 rows). Rows marked macOS run on the Mac; everything else on Windows.
 
 ## Phase 1: Device connection
@@ -80,7 +81,7 @@ Windows unless a row says otherwise. Rows 1, 3, 4 passed on macOS but stay open 
 - [ ] 1.21 Confirm `usb_serial_jtag` behavior on the pinned esp-hal version | no drops or hangs under 1.18 traffic
 - [ ] 1.22 Read the activity view while connected | no raw bytes, device id, paths or usernames; no log file is created. Partial macOS 2026-09-25: no log file created, only WebKit storage and stdout; connected part needs the device
 - [x] 1.23 Identify the panel controller | 2026-08-11: ST7789
-- [x] 1.24 Record the real SPI pin map | 2026-08-11: SCK 6, MOSI 7, no CS, D/C 2, RST 3, backlight 8 active-high; SPI2 20 MHz Mode 3
+- [x] 1.24 Record the real SPI pin map | 2026-08-11 historical unit: SCK 6, MOSI 7, no CS, D/C 2, RST 3, backlight 8 active-high; SPI2 20 MHz Mode 3. This predates the current enclosure GPIO map and does not validate it
 - [x] 1.25 Measure panel offsets | 2026-08-11: (0,0). Also verified: 90 degree rotation, RGB order, inversion on
 
 ## Phase 2: Mascot, reactions, flashing
@@ -1026,3 +1027,52 @@ The four ignored native tests inspect live apps, foreground state and microphone
 volume/mute. They were not enabled. No physical input, USB, installer execution, flashing, optimized
 performance benchmark or live signup/deletion was tested locally. This software baseline does not
 close the website, Windows hardware, recovery, sustained-use or unfamiliar-user acceptance rows.
+
+## M2.9 Windows unit acceptance (open)
+
+Item 15 preparation, 2026-10-25, Andress-MacBook-Air. The owner deferred the physical run to a later
+retry. This session runs on macOS; no Windows host with a connected unit was used. No physical checks below have run.
+Item 15 stays unchecked and progress remains 13/19. Windows CI startup/packaging and host simulation
+are software evidence only. The existing [provisioning tool](./provisioning.md) flashes firmware and
+does not cover double-press, microphone hotplug, latency or sleep/lock behavior; do not run it as a
+read-only substitute for this session.
+
+Preparation checks: the wiring table matches the nine corresponding firmware declarations,
+the new roadmap link resolves, the checklist remains 13/19, and `git diff --check` passes.
+These are documentation/source-consistency checks; runtime suites were not rerun for this edit.
+
+Before testing, record: UTC date/operator, source SHA and dirty status, app version/build type,
+firmware version/product/board and image SHA-256, short unit label, Windows version/build, USB
+port/hub/power arrangement, microphone types/count, selected profiles/bindings and negotiated
+capabilities. Use the matching app and firmware from this PR; older historical row results do not
+validate the reliability changes. Verify the current wiring table above against the physical unit.
+
+Use a temporary test profile and a scratch document or non-sensitive playback to count actions.
+Record each row as PASS/FAIL/NOT RUN with actual counts/times and a local evidence reference.
+NOT RUN, missing measurements and unsupported machine power modes cannot become PASS.
+
+| Case / existing rows | Procedure and required evidence | Result |
+| --- | --- | --- |
+| Connection / 1.6, 1.15–1.17, 1.20 | Time cold connect (<5 s), disconnect indication and reconnect with state restore (<10 s). Repeat rapid unplug/replug 10 times; record each duration and any duplicate/stuck session. | NOT RUN |
+| Rotary / 3.1–3.13, G1/G2 | Count slow detents both ways, fast turns, edge wiggles, 0/100 reversal and default-output change mid-turn. Compare Windows mixer read-back with the panel; no phantom/reversed/stale action or invented confirmation. | NOT RUN |
+| Latency / 3.14, 4.28 | After wiring checks and an agreed firmware-flash step, use the dev-only latency image. Capture about 30 distinct detents in both directions, `L` samples and final `H` (<50 ms), plus `F/t/o/n` counters. Note the device view and dropped/invalid input. Restore the matching product image afterwards and record its version/hash. | NOT RUN |
+| Press/hold/double / 4.1–4.2, 4.24–4.25, 5.15 | On each supported control count 10 short presses and 5 roughly 1 s holds; on the double-press-capable knob count 10 natural double presses. Use recorded bindings; each gesture has exactly its intended action, no extra press on hold/double, no merged distinct presses. Note the 250 ms single-press delay and any lost/duplicate input. | NOT RUN |
+| Microphone / 13.1–13.5 | With built-in and USB mics active, compare every endpoint's actual mute state in Windows before/after Mic Mute. Hotplug a third mic while muted, then unmute externally and unplug/replug an endpoint. Record time to reconcile and per-endpoint result; incomplete/failed coverage must remain unknown/unverified, never a muted or confirmed claim. App-call mute is distinct from OS endpoint mute. | NOT RUN |
+| Disconnect during input / 3.12, 4.8, G2 | Disconnect during a turn and during a queued scratch-document shortcut/macro; press during the outage, then reconnect. Count output before/after; no pre-disconnect or outage input replays. Record actual delivery and feedback separately: keyboard delivery remains Unverified. | NOT RUN |
+| Context changes / G2, 5.18 | Queue a scratch-document action, switch focus/profile before dispatch or during a macro wait, and cancel a pending Controls Test. The remaining old-target input must not execute or retarget; another action's result must not become that test's result. Record which input had already completed before cancellation. | NOT RUN |
+| Lock/unlock / 7.1–7.2 | Repeat 3 cycles, with attempted shortcut input while locked. Record sleeping indication (<1 s), restored profile/state, allowed volume behavior and no old shortcut replay after unlock. | NOT RUN |
+| Sleep/wake / 7.3–7.7 | Record `powercfg /a`, then exercise each available sleep/resume mode (3 cycles for the normal mode). Record sleeping/offline indication, USB power behavior, reconnect (<5 s) and absence of old press/turn replay. Record unsupported modes explicitly; required coverage stays open. | NOT RUN |
+| Feedback / G1/G2, 4.16, 13.12 | Across all cases compare Activity, panel and independent Windows state. A failed/unreadable endpoint never confirms; shortcuts/media remain Unverified. Record any stale overlay or result separately from whether the OS action happened. | NOT RUN |
+
+The latency probe records the device timestamp of a successfully transmitted detent and measures
+to completed tile flush after a new Presentation, not physical-contact-to-visible-pixel time.
+It pairs by order rather than a unique per-detent response ID: use isolated detents in a stable
+Volume view without other control actions. It tracks the oldest unmatched detent per burst;
+unanswered samples can expire after 1 s and displayed values clamp at 999 ms. Record missed
+responses separately rather than interpreting a low `H` as proof none occurred. Slow-motion video
+can supplement physical-to-visible timing; retain frame rate, frame counts and method separately.
+
+Acceptance requires measured results for all cases, dated updates to the affected existing rows,
+and reproduction/fix/retest evidence for failures. Run on the product image except the explicitly
+identified latency pass; do not leave a probe image installed. This does not close item 16's clean
+installation/interrupted-flash recovery, item 17's soak/workdays, or unfamiliar-user/enclosure checks.

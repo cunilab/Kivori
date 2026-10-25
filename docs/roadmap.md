@@ -499,6 +499,8 @@ completion and physical acceptance are recorded separately in [validation.md](./
   double-press fidelity, microphone mute across multiple devices and hotplug, repeated USB
   disconnect/reconnect, sleep/wake and lock/unlock. Re-run affected existing rows in
   [validation.md](./validation.md), including no false confirmation and no stale replay.
+  [Session procedure and result record](./validation.md#m29-windows-unit-acceptance-open) are prepared;
+  physical execution remains open, deferred by the owner on 2026-10-25 for a later retry on Windows.
 - [ ] **Prove installation and recovery**: on a clean Windows machine, install the signed beta
   package, launch at login, update the app, update firmware and recover through BOOT after an
   interrupted flash. Verify app installation and firmware flashing cannot overlap. Signing and
