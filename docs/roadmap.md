@@ -521,6 +521,8 @@ completion and physical acceptance are recorded separately in [validation.md](./
 - [ ] **Verify the assembled enclosure**: measure real component fit, cap travel, knob clearance,
   USB insertion force and access to BOOT/RST. The nominal CAD dimensions are not physical proof;
   update assembly/validation evidence from the actual unit.
+  [Variant, measurement and access record](./validation.md#m29-assembled-enclosure-acceptance-open)
+  is prepared; nominal geometry and firmware-consistent wiring do not close physical acceptance.
 
 **Exit:** S1–S3 regressions pass, S4 evidence is recorded and reviewed, and no unresolved issue can
 falsely confirm an action, execute stale input, discard successfully saved settings or block common

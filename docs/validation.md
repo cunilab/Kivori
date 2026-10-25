@@ -1274,3 +1274,72 @@ completion ticks; shortcut tests have a countdown and await their own result; a 
 not undo earlier steps; trigger-only feedback stays Unverified with a quiet device pulse. The guide
 also explains the single-press wait and no longer promises that signing removes a Windows warning.
 These documentation corrections have not yet been evaluated with a participant.
+
+## M2.9 assembled-enclosure acceptance (open)
+
+Item 19 preparation, 2026-10-25, Andress-MacBook-Air. No component was physically measured, printed
+or assembled here. Item 19 remains unchecked; M2.9 remains 13/19.
+
+### Generator prerequisite fix and local evidence
+
+The hand-wired generator still used the old display/encoder GPIOs and button GPIO0/1/20, while
+firmware and its wiring README specify display 4/3/2/1/0, encoder 7/6/5 and buttons 9/8/10.
+These assignments drive real wire grooves and engraved labels, so correcting only the README
+would leave misleading printable parts. The generator is now aligned with `profile.rs`.
+`test_pin_map.py` independently reads the firmware's literal declarations and checks all thirteen
+nets (eleven signals plus power/ground), including button order, without importing FreeCAD.
+It failed on the old source and passes after the fix; Linux host CI runs it. Unrecognized future
+Rust declaration syntax fails the check for review rather than silently omitting the comparison.
+
+Local FreeCAD 1.1.4 regenerated original and corrected models in separate temporary directories:
+
+- Both generation reports: eight valid printed parts and `interference: none`. The corrected
+  document contains fourteen valid, nonempty single solids; every object's bounds are unchanged.
+- The original regeneration matched all nine pre-fix tracked exports at `918d2d4` byte-for-byte. After the fix, only
+  `Carrier.stl` differs; the seven other STLs and `pcb-outline.dxf` remain byte-identical. Only that
+  STL and the complete `kivori-case.FCStd` document were replaced. Carrier volume changes by
+  +20.066403 mm³; the other thirteen object volumes are unchanged.
+- The actual Carrier back projection was inspected for revised routes near the SuperMini and
+  updated B1/B2/B3 labels. This does not verify wire accessibility, insulation, groove capacity or
+  physical fit. The independent pin check is needed even when the interference report is clean.
+- Astra advised the bounded scope; its follow-up hit a usage limit. Sol independently reviewed the
+  final source/test/CI/docs, passed the test, rejected the old source in memory, verified export
+  hashes and document ZIP integrity, and inspected the back projection. No blocker was found for
+  this prerequisite fix; no reviewer claimed physical acceptance.
+
+Checks: Python unittest, targeted workflow Prettier, new links/anchors, nine NOT MEASURED rows,
+13/19 checklist and `git diff --check` passed. Desktop/firmware runtime suites were not rerun for
+this CAD/source-guard increment. Local evidence remains under `/tmp/kivori-m29-enclosure-*`;
+models, reports and images there are not cross-device memory or physical observations.
+
+The selected variant must be explicit: this checkout's `hardware/enclosure/` is hand-wired and
+screwless; `docs/assembly.md` describes the separate copper-tape/screw branch. Their mounting
+orientation, printed parts and assembly steps cannot be mixed. Experimental modules or another
+display/controller require their own evidence and do not inherit this design's acceptance.
+
+### Physical record
+
+Record operator/date, variant/source SHA, generator parameters and CAD/STL hashes, print/slicer
+revision, printer/material/orientation/layer/scaling, component suppliers/revisions and short unit
+label. Name the instrument, resolution and method for each measurement. Compare measured values
+with the selected CAD and actual component specifications; a nominal CAD clearance is not an
+observed clearance. Record missing dimensions/force limits as open rather than inventing a tolerance.
+
+| Check | Measurements and required observation | Result / evidence |
+| --- | --- | --- |
+| Bought parts | Measure actual display PCB/glass/FPC/header, SuperMini USB/buttons, encoder PCB/shaft and switch body/stem/pin locations. Compare with the chosen model before committing to a full print; record each deviation. | NOT MEASURED |
+| Carrier and display | Dry-fit components and mounting features; record hole/peg alignment, PCB seating, glass/FPC clearance and window alignment. No forced glass/PCB bend, obscured active area or trapped cable. | NOT MEASURED |
+| Button caps | Measure resting/pressed clearance, available travel, stem/socket engagement and return for each cap. Exercise centre and edge presses on all three; record counts, rubbing, preload, sticking and unintended holds. | NOT MEASURED |
+| Knob | Measure shaft engagement, resting and pressed axial gap and clearance through a full turn and push at several angles. No rubbing, neighbouring-cap contact, loss of push travel or loose/slipping shaft fit. | NOT MEASURED |
+| USB | Use the actual intended data-cable plug. Record opening/plug clearance and measured peak insertion/removal force with the measurement method. Observe connector/PCB displacement and support path; the shell must not prevent full seating or transfer damaging loads to the board. Force without an instrument remains unmeasured. | NOT MEASURED |
+| Wiring and closure | With power removed, check continuity against the firmware map and inspect insulation/routing, especially crossings and the SuperMini recess/edge. Close/open the selected case design, record fit and retention, then recheck for pinched wires, shifted parts and shorts before power. | NOT MEASURED |
+| RST access | With the case fully closed, verify the labelled access point reaches the actual reset switch without disassembly or contacting other circuitry. Observe reset and normal reconnect; record tool, alignment and actuation. Do not infer location from another variant's instructions. | NOT MEASURED |
+| BOOT access/recovery | With the case closed, demonstrate access to the actual BOOT switch, entry into recovery and return to normal operation using the existing recovery procedure. Record tool clearance, labels and actual app/device result; link item 16's flash/recovery evidence when applicable. | NOT MEASURED |
+| Closed-unit operation | With the product firmware, repeat physical control and display checks after closure, including mic feedback and USB reconnect. Record any changed behaviour versus the open assembly and failures after reopening/reclosing. | NOT MEASURED |
+
+Retain photos/dimensioned notes and any failed fit. Link every parameter/design correction to the
+specific measured discrepancy, regenerate/review the affected geometry, reprint and remeasure.
+Do not fix only the CAD stand-in to match another unverified drawing. Close item 19 only when
+the actual selected assembled unit has evidence for every row and unresolved fit/access problems
+are fixed. Firmware/CAD source consistency, interference reports and electrical provisioning PASS
+remain distinct from these physical measurements.

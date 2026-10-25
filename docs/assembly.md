@@ -1,15 +1,15 @@
 # Kivori assembly (one beta unit)
 
-How to build one Kivori, from parts to a provisioned, closed unit. It follows the copper-tape
-printed PCB (enclosure prototype v3, `COPPER_TRACES = True`) and the firmware pin map from #67.
-The geometry, print settings and why each part is held the way it is are in
-[hardware/enclosure/README.md](../hardware/enclosure/README.md); this page is only the order of work
-and the checks between steps. Related: [bom.md](./bom.md), [provisioning.md](./provisioning.md),
-[validation.md](./validation.md).
+This draft covers the copper-tape printed-PCB variant (`COPPER_TRACES = True`) developed on
+`worktree-enclosure-freecad`. Its steps require that variant's matching CAD/exports and the wiring
+specification in [`profile.rs`](../firmware/pala/src/profile.rs).
 
-> The v3 enclosure files (copper traces, `Spacers`, `RubberDots`, screws) are on the branch
-> `worktree-enclosure-freecad` until it is merged. `hardware/enclosure/` on `main` is still the
-> older hand-wired, screwless version.
+This checkout's [`hardware/enclosure/README.md`](../hardware/enclosure/README.md#assembly) describes the hand-wired
+assembly, including a different SuperMini mounting orientation and no screws, `Spacers` or
+`RubberDots`. Select matching instructions and exported parts before assembling. Record the exact
+variant and physical measurements in the [M2.9 enclosure session](./validation.md#m29-assembled-enclosure-acceptance-open).
+The [BOM](./bom.md) also describes the hand-wired design; copper-specific materials are listed below.
+Related: [provisioning.md](./provisioning.md), [validation.md](./validation.md).
 
 Write the unit's short hash (step 20) on a label inside the plinth.
 
@@ -116,7 +116,8 @@ Testing before closing means a fault is still easy to reach.
 
 27. Plug in again and open the Kivori app. Turn the knob both ways, press it, press the three
     buttons left to right: each does what its label says, and no button sticks.
-28. Push a needle through the RST hole in the visor: the unit restarts and reconnects.
+28. Verify the RST access location against the selected copper-variant CAD and actual board before
+    inserting a tool. Operate RST through that verified access point: the unit restarts and reconnects.
 29. Wipe the visor, pack the unit with a data cable.
 
 To open a closed unit: pull the four dots off, take the screws out, grip the plinth in the shadow

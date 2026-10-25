@@ -40,6 +40,10 @@ the display pegs, so a staked head still fits.
 
 ## Files
 
+This checkout contains the **hand-wired, screwless** design. The copper-tape/screw variant described
+in [`docs/assembly.md`](../../docs/assembly.md) is separate; do not mix its component orientation,
+parts or fasteners with these exports. Record the exact source/export revision for each printed unit.
+
 | File | What |
 |---|---|
 | `build_case.py` | The whole model. Every dimension is a parameter at the top. |
@@ -50,6 +54,7 @@ the display pegs, so a staked head still fits.
 To rebuild after changing a parameter, run it headless from the repo root:
 
 ```bash
+python3 -m unittest discover -s hardware/enclosure -p 'test_*.py'
 /Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd hardware/enclosure/build_case.py
 ```
 
@@ -61,7 +66,10 @@ exec(open(p).read(), {"__file__": p, "__name__": "__main__"})
 ```
 
 It prints an interference report (`interference: none` is the goal), regenerates the document
-and rewrites `export/`.
+and rewrites `export/`. Review every shape's validity and the interference result; a successful
+process exit alone is insufficient. The pin-map test compares source assignments with firmware,
+not measured wiring. Neither check proves assembled fit. Record physical results in the
+[M2.9 enclosure session](../../docs/validation.md#m29-assembled-enclosure-acceptance-open).
 
 ## Parts to print
 
