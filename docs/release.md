@@ -253,6 +253,12 @@ edit that changes another parsed value, before writing manifests or workflow out
 
 ## Verifying an app update end to end
 
+For M2.9 signed-beta acceptance, use the
+[Windows installation and recovery record](./validation.md#m29-windows-installation-and-recovery-acceptance-open)
+alongside this procedure. Windows publisher signing and Tauri updater signatures must each be
+verified on the actual candidates; PR packaging smoke does not establish either live update or
+physical recovery acceptance.
+
 Once the public key is in the release config and both secrets are set (validation.md rows 14.6 to
 14.10, on a real Windows machine):
 

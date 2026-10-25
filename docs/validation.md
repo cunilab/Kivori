@@ -289,6 +289,10 @@ Software is done (tray model table, hidden-start lifecycle, `--autostart` parsin
 
 CI builds the NSIS installer, installs it silently, checks the app and the `espflash` sidecar, runs the startup smoke test with `--autostart`, and uninstalls (including the Run entry). Everything below needs a real machine. Rows 8.1 and 9.3 depend on this phase.
 
+The unsigned development check in 10.1 does not close M2.9's signed-beta requirement. Updater `.sig`
+files and Windows code signing are separate; use the
+[M2.9 installation/recovery record](#m29-windows-installation-and-recovery-acceptance-open).
+
 - [ ] 10.1 Clean Windows 11 VM with no dev tools: run the installer | SmartScreen "More info, Run anyway" works (unsigned build)
 - [ ] 10.2 Run the installer as a normal user | it installs without an admin prompt
 - [ ] 10.3 Install a newer build over an older one | the config is kept
@@ -1076,3 +1080,66 @@ Acceptance requires measured results for all cases, dated updates to the affecte
 and reproduction/fix/retest evidence for failures. Run on the product image except the explicitly
 identified latency pass; do not leave a probe image installed. This does not close item 16's clean
 installation/interrupted-flash recovery, item 17's soak/workdays, or unfamiliar-user/enclosure checks.
+
+## M2.9 Windows installation and recovery acceptance (open)
+
+Item 16 preparation, 2026-10-25, Andress-MacBook-Air. No clean Windows host or physical unit was used;
+no install, login, app update, firmware flash or interruption was performed. Progress remains 13/19.
+Preparation validation: new relative links/internal anchor, eight NOT RUN cases, the 13/19 checklist
+and `git diff --check` passed. Runtime suites were not rerun for this documentation-only increment.
+
+### Artifact prerequisites
+
+- Windows code signing is an unimplemented placeholder in `.github/workflows/release.yml`;
+  setting `WINDOWS_SIGNING=true` currently fails deliberately. Owner certificates/provider setup
+  and the signing implementation remain open in [issue #36](https://github.com/cunilab/Kivori/issues/36).
+  A signed-beta acceptance run needs reviewed signing integration and trusted signed artifacts first.
+- Tauri updater signing is separate. The release config has a public verification key and requires
+  signed updates, but the PR workflow explicitly omits the updater private key and builds without
+  updater artifacts. A passing PR installer smoke cannot prove updater signature verification.
+  Check signatures on actual release candidates; configured keys alone do not prove they match.
+- Select approved app versions A and newer B with recorded source SHAs, installer hashes, publisher
+  identity, updater signature/manifest provenance and exact bundled firmware identities/versions.
+  Use the [existing release procedure](./release.md). Publishing a release affects installed users;
+  preparing this session does not publish one. A draft or PR artifact is invisible to the production
+  updater endpoint. Any isolated update-endpoint test build must follow the developer procedure in
+  [release.md](./release.md#verifying-an-app-update-end-to-end) and be identified as such in evidence.
+- Use a clean Windows user/machine without Rust, Cargo or a separately installed `espflash`.
+  Record Windows build, standard-user status, WebView2 availability/network use, USB arrangement,
+  unit label and matching current wiring checks. Preserve the initial machine snapshot for retries.
+
+On Windows, these read-only checks record artifact hashes and Windows signature status:
+
+```powershell
+$installerPath = 'C:\QA\Kivori_VERSION_x64-setup.exe' # replace with the reviewed candidate
+Get-FileHash -LiteralPath $installerPath -Algorithm SHA256
+Get-AuthenticodeSignature -LiteralPath $installerPath |
+    Select-Object Status, StatusMessage, SignerCertificate, TimeStamperCertificate
+```
+
+Compare the hash with the approved artifact record and require a valid signature from the expected
+publisher; inspect installed app/sidecar signature policy too. This command does not validate the
+Tauri `.sig`. The snippet has not been executed in this macOS preparation session.
+
+### Live session record
+
+Record UTC/operator, unit and source/artifact metadata above, before/after app and firmware versions,
+settings checksum/selected bindings, actual outcome, durations and local evidence references for
+each row. Redact machine paths/usernames from shared logs. Missing prerequisites stay NOT RUN.
+
+| Case / existing rows | Required observation | Result |
+| --- | --- | --- |
+| Clean install / 10.1–10.2, 10.4, 11.1–11.2 | Install signed A as a standard user; record publisher/trust prompts, WebView2 setup and Defender outcome. App starts, setup completes once, device connects, bundled sidecar works without dev tools. Unsigned development smoke is recorded separately. | NOT RUN |
+| Login/tray / 9.1–9.2, 9.5–9.6 | Enable launch at login, sign out/in, verify hidden window, tray, one process and device connection. Disable it and repeat; no automatic launch. | NOT RUN |
+| Settings-preserving app update / 10.3, 11.4 | Save a distinctive profile/binding and update A to B through the real updater. Observe download/install/restart, reported B version, reconnect and preserved settings; onboarding must not repeat. Record endpoint and signature-verification outcome. | NOT RUN |
+| Rejected update / release update procedure | With the documented isolated test build, attempt a corrupted installer or mismatched updater signature. Installation is refused and current app/settings remain usable. Keep its endpoint/build evidence separate from production-endpoint acceptance. | NOT RUN |
+| Installed firmware update / 8.1, 8.6, 8.8 | On the dev-tool-free machine, flash the exact bundled product/board image through the installed app. Observe progress, updating display, reconnect, identity and reported version. Confirm version-based offers are accurate. | NOT RUN |
+| Interrupted flash and BOOT restore / 8.2, 8.7 | On the test unit, disconnect USB during a real flash. Record failure/retry feedback and actual sidecar error. Follow the app's BOOT/Restore instructions, explicitly select the matching target if needed, and verify successful reconnect/identity/version plus normal controls. Retain redacted real errors for classifier regressions. | NOT RUN |
+| Install/flash exclusion / M2.9 S1 | Exercise both admission orders with an update ready: active firmware flash blocks installer start; admitted installation blocks flash/restore. Observe child processes, progress and runtime shutdown where the app exits. No flasher and installer overlap; after a failed operation the appropriate retry becomes usable. | NOT RUN |
+| Uninstall / 9.3 | Uninstall and verify the app is gone and both Kivori startup registry values are removed. Record settings retention/removal behavior and actual sign-in result; preserve evidence before resetting the test machine. | NOT RUN |
+
+The current CI smoke installs/uninstalls silently and tests a ten-second `--autostart` process; it
+manually inserts a Run entry to test cleanup. It does not observe a real login, manual trust prompts,
+an A-to-B updater installation, a physical flash or BOOT recovery. Its success cannot fill this table.
+Tick item 16 only after the artifact prerequisites and all live rows pass with evidence. Physical
+input quality, soak/workdays and unfamiliar-user acceptance remain separate items.
