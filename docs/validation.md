@@ -1135,6 +1135,24 @@ firmware cleanup. Independent Sol review passed and reran the focused test succe
 The Bash fixture is skipped on Windows; no actual Windows package, key validation, installer or
 updater was executed. The live acceptance rows below remain NOT RUN.
 
+### Simulated interrupted flash and recovery
+
+On 2026-10-25, added a continuous scenario in `tests/firmware_flash.rs` using the production
+`FlashWorkflow` and `run_accepted_firmware_flash`, with injected flasher outcomes. For each of
+Cancelled, Timeout, PortBusy and Unknown, failure returns to discovery, releases busy state,
+rejects a late handshake and emits failure without a success event. A retry reserves a new port
+(COM8 after COM7), clears the prior failure and refuses a second reservation. Handshakes before
+flashing, on the old port or with incompatible firmware cannot verify recovery. Only a compatible
+handshake on the reserved recovery port completes it, records the recovered identity and emits
+one verification event; native details stay out of activity metadata.
+
+Validation on Andress-MacBook-Air:
+`cargo test -p kivori-desktop --test firmware_flash --test recovery_target --test updater_policy -- --test-threads=1`
+passed 58 tests (26 flash, 9 target policy, 23 updater policy). Rust formatting, targeted Clippy with
+warnings denied and diff checks passed. The test injects failure classes directly; it does not
+run an espflash child, exercise USB/BOOT, validate an installer signature or perform an app update.
+No production code changed. Item 16 and all live acceptance rows remain open; progress stays 13/19.
+
 ### Artifact prerequisites
 
 - Windows code signing is an unimplemented placeholder in `.github/workflows/release.yml`;
