@@ -510,6 +510,8 @@ completion and physical acceptance are recorded separately in [validation.md](./
 - [ ] **Run sustained use before paid beta**: complete an 8 h idle soak and 10 workdays of actual
   Windows use. Record build, unit, duration, disconnects, missed/wrong inputs, stale indicators,
   crashes and recovery outcomes; fix blockers and repeat affected checks.
+  [Soak and workday record](./validation.md#m29-sustained-use-acceptance-open) is prepared;
+  neither the timed soak nor any qualifying Windows workday has been recorded yet.
 - [ ] **Observe an unfamiliar user**: have someone install, configure, use and recover the device
   without developer coaching. Check discovery of button Hold, middle-button profile pin and
   double press, whether the 250 ms single-press wait feels acceptable, and whether the screen's

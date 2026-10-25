@@ -1143,3 +1143,80 @@ manually inserts a Run entry to test cleanup. It does not observe a real login, 
 an A-to-B updater installation, a physical flash or BOOT recovery. Its success cannot fill this table.
 Tick item 16 only after the artifact prerequisites and all live rows pass with evidence. Physical
 input quality, soak/workdays and unfamiliar-user acceptance remain separate items.
+
+## M2.9 sustained-use acceptance (open)
+
+Item 17 preparation, 2026-10-25, Andress-MacBook-Air. No Windows soak or workday was started here.
+Soak: NOT RUN, 0 verified hours. Workdays: 0/10. Item 17 remains unchecked; M2.9 remains 13/19.
+The software baseline, CI runtime and time spent waiting for builds do not count toward either run.
+Preparation checks passed for the roadmap/internal links, one unstarted soak, ten unstarted workday
+rows, the 13/19 checklist and `git diff --check`. Runtime suites were not rerun for this docs-only edit.
+
+### Candidate and evidence
+
+Record the tested app/firmware versions, source SHA, exact artifact hashes, product/board, short unit
+label, Windows build, USB cable/port/hub, power/sleep settings, audio devices and saved bindings.
+Use the matching product firmware; a latency-probe image is a separate development measurement.
+Perform the relevant [Windows unit checks](#m29-windows-unit-acceptance-open) before sustained use
+and retain any unresolved failures. A soak does not replace installation/recovery or usability tests.
+
+At start/end and after an incident, use Device page **Copy diagnostics** and note observed Activity
+events locally. Available snapshots include connected duration/reconnects, last-pong age, RTT,
+estimated device uptime, free device bytes and malformed/sequence-gap/device-error counts.
+Compare deltas within the same app/device session; record every restart and counter reset.
+Unknown fields stay unknown. Activity is a session-only ring of at most 256 events, with no disk
+history; capture incidents before rollover/restart. A final empty history or zero reset counter is
+not proof that nothing failed. Developer internals may supplement snapshots when available.
+Keep evidence references and redacted observations in this record; do not commit raw private logs.
+
+### Eight-hour idle soak
+
+1. On the Windows candidate, confirm normal connection and counted control actions, then capture
+   baseline diagnostics, process identity, app memory/CPU and the panel's state. Record UTC start.
+2. Leave the device connected and app running for one uninterrupted 8-hour idle interval with no
+   deliberate control input. Record the actual power policy; OS sleep, USB power loss, app/device
+   restart or missing observation coverage breaks the interval. Screen-off alone is not OS sleep.
+3. At least hourly, record connection/heartbeat health, panel state, process memory/CPU and any
+   unexpected reconnect, reset or crash. Record observation times and gaps rather than assuming
+   continuity. Do not infer pixel animation health solely from a connected process.
+4. At the end, record UTC finish, actual elapsed time and final diagnostics; repeat counted knob,
+   press/hold and relevant microphone checks and compare OS state with feedback. Record spontaneous
+   actions, stale indicators, missed/wrong inputs and whether recovery was needed.
+
+| Trial / candidate | UTC start/end and elapsed | Snapshots / observations | Incidents / recovery | Result |
+| --- | --- | --- | --- | --- |
+| Not started | — / 0 verified hours | None | Not observed | NOT RUN |
+
+Passing needs a fully evidenced interval of at least 8 hours, a responsive final control check and
+no unresolved stability or feedback failure. Do not add interrupted intervals together to claim a
+continuous soak. Fix a blocker, retain its failed trial and repeat the affected check and full soak.
+
+### Ten workdays of actual Windows use
+
+Use the unit during normal Windows work on ten distinct workdays. Record actual use hours and
+breaks each day; ten restarts or ten short smoke tests are not ten workdays. Exercise the controls
+and profiles used in real work, including audio-device changes, ordinary lock/sleep transitions and
+USB reconnects when they occur. Distinguish planned disconnects from unexplained ones. Record a
+count for a defined action sample each day so a claim of no missed/wrong input has an observed basis.
+
+| Day | Date / candidate / unit | Use start/end, active hours, breaks | Action sample expected/actual; disconnects, missed/wrong input, stale feedback, crashes | Recovery / evidence | Result |
+| --- | --- | --- | --- | --- | --- |
+| 1 | — | — | Not observed | — | NOT RUN |
+| 2 | — | — | Not observed | — | NOT RUN |
+| 3 | — | — | Not observed | — | NOT RUN |
+| 4 | — | — | Not observed | — | NOT RUN |
+| 5 | — | — | Not observed | — | NOT RUN |
+| 6 | — | — | Not observed | — | NOT RUN |
+| 7 | — | — | Not observed | — | NOT RUN |
+| 8 | — | — | Not observed | — | NOT RUN |
+| 9 | — | — | Not observed | — | NOT RUN |
+| 10 | — | — | Not observed | — | NOT RUN |
+
+For each incident record UTC time, candidate/unit, trigger, expected versus actual OS/device/UI
+behavior, count/duration, recovery steps and evidence. False confirmation, stale replay, wrong-target
+input, lost settings, crashes or failed normal recovery block acceptance. Link the issue/fix and
+retest outcome; a successful restart alone does not close the defect. A behavior-changing fix creates
+a new candidate: retain earlier history and review affected soak/workday coverage before counting
+it toward acceptance. Documentation-only changes do not change an installed artifact's identity.
+Close item 17 only after the 8-hour soak and all ten qualifying workdays have evidence and blockers
+are resolved. Idle soak hours do not substitute for days of actual use, or vice versa.
