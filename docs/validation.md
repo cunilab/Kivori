@@ -1085,8 +1085,24 @@ installation/interrupted-flash recovery, item 17's soak/workdays, or unfamiliar-
 
 Item 16 preparation, 2026-10-25, Andress-MacBook-Air. No clean Windows host or physical unit was used;
 no install, login, app update, firmware flash or interruption was performed. Progress remains 13/19.
-Preparation validation: new relative links/internal anchor, eight NOT RUN cases, the 13/19 checklist
-and `git diff --check` passed. Runtime suites were not rerun for this documentation-only increment.
+Initial documentation-only preparation validation: new relative links/internal anchor, eight NOT RUN
+cases, the 13/19 checklist and `git diff --check` passed. Runtime suites were not rerun for that increment.
+
+### Local development packaging prerequisite
+
+The local `just bundle-windows` recipe requested updater artifacts even when no updater private key
+was supplied. It now disables those artifacts for an unset or empty `TAURI_SIGNING_PRIVATE_KEY`,
+matching PR CI. A nonempty key retains the signing configuration and normal validation; a signing
+failure does not retry unsigned. This does not implement Windows publisher signing or close item 16.
+
+Validation on 2026-10-25, Andress-MacBook-Air: the regression failed against the previous recipe;
+the firmware recipe/catalog suites then passed 35 tests with Bun 1.4.2. A mocked execution of the
+actual Bash recipe checks unset, empty and supplied keys, child failure propagation and temporary
+firmware cleanup. Independent Sol review passed and reran the focused test successfully.
+`just --show bundle-windows`, targeted ESLint/Prettier and `git diff --check` passed. Local logs:
+`/tmp/kivori-m29-local-bundle-red.log` and `/tmp/kivori-m29-local-bundle-tests.log`.
+The Bash fixture is skipped on Windows; no actual Windows package, key validation, installer or
+updater was executed. The live acceptance rows below remain NOT RUN.
 
 ### Artifact prerequisites
 
