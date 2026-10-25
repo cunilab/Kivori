@@ -940,3 +940,31 @@ attempt on 127.0.0.1 timed out; the checks passed on the server’s advertised `
 without changing dev security configuration. Next dev generated an untracked AGENTS.md, moved to the local evidence directory
 after shutdown. Native/firmware code was unchanged. Real public widget/secret/contact configuration,
 a signup and a deletion request remain the next roadmap item.
+
+## M2.9 public website readiness audit (open)
+
+Read-only audit on Andress-MacBook-Air, 2026-10-25, for item 13 of PR #127.
+This item remains unchecked; M2.9 progress remains 12/19.
+
+| Check | Observed result |
+| --- | --- |
+| Committed configuration | `apps/web/wrangler.jsonc` uses the always-pass test site key and an empty `CONTACT_EMAIL`. |
+| Active production version | Wrangler deployment/version inspection reports version `cdd9f9bb-99c3-4e63-977a-1a22b9f76529`, deployed 2026-10-10 at 03:45:20 UTC with 100% traffic. Reported bindings are `ASSETS`, `DOWNLOADS` and `WORKER_SELF_REFERENCE`. No waitlist database, limiter, signup analytics, Turnstile/contact variables or secret binding is reported. |
+| Worker secrets | `bunx wrangler secret list` returned `[]`. No secret values were retrieved. |
+| D1 database | `bunx wrangler d1 info kivori-web --json` confirms the configured database exists with two tables. This metadata does not verify the waitlist schema, contents or production binding. No signup rows were queried. |
+| Turnstile widget | `bunx wrangler turnstile widget list --json` failed with authentication error 10000; local OAuth reports missing `challenge-widgets.write`. Widget existence/configuration remains unverified. |
+| Anonymous public access | GET requests to `https://kivori-web.andres12holivin.workers.dev/` and `/privacy` returned HTTP 403 from this environment. The root response identified Cloudflare Access, including with a browser User-Agent. Live form/privacy content could not be inspected. |
+| Deployment path | `.github/workflows/web.yml` uploads PR preview versions; pushes to main migrate D1 and deploy. The feature branch is not the active production release. |
+
+The owner must provide a public privacy mailbox and consented test address, arrange access to the
+real Turnstile widget, and confirm the intended public access policy. Configuration review and an
+approved production deployment must precede live verification. A successful signup must have a
+verified stored row; the deletion request must reach the mailbox, and deletion must leave zero
+rows for the normalized test email across all products. Follow the
+[launch and deletion procedure](../apps/web/README.md#public-launch-and-deletion-verification).
+
+Astra's independent read-only scope review agreed to keep this item open. No new production/test
+mode switch was added: it would not establish the required live evidence and would change the
+supported preview behavior. This increment changes documentation only. Local documentation links
+and `git diff --check` were checked; runtime suites were not rerun. No deployment, configuration or
+Access change, real signup, email, database write or deletion was performed.

@@ -481,7 +481,10 @@ completion and physical acceptance are recorded separately in [validation.md](./
 - [ ] **Finish public website configuration**: verify the deployed environment uses a real
   Turnstile widget/secret and a working contact address on the privacy page before public signup
   acquisition. The audited committed configuration has an always-pass test site key and an empty
-  contact address; deployed overrides were not inspected. Record a real signup and deletion request.
+  contact address. The 2026-10-25 read-only audit found no waitlist bindings in the active production
+  version, no Worker secrets, and an Access 403 on anonymous page requests from the audit environment.
+  Record a real signup and verified deletion after configuration and approved deployment. See
+  [readiness evidence and open dependencies](./validation.md#m29-public-website-readiness-audit-open).
 
 ### S4: Windows hardware and usability acceptance
 
