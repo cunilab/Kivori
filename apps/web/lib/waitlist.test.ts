@@ -12,6 +12,12 @@ import {
 
 const known = (slug: string): boolean => slug === 'kivori';
 const valid = { email: ' Ada@Example.COM ', product: 'kivori', turnstileToken: 'tok' };
+const attributionFields = [
+  ['utm_source', 'utmSource', 100, 3],
+  ['utm_medium', 'utmMedium', 100, 4],
+  ['utm_campaign', 'utmCampaign', 100, 5],
+  ['referrer', 'referrer', 500, 6],
+] as const;
 
 /** An in-memory D1 stand-in that honours UNIQUE(email, product). */
 function fakeDb(): { db: WaitlistDb; rows: unknown[][] } {
@@ -60,12 +66,118 @@ describe('validateSignup', () => {
     expect(validateSignup({ email: `${'a'.repeat(250)}@b.co` }, known).ok).toBe(false);
     expect(validateSignup({ email: 'a@b.co', use_case: 'x'.repeat(281) }, known).ok).toBe(false);
     expect(validateSignup({ email: 'a@b.co', use_case: 'x'.repeat(280) }, known).ok).toBe(true);
-    expect(validateSignup({ email: 'a@b.co', utm_source: 'x'.repeat(101) }, known).ok).toBe(false);
-    expect(validateSignup({ email: 'a@b.co', referrer: 'x'.repeat(501) }, known).ok).toBe(false);
+  });
+
+  it.each(attributionFields)(
+    'bounds optional attribution %s without rejecting signup',
+    (field, key, limit) => {
+      for (const [value, expected] of [
+        ['x'.repeat(limit - 1), 'x'.repeat(limit - 1)],
+        [` ${'x'.repeat(limit)} `, 'x'.repeat(limit)],
+        ['x'.repeat(limit + 1), null],
+        ['', null],
+        ['   ', null],
+        [123, null],
+      ] as const) {
+        const result = validateSignup({ ...valid, [field]: value }, known);
+        expect(result).toMatchObject({ ok: true, value: { [key]: expected } });
+      }
+    },
+  );
+
+  it('preserves whole Unicode attribution at the limit and discards oversized values', () => {
+    const source = `${'x'.repeat(98)}😀`;
+    expect(validateSignup({ ...valid, utm_source: source }, known)).toMatchObject({
+      ok: true,
+      value: { utmSource: source },
+    });
+    expect(validateSignup({ ...valid, utm_source: `x${source}` }, known)).toMatchObject({
+      ok: true,
+      value: { utmSource: null },
+    });
+  });
+
+  it.each([
+    { email: 'bad' },
+    { email: `${'a'.repeat(250)}@b.co` },
+    { product: 'unknown' },
+    { product: 'x'.repeat(65) },
+    { use_case: 'x'.repeat(281) },
+    { turnstileToken: 'x'.repeat(2049) },
+    { website: ' '.repeat(201) },
+  ])('keeps validation on user and security fields: %j', (invalid) => {
+    expect(validateSignup({ ...valid, utm_campaign: 'x'.repeat(101), ...invalid }, known).ok).toBe(
+      false,
+    );
   });
 });
 
 describe('handleWaitlist', () => {
+  it('drops oversized attribution before storage and analytics, without changing signup fields', async () => {
+    const { db, rows } = fakeDb();
+    const record = vi.fn();
+    const result = await handleWaitlist(
+      {
+        ...valid,
+        use_case: 'Desk controls',
+        utm_source: 'x'.repeat(101),
+        utm_medium: 'x'.repeat(101),
+        utm_campaign: 'x'.repeat(101),
+        referrer: 'x'.repeat(501),
+      },
+      deps({ db, record }),
+      known,
+    );
+    expect(result.status).toBe(200);
+    expect(rows[0]?.slice(0, 7)).toEqual([
+      'ada@example.com',
+      'kivori',
+      'Desk controls',
+      null,
+      null,
+      null,
+      null,
+    ]);
+    expect(record).toHaveBeenCalledWith('kivori', '');
+  });
+
+  it.each([
+    [false, true, 403],
+    [true, false, 429],
+  ] as const)(
+    'still enforces human check %s and rate limit %s with oversized attribution',
+    async (verified, allowed, status) => {
+      const { db, rows } = fakeDb();
+      const result = await handleWaitlist(
+        { ...valid, utm_campaign: 'x'.repeat(101) },
+        deps({ db, verifyTurnstile: async () => verified, rateLimit: async () => allowed }),
+        known,
+      );
+      expect(result.status).toBe(status);
+      expect(rows).toHaveLength(0);
+    },
+  );
+
+  it.each(attributionFields)(
+    'stores valid signup while dropping oversized attribution %s',
+    async (field, _key, limit, column) => {
+      const { db, rows } = fakeDb();
+      const verifyTurnstile = vi.fn(async () => true);
+      const rateLimit = vi.fn(async () => true);
+      const result = await handleWaitlist(
+        { ...valid, use_case: 'Desk controls', [field]: 'x'.repeat(limit + 1) },
+        deps({ db, verifyTurnstile, rateLimit }),
+        known,
+      );
+      expect(result.status).toBe(200);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.slice(0, 3)).toEqual(['ada@example.com', 'kivori', 'Desk controls']);
+      expect(rows[0]?.[column]).toBeNull();
+      expect(verifyTurnstile).toHaveBeenCalledWith('tok');
+      expect(rateLimit).toHaveBeenCalledOnce();
+    },
+  );
+
   it('stores a new sign-up with a normalised email', async () => {
     const { db, rows } = fakeDb();
     const result = await handleWaitlist(valid, deps({ db }), known);

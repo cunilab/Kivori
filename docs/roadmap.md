@@ -472,9 +472,12 @@ completion and physical acceptance are recorded separately in [validation.md](./
   focus and all actions remain reachable. Implemented with a shared viewport height cap, vertical
   scrolling and keyboard-accessible release notes. The clipping was reproduced, then all 18 browser
   combinations passed. See [visual and keyboard evidence](./validation.md#m29-small-window-dialog-software-acceptance).
-- [ ] **Do not reject signup for hidden attribution** (`apps/web/components/waitlist-form.tsx`,
+- [x] **Do not reject signup for hidden attribution** (`apps/web/components/waitlist-form.tsx`,
   `apps/web/lib/waitlist.ts`): truncate or discard oversized optional campaign/referrer fields while
   retaining validation on user input. A valid email with a 101-character campaign still signs up.
+  Implemented with one form/server normalizer that discards oversized optional values while
+  preserving user and security-field checks. See
+  [boundary, storage and browser evidence](./validation.md#m29-signup-attribution-software-acceptance).
 - [ ] **Finish public website configuration**: verify the deployed environment uses a real
   Turnstile widget/secret and a working contact address on the privacy page before public signup
   acquisition. The audited committed configuration has an always-pass test site key and an empty

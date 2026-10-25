@@ -16,7 +16,7 @@ import {
 } from '@kivori/ui/components/select';
 import { Textarea } from '@kivori/ui/components/textarea';
 import { JOINED_EVENT } from '@/lib/demo';
-import { HONEYPOT_FIELD, LIMITS } from '@/lib/waitlist';
+import { HONEYPOT_FIELD, LIMITS, normalizeAttribution } from '@/lib/waitlist';
 
 export interface ProductOption {
   slug: string;
@@ -115,10 +115,10 @@ export function WaitlistForm({
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setAttribution({
-      utm_source: params.get('utm_source') ?? '',
-      utm_medium: params.get('utm_medium') ?? '',
-      utm_campaign: params.get('utm_campaign') ?? '',
-      referrer: document.referrer,
+      utm_source: normalizeAttribution(params.get('utm_source'), LIMITS.utm),
+      utm_medium: normalizeAttribution(params.get('utm_medium'), LIMITS.utm),
+      utm_campaign: normalizeAttribution(params.get('utm_campaign'), LIMITS.utm),
+      referrer: normalizeAttribution(document.referrer, LIMITS.referrer),
     });
   }, []);
 

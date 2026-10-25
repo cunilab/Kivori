@@ -902,3 +902,41 @@ Local validation:
 These are browser viewport/root-font checks, not native Windows WebView2, OS display-scaling,
 screen-reader or full browser-zoom verification. No installer, firmware flash or hardware action
 was run. Native platform and unfamiliar-user acceptance remain in S4.
+
+
+## M2.9 signup attribution software acceptance
+
+Implemented the fourth S3 item on `feat/m2.9-reliability` for PR #127, 2026-10-25.
+Oversized optional UTM/referrer values no longer reject an otherwise valid signup. One shared
+normalizer trims string values, retains those within the existing limits (100 for UTM fields,
+500 for referrer), and discards oversized/non-string values. Discarding rather than slicing keeps
+partial URLs, campaign names or split Unicode surrogate pairs out of storage. Both the browser
+form and server validator use the helper; the server remains authoritative for direct requests.
+Discarded values are empty hidden inputs, then NULL in storage; discarded source becomes an empty
+analytics source. Email, product, use case, token and honeypot validation remain unchanged, as do
+Turnstile, rate limiting, parameterized inserts and duplicate-signup behavior.
+
+The nine attribution regressions first failed on the old validator, including a valid signup
+with a 101-character campaign. The final 19 new cases cover every attribution field below/at/above
+its limit, trimming, empty and non-string data, whole Unicode at the boundary, successful storage,
+analytics, and continued rejection of invalid user/security fields. Handler tests verify that
+oversized attribution still runs Turnstile and rate limiting, with no row on either failure.
+
+Local validation on Andress-MacBook-Air:
+
+- `bun run --cwd apps/web test`: 104 website tests passed across 14 files; 42 are waitlist tests.
+- Website TypeScript (`next typegen && tsc --noEmit`), targeted ESLint with warnings denied,
+  frontend Prettier, local documentation links and `git diff --check`: passed.
+- Independent review passed and separately reran all 42 waitlist tests.
+- Browser checks used the real homepage form with locally stubbed Turnstile and signup responses.
+  Source/medium/campaign/referrer lengths of 101/100/101/501 submitted as 0/100/0/0; values within
+  the limit were retained, and surrounding whitespace was trimmed. Both submissions preserved
+  email, selected product and token, and displayed success. Server storage/security outcomes were
+  verified separately with the injected D1 stand-in rather than the browser stub.
+
+No real signup, deployment, production D1 write or live Turnstile verification was performed.
+Browser evidence remains local under `/tmp/kivori-m29-attribution-browser-c304f63`. The initial browser
+attempt on 127.0.0.1 timed out; the checks passed on the server’s advertised `localhost` origin
+without changing dev security configuration. Next dev generated an untracked AGENTS.md, moved to the local evidence directory
+after shutdown. Native/firmware code was unchanged. Real public widget/secret/contact configuration,
+a signup and a deletion request remain the next roadmap item.
