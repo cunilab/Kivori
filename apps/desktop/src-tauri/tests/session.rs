@@ -314,6 +314,80 @@ fn missed_heartbeats_reach_the_timeout_threshold() {
 }
 
 #[test]
+fn sustained_heartbeat_exchange_survives_clock_and_sequence_wrap_then_reconnects() {
+    let (mut link, mut session, mut manager, mut orch) = connect(SendableState::Busy);
+    desktop_drain(&mut link);
+    let original_session = session.current_session();
+    assert!(original_session.is_some());
+    let generation = session.connection_generation();
+    let mut sequence = 1_u16;
+    let start_ms = u32::MAX - 8;
+    let exchanges = u32::from(u16::MAX) + 17;
+
+    for tick in 0..exchanges {
+        let stamp = start_ms.wrapping_add(tick * 1_000);
+        session.send_ping(&mut link, stamp).expect("ping");
+        assert!(matches!(
+            desktop_drain(&mut link).as_slice(),
+            [Message::Ping(ping)] if ping.t_ms == stamp
+        ));
+        session.set_host_ms(stamp.wrapping_add(17));
+        device_push(
+            &mut link,
+            &Message::Pong(Pong {
+                t_ms_echo: stamp,
+                uptime_ms: stamp.wrapping_sub(100),
+            }),
+            wire_version(),
+            sequence,
+        );
+        sequence = sequence.wrapping_add(1);
+        session
+            .pump(&mut link, &mut manager, &mut orch)
+            .expect("heartbeat reply");
+        assert!(!session.heartbeat_timed_out());
+        assert_eq!(session.diagnostics().rtt_ms, Some(17));
+        assert_eq!(session.diagnostics().sequence_gaps, 0);
+        assert_eq!(manager.state(), ConnectionState::Connected);
+        assert_eq!(session.current_session(), original_session);
+        assert!(link.to_device.is_empty() && link.from_device.is_empty());
+    }
+    assert_eq!(session.diagnostics().malformed_frames, 0);
+    assert_eq!(session.diagnostics().device_errors, 0);
+    assert_eq!(orch.desired(), SendableState::Busy);
+
+    for missed in 0..3 {
+        session
+            .send_ping(
+                &mut link,
+                start_ms.wrapping_add((exchanges + missed) * 1_000),
+            )
+            .expect("unanswered ping");
+        desktop_drain(&mut link);
+        assert_eq!(session.heartbeat_timed_out(), missed == 2);
+    }
+    assert!(manager.apply(ManagerEvent::HeartbeatTimeout));
+    assert!(!manager.state().can_drive_device());
+    assert!(manager.apply(ManagerEvent::BackoffElapsed));
+    session.open(&mut link, &mut manager).expect("reopen");
+    assert_ne!(session.connection_generation(), generation);
+    assert_eq!(session.diagnostics().rtt_ms, None);
+    assert_eq!(session.diagnostics().last_pong, None);
+    assert!(!session.heartbeat_timed_out());
+    let nonce = hello_nonce(&desktop_drain(&mut link));
+    device_push(&mut link, &device_ack(nonce), wire_version(), 0);
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("reconnect handshake");
+    assert_eq!(manager.state(), ConnectionState::Connected);
+    assert_eq!(manager.retry_count(), 0);
+    assert_eq!(
+        set_state_desired(&desktop_drain(&mut link)),
+        Some(SendableState::Busy)
+    );
+}
+
+#[test]
 fn malformed_device_bytes_are_dropped_without_panic() {
     let (mut link, mut session, mut manager, mut orch) = connect(SendableState::Idle);
     assert_eq!(manager.state(), ConnectionState::Connected);

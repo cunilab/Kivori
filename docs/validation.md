@@ -1234,6 +1234,24 @@ history; capture incidents before rollover/restart. A final empty history or zer
 not proof that nothing failed. Developer internals may supplement snapshots when available.
 Keep evidence references and redacted observations in this record; do not commit raw private logs.
 
+### Accelerated session-protocol check
+
+On 2026-10-25, added a deterministic in-memory `Session` scenario in `tests/session.rs`.
+It exchanges 65,552 real encoded Ping/Pong frames with injected protocol timestamps, crossing
+16-bit sequence and 32-bit millisecond wraparound. Every reply keeps the same session connected,
+reports the injected 17 ms round trip and leaves no pending fixture wire bytes. No sequence gaps,
+malformed frames or device errors accumulate. Three unanswered pings then reach the timeout
+threshold; reopening clears old RTT/uptime, advances connection generation, handshakes successfully
+and resynchronizes the previous Busy desired state.
+
+On Andress-MacBook-Air,
+`cargo test -p kivori-desktop --test session --test reconnect --test runtime_connection_deadlines -- --test-threads=1`
+passed 51 tests (43 session, 6 reconnect, 2 deadlines). Targeted Clippy with warnings denied,
+Rust formatting and diff checks passed. No production code changed or failure was found in this
+scenario. The timestamps are synthetic; this is not elapsed soak time or a memory/CPU, renderer,
+Windows power-management or real USB stability measurement. The actual soak remains at zero
+verified hours and workdays at 0/10; item 17 stays open and progress remains 13/19.
+
 ### Eight-hour idle soak
 
 1. On the Windows candidate, confirm normal connection and counted control actions, then capture
