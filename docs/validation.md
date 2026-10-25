@@ -944,7 +944,8 @@ a signup and a deletion request remain the next roadmap item.
 ## M2.9 public website readiness audit (open)
 
 Read-only audit on Andress-MacBook-Air, 2026-10-25, for item 13 of PR #127.
-This item remains unchecked; M2.9 progress remains 12/19.
+At this audit snapshot the item remained unchecked and M2.9 progress was 12/19.
+Current completion status is tracked in [the roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness).
 
 | Check | Observed result |
 | --- | --- |
@@ -968,3 +969,60 @@ mode switch was added: it would not establish the required live evidence and wou
 supported preview behavior. This increment changes documentation only. Local documentation links
 and `git diff --check` were checked; runtime suites were not rerun. No deployment, configuration or
 Access change, real signup, email, database write or deletion was performed.
+
+## M2.9 software baseline acceptance
+
+Completed item 14 on Andress-MacBook-Air, 2026-10-25, for PR #127. Runtime source tested was
+`1899b70d4af797082ddee92c2be6e3218db257e0`; this increment only records evidence. M2.9 progress is
+13/19, with public website configuration still open.
+
+The configured Rust channel is `stable`, not an exact numeric pin; this machine resolved rustc
+1.98.0 (`88d9e12ae`, LLVM 22.1.8), Cargo 1.98.0 and host `aarch64-apple-darwin`. Node was 24.14.0.
+The system Bun was 1.4.0, so Bun 1.4.2 (the repository/CI pin) was obtained with `bunx bun@1.4.2`
+and placed first on PATH for child scripts. Frozen-lockfile install passed without tracked changes.
+
+| Local check | Final result |
+| --- | --- |
+| `cargo test --workspace --locked --no-fail-fast -j 2 -- --test-threads=1` | 887 passed, 4 intentionally ignored; includes native, shared crates, golden frames, asset compiler and host end-to-end suites. |
+| `cargo test --manifest-path firmware/pala/Cargo.toml --locked --features host-sim --target aarch64-apple-darwin -j 2` | 207 passed, none ignored. |
+| `bun run --cwd apps/desktop test --maxWorkers=2` | 417 passed across 36 files. |
+| `bun run --cwd apps/web test` | 104 passed across 14 files. |
+| Firmware recipe/catalog tests | 34 passed: `bun test scripts/build-firmware.test.mjs scripts/build-firmware-set.test.mjs scripts/check-product-identifiers.test.mjs`. |
+| Release tooling | 78 passed: `node --test --test-concurrency=1 scripts/release-tools.test.mjs scripts/firmware-release-guard.test.mjs scripts/release-finalize.test.mjs`. |
+| Clippy, warnings denied | Host workspace all targets, desktop all targets with `--no-default-features`, firmware host-sim all targets; all passed with locked dependencies and two Cargo jobs. |
+| Formatting and frontend checks | Root/firmware `cargo fmt --all --check`, `bun run typecheck`, `lint`, `format` and `build` passed. Both frontend production builds completed. |
+| Guards | `check-crate-boundaries.sh`, `check-offline-deps.sh`, `check-product-identifiers.mjs`, `check-frontend-offline.mjs`, `check-mock-excluded.mjs` and website `check:leaks` passed. |
+
+Failed/interrupted attempts are retained rather than counted as passing runs:
+
+- The initial concurrent run on this 8 GB Mac produced two desktop timeouts and one 5-second
+  recipe-test timeout while memory was under pressure. Competing validation jobs were stopped.
+  The complete desktop suite then passed with two workers and unchanged time limits; all 34 recipe
+  tests passed sequentially, including the timed-out case (1.34 seconds). This supports resource
+  contention as the timeout explanation, without establishing the cause of every historical timeout.
+- The first workspace run failed `preview_stream::per_frame_render_fits_the_30fps_budget` at
+  40.3 ms/frame against 33 ms. A focused debug rerun failed at 91.1 ms/frame. The final complete
+  workspace run with one test thread passed this check and every other non-ignored test. Sol's
+  independent read-only review found no changes from `origin/main` throughout the test's render,
+  asset and build inputs. The local debug timing failure is intermittent; its exact cause and
+  optimized performance were not established. No threshold, renderer or test skip was changed.
+- Earlier native/firmware and release-tool runs stopped during resource isolation are incomplete
+  attempts, not additional failures or acceptance evidence. Logs remain local under
+  `/tmp/kivori-m29-baseline-*.log`; final sequential exit codes are in
+  `/tmp/kivori-m29-baseline-sequential-results.json`.
+
+All applicable GitHub checks passed on the exact tested commit: [host Linux/Windows and startup](https://github.com/cunilab/Kivori/actions/runs/40163852422),
+[firmware isolation and host simulation](https://github.com/cunilab/Kivori/actions/runs/40163852407),
+[cross-platform determinism/assets](https://github.com/cunilab/Kivori/actions/runs/40163852413),
+[website build/preview](https://github.com/cunilab/Kivori/actions/runs/40163852424), and
+[Windows packaging and firmware release builds](https://github.com/cunilab/Kivori/actions/runs/40163852446).
+Luna independently checked the exact head and final results. The Linux release-surface guard
+passed every absence check and positive control; the Windows release artifact check also passed.
+RISC-V adapter/feature builds were verified by CI, not repeated locally. Optional macOS release
+packaging was skipped. These are observed workflow gates; branch-protection enforcement was not
+established (`main` reported unprotected).
+
+The four ignored native tests inspect live apps, foreground state and microphones, or change real
+volume/mute. They were not enabled. No physical input, USB, installer execution, flashing, optimized
+performance benchmark or live signup/deletion was tested locally. This software baseline does not
+close the website, Windows hardware, recovery, sustained-use or unfamiliar-user acceptance rows.

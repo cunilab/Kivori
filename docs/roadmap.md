@@ -488,12 +488,13 @@ completion and physical acceptance are recorded separately in [validation.md](./
 
 ### S4: Windows hardware and usability acceptance
 
-- [ ] **Establish a clean software baseline**: run the affected native, firmware host-sim, shared
+- [x] **Establish a clean software baseline**: run the affected native, firmware host-sim, shared
   crate and frontend suites with the pinned toolchains, plus required CI and release-surface checks.
-  Resolve or explain desktop test timeouts before closure; the audit's focused desktop run was
-  36 passed / 28 failed, mostly timeouts, and did not establish product regressions. Shared-crate
-  tests (178), button unit tests (18), website tests (85) and both frontend typechecks passed; full
-  native/firmware suites and visual checks were not completed.
+  Completed on 2026-10-25: 887 native/shared workspace tests, 207 firmware host-sim tests,
+  417 desktop UI tests and 104 website tests passed. Local lint/build/guard checks and all
+  applicable Linux/Windows CI passed. Bounded local workers resolved desktop timeouts; intermittent
+  debug render timing failures and intentionally untested live behavior remain documented. See
+  [commands, failed attempts and baseline evidence](./validation.md#m29-software-baseline-acceptance).
 - [ ] **Exercise a real Windows unit**: record measured detent-to-feedback latency, press/hold/
   double-press fidelity, microphone mute across multiple devices and hotplug, repeated USB
   disconnect/reconnect, sleep/wake and lock/unlock. Re-run affected existing rows in
