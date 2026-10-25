@@ -995,6 +995,13 @@ Validation: `bun --filter kivori-web test` passed 111 tests across 15 files, inc
 Website typecheck, targeted ESLint/Prettier and `git diff --check` also passed. Run only this fixture
 with `bun --filter kivori-web test lib/waitlist.integration.test.ts`.
 
+Clean-checkout follow-up: CI on `8da593e` failed website build and frontend typecheck because the
+fixture referenced `D1Database`, available locally only through the ignored generated
+`cloudflare-env.d.ts`. Replaced that ambient dependency with a local structural type extending the
+handler's existing `WaitlistDb` contract. With the generated file temporarily excluded, website
+typecheck, all 111 tests and the production Next build passed; the original generated file was
+restored afterward. Targeted ESLint/Prettier and diff checks also passed. No production code changed.
+
 This adds repeatable local evidence without changing public configuration or runtime behavior.
 No browser widget, actual rate-limit threshold, mailbox delivery, remote D1 or public deployment
 was tested. Item 13 remains open and overall progress remains 13/19; live acceptance is separate.

@@ -7,7 +7,18 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST } from '@/app/api/waitlist/route';
 import PrivacyPage from '@/app/privacy/page';
-import { TURNSTILE_TEST_SECRET_KEY, TURNSTILE_TEST_SITE_KEY } from './waitlist';
+import { TURNSTILE_TEST_SECRET_KEY, TURNSTILE_TEST_SITE_KEY, type WaitlistDb } from './waitlist';
+
+interface LocalStatement {
+  bind(...values: unknown[]): LocalStatement;
+  run(): Promise<{ meta: { changes: number } }>;
+  all(): Promise<{ results: Record<string, unknown>[] }>;
+  first(): Promise<Record<string, unknown> | null>;
+}
+
+interface LocalDb extends WaitlistDb {
+  prepare(sql: string): LocalStatement;
+}
 
 const context = vi.hoisted(() => ({ env: {} as Record<string, unknown>, unavailable: false }));
 vi.mock('@opennextjs/cloudflare', () => ({
@@ -19,8 +30,8 @@ vi.mock('@opennextjs/cloudflare', () => ({
 
 describe('local waitlist rehearsal (local D1, mocked Turnstile and Worker context)', () => {
   const directory = mkdtempSync(join(tmpdir(), 'kivori-waitlist-test-'));
-  let platform: PlatformProxy<{ WAITLIST_DB: D1Database }> | undefined;
-  let db: D1Database;
+  let platform: PlatformProxy<{ WAITLIST_DB: LocalDb }> | undefined;
+  let db: LocalDb;
   const verify = vi.fn<typeof fetch>(async () => Response.json({ success: true }));
   const limit = vi.fn(async () => ({ success: true }));
   const record = vi.fn();
@@ -37,7 +48,7 @@ describe('local waitlist rehearsal (local D1, mocked Turnstile and Worker contex
         ],
       }),
     );
-    platform = await getPlatformProxy<{ WAITLIST_DB: D1Database }>({
+    platform = await getPlatformProxy<{ WAITLIST_DB: LocalDb }>({
       configPath,
       persist: false,
       remoteBindings: false,
