@@ -1414,6 +1414,33 @@ screwless; `docs/assembly.md` describes the separate copper-tape/screw branch. T
 orientation, printed parts and assembly steps cannot be mixed. Experimental modules or another
 display/controller require their own evidence and do not inherit this design's acceptance.
 
+### Nominal closed-case BOOT/RST access check
+
+On 2026-10-25, FreeCAD 1.1.4 on Andress-MacBook-Air opened the tracked hand-wired document
+without regenerating or saving it. A 1 mm cylindrical probe follows each modeled access axis
+from face-frame z = -60 mm to 0.01 mm before the nominal button face at z = -12.9 mm.
+Its common volume with every printed part and bought-part stand-in is zero. A separate 0.1 mm
+tip segment straddling the button face intersects the nominal SuperMini switch stand-in.
+
+| Modeled access | Face-frame centre (mm) | Clear-path overlap (mm³) | Tip contact (mm³) | Probe shifted +2.5 mm in x: BackPlate overlap (mm³) |
+| --- | --- | --- | --- | --- |
+| RST | 50.5, 58.0 | 0 | 0.039270 | 12.398782 |
+| BOOT | 59.5, 58.0 | 0 | 0.039270 | 12.398782 |
+
+Both deliberately off-centre probes fail the clearance check, providing obstruction controls.
+The document SHA-256 before/after is
+`8e925575dbbc0d2219bbf046bbd653c2ef39fdbc2b0eebbc4777f21fda2b4cc5`.
+The source/firmware pin-map unittest and diff checks also passed; no CAD or export changed.
+The FreeCAD connector could not locate its headless executable, so the installed application at
+`/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd` ran the check directly. The one-off
+script and JSON evidence are local-only at `/tmp/kivori-m29-enclosure-access.py` and
+`/tmp/kivori-m29-enclosure-access.json`.
+
+This verifies access only to nominal stand-ins along the modeled axes. It does not establish
+real switch positions/labels, printable tolerances, tool angle or actuation force, wiring clearance
+after assembly, or successful BOOT/RST operation. Item 19 and every physical row below remain open;
+progress stays 13/19. Desktop/firmware runtime suites were not rerun for this read-only CAD check.
+
 ### Physical record
 
 Record operator/date, variant/source SHA, generator parameters and CAD/STL hashes, print/slicer
