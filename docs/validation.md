@@ -971,9 +971,33 @@ rows for the normalized test email across all products. Follow the
 
 Astra's independent read-only scope review agreed to keep this item open. No new production/test
 mode switch was added: it would not establish the required live evidence and would change the
-supported preview behavior. This increment changes documentation only. Local documentation links
-and `git diff --check` were checked; runtime suites were not rerun. No deployment, configuration or
-Access change, real signup, email, database write or deletion was performed.
+supported preview behavior. That initial audit increment changed documentation only. Local
+documentation links and `git diff --check` were checked; runtime suites were not rerun. No deployment,
+configuration or Access change, real signup, email, database write or deletion was performed in it.
+
+### Local signup and deletion rehearsal
+
+On 2026-10-25, the owner authorized dummy/testing/mocked approaches. Added
+`apps/web/lib/waitlist.integration.test.ts` on Andress-MacBook-Air: the real Next API route uses a
+disposable local D1 database initialized from the committed migration. Wrangler remote bindings,
+persistence and environment-file loading are disabled. Worker context, Turnstile verification,
+rate-limit decisions and analytics are mocked; addresses use `example.com`.
+
+Seven checks passed: normalized signup/duplicate responses and deletion across products; missing
+database; missing real-widget secret; rejected human check; rejected rate limit; honeypot; and
+server-rendered Worker/local/missing privacy contact states. The signup/deletion check verifies
+two matching product rows become zero and another address remains, oversized campaign data is
+discarded, and analytics excludes the address, test IP and token. It exercises the documented
+bound-parameter SQL, not an email-based deletion service. The local runtime and temporary
+configuration are cleaned up after the suite.
+
+Validation: `bun --filter kivori-web test` passed 111 tests across 15 files, including these seven.
+Website typecheck, targeted ESLint/Prettier and `git diff --check` also passed. Run only this fixture
+with `bun --filter kivori-web test lib/waitlist.integration.test.ts`.
+
+This adds repeatable local evidence without changing public configuration or runtime behavior.
+No browser widget, actual rate-limit threshold, mailbox delivery, remote D1 or public deployment
+was tested. Item 13 remains open and overall progress remains 13/19; live acceptance is separate.
 
 ## M2.9 software baseline acceptance
 
