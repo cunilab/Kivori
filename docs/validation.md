@@ -1220,3 +1220,57 @@ a new candidate: retain earlier history and review affected soak/workday coverag
 it toward acceptance. Documentation-only changes do not change an installed artifact's identity.
 Close item 17 only after the 8-hour soak and all ten qualifying workdays have evidence and blockers
 are resolved. Idle soak hours do not substitute for days of actual use, or vice versa.
+
+## M2.9 unfamiliar-user acceptance (open)
+
+Item 18 preparation, 2026-10-25, Andress-MacBook-Air. No participant was recruited or observed and
+no physical usability session ran. Item 18 remains unchecked; M2.9 remains 13/19. Automated UI
+tests, developer walkthroughs and a prepared task sheet do not count as unfamiliar-user evidence.
+Preparation checks passed for new links/anchors, seven NOT RUN tasks, guide/source consistency,
+the 13/19 checklist and `git diff --check`. Runtime suites were not rerun for this docs-only edit.
+
+### Session setup
+
+Use someone who has not developed or previously learned Kivori. Record an anonymous participant
+label, Windows experience, date, app/firmware/artifact and unit metadata, guide revision, machine
+setup and delivered materials. Use the actual [user guide](./user-guide.md) and intended quick-start
+materials; record missing packaging/instructions rather than silently supplying developer knowledge.
+The signed installer and recovery prerequisites remain in
+[item 16](#m29-windows-installation-and-recovery-acceptance-open).
+
+Give the participant the goal prompts below, not the evaluator column. They may use the normal
+app guidance and supplied guide. Let them choose their approach, explain expectations and ask for
+help. Record requests and any assistance; do not demonstrate a gesture, point at a control or repair
+a setup problem and then count the task as unassisted. A needed safety intervention ends that
+unassisted attempt. Record task start/end, attempts, outcome, help and observed friction.
+
+### Participant goals and evaluator record
+
+| Neutral goal prompt | Evaluator observation (keep separate from participant prompts) | Result / time / help / evidence |
+| --- | --- | --- |
+| Get Kivori ready to use on this computer. | Install and complete setup, identify connection readiness and understand Tour guidance. Observe trust prompts, cable confusion, permission/setup errors and reliance on developer help. | NOT RUN |
+| Adjust the sound and control playback, then silence the sound. | Observe knob turn, Press versus Hold discovery, actual OS state and accidental repeats/holds. Record what the participant expected before interpreting feedback. | NOT RUN |
+| Give a button a second action and show both actions working. | Find the Hold binding in Controls, distinguish Press/Hold, save, test in a scratch app and confirm the physical bindings. Observe shortcut countdown/focus and whether pending feedback is understood. | NOT RUN |
+| Keep these controls the same while you switch between apps, then restore automatic switching. | Discover middle-button profile pin/cycle and return to Auto. Record confusion about active, edited and pinned profiles or the on-device labels. | NOT RUN |
+| Show another view on the device, then return to your starting view. | Discover double press and distinguish it from two single actions. Count unintended playback/actions and repeated presses caused by uncertainty. | NOT RUN |
+| Tell me what happened after these actions and what you would do next. | Use real successful, Unverified and benign failure cases prepared for this candidate. Ask what labels, pulses, badges and Activity mean; a pulse or queued request must not be mistaken for proof the OS action completed. | NOT RUN |
+| Get this disconnected or recoverable test unit working again. | Observe discovery of Device/setup recovery and following BOOT/target-confirmation steps. Use an agreed recoverable unit state; record its setup, actual flash/reconnect result and any coaching. A screenshot or simulated failure is labelled separately and cannot prove physical recovery. | NOT RUN |
+
+After the first attempts, ask neutrally whether responses matched expectations and what felt slow
+or unclear. Record the single-press delay experience, spontaneous extra presses, accidental double
+presses, Hold discoverability, pin/Auto comprehension, and whether labels/results explained the
+observed outcome. Then discuss the roughly 250 ms single-press wait; do not teach its cause before
+the first attempt. Participant impressions are usability evidence, not measured hardware latency.
+
+For each friction point retain the task, expected/actual behavior, observation or participant words,
+assistance, consequence, proposed fix and retest reference. Blocked installation/configuration/use/
+recovery, wrong-target actions or misleading confirmation must be resolved before acceptance.
+Keep assisted attempts visible. Retest changed behavior; a discovery fix needs a fresh unfamiliar
+participant because a coached participant already knows the answer. Do not generalize one person's
+successful session to all users or close the separate hardware, sustained-use or enclosure gates.
+
+Guide preparation corrected source-verified discrepancies: Tour is guidance without automatic
+completion ticks; shortcut tests have a countdown and await their own result; a failed macro does
+not undo earlier steps; trigger-only feedback stays Unverified with a quiet device pulse. The guide
+also explains the single-press wait and no longer promises that signing removes a Windows warning.
+These documentation corrections have not yet been evaluated with a participant.

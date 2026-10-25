@@ -516,6 +516,8 @@ completion and physical acceptance are recorded separately in [validation.md](./
   without developer coaching. Check discovery of button Hold, middle-button profile pin and
   double press, whether the 250 ms single-press wait feels acceptable, and whether the screen's
   labels/results explain what happened. Record friction and resolve blockers before acceptance.
+  [Neutral tasks and observer record](./validation.md#m29-unfamiliar-user-acceptance-open) are prepared;
+  participant observation and acceptance remain open.
 - [ ] **Verify the assembled enclosure**: measure real component fit, cap travel, knob clearance,
   USB insertion force and access to BOOT/RST. The nominal CAD dimensions are not physical proof;
   update assembly/validation evidence from the actual unit.

@@ -20,8 +20,6 @@ macOS differences are called out.
    info**, then **Run anyway**.
 3. Finish the installer and open Kivori.
 
-A signed installer is coming, and the SmartScreen step will go away with it.
-
 **macOS:** open the `.dmg` and drag Kivori to Applications.
 
 ## First run and setup
@@ -33,8 +31,9 @@ Kivori walks you through a short setup. You can skip any step, and "Skip setup" 
    port to choose.
 3. **Permissions (macOS only).** Choose Allow access, then switch Kivori on under Privacy &
    Security, Accessibility. Without it, shortcuts and media keys will not work.
-4. **Try it.** Turn the knob, press the knob and press a side button. Each step ticks when Kivori
-   sees it.
+4. **Try it.** Follow the guidance for your device's supported controls and check their assigned
+   actions in Controls. This step does not automatically tick or verify the hardware; continue
+   when you are ready.
 5. **Make it yours.** Pick the starting screen, how lively the buddy is, and whether Kivori starts
    with Windows.
 
@@ -56,6 +55,9 @@ A short press means pressed and released within half a second. Holding the knob 
 seconds does nothing until the 10-second restart, and the screen shows its progress. The left and
 right buttons can also be given a Hold action in the app; holding them for a long time never
 restarts anything.
+
+With double press enabled, a single knob press waits about a quarter second after release so
+Kivori can distinguish it from a double press.
 
 ## Profiles
 
@@ -83,8 +85,10 @@ using an unmuted microphone, where your computer reports that; if it does not, n
 
 Open the **Controls** page. Pick a profile, then **Edit** any control to choose a different action:
 system or per-app volume, media, mute, a keyboard shortcut, launching an app, or a macro. **Test**
-runs it right now. **Reset** puts the built-in action back. Changes are saved on this computer for
-your Windows user.
+runs the selected action. Keyboard shortcuts, including those in macros, first show a 3-second
+countdown: focus the receiving app, or choose **Cancel** before it runs. The test shows Processing
+while it waits for its result. **Reset** puts the built-in action back. Changes are saved on this
+computer for your Windows user.
 
 A **macro** runs up to 8 steps in order, with optional waits. It stops at the first step that fails
 and does not undo earlier steps. Create macros on the Controls page, then bind one to a control.
@@ -101,14 +105,17 @@ off and set its intensity (Low, Normal, High).
 
 ## What the badges mean
 
-After an action, the screen briefly shows a badge:
+Feedback badges have these meanings:
 
 | Badge | Meaning |
 |---|---|
 | Green check | **Confirmed.** Kivori read the new state back from your computer. |
 | Blue arrow | **Started.** The computer accepted it and started it (for example launching an app). |
-| Amber "?" | **Unverified.** Sent, but the computer cannot confirm what happened. Keyboard shortcuts and media keys are always this. |
-| Red cross | **Error.** It did not work, and nothing was changed. |
+| Amber "?" | **Unverified.** Kivori cannot confirm the final effect. |
+| Red cross | **Error.** Kivori could not complete the action. Earlier macro steps may already have run; check the computer's state before retrying. |
+
+Keyboard shortcuts and media keys remain **Unverified** in Activity. On the device they use a
+quiet press/label pulse instead of an amber badge; that pulse does not confirm the final effect.
 
 ## Sleep and lock
 
