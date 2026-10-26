@@ -31,7 +31,9 @@ The wire carries meaning (state, input, presentation), never pixels. Both sides 
 
 ### Repo layout
 
-Two Cargo workspaces. Shared crates are `no_std`, no-alloc, and the single source of truth.
+The root host workspace and the isolated Pip firmware workspace are the current production
+boundaries. Shared crates are `no_std`, no-alloc, and the single source of truth. The proposed
+virtual Pip runner adds a separate host workspace; it is not implemented yet (ADR-0018).
 
 | Path | Purpose |
 |---|---|
@@ -66,6 +68,30 @@ with exact reviewed line/count exceptions and positive controls; see [ADR-0017](
 It complements the capability/firmware-selection tests. The offline dependency guard derives all
 firmware workspaces/source roots from packaging's validated catalog plans; it requires Bun as well
 as Cargo/jq and refuses catalog discovery failure.
+
+### Proposed product-owned virtual devices (M2.9 S5)
+
+[ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) and the
+[virtual Pip plan](./virtual-pip.md) are pending owner review before implementation. They add a
+development/test path, not another shipping product or a change to the physical device protocol.
+
+Each product owns its host simulator process and scenarios beside its firmware. Pip's proposed
+runner is `firmware/pala/simulator/`; `pala` remains its permanent machine id. The runner depends
+on the production firmware library with `host-sim`, while desktop production dependencies never
+include a product firmware library or simulator. Future products do not depend on Pip's simulator.
+
+A generic dev-only native bridge uses local child-process pipes, not TCP/WebSocket or USB/COM
+emulation. Bounded control/frame envelopes surround unchanged wire bytes; panel captures are a
+separate development channel, never pixel messages on the product protocol. The real desktop
+session still validates identity and capabilities. Physical discovery remains unchanged.
+
+Timestamped raw encoder/button levels enter `InputSource::drain` and the real `Runtime`; its
+`CaptureDisplay` output supplies firmware pixels. Fake OS services and an isolated settings store
+exercise desktop behavior without real keyboard/media/volume, flash, eFuse or installer effects.
+The bridge must be integrated with device-task transport ownership and lifecycle, not just a new
+`SerialLink` implementation. Release/offline guards and the independent no_std build remain gates.
+Interactive mode uses real elapsed time; deterministic headless firmware time does not imply
+whole-desktop time control. All of this is planned software coverage, not physical evidence.
 
 ### State axes
 

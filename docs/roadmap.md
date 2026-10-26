@@ -378,9 +378,11 @@ M2.8 does not relax any paid-beta gate.
 ## M2.9: Reliability, truthful feedback and beta readiness
 
 Scope update, 2026-10-26: focus on app, firmware and website software. CAD/enclosure work is
-owner-managed and excluded from M2.9. Current progress is **13/18 complete**, with five software
-configuration or real-use acceptance items open. Earlier 13/19 snapshots include the removed CAD
-item; existing CAD files and validation records are retained for the owner's reference.
+owner-managed and excluded from M2.9. The proposed virtual Pip work adds six software items in S5,
+pending owner review before implementation. Current progress is **13/24 complete**: six virtual
+Pip items and the existing five configuration or real-use acceptance items remain open. Earlier
+13/18 and 13/19 counts are historical scope snapshots; existing CAD files and validation records
+are retained for the owner's reference.
 
 **Outcome:** controls execute only while they are still valid, confirmation reflects what Kivori
 can actually observe, settings survive restart, and an unfamiliar Windows user can set up and
@@ -394,8 +396,10 @@ size limit. Other defects were traced through code; their Windows hardware frequ
 measured. Small-window layout concerns still need visual verification. Keep the existing shared
 crates, protocol, renderer and capability boundaries; this milestone repairs their behavior.
 
-**Order:** S1 → S2 → S3 → S4. Each software fix includes a focused regression test; software
-completion and physical acceptance are recorded separately in [validation.md](./validation.md).
+**Order:** retain the completed S1–S4 software baseline; after owner review, implement S5.1–S5.6
+one at a time, reporting each before proceeding. S4 live acceptance and S3 public website
+configuration remain open and retain their prerequisites. Software completion and physical
+acceptance are recorded separately in [validation.md](./validation.md).
 
 ### S1: Confirmation, action lifetime and update exclusion
 
@@ -528,12 +532,53 @@ completion and physical acceptance are recorded separately in [validation.md](./
   [Neutral tasks and observer record](./validation.md#m29-unfamiliar-user-acceptance-open) are prepared;
   participant observation and acceptance remain open.
 
-**Exit:** S1–S3 regressions pass, S4 evidence is recorded and reviewed, and no unresolved issue can
+### S5: Isolated virtual Pip (proposed; owner review before implementation)
+
+Architecture: [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md).
+Scope, pending-check coverage and evidence rules: [virtual Pip plan](./virtual-pip.md).
+These are software verification tasks, not replacements for S4 physical acceptance.
+
+- [ ] **S5.1 — Product-owned runner and complete vertical slice:** add a separate host workspace
+  under `firmware/pala/simulator/`, using Pip's actual `Runtime`, timestamped raw input through
+  `InputSource::drain`, existing protocol and captured firmware pixels. A generic dev-only desktop
+  child-process bridge must complete a real handshake, three detents and one press against fake
+  OS services, returning observed state to the firmware screen. Isolate settings and prohibit real
+  OS actions, flashing and installer execution. Include bounded pipe framing, child cleanup and
+  initial release exclusion checks in this slice; review the working slice before widening it.
+- [ ] **S5.2 — Connection and interruption scenarios:** cover protocol/identity rejection,
+  fragmented traffic, bounded backpressure, heartbeat loss, child exit and disconnect/reconnect.
+  Session reset must clear stale input/actions and recover to one usable connection. Keep physical
+  USB discovery unchanged; explicit simulator selection never bypasses identity/capability checks.
+- [ ] **S5.3 — Raw input fidelity:** exercise rotary quadrature, invalid transitions, bounce,
+  press/hold/double thresholds, timestamped buffered edges, cross-control ownership, overflow and
+  recovery cancellation using the production runtime. Trace expected versus actual actions and
+  captured frames; a virtual reboot checks lifecycle policy, not physical reset circuitry.
+- [ ] **S5.4 — Simulated desktop behavior:** exercise profiles/pinning, Protected contexts,
+  microphone coverage/hotplug/failures, volume/media read-back, macros, saved bindings and setup
+  against isolated fake OS services. Include unknown, failure and interrupted outcomes so simulated
+  success never becomes a claim of actual Windows state or native input delivery.
+- [ ] **S5.5 — Recovery and compatibility rehearsal:** model failed/interrupted flash, BOOT
+  instructions, ambiguous target confirmation, wrong product/board refusal, version offers and
+  install/flash exclusion through the relevant production workflow logic with fake executors.
+  No real flashing, eFuse writes, downloads or installer execution; physical recovery, signing and
+  deployed update acceptance remain separate.
+- [ ] **S5.6 — Repeatable reports, CI and boundary proof:** replay fixed input/time seeds in a
+  headless harness, assert expected actions/frame hashes and fail on mismatches. Reports identify
+  source/build, scenario, seed, clock mode, firmware versus desktop coverage and simulated layers.
+  Extend offline/release-surface positive controls and workspace/no_std checks; run affected native,
+  firmware and UI checks. Confirm production bundles omit the runner, bridge and fake OS controls.
+  Whole-app time acceleration is out of scope; firmware virtual time cannot prove desktop deadlines.
+
+Planned acceptance records: [S5 evidence table](./validation.md#m29-virtual-pip-software-acceptance-planned).
+All six tasks remain unchecked until implemented and verified; documentation preparation is not
+implementation evidence. Future products own independent simulators, not dependencies on Pip.
+
+**Exit:** S1–S3 regressions and S5 checks pass, S4 evidence is recorded and reviewed, and no unresolved issue can
 falsely confirm an action, execute stale input, discard successfully saved settings or block common
 recovery. M2.9 does not close earlier hardware rows or M3 signing, cost, assembly and selling gates
 without their own evidence.
 
-Out of scope: architecture rewrite, new platforms, new product features, controller migration,
+Out of scope: architecture rewrite, a general simulator/plugin framework, new platforms, new product features, controller migration,
 cloud services, CAD/enclosure design and fit validation, and a broad visual redesign. The owner
 handles CAD separately; M3 hardware/enclosure gates retain their own requirements. Use beta
 evidence to choose other investments later.

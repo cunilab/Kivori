@@ -5,13 +5,40 @@ OS behavior, real timing. Host-sim and other host tests are never promoted to ph
 
 Current M2.9 scope, updated 2026-10-26: CAD/enclosure work is owner-managed and outside the
 software milestone. The [roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness)
-now has **13/18 complete**, with five configuration or real-use acceptance items open. Earlier
-13/19 counts are dated historical snapshots; the enclosure records below remain reference material
-for the owner and do not count toward current M2.9 completion.
+now has **13/24 complete**, including six proposed virtual Pip software items awaiting owner review
+and five existing configuration or real-use acceptance items. Earlier 13/18 and 13/19 counts are
+dated historical snapshots; the enclosure records below remain reference material for the owner
+and do not count toward current M2.9 completion.
 
 Row numbers: `1.N` is row N of the old Phase 1 (device connection) checklist, `3.N` is row N of the old
 rotary checklist, `2.N` are new Phase 2 rows, `G` rows are PRD gates. Tick a row only with a date and a
 measurement or observation on the same line. A phase closes only when all its rows are ticked.
+
+## M2.9 virtual Pip software acceptance (planned)
+
+Status, 2026-10-26: documentation proposal only; implementation awaits owner review. No interactive
+virtual Pip runner, desktop bridge or new S5 scenario evidence is claimed. Existing host-sim and
+dispatcher/session tests retain their original scope. The [plan and pending-check map](./virtual-pip.md)
+and [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) define the proposed boundaries.
+
+| Roadmap item | Required software evidence | Current result |
+|---|---|---|
+| S5.1 | Real firmware Runtime, raw detents/press, real desktop handshake/action path, fake OS read-back and captured firmware screen; isolated settings, no real executors, bounded pipes and clean child exit. | NOT IMPLEMENTED / NOT RUN |
+| S5.2 | Identity/protocol refusal, fragmented traffic/backpressure, timeout, child exit, reconnect and no old-session action replay. | NOT IMPLEMENTED / NOT RUN |
+| S5.3 | Threshold/bounce/buffered-edge/overflow/ownership scenarios use timestamped raw input through Runtime, with expected action traces and frames. | NOT IMPLEMENTED / NOT RUN |
+| S5.4 | Profiles, microphones, media, macros, bindings and setup exercise production logic against fake OS state; unknown/failure never falsely confirms. | NOT IMPLEMENTED / NOT RUN |
+| S5.5 | Fake flash/install executors exercise production recovery/admission/compatibility decisions; no real process, eFuse or update side effect. | NOT IMPLEMENTED / NOT RUN |
+| S5.6 | Deterministic headless replay/report, CI assertions, offline and release guard positive controls, independent embedded build and production exclusion proof. | NOT IMPLEMENTED / NOT RUN |
+
+For each result record source SHA/build, scenario id, expected and actual outcome, input/time seed,
+clock mode, exercised layers, commands and trace/frame references. Failed assertions fail the run;
+unsupported or unexercised layers are NOT RUN. Label firmware pixels separately from Device Studio's
+desktop-rendered preview. Interactive mode uses real elapsed time; injected firmware time alone
+cannot establish desktop timeout coverage or count toward the 8 h soak and 10 workdays.
+
+Passing S5 may close its own software tasks only. Physical rows below, native OS acceptance,
+website deployment, signatures, real BOOT/eFuse behavior and participant acceptance remain open
+until their stated evidence is recorded. CAD is owner-managed and outside S5.
 
 ## How to run a session
 
