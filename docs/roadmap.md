@@ -377,6 +377,11 @@ M2.8 does not relax any paid-beta gate.
 
 ## M2.9: Reliability, truthful feedback and beta readiness
 
+Scope update, 2026-10-26: focus on app, firmware and website software. CAD/enclosure work is
+owner-managed and excluded from M2.9. Current progress is **13/18 complete**, with five software
+configuration or real-use acceptance items open. Earlier 13/19 snapshots include the removed CAD
+item; existing CAD files and validation records are retained for the owner's reference.
+
 **Outcome:** controls execute only while they are still valid, confirmation reflects what Kivori
 can actually observe, settings survive restart, and an unfamiliar Windows user can set up and
 recover a real unit without developer help.
@@ -488,7 +493,7 @@ completion and physical acceptance are recorded separately in [validation.md](./
   A dummy-address API/local-D1 signup and deletion rehearsal is now covered by seven automated
   integration checks; real public configuration, mailbox and widget evidence remain open.
 
-### S4: Windows hardware and usability acceptance
+### S4: Software baseline and real-use acceptance
 
 - [x] **Establish a clean software baseline**: run the affected native, firmware host-sim, shared
   crate and frontend suites with the pinned toolchains, plus required CI and release-surface checks.
@@ -522,11 +527,6 @@ completion and physical acceptance are recorded separately in [validation.md](./
   labels/results explain what happened. Record friction and resolve blockers before acceptance.
   [Neutral tasks and observer record](./validation.md#m29-unfamiliar-user-acceptance-open) are prepared;
   participant observation and acceptance remain open.
-- [ ] **Verify the assembled enclosure**: measure real component fit, cap travel, knob clearance,
-  USB insertion force and access to BOOT/RST. The nominal CAD dimensions are not physical proof;
-  update assembly/validation evidence from the actual unit.
-  [Variant, measurement and access record](./validation.md#m29-assembled-enclosure-acceptance-open)
-  is prepared; nominal geometry and firmware-consistent wiring do not close physical acceptance.
 
 **Exit:** S1–S3 regressions pass, S4 evidence is recorded and reviewed, and no unresolved issue can
 falsely confirm an action, execute stale input, discard successfully saved settings or block common
@@ -534,7 +534,9 @@ recovery. M2.9 does not close earlier hardware rows or M3 signing, cost, assembl
 without their own evidence.
 
 Out of scope: architecture rewrite, new platforms, new product features, controller migration,
-cloud services and a broad visual redesign. Use beta evidence to choose those investments later.
+cloud services, CAD/enclosure design and fit validation, and a broad visual redesign. The owner
+handles CAD separately; M3 hardware/enclosure gates retain their own requirements. Use beta
+evidence to choose other investments later.
 
 ## M3: Paid beta
 

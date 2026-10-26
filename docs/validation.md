@@ -3,6 +3,12 @@
 The one checklist for everything CI cannot prove: real ESP32-C3 + ST7789 + HW-040 hardware, real
 OS behavior, real timing. Host-sim and other host tests are never promoted to physical evidence.
 
+Current M2.9 scope, updated 2026-10-26: CAD/enclosure work is owner-managed and outside the
+software milestone. The [roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness)
+now has **13/18 complete**, with five configuration or real-use acceptance items open. Earlier
+13/19 counts are dated historical snapshots; the enclosure records below remain reference material
+for the owner and do not count toward current M2.9 completion.
+
 Row numbers: `1.N` is row N of the old Phase 1 (device connection) checklist, `3.N` is row N of the old
 rotary checklist, `2.N` are new Phase 2 rows, `G` rows are PRD gates. Tick a row only with a date and a
 measurement or observation on the same line. A phase closes only when all its rows are ticked.
@@ -1398,6 +1404,10 @@ also explains the single-press wait and no longer promises that signing removes 
 These documentation corrections have not yet been evaluated with a participant.
 
 ## M2.9 assembled-enclosure acceptance (open)
+
+Owner-managed reference only as of 2026-10-26; this former item 19 is excluded from M2.9 software
+scope. Retained measurements, nominal checks and procedures are historical supporting material,
+not an active software task or a claim that the enclosure passed physical acceptance.
 
 Item 19 preparation, 2026-10-25, Andress-MacBook-Air. No component was physically measured, printed
 or assembled here. Item 19 remains unchecked; M2.9 remains 13/19.
