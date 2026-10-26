@@ -509,6 +509,8 @@ completion and physical acceptance are recorded separately in [validation.md](./
   other owner requirements remain tracked in M3.
   [Artifact prerequisites and session record](./validation.md#m29-windows-installation-and-recovery-acceptance-open)
   are prepared; signed artifacts, a clean Windows host and physical recovery results remain pending.
+  The owner deferred Windows publisher signing setup on 2026-10-26. Development testing may
+  continue unsigned; signed-beta acceptance and its existing requirements remain open.
 - [ ] **Run sustained use before paid beta**: complete an 8 h idle soak and 10 workdays of actual
   Windows use. Record build, unit, duration, disconnects, missed/wrong inputs, stale indicators,
   crashes and recovery outcomes; fix blockers and repeat affected checks.

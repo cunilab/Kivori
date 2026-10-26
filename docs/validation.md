@@ -1041,7 +1041,7 @@ Failed/interrupted attempts are retained rather than counted as passing runs:
   workspace run with one test thread passed this check and every other non-ignored test. Sol's
   independent read-only review found no changes from `origin/main` throughout the test's render,
   asset and build inputs. The local debug timing failure is intermittent; its exact cause and
-  optimized performance were not established. No threshold, renderer or test skip was changed.
+  optimized performance were not established at that baseline. No threshold, renderer or test skip was changed.
 - Earlier native/firmware and release-tool runs stopped during resource isolation are incomplete
   attempts, not additional failures or acceptance evidence. Logs remain local under
   `/tmp/kivori-m29-baseline-*.log`; final sequential exit codes are in
@@ -1059,9 +1059,30 @@ packaging was skipped. These are observed workflow gates; branch-protection enfo
 established (`main` reported unprotected).
 
 The four ignored native tests inspect live apps, foreground state and microphones, or change real
-volume/mute. They were not enabled. No physical input, USB, installer execution, flashing, optimized
-performance benchmark or live signup/deletion was tested locally. This software baseline does not
+volume/mute. They were not enabled. During that baseline, no physical input, USB, installer execution,
+flashing, optimized performance benchmark or live signup/deletion was tested locally. This software baseline does not
 close the website, Windows hardware, recovery, sustained-use or unfamiliar-user acceptance rows.
+
+### Optimized preview budget follow-up
+
+On 2026-10-26, Andress-MacBook-Air ran the existing test without changing the renderer or threshold:
+
+```sh
+CARGO_BUILD_JOBS=2 cargo test --release -p kivori-desktop --test preview_stream per_frame_render_fits_the_30fps_budget -- --exact --test-threads=1
+```
+
+The optimized Device Studio preview test passed. The resulting test binary then passed all eleven
+preview-stream tests and a further focused budget run: three observed budget-test passes in total.
+Each budget check warms assets, renders thirty frames and asserts average frame time below the
+existing 33 ms limit. The test does not print the measured per-frame value; its 0.03 s focused-suite
+duration is not a per-frame measurement.
+
+The cold release build took 51 minutes with two Cargo jobs. This 8 GB Mac showed approximately
+13.5 GiB of swap in use during compilation; the build cache remains local to this device.
+The result establishes the tested optimized path meeting its local budget, not the cause of the
+earlier intermittent debug failures. Windows/WebView timing, IPC/display overhead, physical device
+latency and sustained-use acceptance were not measured. No new test, skip, threshold change or
+production code change was needed. Documentation diff/checklist checks passed; M2.9 remains 13/19.
 
 ## M2.9 Windows unit acceptance (open)
 
@@ -1155,6 +1176,10 @@ No production code changed. Item 16 and all live acceptance rows remain open; pr
 
 ### Artifact prerequisites
 
+- Owner decision, 2026-10-26: no Windows publisher signing setup yet. Provider selection,
+  credentials and integration are deferred; development testing may continue with unsigned builds.
+  This does not disable updater signing, change repository secrets/settings, relax the signed-beta
+  prerequisite or mark installation/recovery accepted.
 - Windows code signing is an unimplemented placeholder in `.github/workflows/release.yml`;
   setting `WINDOWS_SIGNING=true` currently fails deliberately. Owner certificates/provider setup
   and the signing implementation remain open in [issue #36](https://github.com/cunilab/Kivori/issues/36).
