@@ -74,7 +74,8 @@ as Cargo/jq and refuses catalog discovery failure.
 [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) and the
 [virtual Pip plan](./virtual-pip.md) describe the owner-authorized development/test path. S5.1
 is implemented as a dedicated opt-in desktop example and frontend entry; later scenarios remain
-planned. It adds no shipping product or change to the physical device protocol.
+planned. S5.2 adds a connection/fault candidate pending Windows CI. It adds no shipping product
+or change to the physical device protocol.
 
 Each product owns its host simulator process and scenarios beside its firmware. Pip's
 runner is `firmware/pala/simulator/`; `pala` remains its permanent machine id. The runner depends
@@ -94,8 +95,8 @@ session synchronization and DeskRuntime; it does not start or verify the full sh
 It owns child lifecycle/queues and compiles only with the explicit `virtual-device` feature.
 Release/offline guards and the independent no_std build remain gates.
 Interactive mode uses real elapsed time; deterministic headless firmware time does not imply
-whole-desktop time control. Only S5.1 is implemented; the acceptance record distinguishes verified core paths from
-planned scenarios. None is physical evidence.
+whole-desktop time control. S5.1 is verified locally; S5.2 connection/fault scenarios pass locally with Windows CI pending.
+The acceptance record distinguishes verified paths from planned scenarios. None is physical evidence.
 
 ### State axes
 

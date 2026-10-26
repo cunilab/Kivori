@@ -17,14 +17,15 @@ measurement or observation on the same line. A phase closes only when all its ro
 ## M2.9 virtual Pip software acceptance
 
 Status, 2026-10-26: owner authorized implementation after reviewing the documentation. S5.1 is
-implemented on Andress-MacBook-Air; S5.2–S5.6 remain open. This is software evidence only. The
+implemented on Andress-MacBook-Air; S5.2 is an implemented candidate awaiting Windows CI, and
+S5.3–S5.6 remain planned. This is software evidence only. The
 [plan and pending-check map](./virtual-pip.md) and
 [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) define the boundaries.
 
 | Roadmap item | Required software evidence | Current result |
 |---|---|---|
 | S5.1 | Real firmware Runtime, raw detents/press, real desktop handshake/action path, fake OS read-back and captured firmware screen; isolated settings, no real executors, bounded pipes and clean child exit. | PASS (software only); evidence below |
-| S5.2 | Identity/protocol refusal, fragmented traffic/backpressure, timeout, child exit, reconnect and no old-session action replay. | NOT IMPLEMENTED / NOT RUN |
+| S5.2 | Identity/protocol refusal, fragmented traffic/backpressure, timeout, child exit, reconnect and no old-session action replay. | LOCAL PASS; Windows CI pending |
 | S5.3 | Threshold/bounce/buffered-edge/overflow/ownership scenarios use timestamped raw input through Runtime, with expected action traces and frames. | NOT IMPLEMENTED / NOT RUN |
 | S5.4 | Profiles, microphones, media, macros, bindings and setup exercise production logic against fake OS state; unknown/failure never falsely confirms. | NOT IMPLEMENTED / NOT RUN |
 | S5.5 | Fake flash/install executors exercise production recovery/admission/compatibility decisions; no real process, eFuse or update side effect. | NOT IMPLEMENTED / NOT RUN |
@@ -81,6 +82,55 @@ It rejects clock rollover and requires restarting the tool after a virtual reboo
 reconnect/fault/recovery scenarios are not complete. Frame captures are requested at most 10 Hz;
 interactive time is real elapsed time and host performance is not device latency. No physical
 unit, real OS state, signing, deployment, sustained-use day or participant acceptance is claimed.
+
+### S5.2 connection and interruption evidence
+
+Implementation candidate on Andress-MacBook-Air, 2026-10-26. S5.2 remains unchecked pending Windows
+CI verification. `just virtual-device-smoke` now also runs `--connection-smoke`: a separate fresh
+sandbox executes these nine real cross-process scenarios, without a GUI, hardware or real OS actions:
+
+| Scenario | Local verified result |
+|---|---|
+| Queued-input disconnect/reconnect | Disconnect clears child, wire/edge queues, hold/failsafe, live pixels and session-bound actions. Outage input and a late old-generation UI request are rejected. Reconnect renews actual session nonce/generation and preserves fake OS volume. |
+| Stale-nonce packet | A valid fresh-sequence protocol frame carrying the previous real nonce is rejected by the production input ingress, observed by its rejection counter. A new-session press still executes exactly once after another reconnect. This is deliberate wire fault injection, not fabricated hardware input. |
+| Half press and ten reconnects | A real raw down reaches the old firmware, then disconnect occurs before release. No press appears in the replacement session; ten more cycles settle to one live owner without extra media actions. |
+| Fragmented traffic | Seven-byte per-tick budgets in both directions exercise the actual firmware decoder and desktop session through handshake and exactly one detent; no message schema changes. |
+| Wrong protocol major | Only an actual runner HelloAck header is re-encoded with an unsupported major, preserving payload/sequence/CRC. The production Session refuses it and raw controls remain unavailable. |
+| Unknown product | Runtime reports an unknown product via its real identity path; catalog/capability admission refuses use, clears the display and allows a normal retry. |
+| Unknown board | Same refusal for an unknown board, without USB hints or implicit product fallback. |
+| Missing heartbeats | Live runner still executes firmware/captures and accepts host traffic but suppresses wire output. The desktop's real elapsed heartbeat policy times out, clears ownership and reconnects normally. No clock acceleration. |
+| Child exit | Runner exits without a JSON response on an explicit development fault. Real pipe EOF invalidates the connection; retry preserves fake OS state but replays neither queued tap nor old traffic. A fresh press still works. |
+
+Four native bridge tests pass, including ordered fragmented reads/writes, bounded transmit/receive
+queues and fail-closed Session WriteZero under backpressure. Existing capture-latch, malformed
+response and hung-child timeout/reaping checks remain green. Eleven runner tests and eleven UI tests
+pass. UI coverage includes serialized connection commands, stale snapshot suppression, disconnected
+canvas clearing/input gating and generation-bound press/release through blur/unmount. Native IPC
+checks the generation under the same sandbox mutex before enqueueing input. Connection commands
+accept a fixed action list, never paths, shell text or physical ports.
+
+Strict native/runner Clippy, UI build/typecheck/lint, product identifiers, frontend offline and
+production frontend exclusion checks passed locally. Independent Sol source review found no
+remaining actionable issue, including the generation boundary and release-guard change.
+
+Follow-up to S5.1 CI at `18929a2`: release-tools failed because manifest-reflection scanning walked
+into the independent simulator build script. The fix excludes only unrelated explicit nested Cargo
+workspaces from that text scan; resolved dependencies remain scanned and changed-file release
+checks remain conservative. All 60 firmware-release-guard tests and 21 related release-tools/finalize
+tests passed, with regressions for unrelated workspaces and positive controls for shipped manifest
+reads and nested resolved build dependencies.
+
+The same head's Windows native job compiled successfully and passed runner/bridge tests, then the
+virtual GUI example exited with code 57 before a smoke success marker. Logs did not establish the
+underlying OS cause. Installed Tauri build sources showed its generated resource is linked to
+binary targets only; the MSVC opt-in example now links the same `OUT_DIR/resource.lib`, including
+the activation manifest. The shipping build path is unchanged. CI uses Node for child-process
+status reporting, and failures now identify scenario arguments. Windows execution must confirm this
+fix; a passing local Mac run is not promoted to Windows evidence.
+
+Remaining scope: S5.3 input threshold/bounce matrices, S5.4 full configuration/setup/native-OS
+models, S5.5 recovery/install fakes and S5.6 full replay/reporting remain open. Physical USB/driver,
+board reset, actual OS actions, signing, CAD and sustained-use acceptance are not simulated away.
 
 ## How to run a session
 

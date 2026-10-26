@@ -274,6 +274,72 @@ test('firmware reads of workspace manifests disable bookkeeping exemptions', (t)
   rejectWithoutWrites(root, /firmware inputs changed/);
 });
 
+test('nested independent host packages do not disable firmware bookkeeping exemptions', (t) => {
+  const root = fixture(t, { tagged: false });
+  for (const directory of ['firmware/pala/host-tool', 'tools/asset-compiler/host-tool']) {
+    put(
+      root,
+      `${directory}/Cargo.toml`,
+      '[workspace]\n[package]\nname = "host-tool"\nversion = "0.1.0"\nedition = "2021"\n',
+    );
+    put(root, `${directory}/src/main.rs`, 'fn main() {}\n');
+    put(
+      root,
+      `${directory}/build.rs`,
+      'fn main() { let _ = std::fs::read_to_string("../Cargo.toml"); }\n',
+    );
+  }
+  commit(root, 'add independent host packages');
+  git(root, 'tag', 'fw-pala-v0.1.0');
+  assert.ok(firmwareInputs(root, 'pala').bookkeepingNames.has('test-shared'));
+  put(root, 'Cargo.toml', readFileSync(join(root, 'Cargo.toml'), 'utf8').replace('0.1.0', '0.2.0'));
+  locks(root);
+  commit(root, 'chore: workspace version');
+  main(['--app', 'patch', '--dry-run'], root);
+});
+
+test('resolved build scripts reading manifests still disable bookkeeping exemptions', (t) => {
+  const root = fixture(t);
+  for (const directory of ['firmware/pala', 'tools/asset-compiler']) {
+    put(
+      root,
+      `${directory}/build.rs`,
+      'fn main() { let _ = std::fs::read_to_string("../Cargo.toml"); }\n',
+    );
+    commit(root, `add manifest read in ${directory}`);
+    assert.equal(firmwareInputs(root, 'pala').bookkeepingNames.size, 0, directory);
+    rmSync(join(root, directory, 'build.rs'));
+    commit(root, 'remove manifest read');
+  }
+});
+
+test('nested packages resolved as build dependencies remain in the bookkeeping scan', (t) => {
+  const root = fixture(t);
+  put(
+    root,
+    'firmware/pala/build-helper/Cargo.toml',
+    '[workspace]\n[package]\nname = "nested-helper"\nversion = "0.1.0"\nedition = "2021"\n',
+  );
+  put(
+    root,
+    'firmware/pala/build-helper/src/lib.rs',
+    'pub const MANIFEST: &str = include_str!("../../Cargo.toml");\n',
+  );
+  put(
+    root,
+    'firmware/pala/Cargo.toml',
+    readFileSync(join(root, 'firmware/pala/Cargo.toml'), 'utf8').replace(
+      '[workspace]',
+      '[workspace]\nexclude = ["build-helper"]',
+    ) + 'nested-helper = { path = "build-helper" }\n',
+  );
+  locks(root);
+  commit(root, 'add nested build dependency reading manifest');
+  const { paths, bookkeepingNames } = firmwareInputs(root, 'pala');
+  assert.ok(paths.includes('firmware/pala/build-helper'));
+  assert.equal(bookkeepingNames.size, 0);
+});
+
 test('shared crate reads of workspace manifests also disable bookkeeping exemptions', (t) => {
   const root = fixture(t, { tagged: false });
   put(

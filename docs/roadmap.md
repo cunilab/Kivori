@@ -553,6 +553,11 @@ These are software verification tasks, not replacements for S4 physical acceptan
   fragmented traffic, bounded backpressure, heartbeat loss, child exit and disconnect/reconnect.
   Session reset must clear stale input/actions and recover to one usable connection. Keep physical
   USB discovery unchanged; explicit simulator selection never bypasses identity/capability checks.
+  Implementation candidate: nine cross-process scenarios, bounded transport tests and generation-
+  checked UI inputs pass locally. S5.2 stays unchecked until the Windows smoke is verified; prior
+  S5.1 CI exposed a release-guard scan regression (fixed with 60 passing tests) and Windows helper
+  startup failure. The opt-in example now links Tauri's generated Windows activation resource.
+  See [S5.2 evidence](./validation.md#s52-connection-and-interruption-evidence).
 - [ ] **S5.3 — Raw input fidelity:** exercise rotary quadrature, invalid transitions, bounce,
   press/hold/double thresholds, timestamped buffered edges, cross-control ownership, overflow and
   recovery cancellation using the production runtime. Trace expected versus actual actions and

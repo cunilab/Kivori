@@ -65,6 +65,16 @@ fn main() {
     }
 
     tauri_build::build();
+
+    // Tauri embeds its Windows activation manifest in bins only; the dev GUI is an example.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
+        && std::env::var_os("CARGO_FEATURE_VIRTUAL_DEVICE").is_some()
+    {
+        let resource = Path::new(&out_dir).join("resource.lib");
+        assert!(resource.is_file(), "Tauri Windows resource is missing");
+        println!("cargo:rustc-link-arg-examples={}", resource.display());
+    }
 }
 
 /// Compiles the vendored mediaremote-adapter (ADR-0009) with plain clang into

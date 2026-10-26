@@ -69,7 +69,7 @@ jobs:
       - run: cargo clippy -p kivori-desktop --no-default-features --all-targets -- -D warnings
       - run: cargo test --workspace
       - name: Isolated virtual device vertical slice (fake OS, no hardware)
-        run: bun firmware/pala/simulator/run.mjs --smoke
+        run: node firmware/pala/simulator/run.mjs --smoke
       - name: Build the Windows Core Audio backend
         if: runner.os == 'Windows'
         run: cargo build -p kivori-desktop

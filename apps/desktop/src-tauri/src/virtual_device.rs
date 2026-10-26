@@ -1,7 +1,7 @@
 //! Explicit opt-in development sandbox. No USB discovery, real OS services or updater is started.
 use std::collections::VecDeque;
 use std::io::{self, BufRead, BufReader, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError};
 use std::sync::Arc;
@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::desk::DeskRuntime;
 use crate::device::session::{Session, SessionConfig};
 use crate::device::transport::SerialLink;
-use crate::device::ConnectionManager;
+use crate::device::{ConnectionManager, ManagerEvent};
 use crate::input::freshness::Freshness;
 use crate::orchestrator::Orchestrator;
 use crate::platform::{self, FakeInputSynth, FakeVolumeBackend, OsServices, VolumeBackend};
@@ -23,6 +23,9 @@ use crate::runtime::device_task::{synchronize_session, RotaryPipeline};
 pub fn context() -> tauri::Context<tauri::Wry> {
     super::application_context()
 }
+
+mod scenarios;
+pub use scenarios::connection_smoke;
 
 const MAX_LINE: usize = 400_000;
 const WIRE_CAPACITY: usize = 8192;
@@ -42,6 +45,7 @@ struct Request {
     wire: Vec<u8>,
     edges: Vec<Edge>,
     capture: bool,
+    fault: &'static str,
 }
 
 #[derive(Deserialize)]
@@ -62,6 +66,12 @@ fn read_response(reader: &mut impl BufRead) -> io::Result<Response> {
     reader
         .take((MAX_LINE + 2) as u64)
         .read_until(b'\n', &mut bytes)?;
+    if bytes.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "virtual child closed its output",
+        ));
+    }
     if bytes.last() != Some(&b'\n') || bytes.len() > MAX_LINE + 1 {
         return Err(invalid("virtual response truncated or oversized"));
     }
@@ -80,7 +90,7 @@ fn read_response(reader: &mut impl BufRead) -> io::Result<Response> {
     }
     if response.reboot {
         return Err(invalid(
-            "virtual firmware requested reboot; restart the sandbox",
+            "virtual firmware requested reboot; reconnect the virtual device",
         ));
     }
     Ok(response)
@@ -94,6 +104,9 @@ struct ProcessLink {
     worker: Option<JoinHandle<()>>,
     pending: Option<Instant>,
     capture_wanted: bool,
+    fault: &'static str,
+    chunk: usize,
+    read_remaining: usize,
     outbound: Vec<u8>,
     inbound: VecDeque<u8>,
 }
@@ -118,7 +131,7 @@ impl ProcessLink {
             .name("virtual-pipe".into())
             .spawn(move || {
                 while let Ok(request) = requests.recv() {
-                    let result = (|| {
+                    let result: io::Result<Response> = (|| {
                         let bytes = serde_json::to_vec(&request)?;
                         if bytes.len() > MAX_LINE {
                             return Err(invalid("virtual request oversized"));
@@ -148,6 +161,9 @@ impl ProcessLink {
             worker: Some(worker),
             pending: None,
             capture_wanted: false,
+            fault: "normal",
+            chunk: WIRE_CAPACITY,
+            read_remaining: WIRE_CAPACITY,
             outbound: Vec::new(),
             inbound: VecDeque::new(),
         })
@@ -159,6 +175,7 @@ impl ProcessLink {
         edges: &mut VecDeque<Edge>,
         capture: bool,
     ) -> io::Result<Option<Vec<u16>>> {
+        self.read_remaining = self.chunk;
         self.capture_wanted |= capture;
         let mut frame = None;
         match self.responses.try_recv() {
@@ -190,9 +207,13 @@ impl ProcessLink {
                 .expect("open sender")
                 .try_send(Request {
                     now_ms,
-                    wire: std::mem::take(&mut self.outbound),
+                    wire: self
+                        .outbound
+                        .drain(..self.outbound.len().min(self.chunk))
+                        .collect(),
                     edges: due,
                     capture: self.capture_wanted,
+                    fault: self.fault,
                 })
                 .map_err(|_| invalid("virtual request queue unavailable"))?;
             self.capture_wanted = false;
@@ -205,14 +226,18 @@ impl ProcessLink {
 impl SerialLink for ProcessLink {
     type Error = io::Error;
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let count = buf.len().min(self.inbound.len());
+        let count = buf.len().min(self.inbound.len()).min(self.read_remaining);
+        self.read_remaining -= count;
         for byte in &mut buf[..count] {
             *byte = self.inbound.pop_front().expect("bounded count");
         }
         Ok(count)
     }
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let count = buf.len().min(WIRE_CAPACITY - self.outbound.len());
+        let count = buf
+            .len()
+            .min(WIRE_CAPACITY - self.outbound.len())
+            .min(self.chunk);
         self.outbound.extend_from_slice(&buf[..count]);
         Ok(count)
     }
@@ -234,6 +259,9 @@ impl Drop for ProcessLink {
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     pub connected: bool,
+    pub connection_state: &'static str,
+    pub generation: u32,
+    pub mode: &'static str,
     pub volume: u8,
     pub media_triggers: usize,
     pub detents: usize,
@@ -244,6 +272,8 @@ pub struct Snapshot {
 /// A dedicated development owner, never the shipping app's managed state or real device task.
 /// Config is in memory only: the tool neither reads nor writes the user's settings.
 pub struct Sandbox {
+    executable: PathBuf,
+    connection_started: Instant,
     link: Option<ProcessLink>,
     session: Session,
     manager: ConnectionManager,
@@ -253,6 +283,7 @@ pub struct Sandbox {
     volume: Arc<FakeVolumeBackend>,
     synth: Arc<FakeInputSynth>,
     active_session: Option<(u32, u32)>,
+    rejected_inputs: usize,
     started: Instant,
     next_ping: Duration,
     next_capture: Duration,
@@ -282,7 +313,10 @@ impl Sandbox {
             clock: || None,
             foreground: Arc::new(platform::FakeForeground::default()),
         };
+        let session_generation = session.connection_generation();
         Ok(Self {
+            executable: executable.canonicalize()?,
+            connection_started: Instant::now(),
             link: Some(link),
             session,
             manager,
@@ -292,6 +326,7 @@ impl Sandbox {
             volume,
             synth,
             active_session: None,
+            rejected_inputs: 0,
             started: Instant::now(),
             next_ping: Duration::ZERO,
             next_capture: Duration::ZERO,
@@ -303,6 +338,9 @@ impl Sandbox {
             release_by: None,
             snapshot: Snapshot {
                 connected: false,
+                connection_state: "connecting",
+                generation: session_generation,
+                mode: "normal",
                 volume: 50,
                 media_triggers: 0,
                 detents: 0,
@@ -316,7 +354,98 @@ impl Sandbox {
         self.snapshot.clone()
     }
 
+    fn end_link(&mut self, error: Option<String>) {
+        if let Some(link) = self.link.as_mut() {
+            let _ = self
+                .session
+                .close(link, kivori_protocol::ByeReason::Shutdown);
+        }
+        self.manager.apply(ManagerEvent::PortRemoved);
+        synchronize_session(
+            &mut self.active_session,
+            &self.session,
+            &self.manager,
+            &mut self.rotary,
+            &mut self.desk,
+        );
+        self.link = None;
+        self.edges.clear();
+        self.held = false;
+        self.release_by = None;
+        self.snapshot.connected = false;
+        self.snapshot.connection_state = if error.is_some() {
+            "error"
+        } else {
+            "disconnected"
+        };
+        self.snapshot.error = error;
+        self.snapshot.frame = None;
+    }
+
+    /// Fixed development actions only; never accepts a path, process arguments or physical ports.
+    pub fn connection(&mut self, action: &str) -> Result<(), String> {
+        match action {
+            "disconnect" => {
+                self.end_link(None);
+                return Ok(());
+            }
+            "silent" | "exit" => {
+                if !self.snapshot.connected {
+                    return Err("Connect the virtual device first".into());
+                }
+                let mode = if action == "silent" { "silent" } else { "exit" };
+                self.link.as_mut().ok_or("Virtual link closed")?.fault = mode;
+                self.snapshot.mode = mode;
+                return Ok(());
+            }
+            _ => {}
+        }
+        let mode = match action {
+            "reconnect" => "normal",
+            "fragmented" => "fragmented",
+            "wrong-major" => "wrong-major",
+            "unknown-product" => "unknown-product",
+            "unknown-board" => "unknown-board",
+            _ => return Err("Unknown virtual connection action".into()),
+        };
+        self.end_link(None);
+        self.snapshot.mode = mode;
+        let result: Result<(), String> = (|| {
+            let mut link =
+                ProcessLink::open(&self.executable).map_err(|error| error.to_string())?;
+            if mode == "fragmented" {
+                link.chunk = 7;
+                link.read_remaining = 7;
+            } else {
+                link.fault = mode;
+            }
+            self.manager = ConnectionManager::new();
+            self.session
+                .open(&mut link, &mut self.manager)
+                .map_err(|_| "Virtual handshake could not start")?;
+            self.link = Some(link);
+            self.connection_started = Instant::now();
+            self.next_ping = Duration::ZERO;
+            self.next_capture = Duration::ZERO;
+            self.snapshot.generation = self.session.connection_generation();
+            self.snapshot.connection_state = "connecting";
+            Ok(())
+        })();
+        if let Err(error) = &result {
+            self.end_link(Some(error.clone()));
+        }
+        result
+    }
+
     /// UI supplies control names, never semantic protocol messages or executable commands.
+    pub fn input_for_generation(&mut self, control: &str, generation: u32) -> Result<(), String> {
+        if generation != self.snapshot.generation {
+            return Err("Virtual input belongs to an ended connection".into());
+        }
+        self.input(control)
+    }
+
+    /// Synchronous native harness input; webview commands use the generation guard above.
     pub fn input(&mut self, control: &str) -> Result<(), String> {
         if !self.snapshot.connected {
             return Err("Virtual device is not connected".into());
@@ -376,7 +505,7 @@ impl Sandbox {
     }
 
     pub fn tick(&mut self) {
-        if self.snapshot.error.is_some() {
+        if self.link.is_none() {
             return;
         }
         if self
@@ -386,11 +515,7 @@ impl Sandbox {
             let _ = self.input("release");
         }
         if let Err(error) = self.tick_inner() {
-            self.snapshot.connected = false;
-            self.snapshot.error = Some(error.to_string());
-            self.desk.on_session_end();
-            self.link = None;
-            self.edges.clear();
+            self.end_link(Some(error.to_string()));
         }
         self.snapshot.volume = self.volume.read().unwrap_or(0);
         self.snapshot.media_triggers = self.synth.sent.lock().expect("fake synth").len();
@@ -423,15 +548,30 @@ impl Sandbox {
             &mut self.rotary,
             &mut self.desk,
         );
+        if self.manager.state() == kivori_model::ConnectionState::Incompatible {
+            return Err(invalid(
+                self.manager
+                    .incompatible_reason()
+                    .unwrap_or("virtual protocol incompatible"),
+            ));
+        }
+        if self
+            .session
+            .identity()
+            .is_some_and(|identity| identity.resolve().is_none())
+        {
+            return Err(invalid("virtual product or board identity is unknown"));
+        }
         self.snapshot.connected = self.manager.state().can_drive_device()
             && self.session.identity().is_some()
             && self.session.can_sync_state();
         if !self.snapshot.connected {
-            if now > Duration::from_secs(5) {
+            if self.connection_started.elapsed() > Duration::from_secs(5) {
                 return Err(invalid("virtual handshake rejected or timed out"));
             }
             return Ok(());
         }
+        self.snapshot.connection_state = "connected";
         if now >= self.next_ping {
             self.session
                 .send_ping(link, ms)
@@ -460,7 +600,11 @@ impl Sandbox {
                 self.desk
                     .on_input_within(&input, now, remaining, &mut |_| {})
             },
-            |_| {},
+            |activity| {
+                if activity.kind == crate::activity::ActivityEventKind::InputStaleSessionRejected {
+                    self.rejected_inputs += 1;
+                }
+            },
         );
         for presentation in presentations {
             self.session
@@ -518,6 +662,9 @@ mod tests {
             worker: None,
             pending: None,
             capture_wanted: false,
+            fault: "normal",
+            chunk: WIRE_CAPACITY,
+            read_remaining: WIRE_CAPACITY,
             outbound: Vec::new(),
             inbound: VecDeque::new(),
         };
@@ -540,6 +687,86 @@ mod tests {
             "capture demand must survive a busy pipe"
         );
         assert!(!link.capture_wanted);
+    }
+
+    #[test]
+    fn fragmentation_and_backpressure_preserve_bounded_ordered_bytes() {
+        let child = Command::new(std::env::current_exe().unwrap())
+            .arg("--list")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let (tx, requests) = mpsc::sync_channel(1);
+        let (responses, rx) = mpsc::sync_channel(1);
+        let mut link = ProcessLink {
+            child,
+            requests: Some(tx),
+            responses: rx,
+            worker: None,
+            pending: None,
+            capture_wanted: false,
+            fault: "normal",
+            chunk: 7,
+            read_remaining: 7,
+            outbound: Vec::new(),
+            inbound: VecDeque::new(),
+        };
+        let bytes: Vec<_> = (0..WIRE_CAPACITY).map(|n| (n % 251) as u8).collect();
+        let mut sent = 0;
+        while sent < bytes.len() {
+            sent += link.write(&bytes[sent..]).unwrap();
+        }
+        assert_eq!(link.write(&[99]).unwrap(), 0);
+        assert_eq!(link.outbound.len(), WIRE_CAPACITY);
+        let mut session = Session::new(SessionConfig::default());
+        assert!(matches!(
+            session.open(&mut link, &mut ConnectionManager::new()),
+            Err(crate::device::SessionError::WriteZero)
+        ));
+        assert!(session.current_session().is_none());
+        let mut edges = VecDeque::new();
+        link.exchange(0, &mut edges, false).unwrap();
+        assert_eq!(requests.try_recv().unwrap().wire, bytes[..7]);
+        assert_eq!(link.outbound.len(), WIRE_CAPACITY - 7);
+        responses
+            .send(Ok(Response {
+                wire: (0..100).collect(),
+                frame: None,
+                brightness: None,
+                reboot: false,
+            }))
+            .unwrap();
+        link.exchange(1, &mut edges, false).unwrap();
+        assert_eq!(requests.try_recv().unwrap().wire, bytes[7..14]);
+        let mut read = [0; 16];
+        assert_eq!(link.read(&mut read).unwrap(), 7);
+        assert_eq!(&read[..7], &[0, 1, 2, 3, 4, 5, 6]);
+        assert_eq!(
+            link.read(&mut read).unwrap(),
+            0,
+            "per-tick receive budget is bounded"
+        );
+        link.exchange(2, &mut edges, false).unwrap();
+        assert_eq!(link.read(&mut read).unwrap(), 7);
+        assert_eq!(&read[..7], &[7, 8, 9, 10, 11, 12, 13]);
+        responses
+            .send(Ok(Response {
+                wire: vec![0; WIRE_CAPACITY],
+                frame: None,
+                brightness: None,
+                reboot: false,
+            }))
+            .unwrap();
+        assert_eq!(
+            link.exchange(3, &mut edges, false).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+        assert_eq!(
+            link.inbound.len(),
+            86,
+            "overflow must fail before extending the queue"
+        );
     }
 
     #[cfg(unix)]

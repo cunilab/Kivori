@@ -90,6 +90,23 @@ export function firmwareInputs(root, product, crate = `firmware/${product}`) {
   };
   visit(graph.resolve.root);
 
+  // Nested standalone Cargo workspaces are not shipped unless resolved as dependencies.
+  const unrelatedWorkspaces = git(root, 'ls-files', '-z', '--', ...paths)
+    .split('\0')
+    .filter((path) => path.endsWith('/Cargo.toml'))
+    .filter((path) => /^\s*\[workspace\]\s*(?:#.*)?$/m.test(readFileSync(join(root, path), 'utf8')))
+    .map((path) => dirname(join(root, path)))
+    .filter(
+      (directory) =>
+        ![...local].some((manifest) => {
+          const packageDirectory = dirname(manifest);
+          return (
+            packageDirectory === directory || packageDirectory.startsWith(`${directory}${sep}`)
+          );
+        }),
+    )
+    .map((directory) => relative(root, directory).split(sep).join('/'));
+
   // Version reflection makes an app version bump a firmware input, even through build helpers.
   const shared = [...local].filter((p) => p !== firmware).map((p) => relative(root, dirname(p)));
   const uses = (pattern, paths) => {
@@ -99,6 +116,7 @@ export function firmwareInputs(root, product, crate = `firmware/${product}`) {
     const exclusions = paths.flatMap((path) =>
       ['tests', 'examples', 'benches'].map((directory) => `:(exclude,literal)${path}/${directory}`),
     );
+    exclusions.push(...unrelatedWorkspaces.map((path) => `:(exclude,literal)${path}`));
     const probe = spawnSync(
       'git',
       [

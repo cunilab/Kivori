@@ -28,7 +28,7 @@ async function run(command, args, options = {}) {
   await new Promise((yes, no) => {
     child.once('error', no);
     child.once('exit', (code, signal) =>
-      code === 0 ? yes() : no(new Error(`${command} exited ${code ?? signal}`)),
+      code === 0 ? yes() : no(new Error(`${command} ${args.join(' ')} exited ${code ?? signal}`)),
     );
   });
   active = undefined;
@@ -95,6 +95,7 @@ try {
     ]);
     const frame = resolve(target, 'smoke-frame.ppm');
     await run(app, [runner, '--smoke', frame]);
+    await run(app, [runner, '--connection-smoke']);
     console.log(`Firmware pixel artifact: ${frame}`);
   } else {
     if (process.platform === 'darwin') {

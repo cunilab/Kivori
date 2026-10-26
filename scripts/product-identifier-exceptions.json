@@ -139,7 +139,7 @@
   },
   {
     "path": ".github/workflows/host.yml",
-    "text": "run: bun firmware/pala/simulator/run.mjs --smoke",
+    "text": "run: node firmware/pala/simulator/run.mjs --smoke",
     "count": 1,
     "reason": "Explicit product-owned simulator integration smoke; shipping build recipes remain catalog-driven."
   }

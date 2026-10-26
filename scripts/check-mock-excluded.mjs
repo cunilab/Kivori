@@ -13,6 +13,7 @@ const SENTINELS = [
   'kivori-virtual-device-must-not-ship',
   'virtual_snapshot',
   'virtual_input',
+  'virtual_connection',
 ];
 const DIST = 'apps/desktop/dist/assets';
 

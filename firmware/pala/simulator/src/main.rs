@@ -2,6 +2,7 @@ use std::io::{self, BufRead, Write};
 
 use kivori_assets::AssetBlob;
 use kivori_firmware::{
+    identity::{BootCheck, ProductIdentity},
     ports::InputSource,
     profile::physical_st7789::CAPABILITIES as CAPS,
     proto::DeviceIdentity,
@@ -23,6 +24,18 @@ struct Edge {
     levels: u8,
 }
 
+#[derive(Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum Fault {
+    #[default]
+    Normal,
+    Silent,
+    WrongMajor,
+    UnknownProduct,
+    UnknownBoard,
+    Exit,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Request {
@@ -30,6 +43,8 @@ struct Request {
     wire: Vec<u8>,
     edges: Vec<Edge>,
     capture: bool,
+    #[serde(default)]
+    fault: Fault,
 }
 
 #[derive(Serialize)]
@@ -104,6 +119,9 @@ impl Simulator {
     }
 
     fn step(&mut self, request: Request) -> Result<Response, String> {
+        if request.fault == Fault::Exit {
+            return Err("exit fault is handled by the process loop".into());
+        }
         if self.rebooted {
             return Err("reboot requested; restart the simulator process".into());
         }
@@ -123,6 +141,13 @@ impl Simulator {
         self.pipe
             .host_send(&request.wire)
             .map_err(|()| "pending firmware input exceeds pipe capacity")?;
+        let mut identity = ProductIdentity::BUILD;
+        match request.fault {
+            Fault::UnknownProduct => identity.product = u16::MAX,
+            Fault::UnknownBoard => identity.board = u16::MAX,
+            _ => {}
+        }
+        self.runtime.set_boot_check(BootCheck::Run(identity));
         self.input.high_water = self.input.high_water.max(request.edges.len() as u32);
         self.input.edges = request.edges;
         self.now = request.now_ms;
@@ -137,8 +162,16 @@ impl Simulator {
             &blob,
         );
         self.rebooted = tick.reboot;
+        let mut wire = self.pipe.host_recv().to_vec();
+        match request.fault {
+            Fault::Silent => wire.clear(),
+            Fault::WrongMajor => {
+                wire = wrong_major_ack(&wire)?;
+            }
+            _ => {}
+        }
         Ok(Response {
-            wire: self.pipe.host_recv().to_vec(),
+            wire,
             frame: request
                 .capture
                 .then(|| self.display.frame().iter().map(|p| p.raw()).collect()),
@@ -146,6 +179,37 @@ impl Simulator {
             reboot: tick.reboot,
         })
     }
+}
+
+// Change only the actual HelloAck header; preserve its firmware-produced payload and sequence.
+fn wrong_major_ack(wire: &[u8]) -> Result<Vec<u8>, String> {
+    use kivori_protocol::{
+        decode_message,
+        frame::{decode_frame, encode_frame},
+        Message, PROTOCOL_MAJOR,
+    };
+    let mut result = Vec::with_capacity(wire.len());
+    let mut scratch = Default::default();
+    for packet in wire
+        .split(|&byte| byte == 0)
+        .filter(|packet| !packet.is_empty())
+    {
+        let (_, message) = decode_message(packet, &mut scratch, &[PROTOCOL_MAJOR])
+            .map_err(|e| format!("firmware response decode: {e:?}"))?;
+        if matches!(message, Message::HelloAck(_)) {
+            let (mut header, payload) = decode_frame(packet, &mut scratch)
+                .map_err(|e| format!("firmware frame decode: {e:?}"))?;
+            header.version.major = PROTOCOL_MAJOR.wrapping_add(1);
+            let mut encoded = Default::default();
+            encode_frame(&header, payload, &mut encoded)
+                .map_err(|e| format!("fault frame encode: {e:?}"))?;
+            result.extend_from_slice(&encoded);
+        } else {
+            result.extend_from_slice(packet);
+            result.push(0);
+        }
+    }
+    Ok(result)
 }
 
 // Read a bounded record without allocating an unbounded line before checking its size.
@@ -176,7 +240,10 @@ fn read_record(reader: &mut impl BufRead) -> Result<Option<Vec<u8>>, String> {
 fn run(reader: &mut impl BufRead, writer: &mut impl Write) -> Result<(), String> {
     let mut sim = Simulator::new();
     while let Some(record) = read_record(reader)? {
-        let request = serde_json::from_slice(&record).map_err(|e| e.to_string())?;
+        let request: Request = serde_json::from_slice(&record).map_err(|e| e.to_string())?;
+        if request.fault == Fault::Exit {
+            return Ok(());
+        }
         let response = sim.step(request)?;
         let line = serde_json::to_vec(&response).map_err(|e| e.to_string())?;
         if line.len() > MAX_LINE {
@@ -209,7 +276,182 @@ mod tests {
             wire: vec![],
             edges: vec![],
             capture: false,
+            fault: Fault::Normal,
         }
+    }
+
+    fn message_request(message: kivori_protocol::Message, now: u32) -> Request {
+        let mut wire = Default::default();
+        kivori_protocol::encode_message(
+            &message,
+            kivori_model::ProtocolVersion::new(
+                kivori_protocol::PROTOCOL_MAJOR,
+                kivori_protocol::PROTOCOL_MINOR,
+            ),
+            now as u16,
+            &mut wire,
+        )
+        .unwrap();
+        let mut req = request(now);
+        req.wire = wire.to_vec();
+        req
+    }
+
+    fn hello() -> Request {
+        message_request(
+            kivori_protocol::Message::Hello(kivori_protocol::Hello {
+                desktop_version: VERSION,
+                desktop_caps: CAPS,
+                nonce: 42,
+            }),
+            0,
+        )
+    }
+
+    fn ready(now: u32) -> Request {
+        message_request(
+            kivori_protocol::Message::Ready(kivori_protocol::Ready {
+                negotiated_minor: kivori_protocol::PROTOCOL_MINOR,
+                negotiated_caps: CAPS,
+            }),
+            now,
+        )
+    }
+
+    #[test]
+    fn fault_contract_is_optional_and_rejects_unknown_values() {
+        let req: Request =
+            serde_json::from_str(r#"{"now_ms":0,"wire":[],"edges":[],"capture":false}"#).unwrap();
+        assert_eq!(req.fault, Fault::Normal);
+        for (value, expected) in [
+            ("normal", Fault::Normal),
+            ("silent", Fault::Silent),
+            ("wrong-major", Fault::WrongMajor),
+            ("unknown-product", Fault::UnknownProduct),
+            ("unknown-board", Fault::UnknownBoard),
+            ("exit", Fault::Exit),
+        ] {
+            assert_eq!(
+                serde_json::from_value::<Fault>(serde_json::json!(value)).unwrap(),
+                expected
+            );
+        }
+        assert!(serde_json::from_value::<Fault>(serde_json::json!("anything")).is_err());
+    }
+
+    #[test]
+    fn identity_faults_use_runtime_identity_and_normal_restores_build() {
+        use kivori_protocol::{decode_message, Message, PROTOCOL_MAJOR};
+        for fault in [Fault::UnknownProduct, Fault::UnknownBoard, Fault::Normal] {
+            let expected = match fault {
+                Fault::UnknownProduct => (u16::MAX, ProductIdentity::BUILD.board),
+                Fault::UnknownBoard => (ProductIdentity::BUILD.product, u16::MAX),
+                _ => (ProductIdentity::BUILD.product, ProductIdentity::BUILD.board),
+            };
+            let mut sim = Simulator::new();
+            // Exercise restoration too: a normal tick must replace a previous injected identity.
+            let mut initial = request(0);
+            initial.fault = Fault::UnknownProduct;
+            sim.step(initial).unwrap();
+            let mut h = hello();
+            h.fault = fault;
+            let response = sim.step(h).unwrap();
+            assert!(!response.wire.is_empty());
+            let mut r = ready(1);
+            r.fault = match expected {
+                (u16::MAX, _) => Fault::UnknownProduct,
+                (_, u16::MAX) => Fault::UnknownBoard,
+                _ => Fault::Normal,
+            };
+            let response = sim.step(r).unwrap();
+            let mut scratch = Default::default();
+            let identity = response
+                .wire
+                .split(|&b| b == 0)
+                .filter(|p| !p.is_empty())
+                .find_map(|packet| {
+                    match decode_message(packet, &mut scratch, &[PROTOCOL_MAJOR])
+                        .unwrap()
+                        .1
+                    {
+                        Message::Identity(identity) => Some(identity),
+                        _ => None,
+                    }
+                })
+                .expect("Ready emits actual Runtime identity");
+            assert_eq!((identity.product, identity.board), expected);
+            assert_eq!(identity.source, kivori_protocol::IdentitySource::Build);
+        }
+    }
+
+    #[test]
+    fn wrong_major_changes_only_real_ack_header_and_is_rejected() {
+        use kivori_protocol::{
+            decode_message, frame::decode_frame, Message, ProtoError, PROTOCOL_MAJOR,
+        };
+        let normal = Simulator::new().step(hello()).unwrap();
+        let mut bad = hello();
+        bad.fault = Fault::WrongMajor;
+        let altered = Simulator::new().step(bad).unwrap();
+        let mut old_scratch = Default::default();
+        let mut new_scratch = Default::default();
+        assert_eq!(
+            normal.wire.iter().filter(|&&b| b == 0).count(),
+            altered.wire.iter().filter(|&&b| b == 0).count()
+        );
+        let mut ack_count = 0;
+        for (old, new) in normal
+            .wire
+            .split(|&b| b == 0)
+            .filter(|p| !p.is_empty())
+            .zip(altered.wire.split(|&b| b == 0).filter(|p| !p.is_empty()))
+        {
+            let (_, message) = decode_message(old, &mut old_scratch, &[PROTOCOL_MAJOR]).unwrap();
+            if matches!(message, Message::HelloAck(_)) {
+                ack_count += 1;
+                assert_eq!(
+                    decode_message(new, &mut new_scratch, &[PROTOCOL_MAJOR]),
+                    Err(ProtoError::UnsupportedVersion)
+                );
+                let (a, payload_a) = decode_frame(old, &mut old_scratch).unwrap();
+                let (b, payload_b) = decode_frame(new, &mut new_scratch).unwrap();
+                assert_eq!(b.version.major, PROTOCOL_MAJOR.wrapping_add(1));
+                assert_eq!(a.seq, b.seq);
+                assert_eq!(a.version.minor, b.version.minor);
+                assert_eq!(payload_a, payload_b);
+            } else {
+                assert_eq!(old, new);
+            }
+        }
+        assert_eq!(ack_count, 1);
+    }
+
+    #[test]
+    fn silent_drops_real_responses_but_continues_rendering_and_recovers() {
+        let mut sim = Simulator::new();
+        let mut h = hello();
+        h.fault = Fault::Silent;
+        h.capture = true;
+        let response = sim.step(h).unwrap();
+        assert!(response.wire.is_empty());
+        assert!(response.frame.unwrap().iter().any(|&pixel| pixel != 0));
+        let response = sim.step(ready(1)).unwrap();
+        assert!(
+            !response.wire.is_empty(),
+            "normal restores outbound traffic"
+        );
+    }
+
+    #[test]
+    fn exit_ends_process_loop_without_response_or_consuming_next_record() {
+        let mut input = Cursor::new(b"{\"now_ms\":0,\"wire\":[],\"edges\":[],\"capture\":false,\"fault\":\"exit\"}\ninvalid\n");
+        let mut output = Vec::new();
+        run(&mut input, &mut output).unwrap();
+        assert!(output.is_empty());
+        assert_eq!(read_record(&mut input).unwrap().unwrap(), b"invalid");
+        let mut req = request(0);
+        req.fault = Fault::Exit;
+        assert!(Simulator::new().step(req).is_err());
     }
 
     #[test]

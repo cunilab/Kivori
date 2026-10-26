@@ -1,4 +1,4 @@
-//! Opt-in development app. It registers only two sandbox commands, never production app commands.
+//! Opt-in development app. It registers only sandbox commands, never production app commands.
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -18,12 +18,25 @@ fn virtual_snapshot(state: tauri::State<'_, State>) -> Result<Snapshot, String> 
 }
 
 #[tauri::command]
-fn virtual_input(control: String, state: tauri::State<'_, State>) -> Result<(), String> {
+fn virtual_input(
+    control: String,
+    generation: u32,
+    state: tauri::State<'_, State>,
+) -> Result<(), String> {
     state
         .0
         .lock()
         .map_err(|_| "Virtual device unavailable")?
-        .input(&control)
+        .input_for_generation(&control, generation)
+}
+
+#[tauri::command]
+fn virtual_connection(action: String, state: tauri::State<'_, State>) -> Result<(), String> {
+    state
+        .0
+        .lock()
+        .map_err(|_| "Virtual device unavailable")?
+        .connection(&action)
 }
 
 fn settle(sandbox: &mut Sandbox, duration: Duration) -> Result<(), String> {
@@ -96,10 +109,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args_os().skip(1);
     let runner = PathBuf::from(
         args.next()
-            .ok_or("usage: virtual_device <runner> [--smoke <frame.ppm>]")?,
+            .ok_or("usage: virtual_device <runner> [--smoke <frame.ppm> | --connection-smoke]")?,
     );
+    let mut connection_smoke = false;
     let smoke_output = match args.next() {
         None => None,
+        Some(flag) if flag == "--connection-smoke" => {
+            connection_smoke = true;
+            None
+        }
         Some(flag) if flag == "--smoke" => Some(PathBuf::from(
             args.next().ok_or("missing smoke frame output")?,
         )),
@@ -107,6 +125,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     if args.next().is_some() {
         return Err("too many arguments".into());
+    }
+    if connection_smoke {
+        return kivori_desktop::virtual_device::connection_smoke(&runner).map_err(Into::into);
     }
     let sandbox = Sandbox::open(&runner)?;
     if let Some(output) = smoke_output {
@@ -121,7 +142,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let run_cancel = cancel.clone();
     let app = tauri::Builder::default()
         .manage(State(Mutex::new(sandbox)))
-        .invoke_handler(tauri::generate_handler![virtual_snapshot, virtual_input])
+        .invoke_handler(tauri::generate_handler![
+            virtual_snapshot,
+            virtual_input,
+            virtual_connection
+        ])
         .setup(move |app| {
             use tauri::Manager;
             let handle = app.handle().clone();

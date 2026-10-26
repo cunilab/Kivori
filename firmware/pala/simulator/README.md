@@ -26,7 +26,22 @@ physical adapter has already inverted the pull-up pin readings at this port. Edg
 must be ordered between the previous tick time and this tick time, inclusive. Clock rollover
 is intentionally rejected in this first vertical slice.
 
-Each request produces exactly one stdout JSON record with `wire`, optional 57600-pixel `frame`
+An optional `fault` field selects one bounded development fault per request (default `normal`):
+
+- `normal`: actual firmware traffic and build identity; restores both after a fault.
+- `silent`: execute the firmware tick and drain its traffic, but return an empty `wire` array.
+  Input, rendering and optional capture continue; dropped replies are never replayed.
+- `wrong-major`: re-encode only actual outbound `HelloAck` headers with an unsupported major,
+  preserving firmware-produced payload and sequence. Other packets are unchanged.
+- `unknown-product` / `unknown-board`: report `65535` for that identity field through the actual
+  firmware boot-identity seam and `Ready` response; retain other build identity fields.
+- `exit`: close the process cleanly without a response, exercising real pipe EOF.
+
+Use a fresh process for identity and protocol fault scenarios, and send the selected mode on every
+relevant tick. A live session may switch to `silent` or `exit`. These are process-control values,
+not protocol messages, physical faults or production wire-schema additions.
+
+Each request except `exit` produces exactly one stdout JSON record with `wire`, optional 57600-pixel `frame`
 (row-major RGB565 integers), `brightness`, and `reboot`. Frames are composed by the production
 firmware renderer. Time advances only when requested; one request runs exactly one production
 runtime tick, so pending protocol input may need subsequent ticks to drain.
