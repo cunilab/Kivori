@@ -13,26 +13,30 @@ its long shaft); a much thinner case would need a new layout, such as a short-sh
 
 - **Shell:** graphite, the walls lean in only 3°, R9 corners and a crisp 1.2 mm 45° chamfer
   round the face. The sides are clean: no latch windows or screws.
-- **Top:** one flat black plate over the whole face, laid on it inside the chamfer (prints flat
-  side down). It carries the knob well, the three key openings and the RST needle hole.
+- **Top:** one flat black plate over the whole face, laid on it inside the chamfer (prints top
+  face down). It carries the knob well, the three key openings and the RST needle hole. Three
+  small pins under it (Ø2, in three corners) drop into holes in the shell face, so it goes on in
+  one place only, square, and cannot go on turned round.
 - **Bezel:** a black frame round the screen, flush with the top, its window bevelled down to the
   glass. Printed on a smooth PEI sheet it comes out glossy, so the screen looks like part of the
   face until it lights up.
 - **Light ring:** a 2.4 mm clear ring round the knob, flush with the top. Printed in translucent
   PETG it catches the light; LEDs underneath can make it glow later.
-- **Knob:** Ø38 × 15.8 mm, the hero control, sitting inside the light ring so its skirt reaches
+- **Knob:** Ø38 × 12.5 mm, the hero control, sitting inside the light ring so its skirt reaches
   down to the face. A thick top makes it tall without moving the encoder. Fine ribs round the
   skirt, a 45° chamfer round the top and a dot marker. For a silver top on a graphite knob, print
   the first 1.5 mm (it prints top down) in silver and change filament. Inside it is hollow: a hub
   round the shaft (round bore, then D-shaped over the shaft's flat), tied to the skirt by four ribs.
-- **Keys:** three low keys, 4.5 mm above the face (2.5 mm above the top), tapering slightly from
-  13.4 to 12.4 mm; two graphite, one cyan.
+  Its skirt clears the face by 1.5 mm.
+- **Keys:** three low keys, 6 mm above the face (4 mm above the top), tapering slightly from
+  13.4 to 12.4 mm; two graphite, one cyan. Each clicks on with two fingers and is held square by two ribbed
+  walls, so a press on a corner still pushes the switch straight down.
 - **Plinth:** set back under the shell, the back plate's own outline chamfered 45° all round (no
   overhang). Printed in translucent PETG it reads as a thin light line under the case, ready for
   underglow later.
-- **Underside:** the 5 mm wordmark (no fine print: it prints on the bed), and four printed
-  TPU rubber dots, one in each corner. Each dot (Ø6) is centred on the screw there (so it hides
-  it), sits fully inside the plinth's rounded corner and presses a plug into the screw
+- **Underside:** the 5 mm wordmark (no fine print: it prints on the bed), and five printed
+  TPU rubber dots, one in each corner and one in the middle. Each dot (Ø6) is centred on the screw there (so it hides
+  it), sits fully inside the plinth (the corner ones inside its rounded corners) and presses a plug into the screw
   counterbore, so the plinth needs no recess.
 - **Colours:** graphite shell, black top and bezel, clear light ring and plinth, graphite knob,
   two graphite keys and one cyan key.
@@ -40,10 +44,11 @@ its long shaft); a much thinner case would need a new layout, such as a short-sh
 Inside is a **printed PCB** (`Carrier`): a plate with the outline, mounting holes and part positions
 a real PCB would have. Components sit on its front; the wire runs in channels on its back. Once the prototype works, `export/pcb-outline.dxf` becomes the Edge.Cuts layer in KiCad.
 
-Four M2 × 12 self-tapping screws hold it together, so it stays shut when dropped. Each one goes
+Five M2 × 12 self-tapping screws hold it together, so it stays shut when dropped. Each one goes
 up from under the plinth through a back-plate column and the printed PCB into a post on the
-faceplate, and clamps all three together. The four posts sit symmetrically near the corners
-(left and right mirror each other); they are slim (Ø4.2) so the front-right one clears the right
+faceplate, and clamps all three together. Four posts sit symmetrically near the corners
+(left and right mirror each other), and a fifth near the middle (x 57, y 29: the nearest spot to
+the centre clear of the wire channels and the display) holds the back plate there too; they are slim (Ø4.2) so the front-right one clears the right
 cap's flange. A spigot on each post runs right through the printed PCB and 1.5 mm on into a
 socket in the back-plate column, so the PCB is held over its whole thickness. The four
 hooks on the back plate (45° ramps both ways) stay: they line the plate up and hold it while you
@@ -54,9 +59,9 @@ How each part is held on the printed PCB, even with the case open:
 | Part | Held by |
 |---|---|
 | HW-040 | It hangs behind the printed PCB from the EC11 itself, mounted like a panel encoder: the square EC11 body sits flat against the printed PCB's back, the M7 bushing goes through a round Ø7.6 hole that centres it, and the EC11's own nut (with its washer) on the printed PCB's front clamps it. A knob press goes into the printed PCB and on into the face posts; the back plate doesn't touch the encoder. Its five header pins stand straight up (no bend) into holes in the printed PCB, and the wire is wound round them in the 5.2 mm gap between the HW-040's header and the printed PCB. Sitting this deep (board front 19.9 mm behind the face) lets the long shaft end low. |
-| Display | Four standoffs whose pegs go through its four corner holes. |
+| Display | Four standoffs whose pegs go through its four corner holes. It hangs on them only: the glass has 0.5 mm of air in front of it, so the screws never clamp it against the face. Over the LCD's flex cable (where it leaves the glass at the end away from the header and bends onto the board) the face back has a 1.2 mm deep relief, leaving 2.5 mm of air, so the face cannot pinch the flex (that broke a display). |
 | SuperMini | Stands on the front on its soldered header strips; the long pins go through to the back (4 mm past it), where the wire is wound round them. The board end sits up against a hidden pocket in the far wall, which leaves 0.8 mm of wall round the receptacle, so the port outside is just a small pill-shaped hole (9.6 × 4 mm) and a cable still plugs in fully. |
-| 12×12 switches | Legs through the plate; a leg that takes a wire is folded flat over it on the back. Each cap clicks onto the switch like a bought round 12×12 cap. The stem is a 3.8 mm square head on a narrower neck; four 2 mm wide fingers hang free from the cap top round the head, and a lip on each snaps in under it (45° lead-in below the lip). Because each finger is free over its whole length (about 9 mm), it bends gently as the lip passes the head instead of snapping. A stop post on the cap top rests on the head, so the cap is held both ways without play and a press goes straight into the switch. |
+| 12×12 switches | Legs through the plate; a leg that takes a wire is folded flat over it on the back. Each cap clicks onto the switch's 3.8 mm square head like a bought round 12×12 cap. Its grip copies the bought cap's drawing: two opposite sides are long plates (5.5 mm wide, past the head's corners, 1.6 mm thick) whose lips snap 0.3 mm in under the head; each is tied to the cap wall by a rib at its root only, so the 8 mm below it bends instead of cracking. The other two sides are 2 mm wide snap plates too, their lips 0.2 mm in under the head, each tied to the cap wall by a thin 1 mm rib down half its length (the free half bends as the cap snaps on). Gripped on all four sides, so the cap cannot rock on the head and a press on a corner goes into the switch. A Ø3 stop post on the cap top rests on the head, so the cap is held both ways without play. (Four free fingers alone were springy and the cap wobbled; a stiff socket all round had no snap.) |
 
 The display pegs are 0.2 mm smaller than the holes (press fit) and stick out 1 mm past the module board.
 To lock a part for good, touch each peg tip with the soldering iron so it melts into a small head
@@ -98,10 +103,10 @@ Checked for FDM in each part's print orientation:
   steeper than 45° except the short bridges listed):
   - `Shell`: the face chamfer is a true 45° once the wall lean is added; only the top of the
     USB hole bridges (2.3 mm).
-  - `Top`, `Bezel` and `LightRing`: none. They print flat side down, so nothing sticks out of their undersides
-    (the top has no pegs; the key caps centre it).
+  - `Top`: none. It prints top face down (smooth from the bed), its three locating pins up.
+  - `Bezel` and `LightRing`: none. They print flat side down.
   - `BackPlate`: the plinth slopes 45° all round; bridges only over the engraved wordmark and the
-    four screw-head seats (4.4 mm, tilted 10° by the wedge).
+    five screw-head seats (4.4 mm, tilted 10° by the wedge).
   - `Carrier`: bridges over the 0.8 mm wire channels and 1.4 mm leg pockets.
   - `Knob`: the Ø2.2 dot marker (on the bed side) bridges; the grip grooves run out of the skirt edge.
   - Caps: the 45° top chamfer sits on the bed, and the cap flanges slope 45° (the caps print top
@@ -111,22 +116,21 @@ Checked for FDM in each part's print orientation:
   over each is a short bridge. The back is flat along the pin rows.
   Every channel keeps at least 0.7 mm of plastic to anything that is not its own (the build
   checks it). Small text is gone from the bed sides; the wordmark is engraved.
-- **Fits:** FDM prints holes 0.1-0.2 mm small, so the fits allow for it: spigot 3.4 in 3.9, knob bore 6.25 on the 6 mm shaft, cap 13.4 in a 14 mm opening.
-- **Small parts:** the caps' snap
-  fingers are 0.8 mm thick and hang free over about 9 mm, so clicking a cap on bends them only
-  slightly (about 0.6% strain). Earlier versions tied them together down to the head, so only their
-  last 2 mm bent and they broke. If one still cracks, print the caps in PETG.
+- **Fits:** FDM prints holes 0.1-0.2 mm small, so the fits allow for it: spigot 3.4 in 3.9, knob bore 6.25 on the 6 mm shaft, cap 13.4 in a 14 mm opening, cap fingers 0.05 mm onto the 3.8 mm switch head.
+- **Small parts:** the caps' two snap plates are 1.6 mm thick, ribbed at the root, and hang free
+  over about 8 mm, so clicking a cap on bends them only slightly (about 1% strain). If one still
+  cracks, print the caps in PETG.
 
 | Part | Material | Orientation (already applied in the STL) |
 |---|---|---|
 | `Shell` | matte graphite PLA | face down |
-| `Top` | matte black PLA | flat side down |
+| `Top` | matte black PLA | top face down (pins up) |
 | `Bezel` | black PLA on a smooth PEI sheet (glossy face) | flat side down |
 | `LightRing` | translucent (clear) PETG | flat side down |
 | `BackPlate` (with the plinth) | translucent **PETG** (the hooks crack in PLA); black PETG for no glow | desk side down |
 | `Carrier` (printed PCB) | PETG preferred (the folded switch legs and pegs press on it for years); PLA works | back down, pegs and standoffs up |
 | `Knob` | graphite PLA (optionally the first 1.5 mm in silver) | top down |
-| `CapLeft` / `CapMiddle` / `CapRight` | graphite (left, middle) and cyan (right) PLA, PETG if the fingers crack | top down |
+| `CapLeft` / `CapMiddle` / `CapRight` | graphite (left, middle) and cyan (right) PLA, PETG if a finger cracks | top down |
 | `RubberDots` (all four in one file) | **TPU** (95A), black | flat, plugs up |
 
 Every part is printed in a single colour; the two-tone look comes from printing the parts in
@@ -137,13 +141,13 @@ different filaments, so no filament change mid-print is needed.
 | Part | Notes |
 |---|---|
 | ESP32-C3 SuperMini | On the front of the printed PCB, components facing the face, on its own soldered header strips (long pins down through the printed PCB). |
-| ST7789 1.3" 240×240, 7-pin | On four standoffs with pegs, glass in a 0.6 mm pocket behind the window, its header pins through the printed PCB. Fit a **long-pin header** (2.54 mm, 7 pins, about 17 mm long overall, long side down): the usual header is too short to wind the wire on. Buy the display without a header, or swap it once. |
+| ST7789 1.3" 240×240, 7-pin | On four standoffs with pegs, glass in a 0.6 mm pocket behind the window with 0.5 mm of air in front (never clamped), its header pins through the printed PCB. Fit a **long-pin header** (2.54 mm, 7 pins, about 17 mm long overall, long side down): the usual header is too short to wind the wire on. Buy the display without a header, or swap it once. |
 | HW-040 rotary encoder | Hangs behind the printed PCB on its own nut and washer (see above). Straighten its five right-angle pins with pliers, or fit a straight 5-pin header. If your EC11 has a small anti-rotation tab next to the bushing, cut it off or file a notch for it in the printed PCB, so the body sits flat. |
 | 3 × 12×12 mm push switch, 7.3 mm tall | Legs go through the printed PCB. |
 | Enamelled copper wire, 0.3 mm, about 1 m | The wiring. |
 | 400-grit sandpaper or a craft knife | Scraping the enamel off the wire ends (no heat). |
 | Kapton (polyimide) tape, a few cm | Five 2 × 2 mm squares at the wire crossings; short strips also hold the wire down in long channels. |
-| 4 × M2 × 12 self-tapping screws, pan head up to Ø4 | From under the plinth into the face posts. |
+| 5 × M2 × 12 self-tapping screws, pan head up to Ø4 | From under the plinth into the face posts. |
 
 The SuperMini and display arrive with their header pins soldered (or have them soldered once);
 everything after that is solderless.
@@ -162,16 +166,16 @@ everything after that is solderless.
    sits flat and firm. Wrap the encoder runs onto its pins, in the gap under the printed PCB.
 6. Check every run with a meter.
 7. Drop the three caps into the face openings from inside the shell, flange first.
-8. Lower the printed PCB over the four spigots and press it down onto the posts: each switch head
+8. Lower the printed PCB over the five spigots and press it down onto the posts: each switch head
    clicks into its cap. The spigots stick out past the back and locate the back plate's columns.
-9. Press the back plate straight in until all four hooks click. Then drive the four screws in from under the plinth until snug (do not overtighten in
-   PLA). Press the four TPU dots on, one plug into each screw hole.
+9. Press the back plate straight in until all four hooks click. Then drive the five screws in from under the plinth until snug (do not overtighten in
+   PLA). Press the five TPU dots on, one plug into each screw hole.
 10. Drop the bezel and the light ring into their places on the face. Stick a few small pieces of thin double-sided tape
    on the face, then lower the top over the knob shaft and the key caps: its key openings slide
    over the caps, which centre it, and the bezel ends up in its cut-out. Press it down.
 11. Push the knob onto the D-shaft.
 
-To open: pull the four dots off the screws, take the screws out, grip the plinth in the shadow
+To open: pull the five dots off the screws, take the screws out, grip the plinth in the shadow
 gap and pull. RST is a Ø1 needle hole in the top, above the SuperMini (a needle or SIM pin
 reaches the button through a guide tube).
 
@@ -299,7 +303,8 @@ measured on the real parts from photos next to a ruler (about ±0.3–0.5 mm). T
    - Header row at x = +10.25 (`HW040_HDR_X`, measured: 0.1 mm nearer the shaft than drawn).
    - Above the board front (measured from a side photo, scale checked on the 6 mm shaft): body
      top 7.7, bushing thread ends 16.2, shaft round to 22.1, then a 7.1 mm D-flat to the tip at
-     29.2. The knob height follows the shaft tip (`EC11_SHAFT_H`), so the shaft is never cut.
+     29.2. Measured in the assembled case the tip stands only 6.5 mm above the shell face, so
+     `EC11_SHAFT_H` is 26.4. The knob height follows the shaft tip, so the shaft is never cut.
 3. **SuperMini**: BOOT/RST positions (`SM_BTN_*`), header pin order (`SM_COL_A/B`), USB-C size,
    and how far the receptacle sticks out past the board end (`SM_USB_OVERHANG`, 0.5 mm): that sets
    how close the receptacle comes to the port hole.
@@ -307,13 +312,13 @@ measured on the real parts from photos next to a ruler (about ±0.3–0.5 mm). T
 4. **12 mm switch**: snap-fit stem, the 7.3 mm tall version (seller drawing).
    - Housing 11.7 × 11.7 × 3.6 mm with a round Ø6.4 platform up to 4.5 mm.
    - Stem: on the platform a 3.0 mm square neck only 1 mm tall, then the 3.8 × 3.8 mm square head
-     (the grip), 1.7 mm tall, top at 7.2 mm. The cap's lips snap in under the head, into that
-     1 mm neck. The switch top sits 3.0 mm under the face; the fingers reach down to it from the
-     cap top, free over their whole length.
-   - The cap's lips reach 0.3 mm under the head (`CAP_SNAP`) and catch 0.2 mm lower than drawn
-     (`CAP_SNAP_DROP`, measured on a test print: the lip was 0.2 mm short of the head's
-     underside). If the cap falls off, raise `CAP_SNAP_DROP` or `CAP_SNAP` a little; if it will
-     not click on, lower `CAP_SNAP`.
+     (the grip), 1.7 mm tall, top at 7.2 mm. The cap's two finger lips snap in under the head,
+     into that 1 mm neck; its two short walls cover the head's other sides. The switch top sits
+     3.0 mm under the face.
+   - The lips reach 0.3 mm under the head (`CAP_SNAP`) and catch 0.4 mm lower than drawn
+     (`CAP_SNAP_DROP`, measured: at 0.2 the cap was loose). If the cap falls off, raise
+     `CAP_SNAP_DROP` or `CAP_SNAP` a little; if it will not click on, lower `CAP_SNAP`. If it
+     rocks, close the short walls up to the head (`CAP_SIDE`, play now 0).
    - Pins on a 12.5 × 5 mm grid (land pattern Ø1.5). Legs 3.5 mm long (measured, `SW_LEG`).
      Some 12 × 12 switches (Omron B3F) have locating bosses; TS-G005 and TS13 show none, so
      there are no holes for them.

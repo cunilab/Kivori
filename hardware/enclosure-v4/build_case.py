@@ -46,8 +46,9 @@ BP_CLR = 0.2                # back plate to wall clearance (per side)
 # Knob + encoder (EC11 dimensions from KiCad RotaryEncoder_Alps_EC11E-Switch_Vertical_H20mm)
 KNOB_C = (27.5, 35.0)       # knob / shaft centre on the face
 KNOB_D = 38.0               # the hero control; height comes from the shaft: KNOB_H further down
-KNOB_GAP = 1.0              # air gap between knob skirt and face (push travel is ~0.5)
-KNOB_TOP_T = 7.0            # knob top above the shaft-tip clearance: a thick top makes the knob tall
+KNOB_GAP = 1.5              # air gap between knob skirt and face (push travel is ~0.5; at 1.0 a press hit the face)
+KNOB_TOP_T = 6.5            # knob top above the shaft-tip clearance: sets the knob 12.5 tall
+KNOB_TIP_CLR = 1.0          # free space between the shaft tip and the bore's ceiling
 KNOB_WALL = 2.5             # hollow knob: skirt wall (the grip flutes cut 0.6 into it)
 KNOB_HUB_D = 12.0           # hub round the shaft, hanging from the top, tied to the skirt by ribs
 KNOB_RIBS, KNOB_RIB_T = 4, 1.2
@@ -61,7 +62,8 @@ EC11_BODY = (12.0, 11.6)    # NOMINAL body footprint
 # scale checked on the 6 mm shaft, about ±0.4 mm)
 EC11_BODY_H = 7.7           # body top (bushing base)
 EC11_BUSH_D, EC11_BUSH_L = 7.0, 8.5   # M7 bushing: thread ends 16.2 above the board
-EC11_SHAFT_D, EC11_SHAFT_H = 6.0, 29.2  # D shaft, tip 29.2 above the board
+EC11_SHAFT_D, EC11_SHAFT_H = 6.0, 26.4  # D shaft, tip 26.4 above the board (measured in the case: the tip
+                                        # stands 6.5 above the shell face; the side photo said 29.2)
 EC11_FLAT = 1.5             # D-flat depth (4.8 mm across the flat, measured)
 EC11_FLAT_L = 7.1           # D-flat length from the tip; round below that (measured)
 ENC_HOLE_D = 8.6            # face hole round the shaft and the bushing tip (0.8 play: the encoder
@@ -104,6 +106,11 @@ DISP_GLASS_U = 0.8                # glass centre from the board centre, along u 
 DISP_HDR_U = 2.2                  # 7-pin header row, from the header end
 DISP_HDR_V = 0.1                  # header row centre past the board centre, towards the far (USB) edge (measured)
 DISP_POCKET = 0.6           # glass pocket depth into the back of the faceplate
+DISP_FPC_RELIEF = (1.2, 0.5)  # relief in the face back over the LCD's flex cable (it leaves the glass at the
+                            # end away from the header and bends down onto the board): depth, margin past
+                            # the board edge. Without it the face pinched the flex (1.3 mm of air there)
+DISP_FACE_GAP = 0.5         # air in front of the glass: the module hangs on the standoffs and pegs only,
+                            # never clamped between them and the face (with no gap the screws cracked it)
 DISP_HEADER_SIDE = +1       # +1 header on the right end, -1 on the left end
 DISP_HOLE_D = 2.0          # four corner holes, NOMINAL ("mounting holes: 2 mm")
 DISP_HOLE_INSET = 2.5      # hole centres from both edges at each corner (measured: 34.2 x 22.8 apart)
@@ -118,7 +125,7 @@ BTN_OPEN = 14.0             # face opening (blueprint)
 BTN_CAP = 13.4              # cap body
 BTN_FLANGE = 15.2           # retaining flange behind the face
 BTN_FLANGE_T = 1.2
-BTN_CAP_PROUD = 4.5         # cap top above the face: low keys, 2.5 mm above the top plate
+BTN_CAP_PROUD = 6.0         # cap top above the face: 4 mm above the top plate (at 2.5 it looked sunk)
 BTN_CAP_TOP = 12.4          # cap top width: a slight taper
 # 12x12 projected-plunger switch, seller drawing TS-G005 (7.5 mm version; this one is 10 mm tall)
 SW_BODY, SW_BODY_H = 11.7, 3.6  # housing 11.7 x 11.7 x 3.6 (seller drawing, the 7.3 mm switch)
@@ -131,31 +138,42 @@ SW_NECK, SW_NECK_H = 3.0, 1.0  # stem neck, square: width, height above the plat
 SW_HEAD, SW_HEAD_H = 3.8, 1.7  # square head with a centre hole: width, height
 SW_TOTAL_H = SW_BOSS_H + SW_NECK_H + SW_HEAD_H  # head top 7.2 mm above the PCB
 CAP_WALL = 1.0              # hollow cap side wall
-# The cap clicks on like a bought round 12x12 cap: four fingers, 2 mm wide, hang from the cap top
-# round the head. A lip on each snaps in under the head, and a stop post on the cap top rests on
-# it, so the cap is held both ways without play and a press goes straight into the stem. Each
-# finger hangs free from the cap top, so the whole finger bends as the lip passes the head (v3 and
-# earlier tied the fingers together down to the head top, so only their last 2 mm bent: about 7%
-# strain, far past what printed PLA takes, and they snapped; free, it is about 0.5%).
+# The cap holds the stem like a bought round 12x12 cap: round the square head, two opposite sides are
+# long fingers whose lips snap in under the head, and the other two are short stiff walls tied to the
+# cap's outer wall by a rib each, so the cap cannot rock on the head. A stop post on the cap top rests
+# on the head, so the cap is held both ways. (Four free fingers alone were springy and the cap wobbled;
+# a stiff socket all round had no snap.)
 CAP_TOP_T = 1.2             # flat cap top; the cap prints top down, so the top comes off the bed
-CAP_FINGER = (2.0, 0.8)     # finger width (as on the reference cap), thickness
+CAP_FINGER = (5.5, 1.6)     # long sides: finger width (5.5 as on a bought round 12x12 cap, past the head's
+                            # corners), thickness; free below its rib, it
+                            # bends about 0.8% as it snaps on
+CAP_FINGER_RIB = (1.0, 2.0)  # rib from each finger out to the cap wall: thickness, height down from the cap top
+                             # (the root only, so the finger below it still bends)
 CAP_SNAP = 0.3              # lip reach in under the head (the neck is 0.4 narrower per side)
-CAP_SNAP_CLR = 0.1          # finger to head side
-CAP_SNAP_DROP = 0.2         # lip catch this much lower than drawn (measured: the lip was 0.2 short of the head's underside)
-CAP_STOP_D = 2.6            # stop post on the head, round its centre hole
+CAP_SNAP_CLR = -0.05        # finger to head side: they press on it slightly (at 0.1 the printed fingers stood off)
+CAP_SNAP_DROP = 0.4         # lip catch this much lower than drawn (measured: at 0.2 the cap was still loose on the head)
+CAP_SIDE = (2.0, 1.2, 0.0)  # short sides (2 wide, as on the bought cap): plate width, thickness, play to the head
+CAP_SIDE_SNAP = 0.2         # their lips reach this far in under the head (shorter, stiffer plates: less than
+                            # the long ones, so they bend about 1.6% as the cap snaps on)
+CAP_SIDE_RIB = (1.0, 0.5)   # thin rib from each short plate out to the cap wall (a "+" as on the bought cap):
+                            # thickness, share of the plate's length from the cap top (half: the rest bends)
+CAP_STOP_D = 3.0            # stop post on the head, round its centre hole
+CAP_STOP_ROOT = (3.6, 1.0)  # the post widens to this Ø over this height where it meets the cap top
 SW_PADS = [(-6.25, -2.5), (6.25, -2.5), (-6.25, 2.5), (6.25, 2.5)]  # pin 1,1,2,2 (land pattern Ø1.5)
 BTN_GPIO = ["IO3", "IO4", "IO5"]  # left, middle, right (pin map, see README Wiring)
 
 # Printed PCB ("carrier"): same plane as a future real PCB
 C_FRONT = -10.2             # printed PCB front (the 7.2 mm switch top ends 3.0 below the face: the caps reach down)
 # knob just tall enough to cover the whole shaft, so the shaft is never cut
-KNOB_H = HW040_FRONT + EC11_SHAFT_H + 0.5 + KNOB_TOP_T - KNOB_GAP
+KNOB_H = HW040_FRONT + EC11_SHAFT_H + KNOB_TIP_CLR + KNOB_TOP_T - KNOB_GAP
 C_T = 2.0                   # printed thickness (a real board is 1.6, it grows backwards); leaves a 0.6 mm HW-040 pocket floor
 C_BACK = C_FRONT - C_T
 C_INSET = 0.8               # carrier outline inset from the inner walls
 HOLE_D = 1.2                # 2.54 mm header holes
 SW_HOLE_D = HOLE_D          # switch legs: same hole as the header pins
-POSTS = [(6.0, 7.0), (6.0, 62.5), (104.0, 62.5), (104.0, 7.0)]  # face posts, symmetric, near the corners
+POSTS = [(6.0, 7.0), (6.0, 62.5), (104.0, 62.5), (104.0, 7.0),  # face posts, symmetric, near the corners
+         (57.0, 29.0)]  # and one near the middle, so the back plate is held there too (the nearest
+                        # spot to the centre clear of the wire channels and the display)
 POST_D = 4.2               # slim: the front-right post sits just outside the right cap's flange
 # Post spigot: right through the carrier and on into a socket in the back-plate column, so the
 # carrier is held over its whole thickness and the column lines up on the same spigot
@@ -256,6 +274,10 @@ TOP_T = 2.0                 # plate thickness
 TOP_RIM = 0.6               # face left showing between the chamfer and the plate
 TOP_DISH = 0.0              # flat (the v3 keycap top had a dish)
 TOP_EDGE = 0.5              # chamfer round the plate's top edge
+# Locating pins under the top plate into holes in the shell face, over three of the corner posts
+# (solid there): it goes on in one place only, square, and cannot go on turned round
+TOP_PINS = [(6.0, 7.0), (6.0, 62.5), (104.0, 7.0)]
+TOP_PIN = (2.0, 1.2, 0.2, 0.3)  # pin Ø, length; hole clearance per side, hole deeper than the pin
 TOP_KNOB_WELL = 1.2         # gap round the knob skirt in the well (without a light ring)
 BEZEL = (38.0, 34.0, 4.0)   # screen bezel insert: width, height, corner radius (round the window)
 BEZEL_CLR = 0.1             # bezel in its cut-out, per side
@@ -467,7 +489,7 @@ SW_PLUNGER_TOP = C_FRONT + SW_TOTAL_H
 # Display: module u axis lies along face x (DISP_HEADER_SIDE says which way the header points)
 dpcb_c = (DISP_C[0] - DISP_HEADER_SIDE * DISP_ACTIVE_U, DISP_C[1])
 glass_c = (dpcb_c[0] + DISP_HEADER_SIDE * DISP_GLASS_U, DISP_C[1])
-glass_z0 = -FACE_T + DISP_POCKET          # glass front
+glass_z0 = -FACE_T + DISP_POCKET - DISP_FACE_GAP  # glass front
 glass_z1 = glass_z0 - DISP_GLASS[2]       # glass back = module PCB front
 dpcb_z1 = glass_z1 - DISP_PCB[2]          # module PCB back
 disp_hdr_x = dpcb_c[0] + DISP_HEADER_SIDE * (DISP_PCB[0] / 2 - DISP_HDR_U)
@@ -571,12 +593,21 @@ def make_shell():
                          -FACE_T - 1, -FACE_T + DISP_POCKET))
     for (x, y, a) in BTNS:
         cuts.append(rr_prism(BTN_OPEN + 2 * UNDER_CLR, BTN_OPEN + 2 * UNDER_CLR, 1.8, x, y, -FACE_T - 1, 1, a))
+    # over the flex cable: from the glass edge out past the board edge, the glass wide
+    fd, fm = DISP_FPC_RELIEF
+    s_ = -DISP_HEADER_SIDE
+    x_glass = glass_c[0] + s_ * DISP_GLASS[0] / 2
+    x_board = dpcb_c[0] + s_ * (DISP_PCB[0] / 2 + fm)
+    cuts.append(box(x_glass - s_ * 0.5, glass_c[1] - DISP_GLASS[1] / 2 - fm, -FACE_T - 1,
+                    x_board, glass_c[1] + DISP_GLASS[1] / 2 + fm, -FACE_T + fd))
     for (x, y) in disp_holes:
         cuts.append(cyl(DISP_STANDOFF_D, x, y, -FACE_T - 1, -FACE_T + PEG_RELIEF))
     for (x, y) in POSTS:
         cuts.append(cyl(SCREW_PILOT, x, y, C_BACK - SPIGOT_INTO_COL - 1, -FACE_T - 1.5))
     cuts += usb_port_cuts()
     cuts.append(cyl(RST_HOLE_D, rx, ry, -FACE_T - 1, 1))  # RST needle hole
+    pd, pl, pc, pe = TOP_PIN
+    cuts += [cyl(pd + 2 * pc, x, y, -pl - pe, 1) for (x, y) in TOP_PINS]  # top plate's locating pins
     return shell.cut(cuts).removeSplitter()
 
 
@@ -632,9 +663,9 @@ def bezel_box(grow=0.0):
 
 def make_top():
     """The top plate (dished in v3, flat here): knob well, bezel cut-out, three key openings and the RST needle hole.
-    Prints flat side down, dish up, so nothing may stick out of its underside: it has no pegs. The
-    key caps, already standing in the face openings, centre it through its own key openings; thin
-    double-sided tape holds it down."""
+    Three locating pins under it drop into holes in the shell face, so it prints top face down. The
+    key caps, already standing in the face openings, also centre it through its own key openings;
+    thin double-sided tape holds it down."""
     w, h, r = top_outline()
     t = rr_prism(w, h, r, W / 2, H / 2, 0, TOP_T)
     try:
@@ -654,6 +685,9 @@ def make_top():
         cuts.append(rr_prism(BTN_OPEN, BTN_OPEN, 1.5, x, y, -1, TOP_T + 1, a))
     cuts.append(cyl(RST_HOLE_D, sm_btns[0][0], sm_btns[0][1], -1, TOP_T + 1))
     t = t.cut(cuts)
+    pd, pl = TOP_PIN[0], TOP_PIN[1]
+    t = t.fuse([cyl(pd, x, y, -pl + 0.3, 0.01).fuse(  # with a 0.3 lead-in chamfer at the tip
+        Part.makeCone(pd / 2 - 0.3, pd / 2, 0.3, V(x, y, -pl), V(0, 0, 1))) for (x, y) in TOP_PINS])
     return t.removeSplitter()
 
 
@@ -1050,7 +1084,7 @@ def make_knob():
         keep.append(place(rib, cx, cy, 45.0 + i * 360.0 / KNOB_RIBS))
     cuts = flutes + [inside.cut(keep)]
     # bore: round over the shaft's round part, D-shaped over its flat
-    bore = cyl(EC11_SHAFT_D + 0.25, cx, cy, hub_z0 - 1, shaft_top + 0.5)  # snug once FDM shrinks it
+    bore = cyl(EC11_SHAFT_D + 0.25, cx, cy, hub_z0 - 1, shaft_top + KNOB_TIP_CLR)  # snug once FDM shrinks it
     flat = box(cx - 5, cy + EC11_SHAFT_D / 2 - EC11_FLAT + 0.1, shaft_top - EC11_FLAT_L + 0.5, cx + 5, cy + 5, shaft_top + 1)
     cuts.append(bore.cut(flat))
     mr, mang, md, mdep = KNOB_MARK
@@ -1059,25 +1093,44 @@ def make_knob():
     return k.cut(cuts).removeSplitter()
 
 
-def cap_snap(z_ceil):
-    """Four snap fingers round the stem head and the stop post, round the origin."""
-    w, t = CAP_FINGER
-    r_i = SW_HEAD / 2 + CAP_SNAP_CLR
-    r_o, r_l = r_i + t, SW_HEAD / 2 - CAP_SNAP
+def cap_grip(z_ceil, r_wall):
+    """The grip round the stem head, round the origin, a "+" of ribs out to the cap wall at r_wall:
+    two wide snap plates (long sides, along x, ribbed at the root), two short snap plates (along y,
+    ribbed down half their length), and the stop post. Every plate's lip snaps in under the head."""
     z_k = SW_PLUNGER_TOP - SW_HEAD_H - 0.05 - CAP_SNAP_DROP  # catch face, just under the head
-    z_b = z_k - 0.2 - (r_i - r_l)             # 45° lead-in below the lip
-    prof = [(r_o, z_ceil + 0.01), (r_i, z_ceil + 0.01), (r_i, z_k), (r_l, z_k), (r_l, z_k - 0.2),
-            (r_i, z_b), (r_o, z_b)]
-    f = Part.Face(Part.makePolygon([V(px, 0, pz) for (px, pz) in prof + [prof[0]]])).extrude(V(0, w, 0))
-    f.translate(V(0, -w / 2, 0))
-    parts = [place(f, 0, 0, k * 90.0) for k in range(4)]
+    land = 0.1
+
+    def plate(w, t, clr, reach):
+        """A snap plate on the +x side: free below its rib, a lip under the head, a 45° lead-in below
+        it, ending 0.1 above the switch's round platform."""
+        r_i = SW_HEAD / 2 + clr
+        r_o, r_l = r_i + t, SW_HEAD / 2 - reach
+        z_b = max(z_k - land - (r_i - r_l), C_FRONT + SW_BOSS_H + 0.1)
+        prof = [(r_o, z_ceil + 0.01), (r_i, z_ceil + 0.01), (r_i, z_k), (r_l, z_k), (r_l, z_k - land),
+                (r_i, z_b), (r_o, z_b)]
+        f = Part.Face(Part.makePolygon([V(px, 0, pz) for (px, pz) in prof + [prof[0]]])).extrude(V(0, w, 0))
+        f.translate(V(0, -w / 2, 0))
+        return f, r_o, z_b
+
+    w, t = CAP_FINGER
+    f, r_o, _ = plate(w, t, CAP_SNAP_CLR, CAP_SNAP)
+    rt, rh = CAP_FINGER_RIB
+    f = f.fuse(box(r_o - 0.01, -rt / 2, z_ceil - rh, r_wall + 0.3, rt / 2, z_ceil + 0.01))
+    parts = [place(f, 0, 0, k * 180.0) for k in range(2)]
+    sw, st, sc = CAP_SIDE
+    f, r_o, z_b = plate(sw, st, sc, CAP_SIDE_SNAP)
+    rt, share = CAP_SIDE_RIB
+    f = f.fuse(box(r_o - 0.01, -rt / 2, z_ceil - share * (z_ceil - z_b), r_wall + 0.3, rt / 2, z_ceil + 0.01))
+    parts += [place(f, 0, 0, k * 90.0) for k in (1, 3)]
     parts.append(cyl(CAP_STOP_D, 0, 0, SW_PLUNGER_TOP, z_ceil + 0.01))
-    return fuse_all(parts)  # (no sleeve: the fingers hang free from the cap top and bend along their length)
+    rd, rh = CAP_STOP_ROOT  # the post's foot: a cone into the cap top
+    parts.append(Part.makeCone(CAP_STOP_D / 2, rd / 2, rh + 0.01, V(0, 0, z_ceil - rh), V(0, 0, 1)))
+    return fuse_all(parts)
 
 
 def make_cap(i):
-    """Hollow cap with a flat top, open underneath, that clicks onto the switch stem (cap_snap).
-    Prints top down: the top comes off the bed flat, the fingers grow up from it."""
+    """Hollow cap with a flat top, open underneath, that clicks onto the switch stem (cap_grip).
+    Prints top down: the top comes off the bed flat, the grip grows up from it."""
     x, y, a = BTNS[i]
     z_flange = -FACE_T - 0.3 - BTN_FLANGE_T
     z_ceil = BTN_CAP_PROUD - CAP_TOP_T
@@ -1099,7 +1152,7 @@ def make_cap(i):
     cap = body.fuse(flange)
     inner = BTN_CAP_TOP - 2 * CAP_WALL - 0.6
     cap = cap.cut(rr_prism(inner, inner, 0.6, x, y, z_flange - 1, z_ceil, a))  # hollow
-    cap = cap.fuse(place(cap_snap(z_ceil), x, y, a))
+    cap = cap.fuse(place(cap_grip(z_ceil, inner / 2), x, y, a))
     return cap.removeSplitter()
 
 
@@ -1300,7 +1353,9 @@ def build():
         DUMMIES[n] = dummy_switch(i)
 
 
-PRESS_FITS = {("BackPlate", "RubberDots")}  # TPU plugs (the screw counterbores lean 10°)
+PRESS_FITS = {("BackPlate", "RubberDots"),  # TPU plugs (the screw counterbores lean 10°)
+              ("CapLeft", "Dummy_SwitchLeft"), ("CapMiddle", "Dummy_SwitchMiddle"),
+              ("CapRight", "Dummy_SwitchRight")}  # cap fingers pressing on the switch head
 
 
 def check_interference():
@@ -1388,8 +1443,8 @@ def add_pin_labels(doc):
 def print_pose(name, shp):
     """Rotate a part into its print orientation, resting on z = 0."""
     s = shp.copy()
-    if name in ("Shell", "Knob") or name.startswith("Cap"):
-        s.rotate(V(0, 0, 0), V(1, 0, 0), 180)       # face / knob top / visor top / cap top on the bed
+    if name in ("Shell", "Knob", "Top") or name.startswith("Cap"):
+        s.rotate(V(0, 0, 0), V(1, 0, 0), 180)       # face / knob top / top plate top / cap top on the bed
     elif name in ("BackPlate", "RubberDots"):
         s.rotate(V(0, 0, 0), V(1, 0, 0), math.degrees(ALPHA))  # desk side (plinth) on the bed
     bb = s.optimalBoundingBox()  # the fast box is loose around curved faces
