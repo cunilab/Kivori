@@ -32,8 +32,8 @@ The wire carries meaning (state, input, presentation), never pixels. Both sides 
 ### Repo layout
 
 The root host workspace and the isolated Pip firmware workspace are the current production
-boundaries. Shared crates are `no_std`, no-alloc, and the single source of truth. The proposed
-virtual Pip runner adds a separate host workspace; it is not implemented yet (ADR-0018).
+boundaries. Shared crates are `no_std`, no-alloc, and the single source of truth. The development-only
+virtual Pip runner adds a separate host workspace (ADR-0018, M2.9 S5.1).
 
 | Path | Purpose |
 |---|---|
@@ -69,13 +69,14 @@ It complements the capability/firmware-selection tests. The offline dependency g
 firmware workspaces/source roots from packaging's validated catalog plans; it requires Bun as well
 as Cargo/jq and refuses catalog discovery failure.
 
-### Proposed product-owned virtual devices (M2.9 S5)
+### Product-owned virtual devices (M2.9 S5)
 
 [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) and the
-[virtual Pip plan](./virtual-pip.md) are pending owner review before implementation. They add a
-development/test path, not another shipping product or a change to the physical device protocol.
+[virtual Pip plan](./virtual-pip.md) describe the owner-authorized development/test path. S5.1
+is implemented as a dedicated opt-in desktop example and frontend entry; later scenarios remain
+planned. It adds no shipping product or change to the physical device protocol.
 
-Each product owns its host simulator process and scenarios beside its firmware. Pip's proposed
+Each product owns its host simulator process and scenarios beside its firmware. Pip's
 runner is `firmware/pala/simulator/`; `pala` remains its permanent machine id. The runner depends
 on the production firmware library with `host-sim`, while desktop production dependencies never
 include a product firmware library or simulator. Future products do not depend on Pip's simulator.
@@ -86,12 +87,15 @@ separate development channel, never pixel messages on the product protocol. The 
 session still validates identity and capabilities. Physical discovery remains unchanged.
 
 Timestamped raw encoder/button levels enter `InputSource::drain` and the real `Runtime`; its
-`CaptureDisplay` output supplies firmware pixels. Fake OS services and an isolated settings store
+`CaptureDisplay` output supplies firmware pixels. Fake OS services and isolated in-memory settings
 exercise desktop behavior without real keyboard/media/volume, flash, eFuse or installer effects.
-The bridge must be integrated with device-task transport ownership and lifecycle, not just a new
-`SerialLink` implementation. Release/offline guards and the independent no_std build remain gates.
+The first slice has a dedicated development owner sharing production Session, RotaryPipeline,
+session synchronization and DeskRuntime; it does not start or verify the full shipping device loop.
+It owns child lifecycle/queues and compiles only with the explicit `virtual-device` feature.
+Release/offline guards and the independent no_std build remain gates.
 Interactive mode uses real elapsed time; deterministic headless firmware time does not imply
-whole-desktop time control. All of this is planned software coverage, not physical evidence.
+whole-desktop time control. Only S5.1 is implemented; the acceptance record distinguishes verified core paths from
+planned scenarios. None is physical evidence.
 
 ### State axes
 

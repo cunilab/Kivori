@@ -29,7 +29,7 @@ use esp_hal::{
 
 use kivori_assets::AssetBlob;
 use kivori_model::desk::BRIGHTNESS_DEFAULT;
-use kivori_model::{Capabilities, Rect, Rgb565};
+use kivori_model::{Rect, Rgb565};
 use kivori_protocol::identity::{ChipRecord, RECORD_LEN};
 use kivori_protocol::FirmwareVersion;
 
@@ -367,22 +367,7 @@ pub fn run_mode(
 
         firmware_version: FIRMWARE_VERSION,
 
-        capabilities: Capabilities::MASCOT_INTERACTION
-            .union(Capabilities::PHYSICAL_INPUT_V1)
-            .union(Capabilities::PRESENTATION_V1)
-            .union(Capabilities::BUTTON_INPUT_V1)
-            .union(Capabilities::DESK_STATUS_V1)
-            .union(Capabilities::ACTION_FEEDBACK_V1)
-            .union(Capabilities::DOUBLE_PRESS_V1)
-            .union(Capabilities::MEDIA_INFO_V1)
-            .union(Capabilities::CONTROL_LABELS_V1)
-            .union(Capabilities::CONTEXT_BUTTONS_V1)
-            .union(Capabilities::HOST_TAKEOVERS_V1)
-            .union(Capabilities::QUIET_ACK_V1)
-            .union(Capabilities::DEVICE_INTERNALS_V1)
-            .union(Capabilities::IDLE_LIFE_V1)
-            .union(Capabilities::MIC_STATE_V1)
-            .union(Capabilities::PRODUCT_IDENTITY_V1),
+        capabilities: hw::CAPABILITIES,
     };
 
     // Tier A (ADR-0016): a valid chip record for another product or board means this image must

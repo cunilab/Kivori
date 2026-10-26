@@ -15,11 +15,17 @@ path = "src/main.rs"
 name = "provision"
 required-features = ["device-studio"]
 
+[[example]]
+name = "virtual_device"
+required-features = ["virtual-device"]
+
 [features]
 # Device Studio (dev-only preview commands, FR-028) is on by default so `tauri dev` includes it;
 # production/release builds strip it with `--no-default-features`.
 default = ["device-studio"]
 device-studio = []
+# Explicit opt-in development tool; never enabled by defaults or product recipes.
+virtual-device = ["device-studio"]
 # DEV-ONLY: enables raw-payload hex logging paths (ADR-0005 §3). Never enable in a shipped build.
 debug-payloads = []
 

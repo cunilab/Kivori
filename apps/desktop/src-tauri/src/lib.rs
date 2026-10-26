@@ -34,7 +34,13 @@ pub mod render;
 pub mod runtime;
 pub mod startup;
 pub mod updater;
+#[cfg(feature = "virtual-device")]
+pub mod virtual_device;
 pub mod window_lifecycle;
+
+fn application_context() -> tauri::Context<tauri::Wry> {
+    tauri::generate_context!()
+}
 
 /// Launches the Tauri application runtime. Called by the thin `main.rs` binary.
 pub fn run() {
@@ -43,7 +49,7 @@ pub fn run() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .try_init();
 
-    let context = tauri::generate_context!();
+    let context = application_context();
     // App updates (ADR-0015): only a Windows release build with the endpoint and public key in its
     // config registers the updater plugin; any other build makes no request at all.
     let updates = updater::availability(context.config());

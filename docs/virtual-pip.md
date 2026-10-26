@@ -1,10 +1,10 @@
-# Virtual Pip: proposed software verification plan
+# Virtual Pip: software verification plan
 
-Status: proposed on 2026-10-26; owner review before implementation. This document plans M2.9 S5;
-it does not claim a working interactive simulator or new test results. See
+Status: implementation authorized on 2026-10-26 after owner review. M2.9 S5.1 is implemented;
+S5.2–S5.6 remain planned. See
 [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md), the
-[roadmap](./roadmap.md#s5-isolated-virtual-pip-proposed-owner-review-before-implementation) and
-[planned acceptance](./validation.md#m29-virtual-pip-software-acceptance-planned).
+[roadmap](./roadmap.md#s5-isolated-virtual-pip) and
+[acceptance evidence](./validation.md#m29-virtual-pip-software-acceptance).
 
 ## Scope and ownership
 
@@ -14,21 +14,24 @@ replace hardware adapters, not product behavior. Future products own independent
 input models and scenarios. They must not import Pip's simulator. Shared contracts are the
 existing crates; a universal simulator SDK, plugins and multi-device UI are out of scope.
 
-Proposed paths, not existing implementation:
+Implemented first-slice paths (broader scenarios remain planned):
 
 ```text
 firmware/pala/
   src/                         production no_std firmware; existing sim adapters
   simulator/                   separate host Cargo workspace and executable
     src/                       raw inputs, runner, capture and process control
-    scenarios/                 Pip-specific deterministic cases
+    # Broader scenario files arrive with later S5 items; not implemented yet.
 apps/desktop/src-tauri/src/     generic development-only child-process bridge
 apps/desktop/src/               explicit virtual connection and controls in developer UI
 ```
 
 Runner Cargo commands must name their manifest and host target, with separate target output and
 without inheriting Pip's embedded runner/linker flags. Product release recipes remain unchanged.
-The bridge selects an explicit local runner; no arbitrary shell command text, network listener,
+The dedicated `virtual_device` desktop example owns the development bridge and UI, sharing
+production Session/RotaryPipeline/DeskRuntime and session synchronization without starting the
+shipping app/device loop. No normal-app onboarding/persistence coverage is claimed yet.
+The bridge selects an explicit local runner; no arbitrary shell command text, native simulator network listener,
 virtual COM driver, fake catalog registration or bypass of identity/capability admission.
 
 ## Execution and safety boundaries
@@ -51,15 +54,17 @@ and partial I/O work, and define EOF, child failure, cancellation and cleanup. F
 must not starve protocol/input. No pixel transport is added to the product wire schema. The first
 slice must include these basics; exact framing/limits are implemented and tested with that slice.
 
-Inputs use timestamped raw levels, including quadrature transitions and button down/up. The
+Inputs use timestamped adapter-normalized levels, including quadrature transitions and button
+down/up. Physical low reads as true at this firmware port: normalized rotary rest is mask `0`,
+CW is `[2,3,1,0]` and CCW is `[1,3,2,0]` (mask bits A=0, B=1). The
 runtime owns debounce, gesture classification, ownership and event production. Current
 `ScriptedInput` snapshots and decoder-only helpers are useful unit tools but do not substitute
 for buffered-edge Runtime coverage. Existing `tests/e2e-host-sim` dispatcher/session coverage
 also remains distinct from complete Runtime-to-desktop execution.
 
 The virtual panel displays firmware `CaptureDisplay` pixels; Device Studio's separately rendered
-preview may be compared, but must not be labelled firmware execution. Device-task discovery,
-transport ownership and shutdown need integration beyond the `SerialLink` trait.
+preview may be compared, but must not be labelled firmware execution. Transport ownership and shutdown extend beyond the `SerialLink` trait: the first slice uses
+a dedicated sandbox owner. Shipping device-task discovery remains unchanged.
 
 Simulation must select fake platform services before constructing the active runtime, use a
 separate settings location and never fall back to actual keyboard/media/audio/microphone/launch
@@ -125,7 +130,7 @@ mixes and unnamed layout assumptions; test fixtures must not become shipping cat
 
 ## Implementation and evidence order
 
-The six authoritative checkboxes are [M2.9 S5](./roadmap.md#s5-isolated-virtual-pip-proposed-owner-review-before-implementation):
+The six authoritative checkboxes are [M2.9 S5](./roadmap.md#s5-isolated-virtual-pip):
 runner/vertical slice, connection faults, raw input, simulated desktop behavior, recovery rehearsal,
 then repeatable reports/CI and final boundary proof. Implement and report one item at a time.
 The first slice includes safe fake services and initial release exclusion; safety is not deferred
@@ -139,4 +144,29 @@ same firmware action trace and frame hashes. Interactive desktop timing is repor
 
 Use affected tests first and retain the no_std, offline, capability/product-identifier and release
 guards. Do not add a new dependency, common crate or framework unless the implemented slice
-demonstrates the need. Documentation review authorizes no implementation or external deployment.
+demonstrates the need. The owner authorized S5 implementation after reviewing this plan. No external deployment is
+authorized by simulator testing; report each item before proceeding.
+
+## Running the first slice
+
+From the repository root, with Bun and the pinned Rust toolchain installed:
+
+```sh
+just virtual-device          # owned Vite server + dedicated dev window + separate Pip runner
+just virtual-device-smoke    # headless real core path; writes a firmware RGB565-derived PPM
+```
+
+Port 1420 must be free; the tool binds its own Vite server and never attaches to an unknown one.
+Closing the window stops the native owner, reaps the simulator and closes the owned server. The
+launcher clears inherited firmware/flag overrides, selects the Rust host target and uses separate
+runner build output. macOS uses a local unsigned development .app under ignored target output;
+it is not installed or a signed release candidate. Linux/Windows smoke is wired into CI but local
+interactive verification was on macOS only.
+
+The UI labels simulated device and OS, displays actual firmware pixels and shows fake volume/media
+results. `Press once` schedules 120 ms raw down/up; Hold accepts pointer or Space/Enter and Release
+sends raw up. A 2 s hold failsafe prevents a missed browser release from keeping the knob held.
+Only in-memory settings are used. Do not count this as normal-app configuration/setup coverage.
+The runner pipe contract and explicit-host commands are in its
+[README](../firmware/pala/simulator/README.md). No new framework, common simulator crate or runtime
+network transport was added.

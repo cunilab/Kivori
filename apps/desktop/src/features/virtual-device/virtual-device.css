@@ -1,0 +1,49 @@
+.virtual-device {
+  max-width: 42rem;
+  margin: auto;
+  padding: 1.5rem;
+  color: var(--foreground);
+  background: var(--background);
+}
+.virtual-device h1 {
+  font-size: 1.75rem;
+  font-weight: 650;
+}
+.virtual-device h2 {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+.virtual-device section {
+  margin-top: 1.5rem;
+}
+.virtual-device p {
+  margin: 0.5rem 0;
+}
+.virtual-device canvas {
+  display: block;
+  width: min(240px, 100%);
+  height: auto;
+  background: #000;
+  image-rendering: pixelated;
+}
+.virtual-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.virtual-controls button {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.9rem;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  touch-action: none;
+}
+.virtual-controls button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.virtual-device [role='alert'] {
+  overflow-wrap: anywhere;
+}

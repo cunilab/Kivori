@@ -5,8 +5,8 @@ OS behavior, real timing. Host-sim and other host tests are never promoted to ph
 
 Current M2.9 scope, updated 2026-10-26: CAD/enclosure work is owner-managed and outside the
 software milestone. The [roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness)
-now has **13/24 complete**, including six proposed virtual Pip software items awaiting owner review
-and five existing configuration or real-use acceptance items. Earlier 13/18 and 13/19 counts are
+now has **14/24 complete**, including completed virtual Pip S5.1, five remaining virtual Pip software
+items and five existing configuration or real-use acceptance items. Earlier 13/18 and 13/19 counts are
 dated historical snapshots; the enclosure records below remain reference material for the owner
 and do not count toward current M2.9 completion.
 
@@ -14,16 +14,16 @@ Row numbers: `1.N` is row N of the old Phase 1 (device connection) checklist, `3
 rotary checklist, `2.N` are new Phase 2 rows, `G` rows are PRD gates. Tick a row only with a date and a
 measurement or observation on the same line. A phase closes only when all its rows are ticked.
 
-## M2.9 virtual Pip software acceptance (planned)
+## M2.9 virtual Pip software acceptance
 
-Status, 2026-10-26: documentation proposal only; implementation awaits owner review. No interactive
-virtual Pip runner, desktop bridge or new S5 scenario evidence is claimed. Existing host-sim and
-dispatcher/session tests retain their original scope. The [plan and pending-check map](./virtual-pip.md)
-and [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) define the proposed boundaries.
+Status, 2026-10-26: owner authorized implementation after reviewing the documentation. S5.1 is
+implemented on Andress-MacBook-Air; S5.2–S5.6 remain open. This is software evidence only. The
+[plan and pending-check map](./virtual-pip.md) and
+[ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) define the boundaries.
 
 | Roadmap item | Required software evidence | Current result |
 |---|---|---|
-| S5.1 | Real firmware Runtime, raw detents/press, real desktop handshake/action path, fake OS read-back and captured firmware screen; isolated settings, no real executors, bounded pipes and clean child exit. | NOT IMPLEMENTED / NOT RUN |
+| S5.1 | Real firmware Runtime, raw detents/press, real desktop handshake/action path, fake OS read-back and captured firmware screen; isolated settings, no real executors, bounded pipes and clean child exit. | PASS (software only); evidence below |
 | S5.2 | Identity/protocol refusal, fragmented traffic/backpressure, timeout, child exit, reconnect and no old-session action replay. | NOT IMPLEMENTED / NOT RUN |
 | S5.3 | Threshold/bounce/buffered-edge/overflow/ownership scenarios use timestamped raw input through Runtime, with expected action traces and frames. | NOT IMPLEMENTED / NOT RUN |
 | S5.4 | Profiles, microphones, media, macros, bindings and setup exercise production logic against fake OS state; unknown/failure never falsely confirms. | NOT IMPLEMENTED / NOT RUN |
@@ -39,6 +39,48 @@ cannot establish desktop timeout coverage or count toward the 8 h soak and 10 wo
 Passing S5 may close its own software tasks only. Physical rows below, native OS acceptance,
 website deployment, signatures, real BOOT/eFuse behavior and participant acceptance remain open
 until their stated evidence is recorded. CAD is owner-managed and outside S5.
+
+### S5.1 runner and complete vertical slice evidence
+
+The dedicated `virtual_device` example registers only `virtual_snapshot` and `virtual_input`.
+It does not invoke shipping app startup, USB enumeration, host notifications, updater, real OS
+services, persistent ConfigStore, flashing, eFuse or installer executors. Settings are in memory
+only, and application launch is explicitly unavailable in the simulated DeskRuntime. It reuses
+production Session, protocol admission, session synchronization, RotaryPipeline and DeskRuntime.
+This verifies those core paths, not the complete shipping `device_loop`, normal app UI, setup,
+persistence or real Windows adapters; broader scenarios remain S5.2–S5.6.
+
+| Check | Verified result |
+|---|---|
+| Standalone runner | Six host tests passed: bounded/truncated/invalid records, timestamped raw input, real handshake/Build identity, captured framebuffer and exactly three normalized CW detents. Strict runner Clippy and formatting passed. |
+| Native tests | Full opt-in library suite: 321 passed, three existing ignored. After the final capture-latch fix, all three focused bridge tests passed: record validation, hung-child timeout/reaping and capture demand surviving pending I/O. |
+| Desktop UI | Five focused tests passed, including RGB565 conversion, one pending poll, stale/error handling, pointer/keyboard release and accessible timed raw press. Typecheck and zero-warning targeted lint passed. |
+| Cross-process smoke | `just virtual-device-smoke` builds separate runner and desktop example, performs a real firmware handshake, asserts three actual firmware CW detents and fake volume 50→56, asserts the captured solid confirmed 56% bar (not autonomous mascot motion), then raw press/release yields exactly one fake media trigger. Saves `firmware/pala/simulator/target/smoke-frame.ppm`. |
+| Interactive macOS | Launched the dedicated development window, observed live firmware pixels and Connected; three interactive right turns changed fake volume from 50 to 56. The accessible Press once control produced exactly one fake media trigger. Closing the window exited the launcher, simulator and native tool with no remaining owned device process. |
+| Release exclusion | No-default-features desktop build passed; `virtual_snapshot`, `virtual_input`, `new_simulated` and the virtual marker were absent from that binary and present in the opt-in example. Production frontend build passed and excluded the virtual entry/commands; an injected virtual sentinel made the exclusion guard fail, then passed after removal. |
+| Firmware boundary | Embedded `physical-st7789` RISC-V check passed. Physical firmware and runner now share the exact same 16-capability constant; extraction preserved all previous flags. No pin map, protocol schema or release recipe changed. |
+
+Commands used: `cargo test --locked -p kivori-desktop --features virtual-device --lib`, followed by
+`cargo test --locked -p kivori-desktop --features virtual-device --lib virtual_device::tests`;
+`cargo clippy --locked -p kivori-desktop --features virtual-device --all-targets -- -D warnings`;
+`bun --filter kivori-desktop-ui test src/features/virtual-device/VirtualDevice.test.tsx`;
+UI typecheck/build and targeted ESLint/Prettier; explicit-host runner tests/Clippy; independent
+embedded check; `cargo build --locked -p kivori-desktop --no-default-features`, artifact inspection,
+product-identifier/frontend-offline checks, and frontend exclusion positive control. CI now runs
+the cross-process smoke on Linux/Windows; no remote result is claimed by this local record.
+
+The first smoke failed with only two detents: the initial bridge used active-high rest `11`.
+The production physical adapter has already inverted pull-up readings; Runtime expects normalized
+rest `00`, CW masks `[2,3,1,0]`. Corrected the bridge and added a real Runtime three-detent regression.
+Independent Sol review also required causal overlay pixels, owned UI-server readiness and retaining
+capture demand while a child request is pending; those fixes and the focused latch regression are
+included. A macOS duplicate plist linker warning was eliminated by reusing one app context.
+
+Limits: first slice exposes turns, a timed 120 ms raw press and raw hold/release with a 2 s failsafe.
+It rejects clock rollover and requires restarting the tool after a virtual reboot/error; broad
+reconnect/fault/recovery scenarios are not complete. Frame captures are requested at most 10 Hz;
+interactive time is real elapsed time and host performance is not device latency. No physical
+unit, real OS state, signing, deployment, sustained-use day or participant acceptance is claimed.
 
 ## How to run a session
 
