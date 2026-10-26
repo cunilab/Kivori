@@ -35,7 +35,7 @@
     "sharp": "0.35.5",
     "tailwindcss": "^4.3.3",
     "three": "0.186.1",
-    "typescript": "^5.6.0",
+    "typescript": "^7.0.2",
     "vitest": "^5.0.5",
     "wrangler": "4.151.1"
   }
