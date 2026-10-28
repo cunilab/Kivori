@@ -133,13 +133,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args_os().skip(1);
     let runner = PathBuf::from(
         args.next()
-            .ok_or("usage: virtual_device <runner> [--smoke <frame.ppm> | --connection-smoke]")?,
+            .ok_or("usage: virtual_device <runner> [--smoke <frame.ppm> | --connection-smoke | --desktop-smoke]")?,
     );
     let mut connection_smoke = false;
+    let mut desktop_smoke = false;
     let smoke_output = match args.next() {
         None => None,
         Some(flag) if flag == "--connection-smoke" => {
             connection_smoke = true;
+            None
+        }
+        Some(flag) if flag == "--desktop-smoke" => {
+            desktop_smoke = true;
             None
         }
         Some(flag) if flag == "--smoke" => Some(PathBuf::from(
@@ -149,6 +154,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     if args.next().is_some() {
         return Err("too many arguments".into());
+    }
+    if desktop_smoke {
+        let settings = tempfile::tempdir()?;
+        return kivori_desktop::virtual_device::desktop_smoke(&runner, settings.path())
+            .map_err(Into::into);
     }
     if connection_smoke {
         return kivori_desktop::virtual_device::connection_smoke(&runner).map_err(Into::into);

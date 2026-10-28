@@ -17,6 +17,8 @@ import {
   mockSimulateInput,
 } from '@/lib/ipc/mock';
 import type { ConnectionStatusDto } from '@/lib/ipc/types';
+import * as ipc from '@/lib/ipc';
+import { strings } from '@/lib/i18n/strings';
 import { App } from '../../../App';
 import { Onboarding } from '../Onboarding';
 import { needsRecovery } from '../steps/PlugIn';
@@ -275,6 +277,63 @@ describe('finishing', () => {
 });
 
 describe('in the app', () => {
+  it('reopens unfinished setup after a failed save, then completes on retry', async () => {
+    scenario('disconnected');
+    const save = vi
+      .spyOn(ipc, 'completeOnboarding')
+      .mockRejectedValueOnce(new Error('simulated settings write failure'));
+    try {
+      const user = userEvent.setup();
+      const first = render(<App />);
+      await heading('Welcome to Kivori');
+      await next(user, 'Get started');
+      await next(user, 'Skip this step');
+      await next(user);
+      await next(user);
+      await next(user, 'Finish');
+      expect(await screen.findByRole('alert')).toHaveTextContent('Could not finish setup');
+      expect((await ipc.getOnboarding()).completed).toBe(false);
+      first.unmount();
+
+      render(<App />);
+      await heading('Welcome to Kivori');
+      await next(user, 'Get started');
+      await next(user, 'Skip this step');
+      await next(user);
+      await next(user);
+      await next(user, 'Finish');
+      await heading('Home');
+      expect((await ipc.getOnboarding()).completed).toBe(true);
+      expect(save).toHaveBeenCalledTimes(2);
+    } finally {
+      save.mockRestore();
+    }
+  });
+
+  it('reports a failed startup setting without pretending it was applied or blocking setup', async () => {
+    scenario('disconnected');
+    const startup = vi
+      .spyOn(ipc, 'setLaunchAtLogin')
+      .mockRejectedValueOnce(new Error('simulated OS refusal'));
+    try {
+      const user = userEvent.setup();
+      render(<App />);
+      await heading('Welcome to Kivori');
+      await next(user, 'Get started');
+      await next(user, 'Skip this step');
+      await next(user);
+      await next(user);
+      await next(user, 'Finish');
+      await heading('Home');
+      expect(await screen.findByText(strings.onboarding.done.launchFailed)).toBeInTheDocument();
+      expect(mockGetStartupSettings().launchAtLogin).toBe(false);
+      expect((await ipc.getOnboarding()).completed).toBe(true);
+      expect(startup).toHaveBeenCalledWith(true);
+    } finally {
+      startup.mockRestore();
+    }
+  });
+
   it('shows once: Skip setup completes it and a relaunch goes straight to Home', async () => {
     scenario('disconnected');
     const user = userEvent.setup();

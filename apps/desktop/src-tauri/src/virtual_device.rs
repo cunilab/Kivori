@@ -26,6 +26,8 @@ pub fn context() -> tauri::Context<tauri::Wry> {
 
 mod scenarios;
 pub use scenarios::connection_smoke;
+mod desktop_scenarios;
+pub use desktop_scenarios::desktop_smoke;
 
 const MAX_LINE: usize = 400_000;
 const WIRE_CAPACITY: usize = 8192;
@@ -295,23 +297,39 @@ pub struct Sandbox {
 
 impl Sandbox {
     pub fn open(executable: &Path) -> io::Result<Self> {
+        Self::open_with(
+            executable,
+            Arc::new(FakeVolumeBackend::new(50)),
+            Arc::new(FakeInputSynth::new(Ok(()))),
+            Arc::new(platform::FakeMicBackend::new()),
+            Arc::new(platform::FakeMediaObserver::default()),
+            Arc::new(platform::FakeForeground::default()),
+        )
+    }
+
+    fn open_with(
+        executable: &Path,
+        volume: Arc<FakeVolumeBackend>,
+        synth: Arc<FakeInputSynth>,
+        mic: Arc<platform::FakeMicBackend>,
+        media: Arc<platform::FakeMediaObserver>,
+        foreground: Arc<platform::FakeForeground>,
+    ) -> io::Result<Self> {
         let mut link = ProcessLink::open(executable)?;
         let mut session = Session::new(SessionConfig::default());
         let mut manager = ConnectionManager::new();
         session
             .open(&mut link, &mut manager)
             .map_err(|_| invalid("virtual handshake could not start"))?;
-        let volume = Arc::new(FakeVolumeBackend::new(50));
-        let synth = Arc::new(FakeInputSynth::new(Ok(())));
         let services = OsServices {
             volume: volume.clone(),
             app_volume: Arc::new(platform::FakeAppVolumeBackend::new()),
-            mic: Arc::new(platform::FakeMicBackend::new()),
+            mic,
             synth: synth.clone(),
-            media: Arc::new(platform::FakeMediaObserver::default()),
+            media,
             system: Box::new(platform::system::NoSystemProbe),
             clock: || None,
-            foreground: Arc::new(platform::FakeForeground::default()),
+            foreground,
         };
         let session_generation = session.connection_generation();
         Ok(Self {

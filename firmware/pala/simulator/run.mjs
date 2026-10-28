@@ -97,6 +97,7 @@ try {
     const frame = resolve(target, 'smoke-frame.ppm');
     await run(app, [runner, '--smoke', frame]);
     await run(app, [runner, '--connection-smoke']);
+    await run(app, [runner, '--desktop-smoke']);
     console.log(`Firmware pixel artifact: ${frame}`);
   } else {
     if (process.platform === 'darwin') {
