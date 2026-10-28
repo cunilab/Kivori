@@ -51,41 +51,65 @@ fn settle(sandbox: &mut Sandbox, duration: Duration) -> Result<(), String> {
     Ok(())
 }
 
+fn wait_for(
+    sandbox: &mut Sandbox,
+    description: &str,
+    ready: impl Fn(&Snapshot) -> bool,
+) -> Result<(), String> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        sandbox.tick();
+        let snapshot = sandbox.snapshot();
+        if let Some(error) = snapshot.error {
+            return Err(error);
+        }
+        if ready(&snapshot) {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(format!(
+                "Timed out waiting for {description}: state={}, detents={}, volume={}, media={}",
+                snapshot.connection_state,
+                snapshot.detents,
+                snapshot.volume,
+                snapshot.media_triggers
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
 fn smoke(mut sandbox: Sandbox, output: PathBuf) -> Result<(), String> {
-    settle(&mut sandbox, Duration::from_secs(1))?;
+    wait_for(&mut sandbox, "firmware handshake/frame", |s| {
+        s.connected && s.frame.is_some()
+    })?;
     let initial = sandbox.snapshot();
-    if !initial.connected || initial.frame.is_none() {
-        return Err("Real firmware handshake/frame missing".into());
-    }
-    for _ in 0..3 {
+    for detents in 1..=3 {
         sandbox.input("clockwise")?;
-        settle(&mut sandbox, Duration::from_millis(100))?;
+        wait_for(&mut sandbox, "exact detent/volume result", |s| {
+            s.detents == detents && s.volume == 50 + detents as u8 * 2
+        })?;
     }
-    settle(&mut sandbox, Duration::from_millis(400))?;
-    let turned = sandbox.snapshot();
-    if turned.volume != 56 || turned.detents != 3 {
-        return Err(format!(
-            "Expected fake volume56 after three detents, got {} ({} firmware detents)",
-            turned.volume, turned.detents
-        ));
-    }
-    let volume_frame = turned.frame.as_ref().ok_or("No firmware volume frame")?;
     // Canonical overlay: 188px inner width, solid observed fill at 56%, unlike hollow preview.
     let filled = 188 * 56 / 100;
-    if !(26..26 + filled).all(|x| volume_frame[185 * 240 + x] == 0xffff)
-        || volume_frame[185 * 240 + 26 + filled] == 0xffff
-    {
-        return Err("Firmware pixels do not show the confirmed 56% volume overlay".into());
-    }
+    wait_for(&mut sandbox, "confirmed firmware volume pixels", |s| {
+        s.frame.as_ref().is_some_and(|frame| {
+            (26..26 + filled).all(|x| frame[185 * 240 + x] == 0xffff)
+                && frame[185 * 240 + 26 + filled] != 0xffff
+        })
+    })?;
+    // Rotary ownership must expire before the independent knob press begins.
+    settle(&mut sandbox, Duration::from_millis(300))?;
     sandbox.input("press")?;
     settle(&mut sandbox, Duration::from_millis(120))?;
     sandbox.input("release")?;
-    settle(&mut sandbox, Duration::from_millis(650))?;
+    wait_for(&mut sandbox, "fake media action", |s| s.media_triggers == 1)?;
+    settle(&mut sandbox, Duration::from_millis(250))?;
     let result = sandbox.snapshot();
-    if result.media_triggers != 1 {
+    if result.media_triggers != 1 || result.detents != 3 || result.volume != 56 {
         return Err(format!(
-            "Expected exactly one fake media trigger, got {}",
-            result.media_triggers
+            "Expected volume56, three detents and one media trigger; got {}, {}, {}",
+            result.volume, result.detents, result.media_triggers
         ));
     }
     let frame = result.frame.ok_or("Firmware frame missing")?;
