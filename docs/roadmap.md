@@ -379,7 +379,7 @@ M2.8 does not relax any paid-beta gate.
 
 Scope update, 2026-10-26: focus on app, firmware and website software. CAD/enclosure work is
 owner-managed and excluded from M2.9. Virtual Pip adds six software items in S5; the owner
-authorized implementation after reviewing the plan. Current progress is **15/24 complete**: S5.1–S5.2 are implemented; four further virtual Pip
+authorized implementation after reviewing the plan. Progress on 2026-10-28 is **16/24 complete**: S5.1–S5.3 are implemented; three further virtual Pip
 items and the existing five configuration or real-use acceptance items remain open. Earlier
 13/18 and 13/19 counts are historical scope snapshots; existing CAD files and validation records
 are retained for the owner's reference.
@@ -558,10 +558,14 @@ These are software verification tasks, not replacements for S4 physical acceptan
   regression (fixed with 60 passing tests) and Windows helper startup failure; the opt-in example
   now links Tauri's generated Windows activation resource, verified by the Windows smoke.
   See [S5.2 evidence](./validation.md#s52-connection-and-interruption-evidence).
-- [ ] **S5.3 — Raw input fidelity:** exercise rotary quadrature, invalid transitions, bounce,
+- [x] **S5.3 — Raw input fidelity:** exercise rotary quadrature, invalid transitions, bounce,
   press/hold/double thresholds, timestamped buffered edges, cross-control ownership, overflow and
   recovery cancellation using the production runtime. Trace expected versus actual actions and
   captured frames; a virtual reboot checks lifecycle policy, not physical reset circuitry.
+  Implemented in the product-owned `--input-smoke`: 12 runner tests, exact traces, causal recovery
+  pixels and 32 scenario/positive-control PASS markers. Linux/Windows combined smoke passes at
+  `08fc1ec`; oversized input-port overflow injection is distinguished from physical ISR behavior.
+  See [S5.3 evidence](./validation.md#s53-raw-input-fidelity-evidence).
 - [ ] **S5.4 — Simulated desktop behavior:** exercise profiles/pinning, Protected contexts,
   microphone coverage/hotplug/failures, volume/media read-back, macros, saved bindings and setup
   against isolated fake OS services. Include unknown, failure and interrupted outcomes so simulated
@@ -579,7 +583,7 @@ These are software verification tasks, not replacements for S4 physical acceptan
   Whole-app time acceleration is out of scope; firmware virtual time cannot prove desktop deadlines.
 
 Planned acceptance records: [S5 evidence table](./validation.md#m29-virtual-pip-software-acceptance).
-S5.1–S5.2 are checked with software evidence; S5.3–S5.6 remain unchecked. Future products own independent
+S5.1–S5.3 are checked with software evidence; S5.4–S5.6 remain unchecked. Future products own independent
 simulators, not dependencies on Pip. No physical acceptance row is closed by this work.
 
 **Exit:** S1–S3 regressions and S5 checks pass, S4 evidence is recorded and reviewed, and no unresolved issue can

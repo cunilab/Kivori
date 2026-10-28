@@ -3,9 +3,9 @@
 The one checklist for everything CI cannot prove: real ESP32-C3 + ST7789 + HW-040 hardware, real
 OS behavior, real timing. Host-sim and other host tests are never promoted to physical evidence.
 
-Current M2.9 scope, updated 2026-10-26: CAD/enclosure work is owner-managed and outside the
+Current M2.9 scope, updated 2026-10-28: CAD/enclosure work is owner-managed and outside the
 software milestone. The [roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness)
-now has **15/24 complete**, including completed virtual Pip S5.1–S5.2, four remaining virtual Pip software
+now has **16/24 complete**, including completed virtual Pip S5.1–S5.3, three remaining virtual Pip software
 items and five existing configuration or real-use acceptance items. Earlier 13/18 and 13/19 counts are
 dated historical snapshots; the enclosure records below remain reference material for the owner
 and do not count toward current M2.9 completion.
@@ -16,9 +16,9 @@ measurement or observation on the same line. A phase closes only when all its ro
 
 ## M2.9 virtual Pip software acceptance
 
-Status, 2026-10-26: owner authorized implementation after reviewing the documentation. S5.1–S5.2 are
+Status, 2026-10-28: owner authorized implementation after reviewing the documentation. S5.1–S5.3 are
 implemented with local macOS and Linux/Windows CI evidence;
-S5.3–S5.6 remain planned. This is software evidence only. The
+S5.4–S5.6 remain planned. This is software evidence only. The
 [plan and pending-check map](./virtual-pip.md) and
 [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) define the boundaries.
 
@@ -26,7 +26,7 @@ S5.3–S5.6 remain planned. This is software evidence only. The
 |---|---|---|
 | S5.1 | Real firmware Runtime, raw detents/press, real desktop handshake/action path, fake OS read-back and captured firmware screen; isolated settings, no real executors, bounded pipes and clean child exit. | PASS (software only); evidence below |
 | S5.2 | Identity/protocol refusal, fragmented traffic/backpressure, timeout, child exit, reconnect and no old-session action replay. | PASS (software only); local macOS and Linux/Windows CI |
-| S5.3 | Threshold/bounce/buffered-edge/overflow/ownership scenarios use timestamped raw input through Runtime, with expected action traces and frames. | NOT IMPLEMENTED / NOT RUN |
+| S5.3 | Threshold/bounce/buffered-edge/overflow/ownership scenarios use timestamped raw input through Runtime, with expected action traces and frames. | PASS (software only); local macOS and Linux/Windows combined smoke |
 | S5.4 | Profiles, microphones, media, macros, bindings and setup exercise production logic against fake OS state; unknown/failure never falsely confirms. | NOT IMPLEMENTED / NOT RUN |
 | S5.5 | Fake flash/install executors exercise production recovery/admission/compatibility decisions; no real process, eFuse or update side effect. | NOT IMPLEMENTED / NOT RUN |
 | S5.6 | Deterministic headless replay/report, CI assertions, offline and release guard positive controls, independent embedded build and production exclusion proof. | NOT IMPLEMENTED / NOT RUN |
@@ -137,9 +137,64 @@ Windows Device Studio startup and the [Windows installer build](https://github.c
 also passed. All 15 applicable checks passed at `65a17a9`; optional macOS packaging was skipped.
 These are CI software results, not physical-device or signed-install acceptance.
 
-Remaining scope: S5.3 input threshold/bounce matrices, S5.4 full configuration/setup/native-OS
-models, S5.5 recovery/install fakes and S5.6 full replay/reporting remain open. Physical USB/driver,
+At the S5.2 checkpoint, input threshold/bounce matrices remained S5.3; their later results are
+recorded below. Remaining scope: S5.4 full configuration/setup/native-OS models, S5.5 recovery/install
+fakes and S5.6 full replay/reporting remain open. Physical USB/driver,
 board reset, actual OS actions, signing, CAD and sustained-use acceptance are not simulated away.
+
+### S5.3 raw input fidelity evidence
+
+Implemented on Andress-MacBook-Air, 2026-10-28. The product-owned runner's `--input-smoke`
+uses injected firmware milliseconds, its real `Simulator::step`, production `Runtime`, raw
+`InputSource::drain`, negotiated protocol and captured RGB565 frames. It asserts complete decoded
+input-event traces (control, kind and firmware emission timestamp) and current session nonce;
+settling ticks reject extra events. These are firmware logical actions, not desktop OS actions.
+
+| Scenario | Required result asserted by the suite |
+|---|---|
+| CW/CCW quadrature | One correctly directed detent with gesture start/end; illegal two-bit changes, partial cycles and rest bounce produce none. A subsequent full cycle works. |
+| Switch boundaries and bounce | 19 ms is ignored; 20 ms is a Press. 499 ms is Press, 500 and 1999 ms are Hold, 2000 ms enters recovery without a normal action. Contact bounce produces one Press. |
+| Negotiated double press | First press waits; a 249 ms second-down gap produces one DoublePress, while 250/251 ms produce two separate Press events. |
+| Buffered history | Two completed presses on each of the knob and three contextual switches retain their classification when delivered together after a long tick gap. |
+| Control ownership | Knob hold swallows rotation, simultaneous contextual downs do not chord, an earlier contextual press suppresses the knob press, and fresh input works after rotary ownership expires. |
+| Bounds and overflow | 128 edges are accepted; 129 are refused before advancing simulator time, then a valid press works. A separate oversized input-port drain exercises Runtime's defensive overflow branch and preserves final release plus the next press without extra actions. |
+| Session/recovery lifecycle | Session renewal cancels a partial press. A buffered release cancels recovery even when the next tick is beyond the reboot deadline. An uninterrupted recovery survives session renewal and requests reboot at exactly 10000 ms from down, refuses later ticks, and a fresh runtime accepts input. |
+
+The runner checks complete, nonblank 240×240 captures. Settled trace cases print actual events,
+frame FNV-1a 64-bit hashes and virtual time. Recovery capture differs from a same-time no-input
+control; release produces a different capture, with reboot cancellation asserted separately. Hashes identify captured frames; fixed golden-frame comparison
+and general replay reports remain S5.6. The normal pipe JSON schema and its 128-edge bound are
+unchanged. Runtime's 129-sample capacity fits that bound plus final levels, so the defensive overflow
+case explicitly bypasses only the request bound: it is input-port fault injection, not evidence for
+the physical GPIO interrupt queue. Desktop real-time deadlines and OS dispatch are not accelerated.
+
+Code head `79fba30`: all 12 runner tests, strict runner Clippy, formatting and the standalone
+input smoke passed locally. The command emits 32 PASS markers, including repeated positive controls;
+these are not 32 separate unit tests. Two standalone runs produced byte-identical event traces and
+frame hashes. A normal JSON request still returned one valid response; an unknown CLI argument
+failed nonzero with no stdout. Its explicit 2 MiB worker stack also passed when called from
+a 1 MiB test thread, independently verified by Sol review with no actionable findings. The normal
+JSON pipe path retains its existing stack and behavior. Linux and Windows passed the combined
+S5.1/S5.2/S5.3 smoke at `79fba30` in [host CI](https://github.com/cunilab/Kivori/actions/runs/40687312866).
+All 15 applicable CI checks passed on that code head; optional macOS packaging was skipped.
+The initial local combined run passed the new suite and all four bridge tests but exposed the
+older vertical-slice smoke's fixed-duration assumptions: readiness was absent at its one-second
+check, and a retry observed only two of three detents by its fixed check. The follow-up harness
+uses five-second bounded observed-state waits for readiness, exact detent/volume counts, confirmed
+pixels and one media result. Intentional 300 ms rotary separation, 120 ms press timing, negative
+settling and final exact counts remain. Independent review caught and corrected the need to retain
+rotary separation. This changes functional synchronization, not latency acceptance.
+At follow-up code head `08fc1ec`, the final macOS combined smoke passed all 12 runner tests,
+four bridge tests, 32 S5.3 PASS markers, the original vertical slice and all nine S5.2 scenarios.
+Strict Clippy for the opt-in native example also passed. Affected identifier, dependency-boundary
+and offline guards passed; 100 local documentation links/anchors and the 16-complete/8-open
+roadmap count were verified. All 15 applicable checks also passed at `08fc1ec`, including the
+corrected Linux/Windows smoke; optional macOS packaging was skipped. See the final
+[host CI](https://github.com/cunilab/Kivori/actions/runs/40690522627) and
+[packaging CI](https://github.com/cunilab/Kivori/actions/runs/40690522626).
+The final documentation-only status commit has separate CI and does not change that tested code.
+No production firmware behavior, thresholds, native IPC or frontend controls change.
+Physical electrical behavior, display scan-out, real reset circuitry and timing remain unverified.
 
 ## How to run a session
 

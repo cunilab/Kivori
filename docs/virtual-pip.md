@@ -1,7 +1,7 @@
 # Virtual Pip: software verification plan
 
-Status: implementation authorized on 2026-10-26 after owner review. M2.9 S5.1–S5.2 are implemented
-and verified locally and in Linux/Windows CI; S5.3–S5.6 remain planned. See
+Status: implementation authorized on 2026-10-26 after owner review. M2.9 S5.1–S5.3 are implemented
+and verified locally and in Linux/Windows CI; S5.4–S5.6 remain planned. See
 [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md), the
 [roadmap](./roadmap.md#s5-isolated-virtual-pip) and
 [acceptance evidence](./validation.md#m29-virtual-pip-software-acceptance).
@@ -14,14 +14,14 @@ replace hardware adapters, not product behavior. Future products own independent
 input models and scenarios. They must not import Pip's simulator. Shared contracts are the
 existing crates; a universal simulator SDK, plugins and multi-device UI are out of scope.
 
-Implemented first-slice paths (broader scenarios remain planned):
+Implemented paths (S5.4–S5.6 scenarios remain planned):
 
 ```text
 firmware/pala/
   src/                         production no_std firmware; existing sim adapters
   simulator/                   separate host Cargo workspace and executable
     src/                       raw inputs, runner, capture and process control
-    # Broader scenario files arrive with later S5 items; not implemented yet.
+    src/input_scenarios.rs     deterministic raw-input cases through production Runtime
 apps/desktop/src-tauri/src/     generic development-only child-process bridge
 apps/desktop/src/               explicit virtual connection and controls in developer UI
 ```
@@ -186,3 +186,13 @@ existing usable connection. These controls remain outside the production protoco
 Use Reconnect after a simulated error/reboot; only clock rollover still requires restarting the tool.
 The smoke command includes nine connection scenarios with real desktop time and bounded deadlines;
 see [results and CI evidence](./validation.md#s52-connection-and-interruption-evidence).
+
+## Raw input scenarios (S5.3)
+
+The product-owned runner adds `--input-smoke`, also run by `just virtual-device-smoke`. It drives
+raw timestamped levels through the actual firmware runtime and checks complete wire-event traces,
+current session, captures and recovery lifecycle. Coverage and limits are recorded in
+[S5.3 evidence](./validation.md#s53-raw-input-fidelity-evidence). No new desktop command or
+production wire message is added. Normal invocation still serves bounded newline-delimited JSON.
+Firmware milliseconds are injected; desktop deadlines and physical timing are not simulated by
+this mode. Input-port overflow injection is explicitly distinct from a physical ISR queue test.

@@ -62,7 +62,7 @@ without arguments retains the pipe contract above. Unknown CLI arguments fail no
 The suite uses the same `Simulator::step`, actual firmware `Runtime`, timestamped `InputSource`
 edges, negotiated protocol and RGB565 capture. It compares complete decoded input-event traces
 (control, kind and firmware emission timestamp), checks the current nonce, then settles each case
-to reject extra actions. Every passing case prints the actual trace, capture FNV-1a 64-bit hash and
+to reject extra actions. Settled trace cases print the actual events, capture FNV-1a 64-bit hash and
 virtual firmware time; a mismatch fails the process. The hashes identify actual frames, rather than
 claiming physical panel output or acting as fixed renderer golden images.
 
