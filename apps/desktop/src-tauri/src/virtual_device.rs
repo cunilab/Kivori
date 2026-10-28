@@ -28,6 +28,8 @@ mod scenarios;
 pub use scenarios::connection_smoke;
 mod desktop_scenarios;
 pub use desktop_scenarios::desktop_smoke;
+mod recovery_scenarios;
+pub use recovery_scenarios::recovery_smoke;
 
 const MAX_LINE: usize = 400_000;
 const WIRE_CAPACITY: usize = 8192;

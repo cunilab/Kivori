@@ -137,6 +137,31 @@ describe('firmware update', () => {
     });
   });
 
+  it('keeps accepted flashing unverified when reconnect later times out', async () => {
+    const waiting: FirmwareStatusDto = {
+      ...ready,
+      phase: 'reconnecting',
+      message: 'Firmware flashed. Waiting for verification.',
+    };
+    bridge.flash.mockImplementation(async () => {
+      bridge.get.mockResolvedValue(waiting);
+    });
+    const user = userEvent.setup();
+    const view = render(<FirmwareUpdate connected />);
+    await screen.findByText(ready.message);
+    await user.click(screen.getByRole('button', { name: 'Flash firmware' }));
+    await user.click(await screen.findByRole('button', { name: 'Flash now' }));
+    await screen.findByText(waiting.message);
+    expect(screen.getByRole('button', { name: 'Updating firmware…' })).toBeDisabled();
+    view.rerender(<FirmwareUpdate connected={false} />);
+    bridge.get.mockResolvedValue({ ...ready, phase: 'failed', failure: 'reconnectTimedOut' });
+    await screen.findByText(failureMessage('reconnectTimedOut'), {}, { timeout: 2500 });
+    expect(screen.queryByText('Firmware installed.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Flash firmware' })).toBeDisabled();
+    expect(bridge.flash).toHaveBeenCalledTimes(1);
+    expect(bridge.restore).not.toHaveBeenCalled();
+  });
+
   it('shows a rejected request and allows retry', async () => {
     bridge.flash.mockRejectedValue('The device disconnected.');
     const user = userEvent.setup();
