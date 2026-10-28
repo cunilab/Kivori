@@ -379,7 +379,7 @@ M2.8 does not relax any paid-beta gate.
 
 Scope update, 2026-10-26: focus on app, firmware and website software. CAD/enclosure work is
 owner-managed and excluded from M2.9. Virtual Pip adds six software items in S5; the owner
-authorized implementation after reviewing the plan. Current progress is **14/24 complete**: S5.1 is implemented; five further virtual Pip
+authorized implementation after reviewing the plan. Current progress is **15/24 complete**: S5.1–S5.2 are implemented; four further virtual Pip
 items and the existing five configuration or real-use acceptance items remain open. Earlier
 13/18 and 13/19 counts are historical scope snapshots; existing CAD files and validation records
 are retained for the owner's reference.
@@ -549,14 +549,14 @@ These are software verification tasks, not replacements for S4 physical acceptan
   app setup/device-loop integration is not claimed. Six runner tests, native/UI checks and a
   cross-process smoke verify three actual detents, fake volume 50→56, confirmed firmware pixels
   and one fake media trigger. See the S5 evidence record; review this slice before widening it.
-- [ ] **S5.2 — Connection and interruption scenarios:** cover protocol/identity rejection,
+- [x] **S5.2 — Connection and interruption scenarios:** cover protocol/identity rejection,
   fragmented traffic, bounded backpressure, heartbeat loss, child exit and disconnect/reconnect.
   Session reset must clear stale input/actions and recover to one usable connection. Keep physical
   USB discovery unchanged; explicit simulator selection never bypasses identity/capability checks.
-  Implementation candidate: nine cross-process scenarios, bounded transport tests and generation-
-  checked UI inputs pass locally. S5.2 stays unchecked until the Windows smoke is verified; prior
-  S5.1 CI exposed a release-guard scan regression (fixed with 60 passing tests) and Windows helper
-  startup failure. The opt-in example now links Tauri's generated Windows activation resource.
+  Nine cross-process scenarios, bounded transport tests and generation-checked UI inputs pass
+  locally and in Linux/Windows CI at `65a17a9`. S5.1 CI also exposed a release-guard scan
+  regression (fixed with 60 passing tests) and Windows helper startup failure; the opt-in example
+  now links Tauri's generated Windows activation resource, verified by the Windows smoke.
   See [S5.2 evidence](./validation.md#s52-connection-and-interruption-evidence).
 - [ ] **S5.3 — Raw input fidelity:** exercise rotary quadrature, invalid transitions, bounce,
   press/hold/double thresholds, timestamped buffered edges, cross-control ownership, overflow and
@@ -579,7 +579,7 @@ These are software verification tasks, not replacements for S4 physical acceptan
   Whole-app time acceleration is out of scope; firmware virtual time cannot prove desktop deadlines.
 
 Planned acceptance records: [S5 evidence table](./validation.md#m29-virtual-pip-software-acceptance).
-S5.1 is checked with software evidence; S5.2–S5.6 remain unchecked. Future products own independent
+S5.1–S5.2 are checked with software evidence; S5.3–S5.6 remain unchecked. Future products own independent
 simulators, not dependencies on Pip. No physical acceptance row is closed by this work.
 
 **Exit:** S1–S3 regressions and S5 checks pass, S4 evidence is recorded and reviewed, and no unresolved issue can

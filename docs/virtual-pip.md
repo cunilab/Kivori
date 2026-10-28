@@ -1,7 +1,7 @@
 # Virtual Pip: software verification plan
 
-Status: implementation authorized on 2026-10-26 after owner review. M2.9 S5.1 is implemented;
-S5.2 is an implemented candidate awaiting Windows CI; S5.3–S5.6 remain planned. See
+Status: implementation authorized on 2026-10-26 after owner review. M2.9 S5.1–S5.2 are implemented
+and verified locally and in Linux/Windows CI; S5.3–S5.6 remain planned. See
 [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md), the
 [roadmap](./roadmap.md#s5-isolated-virtual-pip) and
 [acceptance evidence](./validation.md#m29-virtual-pip-software-acceptance).
@@ -171,7 +171,7 @@ The runner pipe contract and explicit-host commands are in its
 [README](../firmware/pala/simulator/README.md). No new framework, common simulator crate or runtime
 network transport was added.
 
-## Connection and fault controls (S5.2 candidate)
+## Connection and fault controls (S5.2)
 
 The development window adds Disconnect, Reconnect and a fixed Fault mode selector. Reconnect
 always starts a fresh normal child/session, retaining fake OS state but dropping old wire, raw
@@ -185,4 +185,4 @@ and `exit` (actual child EOF). Identity/protocol modes start a fresh child; sile
 existing usable connection. These controls remain outside the production protocol and release UI.
 Use Reconnect after a simulated error/reboot; only clock rollover still requires restarting the tool.
 The smoke command includes nine connection scenarios with real desktop time and bounded deadlines;
-see [results and Windows prerequisite](./validation.md#s52-connection-and-interruption-evidence).
+see [results and CI evidence](./validation.md#s52-connection-and-interruption-evidence).

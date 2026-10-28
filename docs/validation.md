@@ -5,7 +5,7 @@ OS behavior, real timing. Host-sim and other host tests are never promoted to ph
 
 Current M2.9 scope, updated 2026-10-26: CAD/enclosure work is owner-managed and outside the
 software milestone. The [roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness)
-now has **14/24 complete**, including completed virtual Pip S5.1, five remaining virtual Pip software
+now has **15/24 complete**, including completed virtual Pip S5.1–S5.2, four remaining virtual Pip software
 items and five existing configuration or real-use acceptance items. Earlier 13/18 and 13/19 counts are
 dated historical snapshots; the enclosure records below remain reference material for the owner
 and do not count toward current M2.9 completion.
@@ -16,8 +16,8 @@ measurement or observation on the same line. A phase closes only when all its ro
 
 ## M2.9 virtual Pip software acceptance
 
-Status, 2026-10-26: owner authorized implementation after reviewing the documentation. S5.1 is
-implemented on Andress-MacBook-Air; S5.2 is an implemented candidate awaiting Windows CI, and
+Status, 2026-10-26: owner authorized implementation after reviewing the documentation. S5.1–S5.2 are
+implemented with local macOS and Linux/Windows CI evidence;
 S5.3–S5.6 remain planned. This is software evidence only. The
 [plan and pending-check map](./virtual-pip.md) and
 [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) define the boundaries.
@@ -25,7 +25,7 @@ S5.3–S5.6 remain planned. This is software evidence only. The
 | Roadmap item | Required software evidence | Current result |
 |---|---|---|
 | S5.1 | Real firmware Runtime, raw detents/press, real desktop handshake/action path, fake OS read-back and captured firmware screen; isolated settings, no real executors, bounded pipes and clean child exit. | PASS (software only); evidence below |
-| S5.2 | Identity/protocol refusal, fragmented traffic/backpressure, timeout, child exit, reconnect and no old-session action replay. | LOCAL PASS; Windows CI pending |
+| S5.2 | Identity/protocol refusal, fragmented traffic/backpressure, timeout, child exit, reconnect and no old-session action replay. | PASS (software only); local macOS and Linux/Windows CI |
 | S5.3 | Threshold/bounce/buffered-edge/overflow/ownership scenarios use timestamped raw input through Runtime, with expected action traces and frames. | NOT IMPLEMENTED / NOT RUN |
 | S5.4 | Profiles, microphones, media, macros, bindings and setup exercise production logic against fake OS state; unknown/failure never falsely confirms. | NOT IMPLEMENTED / NOT RUN |
 | S5.5 | Fake flash/install executors exercise production recovery/admission/compatibility decisions; no real process, eFuse or update side effect. | NOT IMPLEMENTED / NOT RUN |
@@ -85,8 +85,7 @@ unit, real OS state, signing, deployment, sustained-use day or participant accep
 
 ### S5.2 connection and interruption evidence
 
-Implementation candidate on Andress-MacBook-Air, 2026-10-26. S5.2 remains unchecked pending Windows
-CI verification. `just virtual-device-smoke` now also runs `--connection-smoke`: a separate fresh
+Implemented and verified on Andress-MacBook-Air and Linux/Windows CI, 2026-10-26. `just virtual-device-smoke` now also runs `--connection-smoke`: a separate fresh
 sandbox executes these nine real cross-process scenarios, without a GUI, hardware or real OS actions:
 
 | Scenario | Local verified result |
@@ -109,6 +108,12 @@ canvas clearing/input gating and generation-bound press/release through blur/unm
 checks the generation under the same sandbox mutex before enqueueing input. Connection commands
 accept a fixed action list, never paths, shell text or physical ports.
 
+Interactive macOS verification used the owned development window: Disconnect cleared the display
+and disabled raw controls; Reconnect advanced the generation. Fragmented mode completed a detent
+(fake volume 50→52). Wrong-major mode showed the protocol refusal with inputs disabled; Reconnect
+returned to normal generation 5, retained volume 52 and a fresh Press once produced exactly one
+media trigger. Closing the window stopped the launcher with exit code 0.
+
 Strict native/runner Clippy, UI build/typecheck/lint, product identifiers, frontend offline and
 production frontend exclusion checks passed locally. Independent Sol source review found no
 remaining actionable issue, including the generation boundary and release-guard change.
@@ -125,8 +130,12 @@ virtual GUI example exited with code 57 before a smoke success marker. Logs did 
 underlying OS cause. Installed Tauri build sources showed its generated resource is linked to
 binary targets only; the MSVC opt-in example now links the same `OUT_DIR/resource.lib`, including
 the activation manifest. The shipping build path is unchanged. CI uses Node for child-process
-status reporting, and failures now identify scenario arguments. Windows execution must confirm this
-fix; a passing local Mac run is not promoted to Windows evidence.
+status reporting, and failures now identify scenario arguments. At code head `65a17a9`, both
+Linux and Windows CI passed the complete virtual-device smoke, including all nine S5.2 scenarios;
+this verifies the Windows example startup fix. See the [host CI run](https://github.com/cunilab/Kivori/actions/runs/40329642928).
+Windows Device Studio startup and the [Windows installer build](https://github.com/cunilab/Kivori/actions/runs/40329642977)
+also passed. All 15 applicable checks passed at `65a17a9`; optional macOS packaging was skipped.
+These are CI software results, not physical-device or signed-install acceptance.
 
 Remaining scope: S5.3 input threshold/bounce matrices, S5.4 full configuration/setup/native-OS
 models, S5.5 recovery/install fakes and S5.6 full replay/reporting remain open. Physical USB/driver,
