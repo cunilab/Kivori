@@ -1,7 +1,7 @@
 # Virtual Pip: software verification plan
 
-Status: implementation authorized on 2026-10-26 after owner review. M2.9 S5.1–S5.3 are implemented
-and verified locally and in Linux/Windows CI; S5.4–S5.6 remain planned. See
+Status: implementation authorized on 2026-10-26 after owner review. M2.9 S5.1–S5.4 are implemented
+and verified locally and in Linux/Windows CI; S5.5–S5.6 remain planned. See
 [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md), the
 [roadmap](./roadmap.md#s5-isolated-virtual-pip) and
 [acceptance evidence](./validation.md#m29-virtual-pip-software-acceptance).
@@ -14,7 +14,7 @@ replace hardware adapters, not product behavior. Future products own independent
 input models and scenarios. They must not import Pip's simulator. Shared contracts are the
 existing crates; a universal simulator SDK, plugins and multi-device UI are out of scope.
 
-Implemented paths (S5.4–S5.6 scenarios remain planned):
+Implemented paths (S5.5–S5.6 scenarios remain planned):
 
 ```text
 firmware/pala/
@@ -30,7 +30,8 @@ Runner Cargo commands must name their manifest and host target, with separate ta
 without inheriting Pip's embedded runner/linker flags. Product release recipes remain unchanged.
 The dedicated `virtual_device` desktop example owns the development bridge and UI, sharing
 production Session/RotaryPipeline/DeskRuntime and session synchronization without starting the
-shipping app/device loop. No normal-app onboarding/persistence coverage is claimed yet.
+shipping app/device loop. S5.4 separately checks temporary ConfigStore persistence and setup UI
+contracts; it does not establish the shipping app's native setup/device-loop integration.
 The bridge selects an explicit local runner; no arbitrary shell command text, native simulator network listener,
 virtual COM driver, fake catalog registration or bypass of identity/capability admission.
 
@@ -196,3 +197,13 @@ current session, captures and recovery lifecycle. Coverage and limits are record
 production wire message is added. Normal invocation still serves bounded newline-delimited JSON.
 Firmware milliseconds are injected; desktop deadlines and physical timing are not simulated by
 this mode. Input-port overflow injection is explicitly distinct from a physical ISR queue test.
+
+## Simulated desktop scenarios (S5.4)
+
+The native development example's `--desktop-smoke` runs production desktop policies with existing
+fake OS backends and a CLI-owned disposable configuration directory. The normal development window
+retains memory-only settings. Raw firmware/session cases and direct desktop action tests are
+labelled separately; setup UI is checked with the existing browser mock rather than presented as
+a native IPC-to-runner path. See [S5.4 evidence](./validation.md#s54-simulated-desktop-behavior-evidence)
+for verified layers and limits. The smoke launcher includes these cases; production releases must
+omit the `PASS S5.4` marker, with a positive control in the opt-in example.

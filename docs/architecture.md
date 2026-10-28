@@ -72,9 +72,9 @@ as Cargo/jq and refuses catalog discovery failure.
 ### Product-owned virtual devices (M2.9 S5)
 
 [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) and the
-[virtual Pip plan](./virtual-pip.md) describe the owner-authorized development/test path. S5.1–S5.3
+[virtual Pip plan](./virtual-pip.md) describe the owner-authorized development/test path. S5.1–S5.4
 are implemented as a dedicated opt-in desktop example and frontend entry with connection/fault
-and raw-input scenarios; S5.4–S5.6 remain planned. It adds no shipping product
+and raw-input/desktop-policy scenarios; S5.5–S5.6 remain planned. It adds no shipping product
 or change to the physical device protocol.
 
 Each product owns its host simulator process and scenarios beside its firmware. Pip's
@@ -89,13 +89,16 @@ session still validates identity and capabilities. Physical discovery remains un
 
 Timestamped raw encoder/button levels enter `InputSource::drain` and the real `Runtime`; its
 `CaptureDisplay` output supplies firmware pixels. Fake OS services and isolated in-memory settings
-exercise desktop behavior without real keyboard/media/volume, flash, eFuse or installer effects.
+exercise interactive desktop behavior without real keyboard/media/volume, flash, eFuse or installer
+effects. S5.4's native smoke additionally owns a disposable directory for production ConfigStore
+save/reopen checks. Its setup UI tests use browser IPC mocks; they do not verify a native
+WebView-to-runner setup flow.
 The first slice has a dedicated development owner sharing production Session, RotaryPipeline,
 session synchronization and DeskRuntime; it does not start or verify the full shipping device loop.
 It owns child lifecycle/queues and compiles only with the explicit `virtual-device` feature.
 Release/offline guards and the independent no_std build remain gates.
 Interactive mode uses real elapsed time; deterministic headless firmware time does not imply
-whole-desktop time control. S5.1–S5.3 have local macOS and Linux/Windows CI evidence;
+whole-desktop time control. S5.1–S5.4 have local macOS and Linux/Windows CI evidence;
 see the acceptance record for exact exercised layers and source heads.
 S5.3 uses a runner-only mode with an explicit stack budget, exact logical event traces and
 firmware captures. Its oversized input-port injection does not test the physical interrupt queue.

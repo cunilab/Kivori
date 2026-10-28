@@ -3,9 +3,9 @@
 The one checklist for everything CI cannot prove: real ESP32-C3 + ST7789 + HW-040 hardware, real
 OS behavior, real timing. Host-sim and other host tests are never promoted to physical evidence.
 
-Current M2.9 scope, updated 2026-10-28: CAD/enclosure work is owner-managed and outside the
+Current M2.9 scope, updated 2026-10-29: CAD/enclosure work is owner-managed and outside the
 software milestone. The [roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness)
-now has **16/24 complete**, including completed virtual Pip S5.1–S5.3, three remaining virtual Pip software
+now has **17/24 complete**, including completed virtual Pip S5.1–S5.4, two remaining virtual Pip software
 items and five existing configuration or real-use acceptance items. Earlier 13/18 and 13/19 counts are
 dated historical snapshots; the enclosure records below remain reference material for the owner
 and do not count toward current M2.9 completion.
@@ -16,9 +16,9 @@ measurement or observation on the same line. A phase closes only when all its ro
 
 ## M2.9 virtual Pip software acceptance
 
-Status, 2026-10-28: owner authorized implementation after reviewing the documentation. S5.1–S5.3 are
+Status, 2026-10-29: owner authorized implementation after reviewing the documentation. S5.1–S5.4 are
 implemented with local macOS and Linux/Windows CI evidence;
-S5.4–S5.6 remain planned. This is software evidence only. The
+S5.5–S5.6 remain planned. This is software evidence only. The
 [plan and pending-check map](./virtual-pip.md) and
 [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) define the boundaries.
 
@@ -27,7 +27,7 @@ S5.4–S5.6 remain planned. This is software evidence only. The
 | S5.1 | Real firmware Runtime, raw detents/press, real desktop handshake/action path, fake OS read-back and captured firmware screen; isolated settings, no real executors, bounded pipes and clean child exit. | PASS (software only); evidence below |
 | S5.2 | Identity/protocol refusal, fragmented traffic/backpressure, timeout, child exit, reconnect and no old-session action replay. | PASS (software only); local macOS and Linux/Windows CI |
 | S5.3 | Threshold/bounce/buffered-edge/overflow/ownership scenarios use timestamped raw input through Runtime, with expected action traces and frames. | PASS (software only); local macOS and Linux/Windows combined smoke |
-| S5.4 | Profiles, microphones, media, macros, bindings and setup exercise production logic against fake OS state; unknown/failure never falsely confirms. | NOT IMPLEMENTED / NOT RUN |
+| S5.4 | Profiles, microphones, media, macros, bindings and setup exercise production logic against fake OS state; unknown/failure never falsely confirms. | PASS (software only); native smoke and separate setup UI contracts |
 | S5.5 | Fake flash/install executors exercise production recovery/admission/compatibility decisions; no real process, eFuse or update side effect. | NOT IMPLEMENTED / NOT RUN |
 | S5.6 | Deterministic headless replay/report, CI assertions, offline and release guard positive controls, independent embedded build and production exclusion proof. | NOT IMPLEMENTED / NOT RUN |
 
@@ -137,9 +137,8 @@ Windows Device Studio startup and the [Windows installer build](https://github.c
 also passed. All 15 applicable checks passed at `65a17a9`; optional macOS packaging was skipped.
 These are CI software results, not physical-device or signed-install acceptance.
 
-At the S5.2 checkpoint, input threshold/bounce matrices remained S5.3; their later results are
-recorded below. Remaining scope: S5.4 full configuration/setup/native-OS models, S5.5 recovery/install
-fakes and S5.6 full replay/reporting remain open. Physical USB/driver,
+At the S5.2 checkpoint, input and desktop models remained S5.3/S5.4; their results are recorded
+below. S5.5 recovery/install fakes and S5.6 full replay/reporting remain open. Physical USB/driver,
 board reset, actual OS actions, signing, CAD and sustained-use acceptance are not simulated away.
 
 ### S5.3 raw input fidelity evidence
@@ -195,6 +194,50 @@ corrected Linux/Windows smoke; optional macOS packaging was skipped. See the fin
 The final documentation-only status commit has separate CI and does not change that tested code.
 No production firmware behavior, thresholds, native IPC or frontend controls change.
 Physical electrical behavior, display scan-out, real reset circuitry and timing remain unverified.
+
+### S5.4 simulated desktop behavior evidence
+
+Implemented and verified on Andress-MacBook-Air, 2026-10-29, code `948d294`. The opt-in native example adds
+`--desktop-smoke`, included in `just virtual-device-smoke`. The CLI owns a disposable settings
+directory; scenarios cannot select the installed app's configuration through web IPC. Existing
+fake volume, microphone, media, foreground and input services are injected before constructing
+`DeskRuntime::new_simulated`; application launching remains unavailable.
+
+| Layer | Checks |
+|---|---|
+| Firmware session → desktop | Real child handshake/capture, saved-and-reopened binding driven by raw press, raw middle-button profile pinning, quantized detent using observed rather than requested volume, persisted macro order and fresh-session input. |
+| Desktop action and observation | Correlated production action-test replies exercise Protected custom-action refusal, allowed system media, disabled launch, unknown/healthy/unreadable/unsettable microphones, hotplug arrival that stays live, missing volume endpoint/read-back failure, media triggered/error/permission/uncertain outcomes observer-only playback changes, and an action-test macro interrupted by a real session disconnect. These calls do not claim to originate in firmware. |
+| Configuration store | Real isolated save/reopen/resolve and setup flags, invalid-save preservation and a detached store refusing completion without changing its setup flag. Installed upgrade retention and power-loss durability are not established. |
+| Setup UI | Real React app/hooks with the existing browser IPC mock: failed completion remains unfinished after remount and succeeds on retry; startup-setting refusal stays unapplied and shows its error while setup may finish. Existing capability, disconnected, permission, recovery and setup suites remain required. No native WebView/IPC-to-runner end-to-end setup flow is claimed. |
+
+The interruption case starts through the production desktop Test path, without the raw input
+freshness deadline that could otherwise confound a long-delay cancellation test. It observes the
+first macro step before a real disconnect and uses a correlated worker reply as a completion
+barrier before checking that no continuation ran. Uncertain started media
+input must stop a later macro step. Fake observations remain distinct from action certainty;
+simulated success never establishes actual Windows state or real keyboard/media delivery.
+Microphone hotplug here is arrival, not OS notification registration or device-removal evidence.
+Initial captures establish real firmware execution; S5.1 retains the causal confirmed-volume pixel
+check. Desktop-only observations do not assert additional firmware pixel results.
+
+Local combined smoke passes all 14 S5.4 markers, the S5.1 vertical slice, all nine S5.2 cases,
+32 S5.3 markers, 12 runner tests and four bridge tests. Strict native-example Clippy, identifier,
+dependency-boundary and offline guards pass. Independent review found a weak quantized-volume
+positive control; it now proves 55→requested 57→observed 50, and review found no remaining
+actionable issue. Media observer changes are checked against the live action result. The
+Linux/Windows combined smoke passed in [host CI](https://github.com/cunilab/Kivori/actions/runs/40733598071).
+A local no-default-feature desktop build omits the `PASS S5.4` marker; the opt-in example contains
+it as a positive control. The three onboarding UI files contain
+40 tests, including two new failure/retry cases. All passed locally with one worker and a 20-second
+runner timeout. Earlier default-five-second runs timed out in different existing cases; the new
+cases passed after adding the app's asynchronous readiness wait. No repository timeout was changed.
+The two new tests also passed separately under the standard five-second deadline. Typecheck,
+focused zero-warning lint and formatting passed. Full frontend CI passed 430 desktop UI and
+111 website tests with the unchanged standard timeout. All 15 applicable CI checks passed on `948d294`; optional macOS packaging
+was skipped. The final documentation-only status commit has separate CI. Normal interactive
+settings remain in memory; only this native smoke owns temporary files.
+No shipping app setup/device-loop integration, real OS permission, actual login entry, hardware
+microphone/USB behavior or physical acceptance is established by this suite.
 
 ## How to run a session
 

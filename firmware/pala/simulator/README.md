@@ -80,3 +80,13 @@ valid press survive without extra actions. Runtime holds 129 samples, matching t
 request plus final levels, so this branch cannot be reached by a valid JSON request. This is input-port
 fault injection, not a physical ISR queue overflow test. No desktop OS action mapping, wall-clock
 deadline, electrical bounce, hardware reset circuit or physical timing is established by this suite.
+
+## Desktop behavior checks (S5.4)
+
+The launcher also runs the native development example's `--desktop-smoke` mode; this is not a runner
+JSON fault or runner CLI flag. It uses existing fake OS services and a disposable configuration
+directory owned by the native CLI. Labelled cases distinguish raw firmware/session execution from
+direct desktop action tests and configuration persistence. The normal development window remains
+memory-only. See [S5.4 evidence](../../../docs/validation.md#s54-simulated-desktop-behavior-evidence)
+for setup UI coverage and the limits of simulated state. No real OS actions or installed settings
+are used by this mode.

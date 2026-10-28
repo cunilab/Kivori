@@ -379,7 +379,7 @@ M2.8 does not relax any paid-beta gate.
 
 Scope update, 2026-10-26: focus on app, firmware and website software. CAD/enclosure work is
 owner-managed and excluded from M2.9. Virtual Pip adds six software items in S5; the owner
-authorized implementation after reviewing the plan. Progress on 2026-10-28 is **16/24 complete**: S5.1–S5.3 are implemented; three further virtual Pip
+authorized implementation after reviewing the plan. Progress on 2026-10-29 is **17/24 complete**: S5.1–S5.4 are implemented; two further virtual Pip
 items and the existing five configuration or real-use acceptance items remain open. Earlier
 13/18 and 13/19 counts are historical scope snapshots; existing CAD files and validation records
 are retained for the owner's reference.
@@ -566,10 +566,14 @@ These are software verification tasks, not replacements for S4 physical acceptan
   pixels and 32 scenario/positive-control PASS markers. Linux/Windows combined smoke passes at
   `08fc1ec`; oversized input-port overflow injection is distinguished from physical ISR behavior.
   See [S5.3 evidence](./validation.md#s53-raw-input-fidelity-evidence).
-- [ ] **S5.4 — Simulated desktop behavior:** exercise profiles/pinning, Protected contexts,
+- [x] **S5.4 — Simulated desktop behavior:** exercise profiles/pinning, Protected contexts,
   microphone coverage/hotplug/failures, volume/media read-back, macros, saved bindings and setup
   against isolated fake OS services. Include unknown, failure and interrupted outcomes so simulated
   success never becomes a claim of actual Windows state or native input delivery.
+  Implemented with 14 labelled native desktop checks, raw firmware/session cases, correlated
+  action replies, a disposable ConfigStore and separate setup UI failure/retry tests. Local macOS
+  and Linux/Windows combined smoke pass at `948d294`; setup UI remains a browser-mock contract,
+  not integrated native setup. See [S5.4 evidence](./validation.md#s54-simulated-desktop-behavior-evidence).
 - [ ] **S5.5 — Recovery and compatibility rehearsal:** model failed/interrupted flash, BOOT
   instructions, ambiguous target confirmation, wrong product/board refusal, version offers and
   install/flash exclusion through the relevant production workflow logic with fake executors.
@@ -583,7 +587,7 @@ These are software verification tasks, not replacements for S4 physical acceptan
   Whole-app time acceleration is out of scope; firmware virtual time cannot prove desktop deadlines.
 
 Planned acceptance records: [S5 evidence table](./validation.md#m29-virtual-pip-software-acceptance).
-S5.1–S5.3 are checked with software evidence; S5.4–S5.6 remain unchecked. Future products own independent
+S5.1–S5.4 are checked with software evidence; S5.5–S5.6 remain unchecked. Future products own independent
 simulators, not dependencies on Pip. No physical acceptance row is closed by this work.
 
 **Exit:** S1–S3 regressions and S5 checks pass, S4 evidence is recorded and reviewed, and no unresolved issue can
