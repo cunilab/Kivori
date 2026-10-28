@@ -51,3 +51,32 @@ truncated, unknown-field, oversized or invalid requests exit nonzero with diagno
 No successful response is emitted for a rejected request. After `reboot:true`, restart the process
 before sending another tick. Restarting creates a fresh deterministic virtual identity/session.
 The runner never performs OS actions, discovers USB ports, flashes hardware or accesses settings.
+
+## Raw input fidelity smoke (S5.3)
+
+`just virtual-device-smoke` also invokes this runner with `--input-smoke`. To run only these
+scenarios, build for the Rust host target as above, then execute the resulting
+`kivori-pip-simulator --input-smoke`. This explicit mode does not read JSON stdin; normal invocation
+without arguments retains the pipe contract above. Unknown CLI arguments fail nonzero.
+
+The suite uses the same `Simulator::step`, actual firmware `Runtime`, timestamped `InputSource`
+edges, negotiated protocol and RGB565 capture. It compares complete decoded input-event traces
+(control, kind and firmware emission timestamp), checks the current nonce, then settles each case
+to reject extra actions. Every passing case prints the actual trace, capture FNV-1a 64-bit hash and
+virtual firmware time; a mismatch fails the process. The hashes identify actual frames, rather than
+claiming physical panel output or acting as fixed renderer golden images.
+
+Coverage includes CW/CCW cycles; illegal transitions and partial-cycle bounce followed by a valid
+cycle; 19/20 ms debounce, 499/500 ms Press/Hold and 1999/2000 ms recovery boundaries; switch bounce;
+negotiated double-press gaps of 249/250/251 ms; delayed buffered edges on all four switches;
+knob/contextual/rotary ownership; 128-edge capacity and fail-closed 129-edge request rejection;
+session cancellation, recovery release and the exact virtual reboot boundary. Recovery pixels are
+compared with a same-time no-input control to establish a causal display change. Reboot refusal
+and a fresh runtime's next press are also checked.
+
+The defensive Runtime sample-overflow case deliberately bypasses only the runner's JSON edge
+bound and feeds an oversized `InputSource` drain into the same Runtime: the final release and next
+valid press survive without extra actions. Runtime holds 129 samples, matching the normal 128-edge
+request plus final levels, so this branch cannot be reached by a valid JSON request. This is input-port
+fault injection, not a physical ISR queue overflow test. No desktop OS action mapping, wall-clock
+deadline, electrical bounce, hardware reset circuit or physical timing is established by this suite.

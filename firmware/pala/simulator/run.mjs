@@ -83,6 +83,7 @@ try {
       '--target-dir',
       target,
     ]);
+    await run(runner, ['--input-smoke']);
     await run('cargo', [
       'test',
       '--locked',

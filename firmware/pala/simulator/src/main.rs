@@ -1,3 +1,5 @@
+mod input_scenarios;
+
 use std::io::{self, BufRead, Write};
 
 use kivori_assets::AssetBlob;
@@ -259,7 +261,12 @@ fn run(reader: &mut impl BufRead, writer: &mut impl Write) -> Result<(), String>
 }
 
 fn main() {
-    if let Err(error) = run(&mut io::stdin().lock(), &mut io::stdout().lock()) {
+    let result = match std::env::args().skip(1).collect::<Vec<_>>().as_slice() {
+        [] => run(&mut io::stdin().lock(), &mut io::stdout().lock()),
+        [flag] if flag == "--input-smoke" => input_scenarios::run(),
+        _ => Err("usage: kivori-pip-simulator [--input-smoke]".into()),
+    };
+    if let Err(error) = result {
         eprintln!("Pip simulator: {error}");
         std::process::exit(1);
     }
