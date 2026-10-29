@@ -25,7 +25,7 @@ Run from the repo root (or `cd apps/web`).
    variable `CLOUDFLARE_ACCOUNT_ID` (not secret). Both are set (2026-10-12).
 3. Push to `main`: `.github/workflows/web.yml` deploys to `https://kivori-web.<your-subdomain>.workers.dev`.
    Without the secrets the workflow still builds and reports the Worker size, then skips deploy.
-4. PR previews use `wrangler versions upload`, which requires the Worker to exist, so the first `main` deploy comes first.
+4. PRs build and size-check without publishing preview versions. The public URL changes only on deployment.
 
 ## Waitlist (W4)
 
@@ -102,7 +102,7 @@ records the current gaps. Test keys and a successful local form response do not 
    contain its matching keys. Keep their values out of Git, chat and evidence. Active secret metadata
    alone does not verify the widget configuration or that its values match.
 3. Review the configuration change and deploy through the approved production workflow, which
-   applies D1 migrations. PR version uploads are previews, not production releases. Inspect the
+   applies D1 migrations. PRs build and size-check without publishing version URLs. Inspect the
    active production version for `WAITLIST_DB`, `WAITLIST_RATE_LIMITER`, `SIGNUPS`, the public
    variables and the secret binding; secret presence alone does not prove the widget works.
 4. Confirm the intended public access policy with the owner. After the approved launch, check
@@ -129,3 +129,14 @@ records the current gaps. Test keys and a successful local form response do not 
 
 Sign-up counts (product and utm_source only, no email) go to the `SIGNUPS` Analytics Engine dataset
 `kivori_signups`. R2 and Cloudflare Web Analytics are not bound yet.
+
+### Permanent website address
+
+Use `https://kivori-web.andres12holivin.workers.dev` as the public address. The Wrangler configuration
+explicitly enables `workers_dev` and disables `preview_urls`; deployment applies that routing setting.
+PR CI builds and checks the Worker without uploading preview versions or posting changing URLs.
+Pushes to main retain the existing migration/deployment path. A production deployment from a reviewed
+branch can be approved separately without merging its PR; testing a branch does not itself authorize
+replacing the live version. Until deployment applies this configuration, existing preview URLs remain
+available. After the permanent address serves the tested version, temporary preview hostnames can be
+removed from the Turnstile widget while retaining the permanent hostname.

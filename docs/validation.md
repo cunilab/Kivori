@@ -1336,6 +1336,16 @@ upload and these probes do not establish valid real Turnstile tokens, mailbox de
 signup or deletion. Production deployment and the website acceptance item remain open; PR #127
 stays unmerged. No key values were retrieved or printed.
 
+Permanent-address follow-up, 2026-10-29: the owner supplied a successful signup screenshot after
+allowing the preview hostname. This establishes reported UI success; the corresponding D1 row,
+mailbox delivery and deletion have not been verified. The owner requested the single permanent
+address `kivori-web.andres12holivin.workers.dev`. Configuration now sets `workers_dev: true` and
+`preview_urls: false`; PR CI builds/checks only and no longer publishes preview versions or comments.
+Main deployment behavior is retained. These are prepared configuration changes; existing live routes
+and version traffic remain unchanged until an approved deployment applies them. PR #127 stays
+unmerged. Do not remove the working preview's Turnstile hostname until the permanent URL serves
+the tested version and live routing has been checked.
+
 Astra's independent read-only scope review agreed to keep this item open. No new production/test
 mode switch was added: it would not establish the required live evidence and would change the
 supported preview behavior. That initial audit increment changed documentation only. Local
