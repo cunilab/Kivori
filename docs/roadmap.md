@@ -379,8 +379,8 @@ M2.8 does not relax any paid-beta gate.
 
 Scope update, 2026-10-26: focus on app, firmware and website software. CAD/enclosure work is
 owner-managed and excluded from M2.9. Virtual Pip adds six software items in S5; the owner
-authorized implementation after reviewing the plan. Progress on 2026-10-29 is **18/24 complete**: S5.1–S5.5 are implemented; one further virtual Pip
-item and the existing five configuration or real-use acceptance items remain open. Earlier
+authorized implementation after reviewing the plan. Progress on 2026-10-29 is **19/24 complete**:
+all six virtual Pip items are implemented. Five configuration or real-use acceptance items remain open. Earlier
 13/18 and 13/19 counts are historical scope snapshots; existing CAD files and validation records
 are retained for the owner's reference.
 
@@ -582,15 +582,19 @@ These are software verification tasks, not replacements for S4 physical acceptan
   Nine native rehearsal checks pass on macOS and Linux/Windows CI at `d5f0599`, using counting
   fake callbacks, production policy/admission and an actual virtual reconnect. Seventy related
   UI tests pass against IPC mocks. See [S5.5 evidence](./validation.md#s55-recovery-and-compatibility-rehearsal-evidence).
-- [ ] **S5.6 — Repeatable reports, CI and boundary proof:** replay fixed input/time seeds in a
+- [x] **S5.6 — Repeatable reports, CI and boundary proof:** replay fixed input/time seeds in a
   headless harness, assert expected actions/frame hashes and fail on mismatches. Reports identify
   source/build, scenario, seed, clock mode, firmware versus desktop coverage and simulated layers.
   Extend offline/release-surface positive controls and workspace/no_std checks; run affected native,
   firmware and UI checks. Confirm production bundles omit the runner, bridge and fake OS controls.
   Whole-app time acceleration is out of scope; firmware virtual time cannot prove desktop deadlines.
+  Implemented at `5e93865`: seeds 17/29 replay four recipes twice against committed action/frame
+  expectations; Windows/Linux clean-source report artifacts, cancellation/failure controls and
+  extended offline/isolation/production guards pass. All 15 applicable CI checks passed.
+  See [S5.6 evidence](./validation.md#s56-repeatable-reports-ci-and-boundary-evidence).
 
 Planned acceptance records: [S5 evidence table](./validation.md#m29-virtual-pip-software-acceptance).
-S5.1–S5.5 are checked with software evidence; S5.6 remains unchecked. Future products own independent
+S5.1–S5.6 are checked with software evidence. Future products own independent
 simulators, not dependencies on Pip. No physical acceptance row is closed by this work.
 
 **Exit:** S1–S3 regressions and S5 checks pass, S4 evidence is recorded and reviewed, and no unresolved issue can

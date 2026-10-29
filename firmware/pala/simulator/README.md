@@ -99,3 +99,21 @@ can reconnect as a compatible or wrong-major peer; no new firmware is written to
 update UI checks use separate browser mocks. See [S5.5 evidence](../../../docs/validation.md#s55-recovery-and-compatibility-rehearsal-evidence).
 Real flashing, downloads, installation, signature validation and physical recovery remain outside
 this mode.
+
+## Fixed replay and reports (S5.6)
+
+The runner accepts `--replay 17` or `--replay 29` and emits one JSON result. Four raw recipes per seed
+include complete input/time data, independently expected logical events, actual events and committed
+RGB565 frame hashes from `fixtures/replay-goldens.json`. A mismatch produces a failed result and
+nonzero exit; unsupported seeds also fail. Normal JSON pipe and `--input-smoke` behavior remain.
+
+`just virtual-device-smoke` uses Node and runs both seeds twice, requiring byte-identical successful
+JSON. It prints the new ignored `target/reports/run-*/report.json` path; that directory also contains
+per-stage logs and the captured PPM. Build/source fingerprints, clock/layer labels and exclusions
+are recorded. CI artifacts are named `virtual-device-report-<os>` and retained for 14 days.
+A report left `running` after interruption is incomplete. Production/offline/no_std checks are
+separate CI requirements, explicitly listed in the report.
+
+Golden updates require checking the intended renderer/action behavior and reviewing changed hashes;
+no verification mode rewrites expected values. This is fixed-recipe regression coverage, not a
+fuzzer or evidence of physical appearance/timing. See [S5.6 evidence](../../../docs/validation.md#s56-repeatable-reports-ci-and-boundary-evidence).

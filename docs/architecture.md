@@ -72,9 +72,9 @@ as Cargo/jq and refuses catalog discovery failure.
 ### Product-owned virtual devices (M2.9 S5)
 
 [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) and the
-[virtual Pip plan](./virtual-pip.md) describe the owner-authorized development/test path. S5.1–S5.5
+[virtual Pip plan](./virtual-pip.md) describe the owner-authorized development/test path. S5.1–S5.6
 are implemented as a dedicated opt-in desktop example and frontend entry with connection/fault
-and raw-input/desktop-policy scenarios; S5.6 remains planned. It adds no shipping product
+and raw-input/desktop-policy scenarios, deterministic replay and report artifacts. It adds no shipping product
 or change to the physical device protocol.
 
 Each product owns its host simulator process and scenarios beside its firmware. Pip's
@@ -98,13 +98,16 @@ session synchronization and DeskRuntime; it does not start or verify the full sh
 It owns child lifecycle/queues and compiles only with the explicit `virtual-device` feature.
 Release/offline guards and the independent no_std build remain gates.
 Interactive mode uses real elapsed time; deterministic headless firmware time does not imply
-whole-desktop time control. S5.1–S5.5 have local macOS and Linux/Windows CI evidence;
+whole-desktop time control. S5.1–S5.6 have local macOS and Linux/Windows CI evidence;
 see the acceptance record for exact exercised layers and source heads.
 S5.3 uses a runner-only mode with an explicit stack budget, exact logical event traces and
 firmware captures. Its oversized input-port injection does not test the physical interrupt queue.
 S5.5's recovery CLI rehearses flash/update policy with in-process fake executors and feeds
 actual virtual-session compatibility into post-flash admission. The firmware binary is unchanged;
 physical programming, signature validation and shipping updater orchestration are not exercised.
+S5.6 keeps replay recipes/goldens and file-backed reports in the product-owned simulator. Fixed
+firmware clocks are distinguished from real desktop time. Reports bind checkout/build fingerprints
+to expected/actual results; separate CI guards prove offline, production and no_std boundaries.
 The acceptance record distinguishes verified paths from planned scenarios. None is physical evidence.
 
 ### State axes

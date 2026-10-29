@@ -5,8 +5,8 @@ OS behavior, real timing. Host-sim and other host tests are never promoted to ph
 
 Current M2.9 scope, updated 2026-10-29: CAD/enclosure work is owner-managed and outside the
 software milestone. The [roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness)
-now has **18/24 complete**, including completed virtual Pip S5.1–S5.5, one remaining virtual Pip software
-item and five existing configuration or real-use acceptance items. Earlier 13/18 and 13/19 counts are
+now has **19/24 complete**, including all six virtual Pip software items; five configuration or real-use
+acceptance items remain open. Earlier 13/18 and 13/19 counts are
 dated historical snapshots; the enclosure records below remain reference material for the owner
 and do not count toward current M2.9 completion.
 
@@ -16,9 +16,9 @@ measurement or observation on the same line. A phase closes only when all its ro
 
 ## M2.9 virtual Pip software acceptance
 
-Status, 2026-10-29: owner authorized implementation after reviewing the documentation. S5.1–S5.5 are
+Status, 2026-10-29: owner authorized implementation after reviewing the documentation. S5.1–S5.6 are
 implemented with local macOS and Linux/Windows CI evidence;
-S5.6 remains planned. This is software evidence only. The
+All six S5 software items are complete. This is software evidence only. The
 [plan and pending-check map](./virtual-pip.md) and
 [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) define the boundaries.
 
@@ -29,7 +29,7 @@ S5.6 remains planned. This is software evidence only. The
 | S5.3 | Threshold/bounce/buffered-edge/overflow/ownership scenarios use timestamped raw input through Runtime, with expected action traces and frames. | PASS (software only); local macOS and Linux/Windows combined smoke |
 | S5.4 | Profiles, microphones, media, macros, bindings and setup exercise production logic against fake OS state; unknown/failure never falsely confirms. | PASS (software only); native smoke and separate setup UI contracts |
 | S5.5 | Fake flash/install executors exercise production recovery/admission/compatibility decisions; no real process, eFuse or update side effect. | PASS (software only); native rehearsal and separate UI contracts |
-| S5.6 | Deterministic headless replay/report, CI assertions, offline and release guard positive controls, independent embedded build and production exclusion proof. | NOT IMPLEMENTED / NOT RUN |
+| S5.6 | Deterministic headless replay/report, CI assertions, offline and release guard positive controls, independent embedded build and production exclusion proof. | PASS (software only); verified Linux/Windows report artifacts and guards |
 
 For each result record source SHA/build, scenario id, expected and actual outcome, input/time seed,
 clock mode, exercised layers, commands and trace/frame references. Failed assertions fail the run;
@@ -138,7 +138,7 @@ also passed. All 15 applicable checks passed at `65a17a9`; optional macOS packag
 These are CI software results, not physical-device or signed-install acceptance.
 
 At the S5.2 checkpoint, input and desktop models remained S5.3/S5.4; their results are recorded
-below. S5.5 recovery/install rehearsal is also recorded below; S5.6 full replay/reporting remains open. Physical USB/driver,
+below. Recovery/install rehearsal and final replay/reporting evidence are also recorded below. Physical USB/driver,
 board reset, actual OS actions, signing, CAD and sustained-use acceptance are not simulated away.
 
 ### S5.3 raw input fidelity evidence
@@ -272,6 +272,61 @@ frontend tests and Windows packaging; optional macOS packaging was skipped. See
 [packaging CI](https://github.com/cunilab/Kivori/actions/runs/40738654612). The final documentation-only
 status commit has separate CI. No physical recovery, publisher/updater
 signing, actual download/install, deployed update acceptance or earlier hardware row is closed.
+
+### S5.6 repeatable reports, CI and boundary evidence
+
+Implemented and verified on Andress-MacBook-Air, 2026-10-29, code `5e93865`. The product-owned
+runner adds `--replay 17` and `--replay 29`. Each seed runs four fixed raw-input recipes through
+actual Simulator/Runtime/protocol/capture: mixed rotary, invalid/bounce then a valid detent,
+buffered switches and cancelled recovery. Expected logical actions are independently specified;
+frame FNV-1a 64-bit hashes are checked against the committed
+[golden fixture](../firmware/pala/simulator/fixtures/replay-goldens.json). Expectations are never
+regenerated during verification. Mutated frame and action expectations each fail while the other
+comparison remains unchanged. Unsupported seeds fail nonzero.
+
+`just virtual-device-smoke` now uses Node, matching CI. Each invocation creates a fresh ignored
+`firmware/pala/simulator/target/reports/run-*/` directory with `report.json`, per-stage stdout/stderr
+and `firmware-frame.ppm`. The report records checkout SHA, dirty flag and tracked-diff hash;
+Rust/Node versions and host target; binary, lockfile/tool and golden-fixture SHA-256 digests;
+scenario ids, raw inputs/timestamps, expected/actual actions and frame hashes; seeds, clock modes,
+exercised/simulated layers and excluded acceptance. PR CI may build a merge checkout; its recorded
+SHA identifies that actual checkout. A dirty local report is not evidence for a clean source commit.
+
+Both seeds run twice. The launcher validates the full four-case inventory and expected/actual
+results, then requires byte-identical replay JSON. Native/session stages retain real elapsed time
+and explicit assertion-marker counts; recovery policy fixtures label their injected time separately.
+Their captured logs remain the semantic assertion evidence. Operational timestamps, native frames
+and the whole desktop run are not required to be byte-identical. Whole-desktop time acceleration
+remains outside the harness.
+
+Failures preserve stage logs and a failed/incomplete report. A zero exit without required markers,
+missing stage/seed, mismatched replay, spawn failure or cancelled probe cannot become a passed
+report. Review found that the metadata probe was not owned by the stop handler; it is now tracked,
+cancellation is latched, and a subprocess regression proves no later Cargo call occurs. The first
+full report also exposed S5.2's fixed 400 ms detent assertion; it now waits, with a five-second bound,
+for exactly one detent and observed volume 52. Input/liveness policies and negative replay checks
+are unchanged.
+
+CI uploads `virtual-device-report-<os>` with `always()` and 14-day retention. A job failure before
+smoke starts can have no report; an interrupted `running` report is incomplete. The smoke report
+lists production/offline/no_std checks as external requirements rather than claiming they ran
+inside it. The offline guard now discovers each catalog-owned simulator workspace and checks its
+manifest, host dependency tree and Rust sources; desktop graphs must exclude product firmware and
+simulator packages. Actual guard fixtures prove direct/transitive/source network leaks and desktop
+product coupling fail. Frontend fixtures prove all virtual markers and the developer page fail
+production checks. Two POSIX tooling fixtures skip Windows; the real guards still run there.
+
+Local validation: full report passed 14 stages, two repeated seeds and eight golden-backed cases;
+all earlier virtual slices passed. Sixteen runner tests and ten Node report/boundary tests passed;
+strict runner/native Clippy, JS lint/format, identifier and extended offline guards passed.
+Production desktop marker exclusion and opt-in/runner positive controls passed. The independent
+RISC-V no_std build passed locally, and its library excludes simulator/replay markers. All 15
+applicable CI checks passed at `5e93865`; optional macOS packaging was skipped. Both downloaded
+[host CI report artifacts](https://github.com/cunilab/Kivori/actions/runs/40813996618) were inspected:
+clean source, 14 passed stages, two repeat-verified seeds, eight golden-backed cases, logs and frame
+present. Replay JSON hashes also match between Linux and Windows. Packaging and no_std/offline/
+release guards passed separately. The final documentation-only status commit has separate CI. Real hardware, OS delivery, native setup integration,
+flash/signatures/installers, deployment and sustained-use acceptance remain separate.
 
 ## How to run a session
 

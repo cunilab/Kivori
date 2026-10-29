@@ -1,7 +1,7 @@
 # Virtual Pip: software verification plan
 
-Status: implementation authorized on 2026-10-26 after owner review. M2.9 S5.1–S5.5 are implemented
-and verified locally and in Linux/Windows CI; S5.6 remains planned. See
+Status: implementation authorized on 2026-10-26 after owner review. M2.9 S5.1–S5.6 are implemented
+and verified locally and in Linux/Windows CI. See
 [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md), the
 [roadmap](./roadmap.md#s5-isolated-virtual-pip) and
 [acceptance evidence](./validation.md#m29-virtual-pip-software-acceptance).
@@ -14,7 +14,7 @@ replace hardware adapters, not product behavior. Future products own independent
 input models and scenarios. They must not import Pip's simulator. Shared contracts are the
 existing crates; a universal simulator SDK, plugins and multi-device UI are out of scope.
 
-Implemented paths (S5.6 scenarios remain planned):
+Implemented paths:
 
 ```text
 firmware/pala/
@@ -22,6 +22,9 @@ firmware/pala/
   simulator/                   separate host Cargo workspace and executable
     src/                       raw inputs, runner, capture and process control
     src/input_scenarios.rs     deterministic raw-input cases through production Runtime
+    src/input_scenarios/       fixed-seed replay and structured expected/actual results
+    fixtures/                 committed frame goldens
+    smoke-report.mjs           file-backed report and replay validation
 apps/desktop/src-tauri/src/     generic development-only child-process bridge
 apps/desktop/src/               explicit virtual connection and controls in developer UI
 ```
@@ -218,3 +221,17 @@ remains unchanged. No actual flash, eFuse, download or installer path is invoked
 See [S5.5 evidence](./validation.md#s55-recovery-and-compatibility-rehearsal-evidence) for the
 separate policy/session/UI layers and limits. The `PASS S5.5` marker must be absent from production
 and observable in the explicitly enabled example.
+
+## Repeatable reports and replay (S5.6)
+
+`just virtual-device-smoke` prints a new `target/reports/run-*/report.json` location below this
+product's simulator. It retains command logs, captured firmware pixels, source/build fingerprints
+and layer/clock labels. Seeds 17 and 29 each replay four raw recipes twice and must match committed
+action/frame expectations and repeat byte-for-byte. Desktop/session checks keep real elapsed time.
+The report's `passed` status covers its declared stages; offline, production and no_std proof comes
+from the separate CI checks listed in it. See [S5.6 evidence](./validation.md#s56-repeatable-reports-ci-and-boundary-evidence).
+
+Each product owns its replay recipes and golden fixture. A deliberate renderer change may require
+a reviewed fixture update after checking intended pixels and actions; the verification command
+does not accept or regenerate new goldens. CI retains reports even after smoke failure, while a
+job that fails before smoke starts may have no report. Physical and real-use acceptance stays open.
