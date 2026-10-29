@@ -379,8 +379,8 @@ M2.8 does not relax any paid-beta gate.
 
 Scope update, 2026-10-26: focus on app, firmware and website software. CAD/enclosure work is
 owner-managed and excluded from M2.9. Virtual Pip adds six software items in S5; the owner
-authorized implementation after reviewing the plan. Progress on 2026-10-29 is **17/24 complete**: S5.1–S5.4 are implemented; two further virtual Pip
-items and the existing five configuration or real-use acceptance items remain open. Earlier
+authorized implementation after reviewing the plan. Progress on 2026-10-29 is **18/24 complete**: S5.1–S5.5 are implemented; one further virtual Pip
+item and the existing five configuration or real-use acceptance items remain open. Earlier
 13/18 and 13/19 counts are historical scope snapshots; existing CAD files and validation records
 are retained for the owner's reference.
 
@@ -574,11 +574,14 @@ These are software verification tasks, not replacements for S4 physical acceptan
   action replies, a disposable ConfigStore and separate setup UI failure/retry tests. Local macOS
   and Linux/Windows combined smoke pass at `948d294`; setup UI remains a browser-mock contract,
   not integrated native setup. See [S5.4 evidence](./validation.md#s54-simulated-desktop-behavior-evidence).
-- [ ] **S5.5 — Recovery and compatibility rehearsal:** model failed/interrupted flash, BOOT
+- [x] **S5.5 — Recovery and compatibility rehearsal:** model failed/interrupted flash, BOOT
   instructions, ambiguous target confirmation, wrong product/board refusal, version offers and
   install/flash exclusion through the relevant production workflow logic with fake executors.
   No real flashing, eFuse writes, downloads or installer execution; physical recovery, signing and
   deployed update acceptance remain separate.
+  Nine native rehearsal checks pass on macOS and Linux/Windows CI at `d5f0599`, using counting
+  fake callbacks, production policy/admission and an actual virtual reconnect. Seventy related
+  UI tests pass against IPC mocks. See [S5.5 evidence](./validation.md#s55-recovery-and-compatibility-rehearsal-evidence).
 - [ ] **S5.6 — Repeatable reports, CI and boundary proof:** replay fixed input/time seeds in a
   headless harness, assert expected actions/frame hashes and fail on mismatches. Reports identify
   source/build, scenario, seed, clock mode, firmware versus desktop coverage and simulated layers.
@@ -587,7 +590,7 @@ These are software verification tasks, not replacements for S4 physical acceptan
   Whole-app time acceleration is out of scope; firmware virtual time cannot prove desktop deadlines.
 
 Planned acceptance records: [S5 evidence table](./validation.md#m29-virtual-pip-software-acceptance).
-S5.1–S5.4 are checked with software evidence; S5.5–S5.6 remain unchecked. Future products own independent
+S5.1–S5.5 are checked with software evidence; S5.6 remains unchecked. Future products own independent
 simulators, not dependencies on Pip. No physical acceptance row is closed by this work.
 
 **Exit:** S1–S3 regressions and S5 checks pass, S4 evidence is recorded and reviewed, and no unresolved issue can

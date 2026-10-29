@@ -5,8 +5,8 @@ OS behavior, real timing. Host-sim and other host tests are never promoted to ph
 
 Current M2.9 scope, updated 2026-10-29: CAD/enclosure work is owner-managed and outside the
 software milestone. The [roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness)
-now has **17/24 complete**, including completed virtual Pip S5.1–S5.4, two remaining virtual Pip software
-items and five existing configuration or real-use acceptance items. Earlier 13/18 and 13/19 counts are
+now has **18/24 complete**, including completed virtual Pip S5.1–S5.5, one remaining virtual Pip software
+item and five existing configuration or real-use acceptance items. Earlier 13/18 and 13/19 counts are
 dated historical snapshots; the enclosure records below remain reference material for the owner
 and do not count toward current M2.9 completion.
 
@@ -16,9 +16,9 @@ measurement or observation on the same line. A phase closes only when all its ro
 
 ## M2.9 virtual Pip software acceptance
 
-Status, 2026-10-29: owner authorized implementation after reviewing the documentation. S5.1–S5.4 are
+Status, 2026-10-29: owner authorized implementation after reviewing the documentation. S5.1–S5.5 are
 implemented with local macOS and Linux/Windows CI evidence;
-S5.5–S5.6 remain planned. This is software evidence only. The
+S5.6 remains planned. This is software evidence only. The
 [plan and pending-check map](./virtual-pip.md) and
 [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) define the boundaries.
 
@@ -28,7 +28,7 @@ S5.5–S5.6 remain planned. This is software evidence only. The
 | S5.2 | Identity/protocol refusal, fragmented traffic/backpressure, timeout, child exit, reconnect and no old-session action replay. | PASS (software only); local macOS and Linux/Windows CI |
 | S5.3 | Threshold/bounce/buffered-edge/overflow/ownership scenarios use timestamped raw input through Runtime, with expected action traces and frames. | PASS (software only); local macOS and Linux/Windows combined smoke |
 | S5.4 | Profiles, microphones, media, macros, bindings and setup exercise production logic against fake OS state; unknown/failure never falsely confirms. | PASS (software only); native smoke and separate setup UI contracts |
-| S5.5 | Fake flash/install executors exercise production recovery/admission/compatibility decisions; no real process, eFuse or update side effect. | NOT IMPLEMENTED / NOT RUN |
+| S5.5 | Fake flash/install executors exercise production recovery/admission/compatibility decisions; no real process, eFuse or update side effect. | PASS (software only); native rehearsal and separate UI contracts |
 | S5.6 | Deterministic headless replay/report, CI assertions, offline and release guard positive controls, independent embedded build and production exclusion proof. | NOT IMPLEMENTED / NOT RUN |
 
 For each result record source SHA/build, scenario id, expected and actual outcome, input/time seed,
@@ -138,7 +138,7 @@ also passed. All 15 applicable checks passed at `65a17a9`; optional macOS packag
 These are CI software results, not physical-device or signed-install acceptance.
 
 At the S5.2 checkpoint, input and desktop models remained S5.3/S5.4; their results are recorded
-below. S5.5 recovery/install fakes and S5.6 full replay/reporting remain open. Physical USB/driver,
+below. S5.5 recovery/install rehearsal is also recorded below; S5.6 full replay/reporting remains open. Physical USB/driver,
 board reset, actual OS actions, signing, CAD and sustained-use acceptance are not simulated away.
 
 ### S5.3 raw input fidelity evidence
@@ -238,6 +238,40 @@ was skipped. The final documentation-only status commit has separate CI. Normal 
 settings remain in memory; only this native smoke owns temporary files.
 No shipping app setup/device-loop integration, real OS permission, actual login entry, hardware
 microphone/USB behavior or physical acceptance is established by this suite.
+
+### S5.5 recovery and compatibility rehearsal evidence
+
+Implemented and verified on Andress-MacBook-Air, 2026-10-29, code `d5f0599`. The native opt-in example adds
+`--recovery-smoke`, included in `just virtual-device-smoke`. It never registers the real updater
+or invokes espflash, eFuse tools, network/download code or an operating-system installer.
+
+| Layer | Rehearsal and assertions |
+|---|---|
+| Fake flash + actual virtual session | Counting injected executor drives production `run_accepted_firmware_flash` and `FlashWorkflow` through cancellation, timeout, port-busy and missing-download-mode failures. Ownership returns to discovery without verification. A successful fake executor remains Reconnecting until a matching compatible virtual handshake; wrong port/hash and an actual wrong-major virtual peer are refused. A real normal reconnect and fresh raw input establish continued virtual usability. No firmware bytes were rewritten. |
+| Workflow timeout policy | An injected reconnect-timeout event rejects a late success. An explicitly retried recovery can record its compatible identity. This checks the model's timeout transition, not the shipping device loop's timer or physical reset. |
+| Recovery target policy | Local fixture Catalog/FirmwareBundle data exercises shared-USB ambiguity, explicit current product/board choice, missing exact images and wrong identity. The same counting fake writer serves admitted and refused pairs; refusal must leave its count unchanged. Fixtures never register shipping products or enumerate actual ports. |
+| Firmware offers | Production OfferTracker uses injected policy time for idle, Later/reconnect, app-update priority and newer-device decisions. These model clocks do not accelerate desktop liveness or OS scheduling. |
+| App update policy + operation admission | Production updater Machine handles fake failed checks/downloads/installs and retries. Fake callbacks require the model's offered/downloaded states and real AppState install reservation. Flash/restore requests must not enqueue while installation owns admission; queued Preparing and busy flash phases exclude installation. Failed enqueue rolls back ownership. The AppState device thread is a disposable fake, stopped by its fixture guard. |
+| Recovery/update UI | Real React components use existing IPC mocks for BOOT instructions and cancellation, product/board confirmation, stale choices, offers and update progress. A new accepted-flash → reconnect-timeout case stays unverified, shows the native failure and queues neither another flash nor a restore automatically. This is separate from native-session and executor tests. |
+
+The fake callbacks exercise policy/admission seams; they do not replace or execute the production
+Tauri updater/plugin orchestration. Fake download completion does not establish actual signature
+verification. Fake installer failure does not establish recovery after a real installer launch or
+a stopped shipping runtime. The virtual runner executes the existing firmware binary throughout;
+its post-flash handshake verifies compatibility policy, not physical programming or new firmware.
+
+Local combined smoke passed all nine S5.5 markers, 14 S5.4 markers, 32 S5.3 markers, nine S5.2
+markers, the original vertical slice, 12 runner tests and four bridge tests. Strict native-example
+Clippy, formatting, identifiers, dependency boundaries and offline guards passed. Independent Sol
+review found no actionable issue. All 70 selected firmware/recovery/offer/update UI tests passed
+at the standard timeout; UI typecheck, focused zero-warning lint and formatting passed.
+Production-marker exclusion and its opt-in positive control passed locally. All 15 applicable
+CI checks passed at `d5f0599`, including Linux/Windows recovery smoke, production-surface controls,
+frontend tests and Windows packaging; optional macOS packaging was skipped. See
+[host CI](https://github.com/cunilab/Kivori/actions/runs/40738654894) and
+[packaging CI](https://github.com/cunilab/Kivori/actions/runs/40738654612). The final documentation-only
+status commit has separate CI. No physical recovery, publisher/updater
+signing, actual download/install, deployed update acceptance or earlier hardware row is closed.
 
 ## How to run a session
 

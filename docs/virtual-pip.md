@@ -1,7 +1,7 @@
 # Virtual Pip: software verification plan
 
-Status: implementation authorized on 2026-10-26 after owner review. M2.9 S5.1–S5.4 are implemented
-and verified locally and in Linux/Windows CI; S5.5–S5.6 remain planned. See
+Status: implementation authorized on 2026-10-26 after owner review. M2.9 S5.1–S5.5 are implemented
+and verified locally and in Linux/Windows CI; S5.6 remains planned. See
 [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md), the
 [roadmap](./roadmap.md#s5-isolated-virtual-pip) and
 [acceptance evidence](./validation.md#m29-virtual-pip-software-acceptance).
@@ -14,7 +14,7 @@ replace hardware adapters, not product behavior. Future products own independent
 input models and scenarios. They must not import Pip's simulator. Shared contracts are the
 existing crates; a universal simulator SDK, plugins and multi-device UI are out of scope.
 
-Implemented paths (S5.5–S5.6 scenarios remain planned):
+Implemented paths (S5.6 scenarios remain planned):
 
 ```text
 firmware/pala/
@@ -207,3 +207,14 @@ labelled separately; setup UI is checked with the existing browser mock rather t
 a native IPC-to-runner path. See [S5.4 evidence](./validation.md#s54-simulated-desktop-behavior-evidence)
 for verified layers and limits. The smoke launcher includes these cases; production releases must
 omit the `PASS S5.4` marker, with a positive control in the opt-in example.
+
+## Recovery and compatibility scenarios (S5.5)
+
+The native development example adds `--recovery-smoke`; the launcher runs it after the desktop
+cases. Production flash workflow, identity/image selection, version-offer and updater/admission
+policies are rehearsed with counting in-process fake executors and local fixtures. An actual
+virtual reconnect checks post-flash compatibility admission, while the runner's firmware binary
+remains unchanged. No actual flash, eFuse, download or installer path is invoked.
+See [S5.5 evidence](./validation.md#s55-recovery-and-compatibility-rehearsal-evidence) for the
+separate policy/session/UI layers and limits. The `PASS S5.5` marker must be absent from production
+and observable in the explicitly enabled example.

@@ -90,3 +90,12 @@ direct desktop action tests and configuration persistence. The normal developmen
 memory-only. See [S5.4 evidence](../../../docs/validation.md#s54-simulated-desktop-behavior-evidence)
 for setup UI coverage and the limits of simulated state. No real OS actions or installed settings
 are used by this mode.
+
+## Recovery rehearsal (S5.5)
+
+The launcher's `--recovery-smoke` belongs to the native development example, not this runner.
+Counting fake executors rehearse production flash/update policy and admission. The existing runner
+can reconnect as a compatible or wrong-major peer; no new firmware is written to it. BOOT and
+update UI checks use separate browser mocks. See [S5.5 evidence](../../../docs/validation.md#s55-recovery-and-compatibility-rehearsal-evidence).
+Real flashing, downloads, installation, signature validation and physical recovery remain outside
+this mode.
