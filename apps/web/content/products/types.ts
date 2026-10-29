@@ -1,6 +1,7 @@
 export type ProductStatus = 'in-development' | 'coming-soon' | 'available';
 
-export type CompatibilityStatus = 'supported-beta' | 'supported' | 'later' | 'not-planned';
+export type CompatibilityStatus =
+  'supported-beta' | 'beta-pending' | 'supported' | 'later' | 'not-planned';
 
 /** Brand art drawn in code or taken from the shared brand assets (never a photo, there are none yet). */
 export interface ProductHero {

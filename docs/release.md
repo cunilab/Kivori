@@ -293,6 +293,13 @@ Run `just bundle-macos` (or `scripts/bundle-macos.sh`) on a Mac with Xcode Comma
 `.app` and `.dmg` land in `target/release/bundle/`. Set `APPLE_SIGNING_IDENTITY` to sign. To build it
 in CI, run the workflow by hand with `macos` ticked.
 
+Run `just macos-check` before packaging. For a deliberate output-volume/mute round trip with
+restoration, run `just macos-audio-test`. See [macOS support and acceptance](./macos.md) for
+permissions, feature limits and the checks that still require a physical device. Publish the
+Apple Silicon DMG with its `_aarch64.dmg` suffix; the website enables Mac downloads only when
+exactly one compatible artifact is present on the published release. Intel and ambiguous DMGs
+are not selected.
+
 The macOS override disables updater artifacts: automatic app updates currently support Windows
 only, so a local Mac bundle does not need the updater signing private key. Without an Apple
 signing identity the bundle is not Developer ID signed; notarization is not implemented.

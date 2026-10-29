@@ -113,6 +113,19 @@ bundle-windows:
 bundle-macos:
     bash scripts/bundle-macos.sh
 
+# Native Mac checks without changing audio or launching the media observer / permission prompts.
+macos-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [ "$(uname -s)" = Darwin ] || { echo "Run macos-check on a Mac." >&2; exit 1; }
+    cargo test --locked -p kivori-desktop --lib platform::macos
+    cargo test --locked -p kivori-desktop --test macos_platform -- --skip media_observer_reads_without_blocking_and_stops_promptly
+    cargo test --locked -p kivori-desktop --test volume_backend_contract
+
+# Opt-in: changes output volume/mute, verifies observation, then restores the original values.
+macos-audio-test:
+    cargo test --locked -p kivori-desktop --test macos_platform write_round_trips_and_classifies_echo_versus_external -- --ignored --exact --test-threads=1
+
 # ---- dev ----
 
 # Run the desktop UI dev server.

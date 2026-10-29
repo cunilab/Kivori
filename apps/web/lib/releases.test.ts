@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { resetMemoryCache } from './github-cache';
-import { findInstaller, loadReleases, pickLatest, toRelease, type RawRelease } from './releases';
+import {
+  findInstaller,
+  findMacInstaller,
+  loadReleases,
+  pickLatest,
+  toRelease,
+  type RawRelease,
+} from './releases';
 
 function release(over: Partial<RawRelease>): RawRelease {
   return {
@@ -121,4 +128,12 @@ describe('loadReleases', () => {
       await loadReleases(respond({ 'https://api.test/bad': 'not json' }), 'https://api.test/bad'),
     ).toMatchObject({ status: 'error' });
   });
+});
+
+it('selects only an unambiguous Apple Silicon dmg', () => {
+  const asset = { ...installerAsset, name: 'Kivori_0.2.0_aarch64.dmg' };
+  expect(findMacInstaller([asset])).toEqual({ size: asset.size, url: asset.browser_download_url });
+  expect(findMacInstaller([{ ...asset, name: 'Kivori_x64.dmg' }])).toBeNull();
+  expect(findMacInstaller([{ ...asset, name: 'Kivori.dmg' }])).toBeNull();
+  expect(findMacInstaller([asset, asset])).toBeNull();
 });

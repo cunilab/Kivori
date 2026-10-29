@@ -38,6 +38,7 @@ export interface Release {
   date: string | null;
   prerelease: boolean;
   installer: Installer | null;
+  macInstaller?: Installer | null;
 }
 
 export type ReleasesResult = { status: 'ok'; releases: Release[] } | { status: 'error' };
@@ -62,6 +63,13 @@ export function findInstaller(assets: readonly RawAsset[] | undefined): Installe
   return asset ? { size: asset.size, url: asset.browser_download_url } : null;
 }
 
+export function findMacInstaller(assets: readonly RawAsset[] | undefined): Installer | null {
+  const matches = assets?.filter((asset) => /(?:_|-)aarch64\.dmg$/i.test(asset.name)) ?? [];
+  return matches.length === 1
+    ? { size: matches[0].size, url: matches[0].browser_download_url }
+    : null;
+}
+
 export function versionFromTag(tag: string): string {
   return tag.replace(/^v/i, '');
 }
@@ -73,6 +81,7 @@ export function toRelease(raw: RawRelease): Release {
     date: raw.published_at ?? raw.created_at ?? null,
     prerelease: raw.prerelease,
     installer: findInstaller(raw.assets),
+    macInstaller: findMacInstaller(raw.assets),
   };
 }
 

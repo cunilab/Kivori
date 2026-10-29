@@ -11,7 +11,8 @@ serve at least one pillar and never make the buddy smaller to fit more text.
 feedback → v1 investment. The aim is to learn whether people pay for Kivori before building every
 long-term concern. Engineering rigor stays; only the order changes.
 
-**Beta platform:** Windows is supported. macOS is later or experimental. Linux is later.
+**Beta platforms:** Windows and Apple Silicon macOS are software targets; Mac distribution and
+physical acceptance are tracked in [macOS support](./macos.md). Linux is later.
 
 ## Rules
 
@@ -21,7 +22,8 @@ long-term concern. Engineering rigor stays; only the order changes.
    but it doesn't count as done.
 3. Every milestone keeps all [product acceptance gates](./product.md#product-acceptance-gates) intact.
    Moving a feature later never relaxes a gate for what does ship.
-4. Until v1, a feature is done when it works on Windows. macOS code may land but is not a blocker.
+4. Record platform-specific evidence for Windows and macOS separately. A passing check on one
+   platform does not close acceptance on the other.
 5. Anything not listed waits in [Later](#later). Move something earlier only if it blocks the beta.
 
 ---

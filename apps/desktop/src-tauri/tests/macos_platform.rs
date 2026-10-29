@@ -167,16 +167,18 @@ impl<'a> Restore<'a> {
 
 impl Drop for Restore<'_> {
     fn drop(&mut self) {
-        let _ = self.backend.set(self.volume);
-        let _ = self.backend.set_mute(self.muted);
-        // Belt and braces: osascript works even if the backend thread were wedged.
-        let _ = Command::new("osascript")
-            .arg("-e")
-            .arg(format!(
-                "set volume output volume {} output muted {}",
-                self.volume, self.muted
-            ))
-            .status();
+        let volume = self.backend.set(self.volume);
+        let mute = self.backend.set_mute(self.muted);
+        // AppleScript is a fallback: it can round an otherwise exact native restoration.
+        if volume != Ok(self.volume) || mute != Ok(self.muted) {
+            let _ = Command::new("osascript")
+                .arg("-e")
+                .arg(format!(
+                    "set volume output volume {} output muted {}",
+                    self.volume, self.muted
+                ))
+                .status();
+        }
     }
 }
 
@@ -252,26 +254,55 @@ fn write_round_trips_and_classifies_echo_versus_external() {
     // osascript's 0..100 maps through its own scale; allow one point of rounding.
     assert!(external.percent.abs_diff(ext) <= 1, "{external:?}");
 
-    assert_eq!(backend.set(guard.volume), Ok(guard.volume));
+    // AppleScript may also change mute; settle both fields before testing a mute-only echo.
+    assert_eq!(backend.set(t), Ok(t));
+    let muted_before = backend
+        .read_mute()
+        .expect("read current mute before toggle");
+    let settled = collect(&backend, Duration::from_secs(2), |changes| {
+        changes
+            .last()
+            .is_some_and(|change| change.percent == t && change.muted == Some(muted_before))
+    });
+    assert!(
+        settled
+            .last()
+            .is_some_and(|change| change.percent == t && change.muted == Some(muted_before)),
+        "volume must settle before classifying a mute-only echo: {settled:?}"
+    );
 
     // Mute: toggle and back.
-    assert_eq!(backend.set_mute(!guard.muted), Ok(!guard.muted));
-    assert_eq!(backend.read_mute(), Ok(!guard.muted));
+    assert_eq!(backend.set_mute(!muted_before), Ok(!muted_before));
+    assert_eq!(backend.read_mute(), Ok(!muted_before));
     let echo = collect(&backend, Duration::from_millis(500), |s| {
-        s.iter().any(|c| c.muted != Some(guard.muted))
+        s.iter()
+            .any(|c| c.percent == t && c.muted == Some(!muted_before))
     });
-    eprintln!("after own set_mute({}): {echo:?}", !guard.muted);
+    eprintln!("after own set_mute({}): {echo:?}", !muted_before);
+    assert!(
+        echo.iter()
+            .any(|change| change.percent == t && change.muted == Some(!muted_before)),
+        "mute-only notification must contain the observed toggled state: {echo:?}"
+    );
     assert!(
         echo.iter().all(|c| c.origin == ChangeOrigin::Kivori),
         "{echo:?}"
     );
-    assert_eq!(backend.set_mute(guard.muted), Ok(guard.muted));
+    assert_eq!(backend.set_mute(muted_before), Ok(muted_before));
 
+    let original = (guard.volume, guard.muted);
     drop(guard);
-    sleep(Duration::from_millis(100));
-    eprintln!(
-        "restored: volume={:?} muted={:?}",
-        backend.read(),
-        backend.read_mute()
-    );
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        let restored = (backend.read(), backend.read_mute());
+        if restored == (Ok(original.0), Ok(original.1)) {
+            eprintln!("restored: volume={} muted={}", original.0, original.1);
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "original audio state was not restored: {restored:?}"
+        );
+        sleep(Duration::from_millis(10));
+    }
 }

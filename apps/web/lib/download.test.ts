@@ -94,9 +94,9 @@ describe('downloadResponse', () => {
     expect(res.headers.get('location')).toBe('https://kivori.example/download');
   });
 
-  it('404s for macos and malformed versions', async () => {
+  it('404s for unsupported systems and malformed versions', async () => {
     const deps = { load: loaded(true), fetcher: vi.fn() as unknown as typeof fetch };
-    expect((await downloadResponse(request(), 'macos', 'latest', deps)).status).toBe(404);
+    expect((await downloadResponse(request(), 'linux', 'latest', deps)).status).toBe(404);
     expect((await downloadResponse(request(), 'windows', '../x', deps)).status).toBe(404);
   });
 });
@@ -109,4 +109,31 @@ describe('isValidVersion', () => {
     expect(isValidVersion('1.2')).toBe(false);
     expect(isValidVersion('https://x')).toBe(false);
   });
+});
+
+it('never falls back to Windows when the Mac artifact is absent', async () => {
+  const fetcher = vi.fn();
+  expect(
+    (await downloadResponse(request(), 'macos', 'latest', { load: loaded(true), fetcher })).status,
+  ).toBe(302);
+  expect(fetcher).not.toHaveBeenCalled();
+});
+it('streams the Apple Silicon dmg with macOS analytics', async () => {
+  const record = vi.fn();
+  const load = async (): Promise<ReleasesResult> => {
+    const result = await loaded(true)();
+    if (result.status === 'ok')
+      result.releases[0].macInstaller = { size: 4, url: 'https://example.test/mac.dmg' };
+    return result;
+  };
+  const fetcher = vi.fn(async () => new Response('data'));
+  const response = await downloadResponse(request(), 'macos', 'latest', { load, fetcher, record });
+  expect(response.status).toBe(200);
+  expect(response.headers.get('content-type')).toBe('application/x-apple-diskimage');
+  expect(response.headers.get('content-disposition')).toContain('Kivori-0.2.0-aarch64.dmg');
+  expect(fetcher).toHaveBeenCalledWith('https://example.test/mac.dmg', {
+    headers: {},
+    redirect: 'follow',
+  });
+  expect(record).toHaveBeenCalledWith(expect.objectContaining({ os: 'macos' }));
 });

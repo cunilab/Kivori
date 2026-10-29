@@ -3,7 +3,7 @@ import { loadReleases, type Release } from '@/lib/releases';
 
 // Server-only. Streams installers through the Worker so the browser never sees the release host.
 
-export const SUPPORTED_OS = ['windows'] as const;
+export const SUPPORTED_OS = ['windows', 'macos'] as const;
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 export function isSupportedOs(os: string): boolean {
@@ -48,12 +48,13 @@ export async function downloadResponse(
     version === 'latest'
       ? releases[0]
       : releases.find((candidate) => candidate.version === version);
-  if (!release?.installer) return internalRedirect(request.url);
+  const installer = os === 'macos' ? release?.macInstaller : release?.installer;
+  if (!release || !installer) return internalRedirect(request.url);
 
   const range = request.headers.get('range');
   let upstream: Response;
   try {
-    upstream = await fetcher(release.installer.url, {
+    upstream = await fetcher(installer.url, {
       headers: range ? { range } : {},
       redirect: 'follow',
     });
@@ -67,7 +68,7 @@ export async function downloadResponse(
   if (startsAtZero(range)) {
     const url = new URL(request.url);
     record({
-      os: 'windows',
+      os,
       version: release.version,
       referrer: request.headers.get('referer'),
       utmSource: url.searchParams.get('utm_source'),
@@ -75,8 +76,8 @@ export async function downloadResponse(
   }
 
   const headers = new Headers({
-    'content-type': 'application/octet-stream',
-    'content-disposition': `attachment; filename="Kivori-Setup-${release.version}.exe"`,
+    'content-type': os === 'macos' ? 'application/x-apple-diskimage' : 'application/octet-stream',
+    'content-disposition': `attachment; filename="${os === 'macos' ? `Kivori-${release.version}-aarch64.dmg` : `Kivori-Setup-${release.version}.exe`}"`,
     'cache-control': 'no-store',
     'accept-ranges': 'bytes',
   });

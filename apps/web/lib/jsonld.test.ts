@@ -62,7 +62,7 @@ describe('serializeJsonLd', () => {
 });
 
 describe('softwareApplicationJsonLd', () => {
-  it('describes the Windows app with its version and no offers', () => {
+  it('describes the desktop platforms with its version and no offers', () => {
     const data = softwareApplicationJsonLd('0.1.0', origin);
     expect(data['@type']).toBe('SoftwareApplication');
     expect(data.name).toBe('Kivori');
@@ -71,6 +71,12 @@ describe('softwareApplicationJsonLd', () => {
     expect(data.softwareVersion).toBe('0.1.0');
     expect(data.url).toBe('https://kivori.example/download');
     expect(data).not.toHaveProperty('offers');
+  });
+
+  it('includes macOS only when a Mac artifact is available', () => {
+    expect(softwareApplicationJsonLd('0.2.1', origin, true).operatingSystem).toBe(
+      'Windows 10, Windows 11, macOS (Apple Silicon)',
+    );
   });
 
   it('omits the version when no release is known', () => {

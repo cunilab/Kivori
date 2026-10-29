@@ -25,7 +25,9 @@ evidence (see [roadmap.md](roadmap.md#m4-v1)).
 
 ### In the paid beta
 
-- One Kivori on one active desktop session, on Windows. macOS code may exist but is not supported.
+- One Kivori on one active desktop session, on Windows or macOS. Initial Mac builds target Apple Silicon.
+  Mac app updates are installed manually; per-app volume and mute are unavailable on macOS.
+  Public distribution and physical acceptance are tracked separately in [macOS support](./macos.md).
 - Rotary + button input (press, hold). Actions: system volume, media, master mute, mic mute,
   keyboard shortcut, app launch, simple ordered macros.
 - Monitoring: CPU, RAM, volume / mute, mic mute and mic in use, current media, clock, connection and
@@ -50,7 +52,7 @@ evidence (see [roadmap.md](roadmap.md#m4-v1)).
 
 ### After the beta (decided from beta evidence)
 
-- macOS support (including Accessibility permission handling) and parity with Windows.
+- Wider macOS hardware/version coverage and automatic app updates.
 - Call indicators; GPU temperature and custom sources.
 - App-free basic controls (volume, media) on the v1 controller, when no Kivori Desktop session
   exists ([ADR-0010](./adr/0010-v1-controller-with-native-usb.md), proposed).

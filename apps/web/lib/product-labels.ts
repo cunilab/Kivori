@@ -8,6 +8,7 @@ export const PRODUCT_STATUS_LABEL: Record<ProductStatus, string> = {
 
 export const COMPATIBILITY_LABEL: Record<CompatibilityStatus, string> = {
   'supported-beta': 'Supported in the beta',
+  'beta-pending': 'Beta validation in progress',
   supported: 'Supported',
   later: 'Later',
   'not-planned': 'Not planned',
