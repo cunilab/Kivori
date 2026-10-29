@@ -497,7 +497,9 @@ acceptance are recorded separately in [validation.md](./validation.md).
   A dummy-address API/local-D1 signup and deletion rehearsal is now covered by fourteen automated
   integration checks; real public configuration, mailbox and widget evidence remain open.
   The owner selected a public contact address and Secrets Store on 2026-10-29. Software now reads
-  both Turnstile bindings asynchronously; deployment and live acceptance remain pending.
+  both Turnstile bindings asynchronously. The approved permanent deployment now serves the tested
+  version; changing preview URLs are disabled. One owner signup row is verified in D1; mailbox
+  delivery and deletion acceptance remain pending.
 
 ### S4: Software baseline and real-use acceptance
 

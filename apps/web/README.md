@@ -132,11 +132,12 @@ Sign-up counts (product and utm_source only, no email) go to the `SIGNUPS` Analy
 
 ### Permanent website address
 
-Use `https://kivori-web.andres12holivin.workers.dev` as the public address. The Wrangler configuration
-explicitly enables `workers_dev` and disables `preview_urls`; deployment applies that routing setting.
+Use `https://kivori-web.andres12holivin.workers.dev` as the public address. The live Worker serves
+the tested website there with version preview routing disabled. Wrangler explicitly sets
+`workers_dev: true` and `preview_urls: false` to retain that routing on future deployments.
 PR CI builds and checks the Worker without uploading preview versions or posting changing URLs.
-Pushes to main retain the existing migration/deployment path. A production deployment from a reviewed
-branch can be approved separately without merging its PR; testing a branch does not itself authorize
-replacing the live version. Until deployment applies this configuration, existing preview URLs remain
-available. After the permanent address serves the tested version, temporary preview hostnames can be
-removed from the Turnstile widget while retaining the permanent hostname.
+Pushes to main retain the existing migration/deployment path. An approved production deployment
+from a reviewed branch can happen without merging its PR; PR #127 remains unmerged.
+Temporary preview hostnames can now be removed from the Turnstile widget while retaining the
+permanent hostname. Deployment evidence and remaining signup/deletion acceptance are recorded in
+[validation](../../docs/validation.md#m29-public-website-readiness-audit-open).

@@ -1346,6 +1346,24 @@ and version traffic remain unchanged until an approved deployment applies them. 
 unmerged. Do not remove the working preview's Turnstile hostname until the permanent URL serves
 the tested version and live routing has been checked.
 
+Permanent deployment completed with explicit owner approval, 2026-10-29 at 07:19:13 UTC:
+Cloudflare deployment `3829f381-a15f-4d16-bcf5-e66060c8d65a` promotes the tested version
+`d86bf21e-f561-4e1b-adb3-8038389bdec2` (code `27297ee`, successful web CI attempt 5) to 100% traffic.
+The prior version was `d2f0689d-b7b0-4b89-b2c8-f391b6dbc6e3`; no Worker rebuild, database migration,
+secret-value retrieval or Git merge was needed. Cloudflare route state is now `enabled: true`,
+`previews_enabled: false`, matching the configuration in `a4d6990`.
+
+Anonymous HTTP checks on `https://kivori-web.andres12holivin.workers.dev` returned 200 for `/` and
+`/privacy`, without redirects; privacy includes the configured contact link and the homepage has
+no signup-configuration-unavailable message. The empty JSON API probe returned 400/JSON with
+`ok: false`, without submitting an email. The previously working `d86bf21e-` and older `86ec354c-`
+preview hosts both returned 404 and no site copy. Widget metadata confirms the permanent hostname
+is allowed. A bound-parameter, read-only D1 count for the owner's screenshot signup address found
+one matching row, with zero changes/rows written; the address is not recorded here. This verifies
+the earlier preview signup persisted, not a second signup on the permanent origin. No row was
+deleted and no email was sent. Mailbox delivery, deletion receipt/removal and final acceptance
+remain open. PR #127 remains draft and unmerged; M2.9 remains 19/24 complete.
+
 Astra's independent read-only scope review agreed to keep this item open. No new production/test
 mode switch was added: it would not establish the required live evidence and would change the
 supported preview behavior. That initial audit increment changed documentation only. Local
