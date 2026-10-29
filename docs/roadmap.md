@@ -494,8 +494,10 @@ acceptance are recorded separately in [validation.md](./validation.md).
   version, no Worker secrets, and an Access 403 on anonymous page requests from the audit environment.
   Record a real signup and verified deletion after configuration and approved deployment. See
   [readiness evidence and open dependencies](./validation.md#m29-public-website-readiness-audit-open).
-  A dummy-address API/local-D1 signup and deletion rehearsal is now covered by seven automated
+  A dummy-address API/local-D1 signup and deletion rehearsal is now covered by fourteen automated
   integration checks; real public configuration, mailbox and widget evidence remain open.
+  The owner selected a public contact address and Secrets Store on 2026-10-29. Software now reads
+  both Turnstile bindings asynchronously; deployment and live acceptance remain pending.
 
 ### S4: Software baseline and real-use acceptance
 

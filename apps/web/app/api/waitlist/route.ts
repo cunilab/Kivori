@@ -1,6 +1,7 @@
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getProduct } from '@/content/products';
+import { readTurnstileValue, type TurnstileValue } from '@/lib/turnstile-env';
 import {
   handleWaitlist,
   resolveTurnstileSecret,
@@ -17,8 +18,8 @@ interface WaitlistEnv {
   SIGNUPS?: {
     writeDataPoint(point: { blobs: string[]; doubles: number[]; indexes: string[] }): void;
   };
-  TURNSTILE_SITE_KEY?: string;
-  TURNSTILE_SECRET_KEY?: string;
+  TURNSTILE_SITE_KEY?: TurnstileValue;
+  TURNSTILE_SECRET_KEY?: TurnstileValue;
 }
 
 function readEnv(): WaitlistEnv {
@@ -53,7 +54,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const env = readEnv();
   // The IP is only the rate-limit key and Turnstile's optional hint; it is never stored.
   const ip = request.headers.get('cf-connecting-ip') ?? undefined;
-  const secret = resolveTurnstileSecret(env.TURNSTILE_SITE_KEY, env.TURNSTILE_SECRET_KEY);
+  let secret: string | undefined;
+  try {
+    const [siteKey, secretKey] = await Promise.all([
+      readTurnstileValue(env.TURNSTILE_SITE_KEY),
+      readTurnstileValue(env.TURNSTILE_SECRET_KEY),
+    ]);
+    if (!siteKey) throw new Error('Missing site key');
+    secret = resolveTurnstileSecret(siteKey, secretKey);
+  } catch {
+    return NextResponse.json(
+      { ok: false, message: 'Signup is temporarily unavailable. Please try again later.' },
+      { status: 503 },
+    );
+  }
 
   const result = await handleWaitlist(
     input,

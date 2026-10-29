@@ -1290,6 +1290,27 @@ verified stored row; the deletion request must reach the mailbox, and deletion m
 rows for the normalized test email across all products. Follow the
 [launch and deletion procedure](../apps/web/README.md#public-launch-and-deletion-verification).
 
+Secrets Store follow-up, 2026-10-29: the owner selected a public contact address, committed in
+`apps/web/wrangler.jsonc` at `58b1011`, and requested account-level Secrets Store rather than copying
+keys into chat. Read-only Cloudflare metadata inspection found both exact names,
+`TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`, active with Workers scope in the configured store.
+No values were retrieved. The new configuration declares both bindings and removes the test site
+key from deployed vars. The API awaits both values; server rendering awaits only the site key.
+Lookup exceptions, empty values and a missing site binding fail safely with generic unavailable
+responses rather than provider details or a test-key fallback. Plain Next rendering outside a
+Worker retains its local test key; local Worker emulation needs separately seeded dummy secrets.
+Verification: all 118 website tests passed (including 14 local D1 integration cases), typecheck,
+scoped ESLint, Next production build and the client-output leak guard passed. Wrangler type
+generation recognized both bindings as `SecretsStoreSecret`. The standard OpenNext build and
+`wrangler deploy --dry-run` passed, listing both Secrets Store bindings (1,256.36 KiB gzip Worker).
+An initial `--skipNextBuild` packaging attempt could not reuse a regular Next build because it
+lacked standalone manifests; the standard OpenNext build supplied them without source changes.
+No production deployment was performed. Independent Sol review found no
+actionable issue. The earlier production/access/widget audit above is historical, not a new
+deployment observation.
+The roadmap item remains open until deployment, actual widget verification, mailbox receipt,
+real signup storage and authorized deletion are verified.
+
 Astra's independent read-only scope review agreed to keep this item open. No new production/test
 mode switch was added: it would not establish the required live evidence and would change the
 supported preview behavior. That initial audit increment changed documentation only. Local
