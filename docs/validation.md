@@ -1324,6 +1324,18 @@ Cloudflare documents **Account Secrets Store Edit** for API-token deployments. T
 was not retrieved or modified. Owner credential configuration is needed before retrying preview CI.
 No merge, production deployment, real signup or deletion was performed.
 
+Preview permission retry resolved, 2026-10-29: after the owner updated the GitHub Actions token
+permissions, [web CI attempt 5](https://github.com/cunilab/Kivori/actions/runs/40830450454/attempts/5)
+at `27297ee` passed and uploaded version `d86bf21e-f561-4e1b-adb3-8038389bdec2`.
+The [branch preview](https://d86bf21e-kivori-web.andres12holivin.workers.dev) returned HTTP 200
+for `/` and `/privacy`; the privacy page includes the configured contact link and the homepage
+has no signup-configuration-unavailable message. An empty JSON signup probe with the verification
+User-Agent returned HTTP 400 after the API's binding reads; no email was submitted. An initial
+probe without that User-Agent returned non-JSON, so it is not counted as API evidence. Successful
+upload and these probes do not establish valid real Turnstile tokens, mailbox delivery, stored
+signup or deletion. Production deployment and the website acceptance item remain open; PR #127
+stays unmerged. No key values were retrieved or printed.
+
 Astra's independent read-only scope review agreed to keep this item open. No new production/test
 mode switch was added: it would not establish the required live evidence and would change the
 supported preview behavior. That initial audit increment changed documentation only. Local
