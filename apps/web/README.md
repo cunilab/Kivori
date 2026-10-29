@@ -93,8 +93,9 @@ Turnstile test; it does not close the public launch checks below.
 
 ### Public launch and deletion verification
 
-The [M2.9 readiness audit](../../docs/validation.md#m29-public-website-readiness-audit-open)
-records the current gaps. Test keys and a successful local form response do not establish readiness.
+The [M2.9 acceptance record](../../docs/validation.md#m29-public-website-readiness-and-acceptance)
+records the completed live checks. Use the procedure below when revalidating future launches;
+test keys and a successful local form response do not establish readiness.
 
 1. The owner selected the public support/privacy address in `wrangler.jsonc` `vars.CONTACT_EMAIL`.
    Confirm mailbox delivery and select a consented test email before live verification.
@@ -140,4 +141,4 @@ Pushes to main retain the existing migration/deployment path. An approved produc
 from a reviewed branch can happen without merging its PR; PR #127 remains unmerged.
 Temporary preview hostnames can now be removed from the Turnstile widget while retaining the
 permanent hostname. Deployment evidence and remaining signup/deletion acceptance are recorded in
-[validation](../../docs/validation.md#m29-public-website-readiness-audit-open).
+[validation](../../docs/validation.md#m29-public-website-readiness-and-acceptance).

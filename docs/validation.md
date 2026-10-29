@@ -5,8 +5,8 @@ OS behavior, real timing. Host-sim and other host tests are never promoted to ph
 
 Current M2.9 scope, updated 2026-10-29: CAD/enclosure work is owner-managed and outside the
 software milestone. The [roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness)
-now has **19/24 complete**, including all six virtual Pip software items; five configuration or real-use
-acceptance items remain open. Earlier 13/18 and 13/19 counts are
+now has **20/24 complete**, including all six virtual Pip software items and public website acceptance;
+four real-use acceptance items remain open. Earlier 13/18 and 13/19 counts are
 dated historical snapshots; the enclosure records below remain reference material for the owner
 and do not count toward current M2.9 completion.
 
@@ -1267,7 +1267,11 @@ without changing dev security configuration. Next dev generated an untracked AGE
 after shutdown. Native/firmware code was unchanged. Real public widget/secret/contact configuration,
 a signup and a deletion request remain the next roadmap item.
 
-## M2.9 public website readiness audit (open)
+## M2.9 public website readiness and acceptance
+
+**Current status: complete, 2026-10-29.** Deployment, permanent-origin signup storage,
+owner-observed mailbox receipt and verified test-row deletion are recorded below. Earlier open
+entries in this section are dated audit snapshots.
 
 Read-only audit on Andress-MacBook-Air, 2026-10-25, for item 13 of PR #127.
 At this audit snapshot the item remained unchecked and M2.9 progress was 12/19.
@@ -1382,6 +1386,18 @@ check. Prior preview success and promotion of the same immutable version do not 
 Turnstile's hostname-sensitive challenge on the permanent origin. Do not widen the completed
 deletion or repeat it after a new signup without authorization. M2.9 remains 19/24 complete;
 PR #127 remains draft and unmerged. No app code or runtime suites changed in this evidence update.
+
+Permanent-origin acceptance completed, 2026-10-29 at 07:39 UTC: following the deployment and
+completed deletion test, the owner supplied a success screenshot in response to the instruction
+to sign up at `https://kivori-web.andres12holivin.workers.dev`. A bound-parameter, read-only D1
+query then found exactly one matching row for product `general`, with `changes: 0` and
+`rows_written: 0`. The address and screenshot are not committed. Combined with the prior
+anonymous page/contact checks, real widget/Secrets Store deployment, owner-confirmed deletion
+email receipt and tool-verified one-to-zero test deletion, this closes the public website item.
+The new signup remains stored; the earlier deletion request is not reused to delete it.
+M2.9 is now 20/24 complete, with four Windows/hardware/signing/real-use acceptance items open.
+PR #127 remains draft and unmerged. Owner observations are distinguished from direct tool evidence;
+no additional email, database mutation or deployment was performed for this final check.
 
 Astra's independent read-only scope review agreed to keep this item open. No new production/test
 mode switch was added: it would not establish the required live evidence and would change the

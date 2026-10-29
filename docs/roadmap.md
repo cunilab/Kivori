@@ -379,8 +379,8 @@ M2.8 does not relax any paid-beta gate.
 
 Scope update, 2026-10-26: focus on app, firmware and website software. CAD/enclosure work is
 owner-managed and excluded from M2.9. Virtual Pip adds six software items in S5; the owner
-authorized implementation after reviewing the plan. Progress on 2026-10-29 is **19/24 complete**:
-all six virtual Pip items are implemented. Five configuration or real-use acceptance items remain open. Earlier
+authorized implementation after reviewing the plan. Progress on 2026-10-29 is **20/24 complete**:
+all six virtual Pip items and public website acceptance are complete. Four real-use acceptance items remain open. Earlier
 13/18 and 13/19 counts are historical scope snapshots; existing CAD files and validation records
 are retained for the owner's reference.
 
@@ -487,21 +487,15 @@ acceptance are recorded separately in [validation.md](./validation.md).
   Implemented with one form/server normalizer that discards oversized optional values while
   preserving user and security-field checks. See
   [boundary, storage and browser evidence](./validation.md#m29-signup-attribution-software-acceptance).
-- [ ] **Finish public website configuration**: verify the deployed environment uses a real
-  Turnstile widget/secret and a working contact address on the privacy page before public signup
-  acquisition. The audited committed configuration has an always-pass test site key and an empty
-  contact address. The 2026-10-25 read-only audit found no waitlist bindings in the active production
-  version, no Worker secrets, and an Access 403 on anonymous page requests from the audit environment.
-  Record a real signup and verified deletion after configuration and approved deployment. See
-  [readiness evidence and open dependencies](./validation.md#m29-public-website-readiness-audit-open).
-  A dummy-address API/local-D1 signup and deletion rehearsal is now covered by fourteen automated
-  integration checks; live evidence is recorded separately below.
-  The owner selected a public contact address and Secrets Store on 2026-10-29. Software now reads
-  both Turnstile bindings asynchronously. The approved permanent deployment now serves the tested
-  version; changing preview URLs are disabled. The owner confirmed deletion-request delivery;
-  one preview signup row was verified and deleted, with zero matching rows confirmed afterward.
-  A real signup on the permanent origin and its stored-row check remain pending because Turnstile
-  is hostname-sensitive.
+- [x] **Finish public website configuration**: completed 2026-10-29. The approved permanent
+  deployment serves the tested website at `kivori-web.andres12holivin.workers.dev`, with real
+  Turnstile keys read from Secrets Store and the owner-selected public contact address on privacy.
+  Anonymous homepage/privacy checks pass; changing version URLs are disabled. The owner completed
+  a real signup on the permanent origin and a read-only D1 check confirmed one normalized address/
+  product row. The earlier deletion-request send/receipt was owner-confirmed; exactly one test row
+  was deleted and an independent count confirmed zero remained. The new signup is retained.
+  Fourteen automated local D1 integration checks complement the live evidence. See
+  [readiness and acceptance evidence](./validation.md#m29-public-website-readiness-and-acceptance).
 
 ### S4: Software baseline and real-use acceptance
 
