@@ -56,7 +56,10 @@ metadata; neither value belongs in Git, chat or deployment logs. The site key is
 passed to the browser; the verification secret stays in the server API route.
 
 The owner has created both account secrets with Workers scope. Deployment credentials need
-permission to bind Secrets Store resources (Secrets Store Deployer or equivalent API permission).
+permission to bind Secrets Store resources. For API tokens, add **Account → Secrets Store → Edit**
+for the Kivori account; Read does not permit bindings. Dashboard users need Secrets Store Deployer
+or Super Administrator. Keep the existing Worker/deployment permissions when updating the token.
+See [Secrets Store access control](https://developers.cloudflare.com/secrets-store/access-control/).
 The configuration declares the bindings, so a dashboard-only binding is not required. An approved
 deployment is still needed to activate the new configuration/code. Do not run `wrangler secret put`
 for these names: that creates per-Worker string secrets rather than using this store.

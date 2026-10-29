@@ -1311,6 +1311,19 @@ deployment observation.
 The roadmap item remains open until deployment, actual widget verification, mailbox receipt,
 real signup storage and authorized deletion are verified.
 
+Preview verification follow-up, 2026-10-29: web CI at `aa1d958` built successfully, but its
+preview upload was rejected by Cloudflare error 10021: Secrets Store binding authorization failed.
+The job incorrectly appeared successful because the upload's `tee` pipeline masked the nonzero
+Wrangler status. Both upload and size-report steps now explicitly use GitHub's Bash shell, which
+runs with `-e -o pipefail`. A local stubbed execution checks that upload failure propagates and no
+URL output is written, while successful upload still produces the preview URL. The latest remote
+version remained `86ec354c-51ac-41f6-8554-4dff9f1a05a5` from the preceding contact-only commit,
+so it cannot verify the Secrets Store integration. No new Secrets Store preview was uploaded.
+Both secrets already have Workers scope; the deployment token must also permit binding them:
+Cloudflare documents **Account Secrets Store Edit** for API-token deployments. The token itself
+was not retrieved or modified. Owner credential configuration is needed before retrying preview CI.
+No merge, production deployment, real signup or deletion was performed.
+
 Astra's independent read-only scope review agreed to keep this item open. No new production/test
 mode switch was added: it would not establish the required live evidence and would change the
 supported preview behavior. That initial audit increment changed documentation only. Local

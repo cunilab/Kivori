@@ -52,6 +52,7 @@ jobs:
 
       - name: Report compressed Worker size
         working-directory: apps/web
+        shell: bash
         run: |
           bunx wrangler deploy --dry-run --outdir "$RUNNER_TEMP/worker-dry-run" | tee "$RUNNER_TEMP/dry-run.log"
           size=$(grep 'Total Upload' "$RUNNER_TEMP/dry-run.log" || true)
@@ -88,6 +89,7 @@ jobs:
       # Needs the Worker to exist already (the first `main` deploy creates it).
       - name: Upload preview version
         id: preview
+        shell: bash
         if: steps.cf.outputs.available == 'true' && github.event_name == 'pull_request'
         working-directory: apps/web
         env:
