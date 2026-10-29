@@ -14,6 +14,10 @@ const SENTINELS = [
   'virtual_snapshot',
   'virtual_input',
   'virtual_connection',
+  'KIVORI-VIRTUAL-DEVICE',
+  'fnv1a64-rgb565-le',
+  'PASS S5.4',
+  'PASS S5.5',
 ];
 const DIST = 'apps/desktop/dist/assets';
 

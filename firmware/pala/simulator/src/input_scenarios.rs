@@ -1,4 +1,7 @@
 //! Product-owned raw-input scenarios. Firmware time is virtual; desktop deadlines are not tested.
+mod replay;
+pub use replay::run as replay;
+
 use super::*;
 use kivori_model::{input::Direction, Capabilities, ProtocolVersion};
 use kivori_protocol::{

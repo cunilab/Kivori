@@ -49,7 +49,7 @@ present() {
 }
 
 DESKTOP_DEV_SURFACE=(render_preview_frame mirror_state open_preview_stream close_preview_stream
-  ack_preview_frame debug_payload_hex KIVORI-PROVISION virtual_snapshot virtual_input virtual_connection new_simulated "PASS S5.4" "PASS S5.5")
+  ack_preview_frame debug_payload_hex KIVORI-PROVISION virtual_snapshot virtual_input virtual_connection new_simulated KIVORI-VIRTUAL-DEVICE "PASS S5.4" "PASS S5.5")
 # The host-sim adapters are development-only surface.
 FIRMWARE_SIM_SURFACE=(SimPipe CaptureDisplay VirtualClock)
 # Raw-payload tracing is DEVELOPMENT-ONLY surface (T102): the marker and the dump helper must not exist in

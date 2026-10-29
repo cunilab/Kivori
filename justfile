@@ -189,4 +189,4 @@ virtual-device:
 
 # Real Runtime/desktop-core smoke with fake OS and a captured firmware framebuffer.
 virtual-device-smoke:
-    bun firmware/pala/simulator/run.mjs --smoke
+    node firmware/pala/simulator/run.mjs --smoke

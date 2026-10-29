@@ -133,7 +133,7 @@
   },
   {
     "path": "justfile",
-    "text": "bun firmware/pala/simulator/run.mjs --smoke",
+    "text": "node firmware/pala/simulator/run.mjs --smoke",
     "count": 1,
     "reason": "Explicit product-owned development simulator recipe; no shipping product selection or build changes."
   },
@@ -142,5 +142,11 @@
     "text": "run: node firmware/pala/simulator/run.mjs --smoke",
     "count": 1,
     "reason": "Explicit product-owned simulator integration smoke; shipping build recipes remain catalog-driven."
+  },
+  {
+    "path": ".github/workflows/host.yml",
+    "text": "path: firmware/pala/simulator/target/reports/",
+    "count": 1,
+    "reason": "CI artifact path belongs to the selected product-owned simulator; it does not select shipping products or dependencies."
   }
 ]

@@ -264,7 +264,8 @@ fn main() {
     let result = match std::env::args().skip(1).collect::<Vec<_>>().as_slice() {
         [] => run(&mut io::stdin().lock(), &mut io::stdout().lock()),
         [flag] if flag == "--input-smoke" => input_scenarios::run(),
-        _ => Err("usage: kivori-pip-simulator [--input-smoke]".into()),
+        [flag, seed] if flag == "--replay" => input_scenarios::replay(seed),
+        _ => Err("usage: kivori-pip-simulator [--input-smoke | --replay <17|29>]".into()),
     };
     if let Err(error) = result {
         eprintln!("Pip simulator: {error}");

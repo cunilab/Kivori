@@ -36,6 +36,8 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 fail=0
+PRODUCT_PACKAGES=()
+SIMULATOR_CRATES=()
 
 allowed() {
   local pair="$1 $2" ok
@@ -52,6 +54,7 @@ check_workspace() {
   members="$(printf '%s' "$meta" | jq -r '.packages[].name')"
   while IFS= read -r crate; do
     [ -z "$crate" ] && continue
+    if [ "${2:-}" = "product" ]; then PRODUCT_PACKAGES+=("$crate"); fi
     deps="$(printf '%s' "$meta" | jq -r --arg n "$crate" \
       '.packages[] | select(.name==$n) | .dependencies[].name')"
     for banned in "${NET_BANNED[@]}"; do
@@ -83,8 +86,13 @@ bun --eval '
   for (const crate of crates) process.stdout.write(crate + "\0");
 ' > "$firmware_paths"
 while IFS= read -r -d '' firmware_crate; do
-  check_workspace "$firmware_crate"
+  check_workspace "$firmware_crate" product
   SOURCE_ROOTS+=("$firmware_crate/src")
+  if [ -f "$firmware_crate/simulator/Cargo.toml" ]; then
+    check_workspace "$firmware_crate/simulator" product
+    SIMULATOR_CRATES+=("$firmware_crate/simulator")
+    SOURCE_ROOTS+=("$firmware_crate/simulator/src" "$firmware_crate/simulator/build.rs")
+  fi
 done < "$firmware_paths"
 
 prune=()
@@ -95,6 +103,28 @@ for target in "${TARGETS[@]}"; do
   for banned in "${NET_BANNED[@]}" "${NET_PLUGINS[@]}"; do
     if printf '%s\n' "$tree" | grep -qx "$banned"; then
       echo "OFFLINE VIOLATION: '$banned' reaches the root workspace ($target) other than through ${NET_PRUNE[*]}"
+      fail=1
+    fi
+  done
+  desktop_tree="$(cargo tree -p kivori-desktop -e normal,build --target "$target" --prefix none \
+    --format '{p}' | awk '{print $1}' | sort -u)"
+  for product_package in "${PRODUCT_PACKAGES[@]}"; do
+    if printf '%s\n' "$desktop_tree" | grep -qx "$product_package"; then
+      echo "ISOLATION VIOLATION: desktop depends on product workspace '$product_package' ($target)"
+      fail=1
+    fi
+  done
+done
+
+host="$(rustc -vV | awk '/^host: / { print $2 }')"
+[ -n "$host" ] || { echo "error: Rust host target unavailable" >&2; exit 2; }
+for simulator_crate in "${SIMULATOR_CRATES[@]:-}"; do
+  [ -n "$simulator_crate" ] || continue
+  tree="$(cargo tree --locked --manifest-path "$simulator_crate/Cargo.toml" --target "$host" \
+    -e normal,build --prefix none --format '{p}' | awk '{print $1}' | sort -u)"
+  for banned in "${NET_BANNED[@]}" "${NET_PLUGINS[@]}"; do
+    if printf '%s\n' "$tree" | grep -qx "$banned"; then
+      echo "OFFLINE VIOLATION: '$banned' reaches simulator workspace '$simulator_crate'"
       fail=1
     fi
   done

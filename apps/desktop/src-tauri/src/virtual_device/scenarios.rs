@@ -57,7 +57,9 @@ pub fn connection_smoke(executable: &Path) -> Result<(), String> {
     let mut sandbox = Sandbox::open(executable).map_err(|error| error.to_string())?;
     connected(&mut sandbox)?;
     sandbox.input("clockwise")?;
-    settle(&mut sandbox, Duration::from_millis(400))?;
+    until(&mut sandbox, Duration::from_secs(5), |s| {
+        s.snapshot.volume == 52 && s.snapshot.detents == 1
+    })?;
     check(
         sandbox.snapshot.volume == 52,
         "initial detent did not reach fake OS",
