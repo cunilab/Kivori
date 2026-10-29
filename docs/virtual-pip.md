@@ -22,6 +22,7 @@ firmware/pala/
   simulator/                   separate host Cargo workspace and executable
     src/                       raw inputs, runner, capture and process control
     src/input_scenarios.rs     deterministic raw-input cases through production Runtime
+    src/io_scenarios.rs        bounded FIFO, timed display and input-arrival stress checks
     src/input_scenarios/       fixed-seed replay and structured expected/actual results
     fixtures/                 committed frame goldens
     smoke-report.mjs           file-backed report and replay validation

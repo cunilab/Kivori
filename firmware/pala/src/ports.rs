@@ -108,7 +108,8 @@ pub trait InputSource {
     }
 
     /// Edges the source had to drop because its capture queue was full (cumulative). Polled
-    /// sources capture nothing and drop nothing; only a diagnostic readout reads this.
+    /// sources capture nothing and drop nothing. Runtime uses changes to reject discontinuous rotary
+    /// motion; diagnostics also report this counter.
     fn dropped_edges(&self) -> u32 {
         0
     }

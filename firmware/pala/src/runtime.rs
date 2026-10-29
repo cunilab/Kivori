@@ -425,6 +425,8 @@ pub struct Runtime<'a> {
     idle: IdleLife,
     /// Turns raw quadrature levels into validated logical detents (never raw electrical edges).
     decoder: QuadratureDecoder,
+    /// Last observed capture loss count; continuity cannot cross a missing snapshot.
+    dropped_edges: u32,
     /// Groups validated detents into gestures (identity + the 250 ms inactivity boundary).
     gesture: RotaryGesture,
     /// Session-scoped acceptance and local expiry of the device-rendered `Presentation` overlay.
@@ -476,6 +478,7 @@ impl<'a> Runtime<'a> {
             // schedules them itself, and two schedulers would double up.
             idle: IdleLife::new(MascotPersonality::Cozy, false, seed, 0),
             decoder: QuadratureDecoder::new(),
+            dropped_edges: 0,
             gesture: RotaryGesture::new(GESTURE_END_MS),
             presentation: PresentationState::new(),
             button: ButtonGesture::new(),
@@ -882,16 +885,25 @@ impl<'a> Runtime<'a> {
         input: &mut I,
     ) {
         let mut samples = heapless::Vec::<(InputLevels, ElapsedMs), INPUT_SAMPLES>::new();
+        let before = input.dropped_edges();
+        let mut lost = before != self.dropped_edges;
         input.drain(now, &mut |levels, at_ms| {
-            // Overflow drops the OLDEST levels, so the latest edges (a switch release) keep their
-            // timing; the decoder counts the gap as one invalid transition, which can lose a
-            // detent but never invents one.
+            // Keep recent switch releases even if the source exceeds the sample budget.
             if samples.is_full() {
                 samples.remove(0);
+                lost = true;
             }
             let _ = samples.push((levels, at_ms));
         });
+        let dropped = input.dropped_edges();
+        lost |= dropped != before || dropped == u32::MAX;
+        // Loss after the closing sample belongs to the next queue; invalidate that drain too.
+        self.dropped_edges = before;
         for (levels, at_ms) in samples {
+            // A loss may be inside this batch; no pair of retained phases is known continuous.
+            if lost {
+                self.decoder.reset();
+            }
             self.close_idle_gesture(transport, at_ms);
             self.on_levels(transport, levels, at_ms);
         }

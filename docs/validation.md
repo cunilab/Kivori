@@ -514,6 +514,7 @@ right: Previous track, Play/Pause, Next track (Press only; Hold unbound by defau
 
 - [ ] 5.1 Before wiring: inspect the devkit near GPIO0/GPIO1 (display BLK/DC since #123) | no 32.768 kHz crystal fitted (if one is, stop: pick other pins before soldering)
 - [ ] 5.2 Power on with each button held in turn | B2 (GPIO8) and B3 (GPIO10): Kivori boots normally and the boot log still appears on GPIO21. B1 (GPIO9, BOOT): the board enters ROM download mode, as documented. With the display connected and no button held, the board boots (GPIO2 is display RES)
+- [ ] 5.2a Repeat power-on, reset and recovery reboot with every combination of B1/B2/B3 held | record USB enumeration and boot mode; B1+B2 pulls GPIO9/GPIO8 low, an invalid boot strap combination. Release the buttons and verify recovery by reset, with no stale input action. This is a physical check; restarting a virtual Runtime does not exercise ROM straps.
 - [ ] 5.3 Each button, ten short presses while music plays | exactly one Previous / Play-Pause / Next per press; amber "?" badge (Unverified); a white frame on press
 - [ ] 5.4 Each button held about 1 s | nothing runs (Hold is unbound); held 12 s | nothing runs and the device never reboots
 - [ ] 5.5 Two buttons pressed together; a button pressed while the knob switch is down; a button pressed mid-turn | nothing fires from the second control (no chords)
@@ -1926,3 +1927,38 @@ Do not fix only the CAD stand-in to match another unverified drawing. Close item
 the actual selected assembled unit has evidence for every row and unresolved fit/access problems
 are fixed. Firmware/CAD source consistency, interference reports and electrical provisioning PASS
 remain distinct from these physical measurements.
+
+## PR #127 input loss and I/O fidelity follow-up
+
+Local checks on 2026-10-29, on the working changes based on `8d9bb4aa`:
+
+- The overflow regression failed before the fix with `loss mode 0 invented a detent`. It now
+  covers local sample overflow, capture loss between drains, during a drain and after its final
+  sample, plus counter saturation. The after-final-sample case also failed before the accounting
+  fix. Known-loss batches retain switch samples and suppress rotary motion; a concurrent loss
+  conservatively invalidates the next batch too. Clean motion resumes after settling, while a
+  saturated loss counter keeps rotary motion suppressed until reboot.
+- All 208 firmware host-simulation tests passed before the final review hardening; all 93 affected
+  button, production-runtime and rotary tests passed again afterward. Strict firmware and runner
+  Clippy, Rust formatting and launcher formatting passed. The RISC-V library build passed, and
+  the physical `physical-st7789` release build passed again after the final runtime change.
+- The final `node firmware/pala/simulator/run.mjs --smoke` passed all 15 stages, including 18
+  simulator tests, ten Node report/boundary tests, the unchanged replay goldens and the new `io`
+  stage requiring four `PASS IO` assertions. It exercises the buffered production Runtime and
+  transmit queue with a 64-byte FIFO, scheduled raw input and modeled SPI payload time.
+- The I/O assertions establish three windows / 46,080 microseconds for a full frame at 20 MHz,
+  a detent delivered before frame completion within one window plus modeled 1 ms host service,
+  exact `DisplayFault` on a second-window failure followed by a full repaint, and a fresh
+  handshake / detent after 121 virtual seconds of host backpressure. Render scheduling and
+  actual transferred windows are checked during the final ten stalled ticks. These are modeled
+  timings, not measured hardware latency.
+- Claude Opus 5.5 at medium effort reviewed the implementation, identified the loss-accounting
+  race and assertion improvements, then approved the hardened result with no remaining actionable
+  issues, subject to the final test runs above finishing green; those runs subsequently passed.
+
+The final local ignored report is `firmware/pala/simulator/target/reports/run-UhtSOs/report.json`;
+its logs retain the actual assertions and source fingerprint at execution. This evidence note
+followed that run. Two earlier standalone boundary-test attempts hit existing deadlines under
+concurrent builds; all ten Node report/boundary tests passed in both full runs without changing
+those deadlines. No new CI, physical I/O, real OS action, flashing or production acceptance is
+claimed. Paid simulation services are not used.

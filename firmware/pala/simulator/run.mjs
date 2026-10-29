@@ -27,6 +27,7 @@ const expectedStages = [
   'build-desktop',
   'runner-tests',
   'input',
+  'io',
   'bridge-tests',
   'vertical-slice',
   'connections',
@@ -202,6 +203,15 @@ try {
         layers: ['firmware Runtime'],
         simulatedLayers: ['input', 'clock', 'transport', 'display capture'],
         expectedMarkers: { prefix: 'PASS S5.3 ', count: 32 },
+      },
+    });
+    await run(runner, ['--io-smoke'], {
+      stage: {
+        id: 'io',
+        clockMode: 'injected-firmware',
+        layers: ['buffered firmware Runtime', 'production transmit queue'],
+        simulatedLayers: ['64-byte FIFO', 'SPI wire time', 'scheduled input', 'display capture'],
+        expectedMarkers: { prefix: 'PASS IO ', count: 4 },
       },
     });
     await run(

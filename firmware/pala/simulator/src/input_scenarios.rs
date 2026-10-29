@@ -382,7 +382,7 @@ fn capacity_and_overflow() -> Result<(), String> {
         &blob,
     );
     let response = Response {
-        wire: rig.sim.pipe.host_recv().to_vec(),
+        wire: rig.sim.pipe.inner_mut().host_recv().to_vec(),
         frame: Some(rig.sim.display.frame().iter().map(|p| p.raw()).collect()),
         brightness: rig.sim.display.brightness,
         reboot: tick.reboot,
