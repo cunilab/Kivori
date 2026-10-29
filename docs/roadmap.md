@@ -495,11 +495,13 @@ acceptance are recorded separately in [validation.md](./validation.md).
   Record a real signup and verified deletion after configuration and approved deployment. See
   [readiness evidence and open dependencies](./validation.md#m29-public-website-readiness-audit-open).
   A dummy-address API/local-D1 signup and deletion rehearsal is now covered by fourteen automated
-  integration checks; real public configuration, mailbox and widget evidence remain open.
+  integration checks; live evidence is recorded separately below.
   The owner selected a public contact address and Secrets Store on 2026-10-29. Software now reads
   both Turnstile bindings asynchronously. The approved permanent deployment now serves the tested
-  version; changing preview URLs are disabled. One owner signup row is verified in D1; mailbox
-  delivery and deletion acceptance remain pending.
+  version; changing preview URLs are disabled. The owner confirmed deletion-request delivery;
+  one preview signup row was verified and deleted, with zero matching rows confirmed afterward.
+  A real signup on the permanent origin and its stored-row check remain pending because Turnstile
+  is hostname-sensitive.
 
 ### S4: Software baseline and real-use acceptance
 

@@ -1364,6 +1364,25 @@ the earlier preview signup persisted, not a second signup on the permanent origi
 deleted and no email was sent. Mailbox delivery, deletion receipt/removal and final acceptance
 remain open. PR #127 remains draft and unmerged; M2.9 remains 19/24 complete.
 
+Mailbox/deletion follow-up, 2026-10-29 around 07:35 UTC: the owner supplied screenshots confirming
+the deletion request was sent from the signup address and received at the published contact mailbox.
+The request explicitly asked for removal. Screenshots and personal addresses are not committed.
+Bound-parameter read-only checks found one matching `general` signup row and identified its row ID.
+The MCP deletion attempt was rejected with Cloudflare 7500/permission denied; it changed no data.
+The existing local Wrangler OAuth session had D1 write access to the verified account/database.
+After independent read-only Sol review, Wrangler executed one static DELETE restricted by both
+the verified row ID and exact sender address (CLI has no parameter-binding option). No untrusted
+string was interpolated and no credential file was read. Wrangler reported success, `changes: 1`
+and `rows_written: 1`. A separate bound-email MCP count then returned `matching_rows: 0`, with
+zero query changes/rows written. No other address or product row was targeted.
+
+Mailbox receipt is owner-observed; deletion is tool-verified. The website roadmap item remains
+open for a real human signup on the permanent origin after deployment, followed by a read-only row
+check. Prior preview success and promotion of the same immutable version do not separately exercise
+Turnstile's hostname-sensitive challenge on the permanent origin. Do not widen the completed
+deletion or repeat it after a new signup without authorization. M2.9 remains 19/24 complete;
+PR #127 remains draft and unmerged. No app code or runtime suites changed in this evidence update.
+
 Astra's independent read-only scope review agreed to keep this item open. No new production/test
 mode switch was added: it would not establish the required live evidence and would change the
 supported preview behavior. That initial audit increment changed documentation only. Local
