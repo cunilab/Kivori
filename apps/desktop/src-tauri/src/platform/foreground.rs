@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use super::Foreground;
 
 /// Kivori's own bundle identifier (`identifier` in `tauri.conf.json`), lowercase.
-const OWN_BUNDLE_ID: &str = "id.immer.kivori";
+const OWN_BUNDLE_ID: &str = "id.cunilab.kivori";
 
 /// Whether foreground `id` is Kivori's own window: a user clicking inside Kivori makes Kivori the
 /// foreground app, which is never an app to build a profile for.

@@ -7,6 +7,14 @@ Pip firmware 0.1.3 tagged `fw-pip-v0.1.3`). The firmware folder moved, so the gu
 changed against `fw-pala-v0.1.2` and refuses `none`. The old `fw-pala-v*` tags stay Pip's released
 versions; later releases may use `none` again.
 
+**App identifier `id.immer.kivori` → `id.cunilab.kivori` (2026-10-30), first release after it:**
+settings are copied from the old data folder on first start (`adopt_earlier_config`), and the old
+folder is kept. On Windows the publisher becomes `cunilab`, so the installer records its folder
+under a new registry key; the in-app update still installs over the default
+`%LOCALAPPDATA%\Kivori`, and the install hook removes the stale `Software\immer\Kivori` key. A
+0.2.x install moved to a custom folder gets a fresh copy in the default folder instead; uninstall the
+old one from Windows Settings. On macOS, Accessibility must be granted again (new bundle id).
+
 1. GitHub, Actions, **Release**, Run workflow on `main`: `stage=prepare`, pick `app_bump` (and a
    firmware bump if firmware changed), tick `dry_run`. Check the versions and notes in the run summary.
 2. Run it again without `dry_run`. It opens a draft PR `chore(release): vX.Y.Z`.

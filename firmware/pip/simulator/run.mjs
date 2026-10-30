@@ -321,7 +321,7 @@ try {
         `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>virtual_device</string>
-<key>CFBundleIdentifier</key><string>id.immer.kivori.virtual-device-dev</string>
+<key>CFBundleIdentifier</key><string>id.cunilab.kivori.virtual-device-dev</string>
 <key>CFBundleName</key><string>Kivori Virtual Device</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleVersion</key><string>1</string>
