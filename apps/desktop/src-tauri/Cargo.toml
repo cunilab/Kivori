@@ -35,7 +35,7 @@ kivori-assets = { path = "../../../crates/kivori-assets" }
 kivori-framebuffer = { path = "../../../crates/kivori-framebuffer" }
 kivori-renderer = { path = "../../../crates/kivori-renderer" }
 kivori-protocol = { path = "../../../crates/kivori-protocol" }
-heapless = "0.8"  # fixed-capacity buffers for the shared protocol codec (no_std-friendly)
+heapless = "0.9"  # fixed-capacity buffers for the shared protocol codec (no_std-friendly)
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-single-instance = "2"
 # Launch at login (M3 S4), used from Rust only: no JS package and no webview permission.
