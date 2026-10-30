@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST } from '@/app/api/waitlist/route';
 import PrivacyPage from '@/app/privacy/page';
+import { WaitlistSection } from '@/components/waitlist-section';
 import { TURNSTILE_TEST_SECRET_KEY, TURNSTILE_TEST_SITE_KEY, type WaitlistDb } from './waitlist';
 
 interface LocalStatement {
@@ -174,6 +175,63 @@ describe('local waitlist rehearsal (local D1, mocked Turnstile and Worker contex
     if (['missing database', 'missing real secret', 'honeypot'].includes(scenario)) {
       expect(verify).not.toHaveBeenCalled();
     }
+  });
+
+  it('reads Secrets Store bindings for signup and sends only the site key to the form', async () => {
+    const site = vi.fn(async () => 'stored-public-site-key');
+    const secret = vi.fn(async () => 'stored-private-secret-key');
+    context.env.TURNSTILE_SITE_KEY = { get: site };
+    context.env.TURNSTILE_SECRET_KEY = { get: secret };
+    const section = await WaitlistSection({});
+    expect(section.props).toMatchObject({ siteKey: 'stored-public-site-key' });
+    expect(JSON.stringify(section.props)).not.toContain('stored-private-secret-key');
+    expect(secret).not.toHaveBeenCalled();
+    const response = await signup();
+    expect(response.status).toBe(200);
+    const form = verify.mock.calls[0]![1]!.body as FormData;
+    expect(form.get('secret')).toBe('stored-private-secret-key');
+    expect(secret).toHaveBeenCalledOnce();
+    expect(await db.prepare('SELECT COUNT(*) AS count FROM waitlist').first()).toEqual({
+      count: 1,
+    });
+  });
+
+  it.each([
+    ['site', 'throws'],
+    ['site', 'empty'],
+    ['site', 'missing'],
+    ['secret', 'throws'],
+    ['secret', 'empty'],
+  ])('fails closed when the %s binding is %s', async (key, failure) => {
+    context.env.TURNSTILE_SITE_KEY = { get: async () => 'stored-public-site-key' };
+    context.env.TURNSTILE_SECRET_KEY = { get: async () => 'stored-private-secret-key' };
+    const name = key === 'site' ? 'TURNSTILE_SITE_KEY' : 'TURNSTILE_SECRET_KEY';
+    if (failure === 'missing') delete context.env[name];
+    else
+      context.env[name] = {
+        get: async () => {
+          if (failure === 'throws') throw new Error('sensitive-provider-error');
+          return '   ';
+        },
+      };
+    const response = await signup();
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toMatch(/sensitive-provider-error|stored-private/);
+    expect(verify).not.toHaveBeenCalled();
+    expect(record).not.toHaveBeenCalled();
+    expect(await db.prepare('SELECT COUNT(*) AS count FROM waitlist').first()).toEqual({
+      count: 0,
+    });
+    if (key === 'site') {
+      const markup = renderToStaticMarkup(await WaitlistSection({}));
+      expect(markup).toContain('Signup is temporarily unavailable.');
+      expect(markup).not.toMatch(/sensitive-provider-error|1x000/);
+    }
+  });
+
+  it('keeps test keys confined to plain Next dev rendering', async () => {
+    context.unavailable = true;
+    expect((await WaitlistSection({})).props).toMatchObject({ siteKey: TURNSTILE_TEST_SITE_KEY });
   });
 
   it('renders the Worker contact, local fallback and unconfigured privacy message', () => {

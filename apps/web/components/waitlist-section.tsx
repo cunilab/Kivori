@@ -2,6 +2,7 @@ import { getCloudflareContext } from '@opennextjs/cloudflare';
 import type { ReactElement } from 'react';
 import { WaitlistForm } from '@/components/waitlist-form';
 import { getProducts } from '@/content/products';
+import { readTurnstileValue, type TurnstileValue } from '@/lib/turnstile-env';
 import { TURNSTILE_TEST_SITE_KEY } from '@/lib/waitlist';
 
 interface WaitlistSectionProps {
@@ -10,26 +11,35 @@ interface WaitlistSectionProps {
   variant?: 'card' | 'inline' | undefined;
 }
 
-/** The site key is read per request from the Worker `vars`, never inlined at build time. */
-function siteKey(): string {
+/** Rendering outside a Worker uses test keys; a failed Worker binding never falls back to them. */
+async function siteKey(): Promise<string> {
+  let env: { TURNSTILE_SITE_KEY?: TurnstileValue };
   try {
-    const env = getCloudflareContext().env as unknown as { TURNSTILE_SITE_KEY?: string };
-    return env.TURNSTILE_SITE_KEY || TURNSTILE_TEST_SITE_KEY;
+    env = getCloudflareContext().env as unknown as typeof env;
   } catch {
     return TURNSTILE_TEST_SITE_KEY;
   }
+  const value = await readTurnstileValue(env.TURNSTILE_SITE_KEY);
+  if (!value) throw new Error('Missing site key');
+  return value;
 }
 
 /** Server wrapper: hands the runtime site key and the product list to the client form. */
-export function WaitlistSection({
+export async function WaitlistSection({
   initialProduct,
   idPrefix,
   variant,
-}: WaitlistSectionProps): ReactElement {
+}: WaitlistSectionProps): Promise<ReactElement> {
+  let key: string;
+  try {
+    key = await siteKey();
+  } catch {
+    return <p role="status">Signup is temporarily unavailable. Please try again later.</p>;
+  }
   const products = getProducts().map(({ slug, name }) => ({ slug, name }));
   return (
     <WaitlistForm
-      siteKey={siteKey()}
+      siteKey={key}
       products={products}
       initialProduct={initialProduct}
       idPrefix={idPrefix}

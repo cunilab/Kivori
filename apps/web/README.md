@@ -25,7 +25,7 @@ Run from the repo root (or `cd apps/web`).
    variable `CLOUDFLARE_ACCOUNT_ID` (not secret). Both are set (2026-10-12).
 3. Push to `main`: `.github/workflows/web.yml` deploys to `https://kivori-web.<your-subdomain>.workers.dev`.
    Without the secrets the workflow still builds and reports the Worker size, then skips deploy.
-4. PR previews use `wrangler versions upload`, which requires the Worker to exist, so the first `main` deploy comes first.
+4. PRs build and size-check without publishing preview versions. The public URL changes only on deployment.
 
 ## Waitlist (W4)
 
@@ -48,19 +48,34 @@ bunx wrangler d1 execute kivori-web --remote --command "SELECT email, product, c
 # add --json for machine-readable output
 ```
 
-### Turnstile keys
+### Turnstile keys (Cloudflare Secrets Store)
 
-The repo ships Cloudflare's always-pass **test** keys: the site key is in `wrangler.jsonc` `vars`
-(`TURNSTILE_SITE_KEY`), and the server falls back to the test secret only while the site key is the
-test key. A real site key with no `TURNSTILE_SECRET_KEY` rejects every sign-up (fail closed). To go live:
+Both Turnstile values are read at request time from Secrets Store bindings in `wrangler.jsonc`:
+`TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`. The committed store ID and secret names are
+metadata; neither value belongs in Git, chat or deployment logs. The site key is intentionally
+passed to the browser; the verification secret stays in the server API route.
 
-1. Cloudflare dashboard, Turnstile, Add widget, for hostname `kivori-web.andres12holivin.workers.dev`
-   (and the custom domain later).
-2. Put the widget's site key in `wrangler.jsonc` `vars.TURNSTILE_SITE_KEY`.
-3. `bunx wrangler secret put TURNSTILE_SECRET_KEY` and paste the widget's secret.
-4. Deploy.
+The owner has created both account secrets with Workers scope. Deployment credentials need
+permission to bind Secrets Store resources. For API tokens, add **Account → Secrets Store → Edit**
+for the Kivori account; Read does not permit bindings. Dashboard users need Secrets Store Deployer
+or Super Administrator. Keep the existing Worker/deployment permissions when updating the token.
+See [Secrets Store access control](https://developers.cloudflare.com/secrets-store/access-control/).
+The configuration declares the bindings, so a dashboard-only binding is not required. An approved
+deployment is still needed to activate the new configuration/code. Do not run `wrangler secret put`
+for these names: that creates per-Worker string secrets rather than using this store.
 
-For local testing the test token `XXXX.DUMMY.TOKEN.XXXX` passes with the test secret.
+Configure the Turnstile widget for the actual website hostname, currently
+`kivori-web.andres12holivin.workers.dev`, and add the custom domain when used. Change values in
+Secrets Store without copying them into the repository. A lookup error or empty stored value
+blocks signup with a generic message; it never silently switches to Cloudflare test keys.
+See [Cloudflare's binding guide](https://developers.cloudflare.com/secrets-store/integrations/workers/).
+
+Plain Next rendering outside a Worker uses the test site key. Local Worker emulation cannot read
+remote store values: seed both bindings locally using `bunx wrangler secrets-store secret create
+<store-id> --name <binding-name> --scopes workers` from `apps/web`, **without `--remote`**, entering
+Cloudflare's [dummy test values](https://developers.cloudflare.com/turnstile/troubleshooting/testing/)
+at the prompts. Use the committed store ID and each binding name. Never use real production values
+for local tests. Automated integration tests instead use isolated dummy bindings and local D1.
 
 ### Local signup and deletion rehearsal
 
@@ -78,16 +93,17 @@ Turnstile test; it does not close the public launch checks below.
 
 ### Public launch and deletion verification
 
-The [M2.9 readiness audit](../../docs/validation.md#m29-public-website-readiness-audit-open)
-records the current gaps. Test keys and a successful local form response do not establish readiness.
+The [M2.9 acceptance record](../../docs/validation.md#m29-public-website-readiness-and-acceptance)
+records the completed live checks. Use the procedure below when revalidating future launches;
+test keys and a successful local form response do not establish readiness.
 
-1. Confirm the owner's public privacy mailbox and a consented test email. Set the public mailbox
-   in `wrangler.jsonc` `vars.CONTACT_EMAIL`; do not infer it from deployment credentials.
-2. Configure the real Turnstile widget for the intended hostname, commit its public site key,
-   and provision its secret with the interactive command above. Keep secrets out of Git, chat
-   and evidence. Widget inspection currently needs additional Cloudflare access from the owner.
+1. The owner selected the public support/privacy address in `wrangler.jsonc` `vars.CONTACT_EMAIL`.
+   Confirm mailbox delivery and select a consented test email before live verification.
+2. Confirm the real Turnstile widget allows the intended hostname and both Secrets Store entries
+   contain its matching keys. Keep their values out of Git, chat and evidence. Active secret metadata
+   alone does not verify the widget configuration or that its values match.
 3. Review the configuration change and deploy through the approved production workflow, which
-   applies D1 migrations. PR version uploads are previews, not production releases. Inspect the
+   applies D1 migrations. PRs build and size-check without publishing version URLs. Inspect the
    active production version for `WAITLIST_DB`, `WAITLIST_RATE_LIMITER`, `SIGNUPS`, the public
    variables and the secret binding; secret presence alone does not prove the widget works.
 4. Confirm the intended public access policy with the owner. After the approved launch, check
@@ -114,3 +130,15 @@ records the current gaps. Test keys and a successful local form response do not 
 
 Sign-up counts (product and utm_source only, no email) go to the `SIGNUPS` Analytics Engine dataset
 `kivori_signups`. R2 and Cloudflare Web Analytics are not bound yet.
+
+### Permanent website address
+
+Use `https://kivori-web.andres12holivin.workers.dev` as the public address. The live Worker serves
+the tested website there with version preview routing disabled. Wrangler explicitly sets
+`workers_dev: true` and `preview_urls: false` to retain that routing on future deployments.
+PR CI builds and checks the Worker without uploading preview versions or posting changing URLs.
+Pushes to main retain the existing migration/deployment path. An approved production deployment
+from a reviewed branch can happen without merging its PR; PR #127 remains unmerged.
+Temporary preview hostnames can now be removed from the Turnstile widget while retaining the
+permanent hostname. Deployment evidence and remaining signup/deletion acceptance are recorded in
+[validation](../../docs/validation.md#m29-public-website-readiness-and-acceptance).

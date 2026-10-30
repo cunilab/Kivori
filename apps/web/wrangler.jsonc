@@ -1,6 +1,8 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "kivori-web",
+  "workers_dev": true,
+  "preview_urls": false,
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
@@ -38,12 +40,20 @@
       "simple": { "limit": 5, "period": 60 },
     },
   ],
+  "secrets_store_secrets": [
+    {
+      "binding": "TURNSTILE_SITE_KEY",
+      "store_id": "276d4d35c03b4fec9303b1f46e67379c",
+      "secret_name": "TURNSTILE_SITE_KEY",
+    },
+    {
+      "binding": "TURNSTILE_SECRET_KEY",
+      "store_id": "276d4d35c03b4fec9303b1f46e67379c",
+      "secret_name": "TURNSTILE_SECRET_KEY",
+    },
+  ],
   "vars": {
-    // Cloudflare's always-pass TEST site key. Replace with the real widget's key (see README).
-    // The matching secret is `TURNSTILE_SECRET_KEY` (a wrangler secret, never committed).
-    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
-    // Public contact address shown on /privacy. Leave empty until the mailbox exists; the page then
-    // says contact details are coming before launch.
-    "CONTACT_EMAIL": "",
+    // Owner-selected public support/privacy address; mailbox delivery is verified before launch.
+    "CONTACT_EMAIL": "andresholivin01@gmail.com",
   },
 }
