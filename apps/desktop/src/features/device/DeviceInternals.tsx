@@ -10,7 +10,7 @@ import {
 import { Progress } from '@kivori/ui/components/progress';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@kivori/ui/components/tooltip';
 import { getDeviceInternals } from '@/lib/ipc';
-import type { ConnectionStatusDto, DeviceInternalsDto } from '@/lib/ipc/types';
+import type { ConnectionStatusDto, DeviceInfoDto, DeviceInternalsDto } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
 import { INTERNALS_FRESH_MS, setLatestInternals } from './internals-latest';
 
@@ -23,6 +23,14 @@ const t = strings.internals;
 export const VIRTUAL_PIP_DEVICE_ID_HASH = '847c795d';
 
 type Snapshot = NonNullable<DeviceInternalsDto['snapshot']>;
+
+/** What the card needs of the connection: the dev virtual window has no more than this. */
+export type InternalsConnection = Pick<
+  ConnectionStatusDto,
+  'connection' | 'connectionGeneration'
+> & {
+  device: Pick<DeviceInfoDto, 'deviceIdHashShort'> | null;
+};
 
 function Row({
   label,
@@ -290,7 +298,7 @@ function Body({ s }: { s: Snapshot }): ReactElement {
 export function DeviceInternals({
   connection,
 }: {
-  connection: ConnectionStatusDto | null;
+  connection: InternalsConnection | null;
 }): ReactElement {
   const generation = connection?.connectionGeneration;
   const connected = connection?.connection === 'connected';

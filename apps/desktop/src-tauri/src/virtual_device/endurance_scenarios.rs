@@ -92,10 +92,11 @@ fn run(sandbox: &mut Sandbox, limit: Duration) -> Result<(Duration, Wraps, usize
 
 /// Opt-in long session: `virtual_device <runner> --endurance-smoke`.
 pub fn endurance_smoke(executable: &Path) -> Result<(), String> {
-    // The flood (about 190 detents a second, each with presentation traffic back) is far beyond what
-    // the chip's 512 inbound bytes per tick at its frame rate could take, so it runs on zero-time
-    // frames; modelled timing would measure that limit, not wrap handling.
-    let mut sandbox = Sandbox::open_ideal(executable).map_err(|error| error.to_string())?;
+    // Modelled ESP32-C3 time, as the unit runs. The flood is 250 detents a second (4 ms edge spacing)
+    // with presentation traffic back, well under what the runtime takes inbound (512 bytes per
+    // frame, about 6 KB/s): the heartbeat round trip stays near 0.1 s against the host's 2 s
+    // allowance (docs/virtual-pip.md, Endurance run).
+    let mut sandbox = Sandbox::open(executable).map_err(|error| error.to_string())?;
     let deadline = Instant::now() + Duration::from_secs(5);
     while !(sandbox.snapshot.connected && sandbox.snapshot.frame.is_some()) {
         sandbox.tick();

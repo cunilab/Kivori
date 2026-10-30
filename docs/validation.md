@@ -1702,7 +1702,9 @@ one virtual session for 432 s and 107,684 alternating detents until both directi
 numbers had wrapped (host 1, device 1). It recorded no sequence gap, malformed frame, device error,
 stale-input rejection or reconnect, every detent arrived, the paired turns left volume at 50 and a
 press after the wrap still ran. A real Windows session wraps after roughly 65,536 frames, well within
-the soak and a workday. See [virtual-pip.md](./virtual-pip.md#endurance-run).
+the soak and a workday. A second run on 2026-10-31, on modelled ESP32-C3 timing, passed with 201,286
+detents in 805 s (host 1, device 3 wraps) and the same checks; heartbeat round trip at most 94 ms.
+See [virtual-pip.md](./virtual-pip.md#endurance-run).
 
 Item 17 preparation, 2026-10-25, Andress-MacBook-Air. No Windows soak or workday was started here.
 Soak: NOT RUN, 0 verified hours. Workdays: 0/10. Item 17 remains unchecked; M2.9 remains 13/19.

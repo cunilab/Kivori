@@ -270,13 +270,14 @@ and delivery, the Windows suspend acknowledgement budget, real USB power and mea
 
 ## Endurance run
 
-`just virtual-device-endurance` (opt-in, about 7 minutes on an Apple Silicon Mac; not in CI) keeps
+`just virtual-device-endurance` (opt-in, about 14 minutes on an Apple Silicon Mac, on modelled timing; not in CI) keeps
 one virtual session turning the knob right then left until both protocol sequence numbers have
 wrapped, observed through a feature-gated `Session::sequence_positions`, then requires every detent
 delivered, no sequence gap, malformed frame, device error, stale rejection or reconnect, volume back
 at 50 and a working press. The first attempt stopped at a fixed detent count and found only the
 device side had wrapped (the host sends about 0.6 frames per detent), so the run now continues until
-both wraps are seen. The 2026-10-30 run passed with 107,684 detents in 432 s. It exercises protocol
+both wraps are seen. The 2026-10-30 run (ideal timing) passed with 107,684 detents in 432 s; the
+2026-10-31 run on modelled timing passed with 201,286 detents in 805 s (host 1 / device 3 wraps). It exercises protocol
 and session longevity only; it earns no soak hours and does not cover OS sleep, USB or memory growth
 on the device.
 
@@ -480,17 +481,27 @@ remains a model: [Limits](#limits-of-the-model) says what it does not know.
 | Mode | Used by | One request is |
 |---|---|---|
 | Modelled (default) | `kivori-pip-simulator` with no arguments: the desktop bridge and `just virtual-device` | "run the device until `now_ms`": any number of ticks, on the device's own clock |
-| Ideal (`--ideal-time`) | in-process `Simulator::new()`: `--input-smoke`, `--io-smoke`, `--replay`, the runner tests and the committed frame goldens; `just virtual-device-endurance` | exactly one tick with the clock frozen at `now_ms`, frames cost 0 ms |
+| Ideal (`--ideal-time`) | in-process `Simulator::new()`: `--input-smoke`, `--io-smoke`, `--replay`, the runner tests and the committed frame goldens | exactly one tick with the clock frozen at `now_ms`, frames cost 0 ms |
 
 Ideal timing is kept for everything whose assertions or goldens depend on a tick being one instant
 (exact event timestamps, frame hashes at a given `now_ms`). Modelled timing is for looking at the
 device as a user would. The desktop, connection, recovery and presence scenarios of
-`just virtual-device-smoke` run on modelled timing and pass. The endurance run needs ideal timing: it turns the
-knob about 190 detents a second with presentation traffic back, and on modelled timing the heartbeat
-timed out after about 30 s (5,700 detents). A hand cannot turn a knob that fast, and the runtime takes
-at most `RX_BYTES_PER_POLL` (512) inbound bytes per tick, about 6 KB a second at the chip's 12
-frames a second, which is the likely limit; the cause was not isolated further. The run's purpose, the
-sequence wraps, does not depend on frame time.
+`just virtual-device-smoke` and `just virtual-device-endurance` run on modelled timing and pass.
+
+The endurance run first looked as if it needed ideal timing: a modelled run was reported to lose its
+heartbeat after about 30 s (5,700 detents), and the suspect was the runtime's inbound limit,
+`RX_BYTES_PER_POLL` (512 bytes a tick, about 6.4 KB/s at 12.5 frames a second). That failure did not
+reproduce at this commit: runs of 198 s, 109 s with 8 busy loops, 40 s with 32 busy loops and a full
+805 s run (201,286 detents at 250 a second) all kept the heartbeat, with a round trip of at most 94 ms
+(2 s is the host's allowance), no inbound backlog and every detent delivered. What the limit does
+is measured without wall-clock noise by `a_detent_flood_with_presentations_back_keeps_the_heartbeat_inside_its_allowance`
+(virtual time only): 200 detents a second with a presentation for each (5.6 KB/s inbound) is
+answered within 70 ms, while 2 presentations a detent (11 KB/s) is not (a 6.5 s round trip and
+growing). The endurance flood makes the host send 0.3 to 0.65 frames per detent (the host counter wrapped
+once in 201,286 detents), about 2 to 4.5 KB/s, so it sits
+below the ceiling; a fast human spin (50 to 100 detents a second) is far below it. The cause of the
+earlier failure was not found; the likeliest explanations are a host stall or an earlier state of the
+model, and it is treated as unexplained rather than as a device limit.
 
 #### How time is modelled
 
@@ -573,6 +584,11 @@ the connection by the device id's short hash (`VIRTUAL-PIP-0001` hashes to `847c
 "Modelled (virtual Pip)" with a one-sentence explanation in the Device internals card
 (`VIRTUAL_PIP_DEVICE_ID_HASH`; a test pins the constant to the id). Nothing was added to the wire.
 
+The development window reuses the card. The `virtual_device` example registers `get_device_internals`
+with the shipping command's name and shape; the sandbox projects it from its session with
+`device_internals_dto`, and starts sending one `InternalsRequest` a second only once the card has
+asked. `just virtual-device-smoke` (vertical slice) reads the figures back through that path.
+
 Keeping the fixture current: `just fw-budget` ends with `bun scripts/virtual-resource-facts.mjs
 --check`, and the firmware CI job runs it after the budget check. It builds nothing; it reads the
 product ELF, derives the five ELF facts and fails when one differs from the fixture by more than 2%.
@@ -593,5 +609,5 @@ gate above.
 - Internals that need hardware stay unavailable. The app image size and stack peak describe the
   product ELF at the last fixture refresh, not the simulator binary.
 - Ideal-timing scenarios say nothing about timing; use modelled timing (or the unit) for that.
-- The development virtual window shows the panel and controls but no Device internals card; the
-  internals reach any session that asks for them (`InternalsRequest`).
+- The development virtual window shows the Device internals card (the shipping component, with the
+  "Modelled (virtual Pip)" note); the main app still cannot connect to the virtual device.

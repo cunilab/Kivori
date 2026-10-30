@@ -232,11 +232,12 @@ mod tests {
         desk::{ClockTime, ControlLabels, DeskStatus, DisplayMode, MediaStatus, MediaText},
         input::Direction,
         internals::DeviceInternals,
+        presentation::{PrimaryState, ValueConfidence, ValueDisplay, ValueKind},
         ProtocolVersion,
     };
     use kivori_protocol::{
-        decode_message, encode_message, Hello, InputKind, InternalsRequest, Message, Ping, Ready,
-        Status, PROTOCOL_MAJOR, PROTOCOL_MINOR,
+        decode_message, encode_message, Hello, InputKind, InternalsRequest, Message, Ping,
+        Presentation, Ready, Status, PROTOCOL_MAJOR, PROTOCOL_MINOR,
     };
 
     const SESSION: u32 = 7;
@@ -508,6 +509,101 @@ mod tests {
         };
         assert_eq!(run(5), run(5), "repeatable");
         assert_eq!(run(5), run(40), "independent of the polling interval");
+    }
+
+    /// A host that turns the knob at `period_ms` per detent (alternating directions, four edges a
+    /// detent) and answers every detent with one `Presentation` (about 28 bytes on the wire), with
+    /// a heartbeat a second, for `secs` seconds. Returns the worst heartbeat round trip in ms, the
+    /// detents turned and the detents the device reported.
+    fn flood(period_ms: u32, secs: u32) -> (u32, usize, usize) {
+        let mut rig = Rig::new();
+        rig.connect_desk();
+        rig.run_to(2_000, 5);
+        rig.pongs.clear();
+        rig.events.clear();
+        let t0 = rig.now;
+        let (mut detents, mut revision) = (0usize, 0u32);
+        let mut pings = vec![];
+        for ms in 1..=secs * 1_000 {
+            let at = t0 + ms;
+            let mut req = request(at);
+            let phase = ms % period_ms;
+            if (1..=4).contains(&phase) {
+                let table = if detents % 2 == 0 {
+                    [2u8, 3, 1, 0]
+                } else {
+                    [1u8, 3, 2, 0]
+                };
+                req.edges = vec![Edge {
+                    at_ms: at,
+                    levels: table[(phase - 1) as usize],
+                }];
+                if phase == 4 {
+                    detents += 1;
+                    revision += 1;
+                    req.wire = rig.wire(&Message::Presentation(Presentation {
+                        session: SESSION,
+                        revision,
+                        primary: PrimaryState::Idle,
+                        value: Some(ValueDisplay {
+                            kind: ValueKind::Volume,
+                            current_percent: 50 + (detents % 2) as u8,
+                            confidence: ValueConfidence::Confirmed,
+                            at_boundary: false,
+                        }),
+                        transient_ms: 1_500,
+                    }));
+                }
+            }
+            if ms % 1_000 == 0 {
+                pings.push(at);
+                let ping = rig.wire(&Message::Ping(Ping { t_ms: at }));
+                req.wire.extend(ping);
+            }
+            rig.go(req);
+        }
+        // The last ping may still be in flight; every earlier one must have been answered.
+        let worst = pings[..pings.len() - 1]
+            .iter()
+            .map(|&sent| {
+                let &(_, answered) = rig
+                    .pongs
+                    .iter()
+                    .find(|(echo, _)| *echo == sent)
+                    .expect("every heartbeat is answered");
+                answered - sent
+            })
+            .max()
+            .expect("pings");
+        let reported = rig
+            .events
+            .iter()
+            .filter(|(kind, _)| matches!(kind, InputKind::Detent(_)))
+            .count();
+        (worst, detents, reported)
+    }
+
+    #[test]
+    fn a_detent_flood_with_presentations_back_keeps_the_heartbeat_inside_its_allowance() {
+        // The endurance run's pace (250 detents a second) is a stress test; a fast human spin is
+        // 50 to 100 a second for a second or two. 200 a second with a presentation for every detent
+        // is about 5.6 KB/s inbound, close to the 6.4 KB/s the runtime reads (512 bytes a frame at
+        // 12.5 frames a second), and the heartbeat is still answered within a frame or two. The
+        // host gives up after 2 s without a reply (3 heartbeats at 1 s).
+        let (worst, turned, reported) = flood(5, 20);
+        // The last detent may still be in flight when the run ends.
+        assert!(
+            turned - reported <= 1,
+            "{reported} of {turned} detents reached the host"
+        );
+        assert!(worst <= 250, "worst heartbeat round trip {worst} ms");
+        // A realistic fast spin has a very wide margin.
+        let (worst, turned, reported) = flood(10, 10);
+        assert!(
+            turned - reported <= 1,
+            "{reported} of {turned} detents reached the host"
+        );
+        assert!(worst <= 250, "worst heartbeat round trip {worst} ms");
     }
 
     #[test]

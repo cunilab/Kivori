@@ -16,6 +16,9 @@ use crate::device::session::{Session, SessionConfig};
 use crate::device::transport::SerialLink;
 use crate::device::{ConnectionManager, ManagerEvent};
 use crate::input::freshness::Freshness;
+use crate::ipc::dto::{
+    connection_token, device_internals_dto, DeviceInternalsDto, DiagnosticsSnapshot,
+};
 use crate::orchestrator::Orchestrator;
 use crate::platform::host_events::{HostEvent, HostPresenceTracker, PresenceAction};
 use crate::platform::{self, FakeInputSynth, FakeVolumeBackend, OsServices, VolumeBackend};
@@ -300,11 +303,6 @@ pub struct Snapshot {
     pub error: Option<String>,
 }
 
-/// Runner argument for zero-time frames: one request is one tick at the request's time. The runner
-/// models the ESP32-C3's frame time by default; a scenario that floods the device faster than the
-/// chip could take it (the endurance run) needs the old clock.
-const IDEAL_TIME: &[&str] = &["--ideal-time"];
-
 /// A dedicated development owner, never the shipping app's managed state or real device task.
 /// Config is in memory only: the tool neither reads nor writes the user's settings.
 pub struct Sandbox {
@@ -324,6 +322,9 @@ pub struct Sandbox {
     started: Instant,
     next_ping: Duration,
     next_capture: Duration,
+    /// The Device internals card asked: keep requesting a snapshot about once a second.
+    internals_polled: bool,
+    next_internals: Duration,
     edges: VecDeque<Edge>,
     held: bool,
     release_by: Option<Duration>,
@@ -344,19 +345,6 @@ impl Sandbox {
         Self::open_with(
             executable,
             &[],
-            Arc::new(FakeVolumeBackend::new(50)),
-            Arc::new(FakeInputSynth::new(Ok(()))),
-            Arc::new(platform::FakeMicBackend::new()),
-            Arc::new(platform::FakeMediaObserver::default()),
-            Arc::new(platform::FakeForeground::default()),
-        )
-    }
-
-    /// As [`Self::open`], with the runner on zero-time frames ([`IDEAL_TIME`]).
-    pub fn open_ideal(executable: &Path) -> io::Result<Self> {
-        Self::open_with(
-            executable,
-            IDEAL_TIME,
             Arc::new(FakeVolumeBackend::new(50)),
             Arc::new(FakeInputSynth::new(Ok(()))),
             Arc::new(platform::FakeMicBackend::new()),
@@ -408,6 +396,8 @@ impl Sandbox {
             started: Instant::now(),
             next_ping: Duration::ZERO,
             next_capture: Duration::ZERO,
+            internals_polled: false,
+            next_internals: Duration::ZERO,
             edges: VecDeque::from([Edge {
                 at_ms: 0,
                 levels: 0,
@@ -439,6 +429,22 @@ impl Sandbox {
 
     pub fn snapshot(&self) -> Snapshot {
         self.snapshot.clone()
+    }
+
+    /// The Device internals card's data, projected from this session exactly as the shipping app
+    /// does. Asking also starts the once-a-second `InternalsRequest`, so nothing is sent until the
+    /// card is open.
+    pub fn device_internals(&mut self) -> DeviceInternalsDto {
+        self.internals_polled = true;
+        let mut diagnostics = DiagnosticsSnapshot::initial();
+        if self.snapshot.connected {
+            diagnostics.connection = connection_token(kivori_model::ConnectionState::Connected);
+            diagnostics.connection_generation = self.snapshot.generation;
+            diagnostics.effective_caps = self.session.effective_caps();
+            diagnostics.internals = self.session.internals();
+            diagnostics.internals_received_at = self.session.internals_received_at();
+        }
+        device_internals_dto(&diagnostics, Instant::now())
     }
 
     fn end_link(&mut self, error: Option<String>) {
@@ -514,6 +520,7 @@ impl Sandbox {
             self.link = Some(link);
             self.connection_started = Instant::now();
             self.next_ping = Duration::ZERO;
+            self.next_internals = Duration::ZERO;
             self.next_capture = Duration::ZERO;
             self.snapshot.generation = self.session.connection_generation();
             self.snapshot.connection_state = "connecting";
@@ -668,6 +675,7 @@ impl Sandbox {
         self.link = Some(link);
         self.connection_started = Instant::now();
         self.next_ping = Duration::ZERO;
+        self.next_internals = Duration::ZERO;
         self.next_capture = Duration::ZERO;
         self.snapshot.generation = self.session.connection_generation();
         self.snapshot.connection_state = "connecting";
@@ -775,6 +783,12 @@ impl Sandbox {
                 .send_ping(link, ms)
                 .map_err(|_| invalid("virtual ping failed"))?;
             self.next_ping = now + Duration::from_secs(1);
+        }
+        if self.internals_polled && now >= self.next_internals {
+            self.session
+                .request_internals(link)
+                .map_err(|_| invalid("virtual internals request failed"))?;
+            self.next_internals = now + Duration::from_secs(1);
         }
         if self.session.heartbeat_timed_out() {
             return Err(invalid("virtual heartbeat timeout"));
