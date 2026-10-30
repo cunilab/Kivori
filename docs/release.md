@@ -155,6 +155,12 @@ an existing tag that names another commit is refused.
 
 ## Windows
 
+For a local development installer on Windows, run `just bundle-windows`. With no
+`TAURI_SIGNING_PRIVATE_KEY`, it disables updater artifact generation, matching PR CI, so an
+unsigned local build does not require the updater private key. If that key is supplied, the
+recipe retains updater signing and its normal key/password validation. Neither path adds Windows
+publisher signing. Signed-beta installation and live updater acceptance remain separate checks.
+
 1. Merge pull requests with conventional commit titles (`feat:`, `fix:`, `perf:`, scoped like
    `feat(mic): ...`); they become the release notes.
 2. When you want a release: Actions, **Release**, Run workflow, on `main`, with `stage=prepare`. Pick:

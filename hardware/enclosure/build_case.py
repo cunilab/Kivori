@@ -104,7 +104,7 @@ SW_HEAD_CLR = 0.15          # cap socket clearance per side; the cap is held by 
 SW_PADS = [(-6.25, -2.5), (6.25, -2.5), (-6.25, 2.5), (6.25, 2.5)]  # pin 1,1,2,2 (land pattern Ø1.5)
 SW_PEGS = [(0.0, -4.5), (0.0, 4.5)]  # clearance for locating bosses some 12x12 switches have (B3F)
 SW_PEG_HOLE_D = 2.0
-BTN_GPIO = ["IO0", "IO1", "IO20"]  # left, middle, right
+BTN_GPIO = ["IO9", "IO8", "IO10"]  # left, middle, right
 
 # Printed PCB ("carrier"): same plane as a future real PCB
 C_FRONT = -(FACE_T + EC11_BODY_H)  # -8.5: EC11 body sits on it and touches the face
@@ -376,16 +376,16 @@ def btn_peg(idx, k):
 
 # Nets: SuperMini pin -> list of component pins (pin map from README / profile.rs)
 NETS = {
-    "SCL": ("IO6", [disp_pins["SCL"]]),
-    "SDA": ("IO7", [disp_pins["SDA"]]),
-    "RES": ("IO3", [disp_pins["RES"]]),
-    "DC": ("IO2", [disp_pins["DC"]]),
-    "BLK": ("IO8", [disp_pins["BLK"]]),
+    "SCL": ("IO4", [disp_pins["SCL"]]),
+    "SDA": ("IO3", [disp_pins["SDA"]]),
+    "RES": ("IO2", [disp_pins["RES"]]),
+    "DC": ("IO1", [disp_pins["DC"]]),
+    "BLK": ("IO0", [disp_pins["BLK"]]),
     "3V3": ("3V3", [disp_pins["VCC"], enc_pins["+"]]),
     "GND": ("GND", [disp_pins["GND"], enc_pins["GND"], btn_pin(0, 0), btn_pin(1, 0), btn_pin(2, 0)]),
-    "CLK": ("IO4", [enc_pins["CLK"]]),
-    "DT": ("IO5", [enc_pins["DT"]]),
-    "SW": ("IO10", [enc_pins["SW"]]),
+    "CLK": ("IO7", [enc_pins["CLK"]]),
+    "DT": ("IO6", [enc_pins["DT"]]),
+    "SW": ("IO5", [enc_pins["SW"]]),
     "B1": (BTN_GPIO[0], [btn_pin(0, 2)]),
     "B2": (BTN_GPIO[1], [btn_pin(1, 2)]),
     "B3": (BTN_GPIO[2], [btn_pin(2, 2)]),

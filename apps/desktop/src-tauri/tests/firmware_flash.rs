@@ -53,6 +53,81 @@ fn failed_flash_resumes_normal_connection_work() {
 }
 
 #[test]
+fn interrupted_flash_can_recover_on_a_new_port_without_accepting_a_stale_handshake() {
+    for failure in [
+        FlashFailure::Cancelled,
+        FlashFailure::Timeout,
+        FlashFailure::PortBusy,
+        FlashFailure::Unknown,
+    ] {
+        let mut flash = FlashWorkflow::new(true, 512);
+        flash.drain_activity();
+        flash.request(true, Some("COM7"), Some("old-unit")).unwrap();
+        let mut failed_activity = Vec::new();
+        assert_eq!(
+            run_accepted_firmware_flash(
+                &mut flash,
+                |_| Err(failure),
+                |event| failed_activity.push(event)
+            ),
+            ResumeTarget::Discovery
+        );
+        assert_eq!(flash.status().phase, FirmwarePhase::Failed);
+        assert_eq!(flash.status().failure, Some(failure));
+        assert!(!flash.is_busy());
+        assert!(!flash.handshake("COM7", "old-unit", true));
+        assert_eq!(
+            failed_activity.last().unwrap().kind,
+            ActivityEventKind::FirmwareUpdateFailed
+        );
+        assert!(!failed_activity.iter().any(|event| matches!(
+            event.kind,
+            ActivityEventKind::FirmwareFlashSucceeded
+                | ActivityEventKind::FirmwarePostFlashVerified
+        )));
+
+        assert_eq!(
+            flash.request_recovery(&[kivori_port("COM8")]).unwrap(),
+            "COM8"
+        );
+        assert_eq!(flash.status().failure, None);
+        assert_eq!(flash.recovered_hash(), None);
+        assert!(flash.request_recovery(&[kivori_port("COM9")]).is_err());
+        assert!(!flash.handshake("COM8", "recovered-unit", true));
+        let mut recovered_activity = Vec::new();
+        assert_eq!(
+            run_accepted_firmware_flash(
+                &mut flash,
+                |_| Ok(()),
+                |event| recovered_activity.push(event)
+            ),
+            ResumeTarget::SamePort("COM8".to_string())
+        );
+        assert!(!flash.handshake("COM7", "old-unit", true));
+        assert!(!flash.handshake("COM8", "recovered-unit", false));
+        assert_eq!(flash.status().phase, FirmwarePhase::Reconnecting);
+        assert_eq!(flash.recovered_hash(), None);
+        assert!(flash.handshake("COM8", "recovered-unit", true));
+        assert_eq!(flash.status().phase, FirmwarePhase::Succeeded);
+        assert_eq!(flash.recovered_hash(), Some("recovered-unit"));
+        assert!(!flash.is_busy());
+        assert!(!flash.handshake("COM8", "recovered-unit", true));
+        recovered_activity.extend(flash.drain_activity());
+        assert_eq!(
+            recovered_activity
+                .iter()
+                .filter(|event| event.kind == ActivityEventKind::FirmwarePostFlashVerified)
+                .count(),
+            1
+        );
+        assert!(failed_activity
+            .iter()
+            .chain(&recovered_activity)
+            .all(|event| event.metadata.is_none()));
+    }
+}
+
+#[test]
 fn app_state_reserves_flash_before_queuing_a_second_request() {
     let (tx, rx) = mpsc::channel();
     let cancel = Arc::new(AtomicBool::new(false));

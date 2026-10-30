@@ -103,7 +103,11 @@ bundle-windows:
     bun install --frozen-lockfile
     bun --filter kivori-desktop-ui build
     cd apps/desktop
-    KIVORI_FIRMWARE_MANIFEST="$manifest" bunx tauri build --config src-tauri/tauri.release.conf.json -- --no-default-features
+    args=(--config src-tauri/tauri.release.conf.json)
+    if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+        args+=(--config '{"bundle":{"createUpdaterArtifacts":false}}')
+    fi
+    KIVORI_FIRMWARE_MANIFEST="$manifest" bunx tauri build "${args[@]}" -- --no-default-features
 
 # Build the macOS .app + .dmg (run on a Mac; signs only when APPLE_SIGNING_IDENTITY is set).
 bundle-macos:

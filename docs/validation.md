@@ -3,6 +3,12 @@
 The one checklist for everything CI cannot prove: real ESP32-C3 + ST7789 + HW-040 hardware, real
 OS behavior, real timing. Host-sim and other host tests are never promoted to physical evidence.
 
+Current M2.9 scope, updated 2026-10-26: CAD/enclosure work is owner-managed and outside the
+software milestone. The [roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness)
+now has **13/18 complete**, with five configuration or real-use acceptance items open. Earlier
+13/19 counts are dated historical snapshots; the enclosure records below remain reference material
+for the owner and do not count toward current M2.9 completion.
+
 Row numbers: `1.N` is row N of the old Phase 1 (device connection) checklist, `3.N` is row N of the old
 rotary checklist, `2.N` are new Phase 2 rows, `G` rows are PRD gates. Tick a row only with a date and a
 measurement or observation on the same line. A phase closes only when all its rows are ticked.
@@ -971,9 +977,40 @@ rows for the normalized test email across all products. Follow the
 
 Astra's independent read-only scope review agreed to keep this item open. No new production/test
 mode switch was added: it would not establish the required live evidence and would change the
-supported preview behavior. This increment changes documentation only. Local documentation links
-and `git diff --check` were checked; runtime suites were not rerun. No deployment, configuration or
-Access change, real signup, email, database write or deletion was performed.
+supported preview behavior. That initial audit increment changed documentation only. Local
+documentation links and `git diff --check` were checked; runtime suites were not rerun. No deployment,
+configuration or Access change, real signup, email, database write or deletion was performed in it.
+
+### Local signup and deletion rehearsal
+
+On 2026-10-25, the owner authorized dummy/testing/mocked approaches. Added
+`apps/web/lib/waitlist.integration.test.ts` on Andress-MacBook-Air: the real Next API route uses a
+disposable local D1 database initialized from the committed migration. Wrangler remote bindings,
+persistence and environment-file loading are disabled. Worker context, Turnstile verification,
+rate-limit decisions and analytics are mocked; addresses use `example.com`.
+
+Seven checks passed: normalized signup/duplicate responses and deletion across products; missing
+database; missing real-widget secret; rejected human check; rejected rate limit; honeypot; and
+server-rendered Worker/local/missing privacy contact states. The signup/deletion check verifies
+two matching product rows become zero and another address remains, oversized campaign data is
+discarded, and analytics excludes the address, test IP and token. It exercises the documented
+bound-parameter SQL, not an email-based deletion service. The local runtime and temporary
+configuration are cleaned up after the suite.
+
+Validation: `bun --filter kivori-web test` passed 111 tests across 15 files, including these seven.
+Website typecheck, targeted ESLint/Prettier and `git diff --check` also passed. Run only this fixture
+with `bun --filter kivori-web test lib/waitlist.integration.test.ts`.
+
+Clean-checkout follow-up: CI on `8da593e` failed website build and frontend typecheck because the
+fixture referenced `D1Database`, available locally only through the ignored generated
+`cloudflare-env.d.ts`. Replaced that ambient dependency with a local structural type extending the
+handler's existing `WaitlistDb` contract. With the generated file temporarily excluded, website
+typecheck, all 111 tests and the production Next build passed; the original generated file was
+restored afterward. Targeted ESLint/Prettier and diff checks also passed. No production code changed.
+
+This adds repeatable local evidence without changing public configuration or runtime behavior.
+No browser widget, actual rate-limit threshold, mailbox delivery, remote D1 or public deployment
+was tested. Item 13 remains open and overall progress remains 13/19; live acceptance is separate.
 
 ## M2.9 software baseline acceptance
 
@@ -1010,7 +1047,7 @@ Failed/interrupted attempts are retained rather than counted as passing runs:
   workspace run with one test thread passed this check and every other non-ignored test. Sol's
   independent read-only review found no changes from `origin/main` throughout the test's render,
   asset and build inputs. The local debug timing failure is intermittent; its exact cause and
-  optimized performance were not established. No threshold, renderer or test skip was changed.
+  optimized performance were not established at that baseline. No threshold, renderer or test skip was changed.
 - Earlier native/firmware and release-tool runs stopped during resource isolation are incomplete
   attempts, not additional failures or acceptance evidence. Logs remain local under
   `/tmp/kivori-m29-baseline-*.log`; final sequential exit codes are in
@@ -1028,9 +1065,30 @@ packaging was skipped. These are observed workflow gates; branch-protection enfo
 established (`main` reported unprotected).
 
 The four ignored native tests inspect live apps, foreground state and microphones, or change real
-volume/mute. They were not enabled. No physical input, USB, installer execution, flashing, optimized
-performance benchmark or live signup/deletion was tested locally. This software baseline does not
+volume/mute. They were not enabled. During that baseline, no physical input, USB, installer execution,
+flashing, optimized performance benchmark or live signup/deletion was tested locally. This software baseline does not
 close the website, Windows hardware, recovery, sustained-use or unfamiliar-user acceptance rows.
+
+### Optimized preview budget follow-up
+
+On 2026-10-26, Andress-MacBook-Air ran the existing test without changing the renderer or threshold:
+
+```sh
+CARGO_BUILD_JOBS=2 cargo test --release -p kivori-desktop --test preview_stream per_frame_render_fits_the_30fps_budget -- --exact --test-threads=1
+```
+
+The optimized Device Studio preview test passed. The resulting test binary then passed all eleven
+preview-stream tests and a further focused budget run: three observed budget-test passes in total.
+Each budget check warms assets, renders thirty frames and asserts average frame time below the
+existing 33 ms limit. The test does not print the measured per-frame value; its 0.03 s focused-suite
+duration is not a per-frame measurement.
+
+The cold release build took 51 minutes with two Cargo jobs. This 8 GB Mac showed approximately
+13.5 GiB of swap in use during compilation; the build cache remains local to this device.
+The result establishes the tested optimized path meeting its local budget, not the cause of the
+earlier intermittent debug failures. Windows/WebView timing, IPC/display overhead, physical device
+latency and sustained-use acceptance were not measured. No new test, skip, threshold change or
+production code change was needed. Documentation diff/checklist checks passed; M2.9 remains 13/19.
 
 ## M2.9 Windows unit acceptance (open)
 
@@ -1085,11 +1143,49 @@ installation/interrupted-flash recovery, item 17's soak/workdays, or unfamiliar-
 
 Item 16 preparation, 2026-10-25, Andress-MacBook-Air. No clean Windows host or physical unit was used;
 no install, login, app update, firmware flash or interruption was performed. Progress remains 13/19.
-Preparation validation: new relative links/internal anchor, eight NOT RUN cases, the 13/19 checklist
-and `git diff --check` passed. Runtime suites were not rerun for this documentation-only increment.
+Initial documentation-only preparation validation: new relative links/internal anchor, eight NOT RUN
+cases, the 13/19 checklist and `git diff --check` passed. Runtime suites were not rerun for that increment.
+
+### Local development packaging prerequisite
+
+The local `just bundle-windows` recipe requested updater artifacts even when no updater private key
+was supplied. It now disables those artifacts for an unset or empty `TAURI_SIGNING_PRIVATE_KEY`,
+matching PR CI. A nonempty key retains the signing configuration and normal validation; a signing
+failure does not retry unsigned. This does not implement Windows publisher signing or close item 16.
+
+Validation on 2026-10-25, Andress-MacBook-Air: the regression failed against the previous recipe;
+the firmware recipe/catalog suites then passed 35 tests with Bun 1.4.2. A mocked execution of the
+actual Bash recipe checks unset, empty and supplied keys, child failure propagation and temporary
+firmware cleanup. Independent Sol review passed and reran the focused test successfully.
+`just --show bundle-windows`, targeted ESLint/Prettier and `git diff --check` passed. Local logs:
+`/tmp/kivori-m29-local-bundle-red.log` and `/tmp/kivori-m29-local-bundle-tests.log`.
+The Bash fixture is skipped on Windows; no actual Windows package, key validation, installer or
+updater was executed. The live acceptance rows below remain NOT RUN.
+
+### Simulated interrupted flash and recovery
+
+On 2026-10-25, added a continuous scenario in `tests/firmware_flash.rs` using the production
+`FlashWorkflow` and `run_accepted_firmware_flash`, with injected flasher outcomes. For each of
+Cancelled, Timeout, PortBusy and Unknown, failure returns to discovery, releases busy state,
+rejects a late handshake and emits failure without a success event. A retry reserves a new port
+(COM8 after COM7), clears the prior failure and refuses a second reservation. Handshakes before
+flashing, on the old port or with incompatible firmware cannot verify recovery. Only a compatible
+handshake on the reserved recovery port completes it, records the recovered identity and emits
+one verification event; native details stay out of activity metadata.
+
+Validation on Andress-MacBook-Air:
+`cargo test -p kivori-desktop --test firmware_flash --test recovery_target --test updater_policy -- --test-threads=1`
+passed 58 tests (26 flash, 9 target policy, 23 updater policy). Rust formatting, targeted Clippy with
+warnings denied and diff checks passed. The test injects failure classes directly; it does not
+run an espflash child, exercise USB/BOOT, validate an installer signature or perform an app update.
+No production code changed. Item 16 and all live acceptance rows remain open; progress stays 13/19.
 
 ### Artifact prerequisites
 
+- Owner decision, 2026-10-26: no Windows publisher signing setup yet. Provider selection,
+  credentials and integration are deferred; development testing may continue with unsigned builds.
+  This does not disable updater signing, change repository secrets/settings, relax the signed-beta
+  prerequisite or mark installation/recovery accepted.
 - Windows code signing is an unimplemented placeholder in `.github/workflows/release.yml`;
   setting `WINDOWS_SIGNING=true` currently fails deliberately. Owner certificates/provider setup
   and the signing implementation remain open in [issue #36](https://github.com/cunilab/Kivori/issues/36).
@@ -1169,6 +1265,24 @@ history; capture incidents before rollover/restart. A final empty history or zer
 not proof that nothing failed. Developer internals may supplement snapshots when available.
 Keep evidence references and redacted observations in this record; do not commit raw private logs.
 
+### Accelerated session-protocol check
+
+On 2026-10-25, added a deterministic in-memory `Session` scenario in `tests/session.rs`.
+It exchanges 65,552 real encoded Ping/Pong frames with injected protocol timestamps, crossing
+16-bit sequence and 32-bit millisecond wraparound. Every reply keeps the same session connected,
+reports the injected 17 ms round trip and leaves no pending fixture wire bytes. No sequence gaps,
+malformed frames or device errors accumulate. Three unanswered pings then reach the timeout
+threshold; reopening clears old RTT/uptime, advances connection generation, handshakes successfully
+and resynchronizes the previous Busy desired state.
+
+On Andress-MacBook-Air,
+`cargo test -p kivori-desktop --test session --test reconnect --test runtime_connection_deadlines -- --test-threads=1`
+passed 51 tests (43 session, 6 reconnect, 2 deadlines). Targeted Clippy with warnings denied,
+Rust formatting and diff checks passed. No production code changed or failure was found in this
+scenario. The timestamps are synthetic; this is not elapsed soak time or a memory/CPU, renderer,
+Windows power-management or real USB stability measurement. The actual soak remains at zero
+verified hours and workdays at 0/10; item 17 stays open and progress remains 13/19.
+
 ### Eight-hour idle soak
 
 1. On the Windows candidate, confirm normal connection and counted control actions, then capture
@@ -1226,8 +1340,22 @@ are resolved. Idle soak hours do not substitute for days of actual use, or vice 
 Item 18 preparation, 2026-10-25, Andress-MacBook-Air. No participant was recruited or observed and
 no physical usability session ran. Item 18 remains unchecked; M2.9 remains 13/19. Automated UI
 tests, developer walkthroughs and a prepared task sheet do not count as unfamiliar-user evidence.
-Preparation checks passed for new links/anchors, seven NOT RUN tasks, guide/source consistency,
-the 13/19 checklist and `git diff --check`. Runtime suites were not rerun for this docs-only edit.
+Initial preparation checks passed for new links/anchors, seven NOT RUN tasks, guide/source consistency,
+the 13/19 checklist and `git diff --check`. Runtime suites were not rerun for that docs-only edit.
+
+### Local walkthrough correction: profile pin instructions
+
+On 2026-10-25, a source/UI review of the pin/Auto task found that Customize promised a second
+middle-button Hold would return to automatic switching. The native `Context::cycle_pin` instead
+visits the enabled profiles before returning to Auto. Updated the onboarding instruction to explain
+that each further hold advances through the cycle, then returns to Auto. Controls guidance and the
+user guide already describe cycling; their behavior and the pin implementation are unchanged.
+
+On Andress-MacBook-Air, all 38 existing onboarding UI tests across three files passed with two
+workers. The two native tests for built-in wrap-to-Auto and marked-custom-profile inclusion passed.
+Desktop UI typecheck, targeted ESLint/Prettier and diff checks passed. No browser visual inspection,
+physical gesture or unfamiliar participant session ran; this correction does not close item 18.
+Progress remains 13/19.
 
 ### Session setup
 
@@ -1274,3 +1402,103 @@ completion ticks; shortcut tests have a countdown and await their own result; a 
 not undo earlier steps; trigger-only feedback stays Unverified with a quiet device pulse. The guide
 also explains the single-press wait and no longer promises that signing removes a Windows warning.
 These documentation corrections have not yet been evaluated with a participant.
+
+## M2.9 assembled-enclosure acceptance (open)
+
+Owner-managed reference only as of 2026-10-26; this former item 19 is excluded from M2.9 software
+scope. Retained measurements, nominal checks and procedures are historical supporting material,
+not an active software task or a claim that the enclosure passed physical acceptance.
+
+Item 19 preparation, 2026-10-25, Andress-MacBook-Air. No component was physically measured, printed
+or assembled here. Item 19 remains unchecked; M2.9 remains 13/19.
+
+### Generator prerequisite fix and local evidence
+
+The hand-wired generator still used the old display/encoder GPIOs and button GPIO0/1/20, while
+firmware and its wiring README specify display 4/3/2/1/0, encoder 7/6/5 and buttons 9/8/10.
+These assignments drive real wire grooves and engraved labels, so correcting only the README
+would leave misleading printable parts. The generator is now aligned with `profile.rs`.
+`test_pin_map.py` independently reads the firmware's literal declarations and checks all thirteen
+nets (eleven signals plus power/ground), including button order, without importing FreeCAD.
+It failed on the old source and passes after the fix; Linux host CI runs it. Unrecognized future
+Rust declaration syntax fails the check for review rather than silently omitting the comparison.
+
+Local FreeCAD 1.1.4 regenerated original and corrected models in separate temporary directories:
+
+- Both generation reports: eight valid printed parts and `interference: none`. The corrected
+  document contains fourteen valid, nonempty single solids; every object's bounds are unchanged.
+- The original regeneration matched all nine pre-fix tracked exports at `918d2d4` byte-for-byte. After the fix, only
+  `Carrier.stl` differs; the seven other STLs and `pcb-outline.dxf` remain byte-identical. Only that
+  STL and the complete `kivori-case.FCStd` document were replaced. Carrier volume changes by
+  +20.066403 mm³; the other thirteen object volumes are unchanged.
+- The actual Carrier back projection was inspected for revised routes near the SuperMini and
+  updated B1/B2/B3 labels. This does not verify wire accessibility, insulation, groove capacity or
+  physical fit. The independent pin check is needed even when the interference report is clean.
+- Astra advised the bounded scope; its follow-up hit a usage limit. Sol independently reviewed the
+  final source/test/CI/docs, passed the test, rejected the old source in memory, verified export
+  hashes and document ZIP integrity, and inspected the back projection. No blocker was found for
+  this prerequisite fix; no reviewer claimed physical acceptance.
+
+Checks: Python unittest, targeted workflow Prettier, new links/anchors, nine NOT MEASURED rows,
+13/19 checklist and `git diff --check` passed. Desktop/firmware runtime suites were not rerun for
+this CAD/source-guard increment. Local evidence remains under `/tmp/kivori-m29-enclosure-*`;
+models, reports and images there are not cross-device memory or physical observations.
+
+The selected variant must be explicit: this checkout's `hardware/enclosure/` is hand-wired and
+screwless; `docs/assembly.md` describes the separate copper-tape/screw branch. Their mounting
+orientation, printed parts and assembly steps cannot be mixed. Experimental modules or another
+display/controller require their own evidence and do not inherit this design's acceptance.
+
+### Nominal closed-case BOOT/RST access check
+
+On 2026-10-25, FreeCAD 1.1.4 on Andress-MacBook-Air opened the tracked hand-wired document
+without regenerating or saving it. A 1 mm cylindrical probe follows each modeled access axis
+from face-frame z = -60 mm to 0.01 mm before the nominal button face at z = -12.9 mm.
+Its common volume with every printed part and bought-part stand-in is zero. A separate 0.1 mm
+tip segment straddling the button face intersects the nominal SuperMini switch stand-in.
+
+| Modeled access | Face-frame centre (mm) | Clear-path overlap (mm³) | Tip contact (mm³) | Probe shifted +2.5 mm in x: BackPlate overlap (mm³) |
+| --- | --- | --- | --- | --- |
+| RST | 50.5, 58.0 | 0 | 0.039270 | 12.398782 |
+| BOOT | 59.5, 58.0 | 0 | 0.039270 | 12.398782 |
+
+Both deliberately off-centre probes fail the clearance check, providing obstruction controls.
+The document SHA-256 before/after is
+`8e925575dbbc0d2219bbf046bbd653c2ef39fdbc2b0eebbc4777f21fda2b4cc5`.
+The source/firmware pin-map unittest and diff checks also passed; no CAD or export changed.
+The FreeCAD connector could not locate its headless executable, so the installed application at
+`/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd` ran the check directly. The one-off
+script and JSON evidence are local-only at `/tmp/kivori-m29-enclosure-access.py` and
+`/tmp/kivori-m29-enclosure-access.json`.
+
+This verifies access only to nominal stand-ins along the modeled axes. It does not establish
+real switch positions/labels, printable tolerances, tool angle or actuation force, wiring clearance
+after assembly, or successful BOOT/RST operation. Item 19 and every physical row below remain open;
+progress stays 13/19. Desktop/firmware runtime suites were not rerun for this read-only CAD check.
+
+### Physical record
+
+Record operator/date, variant/source SHA, generator parameters and CAD/STL hashes, print/slicer
+revision, printer/material/orientation/layer/scaling, component suppliers/revisions and short unit
+label. Name the instrument, resolution and method for each measurement. Compare measured values
+with the selected CAD and actual component specifications; a nominal CAD clearance is not an
+observed clearance. Record missing dimensions/force limits as open rather than inventing a tolerance.
+
+| Check | Measurements and required observation | Result / evidence |
+| --- | --- | --- |
+| Bought parts | Measure actual display PCB/glass/FPC/header, SuperMini USB/buttons, encoder PCB/shaft and switch body/stem/pin locations. Compare with the chosen model before committing to a full print; record each deviation. | NOT MEASURED |
+| Carrier and display | Dry-fit components and mounting features; record hole/peg alignment, PCB seating, glass/FPC clearance and window alignment. No forced glass/PCB bend, obscured active area or trapped cable. | NOT MEASURED |
+| Button caps | Measure resting/pressed clearance, available travel, stem/socket engagement and return for each cap. Exercise centre and edge presses on all three; record counts, rubbing, preload, sticking and unintended holds. | NOT MEASURED |
+| Knob | Measure shaft engagement, resting and pressed axial gap and clearance through a full turn and push at several angles. No rubbing, neighbouring-cap contact, loss of push travel or loose/slipping shaft fit. | NOT MEASURED |
+| USB | Use the actual intended data-cable plug. Record opening/plug clearance and measured peak insertion/removal force with the measurement method. Observe connector/PCB displacement and support path; the shell must not prevent full seating or transfer damaging loads to the board. Force without an instrument remains unmeasured. | NOT MEASURED |
+| Wiring and closure | With power removed, check continuity against the firmware map and inspect insulation/routing, especially crossings and the SuperMini recess/edge. Close/open the selected case design, record fit and retention, then recheck for pinched wires, shifted parts and shorts before power. | NOT MEASURED |
+| RST access | With the case fully closed, verify the labelled access point reaches the actual reset switch without disassembly or contacting other circuitry. Observe reset and normal reconnect; record tool, alignment and actuation. Do not infer location from another variant's instructions. | NOT MEASURED |
+| BOOT access/recovery | With the case closed, demonstrate access to the actual BOOT switch, entry into recovery and return to normal operation using the existing recovery procedure. Record tool clearance, labels and actual app/device result; link item 16's flash/recovery evidence when applicable. | NOT MEASURED |
+| Closed-unit operation | With the product firmware, repeat physical control and display checks after closure, including mic feedback and USB reconnect. Record any changed behaviour versus the open assembly and failures after reopening/reclosing. | NOT MEASURED |
+
+Retain photos/dimensioned notes and any failed fit. Link every parameter/design correction to the
+specific measured discrepancy, regenerate/review the affected geometry, reprint and remeasure.
+Do not fix only the CAD stand-in to match another unverified drawing. Close item 19 only when
+the actual selected assembled unit has evidence for every row and unresolved fit/access problems
+are fixed. Firmware/CAD source consistency, interference reports and electrical provisioning PASS
+remain distinct from these physical measurements.

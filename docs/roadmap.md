@@ -377,6 +377,11 @@ M2.8 does not relax any paid-beta gate.
 
 ## M2.9: Reliability, truthful feedback and beta readiness
 
+Scope update, 2026-10-26: focus on app, firmware and website software. CAD/enclosure work is
+owner-managed and excluded from M2.9. Current progress is **13/18 complete**, with five software
+configuration or real-use acceptance items open. Earlier 13/19 snapshots include the removed CAD
+item; existing CAD files and validation records are retained for the owner's reference.
+
 **Outcome:** controls execute only while they are still valid, confirmation reflects what Kivori
 can actually observe, settings survive restart, and an unfamiliar Windows user can set up and
 recover a real unit without developer help.
@@ -485,8 +490,10 @@ completion and physical acceptance are recorded separately in [validation.md](./
   version, no Worker secrets, and an Access 403 on anonymous page requests from the audit environment.
   Record a real signup and verified deletion after configuration and approved deployment. See
   [readiness evidence and open dependencies](./validation.md#m29-public-website-readiness-audit-open).
+  A dummy-address API/local-D1 signup and deletion rehearsal is now covered by seven automated
+  integration checks; real public configuration, mailbox and widget evidence remain open.
 
-### S4: Windows hardware and usability acceptance
+### S4: Software baseline and real-use acceptance
 
 - [x] **Establish a clean software baseline**: run the affected native, firmware host-sim, shared
   crate and frontend suites with the pinned toolchains, plus required CI and release-surface checks.
@@ -507,6 +514,8 @@ completion and physical acceptance are recorded separately in [validation.md](./
   other owner requirements remain tracked in M3.
   [Artifact prerequisites and session record](./validation.md#m29-windows-installation-and-recovery-acceptance-open)
   are prepared; signed artifacts, a clean Windows host and physical recovery results remain pending.
+  The owner deferred Windows publisher signing setup on 2026-10-26. Development testing may
+  continue unsigned; signed-beta acceptance and its existing requirements remain open.
 - [ ] **Run sustained use before paid beta**: complete an 8 h idle soak and 10 workdays of actual
   Windows use. Record build, unit, duration, disconnects, missed/wrong inputs, stale indicators,
   crashes and recovery outcomes; fix blockers and repeat affected checks.
@@ -518,9 +527,6 @@ completion and physical acceptance are recorded separately in [validation.md](./
   labels/results explain what happened. Record friction and resolve blockers before acceptance.
   [Neutral tasks and observer record](./validation.md#m29-unfamiliar-user-acceptance-open) are prepared;
   participant observation and acceptance remain open.
-- [ ] **Verify the assembled enclosure**: measure real component fit, cap travel, knob clearance,
-  USB insertion force and access to BOOT/RST. The nominal CAD dimensions are not physical proof;
-  update assembly/validation evidence from the actual unit.
 
 **Exit:** S1–S3 regressions pass, S4 evidence is recorded and reviewed, and no unresolved issue can
 falsely confirm an action, execute stale input, discard successfully saved settings or block common
@@ -528,7 +534,9 @@ recovery. M2.9 does not close earlier hardware rows or M3 signing, cost, assembl
 without their own evidence.
 
 Out of scope: architecture rewrite, new platforms, new product features, controller migration,
-cloud services and a broad visual redesign. Use beta evidence to choose those investments later.
+cloud services, CAD/enclosure design and fit validation, and a broad visual redesign. The owner
+handles CAD separately; M3 hardware/enclosure gates retain their own requirements. Use beta
+evidence to choose other investments later.
 
 ## M3: Paid beta
 

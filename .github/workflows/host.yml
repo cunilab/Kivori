@@ -22,6 +22,9 @@ jobs:
           bun-version: 1.4.2
       - run: bun test scripts/build-firmware.test.mjs scripts/build-firmware-set.test.mjs scripts/check-product-identifiers.test.mjs
       - run: bun scripts/check-product-identifiers.mjs
+      - name: Enclosure wiring matches firmware (no CAD runtime)
+        if: runner.os == 'Linux'
+        run: python3 -m unittest discover -s hardware/enclosure -p 'test_*.py'
 
       - name: Desktop packaging wrapper contract
         if: runner.os == 'Windows'

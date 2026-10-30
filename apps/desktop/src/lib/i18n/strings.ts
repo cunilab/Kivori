@@ -876,7 +876,7 @@ export const strings = {
       autoBody:
         'Saved profiles choose bindings for each app. You can edit those bindings in Controls.',
       pinBody:
-        'Hold the middle context button to stay on one profile. Hold it again to follow apps automatically.',
+        'Hold the middle context button to pin a profile. Each further hold moves to the next profile in the cycle, then back to Auto to follow apps automatically.',
       viewHeading: 'Screen at start',
       viewBody: 'The saved default view for devices with display support.',
       intensityHeading: 'Buddy liveliness',

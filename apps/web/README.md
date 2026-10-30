@@ -62,6 +62,20 @@ test key. A real site key with no `TURNSTILE_SECRET_KEY` rejects every sign-up (
 
 For local testing the test token `XXXX.DUMMY.TOKEN.XXXX` passes with the test secret.
 
+### Local signup and deletion rehearsal
+
+Run `bun --filter kivori-web test lib/waitlist.integration.test.ts` from the repository root.
+This calls the real API route with dummy `example.com` addresses, a disposable local D1 database
+using the committed migration, and mocked Turnstile, rate limiting and analytics. The isolated
+Wrangler configuration disables remote bindings, persistence and environment-file loading.
+The fixture disposes the local runtime and removes its temporary configuration afterward.
+
+It verifies normalized signup, identical duplicate responses, oversized attribution handling,
+parameterized deletion across products while preserving another address, failure paths and the
+rendered privacy contact link/fallback. No public mailbox, Cloudflare credentials, email delivery
+or production deployment is needed. This is an API/server-rendering test, not a browser or live
+Turnstile test; it does not close the public launch checks below.
+
 ### Public launch and deletion verification
 
 The [M2.9 readiness audit](../../docs/validation.md#m29-public-website-readiness-audit-open)

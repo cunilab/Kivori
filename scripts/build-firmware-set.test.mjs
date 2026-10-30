@@ -302,6 +302,81 @@ if(name==='bun') {
   });
 });
 
+(process.platform === 'win32' ? test.skip : test)(
+  'Windows bundle recipe supports an absent updater key and preserves signing requests and cleanup',
+  () =>
+    fixture(({ root }) => {
+      const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+      const recipe = readFileSync(join(repo, 'justfile'), 'utf8')
+        .split('\nbundle-windows:\n')[1]
+        .split('\n# Build the macOS')[0]
+        .replace(/^ {4}/gm, '')
+        .trim();
+      const bin = join(root, 'bin');
+      mkdirSync(bin);
+      mkdirSync(join(root, 'apps/desktop'), { recursive: true });
+      const stub = `#!${process.execPath}
+const fs = require('node:fs');
+const path = require('node:path');
+const name = path.basename(process.argv[1]);
+const args = process.argv.slice(2);
+if(name==='bun' && args[0]==='scripts/build-firmware-set.mjs') {
+ const manifest = args[args.indexOf('--manifest-out')+1];
+ fs.writeFileSync(manifest,'[]');
+ console.log(manifest);
+}
+if(name==='bunx') {
+ fs.writeFileSync(process.env.KIVORI_TEST_TRACE,JSON.stringify({args,
+  keyPresent:!!process.env.TAURI_SIGNING_PRIVATE_KEY,
+  legacy:process.env.KIVORI_FIRMWARE_PATH ?? null,
+  manifest:process.env.KIVORI_FIRMWARE_MANIFEST,
+  exists:fs.existsSync(process.env.KIVORI_FIRMWARE_MANIFEST)}));
+ process.exit(Number(process.env.KIVORI_TEST_EXIT));
+}
+`;
+      for (const name of ['bun', 'bunx', 'powershell']) {
+        writeFileSync(join(bin, name), stub, { mode: 0o755 });
+      }
+      for (const [key, exit] of [
+        [undefined, 0],
+        ['', 0],
+        ['test-only-key', 0],
+        ['', 3],
+      ]) {
+        const trace = join(root, 'bundle-trace.json');
+        rmSync(trace, { force: true });
+        const env = {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+          KIVORI_TEST_TRACE: trace,
+          KIVORI_TEST_EXIT: String(exit),
+          KIVORI_FIRMWARE_PATH: 'previous image',
+          KIVORI_FIRMWARE_MANIFEST: 'previous manifest',
+        };
+        delete env.TAURI_SIGNING_PRIVATE_KEY;
+        delete env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD;
+        if (key !== undefined) env.TAURI_SIGNING_PRIVATE_KEY = key;
+        const result = spawnSync('bash', ['-c', recipe], { cwd: root, encoding: 'utf8', env });
+        assert.equal(result.status, exit, result.stderr);
+        const call = JSON.parse(readFileSync(trace, 'utf8'));
+        assert.deepEqual(call.args, [
+          'tauri',
+          'build',
+          '--config',
+          'src-tauri/tauri.release.conf.json',
+          ...(!key ? ['--config', '{"bundle":{"createUpdaterArtifacts":false}}'] : []),
+          '--',
+          '--no-default-features',
+        ]);
+        assert.equal(call.keyPresent, !!key);
+        assert.equal(call.legacy, null);
+        assert.equal(call.exists, true);
+        assert.ok(isAbsolute(call.manifest));
+        assert.ok(!existsSync(dirname(call.manifest)), 'owned firmware staging is cleaned up');
+      }
+    }),
+);
+
 test('catalog discovery matches native rules for stray files, hidden directories and links', () =>
   fixture(({ root, put, plans }) => {
     put('products/.keep', 'ignored');
