@@ -278,7 +278,9 @@ pub fn run() {
         .build(context)
         .expect("error while building the Kivori application")
         .run(|app_handle, event| match event {
-            tauri::RunEvent::ExitRequested { .. } => {
+            // A macOS terminate (Cmd+Q, Quit Apple event, logout) arrives only as `Exit`, never
+            // `ExitRequested`; without this the media helper outlives the app. Idempotent.
+            tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
                 use tauri::Manager;
                 app_handle.state::<runtime::state::AppState>().shutdown();
             }

@@ -108,3 +108,21 @@ Follow-up, 2026-10-30: GUI access was retried and remains blocked by the Compute
 configuration. Read-only USB inspection found no compatible Pip (`303a:1001`) connected, and the
 available keychains have no Developer ID Application signing identity. GUI setup/Accessibility, physical
 controls/reconnect/power transitions and signed distribution therefore remain NOT RUN.
+
+Follow-up, 2026-10-30 (packaged-app smoke from the terminal): screen capture and the window server
+work from Claude Code, so the packaged app was driven without Computer Use; Accessibility cannot see
+the Tauri window, so windows are found by CoreGraphics window ID. With a temporarily removed config
+(restored byte-identical afterwards), the app started and showed setup step 1 of 6 ("Welcome to
+Kivori"). Quitting through the Quit Apple event then **failed** to quit cleanly: the app exited but
+the now-playing helper (`mediaremote-adapter.pl … stream`) stayed running, reparented to launchd.
+Cause: a macOS terminate (Quit Apple event, Cmd+Q, logout) reaches Tauri only as `RunEvent::Exit`,
+which did not run `AppState::shutdown()`, so the observer that reaps the helper was never dropped.
+SIGTERM, Force Quit and crashes skip shutdown entirely and orphaned it too.
+
+Fixed: `RunEvent::Exit` now runs the idempotent shutdown, and the stream helper runs behind a forked
+watcher holding a stdin pipe from Kivori; when Kivori dies by any route the pipe closes and the watcher
+terminates the helper. Two unit tests cover the watcher (each fails when its mechanism is removed),
+the live MediaRemote observer test still streams and stops promptly, and `just macos-check`, strict
+Clippy and formatting pass. On the rebuilt bundle, quitting by Apple event, SIGTERM and SIGKILL each
+left no Kivori process. The setup screen was not re-captured on the rebuilt bundle because the
+display locked mid-run; the first row stays open until that screenshot is taken.

@@ -54,6 +54,26 @@ const MAX_BACKOFF: Duration = Duration::from_secs(60);
 /// A stream that lasted this long was healthy: its exit restarts the backoff from the minimum.
 const HEALTHY_RUN: Duration = Duration::from_secs(60);
 
+/// Runs the adapter script (first argument) behind a watcher fork: when Kivori dies without
+/// dropping the observer (SIGTERM, Force Quit, crash), the kernel closes the stdin pipe and the
+/// watcher terminates the adapter, which otherwise only notices at its next write. The watcher
+/// closes its stdout copy so the adapter's own exit still reaches Kivori as EOF, and signals only
+/// while the adapter is still its parent (a reaped pid may be reused). No fork: no watcher.
+const PARENT_WATCH: &str = r#"my $adapter = $$;
+my $watcher = fork;
+if (defined $watcher && !$watcher) {
+    close STDOUT;
+    close STDERR;
+    1 while sysread STDIN, my $buf, 64;
+    kill 'TERM', $adapter if getppid() == $adapter;
+    require POSIX;
+    POSIX::_exit(0);
+}
+open STDIN, '<', '/dev/null';
+my $script = shift @ARGV;
+do $script;
+die $@ if $@;"#;
+
 /// Spotify then Music. `is running` never launches an app; `run script` compiles the `tell` only
 /// when it runs, so a missing app never shows a "Where is …?" dialog. One record per player
 /// (RS-separated): `name US state US title US artist`, or `name US not-running` / `name US error`.
@@ -182,17 +202,18 @@ fn adapter_dir() -> Option<PathBuf> {
 /// Runs the adapter until it exits, emits something unparseable, or `stop`. Returns how long it
 /// streamed (zero when the entitlement test failed) and leaves the view unknown.
 fn run_adapter(dir: &Path, shared: &Shared, stop: &AtomicBool) -> Duration {
-    let perl = || {
+    let perl = |prelude: &[&str]| {
         let mut cmd = Command::new(PERL);
         // A clean environment: no PERL5LIB/PERL5OPT from the user's session reaches the helper.
         cmd.env_clear()
             .env("PATH", "/usr/bin:/bin")
+            .args(prelude)
             .arg(dir.join(SCRIPT))
             .arg(dir.join("MediaRemoteAdapter.framework"));
         cmd
     };
     let entitled = run_bounded(
-        perl()
+        perl(&[])
             .arg(dir.join("MediaRemoteAdapterTestClient"))
             .arg("test"),
         TEST_TIMEOUT,
@@ -202,14 +223,15 @@ fn run_adapter(dir: &Path, shared: &Shared, stop: &AtomicBool) -> Duration {
     if !entitled {
         return Duration::ZERO;
     }
-    let Ok(child) = perl()
+    // stdin stays open (held by the child handle) until the adapter is reaped; see PARENT_WATCH.
+    let Ok(child) = perl(&["-e", PARENT_WATCH])
         .args([
             "stream",
             "--no-diff",
             "--no-artwork",
             "--allow-missing-title",
         ])
-        .stdin(Stdio::null())
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
@@ -425,6 +447,64 @@ fn fallback_view(players: &[(MediaStatus, Option<NowPlaying>)]) -> View {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::process::ExitStatusExt;
+
+    /// `PARENT_WATCH` around a stand-in adapter script (no MediaRemote entitlement needed).
+    fn watched(name: &str, script: &str) -> Child {
+        let path = std::env::temp_dir().join(format!("kivori-{name}-{}.pl", std::process::id()));
+        std::fs::write(&path, script).expect("write stand-in adapter");
+        Command::new(PERL)
+            .args(["-e", PARENT_WATCH])
+            .arg(&path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn perl")
+    }
+
+    fn wait_within(child: &mut Child, limit: Duration) -> std::process::ExitStatus {
+        let deadline = Instant::now() + limit;
+        loop {
+            if let Some(status) = child.try_wait().expect("try_wait") {
+                return status;
+            }
+            assert!(Instant::now() < deadline, "adapter still running");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    #[test]
+    fn owner_gone_terminates_the_adapter() {
+        let mut child = watched("orphan", "$| = 1; print \"ready\\n\"; sleep 30;");
+        let mut line = String::new();
+        BufReader::new(child.stdout.take().expect("stdout"))
+            .read_line(&mut line)
+            .expect("ready line");
+        assert_eq!(line, "ready\n");
+        // What the kernel does when Kivori dies without reaping the adapter.
+        drop(child.stdin.take());
+        let status = wait_within(&mut child, Duration::from_secs(2));
+        assert_eq!(status.signal(), Some(libc::SIGTERM));
+    }
+
+    #[test]
+    fn adapter_exit_still_reaches_the_owner_as_eof() {
+        let mut child = watched("exit", "print \"bye\\n\";");
+        let mut stdout = child.stdout.take().expect("stdout");
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut out = String::new();
+            let _ = stdout.read_to_string(&mut out);
+            let _ = tx.send(out);
+        });
+        // The watcher still blocks on the open stdin, so EOF proves it dropped its stdout copy.
+        let out = rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("EOF while stdin is open");
+        assert_eq!(out, "bye\n");
+        assert!(wait_within(&mut child, Duration::from_secs(2)).success());
+    }
 
     fn np(title: &str, artist: &str) -> Option<NowPlaying> {
         Some(NowPlaying {
