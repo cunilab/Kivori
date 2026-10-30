@@ -25,6 +25,10 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+    ignore:
+      # Must be the core the `windows` crate itself uses (0.62 for windows 0.62); a lone bump splits
+      # the COM interface types. Bump it by hand in the same PR as `windows`.
+      - dependency-name: windows-core
     groups:
       cargo-minor-patch:
         update-types: [minor, patch]
@@ -38,6 +42,11 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+    ignore:
+      # typescript-eslint supports TypeScript only up to 6.0 (it refuses 7.0). Lift this once it
+      # supports 7 (typescript-eslint issue #10940).
+      - dependency-name: typescript
+        versions: ['>=7']
     groups:
       bun-minor-patch:
         update-types: [minor, patch]

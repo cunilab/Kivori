@@ -55,10 +55,10 @@ impl SimPipe {
     }
 
     /// Host → device: queues `bytes` for the device to read. `Err` if the pipe is full.
-    // Mirrors heapless `extend_from_slice`'s own `Result<(), ()>`; a sim helper needs no richer error.
+    // Full is the only failure; a sim helper needs no richer error than heapless's capacity error.
     #[allow(clippy::result_unit_err)]
     pub fn host_send(&mut self, bytes: &[u8]) -> Result<(), ()> {
-        self.to_device.extend_from_slice(bytes)
+        self.to_device.extend_from_slice(bytes).map_err(|_| ())
     }
 
     /// Device → host: drains and returns everything the device has written so far.

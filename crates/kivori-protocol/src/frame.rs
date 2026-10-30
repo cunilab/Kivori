@@ -110,7 +110,7 @@ fn assemble(
     let push = |frame: &mut Vec<u8, MAX_FRAME>, bytes: &[u8]| {
         frame
             .extend_from_slice(bytes)
-            .map_err(|()| ProtoError::BufferOverflow)
+            .map_err(|_| ProtoError::BufferOverflow)
     };
     push(frame, &MAGIC.to_le_bytes())?;
     push(frame, &header.version.major.to_le_bytes())?;

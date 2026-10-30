@@ -481,12 +481,12 @@ dependencies = [
 
 [[package]]
 name = "heapless"
-version = "0.8.0"
+version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bfb9eb618601c89945a70e254898da93b13be0388091d42117462b265bb3fad"
+checksum = "25ba4bd83f9415b58b4ed8dc5714c76e626a105be4646c02630ad730ad3b5aa4"
 dependencies = [
  "hash32 0.3.1",
- "serde",
+ "serde_core",
  "stable_deref_trait",
 ]
 
@@ -569,7 +569,7 @@ dependencies = [
 name = "kivori-asset-compiler"
 version = "0.2.1"
 dependencies = [
- "heapless 0.8.0",
+ "heapless 0.9.3",
  "kivori-assets",
  "kivori-model",
  "postcard",
@@ -580,7 +580,7 @@ dependencies = [
 name = "kivori-assets"
 version = "0.2.1"
 dependencies = [
- "heapless 0.8.0",
+ "heapless 0.9.3",
  "kivori-model",
  "postcard",
  "serde",
@@ -593,7 +593,7 @@ dependencies = [
  "embedded-graphics-core",
  "embedded-hal",
  "esp-bootloader-esp-idf",
- "heapless 0.8.0",
+ "heapless 0.9.3",
  "kivori-asset-compiler",
  "kivori-assets",
  "kivori-framebuffer",
@@ -636,7 +636,7 @@ dependencies = [
 name = "kivori-protocol"
 version = "0.2.1"
 dependencies = [
- "heapless 0.8.0",
+ "heapless 0.9.3",
  "kivori-model",
  "postcard",
  "serde",
