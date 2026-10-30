@@ -92,7 +92,10 @@ fn run(sandbox: &mut Sandbox, limit: Duration) -> Result<(Duration, Wraps, usize
 
 /// Opt-in long session: `virtual_device <runner> --endurance-smoke`.
 pub fn endurance_smoke(executable: &Path) -> Result<(), String> {
-    let mut sandbox = Sandbox::open(executable).map_err(|error| error.to_string())?;
+    // The flood (about 190 detents a second, each with presentation traffic back) is far beyond what
+    // the chip's 512 inbound bytes per tick at its frame rate could take, so it runs on zero-time
+    // frames; modelled timing would measure that limit, not wrap handling.
+    let mut sandbox = Sandbox::open_ideal(executable).map_err(|error| error.to_string())?;
     let deadline = Instant::now() + Duration::from_secs(5);
     while !(sandbox.snapshot.connected && sandbox.snapshot.frame.is_some()) {
         sandbox.tick();

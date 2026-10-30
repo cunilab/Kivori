@@ -16,6 +16,12 @@ import { INTERNALS_FRESH_MS, setLatestInternals } from './internals-latest';
 
 const t = strings.internals;
 
+/**
+ * Short hash of the virtual Pip's raw device id (the ASCII bytes `VIRTUAL-PIP-0001`), as
+ * `hash_device_id_short` computes it. Pinned to the id by a test.
+ */
+export const VIRTUAL_PIP_DEVICE_ID_HASH = '847c795d';
+
 type Snapshot = NonNullable<DeviceInternalsDto['snapshot']>;
 
 function Row({
@@ -369,6 +375,15 @@ export function DeviceInternals({
           {t.heading}
         </CardTitle>
         <CardDescription>{t.description}</CardDescription>
+        {connection?.device?.deviceIdHashShort === VIRTUAL_PIP_DEVICE_ID_HASH ? (
+          <p
+            role="note"
+            data-testid="internals-virtual-note"
+            className="text-sm text-muted-foreground"
+          >
+            <span className="font-medium">{t.virtualNote.label}.</span> {t.virtualNote.body}
+          </p>
+        ) : null}
       </CardHeader>
       <CardContent className="space-y-4">
         {notice ? (

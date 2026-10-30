@@ -68,6 +68,13 @@ fw-flash-latency:
 fw-budget:
     bun scripts/build-firmware.mjs > /dev/null
     bun scripts/firmware-budget.mjs
+    bun scripts/virtual-resource-facts.mjs --check
+
+# Refresh the resource facts the virtual Pip reports (firmware/pip/simulator/fixtures/resource-facts.json)
+# from the freshly built product ELF; commit the result. `just fw-budget` fails when they drift.
+fw-virtual-facts-update:
+    bun scripts/build-firmware.mjs > /dev/null
+    bun scripts/virtual-resource-facts.mjs --write
 
 # Predicted ESP32-C3 compose time per scenario and tile row, without hardware: the real renderer compiled
 # for riscv32imc and run in an instruction-set simulator (firmware/pip/frame-cost). Fails if a

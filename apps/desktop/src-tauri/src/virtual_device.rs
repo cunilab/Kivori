@@ -132,13 +132,14 @@ struct ProcessLink {
 }
 
 impl ProcessLink {
-    fn open(executable: &Path) -> io::Result<Self> {
+    fn open(executable: &Path, args: &[&str]) -> io::Result<Self> {
         // Only native CLI supplies this executable; the webview cannot select commands or arguments.
         let executable = executable.canonicalize()?;
         if !executable.is_file() {
             return Err(invalid("virtual runner is not a file"));
         }
         let mut child = Command::new(executable)
+            .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -299,10 +300,16 @@ pub struct Snapshot {
     pub error: Option<String>,
 }
 
+/// Runner argument for zero-time frames: one request is one tick at the request's time. The runner
+/// models the ESP32-C3's frame time by default; a scenario that floods the device faster than the
+/// chip could take it (the endurance run) needs the old clock.
+const IDEAL_TIME: &[&str] = &["--ideal-time"];
+
 /// A dedicated development owner, never the shipping app's managed state or real device task.
 /// Config is in memory only: the tool neither reads nor writes the user's settings.
 pub struct Sandbox {
     executable: PathBuf,
+    runner_args: &'static [&'static str],
     connection_started: Instant,
     link: Option<ProcessLink>,
     session: Session,
@@ -336,6 +343,20 @@ impl Sandbox {
     pub fn open(executable: &Path) -> io::Result<Self> {
         Self::open_with(
             executable,
+            &[],
+            Arc::new(FakeVolumeBackend::new(50)),
+            Arc::new(FakeInputSynth::new(Ok(()))),
+            Arc::new(platform::FakeMicBackend::new()),
+            Arc::new(platform::FakeMediaObserver::default()),
+            Arc::new(platform::FakeForeground::default()),
+        )
+    }
+
+    /// As [`Self::open`], with the runner on zero-time frames ([`IDEAL_TIME`]).
+    pub fn open_ideal(executable: &Path) -> io::Result<Self> {
+        Self::open_with(
+            executable,
+            IDEAL_TIME,
             Arc::new(FakeVolumeBackend::new(50)),
             Arc::new(FakeInputSynth::new(Ok(()))),
             Arc::new(platform::FakeMicBackend::new()),
@@ -346,13 +367,14 @@ impl Sandbox {
 
     fn open_with(
         executable: &Path,
+        runner_args: &'static [&'static str],
         volume: Arc<FakeVolumeBackend>,
         synth: Arc<FakeInputSynth>,
         mic: Arc<platform::FakeMicBackend>,
         media: Arc<platform::FakeMediaObserver>,
         foreground: Arc<platform::FakeForeground>,
     ) -> io::Result<Self> {
-        let mut link = ProcessLink::open(executable)?;
+        let mut link = ProcessLink::open(executable, runner_args)?;
         let mut session = Session::new(SessionConfig::default());
         let mut manager = ConnectionManager::new();
         session
@@ -371,6 +393,7 @@ impl Sandbox {
         let session_generation = session.connection_generation();
         Ok(Self {
             executable: executable.canonicalize()?,
+            runner_args,
             connection_started: Instant::now(),
             link: Some(link),
             session,
@@ -476,8 +499,8 @@ impl Sandbox {
         self.end_link(None);
         self.snapshot.mode = mode;
         let result: Result<(), String> = (|| {
-            let mut link =
-                ProcessLink::open(&self.executable).map_err(|error| error.to_string())?;
+            let mut link = ProcessLink::open(&self.executable, self.runner_args)
+                .map_err(|error| error.to_string())?;
             if mode == "fragmented" {
                 link.chunk = 7;
                 link.read_remaining = 7;
@@ -634,7 +657,8 @@ impl Sandbox {
     fn reattach(&mut self) -> Result<(), String> {
         let mut link = match self.parked.take() {
             Some(link) => link,
-            None => ProcessLink::open(&self.executable).map_err(|error| error.to_string())?,
+            None => ProcessLink::open(&self.executable, self.runner_args)
+                .map_err(|error| error.to_string())?,
         };
         link.inbound.clear();
         self.manager = ConnectionManager::new();
@@ -957,7 +981,7 @@ mod tests {
         std::fs::write(&script, "#!/bin/sh\nexec sleep 30\n").expect("test runner");
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700))
             .expect("executable");
-        let mut link = ProcessLink::open(&script).expect("spawn hung child");
+        let mut link = ProcessLink::open(&script, &[]).expect("spawn hung child");
         link.exchange(0, &mut VecDeque::new(), false)
             .expect("queued tick");
         link.pending = Some(Instant::now() - IO_TIMEOUT - Duration::from_millis(1));

@@ -771,6 +771,8 @@ impl<'a> Runtime<'a> {
                 if outcome.is_err() {
                     break;
                 }
+                #[cfg(feature = "host-sim")]
+                clock.row_composed(row, &view, overlay.is_some());
                 let serviced_from = clock.now_ms();
                 self.pump_input(serviced_from, transport, input);
                 let _ = transport.buffer_inbound();

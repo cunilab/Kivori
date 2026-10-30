@@ -45,10 +45,11 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
-      - name: Firmware resource budget (resource-budget.json beside the crate)
+      - name: Firmware resource budget (resource-budget.json beside the crate) and virtual Pip facts
         run: |
           bun scripts/build-firmware.mjs
           bun scripts/firmware-budget.mjs
+          bun scripts/virtual-resource-facts.mjs --check
       - name: Firmware format + clippy (RISC-V, every feature configuration)
         working-directory: firmware/pip
         run: |

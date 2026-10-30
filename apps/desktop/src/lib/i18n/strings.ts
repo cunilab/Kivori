@@ -696,6 +696,10 @@ export const strings = {
     heading: 'Device internals',
     description:
       'Flash, memory, load and link numbers from the device. Updates about once a second.',
+    virtualNote: {
+      label: 'Modelled (virtual Pip)',
+      body: 'The chip figures come from a committed model of the ESP32-C3 build (frame cost, SPI transfer, flash, RAM and stack from the product ELF), not from a measurement. Temperature stays unavailable.',
+    },
     loadFailed: 'Device internals are unavailable right now.',
     stale: 'Device internals are stale. Waiting for a new measurement…',
     notConnected: 'Connect your Kivori to see its internals.',

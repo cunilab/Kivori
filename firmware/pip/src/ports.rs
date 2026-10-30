@@ -97,6 +97,13 @@ pub trait DisplaySink {
 pub trait Clock {
     /// Milliseconds since boot (monotonic, non-decreasing).
     fn now_ms(&self) -> ElapsedMs;
+
+    /// Host simulation only: [`crate::runtime::Runtime::step`] calls this right after composing tile
+    /// row `row` of a frame (`view` and `overlay` say what the frame shows), so a modelled clock
+    /// can charge the time the chip takes to draw it. The default charges nothing. Not part of
+    /// device builds.
+    #[cfg(feature = "host-sim")]
+    fn row_composed(&self, _row: usize, _view: &kivori_model::desk::DeskView, _overlay: bool) {}
 }
 
 /// Instantaneous physical input levels.

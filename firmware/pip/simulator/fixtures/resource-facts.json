@@ -1,0 +1,15 @@
+{
+  "_about": "Resource facts the virtual Pip reports in its Device internals, for the catalog product firmware (physical-st7789 release ELF). The `elf` block is generated from `bun scripts/firmware-budget.mjs --json` and checked against the current ELF by `bun scripts/virtual-resource-facts.mjs --check` (just fw-budget, firmware CI); refresh with `--write`. The `board` block is not in the ELF: it is the unit's flash layout (4 MiB module, espflash default partition table, factory app 0x3F0000 B), as the unit's internals panel shows it. See docs/virtual-pip.md (Modelled timing and internals).",
+  "source": "bun scripts/firmware-budget.mjs --json",
+  "elf": {
+    "app_image_bytes": 343794,
+    "asset_blob_bytes": 127253,
+    "static_ram_bytes": 158332,
+    "stack_region_bytes": 162180,
+    "stack_peak_bytes": 115744
+  },
+  "board": {
+    "app_partition_bytes": 4128768,
+    "flash_total_bytes": 4194304
+  }
+}

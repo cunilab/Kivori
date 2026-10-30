@@ -313,7 +313,8 @@ predict the ESP32-C3 (no 64-bit divide, flash-resident assets). Without a unit,
 [Frame cost without hardware](#frame-cost-without-hardware) predicts the compose time.
 
 Not covered by the simulator: pin wiring and electrical bounce, the USB CDC transport and its
-buffering, SPI/panel orientation and real frame timing.
+buffering, SPI/panel orientation and measured frame timing (it is modelled, see
+[Modelled timing and internals](#modelled-timing-and-internals)).
 
 ### Resource budget without hardware
 
@@ -463,3 +464,134 @@ as a note (not a failure); refresh the fixture to keep the gate tight. Changing 
    and the table above, run `just fw-frame-cost-update`, and keep the second data point
    (`run --elf <old ELF>` on a build of an older renderer) as a check; a prediction more than 25% off
    means a cost rule needs revisiting before the fixture is trusted.
+
+### Modelled timing and internals
+
+The virtual Pip runs the same `Runtime::step` as the device, but its clock used to stand still: the
+runner set it once per request, so inside a frame every read returned the same time. Compose and
+flush measured 0 ms, `busy` was about 0 and the frame rate followed the host's request pacing. Input
+and host bytes stamped "during" a frame reached the runtime at once, where the unit services them
+between tile rows. With modelled timing the virtual Pip has the unit's time behaviour and fills its
+Device internals like the unit does, so rendering and responsiveness work needs no hardware. It
+remains a model: [Limits](#limits-of-the-model) says what it does not know.
+
+#### Two timings
+
+| Mode | Used by | One request is |
+|---|---|---|
+| Modelled (default) | `kivori-pip-simulator` with no arguments: the desktop bridge and `just virtual-device` | "run the device until `now_ms`": any number of ticks, on the device's own clock |
+| Ideal (`--ideal-time`) | in-process `Simulator::new()`: `--input-smoke`, `--io-smoke`, `--replay`, the runner tests and the committed frame goldens; `just virtual-device-endurance` | exactly one tick with the clock frozen at `now_ms`, frames cost 0 ms |
+
+Ideal timing is kept for everything whose assertions or goldens depend on a tick being one instant
+(exact event timestamps, frame hashes at a given `now_ms`). Modelled timing is for looking at the
+device as a user would. The desktop, connection, recovery and presence scenarios of
+`just virtual-device-smoke` run on modelled timing and pass. The endurance run needs ideal timing: it turns the
+knob about 190 detents a second with presentation traffic back, and on modelled timing the heartbeat
+timed out after about 30 s (5,700 detents). A hand cannot turn a knob that fast, and the runtime takes
+at most `RX_BYTES_PER_POLL` (512) inbound bytes per tick, about 6 KB a second at the chip's 12
+frames a second, which is the likely limit; the cause was not isolated further. The run's purpose, the
+sequence wraps, does not depend on frame time.
+
+#### How time is modelled
+
+All of it lives in `firmware/pip/simulator/src/timing.rs` and `modelled.rs`. The product firmware has
+one new line for it: `Runtime::step` calls `Clock::row_composed(row, view, overlay)` after each tile row,
+and that method exists only with the `host-sim` feature (the default does nothing). Device builds do
+not contain it; the release-surface check that compiles `host-sim` for riscv32imc as a positive
+control is unchanged.
+
+- **Compose.** After each tile row the clock advances by that row's cost from
+  `firmware/pip/frame-cost/fixtures/frame-cost.json` (`row_ms_mean`, the RV32IMC simulation of the real
+  renderer, fitted to the unit's 79 ms). The scenario is picked from what the runtime is drawing:
+
+  | The frame shows | Scenario |
+  |---|---|
+  | Buddy, desktop data present (legend, clock or now-playing) | `connected_desk` |
+  | Buddy, nothing from the desktop | `idle_mascot` |
+  | Buddy with a volume overlay, action feedback or a held switch | `buddy_overlay` |
+  | Clock, Media or System view | `clock_view`, `media_view`, `system_view` |
+  | The switch slide between Buddy and System | `switch_buddy_system` |
+  | Any other slide | the dearer of the two views (an approximation) |
+  | Volume view, recovery or update takeover | `connected_desk` (not measured) |
+
+- **Flush.** Each panel window advances the clock by its SPI time: `(pixels x 16 + 11 x 8) bits at
+  20 MHz` (`SPI_CLOCK_HZ`; 11 command bytes for the column and row address and the memory write).
+  Which windows go out is the real renderer's choice (changed tiles only, a full tile row or two as one
+  band), so a quiet desk flushes in under a millisecond and a full redraw takes about 46 ms. DMA
+  set-up and the CPU time around a transfer are not modelled.
+- **Service points.** The runtime drains input and USB between tile rows and between windows. Each
+  such point costs 150 microseconds (`SERVICE_POINT_US`). That figure is an assumption fitted to one
+  fact: the unit reports 12 fps with a 79 ms compose, which needs a frame of at least 80 ms; without it
+  the model reports 13. Compose and flush figures exclude it, as the runtime's own accounting does.
+- **Idle.** A tick that took no modelled time advances the clock 1 ms, the resolution of input
+  timestamps; the real loop spins, the host cannot.
+
+The device runs back to back and never sleeps, as on the board. A request only says how far the host's
+time has come, so the device may stop part way through a frame. It runs on its own thread and parks at
+every point where the runtime looks at input (the start of a tick, between tile rows, between windows)
+until the host's time has reached it. Input edges and wire bytes are handed over only when device time
+reaches their stamp, and wire bytes carry the request's `now_ms`. So an edge stamped mid-frame is
+serviced at the next row boundary, not after the frame, and the result depends on the sequence of
+requests only, not on thread scheduling: exactly one side runs at a time, and slicing the same
+interval into different request sizes gives the same device figures (tested). Output such as a frame
+capture can lead the host's time by up to one row or window.
+
+#### Virtual figures against the unit
+
+Connected desk (buddy with clock, volume, media and legend), as in `device_probe PORT internals`:
+
+| Figure | Unit | Virtual Pip |
+|---|---:|---:|
+| compose | 79 ms | 79 ms |
+| flush | 0 to 5 ms | 0 ms (under 1) |
+| fps | 12 | 12 |
+| busy | about 100% | 99% |
+| input serviced while composing | about every 13 ms | 2 to 22 ms after the edge across 12 frame phases (a row is 4 to 24 ms) |
+
+The unit's figures are the ones recorded with the frame-cost fit; the virtual row is what the tests
+below assert (`modelled::tests`: compose within 1 ms of 79, fps 12, busy 99 or 100, flush at most 5 ms,
+worst service delay at most 25 ms against 79 ms for a frame).
+
+#### Internals
+
+The runner installs a chip probe (`src/probe.rs`) so the Device internals hold the facts the board
+would read from itself. They come from `firmware/pip/simulator/fixtures/resource-facts.json`:
+
+| Field | Source |
+|---|---|
+| app image, asset blob (and its cap), static RAM, stack region | `scripts/firmware-budget.mjs --json` on the product ELF |
+| stack free minimum | stack region minus the estimated peak (115,744 B; the unit measured 115,740 B) |
+| RAM total | static RAM plus the stack region |
+| app partition, total flash | the unit's layout: 4 MiB module, factory app 0x3F0000 B (not in the ELF) |
+| chip | ESP32-C3 rev v0.4, the unit the model is fitted on |
+| busy, compose, flush, fps, uptime, frame counters | the runtime itself, on the modelled clock |
+| temperature, reset reason, live free RAM | no model: Unavailable, never 0 |
+
+The chip row is the real unit's value rather than a virtual marker: `ChipModel` is wire-significant
+and there is no wire field for "virtual". The desktop marks the virtual device instead. It identifies
+the connection by the device id's short hash (`VIRTUAL-PIP-0001` hashes to `847c795d`) and shows
+"Modelled (virtual Pip)" with a one-sentence explanation in the Device internals card
+(`VIRTUAL_PIP_DEVICE_ID_HASH`; a test pins the constant to the id). Nothing was added to the wire.
+
+Keeping the fixture current: `just fw-budget` ends with `bun scripts/virtual-resource-facts.mjs
+--check`, and the firmware CI job runs it after the budget check. It builds nothing; it reads the
+product ELF, derives the five ELF facts and fails when one differs from the fixture by more than 2%.
+After an intended size or stack change run `just fw-virtual-facts-update` (rebuilds the ELF and
+rewrites the `elf` block) and commit the fixture with the change. The simulator also asserts that the
+fixture's asset blob size equals the blob it compiles. Compose cost is kept current by the frame-cost
+gate above.
+
+#### Limits of the model
+
+- Compose per row is the frame-cost model's, validated on the unit only as a total
+  ([Accuracy](#accuracy)). The scenario mapping covers seven situations; the others are
+  approximations as in the table above.
+- Flush is bandwidth only, and the 150 microsecond service cost is fitted to one integer. USB, interrupts
+  and flash-cache disturbance are absent, so absolute latency to the host is optimistic.
+- The state token and `reboot` in a response describe the last finished tick, so they can trail the
+  host's time by one frame.
+- Internals that need hardware stay unavailable. The app image size and stack peak describe the
+  product ELF at the last fixture refresh, not the simulator binary.
+- Ideal-timing scenarios say nothing about timing; use modelled timing (or the unit) for that.
+- The development virtual window shows the panel and controls but no Device internals card; the
+  internals reach any session that asks for them (`InternalsRequest`).
