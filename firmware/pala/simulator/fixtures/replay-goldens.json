@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "seeds": {
+    "17": {
+      "mixed-rotary": "67bb27bd8da81091",
+      "invalid-bounce-then-detent": "67bb27bd8da81091",
+      "buffered-switches": "42e734b2a703fb11",
+      "recovery-cancel": "e477fc3d27a8f331"
+    },
+    "29": {
+      "mixed-rotary": "67bb27bd8da81091",
+      "invalid-bounce-then-detent": "67bb27bd8da81091",
+      "buffered-switches": "42e734b2a703fb11",
+      "recovery-cancel": "e477fc3d27a8f331"
+    }
+  }
+}

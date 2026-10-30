@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+
+[package]
+name = "kivori-pip-simulator"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+kivori-firmware = { path = "..", default-features = false, features = ["host-sim"] }
+kivori-assets = { path = "../../../crates/kivori-assets" }
+kivori-model = { path = "../../../crates/kivori-model" }
+kivori-protocol = { path = "../../../crates/kivori-protocol" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+kivori-asset-compiler = { path = "../../../tools/asset-compiler" }

@@ -68,6 +68,16 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo clippy -p kivori-desktop --no-default-features --all-targets -- -D warnings
       - run: cargo test --workspace
+      - name: Isolated virtual device vertical slice (fake OS, no hardware)
+        run: node firmware/pala/simulator/run.mjs --smoke
+      - name: Upload virtual-device verification reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: virtual-device-report-${{ matrix.os }}
+          path: firmware/pala/simulator/target/reports/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Build the Windows Core Audio backend
         if: runner.os == 'Windows'
         run: cargo build -p kivori-desktop

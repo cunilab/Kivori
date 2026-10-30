@@ -8,7 +8,17 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const SENTINEL = 'kivori-ipc-browser-mock-must-not-ship';
+const SENTINELS = [
+  'kivori-ipc-browser-mock-must-not-ship',
+  'kivori-virtual-device-must-not-ship',
+  'virtual_snapshot',
+  'virtual_input',
+  'virtual_connection',
+  'KIVORI-VIRTUAL-DEVICE',
+  'fnv1a64-rgb565-le',
+  'PASS S5.4',
+  'PASS S5.5',
+];
 const DIST = 'apps/desktop/dist/assets';
 
 if (!existsSync(DIST)) {
@@ -18,7 +28,11 @@ if (!existsSync(DIST)) {
 
 const offenders = readdirSync(DIST)
   .filter((file) => file.endsWith('.js'))
-  .filter((file) => readFileSync(join(DIST, file), 'utf8').includes(SENTINEL));
+  .filter((file) =>
+    SENTINELS.some((sentinel) => readFileSync(join(DIST, file), 'utf8').includes(sentinel)),
+  );
+
+if (existsSync('apps/desktop/dist/virtual-device.html')) offenders.push('virtual-device.html');
 
 if (offenders.length > 0) {
   console.error(

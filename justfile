@@ -182,3 +182,11 @@ web-preview:
 # Build and deploy the site to Cloudflare (needs `bunx wrangler login` or CLOUDFLARE_API_TOKEN).
 web-deploy:
     bun --filter kivori-web deploy
+
+# DEV ONLY: isolated product-owned simulator + desktop-core sandbox (no physical device).
+virtual-device:
+    bun firmware/pala/simulator/run.mjs
+
+# Real Runtime/desktop-core smoke with fake OS and a captured firmware framebuffer.
+virtual-device-smoke:
+    node firmware/pala/simulator/run.mjs --smoke

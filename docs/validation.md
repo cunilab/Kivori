@@ -3,15 +3,330 @@
 The one checklist for everything CI cannot prove: real ESP32-C3 + ST7789 + HW-040 hardware, real
 OS behavior, real timing. Host-sim and other host tests are never promoted to physical evidence.
 
-Current M2.9 scope, updated 2026-10-26: CAD/enclosure work is owner-managed and outside the
+Current M2.9 scope, updated 2026-10-29: CAD/enclosure work is owner-managed and outside the
 software milestone. The [roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness)
-now has **13/18 complete**, with five configuration or real-use acceptance items open. Earlier
-13/19 counts are dated historical snapshots; the enclosure records below remain reference material
-for the owner and do not count toward current M2.9 completion.
+now has **19/24 complete**, including all six virtual Pip software items; five configuration or real-use
+acceptance items remain open. Earlier 13/18 and 13/19 counts are
+dated historical snapshots; the enclosure records below remain reference material for the owner
+and do not count toward current M2.9 completion.
 
 Row numbers: `1.N` is row N of the old Phase 1 (device connection) checklist, `3.N` is row N of the old
 rotary checklist, `2.N` are new Phase 2 rows, `G` rows are PRD gates. Tick a row only with a date and a
 measurement or observation on the same line. A phase closes only when all its rows are ticked.
+
+## M2.9 virtual Pip software acceptance
+
+Status, 2026-10-29: owner authorized implementation after reviewing the documentation. S5.1–S5.6 are
+implemented with local macOS and Linux/Windows CI evidence;
+All six S5 software items are complete. This is software evidence only. The
+[plan and pending-check map](./virtual-pip.md) and
+[ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) define the boundaries.
+
+| Roadmap item | Required software evidence | Current result |
+|---|---|---|
+| S5.1 | Real firmware Runtime, raw detents/press, real desktop handshake/action path, fake OS read-back and captured firmware screen; isolated settings, no real executors, bounded pipes and clean child exit. | PASS (software only); evidence below |
+| S5.2 | Identity/protocol refusal, fragmented traffic/backpressure, timeout, child exit, reconnect and no old-session action replay. | PASS (software only); local macOS and Linux/Windows CI |
+| S5.3 | Threshold/bounce/buffered-edge/overflow/ownership scenarios use timestamped raw input through Runtime, with expected action traces and frames. | PASS (software only); local macOS and Linux/Windows combined smoke |
+| S5.4 | Profiles, microphones, media, macros, bindings and setup exercise production logic against fake OS state; unknown/failure never falsely confirms. | PASS (software only); native smoke and separate setup UI contracts |
+| S5.5 | Fake flash/install executors exercise production recovery/admission/compatibility decisions; no real process, eFuse or update side effect. | PASS (software only); native rehearsal and separate UI contracts |
+| S5.6 | Deterministic headless replay/report, CI assertions, offline and release guard positive controls, independent embedded build and production exclusion proof. | PASS (software only); verified Linux/Windows report artifacts and guards |
+
+For each result record source SHA/build, scenario id, expected and actual outcome, input/time seed,
+clock mode, exercised layers, commands and trace/frame references. Failed assertions fail the run;
+unsupported or unexercised layers are NOT RUN. Label firmware pixels separately from Device Studio's
+desktop-rendered preview. Interactive mode uses real elapsed time; injected firmware time alone
+cannot establish desktop timeout coverage or count toward the 8 h soak and 10 workdays.
+
+Passing S5 may close its own software tasks only. Physical rows below, native OS acceptance,
+website deployment, signatures, real BOOT/eFuse behavior and participant acceptance remain open
+until their stated evidence is recorded. CAD is owner-managed and outside S5.
+
+### S5.1 runner and complete vertical slice evidence
+
+The dedicated `virtual_device` example registers only `virtual_snapshot` and `virtual_input`.
+It does not invoke shipping app startup, USB enumeration, host notifications, updater, real OS
+services, persistent ConfigStore, flashing, eFuse or installer executors. Settings are in memory
+only, and application launch is explicitly unavailable in the simulated DeskRuntime. It reuses
+production Session, protocol admission, session synchronization, RotaryPipeline and DeskRuntime.
+This verifies those core paths, not the complete shipping `device_loop`, normal app UI, setup,
+persistence or real Windows adapters; broader scenarios remain S5.2–S5.6.
+
+| Check | Verified result |
+|---|---|
+| Standalone runner | Six host tests passed: bounded/truncated/invalid records, timestamped raw input, real handshake/Build identity, captured framebuffer and exactly three normalized CW detents. Strict runner Clippy and formatting passed. |
+| Native tests | Full opt-in library suite: 321 passed, three existing ignored. After the final capture-latch fix, all three focused bridge tests passed: record validation, hung-child timeout/reaping and capture demand surviving pending I/O. |
+| Desktop UI | Five focused tests passed, including RGB565 conversion, one pending poll, stale/error handling, pointer/keyboard release and accessible timed raw press. Typecheck and zero-warning targeted lint passed. |
+| Cross-process smoke | `just virtual-device-smoke` builds separate runner and desktop example, performs a real firmware handshake, asserts three actual firmware CW detents and fake volume 50→56, asserts the captured solid confirmed 56% bar (not autonomous mascot motion), then raw press/release yields exactly one fake media trigger. Saves `firmware/pala/simulator/target/smoke-frame.ppm`. |
+| Interactive macOS | Launched the dedicated development window, observed live firmware pixels and Connected; three interactive right turns changed fake volume from 50 to 56. The accessible Press once control produced exactly one fake media trigger. Closing the window exited the launcher, simulator and native tool with no remaining owned device process. |
+| Release exclusion | No-default-features desktop build passed; `virtual_snapshot`, `virtual_input`, `new_simulated` and the virtual marker were absent from that binary and present in the opt-in example. Production frontend build passed and excluded the virtual entry/commands; an injected virtual sentinel made the exclusion guard fail, then passed after removal. |
+| Firmware boundary | Embedded `physical-st7789` RISC-V check passed. Physical firmware and runner now share the exact same 16-capability constant; extraction preserved all previous flags. No pin map, protocol schema or release recipe changed. |
+
+Commands used: `cargo test --locked -p kivori-desktop --features virtual-device --lib`, followed by
+`cargo test --locked -p kivori-desktop --features virtual-device --lib virtual_device::tests`;
+`cargo clippy --locked -p kivori-desktop --features virtual-device --all-targets -- -D warnings`;
+`bun --filter kivori-desktop-ui test src/features/virtual-device/VirtualDevice.test.tsx`;
+UI typecheck/build and targeted ESLint/Prettier; explicit-host runner tests/Clippy; independent
+embedded check; `cargo build --locked -p kivori-desktop --no-default-features`, artifact inspection,
+product-identifier/frontend-offline checks, and frontend exclusion positive control. CI now runs
+the cross-process smoke on Linux/Windows; no remote result is claimed by this local record.
+
+The first smoke failed with only two detents: the initial bridge used active-high rest `11`.
+The production physical adapter has already inverted pull-up readings; Runtime expects normalized
+rest `00`, CW masks `[2,3,1,0]`. Corrected the bridge and added a real Runtime three-detent regression.
+Independent Sol review also required causal overlay pixels, owned UI-server readiness and retaining
+capture demand while a child request is pending; those fixes and the focused latch regression are
+included. A macOS duplicate plist linker warning was eliminated by reusing one app context.
+
+Limits: first slice exposes turns, a timed 120 ms raw press and raw hold/release with a 2 s failsafe.
+It rejects clock rollover and requires restarting the tool after a virtual reboot/error; broad
+reconnect/fault/recovery scenarios are not complete. Frame captures are requested at most 10 Hz;
+interactive time is real elapsed time and host performance is not device latency. No physical
+unit, real OS state, signing, deployment, sustained-use day or participant acceptance is claimed.
+
+### S5.2 connection and interruption evidence
+
+Implemented and verified on Andress-MacBook-Air and Linux/Windows CI, 2026-10-26. `just virtual-device-smoke` now also runs `--connection-smoke`: a separate fresh
+sandbox executes these nine real cross-process scenarios, without a GUI, hardware or real OS actions:
+
+| Scenario | Local verified result |
+|---|---|
+| Queued-input disconnect/reconnect | Disconnect clears child, wire/edge queues, hold/failsafe, live pixels and session-bound actions. Outage input and a late old-generation UI request are rejected. Reconnect renews actual session nonce/generation and preserves fake OS volume. |
+| Stale-nonce packet | A valid fresh-sequence protocol frame carrying the previous real nonce is rejected by the production input ingress, observed by its rejection counter. A new-session press still executes exactly once after another reconnect. This is deliberate wire fault injection, not fabricated hardware input. |
+| Half press and ten reconnects | A real raw down reaches the old firmware, then disconnect occurs before release. No press appears in the replacement session; ten more cycles settle to one live owner without extra media actions. |
+| Fragmented traffic | Seven-byte per-tick budgets in both directions exercise the actual firmware decoder and desktop session through handshake and exactly one detent; no message schema changes. |
+| Wrong protocol major | Only an actual runner HelloAck header is re-encoded with an unsupported major, preserving payload/sequence/CRC. The production Session refuses it and raw controls remain unavailable. |
+| Unknown product | Runtime reports an unknown product via its real identity path; catalog/capability admission refuses use, clears the display and allows a normal retry. |
+| Unknown board | Same refusal for an unknown board, without USB hints or implicit product fallback. |
+| Missing heartbeats | Live runner still executes firmware/captures and accepts host traffic but suppresses wire output. The desktop's real elapsed heartbeat policy times out, clears ownership and reconnects normally. No clock acceleration. |
+| Child exit | Runner exits without a JSON response on an explicit development fault. Real pipe EOF invalidates the connection; retry preserves fake OS state but replays neither queued tap nor old traffic. A fresh press still works. |
+
+Four native bridge tests pass, including ordered fragmented reads/writes, bounded transmit/receive
+queues and fail-closed Session WriteZero under backpressure. Existing capture-latch, malformed
+response and hung-child timeout/reaping checks remain green. Eleven runner tests and eleven UI tests
+pass. UI coverage includes serialized connection commands, stale snapshot suppression, disconnected
+canvas clearing/input gating and generation-bound press/release through blur/unmount. Native IPC
+checks the generation under the same sandbox mutex before enqueueing input. Connection commands
+accept a fixed action list, never paths, shell text or physical ports.
+
+Interactive macOS verification used the owned development window: Disconnect cleared the display
+and disabled raw controls; Reconnect advanced the generation. Fragmented mode completed a detent
+(fake volume 50→52). Wrong-major mode showed the protocol refusal with inputs disabled; Reconnect
+returned to normal generation 5, retained volume 52 and a fresh Press once produced exactly one
+media trigger. Closing the window stopped the launcher with exit code 0.
+
+Strict native/runner Clippy, UI build/typecheck/lint, product identifiers, frontend offline and
+production frontend exclusion checks passed locally. Independent Sol source review found no
+remaining actionable issue, including the generation boundary and release-guard change.
+
+Follow-up to S5.1 CI at `18929a2`: release-tools failed because manifest-reflection scanning walked
+into the independent simulator build script. The fix excludes only unrelated explicit nested Cargo
+workspaces from that text scan; resolved dependencies remain scanned and changed-file release
+checks remain conservative. All 60 firmware-release-guard tests and 21 related release-tools/finalize
+tests passed, with regressions for unrelated workspaces and positive controls for shipped manifest
+reads and nested resolved build dependencies.
+
+The same head's Windows native job compiled successfully and passed runner/bridge tests, then the
+virtual GUI example exited with code 57 before a smoke success marker. Logs did not establish the
+underlying OS cause. Installed Tauri build sources showed its generated resource is linked to
+binary targets only; the MSVC opt-in example now links the same `OUT_DIR/resource.lib`, including
+the activation manifest. The shipping build path is unchanged. CI uses Node for child-process
+status reporting, and failures now identify scenario arguments. At code head `65a17a9`, both
+Linux and Windows CI passed the complete virtual-device smoke, including all nine S5.2 scenarios;
+this verifies the Windows example startup fix. See the [host CI run](https://github.com/cunilab/Kivori/actions/runs/40329642928).
+Windows Device Studio startup and the [Windows installer build](https://github.com/cunilab/Kivori/actions/runs/40329642977)
+also passed. All 15 applicable checks passed at `65a17a9`; optional macOS packaging was skipped.
+These are CI software results, not physical-device or signed-install acceptance.
+
+At the S5.2 checkpoint, input and desktop models remained S5.3/S5.4; their results are recorded
+below. Recovery/install rehearsal and final replay/reporting evidence are also recorded below. Physical USB/driver,
+board reset, actual OS actions, signing, CAD and sustained-use acceptance are not simulated away.
+
+### S5.3 raw input fidelity evidence
+
+Implemented on Andress-MacBook-Air, 2026-10-28. The product-owned runner's `--input-smoke`
+uses injected firmware milliseconds, its real `Simulator::step`, production `Runtime`, raw
+`InputSource::drain`, negotiated protocol and captured RGB565 frames. It asserts complete decoded
+input-event traces (control, kind and firmware emission timestamp) and current session nonce;
+settling ticks reject extra events. These are firmware logical actions, not desktop OS actions.
+
+| Scenario | Required result asserted by the suite |
+|---|---|
+| CW/CCW quadrature | One correctly directed detent with gesture start/end; illegal two-bit changes, partial cycles and rest bounce produce none. A subsequent full cycle works. |
+| Switch boundaries and bounce | 19 ms is ignored; 20 ms is a Press. 499 ms is Press, 500 and 1999 ms are Hold, 2000 ms enters recovery without a normal action. Contact bounce produces one Press. |
+| Negotiated double press | First press waits; a 249 ms second-down gap produces one DoublePress, while 250/251 ms produce two separate Press events. |
+| Buffered history | Two completed presses on each of the knob and three contextual switches retain their classification when delivered together after a long tick gap. |
+| Control ownership | Knob hold swallows rotation, simultaneous contextual downs do not chord, an earlier contextual press suppresses the knob press, and fresh input works after rotary ownership expires. |
+| Bounds and overflow | 128 edges are accepted; 129 are refused before advancing simulator time, then a valid press works. A separate oversized input-port drain exercises Runtime's defensive overflow branch and preserves final release plus the next press without extra actions. |
+| Session/recovery lifecycle | Session renewal cancels a partial press. A buffered release cancels recovery even when the next tick is beyond the reboot deadline. An uninterrupted recovery survives session renewal and requests reboot at exactly 10000 ms from down, refuses later ticks, and a fresh runtime accepts input. |
+
+The runner checks complete, nonblank 240×240 captures. Settled trace cases print actual events,
+frame FNV-1a 64-bit hashes and virtual time. Recovery capture differs from a same-time no-input
+control; release produces a different capture, with reboot cancellation asserted separately. Hashes identify captured frames; fixed golden-frame comparison
+and general replay reports remain S5.6. The normal pipe JSON schema and its 128-edge bound are
+unchanged. Runtime's 129-sample capacity fits that bound plus final levels, so the defensive overflow
+case explicitly bypasses only the request bound: it is input-port fault injection, not evidence for
+the physical GPIO interrupt queue. Desktop real-time deadlines and OS dispatch are not accelerated.
+
+Code head `79fba30`: all 12 runner tests, strict runner Clippy, formatting and the standalone
+input smoke passed locally. The command emits 32 PASS markers, including repeated positive controls;
+these are not 32 separate unit tests. Two standalone runs produced byte-identical event traces and
+frame hashes. A normal JSON request still returned one valid response; an unknown CLI argument
+failed nonzero with no stdout. Its explicit 2 MiB worker stack also passed when called from
+a 1 MiB test thread, independently verified by Sol review with no actionable findings. The normal
+JSON pipe path retains its existing stack and behavior. Linux and Windows passed the combined
+S5.1/S5.2/S5.3 smoke at `79fba30` in [host CI](https://github.com/cunilab/Kivori/actions/runs/40687312866).
+All 15 applicable CI checks passed on that code head; optional macOS packaging was skipped.
+The initial local combined run passed the new suite and all four bridge tests but exposed the
+older vertical-slice smoke's fixed-duration assumptions: readiness was absent at its one-second
+check, and a retry observed only two of three detents by its fixed check. The follow-up harness
+uses five-second bounded observed-state waits for readiness, exact detent/volume counts, confirmed
+pixels and one media result. Intentional 300 ms rotary separation, 120 ms press timing, negative
+settling and final exact counts remain. Independent review caught and corrected the need to retain
+rotary separation. This changes functional synchronization, not latency acceptance.
+At follow-up code head `08fc1ec`, the final macOS combined smoke passed all 12 runner tests,
+four bridge tests, 32 S5.3 PASS markers, the original vertical slice and all nine S5.2 scenarios.
+Strict Clippy for the opt-in native example also passed. Affected identifier, dependency-boundary
+and offline guards passed; 100 local documentation links/anchors and the 16-complete/8-open
+roadmap count were verified. All 15 applicable checks also passed at `08fc1ec`, including the
+corrected Linux/Windows smoke; optional macOS packaging was skipped. See the final
+[host CI](https://github.com/cunilab/Kivori/actions/runs/40690522627) and
+[packaging CI](https://github.com/cunilab/Kivori/actions/runs/40690522626).
+The final documentation-only status commit has separate CI and does not change that tested code.
+No production firmware behavior, thresholds, native IPC or frontend controls change.
+Physical electrical behavior, display scan-out, real reset circuitry and timing remain unverified.
+
+### S5.4 simulated desktop behavior evidence
+
+Implemented and verified on Andress-MacBook-Air, 2026-10-29, code `948d294`. The opt-in native example adds
+`--desktop-smoke`, included in `just virtual-device-smoke`. The CLI owns a disposable settings
+directory; scenarios cannot select the installed app's configuration through web IPC. Existing
+fake volume, microphone, media, foreground and input services are injected before constructing
+`DeskRuntime::new_simulated`; application launching remains unavailable.
+
+| Layer | Checks |
+|---|---|
+| Firmware session → desktop | Real child handshake/capture, saved-and-reopened binding driven by raw press, raw middle-button profile pinning, quantized detent using observed rather than requested volume, persisted macro order and fresh-session input. |
+| Desktop action and observation | Correlated production action-test replies exercise Protected custom-action refusal, allowed system media, disabled launch, unknown/healthy/unreadable/unsettable microphones, hotplug arrival that stays live, missing volume endpoint/read-back failure, media triggered/error/permission/uncertain outcomes observer-only playback changes, and an action-test macro interrupted by a real session disconnect. These calls do not claim to originate in firmware. |
+| Configuration store | Real isolated save/reopen/resolve and setup flags, invalid-save preservation and a detached store refusing completion without changing its setup flag. Installed upgrade retention and power-loss durability are not established. |
+| Setup UI | Real React app/hooks with the existing browser IPC mock: failed completion remains unfinished after remount and succeeds on retry; startup-setting refusal stays unapplied and shows its error while setup may finish. Existing capability, disconnected, permission, recovery and setup suites remain required. No native WebView/IPC-to-runner end-to-end setup flow is claimed. |
+
+The interruption case starts through the production desktop Test path, without the raw input
+freshness deadline that could otherwise confound a long-delay cancellation test. It observes the
+first macro step before a real disconnect and uses a correlated worker reply as a completion
+barrier before checking that no continuation ran. Uncertain started media
+input must stop a later macro step. Fake observations remain distinct from action certainty;
+simulated success never establishes actual Windows state or real keyboard/media delivery.
+Microphone hotplug here is arrival, not OS notification registration or device-removal evidence.
+Initial captures establish real firmware execution; S5.1 retains the causal confirmed-volume pixel
+check. Desktop-only observations do not assert additional firmware pixel results.
+
+Local combined smoke passes all 14 S5.4 markers, the S5.1 vertical slice, all nine S5.2 cases,
+32 S5.3 markers, 12 runner tests and four bridge tests. Strict native-example Clippy, identifier,
+dependency-boundary and offline guards pass. Independent review found a weak quantized-volume
+positive control; it now proves 55→requested 57→observed 50, and review found no remaining
+actionable issue. Media observer changes are checked against the live action result. The
+Linux/Windows combined smoke passed in [host CI](https://github.com/cunilab/Kivori/actions/runs/40733598071).
+A local no-default-feature desktop build omits the `PASS S5.4` marker; the opt-in example contains
+it as a positive control. The three onboarding UI files contain
+40 tests, including two new failure/retry cases. All passed locally with one worker and a 20-second
+runner timeout. Earlier default-five-second runs timed out in different existing cases; the new
+cases passed after adding the app's asynchronous readiness wait. No repository timeout was changed.
+The two new tests also passed separately under the standard five-second deadline. Typecheck,
+focused zero-warning lint and formatting passed. Full frontend CI passed 430 desktop UI and
+111 website tests with the unchanged standard timeout. All 15 applicable CI checks passed on `948d294`; optional macOS packaging
+was skipped. The final documentation-only status commit has separate CI. Normal interactive
+settings remain in memory; only this native smoke owns temporary files.
+No shipping app setup/device-loop integration, real OS permission, actual login entry, hardware
+microphone/USB behavior or physical acceptance is established by this suite.
+
+### S5.5 recovery and compatibility rehearsal evidence
+
+Implemented and verified on Andress-MacBook-Air, 2026-10-29, code `d5f0599`. The native opt-in example adds
+`--recovery-smoke`, included in `just virtual-device-smoke`. It never registers the real updater
+or invokes espflash, eFuse tools, network/download code or an operating-system installer.
+
+| Layer | Rehearsal and assertions |
+|---|---|
+| Fake flash + actual virtual session | Counting injected executor drives production `run_accepted_firmware_flash` and `FlashWorkflow` through cancellation, timeout, port-busy and missing-download-mode failures. Ownership returns to discovery without verification. A successful fake executor remains Reconnecting until a matching compatible virtual handshake; wrong port/hash and an actual wrong-major virtual peer are refused. A real normal reconnect and fresh raw input establish continued virtual usability. No firmware bytes were rewritten. |
+| Workflow timeout policy | An injected reconnect-timeout event rejects a late success. An explicitly retried recovery can record its compatible identity. This checks the model's timeout transition, not the shipping device loop's timer or physical reset. |
+| Recovery target policy | Local fixture Catalog/FirmwareBundle data exercises shared-USB ambiguity, explicit current product/board choice, missing exact images and wrong identity. The same counting fake writer serves admitted and refused pairs; refusal must leave its count unchanged. Fixtures never register shipping products or enumerate actual ports. |
+| Firmware offers | Production OfferTracker uses injected policy time for idle, Later/reconnect, app-update priority and newer-device decisions. These model clocks do not accelerate desktop liveness or OS scheduling. |
+| App update policy + operation admission | Production updater Machine handles fake failed checks/downloads/installs and retries. Fake callbacks require the model's offered/downloaded states and real AppState install reservation. Flash/restore requests must not enqueue while installation owns admission; queued Preparing and busy flash phases exclude installation. Failed enqueue rolls back ownership. The AppState device thread is a disposable fake, stopped by its fixture guard. |
+| Recovery/update UI | Real React components use existing IPC mocks for BOOT instructions and cancellation, product/board confirmation, stale choices, offers and update progress. A new accepted-flash → reconnect-timeout case stays unverified, shows the native failure and queues neither another flash nor a restore automatically. This is separate from native-session and executor tests. |
+
+The fake callbacks exercise policy/admission seams; they do not replace or execute the production
+Tauri updater/plugin orchestration. Fake download completion does not establish actual signature
+verification. Fake installer failure does not establish recovery after a real installer launch or
+a stopped shipping runtime. The virtual runner executes the existing firmware binary throughout;
+its post-flash handshake verifies compatibility policy, not physical programming or new firmware.
+
+Local combined smoke passed all nine S5.5 markers, 14 S5.4 markers, 32 S5.3 markers, nine S5.2
+markers, the original vertical slice, 12 runner tests and four bridge tests. Strict native-example
+Clippy, formatting, identifiers, dependency boundaries and offline guards passed. Independent Sol
+review found no actionable issue. All 70 selected firmware/recovery/offer/update UI tests passed
+at the standard timeout; UI typecheck, focused zero-warning lint and formatting passed.
+Production-marker exclusion and its opt-in positive control passed locally. All 15 applicable
+CI checks passed at `d5f0599`, including Linux/Windows recovery smoke, production-surface controls,
+frontend tests and Windows packaging; optional macOS packaging was skipped. See
+[host CI](https://github.com/cunilab/Kivori/actions/runs/40738654894) and
+[packaging CI](https://github.com/cunilab/Kivori/actions/runs/40738654612). The final documentation-only
+status commit has separate CI. No physical recovery, publisher/updater
+signing, actual download/install, deployed update acceptance or earlier hardware row is closed.
+
+### S5.6 repeatable reports, CI and boundary evidence
+
+Implemented and verified on Andress-MacBook-Air, 2026-10-29, code `5e93865`. The product-owned
+runner adds `--replay 17` and `--replay 29`. Each seed runs four fixed raw-input recipes through
+actual Simulator/Runtime/protocol/capture: mixed rotary, invalid/bounce then a valid detent,
+buffered switches and cancelled recovery. Expected logical actions are independently specified;
+frame FNV-1a 64-bit hashes are checked against the committed
+[golden fixture](../firmware/pala/simulator/fixtures/replay-goldens.json). Expectations are never
+regenerated during verification. Mutated frame and action expectations each fail while the other
+comparison remains unchanged. Unsupported seeds fail nonzero.
+
+`just virtual-device-smoke` now uses Node, matching CI. Each invocation creates a fresh ignored
+`firmware/pala/simulator/target/reports/run-*/` directory with `report.json`, per-stage stdout/stderr
+and `firmware-frame.ppm`. The report records checkout SHA, dirty flag and tracked-diff hash;
+Rust/Node versions and host target; binary, lockfile/tool and golden-fixture SHA-256 digests;
+scenario ids, raw inputs/timestamps, expected/actual actions and frame hashes; seeds, clock modes,
+exercised/simulated layers and excluded acceptance. PR CI may build a merge checkout; its recorded
+SHA identifies that actual checkout. A dirty local report is not evidence for a clean source commit.
+
+Both seeds run twice. The launcher validates the full four-case inventory and expected/actual
+results, then requires byte-identical replay JSON. Native/session stages retain real elapsed time
+and explicit assertion-marker counts; recovery policy fixtures label their injected time separately.
+Their captured logs remain the semantic assertion evidence. Operational timestamps, native frames
+and the whole desktop run are not required to be byte-identical. Whole-desktop time acceleration
+remains outside the harness.
+
+Failures preserve stage logs and a failed/incomplete report. A zero exit without required markers,
+missing stage/seed, mismatched replay, spawn failure or cancelled probe cannot become a passed
+report. Review found that the metadata probe was not owned by the stop handler; it is now tracked,
+cancellation is latched, and a subprocess regression proves no later Cargo call occurs. The first
+full report also exposed S5.2's fixed 400 ms detent assertion; it now waits, with a five-second bound,
+for exactly one detent and observed volume 52. Input/liveness policies and negative replay checks
+are unchanged.
+
+CI uploads `virtual-device-report-<os>` with `always()` and 14-day retention. A job failure before
+smoke starts can have no report; an interrupted `running` report is incomplete. The smoke report
+lists production/offline/no_std checks as external requirements rather than claiming they ran
+inside it. The offline guard now discovers each catalog-owned simulator workspace and checks its
+manifest, host dependency tree and Rust sources; desktop graphs must exclude product firmware and
+simulator packages. Actual guard fixtures prove direct/transitive/source network leaks and desktop
+product coupling fail. Frontend fixtures prove all virtual markers and the developer page fail
+production checks. Two POSIX tooling fixtures skip Windows; the real guards still run there.
+
+Local validation: full report passed 14 stages, two repeated seeds and eight golden-backed cases;
+all earlier virtual slices passed. Sixteen runner tests and ten Node report/boundary tests passed;
+strict runner/native Clippy, JS lint/format, identifier and extended offline guards passed.
+Production desktop marker exclusion and opt-in/runner positive controls passed. The independent
+RISC-V no_std build passed locally, and its library excludes simulator/replay markers. All 15
+applicable CI checks passed at `5e93865`; optional macOS packaging was skipped. Both downloaded
+[host CI report artifacts](https://github.com/cunilab/Kivori/actions/runs/40813996618) were inspected:
+clean source, 14 passed stages, two repeat-verified seeds, eight golden-backed cases, logs and frame
+present. Replay JSON hashes also match between Linux and Windows. Packaging and no_std/offline/
+release guards passed separately. The final documentation-only status commit has separate CI. Real hardware, OS delivery, native setup integration,
+flash/signatures/installers, deployment and sustained-use acceptance remain separate.
 
 ## How to run a session
 

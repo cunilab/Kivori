@@ -31,7 +31,9 @@ The wire carries meaning (state, input, presentation), never pixels. Both sides 
 
 ### Repo layout
 
-Two Cargo workspaces. Shared crates are `no_std`, no-alloc, and the single source of truth.
+The root host workspace and the isolated Pip firmware workspace are the current production
+boundaries. Shared crates are `no_std`, no-alloc, and the single source of truth. The development-only
+virtual Pip runner adds a separate host workspace (ADR-0018, M2.9 S5.1).
 
 | Path | Purpose |
 |---|---|
@@ -66,6 +68,47 @@ with exact reviewed line/count exceptions and positive controls; see [ADR-0017](
 It complements the capability/firmware-selection tests. The offline dependency guard derives all
 firmware workspaces/source roots from packaging's validated catalog plans; it requires Bun as well
 as Cargo/jq and refuses catalog discovery failure.
+
+### Product-owned virtual devices (M2.9 S5)
+
+[ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) and the
+[virtual Pip plan](./virtual-pip.md) describe the owner-authorized development/test path. S5.1–S5.6
+are implemented as a dedicated opt-in desktop example and frontend entry with connection/fault
+and raw-input/desktop-policy scenarios, deterministic replay and report artifacts. It adds no shipping product
+or change to the physical device protocol.
+
+Each product owns its host simulator process and scenarios beside its firmware. Pip's
+runner is `firmware/pala/simulator/`; `pala` remains its permanent machine id. The runner depends
+on the production firmware library with `host-sim`, while desktop production dependencies never
+include a product firmware library or simulator. Future products do not depend on Pip's simulator.
+
+A generic dev-only native bridge uses local child-process pipes, not TCP/WebSocket or USB/COM
+emulation. Bounded control/frame envelopes surround unchanged wire bytes; panel captures are a
+separate development channel, never pixel messages on the product protocol. The real desktop
+session still validates identity and capabilities. Physical discovery remains unchanged.
+
+Timestamped raw encoder/button levels enter `InputSource::drain` and the real `Runtime`; its
+`CaptureDisplay` output supplies firmware pixels. Fake OS services and isolated in-memory settings
+exercise interactive desktop behavior without real keyboard/media/volume, flash, eFuse or installer
+effects. S5.4's native smoke additionally owns a disposable directory for production ConfigStore
+save/reopen checks. Its setup UI tests use browser IPC mocks; they do not verify a native
+WebView-to-runner setup flow.
+The first slice has a dedicated development owner sharing production Session, RotaryPipeline,
+session synchronization and DeskRuntime; it does not start or verify the full shipping device loop.
+It owns child lifecycle/queues and compiles only with the explicit `virtual-device` feature.
+Release/offline guards and the independent no_std build remain gates.
+Interactive mode uses real elapsed time; deterministic headless firmware time does not imply
+whole-desktop time control. S5.1–S5.6 have local macOS and Linux/Windows CI evidence;
+see the acceptance record for exact exercised layers and source heads.
+S5.3 uses a runner-only mode with an explicit stack budget, exact logical event traces and
+firmware captures. Its oversized input-port injection does not test the physical interrupt queue.
+S5.5's recovery CLI rehearses flash/update policy with in-process fake executors and feeds
+actual virtual-session compatibility into post-flash admission. The firmware binary is unchanged;
+physical programming, signature validation and shipping updater orchestration are not exercised.
+S5.6 keeps replay recipes/goldens and file-backed reports in the product-owned simulator. Fixed
+firmware clocks are distinguished from real desktop time. Reports bind checkout/build fingerprints
+to expected/actual results; separate CI guards prove offline, production and no_std boundaries.
+The acceptance record distinguishes verified paths from planned scenarios. None is physical evidence.
 
 ### State axes
 

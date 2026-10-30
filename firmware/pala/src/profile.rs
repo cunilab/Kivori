@@ -25,6 +25,25 @@ pub mod physical_st7789 {
         options::{ColorInversion, ColorOrder, Orientation, Rotation},
     };
 
+    /// Capabilities advertised by the shipping Pip runtime and its host simulator.
+    pub const CAPABILITIES: kivori_model::Capabilities =
+        kivori_model::Capabilities::MASCOT_INTERACTION
+            .union(kivori_model::Capabilities::PHYSICAL_INPUT_V1)
+            .union(kivori_model::Capabilities::PRESENTATION_V1)
+            .union(kivori_model::Capabilities::BUTTON_INPUT_V1)
+            .union(kivori_model::Capabilities::DESK_STATUS_V1)
+            .union(kivori_model::Capabilities::ACTION_FEEDBACK_V1)
+            .union(kivori_model::Capabilities::DOUBLE_PRESS_V1)
+            .union(kivori_model::Capabilities::MEDIA_INFO_V1)
+            .union(kivori_model::Capabilities::CONTROL_LABELS_V1)
+            .union(kivori_model::Capabilities::CONTEXT_BUTTONS_V1)
+            .union(kivori_model::Capabilities::HOST_TAKEOVERS_V1)
+            .union(kivori_model::Capabilities::QUIET_ACK_V1)
+            .union(kivori_model::Capabilities::DEVICE_INTERNALS_V1)
+            .union(kivori_model::Capabilities::IDLE_LIFE_V1)
+            .union(kivori_model::Capabilities::MIC_STATE_V1)
+            .union(kivori_model::Capabilities::PRODUCT_IDENTITY_V1);
+
     /// SPI clock pin (display SCL).
     pub const SCK: u8 = 4;
 

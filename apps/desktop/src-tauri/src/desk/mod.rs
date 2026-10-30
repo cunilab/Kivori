@@ -323,6 +323,24 @@ impl DeskRuntime {
     /// Takes the OS services and starts the action worker.
     #[must_use]
     pub fn new(services: OsServices) -> Self {
+        Self::with_launcher(services, crate::platform::launch::launch)
+    }
+
+    /// The isolated developer tool cannot start applications, even if a binding is changed later.
+    #[cfg(feature = "virtual-device")]
+    #[must_use]
+    pub fn new_simulated(services: OsServices) -> Self {
+        Self::with_launcher(services, |_| {
+            Err(crate::platform::ActionError::NotImplemented {
+                target: "simulated",
+            })
+        })
+    }
+
+    fn with_launcher(
+        services: OsServices,
+        launch: fn(&str) -> Result<(), crate::platform::ActionError>,
+    ) -> Self {
         let OsServices {
             volume,
             app_volume,
@@ -340,7 +358,7 @@ impl DeskRuntime {
             synth,
             media: Arc::clone(&media),
             foreground: Arc::clone(&foreground),
-            launch: crate::platform::launch::launch,
+            launch,
         });
         Self {
             context: Context::new(profile::builtins()),
