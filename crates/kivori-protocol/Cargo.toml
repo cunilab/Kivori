@@ -15,10 +15,10 @@ std = []
 kivori-model = { path = "../kivori-model" }
 serde = { version = "1", default-features = false, features = ["derive"] }
 postcard = { version = "1", default-features = false }
-heapless = "0.8"
+heapless = "0.9"
 # CRC-32 (IEEE) and COBS framing are implemented in-crate (no extra deps) for full control + testing.
 
 [dev-dependencies]
 # Integration tests (tests/*.rs) are separate crates and need these in scope directly.
 kivori-model = { path = "../kivori-model" }
-heapless = "0.8"
+heapless = "0.9"

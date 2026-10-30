@@ -10,10 +10,10 @@ description = "Zero-copy runtime reader for compiled RGB565 assets/scenes (no_st
 kivori-model = { path = "../kivori-model" }
 serde = { version = "1", default-features = false, features = ["derive"] }
 postcard = { version = "1", default-features = false }
-heapless = { version = "0.8", features = ["serde"] }
+heapless = { version = "0.9", features = ["serde"] }
 
 [dev-dependencies]
 # Integration tests are separate crates and need these in scope to build/serialize a test blob.
 kivori-model = { path = "../kivori-model" }
 postcard = { version = "1", default-features = false }
-heapless = { version = "0.8", features = ["serde"] }
+heapless = { version = "0.9", features = ["serde"] }
