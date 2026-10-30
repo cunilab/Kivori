@@ -18,7 +18,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return probe_session(&port_name);
     }
     if std::env::args().nth(2).as_deref() == Some("desk") {
-        return probe_desk(&port_name);
+        return probe_desk(&port_name, Forward::StatusOnly);
+    }
+    // Everything the app sends after connecting (labels, mic, media, buddy settings), like the
+    // device thread; `desk-no-labels` leaves the control labels out to isolate them.
+    if std::env::args().nth(2).as_deref() == Some("desk-full") {
+        return probe_desk(&port_name, Forward::All);
+    }
+    if std::env::args().nth(2).as_deref() == Some("desk-no-labels") {
+        return probe_desk(&port_name, Forward::AllButLabels);
+    }
+    // Prints every input event the device sends for 20 s, or KIVORI_PROBE_SECS (turn right, then left).
+    if std::env::args().nth(2).as_deref() == Some("inputs") {
+        return probe_inputs(&port_name);
+    }
+    // Samples the device's own load numbers (busy %, compose/flush time, fps) once a second.
+    if std::env::args().nth(2).as_deref() == Some("internals") {
+        return probe_internals(&port_name);
+    }
+    // The device thread's connect burst in one instant (state, status, media, labels, mic, buddy).
+    if std::env::args().nth(2).as_deref() == Some("desk-burst") {
+        return probe_desk(&port_name, Forward::Burst);
     }
     let timeout_ms: u64 = std::env::args()
         .nth(2)
@@ -221,7 +241,15 @@ fn probe_session(port: &str) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn probe_desk(port: &str) -> Result<(), Box<dyn std::error::Error>> {
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Forward {
+    StatusOnly,
+    AllButLabels,
+    All,
+    Burst,
+}
+
+fn probe_desk(port: &str, forward: Forward) -> Result<(), Box<dyn std::error::Error>> {
     use kivori_desktop::desk::DeskRuntime;
     use kivori_desktop::device::{
         fsm::ConnectionManager,
@@ -247,6 +275,7 @@ fn probe_desk(port: &str) -> Result<(), Box<dyn std::error::Error>> {
     let mut next_mode = Duration::from_secs(1);
     let mut next_ping = Duration::from_secs(1);
     let mut connected = false;
+    let mut buddy_sent = false;
     while start.elapsed() < Duration::from_secs(12) {
         session
             .pump(&mut link, &mut manager, &mut orchestrator)
@@ -258,6 +287,7 @@ fn probe_desk(port: &str) -> Result<(), Box<dyn std::error::Error>> {
         if !connected {
             connected = true;
             desk.on_session_begin();
+
             println!(
                 "Connected after {} ms; negotiated caps {:#x}.",
                 start.elapsed().as_millis(),
@@ -272,6 +302,52 @@ fn probe_desk(port: &str) -> Result<(), Box<dyn std::error::Error>> {
             println!("Mode -> {mode:?}");
         }
         let out = desk.tick(now, &mut |_| {});
+        // Like the device thread: buddy/display settings once the session has negotiated them
+        // (in `Burst` mode only together with the first labels, as the app does).
+        if forward != Forward::StatusOnly && forward != Forward::Burst && !buddy_sent {
+            buddy_sent = session
+                .send_buddy_settings(
+                    &mut link,
+                    kivori_model::mascot::MascotPersonality::default(),
+                    true,
+                    5,
+                )
+                .map_err(|e| format!("Buddy settings: {e:?}"))?;
+            if buddy_sent {
+                println!("Buddy settings sent at {} ms", now.as_millis());
+            }
+        }
+        if forward != Forward::StatusOnly {
+            if let Some(media) = out.media_info {
+                session
+                    .send_media_info(&mut link, media)
+                    .map_err(|e| format!("Media: {e:?}"))?;
+                println!("Media info sent");
+            }
+            if let Some(mic) = out.mic {
+                session
+                    .send_mic_state(&mut link, mic)
+                    .map_err(|e| format!("Mic: {e:?}"))?;
+                println!("Mic state sent");
+            }
+            if let Some(labels) = out.controls.filter(|_| forward != Forward::AllButLabels) {
+                session
+                    .send_control_labels(&mut link, labels)
+                    .map_err(|e| format!("Labels: {e:?}"))?;
+                println!("Control labels sent");
+                if forward == Forward::Burst && !buddy_sent {
+                    buddy_sent = session
+                        .send_buddy_settings(
+                            &mut link,
+                            kivori_model::mascot::MascotPersonality::default(),
+                            true,
+                            5,
+                        )
+                        .map_err(|e| format!("Buddy settings: {e:?}"))?;
+                    println!("Buddy settings sent in the burst: {buddy_sent}");
+                }
+            }
+        }
         if let Some(status) = out.status {
             if session
                 .send_status(&mut link, status)
@@ -301,5 +377,122 @@ fn probe_desk(port: &str) -> Result<(), Box<dyn std::error::Error>> {
         .into());
     }
     println!("{sent} statuses sent; link healthy throughout.");
+    Ok(())
+}
+
+/// Records the device's input events through the production session, so a person can check which
+/// way a physical turn is reported (`Detent(Cw)` means clockwise to the firmware).
+fn probe_inputs(port: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use kivori_desktop::device::{
+        fsm::ConnectionManager,
+        serial::SerialPortLink,
+        session::{Session, SessionConfig},
+    };
+    use kivori_desktop::orchestrator::Orchestrator;
+
+    let mut link = SerialPortLink::open(port)?;
+    let mut session = Session::new(SessionConfig::default());
+    let mut manager = ConnectionManager::new();
+    let mut orchestrator = Orchestrator::new();
+    session
+        .open(&mut link, &mut manager)
+        .map_err(|e| format!("Open: {e:?}"))?;
+    let start = Instant::now();
+    let mut next_ping = Duration::from_secs(1);
+    let mut announced = false;
+    let (mut cw, mut ccw) = (0i32, 0i32);
+    let secs = std::env::var("KIVORI_PROBE_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(20);
+    while start.elapsed() < Duration::from_secs(secs) {
+        session
+            .pump(&mut link, &mut manager, &mut orchestrator)
+            .map_err(|e| format!("Pump: {e:?}"))?;
+        if manager.state().can_drive_device() && !announced {
+            announced = true;
+            println!("Connected. Turn the knob RIGHT 3 clicks, wait, then LEFT 3 clicks.");
+        }
+        for event in session.take_input_events() {
+            match event.kind {
+                kivori_protocol::InputKind::Detent(kivori_model::input::Direction::Cw) => cw += 1,
+                kivori_protocol::InputKind::Detent(kivori_model::input::Direction::Ccw) => ccw += 1,
+                _ => {}
+            }
+            println!(
+                "{:>6} ms  {:?} {:?}",
+                start.elapsed().as_millis(),
+                event.control,
+                event.kind
+            );
+        }
+        let now = start.elapsed();
+        if manager.state().can_drive_device() && now >= next_ping {
+            session
+                .send_ping(&mut link, now.as_millis() as u32)
+                .map_err(|e| format!("Ping: {e:?}"))?;
+            next_ping = now + Duration::from_secs(1);
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    println!("Detent totals: firmware clockwise (Cw) {cw}, counter-clockwise (Ccw) {ccw}.");
+    Ok(())
+}
+
+/// Prints the device's load figures once a second for `KIVORI_PROBE_SECS` (default 12) and their
+/// average, so a firmware change can be measured on the real unit without the app.
+fn probe_internals(port: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use kivori_desktop::device::{
+        fsm::ConnectionManager,
+        serial::SerialPortLink,
+        session::{Session, SessionConfig},
+    };
+    use kivori_desktop::orchestrator::Orchestrator;
+
+    let mut link = SerialPortLink::open(port)?;
+    let mut session = Session::new(SessionConfig::default());
+    let mut manager = ConnectionManager::new();
+    let mut orchestrator = Orchestrator::new();
+    session
+        .open(&mut link, &mut manager)
+        .map_err(|e| format!("Open: {e:?}"))?;
+    let secs = std::env::var("KIVORI_PROBE_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(12);
+    let start = Instant::now();
+    let (mut next, mut samples) = (Duration::from_secs(2), Vec::new());
+    while start.elapsed() < Duration::from_secs(secs) {
+        session
+            .pump(&mut link, &mut manager, &mut orchestrator)
+            .map_err(|e| format!("Pump: {e:?}"))?;
+        let now = start.elapsed();
+        if manager.state().can_drive_device() && now >= next {
+            next = now + Duration::from_secs(1);
+            if let Some(i) = session.internals() {
+                println!(
+                    "busy {:?}%  compose {:?} ms  flush {:?} ms  fps {:?}  edge high-water {:?}",
+                    i.busy_percent, i.compose_ms, i.flush_ms, i.fps, i.edge_queue_high_water
+                );
+                if let (Some(c), Some(f)) = (i.compose_ms, i.fps) {
+                    samples.push((u32::from(c), u32::from(f)));
+                }
+            }
+            session
+                .send_ping(&mut link, now.as_millis() as u32)
+                .map_err(|e| format!("Ping: {e:?}"))?;
+            session
+                .request_internals(&mut link)
+                .map_err(|e| format!("Internals: {e:?}"))?;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let n = u32::try_from(samples.len()).unwrap_or(1).max(1);
+    println!(
+        "average over {} samples: compose {} ms, fps {}",
+        samples.len(),
+        samples.iter().map(|s| s.0).sum::<u32>() / n,
+        samples.iter().map(|s| s.1).sum::<u32>() / n
+    );
     Ok(())
 }

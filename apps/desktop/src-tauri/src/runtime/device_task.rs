@@ -1614,6 +1614,8 @@ pub fn recover_link(
 ) {
     let failure_kind = connection_event_kind(&event);
     let handshake_timeout = matches!(event, ManagerEvent::HandshakeTimeout);
+    // The connection log otherwise only says "Error": name the cause (no port or payload).
+    tracing::info!(?event, "device link lost");
     manager.apply(event);
     *recovery.link = None;
     let failed_port = recovery.connected_port.take();
