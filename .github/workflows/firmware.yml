@@ -19,7 +19,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: riscv32imc-unknown-none-elf
-          components: rustfmt, clippy
+          components: rustfmt, clippy, llvm-tools
       - name: Compile the firmware library for RISC-V (no_std / no-alloc isolation proof)
         working-directory: firmware/pip
         # Building the library pulls in all five shared crates + the device core; the bin target is
@@ -39,6 +39,16 @@ jobs:
           cargo build --locked --release --features physical-st7789
           cargo build --locked --release --features physical-st7789,debug-payloads
           cargo build --locked --release --features physical-st7789,latency-probe
+      # Stack, RAM, size and 64-bit-division budget of the catalog product firmware (no hardware).
+      # build-firmware.mjs rebuilds the product ELF (the loop above ends on a different feature set),
+      # then the budget file beside the firmware crate is checked against it.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Firmware resource budget (resource-budget.json beside the crate)
+        run: |
+          bun scripts/build-firmware.mjs
+          bun scripts/firmware-budget.mjs
       - name: Firmware format + clippy (RISC-V, every feature configuration)
         working-directory: firmware/pip
         run: |

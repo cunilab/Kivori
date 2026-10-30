@@ -62,6 +62,13 @@ fw-flash:
 fw-flash-latency:
     cd firmware/pip && cargo run --release --features physical-st7789,latency-probe
 
+# Hardware-free resource check of the catalog firmware: image size, RAM, stack (per-function frames
+# and the worst call chain) and the 64-bit division allowlist, against the crate's resource-budget.json.
+# Needs llvm-objdump (rustup component add llvm-tools, or LLVM_OBJDUMP=...).
+fw-budget:
+    bun scripts/build-firmware.mjs > /dev/null
+    bun scripts/firmware-budget.mjs
+
 # ---- assets / golden frames ----
 
 # Recompile the canonical asset blob.

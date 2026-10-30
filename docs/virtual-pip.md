@@ -292,6 +292,9 @@ Facts measured on hardware and pinned in host tests:
 - Knob direction (2026-10-31): the HW-040 changes CLK first on a right turn. `input::hw040` maps
   DT to channel A and CLK to channel B, so a right turn is `Cw` on the device exactly as a virtual
   `clockwise` (`[2,3,1,0]`) is. Test: `hw040_right_turn_is_clockwise_and_left_turn_is_counter_clockwise`.
+- Panel orientation (2026-10-31): the picture was upside down at `Rotation::Deg90`, so the ST7789 runs
+  at `Deg270`, unmirrored (`profile::physical_st7789::orientation`). Test:
+  `panel_orientation_is_deg270_unmirrored`. The simulator cannot show this, so a change needs the unit.
 
 Comparing a real unit with the virtual one, using the production session (`device_probe`):
 
@@ -310,3 +313,35 @@ predict the ESP32-C3 (no 64-bit divide, flash-resident assets).
 
 Not covered by the simulator: pin wiring and electrical bounce, the USB CDC transport and its
 buffering, SPI/panel orientation and real frame timing.
+
+### Resource budget without hardware
+
+`just fw-budget` builds the catalog product firmware (`bun scripts/build-firmware.mjs`) and runs
+`scripts/firmware-budget.mjs` on the ELF; the firmware CI job runs the same two steps. It
+checks `firmware/pip/resource-budget.json`:
+
+- app image size, the asset blob against its cap (`ASSET_BLOB_CAP_BYTES`, read from `internals.rs`),
+  static RAM (`_stack_end` minus the start of data RAM) and the stack region;
+- the stack frame of every function, summed over the whole prologue (a large frame is
+  `lui; addi; sub sp, sp, rX`, not a single `addi`); a frame over 1 KiB must be listed in
+  `large_frames` with a ceiling and a reason;
+- the worst stack depth over the direct call graph from `_start_rust`, with tail jumps counted
+  without the caller's frame. Calls through a register (trait objects, fn pointers) and interrupts
+  cannot be followed, so the budget adds a documented indirect-call allowance and the traced
+  interrupt path (`interrupt_path`) plus a margin. Peak plus margin must fit the stack region;
+- an allowlist of the functions that may call the 64-bit division libcalls (`__udivdi3`, `__divdi3`,
+  `__umoddi3`, `__moddi3`, a software loop on this core). A new caller fails, so a 64-bit divide in
+  the per-pixel path is caught without a frame-rate measurement.
+
+Validation against the unit (after PR #150): the derived peak is 115,744 B, the device measured
+115,740 B (stack region 162,180 B minus the lowest free stack, 46,440 B), at boot in `load_assets`.
+The estimate reaches the figure only because that path is all direct calls; paths that go through a
+register are covered by the allowance, not by analysis. Inlining can move a call to another function
+name, which then needs an allowlist update. The script needs `llvm-objdump` (the rustup
+`llvm-tools` component, or `LLVM_OBJDUMP`) and takes `--json` and `--elf PATH`.
+
+To change a limit on purpose, edit `firmware/pip/resource-budget.json` in the same change as the
+code that needs it and write the reason in that entry's `why`; reviewers see the new number and the
+reason together. After a size or stack change, run `just fw-budget` and copy the new figure with a
+small margin; do not raise a limit just to make a failing check pass without explaining the growth.
+Re-measure `device_probe PORT internals` on the unit when the stack peak moves.

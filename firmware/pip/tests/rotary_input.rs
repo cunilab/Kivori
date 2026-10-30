@@ -61,6 +61,17 @@ fn hw040_right_turn_is_clockwise_and_left_turn_is_counter_clockwise() {
     assert_eq!(drive(&channels(&left)), vec![Direction::Ccw]);
 }
 
+/// The measured hardware fact (2026-10-31): the owner's unit showed the picture upside down at
+/// `Deg90`, so the panel runs at `Deg270`, unmirrored. A change here must be re-verified on the unit.
+#[test]
+fn panel_orientation_is_deg270_unmirrored() {
+    use kivori_firmware::profile::physical_st7789::orientation;
+    use mipidsi::options::Rotation;
+    let orientation = orientation();
+    assert_eq!(orientation.rotation, Rotation::Deg270);
+    assert!(!orientation.mirrored);
+}
+
 #[test]
 fn full_clockwise_cycle_emits_exactly_one_cw_detent() {
     assert_eq!(drive(&CW_CYCLE), vec![Direction::Cw]);
