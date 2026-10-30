@@ -63,6 +63,7 @@ import type {
   FirmwareOfferDto,
   MacroSpec,
   StepSpec,
+  DeskActionDto,
   DeskStatusDto,
   AppRefDto,
   ProfileConfigDto,
@@ -462,22 +463,24 @@ export function parseDeviceInternals(raw: unknown): DeviceInternalsDto {
   };
 }
 
+/** Validates an individual action outcome, including test command replies. */
+export function parseDeskAction(raw: unknown): DeskActionDto {
+  const last = record('desk action', raw);
+  if (typeof last.permissionRequired !== 'boolean') {
+    throw new Error('Kivori: invalid desk action.');
+  }
+  return {
+    action: oneOf('desk action', DESK_ACTIONS, last.action),
+    result: oneOf('desk result', DESK_RESULTS, last.result),
+    permissionRequired: last.permissionRequired,
+  };
+}
+
 /** Validates a `DeskStatusDto`, throwing on any unknown token or malformed value. */
 export function parseDeskStatus(raw: unknown): DeskStatusDto {
   if (typeof raw !== 'object' || raw === null) throw new Error('Kivori: invalid desk status.');
   const r = raw as Record<string, unknown>;
-  let lastAction: DeskStatusDto['lastAction'] = null;
-  if (r.lastAction !== null) {
-    const last = r.lastAction as Record<string, unknown> | undefined;
-    if (typeof last !== 'object' || typeof last.permissionRequired !== 'boolean') {
-      throw new Error('Kivori: invalid desk action.');
-    }
-    lastAction = {
-      action: oneOf('desk action', DESK_ACTIONS, last.action),
-      result: oneOf('desk result', DESK_RESULTS, last.result),
-      permissionRequired: last.permissionRequired,
-    };
-  }
+  const lastAction = r.lastAction === null ? null : parseDeskAction(r.lastAction);
   if (typeof r.highLoad !== 'boolean') throw new Error('Kivori: invalid highLoad.');
   if (typeof r.pinned !== 'boolean') throw new Error('Kivori: invalid pinned.');
   return {

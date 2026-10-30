@@ -12,17 +12,18 @@ measurement or observation on the same line. A phase closes only when all its ro
 **You need:** the board, a Windows PC and a Mac, one unrelated USB-serial device (Arduino or UART
 adapter), and a phone that films slow motion (backup for latency only).
 
-Pins (source of truth: `firmware/pala/src/profile.rs`). Display pins are measured; encoder pins are a
-specification until row 3.15 is ticked.
+Current wiring specification (source of truth: `firmware/pala/src/profile.rs`). The GPIO map moved
+for the enclosure; earlier display measurements do not verify this map. Check continuity against
+the current profile and complete rows 3.15 and 5.1 before powering/flashing an assembled unit.
 
 | Signal | GPIO | Signal | GPIO |
 |---|---:|---|---:|
-| SPI SCK (SPI2, 20 MHz, Mode 3) | 6 | Encoder CLK | 4 |
-| SPI MOSI | 7 | Encoder DT | 5 |
-| Display D/C | 2 | Encoder SW | 10 |
-| Display RST | 3 | USB D- / D+ | 18 / 19 |
-| Backlight (active-high) | 8 | Encoder COM / VCC | GND / **3V3** (never 5 V) |
-| Button left / middle / right | 0 / 1 / 20 | Button other leg | GND (no resistor) |
+| SPI SCK (SPI2, 20 MHz, Mode 3) | 4 | Encoder CLK | 7 |
+| SPI MOSI | 3 | Encoder DT | 6 |
+| Display D/C | 1 | Encoder SW | 5 |
+| Display RST | 2 | USB D- / D+ | 18 / 19 |
+| Backlight (active-high) | 0 | Encoder COM / VCC | GND / **3V3** (never 5 V) |
+| Button left / middle / right | 9 / 8 / 10 | Button other leg | GND (no resistor) |
 
 1. Once per machine: `bun install`, `cargo install espflash`, install `just`.
 2. Flash the product firmware: `just fw-flash` (builds with `physical-st7789`, then flashes and monitors).
@@ -36,7 +37,7 @@ specification until row 3.15 is ticked.
    Accessibility.
 4. Latency only: `just fw-flash-latency` (dev-only probe build), then `just fw-flash` to restore the product build.
 
-Suggested order: wiring (3.15) and flash, then Phase 1 (Windows, then macOS), Phase 2, Phase 3, latency,
+Suggested order: wiring/crystal checks (3.15 and 5.1) and flash, then Phase 1 (Windows, then macOS), Phase 2, Phase 3, latency,
 then Phase 4 (M1), then Phases 5 to 12 in order (5b is the Config UI half of the M2 rows; 7 to 12 are the M3 rows). Rows marked macOS run on the Mac; everything else on Windows.
 
 ## Phase 1: Device connection
@@ -80,7 +81,7 @@ Windows unless a row says otherwise. Rows 1, 3, 4 passed on macOS but stay open 
 - [ ] 1.21 Confirm `usb_serial_jtag` behavior on the pinned esp-hal version | no drops or hangs under 1.18 traffic
 - [ ] 1.22 Read the activity view while connected | no raw bytes, device id, paths or usernames; no log file is created. Partial macOS 2026-09-25: no log file created, only WebKit storage and stdout; connected part needs the device
 - [x] 1.23 Identify the panel controller | 2026-08-11: ST7789
-- [x] 1.24 Record the real SPI pin map | 2026-08-11: SCK 6, MOSI 7, no CS, D/C 2, RST 3, backlight 8 active-high; SPI2 20 MHz Mode 3
+- [x] 1.24 Record the real SPI pin map | 2026-08-11 historical unit: SCK 6, MOSI 7, no CS, D/C 2, RST 3, backlight 8 active-high; SPI2 20 MHz Mode 3. This predates the current enclosure GPIO map and does not validate it
 - [x] 1.25 Measure panel offsets | 2026-08-11: (0,0). Also verified: 90 degree rotation, RGB order, inversion on
 
 ## Phase 2: Mascot, reactions, flashing
@@ -288,6 +289,10 @@ Software is done (tray model table, hidden-start lifecycle, `--autostart` parsin
 
 CI builds the NSIS installer, installs it silently, checks the app and the `espflash` sidecar, runs the startup smoke test with `--autostart`, and uninstalls (including the Run entry). Everything below needs a real machine. Rows 8.1 and 9.3 depend on this phase.
 
+The unsigned development check in 10.1 does not close M2.9's signed-beta requirement. Updater `.sig`
+files and Windows code signing are separate; use the
+[M2.9 installation/recovery record](#m29-windows-installation-and-recovery-acceptance-open).
+
 - [ ] 10.1 Clean Windows 11 VM with no dev tools: run the installer | SmartScreen "More info, Run anyway" works (unsigned build)
 - [ ] 10.2 Run the installer as a normal user | it installs without an admin prompt
 - [ ] 10.3 Install a newer build over an older one | the config is kept
@@ -463,3 +468,809 @@ Diagnostics clipboard regression coverage checks that both ordinary and develope
 internal session counters while preserving diagnostic values and fresh measurements. Session
 correlation remains in the IPC/cache data for rejecting stale replies; unavailable and stale
 measurements stay excluded. These are mocked clipboard tests, not a native app clipboard run.
+
+## M2.9 microphone coverage software acceptance
+
+Implemented the first S1 item on `feat/m2.9-reliability` for PR #127, 2026-10-24.
+This is software evidence from Andress-MacBook-Air; Phase 13 and M2.9 S4 Windows hardware checks
+remain open.
+
+Windows discovery now retains usable bindings when enumeration or identity inspection is
+incomplete. An unreadable coverage entry prevents aggregate Muted and State Confirmed while
+healthy microphones remain controllable. Endpoint and device-list notification registration retry
+on subsequent scans; failed subscription never removes the ability to read/write mute. Reads,
+writes and notification-driven rescans publish changed snapshots, including unknown coverage,
+instead of retaining a previously confirmed state after failure.
+
+Permanent regressions:
+
+- `platform/mic_coverage.rs`: production reconciliation and observation helpers cover unknown
+  collection-item/device-id results, activation failure, failed whole scans, retained bindings,
+  missing notifications, restored coverage and a known empty device list.
+- `desk/actions.rs`: incomplete coverage cannot confirm either mute or unmute; a known failure
+  still takes precedence over an unknown result.
+- `desk/mod.rs`: an incomplete-coverage event clears an already muted wire state before the next
+  periodic sample, and a later complete observation restores it.
+
+Local validation:
+
+- `cargo test -p kivori-desktop --lib mic --locked -j 2`: 18 passed, one intentionally ignored.
+- `cargo test -p kivori-desktop --lib --locked -j 2`: 286 passed, three intentionally ignored.
+- `cargo clippy -p kivori-desktop --lib --tests --locked -j 2 -- -D warnings`: passed.
+- `cargo fmt --all --check` and `git diff --check`: passed.
+- An isolated `x86_64-pc-windows-msvc` Clippy check of the production microphone backend,
+  coverage helper and copied production boundary types against the real Windows APIs passed
+  with warnings denied. This checks the changed Windows code, not the full Tauri application.
+
+The full `x86_64-pc-windows-msvc` cross-check stopped in `ring` because Windows SDK C headers
+(`assert.h`) are unavailable on this Mac. Host tests model subscription failure; they do not
+exercise real COM registration, callback teardown or physical microphone hotplug. The real-device
+Phase 13 checks must supply that evidence before beta acceptance.
+
+Full host CI for the microphone implementation (`1509a87`) subsequently passed, including
+[Windows Rust integration](https://github.com/cunilab/Kivori/actions/runs/40081910499/job/120837033069)
+and Windows startup. This closes the software integration uncertainty for that commit, not the
+real-device microphone checks above.
+
+## M2.9 queued input software acceptance
+
+Implemented the second S1 item on `feat/m2.9-reliability` for PR #127, 2026-10-24.
+These checks use fake dispatchers and input effects; no real keyboard or media input was injected.
+
+The action worker retains the request's original foreground app, session epoch and admission
+deadline through main-thread queueing. Input is checked before and after connection/permission
+preparation. An atomic pending/start/cancel decision prevents a timed-out pending or preparing
+job from injecting later; the earlier of the request deadline and the two-second dispatch timeout
+controls the wait. Input already started reports uncertain completion as Unverified, not Error.
+Shortcuts refuse a changed/protected target; system media keys retain session/deadline checks
+without depending on the foreground app. Worker shutdown invalidates pending input too.
+
+An admitted macro keeps its intentional delays beyond the original admission deadline, with
+session and target checks retained for later steps. An unfinished native input step stops further
+steps as Unverified so it cannot overlap a later launch; a completed write with unknown read-back
+can still continue. Product and architecture documentation record this distinction.
+
+Permanent regressions in `platform/synth.rs` and `desk/actions.rs` cover late callbacks after
+timeout, timeout during preparation, timeout after input starts, exactly-once normal dispatch,
+request expiry, slow guards, session/app/protected-context changes, worker queue target retention,
+macro delays, uncertain macro cutoff and completed-write continuation. Unsupported keys still fail
+before queueing or opening a native input connection.
+
+Local validation on Andress-MacBook-Air:
+
+- `cargo test -p kivori-desktop --lib --locked -j 2`: 301 passed, three intentionally ignored.
+- `cargo test -p kivori-desktop --test input_freshness --test runtime --test ipc_vocabulary --locked -j 2`:
+  17 passed across the three integration suites.
+- `cargo clippy -p kivori-desktop --lib --tests --locked -j 2 -- -D warnings`: passed.
+- An isolated Windows-target Clippy check of the production synth, shortcut and copied production
+  guard/error/trait definitions against Enigo's real Windows backend passed with warnings denied.
+- Rust formatting, documentation formatting and `git diff --check`: passed.
+
+Independent review found and verified the correction for uncertain macro continuation. Full CI,
+including Windows Rust and startup, passed for commit `e1c08e8`
+([Windows Rust job](https://github.com/cunilab/Kivori/actions/runs/40083766099/job/120842418793)). Native Windows/macOS delivery,
+permission prompts and real scheduling require runtime acceptance; OS focus changes after the last
+check cannot be made atomic with global keyboard injection.
+
+## M2.9 installation and flashing software acceptance
+
+Implemented the third S1 item on `feat/m2.9-reliability` for PR #127, 2026-10-24.
+These checks use a stand-in device thread and command receiver; they launch no installer or flasher.
+
+An installation admission lock serializes the final firmware-busy check and installation reservation
+with every flash/restore reservation and queue send. Download and signature verification still
+precede reservation. Installation waits for firmware preparation, programming and reconnect to end,
+and for an idle knob gesture. Once admitted, an RAII guard refuses new firmware work until the
+plugin returns an error or exits/restarts the process. The updater exit hook requires installation
+ownership before stopping the runtime. Device-thread startup no longer overwrites the shared
+initial status, which could erase an early queued `Preparing` reservation.
+
+Six deterministic regressions in `runtime/state.rs` cover both admission orders on separate threads,
+all three flash/restore paths, all busy firmware phases, failed installer scope releasing admission,
+failed firmware queue rolling back status, and updater exit refusing to cancel an admitted flash.
+They also prove that reserved installer shutdown keeps firmware admission closed.
+
+Local validation on Andress-MacBook-Air:
+
+- `cargo test -p kivori-desktop --lib --test firmware_flash --test updater_policy --test firmware_offer --test runtime --locked -j 2`:
+  307 library tests and 72 integration tests passed; three library tests intentionally ignored.
+- Native Clippy with warnings denied, Rust/document formatting and `git diff --check`: passed.
+- Independent review passed for admission, lock ordering, production callers and guard lifetime.
+
+The locked updater plugin invokes its exit hook before launching the Windows installer. If that
+launch fails after shutdown, the reservation is released, but the device runtime stays stopped;
+restart the app to resume device use. This existing lifecycle limitation is not runtime recovery
+evidence. Real Windows installer launch, process exit and simultaneous hardware flashing remain
+part of M2.9 S4 acceptance.
+
+Full CI, including Windows Rust and startup, passed for installation-exclusion commit `0cc1f09`
+([Windows Rust job](https://github.com/cunilab/Kivori/actions/runs/40086016590/job/120849005963)).
+
+## M2.9 buffered button software acceptance
+
+Implemented the first S2 item on `feat/m2.9-reliability` for PR #127, 2026-10-24.
+Tests use timestamped fake input snapshots through the production firmware runtime and wire
+decoder; no GPIO, interrupt timing or physical switch was exercised.
+
+`ButtonGesture::update` settles the previous raw interval before replacing its level/timestamp.
+The runtime polls every button at each captured sample before checking control ownership, clearing
+a released control before admitting another. A session boundary also makes queued button downs
+captured at or before that boundary ineligible for Press/Hold, including an old down whose release
+comes in the new session. Equal-ms downs are suppressed conservatively. Signed wrapping arithmetic
+handles rollover; the boundary check ends once the chronological drain reaches current levels,
+while per-press eligibility stays latched. Recovery is still independent of session eligibility.
+
+Four new gesture tests first failed on the original code, then passed: a complete 100–200 ms press
+polled at 230 ms, two 420 ms presses separated by a 30 ms release, captured contact bounce, and
+eligibility retained from the raw down. Eight new runtime regressions cover every switch, negotiated
+double press, cross-control release/ownership, recovery cancellation, debouncing across a session
+change, wholly unconsumed old/equal-time presses, old-down recovery, and uptime wrap. The unconsumed
+old-session regression also failed before the capture-time guard was added.
+
+Local validation on Andress-MacBook-Air:
+
+- Full firmware host simulation: 202 passed (49 library and 153 integration tests), no failures or
+  ignored tests, using `cargo test --manifest-path firmware/pala/Cargo.toml --locked --features host-sim --target aarch64-apple-darwin`.
+- Host-sim Clippy for all targets and RISC-V `physical-st7789` library Clippy, both with warnings
+  denied: passed.
+- Shipping `physical-st7789` release firmware compiled and linked for `riscv32imc-unknown-none-elf`.
+  A consistent rustup toolchain and its LLVM library search path were required locally; Cargo
+  reported an optional debug-stripping warning from the earlier mixed-toolchain attempt.
+- Independent review passed; the reviewer separately reran runtime and reconnect/wrap regressions.
+
+Physical contact bounce, interrupt capture and sustained board behavior remain M2.9 S4 hardware
+acceptance. Existing limits outside this change include capture-queue overflow and a complete
+ten-second hold/release without any intervening poll: recovery may miss reboot during such a loop
+stall. Continuous-held recovery and captured release-before-deadline cancellation are tested.
+
+## M2.9 receive burst software acceptance
+
+Implemented the second S2 item on `feat/m2.9-reliability` for PR #127, 2026-10-24.
+These checks use fake transports and the production dispatcher/runtime; no physical USB or board
+was exercised.
+
+The original dispatcher read a complete available burst before parsing, erasing buffered valid
+packets on overflow. The permanent 100-Ping regression reproduced exactly 41 replies on that code.
+The replacement decodes at each delimiter and answers all 100 once, in order, across multiple
+ticks. Processing stops after 512 inbound bytes per tick, retaining a partial packet and leaving
+unread bytes in the transport. Storage needs only one packet, reducing `RX_CAPACITY` from 1,060
+to 530 bytes; the temporary packet stays within its previous capacity, without allocation.
+
+Oversized delimiterless packets are discarded through their delimiter, never interpreting a valid
+looking tail as a new frame. One framing rejection is recorded per overflow. Empty delimiters are
+ignored; malformed complete frames still use the existing typed decoder. Link loss clears partial
+and discard state. Sequence suppression and existing latest-value pending-message policies remain
+in force.
+
+Five new regressions cover the 100-frame burst, partial frames spanning the tick budget with
+one-/seven-/128-byte reads, overflow with a valid-looking tail followed by malformed and valid
+frames, link reset from partial/discard state, and endless valid or delimiterless traffic. The last
+test drives the actual runtime through ten seconds of recovery, asserting every tick samples input,
+renders on cadence and requests reboot on time even though reads never return empty.
+
+Local validation on Andress-MacBook-Air:
+
+- Full firmware host simulation: 207 passed (49 library and 158 integration tests), no failures or
+  ignored tests, using `cargo test --manifest-path firmware/pala/Cargo.toml --locked --features host-sim --target aarch64-apple-darwin`.
+- Host all-target and RISC-V `physical-st7789` library Clippy with warnings denied: passed.
+- Shipping `physical-st7789` release firmware compiled and linked for RISC-V using the consistent
+  rustup/LLVM environment described above; the existing local optional debug-strip warning remains.
+- Independent review passed, including a separate 35-test dispatcher/runtime run and a 16-test
+  dispatcher rerun after reducing the buffer capacity.
+- Rust/document formatting and `git diff --check`: passed.
+
+Physical USB buffering/backpressure, receive throughput, and stack high-water remain hardware
+acceptance. The byte budget bounds receive work, rather than promising a measured wall-clock
+latency. Traffic beyond transport capacity can still be dropped below this dispatcher.
+
+## M2.9 configuration capacity software acceptance
+
+Implemented the third S2 item on `feat/m2.9-reliability` for PR #127, 2026-10-24.
+Checks use temporary directories and the production configuration store; no existing user settings
+were changed.
+
+The shared atomic writer checks the complete serialized UTF-8 byte length, including indentation,
+JSON escaping and the final newline, against the loader's existing 262,144-byte limit. It rejects
+oversized settings with `ConfigError::TooLarge` and a fixed capacity message before creating a
+directory or touching the temporary/current file. Save and reset propagate that error instead of
+converting it to a generic I/O failure. Cache publication and revision changes still follow a
+successful atomic write. Migration write-back uses the same size gate and retains its existing
+retry-on-next-open behavior when writing fails.
+
+The oversized-macro regression first failed on the old code because save returned success. Three
+new regressions cover oversized ASCII, UTF-8 and JSON-escaped launch targets; preservation of the
+existing file, temporary-file sentinel, cached configuration and revision; accepted files at
+262,143 and 262,144 bytes reopening unchanged; and rejection at 262,145 bytes without creating
+the settings directory. The exact-size cases include the trailing newline, catching an off-by-one
+serialization check.
+
+Local validation on Andress-MacBook-Air:
+
+- `cargo test -p kivori-desktop --lib --test config_store --test config_persistence --test runtime --locked -j 2`:
+  307 library and 52 integration tests passed; three library tests intentionally ignored.
+- Native Clippy for the desktop library and tests with warnings denied: passed.
+- Independent review passed; the reviewer separately ran the 43 configuration tests.
+- Rust/document formatting, local documentation links and `git diff --check`: passed.
+
+Windows filesystem behavior and the live UI presentation of the error remain untested locally.
+The following acceptance section covers preservation when recovery backups fail.
+
+
+## M2.9 recovery backup software acceptance
+
+Implemented the fourth S2 item on `feat/m2.9-reliability` for PR #127, 2026-10-25.
+Tests use temporary directories, injected backup operations and a synthetic migration result;
+no existing user settings were changed. The released schema still has no real migration steps,
+so the private loader seam exercises the production migration branch without changing versions.
+
+The store retains a pending preservation reason when quarantine or migration backup fails.
+Defaults remain usable for corrupt/newer files; converted valid settings remain usable in memory.
+Every save/reset retries preservation before replacing the original, and refuses the change while
+that retry fails. Candidate validation and serialized size checks precede save-side backup work.
+A successful backup clears the gate, while active settings and revision still change only after
+an atomic write succeeds.
+
+Quarantine first tries rename, then copies into a fresh file, preserves source permissions and
+flushes the copy before removing the source. Failed copies attempt partial-output cleanup and do
+not authorize replacement. Migration backup collisions get fresh names, preserving earlier
+originals. Cleanup runs only after quarantine succeeds and explicitly protects the new original,
+even when existing backup timestamps are in the future. `backupFailed` travels through native
+DTOs, parsing, the Controls notice and diagnostics; startup logs failure rather than recovery.
+The notice no longer claims a backup exists when preservation failed.
+
+Seven new native regressions cover failed move/copy, save/reset refusal and subsequent successful
+preservation; migration failure with usable converted settings; preservation of prior migration
+backups; failed write-back after a successful backup; fallback copy; failed partial copy cleanup;
+clock-skew-safe pruning; and size rejection before pending preservation. Initial injected
+PermissionDenied failures keep the original at its path. Public save/reset retry failures use a
+source parked elsewhere inside the test directory, then restore it for a successful real retry;
+these are deterministic guard checks, rather than real OS permission/antivirus tests.
+
+Local validation on Andress-MacBook-Air:
+
+- `cargo test -p kivori-desktop --lib --test config_store --test config_persistence --test runtime --test ipc_vocabulary --locked -j 2`:
+  314 library and 53 integration tests passed; three library tests intentionally ignored.
+- Targeted frontend IPC, Controls and legacy-settings tests: 110 passed, including the new notice.
+- Native Clippy with warnings denied, targeted frontend ESLint, desktop TypeScript, Rust/document
+  formatting, local documentation links and `git diff --check`: passed.
+- Independent review passed and separately reran all eight store unit tests.
+
+The prior size-limit commit `dddf9fc` passed full CI, including Windows Rust, packaging and startup
+([Windows Rust job](https://github.com/cunilab/Kivori/actions/runs/40113384294/job/120929570116)).
+Real Windows permission/antivirus failures, visual UI inspection and power-loss durability remain
+unverified. File-copy synchronization is tested through software outcomes; this is not a power-cut
+proof for filesystem directory updates.
+
+
+## M2.9 shortcut execution software acceptance
+
+Implemented the fifth S2 item on `feat/m2.9-reliability` for PR #127, 2026-10-25.
+The installed Enigo 0.6.1 source exposes and maps F21–F24 to Windows virtual keys, but its
+macOS key enum and Quartz mapping end at F20. The Windows sender now maps the missing four
+keys. The shared parser accepts F1–F24 on Windows and F1–F20 elsewhere. Bindings, knob pairs,
+macro steps and test requests already use this parser, so unsupported keys fail native validation
+before save/dispatch; no separate frontend key parser was added.
+
+The regression first failed on the old macOS code with “unsupported F21 was accepted.” Parser
+and sender tests cover F0 through F255, checking every accepted key against its exact Enigo
+variant, canonical text, and rejection outside the platform range. A store regression exercises
+F0 through F25: supported shortcuts save and reopen unchanged; unsupported shortcuts preserve
+the previous file bytes, live configuration and revision. Tests do not connect Enigo or inject keys.
+A Windows configuration containing F21–F24 is not portable to macOS: on open it follows the
+existing invalid-config preservation/recovery path rather than retaining a non-runnable binding.
+
+Local validation on Andress-MacBook-Air:
+
+- `cargo test -p kivori-desktop --lib --test config_store --test config_persistence --test runtime --test ipc_vocabulary --locked -j 2`:
+  316 library and 54 integration tests passed; three library tests intentionally ignored.
+- Native desktop library/tests Clippy with warnings denied: passed.
+- Isolated Windows-target Clippy compiled the production shortcut parser, sender and their tests
+  against Enigo's real Windows backend with warnings denied. This is compilation, not Windows
+  test execution; the full desktop cross-build still requires Windows SDK headers unavailable here.
+- Independent review passed and separately ran all three new regressions without native input.
+- Rust formatting, local documentation links and `git diff --check`: passed.
+
+Actual key delivery, OS permission handling and receiving-application behavior were not exercised.
+Windows runtime coverage remains a CI/platform check; Linux input remains unimplemented.
+
+
+## M2.9 onboarding recovery software acceptance
+
+Implemented the first S3 item on `feat/m2.9-reliability` for PR #127, 2026-10-25.
+Plug in now embeds the existing Device firmware component in recovery-only mode instead of
+keeping a local restoring flag after command enqueueing. The component stays mounted while
+its card is hidden, so its existing 750 ms native polling observes preparation, flashing,
+reconnection, success, failure and product/board choices. Reopening setup reads native progress.
+Normal setup hides flash controls; Continue still requires a known usable session.
+
+Disconnected terminal failures retain BOOT retry. Ambiguous targets use the existing catalog
+choices and a fresh confirmation naming both product and board; unplugging for BOOT does not
+discard the choice, while a changed native choice list does. Pending requests cannot queue a
+second restore. A usable reconnect clears inactive recovery and request errors, including an
+older request rejecting after the reconnect. Device-page behavior keeps its default presentation.
+
+The seven initial recovery regressions failed against the old onboarding flow. The final 18
+regressions cover native progress through success, every failure token, disconnected retry,
+product/board selection and cancel, stale choices, reopening setup, duplicate submission,
+status polling failure/recovery, normal setup and both request-error/reconnect orderings.
+Independent review identified the missing disconnected-request retry and stale-error transitions;
+these were fixed and covered before acceptance.
+
+Local validation on Andress-MacBook-Air:
+
+- `bun run --cwd apps/desktop test src/features/onboarding/__tests__/recovery.test.tsx src/features/onboarding/__tests__/onboarding.test.tsx src/features/onboarding/__tests__/capabilities.test.tsx src/features/device/__tests__/firmware.test.tsx src/features/device/__tests__/recovery.test.tsx`:
+  65 tests passed across five files, including all 18 new recovery cases.
+- Desktop TypeScript, targeted ESLint with warnings denied, frontend Prettier, local documentation
+  links and `git diff --check`: passed.
+- Independent review passed and separately reran all 18 recovery tests.
+- Local browser smoke at 1200×767 with the incompatible-device mock: the recovery card and BOOT
+  instructions rendered, Continue remained disabled, and confirmation produced the expected
+  native-runtime-unavailable error with retry still available. The dialog screenshot was visually
+  inspected; no device command reached hardware. Browser artifacts remain local under `/tmp`.
+
+Previous commit `39f27df` passed all required CI, including Windows Rust, packaging and startup;
+the macOS CI job was skipped. Native/firmware source was unchanged in this increment, so the
+previous 316-library/54-integration native baseline was not rerun locally. Actual Windows USB
+recovery and small-window/large-text layout acceptance remain open in later roadmap items.
+
+
+## M2.9 control-test correlation software acceptance
+
+Implemented the second S3 item on `feat/m2.9-reliability` for PR #127, 2026-10-25.
+`test_action` and `test_rotate` now return the existing `DeskActionDto` for their own invocation
+after the action completes. Each owns a bounded async channel, moved through the device command
+and worker request. The worker sends the exact outcome independently of global `Finished` events
+and the replaceable feedback ladder. Protected refusal replies immediately; rejected enqueue,
+worker shutdown and skipped requests drop the sender and reject the waiting command. Awaiting the
+reply keeps the main thread available for macOS input dispatch and holds no configuration lock.
+Global desk status, feedback and activity reporting remain in use for general device activity.
+
+Controls displays Processing until that invocation resolves. It replaces stale success with an
+error on rejection, ignores global `lastAction` changes, and discards replies superseded by a new
+test/countdown, configuration/profile change or unmount. Countdown cancellation still sends no
+request. The IPC bridge validates each reply using the same action parser as desk status; browser
+mocks return their own outcome while retaining global desk updates. Device Studio still accepts
+the same parameters and can ignore the returned result.
+
+Native regressions interleave two test replies with a separate hardware-style worker request and
+verify exact outcomes and permission fields. They also prove queued session cancellation runs no
+stale action, unavailable workers close replies, protected refusal replies immediately, and an
+expired request closes its reply. UI/IPC regressions cover old/global results while pending,
+unrelated later actions, rejected and superseded tests, new countdowns, changed bindings/profiles,
+unmount and malformed reply payloads.
+
+Local validation on Andress-MacBook-Air:
+
+- `cargo test -p kivori-desktop --lib --test config_store --test config_persistence --test runtime --test ipc_vocabulary --test firmware_flash --locked -j 2`:
+  319 library and 79 integration tests passed; three library tests intentionally ignored.
+- Native desktop library/tests Clippy with warnings denied: passed.
+- `bun run --cwd apps/desktop test src/features/controls/__tests__/controls.test.tsx src/lib/ipc/__tests__/ipc.test.ts src/features/device-studio/__tests__/test-action.test.tsx`:
+  119 frontend tests passed across three files. TypeScript, targeted ESLint, frontend Prettier,
+  Rust formatting, local documentation links and `git diff --check`: passed.
+- Independent review passed and separately ran five native correlation/protection/cancellation
+  checks and 115 Controls/IPC tests.
+- Browser mock smoke at 1200×767: a Press test stayed Unverified after an unrelated mock mute
+  changed the global result to State Confirmed. The result was asserted in the browser and its
+  screenshot visually inspected. Browser evidence remains local under `/tmp`.
+
+No real native input or hardware actions were exercised. There is no new test timeout: an OS
+backend that blocks can leave tests pending. Epoch cancellation closes queued replies when the
+worker dequeues them, so cancellation is not prompt behind a blocked backend. Pending is retained
+rather than borrowing another action's result or claiming completion from a timer.
+
+
+## M2.9 small-window dialog software acceptance
+
+Implemented the third S3 item on `feat/m2.9-reliability` for PR #127, 2026-10-25.
+The clipping concern is now reproduced: the app-update dialog at 360×420 extended from −1.5 to
+421.5 px at default text size. Enlarging the root font from 16 to 32 px (200%) made it 787 px high,
+extending from −183.5 to 603.5 px, with no vertical scroll container.
+
+Shared `AlertDialogContent` now caps height at `calc(100dvh - 2rem)` and scrolls vertically.
+Base UI still owns focus trapping and dismissal, and footer actions stay in normal scroll flow.
+App-update release notes gain a keyboard tab stop and cap their own pane at the smaller of 12 rem
+and half the viewport height, so the nested pane also fits at enlarged text sizes. Notes remain
+plain text. The implementation changes two component files, with no new resize handlers or
+layout helpers.
+
+Local browser checks on Andress-MacBook-Air exercised the real app's app-update, required-firmware
+and BOOT-recovery dialogs at 400×480 and the configured 360×420 minimum. Each ran with 16, 24 and
+32 px root fonts (100%, 150%, 200%), for 18 combinations. App-update notes were temporarily replaced
+in the browser DOM with 40 copies of the existing mock notes to exercise long content; no shipping
+mock or production data changed. Firmware/recovery checks used their actual instructions.
+
+| Dialog | Height at 400×480: 100% / 150% / 200% | Height at 360×420: 100% / 150% / 200% |
+| --- | --- | --- |
+| App update, long notes | 448 / 432 / 416 px | 388 / 372 / 356 px |
+| Required firmware offer | 207 / 376 / 416 px | 207 / 372 / 356 px |
+| BOOT recovery | 387 / 432 / 416 px | 387 / 372 / 356 px |
+
+Every measured popup stayed inside the viewport with no horizontal overflow. Tab cycling stayed
+inside the popup and scrolled every enabled action fully into view. The release-notes pane could
+receive keyboard focus and scroll with End; repeated Page Up returned recovery instructions to
+the top. Measurements waited for CSS transitions/focus restoration and allowed a one-pixel scroll
+rounding tolerance. Screenshots were captured for every combination; the 200% screenshots at both
+sizes were visually inspected, including recovery instructions and footer actions. Artifacts remain
+local under `/tmp/kivori-m29-dialog-browser-4a4b63f`. The Browser skill reported no connected browser;
+automated Chromium supplied these local checks instead.
+
+Local validation:
+
+- `bun run --cwd apps/desktop test src/features/updates/__tests__/updates.test.tsx src/features/updates/__tests__/firmware-offer.test.tsx src/features/device/__tests__/firmware.test.tsx src/features/device/__tests__/recovery.test.tsx src/features/onboarding/__tests__/recovery.test.tsx`:
+  71 tests passed across five files.
+- Desktop and shared UI TypeScript, targeted ESLint with warnings denied, frontend Prettier,
+  local documentation links and `git diff --check`: passed.
+- Independent review passed and separately ran all 26 update/firmware-offer tests.
+- Previous commit `4a4b63f` passed all required CI, including Windows Rust, packaging and startup;
+  the macOS job was skipped. Native and firmware code were unchanged in this increment.
+
+These are browser viewport/root-font checks, not native Windows WebView2, OS display-scaling,
+screen-reader or full browser-zoom verification. No installer, firmware flash or hardware action
+was run. Native platform and unfamiliar-user acceptance remain in S4.
+
+
+## M2.9 signup attribution software acceptance
+
+Implemented the fourth S3 item on `feat/m2.9-reliability` for PR #127, 2026-10-25.
+Oversized optional UTM/referrer values no longer reject an otherwise valid signup. One shared
+normalizer trims string values, retains those within the existing limits (100 for UTM fields,
+500 for referrer), and discards oversized/non-string values. Discarding rather than slicing keeps
+partial URLs, campaign names or split Unicode surrogate pairs out of storage. Both the browser
+form and server validator use the helper; the server remains authoritative for direct requests.
+Discarded values are empty hidden inputs, then NULL in storage; discarded source becomes an empty
+analytics source. Email, product, use case, token and honeypot validation remain unchanged, as do
+Turnstile, rate limiting, parameterized inserts and duplicate-signup behavior.
+
+The nine attribution regressions first failed on the old validator, including a valid signup
+with a 101-character campaign. The final 19 new cases cover every attribution field below/at/above
+its limit, trimming, empty and non-string data, whole Unicode at the boundary, successful storage,
+analytics, and continued rejection of invalid user/security fields. Handler tests verify that
+oversized attribution still runs Turnstile and rate limiting, with no row on either failure.
+
+Local validation on Andress-MacBook-Air:
+
+- `bun run --cwd apps/web test`: 104 website tests passed across 14 files; 42 are waitlist tests.
+- Website TypeScript (`next typegen && tsc --noEmit`), targeted ESLint with warnings denied,
+  frontend Prettier, local documentation links and `git diff --check`: passed.
+- Independent review passed and separately reran all 42 waitlist tests.
+- Browser checks used the real homepage form with locally stubbed Turnstile and signup responses.
+  Source/medium/campaign/referrer lengths of 101/100/101/501 submitted as 0/100/0/0; values within
+  the limit were retained, and surrounding whitespace was trimmed. Both submissions preserved
+  email, selected product and token, and displayed success. Server storage/security outcomes were
+  verified separately with the injected D1 stand-in rather than the browser stub.
+
+No real signup, deployment, production D1 write or live Turnstile verification was performed.
+Browser evidence remains local under `/tmp/kivori-m29-attribution-browser-c304f63`. The initial browser
+attempt on 127.0.0.1 timed out; the checks passed on the server’s advertised `localhost` origin
+without changing dev security configuration. Next dev generated an untracked AGENTS.md, moved to the local evidence directory
+after shutdown. Native/firmware code was unchanged. Real public widget/secret/contact configuration,
+a signup and a deletion request remain the next roadmap item.
+
+## M2.9 public website readiness audit (open)
+
+Read-only audit on Andress-MacBook-Air, 2026-10-25, for item 13 of PR #127.
+At this audit snapshot the item remained unchecked and M2.9 progress was 12/19.
+Current completion status is tracked in [the roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness).
+
+| Check | Observed result |
+| --- | --- |
+| Committed configuration | `apps/web/wrangler.jsonc` uses the always-pass test site key and an empty `CONTACT_EMAIL`. |
+| Active production version | Wrangler deployment/version inspection reports version `cdd9f9bb-99c3-4e63-977a-1a22b9f76529`, deployed 2026-10-10 at 03:45:20 UTC with 100% traffic. Reported bindings are `ASSETS`, `DOWNLOADS` and `WORKER_SELF_REFERENCE`. No waitlist database, limiter, signup analytics, Turnstile/contact variables or secret binding is reported. |
+| Worker secrets | `bunx wrangler secret list` returned `[]`. No secret values were retrieved. |
+| D1 database | `bunx wrangler d1 info kivori-web --json` confirms the configured database exists with two tables. This metadata does not verify the waitlist schema, contents or production binding. No signup rows were queried. |
+| Turnstile widget | `bunx wrangler turnstile widget list --json` failed with authentication error 10000; local OAuth reports missing `challenge-widgets.write`. Widget existence/configuration remains unverified. |
+| Anonymous public access | GET requests to `https://kivori-web.andres12holivin.workers.dev/` and `/privacy` returned HTTP 403 from this environment. The root response identified Cloudflare Access, including with a browser User-Agent. Live form/privacy content could not be inspected. |
+| Deployment path | `.github/workflows/web.yml` uploads PR preview versions; pushes to main migrate D1 and deploy. The feature branch is not the active production release. |
+
+The owner must provide a public privacy mailbox and consented test address, arrange access to the
+real Turnstile widget, and confirm the intended public access policy. Configuration review and an
+approved production deployment must precede live verification. A successful signup must have a
+verified stored row; the deletion request must reach the mailbox, and deletion must leave zero
+rows for the normalized test email across all products. Follow the
+[launch and deletion procedure](../apps/web/README.md#public-launch-and-deletion-verification).
+
+Astra's independent read-only scope review agreed to keep this item open. No new production/test
+mode switch was added: it would not establish the required live evidence and would change the
+supported preview behavior. This increment changes documentation only. Local documentation links
+and `git diff --check` were checked; runtime suites were not rerun. No deployment, configuration or
+Access change, real signup, email, database write or deletion was performed.
+
+## M2.9 software baseline acceptance
+
+Completed item 14 on Andress-MacBook-Air, 2026-10-25, for PR #127. Runtime source tested was
+`1899b70d4af797082ddee92c2be6e3218db257e0`; this increment only records evidence. M2.9 progress is
+13/19, with public website configuration still open.
+
+The configured Rust channel is `stable`, not an exact numeric pin; this machine resolved rustc
+1.98.0 (`88d9e12ae`, LLVM 22.1.8), Cargo 1.98.0 and host `aarch64-apple-darwin`. Node was 24.14.0.
+The system Bun was 1.4.0, so Bun 1.4.2 (the repository/CI pin) was obtained with `bunx bun@1.4.2`
+and placed first on PATH for child scripts. Frozen-lockfile install passed without tracked changes.
+
+| Local check | Final result |
+| --- | --- |
+| `cargo test --workspace --locked --no-fail-fast -j 2 -- --test-threads=1` | 887 passed, 4 intentionally ignored; includes native, shared crates, golden frames, asset compiler and host end-to-end suites. |
+| `cargo test --manifest-path firmware/pala/Cargo.toml --locked --features host-sim --target aarch64-apple-darwin -j 2` | 207 passed, none ignored. |
+| `bun run --cwd apps/desktop test --maxWorkers=2` | 417 passed across 36 files. |
+| `bun run --cwd apps/web test` | 104 passed across 14 files. |
+| Firmware recipe/catalog tests | 34 passed: `bun test scripts/build-firmware.test.mjs scripts/build-firmware-set.test.mjs scripts/check-product-identifiers.test.mjs`. |
+| Release tooling | 78 passed: `node --test --test-concurrency=1 scripts/release-tools.test.mjs scripts/firmware-release-guard.test.mjs scripts/release-finalize.test.mjs`. |
+| Clippy, warnings denied | Host workspace all targets, desktop all targets with `--no-default-features`, firmware host-sim all targets; all passed with locked dependencies and two Cargo jobs. |
+| Formatting and frontend checks | Root/firmware `cargo fmt --all --check`, `bun run typecheck`, `lint`, `format` and `build` passed. Both frontend production builds completed. |
+| Guards | `check-crate-boundaries.sh`, `check-offline-deps.sh`, `check-product-identifiers.mjs`, `check-frontend-offline.mjs`, `check-mock-excluded.mjs` and website `check:leaks` passed. |
+
+Failed/interrupted attempts are retained rather than counted as passing runs:
+
+- The initial concurrent run on this 8 GB Mac produced two desktop timeouts and one 5-second
+  recipe-test timeout while memory was under pressure. Competing validation jobs were stopped.
+  The complete desktop suite then passed with two workers and unchanged time limits; all 34 recipe
+  tests passed sequentially, including the timed-out case (1.34 seconds). This supports resource
+  contention as the timeout explanation, without establishing the cause of every historical timeout.
+- The first workspace run failed `preview_stream::per_frame_render_fits_the_30fps_budget` at
+  40.3 ms/frame against 33 ms. A focused debug rerun failed at 91.1 ms/frame. The final complete
+  workspace run with one test thread passed this check and every other non-ignored test. Sol's
+  independent read-only review found no changes from `origin/main` throughout the test's render,
+  asset and build inputs. The local debug timing failure is intermittent; its exact cause and
+  optimized performance were not established. No threshold, renderer or test skip was changed.
+- Earlier native/firmware and release-tool runs stopped during resource isolation are incomplete
+  attempts, not additional failures or acceptance evidence. Logs remain local under
+  `/tmp/kivori-m29-baseline-*.log`; final sequential exit codes are in
+  `/tmp/kivori-m29-baseline-sequential-results.json`.
+
+All applicable GitHub checks passed on the exact tested commit: [host Linux/Windows and startup](https://github.com/cunilab/Kivori/actions/runs/40163852422),
+[firmware isolation and host simulation](https://github.com/cunilab/Kivori/actions/runs/40163852407),
+[cross-platform determinism/assets](https://github.com/cunilab/Kivori/actions/runs/40163852413),
+[website build/preview](https://github.com/cunilab/Kivori/actions/runs/40163852424), and
+[Windows packaging and firmware release builds](https://github.com/cunilab/Kivori/actions/runs/40163852446).
+Luna independently checked the exact head and final results. The Linux release-surface guard
+passed every absence check and positive control; the Windows release artifact check also passed.
+RISC-V adapter/feature builds were verified by CI, not repeated locally. Optional macOS release
+packaging was skipped. These are observed workflow gates; branch-protection enforcement was not
+established (`main` reported unprotected).
+
+The four ignored native tests inspect live apps, foreground state and microphones, or change real
+volume/mute. They were not enabled. No physical input, USB, installer execution, flashing, optimized
+performance benchmark or live signup/deletion was tested locally. This software baseline does not
+close the website, Windows hardware, recovery, sustained-use or unfamiliar-user acceptance rows.
+
+## M2.9 Windows unit acceptance (open)
+
+Item 15 preparation, 2026-10-25, Andress-MacBook-Air. The owner deferred the physical run to a later
+retry. This session runs on macOS; no Windows host with a connected unit was used. No physical checks below have run.
+Item 15 stays unchecked and progress remains 13/19. Windows CI startup/packaging and host simulation
+are software evidence only. The existing [provisioning tool](./provisioning.md) flashes firmware and
+does not cover double-press, microphone hotplug, latency or sleep/lock behavior; do not run it as a
+read-only substitute for this session.
+
+Preparation checks: the wiring table matches the nine corresponding firmware declarations,
+the new roadmap link resolves, the checklist remains 13/19, and `git diff --check` passes.
+These are documentation/source-consistency checks; runtime suites were not rerun for this edit.
+
+Before testing, record: UTC date/operator, source SHA and dirty status, app version/build type,
+firmware version/product/board and image SHA-256, short unit label, Windows version/build, USB
+port/hub/power arrangement, microphone types/count, selected profiles/bindings and negotiated
+capabilities. Use the matching app and firmware from this PR; older historical row results do not
+validate the reliability changes. Verify the current wiring table above against the physical unit.
+
+Use a temporary test profile and a scratch document or non-sensitive playback to count actions.
+Record each row as PASS/FAIL/NOT RUN with actual counts/times and a local evidence reference.
+NOT RUN, missing measurements and unsupported machine power modes cannot become PASS.
+
+| Case / existing rows | Procedure and required evidence | Result |
+| --- | --- | --- |
+| Connection / 1.6, 1.15–1.17, 1.20 | Time cold connect (<5 s), disconnect indication and reconnect with state restore (<10 s). Repeat rapid unplug/replug 10 times; record each duration and any duplicate/stuck session. | NOT RUN |
+| Rotary / 3.1–3.13, G1/G2 | Count slow detents both ways, fast turns, edge wiggles, 0/100 reversal and default-output change mid-turn. Compare Windows mixer read-back with the panel; no phantom/reversed/stale action or invented confirmation. | NOT RUN |
+| Latency / 3.14, 4.28 | After wiring checks and an agreed firmware-flash step, use the dev-only latency image. Capture about 30 distinct detents in both directions, `L` samples and final `H` (<50 ms), plus `F/t/o/n` counters. Note the device view and dropped/invalid input. Restore the matching product image afterwards and record its version/hash. | NOT RUN |
+| Press/hold/double / 4.1–4.2, 4.24–4.25, 5.15 | On each supported control count 10 short presses and 5 roughly 1 s holds; on the double-press-capable knob count 10 natural double presses. Use recorded bindings; each gesture has exactly its intended action, no extra press on hold/double, no merged distinct presses. Note the 250 ms single-press delay and any lost/duplicate input. | NOT RUN |
+| Microphone / 13.1–13.5 | With built-in and USB mics active, compare every endpoint's actual mute state in Windows before/after Mic Mute. Hotplug a third mic while muted, then unmute externally and unplug/replug an endpoint. Record time to reconcile and per-endpoint result; incomplete/failed coverage must remain unknown/unverified, never a muted or confirmed claim. App-call mute is distinct from OS endpoint mute. | NOT RUN |
+| Disconnect during input / 3.12, 4.8, G2 | Disconnect during a turn and during a queued scratch-document shortcut/macro; press during the outage, then reconnect. Count output before/after; no pre-disconnect or outage input replays. Record actual delivery and feedback separately: keyboard delivery remains Unverified. | NOT RUN |
+| Context changes / G2, 5.18 | Queue a scratch-document action, switch focus/profile before dispatch or during a macro wait, and cancel a pending Controls Test. The remaining old-target input must not execute or retarget; another action's result must not become that test's result. Record which input had already completed before cancellation. | NOT RUN |
+| Lock/unlock / 7.1–7.2 | Repeat 3 cycles, with attempted shortcut input while locked. Record sleeping indication (<1 s), restored profile/state, allowed volume behavior and no old shortcut replay after unlock. | NOT RUN |
+| Sleep/wake / 7.3–7.7 | Record `powercfg /a`, then exercise each available sleep/resume mode (3 cycles for the normal mode). Record sleeping/offline indication, USB power behavior, reconnect (<5 s) and absence of old press/turn replay. Record unsupported modes explicitly; required coverage stays open. | NOT RUN |
+| Feedback / G1/G2, 4.16, 13.12 | Across all cases compare Activity, panel and independent Windows state. A failed/unreadable endpoint never confirms; shortcuts/media remain Unverified. Record any stale overlay or result separately from whether the OS action happened. | NOT RUN |
+
+The latency probe records the device timestamp of a successfully transmitted detent and measures
+to completed tile flush after a new Presentation, not physical-contact-to-visible-pixel time.
+It pairs by order rather than a unique per-detent response ID: use isolated detents in a stable
+Volume view without other control actions. It tracks the oldest unmatched detent per burst;
+unanswered samples can expire after 1 s and displayed values clamp at 999 ms. Record missed
+responses separately rather than interpreting a low `H` as proof none occurred. Slow-motion video
+can supplement physical-to-visible timing; retain frame rate, frame counts and method separately.
+
+Acceptance requires measured results for all cases, dated updates to the affected existing rows,
+and reproduction/fix/retest evidence for failures. Run on the product image except the explicitly
+identified latency pass; do not leave a probe image installed. This does not close item 16's clean
+installation/interrupted-flash recovery, item 17's soak/workdays, or unfamiliar-user/enclosure checks.
+
+## M2.9 Windows installation and recovery acceptance (open)
+
+Item 16 preparation, 2026-10-25, Andress-MacBook-Air. No clean Windows host or physical unit was used;
+no install, login, app update, firmware flash or interruption was performed. Progress remains 13/19.
+Preparation validation: new relative links/internal anchor, eight NOT RUN cases, the 13/19 checklist
+and `git diff --check` passed. Runtime suites were not rerun for this documentation-only increment.
+
+### Artifact prerequisites
+
+- Windows code signing is an unimplemented placeholder in `.github/workflows/release.yml`;
+  setting `WINDOWS_SIGNING=true` currently fails deliberately. Owner certificates/provider setup
+  and the signing implementation remain open in [issue #36](https://github.com/cunilab/Kivori/issues/36).
+  A signed-beta acceptance run needs reviewed signing integration and trusted signed artifacts first.
+- Tauri updater signing is separate. The release config has a public verification key and requires
+  signed updates, but the PR workflow explicitly omits the updater private key and builds without
+  updater artifacts. A passing PR installer smoke cannot prove updater signature verification.
+  Check signatures on actual release candidates; configured keys alone do not prove they match.
+- Select approved app versions A and newer B with recorded source SHAs, installer hashes, publisher
+  identity, updater signature/manifest provenance and exact bundled firmware identities/versions.
+  Use the [existing release procedure](./release.md). Publishing a release affects installed users;
+  preparing this session does not publish one. A draft or PR artifact is invisible to the production
+  updater endpoint. Any isolated update-endpoint test build must follow the developer procedure in
+  [release.md](./release.md#verifying-an-app-update-end-to-end) and be identified as such in evidence.
+- Use a clean Windows user/machine without Rust, Cargo or a separately installed `espflash`.
+  Record Windows build, standard-user status, WebView2 availability/network use, USB arrangement,
+  unit label and matching current wiring checks. Preserve the initial machine snapshot for retries.
+
+On Windows, these read-only checks record artifact hashes and Windows signature status:
+
+```powershell
+$installerPath = 'C:\QA\Kivori_VERSION_x64-setup.exe' # replace with the reviewed candidate
+Get-FileHash -LiteralPath $installerPath -Algorithm SHA256
+Get-AuthenticodeSignature -LiteralPath $installerPath |
+    Select-Object Status, StatusMessage, SignerCertificate, TimeStamperCertificate
+```
+
+Compare the hash with the approved artifact record and require a valid signature from the expected
+publisher; inspect installed app/sidecar signature policy too. This command does not validate the
+Tauri `.sig`. The snippet has not been executed in this macOS preparation session.
+
+### Live session record
+
+Record UTC/operator, unit and source/artifact metadata above, before/after app and firmware versions,
+settings checksum/selected bindings, actual outcome, durations and local evidence references for
+each row. Redact machine paths/usernames from shared logs. Missing prerequisites stay NOT RUN.
+
+| Case / existing rows | Required observation | Result |
+| --- | --- | --- |
+| Clean install / 10.1–10.2, 10.4, 11.1–11.2 | Install signed A as a standard user; record publisher/trust prompts, WebView2 setup and Defender outcome. App starts, setup completes once, device connects, bundled sidecar works without dev tools. Unsigned development smoke is recorded separately. | NOT RUN |
+| Login/tray / 9.1–9.2, 9.5–9.6 | Enable launch at login, sign out/in, verify hidden window, tray, one process and device connection. Disable it and repeat; no automatic launch. | NOT RUN |
+| Settings-preserving app update / 10.3, 11.4 | Save a distinctive profile/binding and update A to B through the real updater. Observe download/install/restart, reported B version, reconnect and preserved settings; onboarding must not repeat. Record endpoint and signature-verification outcome. | NOT RUN |
+| Rejected update / release update procedure | With the documented isolated test build, attempt a corrupted installer or mismatched updater signature. Installation is refused and current app/settings remain usable. Keep its endpoint/build evidence separate from production-endpoint acceptance. | NOT RUN |
+| Installed firmware update / 8.1, 8.6, 8.8 | On the dev-tool-free machine, flash the exact bundled product/board image through the installed app. Observe progress, updating display, reconnect, identity and reported version. Confirm version-based offers are accurate. | NOT RUN |
+| Interrupted flash and BOOT restore / 8.2, 8.7 | On the test unit, disconnect USB during a real flash. Record failure/retry feedback and actual sidecar error. Follow the app's BOOT/Restore instructions, explicitly select the matching target if needed, and verify successful reconnect/identity/version plus normal controls. Retain redacted real errors for classifier regressions. | NOT RUN |
+| Install/flash exclusion / M2.9 S1 | Exercise both admission orders with an update ready: active firmware flash blocks installer start; admitted installation blocks flash/restore. Observe child processes, progress and runtime shutdown where the app exits. No flasher and installer overlap; after a failed operation the appropriate retry becomes usable. | NOT RUN |
+| Uninstall / 9.3 | Uninstall and verify the app is gone and both Kivori startup registry values are removed. Record settings retention/removal behavior and actual sign-in result; preserve evidence before resetting the test machine. | NOT RUN |
+
+The current CI smoke installs/uninstalls silently and tests a ten-second `--autostart` process; it
+manually inserts a Run entry to test cleanup. It does not observe a real login, manual trust prompts,
+an A-to-B updater installation, a physical flash or BOOT recovery. Its success cannot fill this table.
+Tick item 16 only after the artifact prerequisites and all live rows pass with evidence. Physical
+input quality, soak/workdays and unfamiliar-user acceptance remain separate items.
+
+## M2.9 sustained-use acceptance (open)
+
+Item 17 preparation, 2026-10-25, Andress-MacBook-Air. No Windows soak or workday was started here.
+Soak: NOT RUN, 0 verified hours. Workdays: 0/10. Item 17 remains unchecked; M2.9 remains 13/19.
+The software baseline, CI runtime and time spent waiting for builds do not count toward either run.
+Preparation checks passed for the roadmap/internal links, one unstarted soak, ten unstarted workday
+rows, the 13/19 checklist and `git diff --check`. Runtime suites were not rerun for this docs-only edit.
+
+### Candidate and evidence
+
+Record the tested app/firmware versions, source SHA, exact artifact hashes, product/board, short unit
+label, Windows build, USB cable/port/hub, power/sleep settings, audio devices and saved bindings.
+Use the matching product firmware; a latency-probe image is a separate development measurement.
+Perform the relevant [Windows unit checks](#m29-windows-unit-acceptance-open) before sustained use
+and retain any unresolved failures. A soak does not replace installation/recovery or usability tests.
+
+At start/end and after an incident, use Device page **Copy diagnostics** and note observed Activity
+events locally. Available snapshots include connected duration/reconnects, last-pong age, RTT,
+estimated device uptime, free device bytes and malformed/sequence-gap/device-error counts.
+Compare deltas within the same app/device session; record every restart and counter reset.
+Unknown fields stay unknown. Activity is a session-only ring of at most 256 events, with no disk
+history; capture incidents before rollover/restart. A final empty history or zero reset counter is
+not proof that nothing failed. Developer internals may supplement snapshots when available.
+Keep evidence references and redacted observations in this record; do not commit raw private logs.
+
+### Eight-hour idle soak
+
+1. On the Windows candidate, confirm normal connection and counted control actions, then capture
+   baseline diagnostics, process identity, app memory/CPU and the panel's state. Record UTC start.
+2. Leave the device connected and app running for one uninterrupted 8-hour idle interval with no
+   deliberate control input. Record the actual power policy; OS sleep, USB power loss, app/device
+   restart or missing observation coverage breaks the interval. Screen-off alone is not OS sleep.
+3. At least hourly, record connection/heartbeat health, panel state, process memory/CPU and any
+   unexpected reconnect, reset or crash. Record observation times and gaps rather than assuming
+   continuity. Do not infer pixel animation health solely from a connected process.
+4. At the end, record UTC finish, actual elapsed time and final diagnostics; repeat counted knob,
+   press/hold and relevant microphone checks and compare OS state with feedback. Record spontaneous
+   actions, stale indicators, missed/wrong inputs and whether recovery was needed.
+
+| Trial / candidate | UTC start/end and elapsed | Snapshots / observations | Incidents / recovery | Result |
+| --- | --- | --- | --- | --- |
+| Not started | — / 0 verified hours | None | Not observed | NOT RUN |
+
+Passing needs a fully evidenced interval of at least 8 hours, a responsive final control check and
+no unresolved stability or feedback failure. Do not add interrupted intervals together to claim a
+continuous soak. Fix a blocker, retain its failed trial and repeat the affected check and full soak.
+
+### Ten workdays of actual Windows use
+
+Use the unit during normal Windows work on ten distinct workdays. Record actual use hours and
+breaks each day; ten restarts or ten short smoke tests are not ten workdays. Exercise the controls
+and profiles used in real work, including audio-device changes, ordinary lock/sleep transitions and
+USB reconnects when they occur. Distinguish planned disconnects from unexplained ones. Record a
+count for a defined action sample each day so a claim of no missed/wrong input has an observed basis.
+
+| Day | Date / candidate / unit | Use start/end, active hours, breaks | Action sample expected/actual; disconnects, missed/wrong input, stale feedback, crashes | Recovery / evidence | Result |
+| --- | --- | --- | --- | --- | --- |
+| 1 | — | — | Not observed | — | NOT RUN |
+| 2 | — | — | Not observed | — | NOT RUN |
+| 3 | — | — | Not observed | — | NOT RUN |
+| 4 | — | — | Not observed | — | NOT RUN |
+| 5 | — | — | Not observed | — | NOT RUN |
+| 6 | — | — | Not observed | — | NOT RUN |
+| 7 | — | — | Not observed | — | NOT RUN |
+| 8 | — | — | Not observed | — | NOT RUN |
+| 9 | — | — | Not observed | — | NOT RUN |
+| 10 | — | — | Not observed | — | NOT RUN |
+
+For each incident record UTC time, candidate/unit, trigger, expected versus actual OS/device/UI
+behavior, count/duration, recovery steps and evidence. False confirmation, stale replay, wrong-target
+input, lost settings, crashes or failed normal recovery block acceptance. Link the issue/fix and
+retest outcome; a successful restart alone does not close the defect. A behavior-changing fix creates
+a new candidate: retain earlier history and review affected soak/workday coverage before counting
+it toward acceptance. Documentation-only changes do not change an installed artifact's identity.
+Close item 17 only after the 8-hour soak and all ten qualifying workdays have evidence and blockers
+are resolved. Idle soak hours do not substitute for days of actual use, or vice versa.
+
+## M2.9 unfamiliar-user acceptance (open)
+
+Item 18 preparation, 2026-10-25, Andress-MacBook-Air. No participant was recruited or observed and
+no physical usability session ran. Item 18 remains unchecked; M2.9 remains 13/19. Automated UI
+tests, developer walkthroughs and a prepared task sheet do not count as unfamiliar-user evidence.
+Preparation checks passed for new links/anchors, seven NOT RUN tasks, guide/source consistency,
+the 13/19 checklist and `git diff --check`. Runtime suites were not rerun for this docs-only edit.
+
+### Session setup
+
+Use someone who has not developed or previously learned Kivori. Record an anonymous participant
+label, Windows experience, date, app/firmware/artifact and unit metadata, guide revision, machine
+setup and delivered materials. Use the actual [user guide](./user-guide.md) and intended quick-start
+materials; record missing packaging/instructions rather than silently supplying developer knowledge.
+The signed installer and recovery prerequisites remain in
+[item 16](#m29-windows-installation-and-recovery-acceptance-open).
+
+Give the participant the goal prompts below, not the evaluator column. They may use the normal
+app guidance and supplied guide. Let them choose their approach, explain expectations and ask for
+help. Record requests and any assistance; do not demonstrate a gesture, point at a control or repair
+a setup problem and then count the task as unassisted. A needed safety intervention ends that
+unassisted attempt. Record task start/end, attempts, outcome, help and observed friction.
+
+### Participant goals and evaluator record
+
+| Neutral goal prompt | Evaluator observation (keep separate from participant prompts) | Result / time / help / evidence |
+| --- | --- | --- |
+| Get Kivori ready to use on this computer. | Install and complete setup, identify connection readiness and understand Tour guidance. Observe trust prompts, cable confusion, permission/setup errors and reliance on developer help. | NOT RUN |
+| Adjust the sound and control playback, then silence the sound. | Observe knob turn, Press versus Hold discovery, actual OS state and accidental repeats/holds. Record what the participant expected before interpreting feedback. | NOT RUN |
+| Give a button a second action and show both actions working. | Find the Hold binding in Controls, distinguish Press/Hold, save, test in a scratch app and confirm the physical bindings. Observe shortcut countdown/focus and whether pending feedback is understood. | NOT RUN |
+| Keep these controls the same while you switch between apps, then restore automatic switching. | Discover middle-button profile pin/cycle and return to Auto. Record confusion about active, edited and pinned profiles or the on-device labels. | NOT RUN |
+| Show another view on the device, then return to your starting view. | Discover double press and distinguish it from two single actions. Count unintended playback/actions and repeated presses caused by uncertainty. | NOT RUN |
+| Tell me what happened after these actions and what you would do next. | Use real successful, Unverified and benign failure cases prepared for this candidate. Ask what labels, pulses, badges and Activity mean; a pulse or queued request must not be mistaken for proof the OS action completed. | NOT RUN |
+| Get this disconnected or recoverable test unit working again. | Observe discovery of Device/setup recovery and following BOOT/target-confirmation steps. Use an agreed recoverable unit state; record its setup, actual flash/reconnect result and any coaching. A screenshot or simulated failure is labelled separately and cannot prove physical recovery. | NOT RUN |
+
+After the first attempts, ask neutrally whether responses matched expectations and what felt slow
+or unclear. Record the single-press delay experience, spontaneous extra presses, accidental double
+presses, Hold discoverability, pin/Auto comprehension, and whether labels/results explained the
+observed outcome. Then discuss the roughly 250 ms single-press wait; do not teach its cause before
+the first attempt. Participant impressions are usability evidence, not measured hardware latency.
+
+For each friction point retain the task, expected/actual behavior, observation or participant words,
+assistance, consequence, proposed fix and retest reference. Blocked installation/configuration/use/
+recovery, wrong-target actions or misleading confirmation must be resolved before acceptance.
+Keep assisted attempts visible. Retest changed behavior; a discovery fix needs a fresh unfamiliar
+participant because a coached participant already knows the answer. Do not generalize one person's
+successful session to all users or close the separate hardware, sustained-use or enclosure gates.
+
+Guide preparation corrected source-verified discrepancies: Tour is guidance without automatic
+completion ticks; shortcut tests have a countdown and await their own result; a failed macro does
+not undo earlier steps; trigger-only feedback stays Unverified with a quiet device pulse. The guide
+also explains the single-press wait and no longer promises that signing removes a Windows warning.
+These documentation corrections have not yet been evaluated with a participant.

@@ -42,6 +42,12 @@ function text(input: Record<string, unknown>, key: string): string {
   return typeof value === 'string' ? value : '';
 }
 
+/** Optional attribution must never block signup; discard oversized values rather than partial URLs. */
+export function normalizeAttribution(value: unknown, limit: number): string {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  return normalized.length <= limit ? normalized : '';
+}
+
 /**
  * Which secret to verify Turnstile tokens with. A real site key without a configured secret yields
  * `undefined` (fail closed); the test secret is only a fallback for the test site key.
@@ -67,19 +73,15 @@ export function validateSignup(
   const email = normalizeEmail(text(input, 'email'));
   const product = text(input, 'product').trim() || GENERAL_PRODUCT;
   const useCase = text(input, 'use_case').trim();
-  const utmSource = text(input, 'utm_source').trim();
-  const utmMedium = text(input, 'utm_medium').trim();
-  const utmCampaign = text(input, 'utm_campaign').trim();
-  const referrer = text(input, 'referrer').trim();
+  const utmSource = normalizeAttribution(input.utm_source, LIMITS.utm);
+  const utmMedium = normalizeAttribution(input.utm_medium, LIMITS.utm);
+  const utmCampaign = normalizeAttribution(input.utm_campaign, LIMITS.utm);
+  const referrer = normalizeAttribution(input.referrer, LIMITS.referrer);
   const token = text(input, 'turnstileToken') || text(input, 'cf-turnstile-response');
 
   const tooLong =
     email.length > LIMITS.email ||
     product.length > LIMITS.product ||
-    utmSource.length > LIMITS.utm ||
-    utmMedium.length > LIMITS.utm ||
-    utmCampaign.length > LIMITS.utm ||
-    referrer.length > LIMITS.referrer ||
     token.length > LIMITS.token ||
     text(input, HONEYPOT_FIELD).length > LIMITS.honeypot;
   if (tooLong) return { ok: false, message: 'One of the fields is too long.' };

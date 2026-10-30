@@ -62,5 +62,41 @@ test key. A real site key with no `TURNSTILE_SECRET_KEY` rejects every sign-up (
 
 For local testing the test token `XXXX.DUMMY.TOKEN.XXXX` passes with the test secret.
 
+### Public launch and deletion verification
+
+The [M2.9 readiness audit](../../docs/validation.md#m29-public-website-readiness-audit-open)
+records the current gaps. Test keys and a successful local form response do not establish readiness.
+
+1. Confirm the owner's public privacy mailbox and a consented test email. Set the public mailbox
+   in `wrangler.jsonc` `vars.CONTACT_EMAIL`; do not infer it from deployment credentials.
+2. Configure the real Turnstile widget for the intended hostname, commit its public site key,
+   and provision its secret with the interactive command above. Keep secrets out of Git, chat
+   and evidence. Widget inspection currently needs additional Cloudflare access from the owner.
+3. Review the configuration change and deploy through the approved production workflow, which
+   applies D1 migrations. PR version uploads are previews, not production releases. Inspect the
+   active production version for `WAITLIST_DB`, `WAITLIST_RATE_LIMITER`, `SIGNUPS`, the public
+   variables and the secret binding; secret presence alone does not prove the widget works.
+4. Confirm the intended public access policy with the owner. After the approved launch, check
+   the homepage and `/privacy` anonymously, including the real widget and correct `mailto:` link.
+   A Cloudflare Access error blocks this check; do not remove Access merely to run the test.
+5. Submit one approved test signup through the real form. Verify its normalized email and product
+   in D1 with a bound-parameter query. A success response alone is insufficient: honeypot requests
+   intentionally succeed without storing a row. Record UTC time, deployed version and row count,
+   without committing the address, token or database export.
+6. With authorization to send it, email a deletion request to the published mailbox and confirm
+   receipt. Using a database client with bound parameters, delete all rows for that normalized
+   test email across products, then verify zero remain:
+
+   ```sql
+   SELECT COUNT(*) FROM waitlist WHERE email = ?1;
+   DELETE FROM waitlist WHERE email = ?1;
+   SELECT COUNT(*) FROM waitlist WHERE email = ?1;
+   ```
+
+   Bind `?1` to the approved test address; these are parameterized SQL templates, not standalone
+   Wrangler commands. Check the address and initial count before deletion. Record receipt and
+   deletion outcomes without publishing personal data. Close the roadmap item only when every
+   live check passes.
+
 Sign-up counts (product and utm_source only, no email) go to the `SIGNUPS` Analytics Engine dataset
 `kivori_signups`. R2 and Cloudflare Web Analytics are not bound yet.

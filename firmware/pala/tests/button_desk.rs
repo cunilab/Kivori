@@ -1,12 +1,12 @@
 //! M1 on the real runtime over the wire: push-switch Press / Hold, the recovery hold, and the
 //! session-scoped desk status. Host simulation only — physical switch timing is a hardware row.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 use heapless::Vec as HVec;
 use kivori_asset_compiler::compile_default_blob;
 use kivori_assets::AssetBlob;
-use kivori_firmware::ports::InputSource;
+use kivori_firmware::ports::{Clock, InputSource};
 use kivori_firmware::proto::DeviceIdentity;
 use kivori_firmware::runtime::{Runtime, RuntimeConfig, Tick};
 use kivori_firmware::sim::{CaptureDisplay, SimPipe, VirtualClock};
@@ -27,7 +27,11 @@ const M1: Capabilities = Capabilities::PHYSICAL_INPUT_V1
 
 /// Levels the test sets between steps.
 #[derive(Default)]
-struct Levels(Cell<(bool, bool, bool)>, Cell<[bool; 3]>);
+struct Levels(
+    Cell<(bool, bool, bool)>,
+    Cell<[bool; 3]>,
+    RefCell<Vec<(InputLevels, u32)>>,
+);
 
 impl InputSource for &Levels {
     fn sample(&mut self) -> InputLevels {
@@ -38,6 +42,13 @@ impl InputSource for &Levels {
             sw,
             keys: self.1.get(),
         }
+    }
+
+    fn drain(&mut self, now_ms: u32, f: &mut dyn FnMut(InputLevels, u32)) {
+        for (levels, at_ms) in self.2.borrow_mut().drain(..) {
+            f(levels, at_ms);
+        }
+        f(self.sample(), now_ms);
     }
 }
 
@@ -166,6 +177,59 @@ impl Rig {
         let mut keys = self.levels.1.get();
         keys[index] = down;
         self.levels.1.set(keys);
+    }
+
+    /// Queues captured switch edges without a runtime tick between them.
+    fn queue_edges(&mut self, control: ControlId, edges: &[(bool, u32)]) {
+        for &(down, at_ms) in edges {
+            match control {
+                ControlId::Button => self.switch(down),
+                ControlId::ContextButton(index) => self.key(usize::from(index), down),
+                _ => panic!("not a switch"),
+            }
+            self.levels
+                .2
+                .borrow_mut()
+                .push(((&self.levels).sample(), at_ms));
+        }
+    }
+
+    fn burst(&mut self, control: ControlId, edges: &[(bool, u32)], now: u32) -> Tick {
+        self.queue_edges(control, edges);
+        self.clock.advance(now.wrapping_sub(self.clock.now_ms()));
+        self.step()
+    }
+
+    fn reconnect(&mut self, at_ms: u32) -> Tick {
+        self.nonce += 1;
+        self.clock.advance(at_ms.wrapping_sub(self.clock.now_ms()));
+        self.send(&Message::Hello(Hello {
+            desktop_version: FirmwareVersion {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            desktop_caps: BUTTONS,
+            nonce: self.nonce,
+        }));
+        self.send(&Message::Ready(Ready {
+            negotiated_minor: PROTOCOL_MINOR,
+            negotiated_caps: BUTTONS,
+        }));
+        self.step()
+    }
+
+    fn inputs(&mut self) -> Vec<(ControlId, InputKind)> {
+        self.drain()
+            .into_iter()
+            .filter_map(|message| match message {
+                Message::InputEvent(event) => {
+                    assert_eq!(event.session, self.nonce);
+                    Some((event.control, event.kind))
+                }
+                _ => None,
+            })
+            .collect()
     }
 
     /// Contextual-button events sent so far, as (index, kind).
@@ -510,6 +574,155 @@ fn without_double_press_a_press_is_sent_without_waiting() {
     rig.switch(false);
     rig.run(40);
     assert_eq!(rig.button_kinds(), [InputKind::Press]);
+}
+
+#[test]
+fn buffered_short_presses_reach_the_wire_for_every_switch() {
+    for control in [
+        ControlId::Button,
+        ControlId::ContextButton(0),
+        ControlId::ContextButton(1),
+        ControlId::ContextButton(2),
+    ] {
+        let mut rig = Rig::new();
+        rig.connect(BUTTONS);
+        assert!(!rig.burst(control, &[(true, 100), (false, 200)], 230).reboot);
+        assert_eq!(rig.inputs(), [(control, InputKind::Press)]);
+        rig.run(500);
+        assert!(rig.inputs().is_empty());
+    }
+}
+
+#[test]
+fn buffered_presses_with_a_stable_release_never_merge_into_hold() {
+    for double in [false, true] {
+        for control in [ControlId::Button, ControlId::ContextButton(1)] {
+            let mut rig = Rig::new();
+            rig.connect(if double {
+                BUTTONS.union(Capabilities::DOUBLE_PRESS_V1)
+            } else {
+                BUTTONS
+            });
+            rig.burst(
+                control,
+                &[(true, 100), (false, 520), (true, 550), (false, 970)],
+                1_000,
+            );
+            let expected = if double && control == ControlId::Button {
+                vec![(control, InputKind::DoublePress)]
+            } else {
+                vec![(control, InputKind::Press), (control, InputKind::Press)]
+            };
+            assert_eq!(rig.inputs(), expected);
+            rig.run(500);
+            assert!(rig.inputs().is_empty());
+        }
+    }
+}
+
+#[test]
+fn buffered_release_of_one_control_does_not_block_the_next_control() {
+    for (first, second) in [
+        (ControlId::ContextButton(0), ControlId::Button),
+        (ControlId::Button, ControlId::ContextButton(0)),
+        (ControlId::ContextButton(2), ControlId::ContextButton(0)),
+    ] {
+        let mut rig = Rig::new();
+        rig.connect(BUTTONS);
+        rig.burst(first, &[(true, 100), (false, 200)], 210);
+        assert!(rig.inputs().is_empty());
+        rig.burst(second, &[(true, 230), (false, 330)], 360);
+        assert_eq!(
+            rig.inputs(),
+            [(first, InputKind::Press), (second, InputKind::Press)]
+        );
+    }
+}
+
+#[test]
+fn a_buffered_release_cancels_recovery_and_never_becomes_hold() {
+    let mut rig = Rig::new();
+    rig.connect(BUTTONS);
+    assert!(!rig.burst(ControlId::Button, &[(true, 100)], 2_100).reboot);
+    // The loop catches up after the reboot deadline, but the captured release ended recovery.
+    assert!(
+        !rig.burst(ControlId::Button, &[(false, 2_200)], 10_200)
+            .reboot
+    );
+    assert!(rig.inputs().is_empty());
+}
+
+#[test]
+fn a_session_boundary_cancels_a_press_still_debouncing() {
+    for control in [ControlId::Button, ControlId::ContextButton(1)] {
+        let mut rig = Rig::new();
+        rig.connect(BUTTONS);
+        rig.burst(control, &[(true, 100)], 110);
+        rig.nonce += 1;
+        rig.connect(BUTTONS);
+        rig.burst(control, &[(false, 200)], 230);
+        assert!(rig.inputs().is_empty());
+        rig.burst(control, &[(true, 300), (false, 400)], 430);
+        assert_eq!(rig.inputs(), [(control, InputKind::Press)]);
+    }
+}
+
+#[test]
+fn reconnect_rejects_unconsumed_presses_from_before_or_at_the_boundary() {
+    for control in [ControlId::Button, ControlId::ContextButton(1)] {
+        for (down, up, boundary) in [(100, 200, 300), (100, 350, 300), (300, 400, 300)] {
+            let mut rig = Rig::new();
+            rig.connect(BUTTONS);
+            rig.queue_edges(control, &[(true, down)]);
+            if up <= boundary {
+                rig.queue_edges(control, &[(false, up)]);
+            }
+            rig.reconnect(boundary);
+            assert!(rig.inputs().is_empty());
+            if up > boundary {
+                rig.burst(control, &[(false, up)], up + 30);
+                assert!(rig.inputs().is_empty());
+            }
+            rig.burst(control, &[(true, 500), (false, 600)], 630);
+            assert_eq!(rig.inputs(), [(control, InputKind::Press)]);
+        }
+    }
+}
+
+#[test]
+fn an_old_raw_down_can_still_recover_after_a_session_boundary() {
+    let mut rig = Rig::new();
+    rig.connect(BUTTONS);
+    rig.queue_edges(ControlId::Button, &[(true, 100)]);
+    assert!(!rig.reconnect(300).reboot);
+    assert!(rig.run_with_heartbeat(10_100));
+    assert!(rig.inputs().is_empty());
+}
+
+#[test]
+fn session_boundary_and_buffered_presses_survive_uptime_wrap() {
+    for control in [ControlId::Button, ControlId::ContextButton(1)] {
+        for (boundary, old_down, old_up, down, up, now) in [
+            (
+                u32::MAX - 100,
+                u32::MAX - 200,
+                u32::MAX - 130,
+                u32::MAX - 50,
+                50,
+                80,
+            ),
+            (120, u32::MAX - 20, 90, 200, 300, 330),
+        ] {
+            let mut rig = Rig::new();
+            rig.connect(BUTTONS);
+            rig.clock.advance(old_down - 10);
+            rig.queue_edges(control, &[(true, old_down), (false, old_up)]);
+            rig.reconnect(boundary);
+            assert!(rig.inputs().is_empty());
+            rig.burst(control, &[(true, down), (false, up)], now);
+            assert_eq!(rig.inputs(), [(control, InputKind::Press)]);
+        }
+    }
 }
 
 /// The buddy wears the muted face only while the desktop says it is muted (issue #13).

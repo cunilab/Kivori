@@ -220,7 +220,9 @@ describe('desk ipc (Tauri)', () => {
     await expect(getDeskStatus()).resolves.toEqual(validDesk);
     tauri.invoke.mockResolvedValue(undefined);
     await setDisplayMode('media');
-    await testAction({ kind: 'shortcut', keys: 'Ctrl+M' });
+    const outcome = { action: 'shortcut', result: 'unverified', permissionRequired: false };
+    tauri.invoke.mockResolvedValue(outcome);
+    await expect(testAction({ kind: 'shortcut', keys: 'Ctrl+M' })).resolves.toEqual(outcome);
     expect(tauri.invoke).toHaveBeenCalledWith('get_desk_status', undefined);
     expect(tauri.invoke).toHaveBeenCalledWith('set_display_mode', { mode: 'media' });
     expect(tauri.invoke).toHaveBeenCalledWith('test_action', {
@@ -228,6 +230,19 @@ describe('desk ipc (Tauri)', () => {
     });
     await testRotate({ kind: 'systemVolume' });
     expect(tauri.invoke).toHaveBeenCalledWith('test_rotate', { rotate: { kind: 'systemVolume' } });
+  });
+
+  it.each([
+    undefined,
+    null,
+    {},
+    { action: 'shortcut', result: 'unknown', permissionRequired: false },
+    { action: 'shortcut', result: 'unverified', permissionRequired: 'no' },
+  ])('rejects malformed action and rotate replies: %j', async (reply) => {
+    enterTauri();
+    tauri.invoke.mockResolvedValue(reply);
+    await expect(testAction({ kind: 'systemMute' })).rejects.toThrow();
+    await expect(testRotate({ kind: 'systemVolume' })).rejects.toThrow();
   });
 
   it('rejects a mic state with an unknown token', async () => {
@@ -472,13 +487,26 @@ describe('action catalog ipc', () => {
     expect(() => parseCatalog({})).toThrow();
   });
 
-  it('mock testAction updates lastAction and rejects an empty shortcut', async () => {
-    await testAction({ kind: 'systemMute' });
+  it('mock testAction returns its outcome, updates lastAction and rejects an empty shortcut', async () => {
+    const outcome = await testAction({ kind: 'systemMute' });
+    expect(outcome).toEqual({
+      action: 'mute',
+      result: 'stateConfirmed',
+      permissionRequired: false,
+    });
     expect((await getDeskStatus()).lastAction).toEqual({
       action: 'mute',
       result: 'stateConfirmed',
       permissionRequired: false,
     });
+    await expect(
+      testRotate({ kind: 'shortcuts', cw: 'Ctrl+K', ccw: 'Ctrl+J', label: 'Tabs' }),
+    ).resolves.toEqual({
+      action: 'shortcut',
+      result: 'unverified',
+      permissionRequired: false,
+    });
+    expect(outcome.result).toBe('stateConfirmed');
     await expect(testAction({ kind: 'shortcut', keys: ' ' })).rejects.toThrow();
   });
 });
@@ -497,7 +525,12 @@ describe('config ipc', () => {
   it('accepts the mock defaults and every notice, and rejects unknown tokens', async () => {
     const config = await resetConfig();
     expect(() => parseConfig(config)).not.toThrow();
-    for (const notice of ['recoveredCorrupt', 'recoveredNewerVersion', 'migrated']) {
+    for (const notice of [
+      'recoveredCorrupt',
+      'recoveredNewerVersion',
+      'migrated',
+      'backupFailed',
+    ]) {
       expect(parseConfig({ ...validConfig, notice }).notice).toBe(notice);
     }
     for (const bad of [

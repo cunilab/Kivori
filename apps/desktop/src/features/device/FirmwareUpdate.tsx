@@ -36,10 +36,13 @@ const PHASES = ['preparing', 'flashing', 'reconnecting', 'succeeded'] as const;
 export function FirmwareUpdate({
   connected,
   incompatible = false,
+  recoveryOnly = false,
 }: {
   connected: boolean;
   incompatible?: boolean;
-}): ReactElement {
+  /** Setup shows recovery when needed, with native progress, rather than normal flash controls. */
+  recoveryOnly?: boolean;
+}): ReactElement | null {
   const [status, setStatus] = useState<FirmwareStatusDto | null>(null);
   const [requesting, setRequesting] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -102,15 +105,15 @@ export function FirmwareUpdate({
     if (connected) {
       setRecovering(false);
       setRecoveryChoice(null);
+      if (recoveryOnly) setRequestError(null);
     }
-  }, [connected]);
+  }, [connected, recoveryOnly]);
   useEffect(() => {
     if (!choiceValid) {
       setRecovering(false);
       setRecoveryChoice(null);
     }
   }, [choiceValid]);
-  const showRestore = incompatible || needsRestore(status);
   const error = requestError ?? pollError;
 
   const start = async (): Promise<void> => {
@@ -159,6 +162,22 @@ export function FirmwareUpdate({
 
   const phase = status?.phase ?? 'idle';
   const stepIndex = PHASES.indexOf(phase as (typeof PHASES)[number]);
+  const showRestore =
+    incompatible ||
+    needsRestore(status) ||
+    (recoveryOnly &&
+      (busy ||
+        requestError !== null ||
+        (phase === 'failed' && status?.failure !== 'chooseProduct')));
+
+  if (
+    recoveryOnly &&
+    !incompatible &&
+    !busy &&
+    !recovering &&
+    (connected || (phase !== 'failed' && !error))
+  )
+    return null;
 
   return (
     <Card>
@@ -242,35 +261,37 @@ export function FirmwareUpdate({
           <p className="text-sm text-muted-foreground">{t.connect}</p>
         ) : null}
 
-        <AlertDialog open={confirming} onOpenChange={setConfirming}>
-          <AlertDialogTrigger
-            render={<Button disabled={!canFlash} aria-describedby="firmware-caution" />}
-          >
-            {busy ? (
-              <LoaderCircle aria-hidden="true" className="animate-spin" />
-            ) : (
-              <Download aria-hidden="true" />
-            )}
-            {busy ? t.working : t.action}
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{t.confirmTitle}</AlertDialogTitle>
-              <AlertDialogDescription>{t.caution}</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>{t.cancel}</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => {
-                  setConfirming(false);
-                  void start();
-                }}
-              >
-                {t.confirm}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        {!recoveryOnly ? (
+          <AlertDialog open={confirming} onOpenChange={setConfirming}>
+            <AlertDialogTrigger
+              render={<Button disabled={!canFlash} aria-describedby="firmware-caution" />}
+            >
+              {busy ? (
+                <LoaderCircle aria-hidden="true" className="animate-spin" />
+              ) : (
+                <Download aria-hidden="true" />
+              )}
+              {busy ? t.working : t.action}
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t.confirmTitle}</AlertDialogTitle>
+                <AlertDialogDescription>{t.caution}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t.cancel}</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    setConfirming(false);
+                    void start();
+                  }}
+                >
+                  {t.confirm}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        ) : null}
         <p id="firmware-caution" className="flex items-start gap-2 text-xs text-muted-foreground">
           <Plug className="mt-px size-3.5 shrink-0" aria-hidden="true" />
           {t.caution}

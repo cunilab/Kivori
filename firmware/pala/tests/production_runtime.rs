@@ -11,8 +11,8 @@
 use heapless::Vec as HVec;
 use kivori_asset_compiler::compile_default_blob;
 use kivori_assets::AssetBlob;
-use kivori_firmware::ports::{Clock, InputSource};
-use kivori_firmware::proto::DeviceIdentity;
+use kivori_firmware::ports::{Clock, InputSource, Transport};
+use kivori_firmware::proto::{DeviceIdentity, RX_BYTES_PER_POLL};
 use kivori_firmware::render::{TILE_COLS, TILE_COUNT};
 use kivori_firmware::runtime::{Runtime, RuntimeConfig, Tick};
 use kivori_firmware::sim::{CaptureDisplay, SimPipe, VirtualClock};
@@ -75,6 +75,82 @@ impl InputSource for NoInput {
             b: false,
             sw: false,
             keys: [false; 3],
+        }
+    }
+}
+
+struct EndlessRx {
+    pattern: Vec<u8>,
+    at: usize,
+    bytes: usize,
+}
+
+impl Transport for EndlessRx {
+    type Error = core::convert::Infallible;
+
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        self.bytes += buf.len();
+        assert!(
+            self.bytes <= RX_BYTES_PER_POLL,
+            "receive loop exceeded its tick budget"
+        );
+        for byte in buf.iter_mut() {
+            *byte = self.pattern[self.at];
+            self.at = (self.at + 1) % self.pattern.len();
+        }
+        Ok(buf.len())
+    }
+
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+        Ok(buf.len())
+    }
+}
+
+struct HeldSwitch {
+    samples: usize,
+}
+
+impl InputSource for HeldSwitch {
+    fn sample(&mut self) -> InputLevels {
+        self.samples += 1;
+        InputLevels {
+            sw: true,
+            ..NoInput.sample()
+        }
+    }
+}
+
+#[test]
+fn endless_receive_traffic_still_polls_input_renders_and_completes_recovery() {
+    let mut ping: HVec<u8, MAX_WIRE> = HVec::new();
+    encode_message(
+        &Message::Ping(Ping { t_ms: 1 }),
+        wire_version(),
+        0,
+        &mut ping,
+    )
+    .unwrap();
+    let bytes = compile_default_blob();
+    let blob = AssetBlob::parse(&bytes).unwrap();
+    for pattern in [ping.to_vec(), vec![0x55]] {
+        let mut transport = EndlessRx {
+            pattern,
+            at: 0,
+            bytes: 0,
+        };
+        let mut runtime = Runtime::new(identity(), RuntimeConfig::default());
+        let clock = VirtualClock::new();
+        let mut input = HeldSwitch { samples: 0 };
+        let mut display = Box::new(CaptureDisplay::new());
+        for seconds in 0..=10 {
+            transport.bytes = 0;
+            let previous_samples = input.samples;
+            let tick = runtime.step(&clock, &mut transport, &mut input, display.as_mut(), &blob);
+            assert_eq!(transport.bytes, RX_BYTES_PER_POLL);
+            assert!(input.samples > previous_samples, "input was starved");
+            assert!(tick.frame_rendered, "render cadence was starved");
+            assert_eq!(tick.reboot, seconds == 10, "recovery deadline changed");
+            clock.advance(1_000);
         }
     }
 }

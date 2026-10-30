@@ -2,6 +2,7 @@
 
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 
 use kivori_desktop::config::{
     ActionSpec, ConfigError, ConfigFile, ConfigNotice, ConfigStore, DisplaySettings, Intensity,
@@ -62,6 +63,143 @@ fn save_then_reopen_round_trips_and_leaves_no_temp_file() {
     let reopened = ConfigStore::open(dir.path());
     assert_eq!(reopened.file(), &next);
     assert_eq!(reopened.notice(), None);
+}
+
+#[test]
+fn function_keys_save_only_when_supported_by_the_platform() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = ConfigStore::open(dir.path());
+    store.save(changed(&store)).unwrap();
+    let max = if cfg!(target_os = "windows") { 24 } else { 20 };
+    for n in 0..=25 {
+        let before = store.file().clone();
+        let revision = store.revision();
+        let bytes = fs::read(dir.path().join("config.json")).unwrap();
+        let next = store.edited(|file| {
+            file.profiles.entry(ProfileId::General).or_default().press = Some(SlotSpec {
+                action: Some(ActionSpec::Shortcut {
+                    keys: format!("Ctrl+F{n}"),
+                }),
+                label: None,
+            });
+        });
+        if (1..=max).contains(&n) {
+            store.save(next.clone()).unwrap();
+            assert_eq!(ConfigStore::open(dir.path()).file(), &next);
+        } else {
+            assert!(matches!(store.save(next), Err(ConfigError::Invalid(_))));
+            assert_eq!(store.file(), &before);
+            assert_eq!(store.revision(), revision);
+            assert_eq!(fs::read(dir.path().join("config.json")).unwrap(), bytes);
+        }
+    }
+}
+
+fn large_macro_config(target: &str) -> ConfigFile {
+    ConfigFile {
+        macros: (0..32)
+            .map(|i| MacroSpec {
+                id: format!("macro-{i}"),
+                name: format!("Macro {i}"),
+                steps: vec![
+                    StepSpec::Action {
+                        action: ActionSpec::Launch {
+                            target: target.into()
+                        },
+                    };
+                    8
+                ],
+            })
+            .collect(),
+        ..ConfigFile::default()
+    }
+}
+
+#[test]
+fn oversized_serialized_settings_preserve_the_file_and_live_config() {
+    for target in ["x".repeat(1024), "é".repeat(512), "\\".repeat(512)] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = ConfigStore::open(dir.path());
+        store.save(changed(&store)).unwrap();
+        let before = store.file().clone();
+        let resolved = store.resolved();
+        let revision = store.revision();
+        let bytes = fs::read(dir.path().join("config.json")).unwrap();
+        fs::write(dir.path().join("config.json.tmp"), b"untouched").unwrap();
+        let next = large_macro_config(&target);
+        assert!(serde_json::to_vec_pretty(&next).unwrap().len() + 1 > 256 * 1024);
+
+        let error = store.save(next).unwrap_err();
+        assert_eq!(error, ConfigError::TooLarge);
+        assert!(error.to_string().contains("256 KiB"));
+        assert!(!error.to_string().contains(dir.path().to_str().unwrap()));
+        assert_eq!(fs::read(dir.path().join("config.json")).unwrap(), bytes);
+        assert_eq!(
+            fs::read(dir.path().join("config.json.tmp")).unwrap(),
+            b"untouched"
+        );
+        assert_eq!(store.file(), &before);
+        assert!(Arc::ptr_eq(&store.resolved(), &resolved));
+        assert_eq!(store.revision(), revision);
+        assert_eq!(names(dir.path()), ["config.json", "config.json.tmp"]);
+        let reopened = ConfigStore::open(dir.path());
+        assert_eq!(reopened.notice(), None);
+        assert_eq!(reopened.file(), &before);
+    }
+}
+
+/// Uses real, valid macro fields to reach an exact serialized size, including the trailing newline.
+fn config_of_size(size: usize) -> ConfigFile {
+    let mut file = large_macro_config(&"x".repeat(1024));
+    let mut excess = (serde_json::to_vec_pretty(&file).unwrap().len() + 1) - size;
+    for mac in &mut file.macros {
+        for step in &mut mac.steps {
+            let StepSpec::Action {
+                action: ActionSpec::Launch { target },
+            } = step
+            else {
+                unreachable!()
+            };
+            let remove = excess.min(target.len() - 1);
+            target.truncate(target.len() - remove);
+            excess -= remove;
+        }
+    }
+    assert_eq!(excess, 0);
+    assert_eq!(serde_json::to_vec_pretty(&file).unwrap().len() + 1, size);
+    file
+}
+
+#[test]
+fn saved_configs_round_trip_at_the_exact_loader_size_boundary() {
+    for size in [256 * 1024 - 1, 256 * 1024] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = ConfigStore::open(dir.path());
+        let next = config_of_size(size);
+        store.save(next.clone()).unwrap();
+        let bytes = fs::read(dir.path().join("config.json")).unwrap();
+        assert_eq!(bytes.len(), size);
+        assert_eq!(bytes.last(), Some(&b'\n'));
+        let reopened = ConfigStore::open(dir.path());
+        assert_eq!(reopened.notice(), None);
+        assert_eq!(reopened.file(), &next);
+        assert_eq!(reopened.resolved(), store.resolved());
+        assert_eq!(names(dir.path()), ["config.json"]);
+    }
+}
+
+#[test]
+fn one_byte_over_the_limit_is_refused_before_creating_a_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let inner = dir.path().join("settings");
+    let mut store = ConfigStore::open(&inner);
+    assert_eq!(
+        store.save(config_of_size(256 * 1024 + 1)),
+        Err(ConfigError::TooLarge)
+    );
+    assert!(!inner.exists());
+    assert_eq!(store.file(), &ConfigFile::default());
+    assert_eq!(store.revision(), 0);
 }
 
 #[test]

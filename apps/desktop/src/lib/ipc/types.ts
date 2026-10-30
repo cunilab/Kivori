@@ -438,7 +438,12 @@ export const INTENSITY_PERSONALITY: Record<Intensity, MascotPersonality> = {
   normal: 'cozy',
   high: 'playful',
 };
-export const CONFIG_NOTICES = ['recoveredCorrupt', 'recoveredNewerVersion', 'migrated'] as const;
+export const CONFIG_NOTICES = [
+  'recoveredCorrupt',
+  'recoveredNewerVersion',
+  'migrated',
+  'backupFailed',
+] as const;
 export type ConfigNotice = (typeof CONFIG_NOTICES)[number];
 
 /** The built-in profiles; a custom profile's id is `custom-<n>`. */
