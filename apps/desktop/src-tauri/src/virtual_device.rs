@@ -579,9 +579,11 @@ impl Sandbox {
                 // The sandbox has no companion director to pause.
                 PresenceAction::PauseSelfPlay(_) => {}
                 PresenceAction::ReleaseLink => {
-                    self.parked = self.link.take();
-                    if let Some(parked) = self.parked.as_mut() {
-                        parked.inbound.clear();
+                    // A second release (console lost, then sleep) must keep the parked device, not
+                    // drop it and fake a power cut.
+                    if let Some(mut link) = self.link.take() {
+                        link.inbound.clear();
+                        self.parked = Some(link);
                     }
                     self.apply_presence(action);
                     synchronize_session(

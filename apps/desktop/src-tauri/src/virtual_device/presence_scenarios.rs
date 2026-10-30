@@ -133,6 +133,10 @@ fn sleep_and_wake(executable: &Path) -> Result<(), String> {
     sandbox.input("clockwise")?;
     sandbox.input("tap")?;
     settle(&mut sandbox, Duration::from_millis(400))?;
+    check(
+        sandbox.edges.is_empty(),
+        "sleep-time input had not reached the firmware before wake",
+    )?;
     sandbox.host_event(HostEvent::Resumed)?;
     let resumed = until(
         &mut sandbox,
@@ -179,10 +183,23 @@ fn console_switch(executable: &Path) -> Result<(), String> {
         "silent release shows Offline",
         |s| device(s, "offline"),
     )?;
+    // The machine also sleeps and wakes while another user has the console: the second release and
+    // the wake must neither drop the still-powered device nor reclaim the port.
+    let pid = sandbox.parked.as_ref().map(|link| link.child.id());
+    sandbox.host_event(HostEvent::Suspending)?;
+    sandbox.host_event(HostEvent::Resumed)?;
+    check(
+        sandbox.link.is_none() && sandbox.parked.as_ref().map(|link| link.child.id()) == pid,
+        "sleep during a console switch dropped the device or reclaimed the port",
+    )?;
     sandbox.host_event(HostEvent::ConsoleConnected)?;
     let back = ready(&mut sandbox, "console return reconnects")?;
+    check(
+        sandbox.link.as_ref().map(|link| link.child.id()) == pid,
+        "console return booted a new device instead of reattaching",
+    )?;
     println!(
-        "PASS PRESENCE console switch: no goodbye -> device Offline after {} ms of host silence; console return reconnects in {} ms",
+        "PASS PRESENCE console switch: no goodbye -> device Offline after {} ms of host silence; sleep meanwhile keeps the device; console return reattaches it in {} ms",
         offline.as_millis(),
         back.as_millis()
     );

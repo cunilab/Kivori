@@ -18,7 +18,6 @@ const SENTINELS = [
   'fnv1a64-rgb565-le',
   'PASS S5.4',
   'PASS S5.5',
-  'PASS PRESENCE',
 ];
 const DIST = 'apps/desktop/dist/assets';
 
