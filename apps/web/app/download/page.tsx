@@ -40,7 +40,8 @@ export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = pageMetadata({
   title: 'Download',
-  description: 'Download the Kivori desktop app for Windows 10 and 11, with the version history.',
+  description:
+    'Download Kivori Desktop for Windows and Apple Silicon macOS, with the version history.',
   path: '/download',
 });
 
@@ -56,7 +57,13 @@ export default async function DownloadPage(): Promise<ReactElement> {
 
   return (
     <>
-      <JsonLd data={softwareApplicationJsonLd(ready?.release.version)} />
+      <JsonLd
+        data={softwareApplicationJsonLd(
+          releases[0]?.version,
+          undefined,
+          Boolean(releases[0]?.macInstaller),
+        )}
+      />
       <section
         aria-labelledby="download-title"
         className="px-5 pt-20 pb-24 text-center sm:px-8 sm:pt-28 sm:pb-32"
@@ -70,8 +77,13 @@ export default async function DownloadPage(): Promise<ReactElement> {
             The app that pairs with your Kivori. It runs offline and keeps your device up to date.
           </p>
           <div className="mt-12">
-            {ready ? (
-              <OsDownloadButton version={ready.release.version} beta={ready.release.prerelease} />
+            {ready || releases[0]?.macInstaller ? (
+              <OsDownloadButton
+                version={releases[0].version}
+                beta={releases[0].prerelease}
+                macAvailable={Boolean(releases[0].macInstaller)}
+                windowsAvailable={Boolean(releases[0].installer)}
+              />
             ) : state.kind === 'empty' ? (
               <div className="flex flex-col items-center gap-4">
                 <p className="font-display text-2xl font-bold tracking-tight">
@@ -123,7 +135,9 @@ export default async function DownloadPage(): Promise<ReactElement> {
                     ]
                       .filter(Boolean)
                       .join(' · ')
-                  : 'First release coming soon'}
+                  : releases.length
+                    ? 'Windows build not published for this release'
+                    : 'First release coming soon'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6 px-6 pb-6 sm:px-8 sm:pb-8">
@@ -169,17 +183,32 @@ export default async function DownloadPage(): Promise<ReactElement> {
               <CardTitle className="mt-4 font-display text-3xl font-bold tracking-tight">
                 macOS
               </CardTitle>
-              <CardDescription className="text-base">Coming later</CardDescription>
+              <CardDescription className="text-base">
+                {releases[0]?.macInstaller
+                  ? `Version ${releases[0].version} · Apple Silicon`
+                  : 'Mac build not published yet'}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6 px-6 pb-6 sm:px-8 sm:pb-8">
               <p className="text-base text-muted-foreground">
-                A Mac version comes after the Windows beta. Leave your email and we will tell you
-                the day it is ready.
+                Native build for Apple Silicon Macs. Per-app volume and automatic app updates are
+                not available on macOS.
               </p>
               <div className="flex flex-wrap gap-3">
-                <Button size="lg" className={pill} disabled>
-                  Download for macOS
-                </Button>
+                {releases[0]?.macInstaller ? (
+                  <Button
+                    size="lg"
+                    className={pill}
+                    nativeButton={false}
+                    render={<a href="/download/macos/latest" />}
+                  >
+                    Download for macOS
+                  </Button>
+                ) : (
+                  <Button size="lg" className={pill} disabled>
+                    Download for macOS
+                  </Button>
+                )}
                 <Button
                   size="lg"
                   variant="outline"

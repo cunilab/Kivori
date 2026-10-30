@@ -51,12 +51,18 @@ export function serializeJsonLd(data: JsonLd): string {
 }
 
 /** The desktop app; `softwareVersion` only when a release is known. No `offers`: the app is free. */
-export function softwareApplicationJsonLd(version?: string, origin?: URL): JsonLd {
+export function softwareApplicationJsonLd(
+  version?: string,
+  origin?: URL,
+  macAvailable = false,
+): JsonLd {
   const data: JsonLd = {
     '@context': 'https://schema.org',
     '@type': 'SoftwareApplication',
     name: SITE_NAME,
-    operatingSystem: 'Windows 10, Windows 11',
+    operatingSystem: macAvailable
+      ? 'Windows 10, Windows 11, macOS (Apple Silicon)'
+      : 'Windows 10, Windows 11',
     applicationCategory: 'UtilitiesApplication',
     url: absoluteUrl('/download', origin),
   };

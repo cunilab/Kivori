@@ -11,13 +11,18 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 use crate::desk::DeskRuntime;
+use crate::device::discovery::CandidateRotator;
 use crate::device::session::{Session, SessionConfig};
 use crate::device::transport::SerialLink;
 use crate::device::{ConnectionManager, ManagerEvent};
 use crate::input::freshness::Freshness;
 use crate::orchestrator::Orchestrator;
+use crate::platform::host_events::{HostEvent, HostPresenceTracker, PresenceAction};
 use crate::platform::{self, FakeInputSynth, FakeVolumeBackend, OsServices, VolumeBackend};
-use crate::runtime::device_task::{synchronize_session, RotaryPipeline};
+use crate::runtime::device_task::{
+    apply_presence_action, synchronize_session, ConnectionDeadlines, PresenceTargets,
+    RotaryPipeline,
+};
 
 /// Reuse the single embedded app context, avoiding duplicate macOS plist symbols.
 pub fn context() -> tauri::Context<tauri::Wry> {
@@ -30,6 +35,10 @@ mod desktop_scenarios;
 pub use desktop_scenarios::desktop_smoke;
 mod recovery_scenarios;
 pub use recovery_scenarios::recovery_smoke;
+mod presence_scenarios;
+pub use presence_scenarios::presence_smoke;
+mod endurance_scenarios;
+pub use endurance_scenarios::endurance_smoke;
 
 const MAX_LINE: usize = 400_000;
 const WIRE_CAPACITY: usize = 8192;
@@ -59,7 +68,11 @@ struct Response {
     frame: Option<Vec<u16>>,
     brightness: Option<u8>,
     reboot: bool,
+    state: String,
 }
+
+/// The runner's firmware companion states; anything else breaks the contract.
+const DEVICE_STATES: [&str; 6] = ["booting", "idle", "happy", "busy", "sleeping", "offline"];
 
 fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
@@ -89,6 +102,7 @@ fn read_response(reader: &mut impl BufRead) -> io::Result<Response> {
         || response
             .brightness
             .is_some_and(|step| !(1..=kivori_model::desk::BRIGHTNESS_STEPS).contains(&step))
+        || !DEVICE_STATES.contains(&response.state.as_str())
     {
         return Err(invalid("virtual response exceeds contract"));
     }
@@ -113,6 +127,8 @@ struct ProcessLink {
     read_remaining: usize,
     outbound: Vec<u8>,
     inbound: VecDeque<u8>,
+    /// The firmware companion state from the latest response.
+    state: Option<&'static str>,
 }
 
 impl ProcessLink {
@@ -170,6 +186,7 @@ impl ProcessLink {
             read_remaining: WIRE_CAPACITY,
             outbound: Vec::new(),
             inbound: VecDeque::new(),
+            state: None,
         })
     }
 
@@ -191,6 +208,9 @@ impl ProcessLink {
                 }
                 self.inbound.extend(response.wire);
                 frame = response.frame;
+                self.state = DEVICE_STATES
+                    .into_iter()
+                    .find(|state| *state == response.state);
             }
             Err(TryRecvError::Disconnected) => return Err(invalid("virtual child I/O closed")),
             Err(TryRecvError::Empty) => {}
@@ -267,8 +287,14 @@ pub struct Snapshot {
     pub generation: u32,
     pub mode: &'static str,
     pub volume: u8,
+    /// Fake output mute as read back; `None` when the backend cannot read it.
+    pub muted: Option<bool>,
     pub media_triggers: usize,
     pub detents: usize,
+    /// The firmware companion state the runner reported last (`None` before any response).
+    pub device_state: Option<&'static str>,
+    /// The simulated host presence: `active`, `locked` or `sleeping`.
+    pub presence: &'static str,
     pub frame: Option<Vec<u16>>,
     pub error: Option<String>,
 }
@@ -295,6 +321,15 @@ pub struct Sandbox {
     held: bool,
     release_by: Option<Duration>,
     snapshot: Snapshot,
+    presence: HostPresenceTracker,
+    /// The device process while the host has released it (asleep, console lost): it keeps running,
+    /// like a unit that stays powered over USB, but no session reads it.
+    parked: Option<ProcessLink>,
+    // Discovery bookkeeping production presence actions update; the sandbox has one fixed runner.
+    connected_port: Option<String>,
+    retry_at: Option<Instant>,
+    rotator: CandidateRotator,
+    deadlines: ConnectionDeadlines,
 }
 
 impl Sandbox {
@@ -362,11 +397,20 @@ impl Sandbox {
                 generation: session_generation,
                 mode: "normal",
                 volume: 50,
+                muted: None,
                 media_triggers: 0,
                 detents: 0,
+                device_state: None,
+                presence: "active",
                 frame: None,
                 error: None,
             },
+            presence: HostPresenceTracker::new(),
+            parked: None,
+            connected_port: None,
+            retry_at: None,
+            rotator: CandidateRotator::new(),
+            deadlines: ConnectionDeadlines::default(),
         })
     }
 
@@ -389,6 +433,7 @@ impl Sandbox {
             &mut self.desk,
         );
         self.link = None;
+        self.parked = None;
         self.edges.clear();
         self.held = false;
         self.release_by = None;
@@ -467,7 +512,8 @@ impl Sandbox {
 
     /// Synchronous native harness input; webview commands use the generation guard above.
     pub fn input(&mut self, control: &str) -> Result<(), String> {
-        if !self.snapshot.connected {
+        // A released device still has a knob: its edges reach firmware with no session to read them.
+        if !self.snapshot.connected && self.parked.is_none() {
             return Err("Virtual device is not connected".into());
         }
         if self.edges.len() + 5 > EDGE_CAPACITY {
@@ -524,8 +570,114 @@ impl Sandbox {
         Ok(())
     }
 
+    /// Feeds one host event through the production presence tracker and actions. Releasing keeps
+    /// the device process running (parked); rediscovery reattaches it, or boots a fresh one when
+    /// the parked device lost power.
+    pub fn host_event(&mut self, event: HostEvent) -> Result<(), String> {
+        for action in self.presence.on_event(event) {
+            match action {
+                // The sandbox has no companion director to pause.
+                PresenceAction::PauseSelfPlay(_) => {}
+                PresenceAction::ReleaseLink => {
+                    // A second release (console lost, then sleep) must keep the parked device, not
+                    // drop it and fake a power cut.
+                    if let Some(mut link) = self.link.take() {
+                        link.inbound.clear();
+                        self.parked = Some(link);
+                    }
+                    self.apply_presence(action);
+                    synchronize_session(
+                        &mut self.active_session,
+                        &self.session,
+                        &self.manager,
+                        &mut self.rotary,
+                        &mut self.desk,
+                    );
+                    self.held = false;
+                    self.release_by = None;
+                    self.snapshot.connected = false;
+                    self.snapshot.connection_state = "disconnected";
+                }
+                PresenceAction::RediscoverNow => {
+                    self.apply_presence(action);
+                    if self.presence.may_use_port() && self.link.is_none() {
+                        self.reattach()?;
+                    }
+                }
+                other => {
+                    if self.apply_presence(other) {
+                        self.end_link(Some("virtual presence write failed".into()));
+                    }
+                }
+            }
+        }
+        self.snapshot.presence = self.presence.presence().token();
+        Ok(())
+    }
+
+    fn apply_presence(&mut self, action: PresenceAction) -> bool {
+        apply_presence_action(
+            action,
+            &mut PresenceTargets {
+                session: &mut self.session,
+                manager: &mut self.manager,
+                orchestrator: &mut self.orchestrator,
+                link: &mut self.link,
+                connected_port: &mut self.connected_port,
+                retry_at: &mut self.retry_at,
+                rotator: &mut self.rotator,
+                deadlines: &mut self.deadlines,
+            },
+        )
+    }
+
+    fn reattach(&mut self) -> Result<(), String> {
+        let mut link = match self.parked.take() {
+            Some(link) => link,
+            None => ProcessLink::open(&self.executable).map_err(|error| error.to_string())?,
+        };
+        link.inbound.clear();
+        self.manager = ConnectionManager::new();
+        self.session
+            .open(&mut link, &mut self.manager)
+            .map_err(|_| "Virtual handshake could not start")?;
+        self.link = Some(link);
+        self.connection_started = Instant::now();
+        self.next_ping = Duration::ZERO;
+        self.next_capture = Duration::ZERO;
+        self.snapshot.generation = self.session.connection_generation();
+        self.snapshot.connection_state = "connecting";
+        Ok(())
+    }
+
+    /// Runs the released device with no session: its output goes nowhere, as with a closed port.
+    fn tick_parked(&mut self) -> io::Result<()> {
+        let now = self.started.elapsed();
+        let ms = u32::try_from(now.as_millis())
+            .map_err(|_| invalid("restart virtual device after clock limit"))?;
+        let capture = now >= self.next_capture;
+        if capture {
+            self.next_capture = now + Duration::from_millis(100);
+        }
+        let parked = self
+            .parked
+            .as_mut()
+            .ok_or_else(|| invalid("no parked device"))?;
+        if let Some(frame) = parked.exchange(ms, &mut self.edges, capture)? {
+            self.snapshot.frame = Some(frame);
+        }
+        parked.inbound.clear();
+        self.snapshot.device_state = parked.state;
+        Ok(())
+    }
+
     pub fn tick(&mut self) {
         if self.link.is_none() {
+            if self.parked.is_some() {
+                if let Err(error) = self.tick_parked() {
+                    self.end_link(Some(error.to_string()));
+                }
+            }
             return;
         }
         if self
@@ -538,6 +690,7 @@ impl Sandbox {
             self.end_link(Some(error.to_string()));
         }
         self.snapshot.volume = self.volume.read().unwrap_or(0);
+        self.snapshot.muted = self.volume.read_mute().ok();
         self.snapshot.media_triggers = self.synth.sent.lock().expect("fake synth").len();
     }
 
@@ -556,6 +709,7 @@ impl Sandbox {
         if let Some(frame) = link.exchange(ms, &mut self.edges, capture)? {
             self.snapshot.frame = Some(frame);
         }
+        self.snapshot.device_state = link.state;
         self.session.set_host_ms(ms);
         self.session.set_host_instant(Instant::now());
         self.session
@@ -687,6 +841,7 @@ mod tests {
             read_remaining: WIRE_CAPACITY,
             outbound: Vec::new(),
             inbound: VecDeque::new(),
+            state: None,
         };
         let mut edges = VecDeque::new();
         link.exchange(0, &mut edges, false).unwrap();
@@ -699,6 +854,7 @@ mod tests {
                 frame: None,
                 brightness: None,
                 reboot: false,
+                state: "idle".into(),
             }))
             .unwrap();
         link.exchange(105, &mut edges, false).unwrap();
@@ -731,6 +887,7 @@ mod tests {
             read_remaining: 7,
             outbound: Vec::new(),
             inbound: VecDeque::new(),
+            state: None,
         };
         let bytes: Vec<_> = (0..WIRE_CAPACITY).map(|n| (n % 251) as u8).collect();
         let mut sent = 0;
@@ -755,6 +912,7 @@ mod tests {
                 frame: None,
                 brightness: None,
                 reboot: false,
+                state: "idle".into(),
             }))
             .unwrap();
         link.exchange(1, &mut edges, false).unwrap();
@@ -776,6 +934,7 @@ mod tests {
                 frame: None,
                 brightness: None,
                 reboot: false,
+                state: "idle".into(),
             }))
             .unwrap();
         assert_eq!(
@@ -821,11 +980,17 @@ mod tests {
         for bytes in [
             vec![b'x'; MAX_LINE + 2],
             b"{}".to_vec(),
-            b"{\"wire\":[],\"frame\":[0],\"brightness\":null,\"reboot\":false}\n".to_vec(),
+            b"{\"wire\":[],\"frame\":[0],\"brightness\":null,\"reboot\":false,\"state\":\"idle\"}\n"
+                .to_vec(),
+            // Missing or unknown firmware state.
+            b"{\"wire\":[],\"frame\":null,\"brightness\":null,\"reboot\":false}\n".to_vec(),
+            b"{\"wire\":[],\"frame\":null,\"brightness\":null,\"reboot\":false,\"state\":\"asleep\"}\n"
+                .to_vec(),
         ] {
             assert!(read_response(&mut io::Cursor::new(bytes)).is_err());
         }
-        let good = b"{\"wire\":[],\"frame\":null,\"brightness\":null,\"reboot\":false}\n";
+        let good =
+            b"{\"wire\":[],\"frame\":null,\"brightness\":null,\"reboot\":false,\"state\":\"sleeping\"}\n";
         assert!(read_response(&mut io::Cursor::new(good)).is_ok());
     }
 }

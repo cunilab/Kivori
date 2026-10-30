@@ -22,6 +22,7 @@ firmware/pala/
   simulator/                   separate host Cargo workspace and executable
     src/                       raw inputs, runner, capture and process control
     src/input_scenarios.rs     deterministic raw-input cases through production Runtime
+    src/io_scenarios.rs        bounded FIFO, timed display and input-arrival stress checks
     src/input_scenarios/       fixed-seed replay and structured expected/actual results
     fixtures/                 committed frame goldens
     smoke-report.mjs           file-backed report and replay validation
@@ -235,3 +236,46 @@ Each product owns its replay recipes and golden fixture. A deliberate renderer c
 a reviewed fixture update after checking intended pixels and actions; the verification command
 does not accept or regenerate new goldens. CI retains reports even after smoke failure, while a
 job that fails before smoke starts may have no report. Physical and real-use acceptance stays open.
+
+## Interactive macOS pass (2026-10-30)
+
+Driven with synthetic clicks on the dev window at the M2.9 PR #127 head; complements, does not
+replace, the headless smoke (which also passed locally on macOS: 70 PASS lines, all 15 report stages,
+seeds 17/29 byte-identical). Observed: three right detents 50→56% and one left →54% with the
+firmware volume bar; Press once → Play/Pause (media triggers +1); Hold shows the PRESS/HOLD hint, and
+release toggles output mute with a confirmed check (firmware muted icon, fake OS muted), a second
+hold unmutes. Faults: `silent` → Unavailable with "virtual heartbeat timeout" and a cleared panel;
+`exit` → "virtual child closed its output"; `wrong-major` → "device protocol major v1 is unsupported
+(host supports v0)"; `unknown-product`/`unknown-board` → "virtual product or board identity is
+unknown"; each Reconnect started a fresh normal session (generation advanced to 9). Closing the
+window and SIGTERM to the owner both left no runner, simulator or Vite process. `fragmented` input
+was not exercised interactively (the run was stopped). The panel now shows the fake output mute,
+and disabled controls are visibly dimmed.
+
+## Host presence scenarios
+
+Added 2026-10-30 at the owner's request, after S5. The native example's `--presence-smoke` (stage
+`presence` in `just virtual-device-smoke`, markers `PASS PRESENCE`) feeds host events through the
+production `HostPresenceTracker` and `apply_presence_action`. Releasing the link keeps the runner
+process alive with no session reading it, like a unit that stays powered over USB; rediscovery
+reattaches it with a fresh handshake, or boots a new runner when the scenario cuts its power. The
+runner now reports the firmware companion `state` with each response, so Sleeping and Offline are
+asserted directly rather than inferred from pixels.
+
+Cases (real elapsed time): lock/unlock, sleep/wake with input made while asleep, console switch
+without a goodbye, USB power cut during sleep, and a stray wake. Expectations follow validation
+[Phase 7](./validation.md#phase-7-host-presence-m3-s2) 7.1–7.4, 7.6 and 7.7. Mutation checks: skipping
+the sleep goodbye or the lock override fails the stage. Not simulated: OS notification registration
+and delivery, the Windows suspend acknowledgement budget, real USB power and measured timings.
+
+## Endurance run
+
+`just virtual-device-endurance` (opt-in, about 7 minutes on an Apple Silicon Mac; not in CI) keeps
+one virtual session turning the knob right then left until both protocol sequence numbers have
+wrapped, observed through a feature-gated `Session::sequence_positions`, then requires every detent
+delivered, no sequence gap, malformed frame, device error, stale rejection or reconnect, volume back
+at 50 and a working press. The first attempt stopped at a fixed detent count and found only the
+device side had wrapped (the host sends about 0.6 frames per detent), so the run now continues until
+both wraps are seen. The 2026-10-30 run passed with 107,684 detents in 432 s. It exercises protocol
+and session longevity only; it earns no soak hours and does not cover OS sleep, USB or memory growth
+on the device.

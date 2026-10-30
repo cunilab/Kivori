@@ -82,14 +82,17 @@ export const kivori: Product = {
       group: 'Software',
       rows: [
         { label: 'Desktop app', value: 'Kivori Desktop' },
-        { label: 'Works with', value: 'Windows 10 and 11 · macOS coming later' },
+        {
+          label: 'Works with',
+          value: 'Windows 10 and 11 · Apple Silicon macOS beta in validation',
+        },
         { label: 'Privacy', value: 'Works offline, no account, no telemetry' },
       ],
     },
   ],
   compatibility: [
     { os: 'Windows', status: 'supported-beta' },
-    { os: 'macOS', status: 'later' },
+    { os: 'macOS (Apple Silicon)', status: 'beta-pending' },
     { os: 'Linux', status: 'not-planned' },
   ],
   faq: [
@@ -101,7 +104,7 @@ export const kivori: Product = {
     {
       question: 'Which computers does it work with?',
       answer:
-        'The beta is for Windows. macOS support comes after the beta. Linux is not planned until there is demand.',
+        'Windows 10 and 11. Native Apple Silicon Mac builds are being validated; downloads appear when a build is published. On Mac, app updates are installed manually and per-app volume is unavailable. Linux is not planned until there is demand.',
     },
     {
       question: 'How does it connect?',

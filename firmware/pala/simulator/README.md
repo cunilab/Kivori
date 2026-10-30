@@ -42,9 +42,10 @@ relevant tick. A live session may switch to `silent` or `exit`. These are proces
 not protocol messages, physical faults or production wire-schema additions.
 
 Each request except `exit` produces exactly one stdout JSON record with `wire`, optional 57600-pixel `frame`
-(row-major RGB565 integers), `brightness`, and `reboot`. Frames are composed by the production
-firmware renderer. Time advances only when requested; one request runs exactly one production
-runtime tick, so pending protocol input may need subsequent ticks to drain.
+(row-major RGB565 integers), `brightness`, `reboot` and the firmware companion `state`
+(`booting`, `idle`, `happy`, `busy`, `sleeping` or `offline`). Frames are composed by the production
+firmware renderer. The runner uses the production buffered renderer and `TxBuffered` over its pipe.
+Time advances only when requested; one request runs exactly one production runtime tick, so pending protocol input may need subsequent ticks to drain.
 
 Both directions have a 400000-byte record limit excluding newline. EOF exits cleanly; malformed,
 truncated, unknown-field, oversized or invalid requests exit nonzero with diagnostics on stderr.
@@ -117,3 +118,16 @@ separate CI requirements, explicitly listed in the report.
 Golden updates require checking the intended renderer/action behavior and reviewing changed hashes;
 no verification mode rewrites expected values. This is fixed-recipe regression coverage, not a
 fuzzer or evidence of physical appearance/timing. See [S5.6 evidence](../../../docs/validation.md#s56-repeatable-reports-ci-and-boundary-evidence).
+
+## Hardware I/O stress checks
+
+`--io-smoke` runs the buffered production runtime and transmit queue against bounded digital
+I/O models. The full launcher includes this as a separate report stage. The JSON pipe contract
+is unchanged; `silent` still discards replies and is distinct from an unread FIFO.
+
+The I/O scenarios model a 64-byte transmit FIFO, host servicing, and SPI payload wire time at
+the board profile's clock rate. Scheduled raw edges become available during display windows.
+Assertions cover event delivery during a frame, a stalled host followed by a fresh handshake,
+and failed display transfer recovery. These are modeled digital timing checks; composition CPU
+cost, command overhead, interrupt latency, analog bounce, physical USB and actual OS effects
+remain unmeasured. No paid simulator is required.

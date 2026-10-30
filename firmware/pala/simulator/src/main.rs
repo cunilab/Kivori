@@ -1,4 +1,5 @@
 mod input_scenarios;
+mod io_scenarios;
 
 use std::io::{self, BufRead, Write};
 
@@ -10,6 +11,7 @@ use kivori_firmware::{
     proto::DeviceIdentity,
     runtime::{Runtime, RuntimeConfig},
     sim::{CaptureDisplay, SimPipe, VirtualClock, PIPE_CAPACITY},
+    tx_buffer::TxBuffered,
 };
 use kivori_model::input::InputLevels;
 use kivori_protocol::FirmwareVersion;
@@ -55,6 +57,9 @@ struct Response {
     frame: Option<Vec<u16>>,
     brightness: Option<u8>,
     reboot: bool,
+    /// The firmware companion state after this tick, so harnesses can tell Sleeping from Offline
+    /// without inferring it from pixels. Development-only; not a wire-schema field.
+    state: &'static str,
 }
 
 #[derive(Default)]
@@ -92,7 +97,7 @@ impl InputSource for BufferedInput {
 struct Simulator {
     runtime: Runtime<'static>,
     clock: VirtualClock,
-    pipe: SimPipe,
+    pipe: TxBuffered<SimPipe>,
     display: Box<CaptureDisplay>,
     input: BufferedInput,
     now: u32,
@@ -102,7 +107,7 @@ struct Simulator {
 impl Simulator {
     fn new() -> Self {
         Self {
-            runtime: Runtime::new(
+            runtime: Runtime::with_frame_buffer(
                 DeviceIdentity {
                     // Deliberately recognizable, deterministic virtual identity; never a chip identity.
                     device_id: *b"VIRTUAL-PIP-0001",
@@ -110,9 +115,12 @@ impl Simulator {
                     capabilities: CAPS,
                 },
                 RuntimeConfig::default(),
+                Box::leak(Box::new(
+                    [kivori_model::Rgb565::from_raw(0); kivori_firmware::render::FRAME_PIXELS],
+                )),
             ),
             clock: VirtualClock::new(),
-            pipe: SimPipe::new(),
+            pipe: TxBuffered::new(SimPipe::new()),
             display: Box::new(CaptureDisplay::new()),
             input: BufferedInput::default(),
             now: 0,
@@ -141,6 +149,7 @@ impl Simulator {
             previous = edge.at_ms;
         }
         self.pipe
+            .inner_mut()
             .host_send(&request.wire)
             .map_err(|()| "pending firmware input exceeds pipe capacity")?;
         let mut identity = ProductIdentity::BUILD;
@@ -164,7 +173,7 @@ impl Simulator {
             &blob,
         );
         self.rebooted = tick.reboot;
-        let mut wire = self.pipe.host_recv().to_vec();
+        let mut wire = self.pipe.inner_mut().host_recv().to_vec();
         match request.fault {
             Fault::Silent => wire.clear(),
             Fault::WrongMajor => {
@@ -179,7 +188,20 @@ impl Simulator {
                 .then(|| self.display.frame().iter().map(|p| p.raw()).collect()),
             brightness: self.display.brightness,
             reboot: tick.reboot,
+            state: state_token(self.runtime.state()),
         })
+    }
+}
+
+const fn state_token(state: kivori_model::CompanionState) -> &'static str {
+    use kivori_model::CompanionState as S;
+    match state {
+        S::Booting => "booting",
+        S::Idle => "idle",
+        S::Happy => "happy",
+        S::Busy => "busy",
+        S::Sleeping => "sleeping",
+        S::Offline => "offline",
     }
 }
 
@@ -264,8 +286,11 @@ fn main() {
     let result = match std::env::args().skip(1).collect::<Vec<_>>().as_slice() {
         [] => run(&mut io::stdin().lock(), &mut io::stdout().lock()),
         [flag] if flag == "--input-smoke" => input_scenarios::run(),
+        [flag] if flag == "--io-smoke" => io_scenarios::run(),
         [flag, seed] if flag == "--replay" => input_scenarios::replay(seed),
-        _ => Err("usage: kivori-pip-simulator [--input-smoke | --replay <17|29>]".into()),
+        _ => Err(
+            "usage: kivori-pip-simulator [--input-smoke | --io-smoke | --replay <17|29>]".into(),
+        ),
     };
     if let Err(error) = result {
         eprintln!("Pip simulator: {error}");
@@ -718,7 +743,8 @@ mod tests {
                 wire: vec![255; PIPE_CAPACITY],
                 frame: Some(vec![65535; 240 * 240]),
                 brightness: Some(5),
-                reboot: false
+                reboot: false,
+                state: "offline",
             })
             .unwrap()
             .len()

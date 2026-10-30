@@ -27,8 +27,8 @@ use crate::ports::{Clock, InputSource};
 
 /// Edge snapshots buffered between two drains. One detent is four edges; 128 covers a fast spin
 /// plus switch bounce across the longest render pass. On overflow the OLDEST edge is dropped, so
-/// the latest edges (a switch release) keep their timing; the decoder sees a jump it counts as an
-/// invalid transition, which loses that detent but never invents one.
+/// the latest edges (a switch release) keep their timing. Runtime observes the loss counter and
+/// suppresses rotary decoding for the affected drain instead of joining phases across a gap.
 const EDGE_QUEUE: usize = 128;
 
 type Pins = (

@@ -646,6 +646,27 @@ mod tests {
     }
 
     #[test]
+    fn mute_with_coalesced_volume_change_is_not_claimed_as_an_own_echo() {
+        let at = Instant::now();
+        let write = Some((OwnWrite::Mute(false), at));
+        assert_eq!(
+            classify((20, Some(false)), Some((0, Some(true))), write, at),
+            ChangeOrigin::External,
+            "unmuting can restore a nonzero device volume; the other field changed"
+        );
+        assert_eq!(
+            classify((10, Some(false)), Some((20, Some(true))), write, at),
+            ChangeOrigin::External,
+            "a queued volume write may coalesce with the mute notification"
+        );
+        assert_eq!(
+            classify((10, Some(false)), Some((10, Some(true))), write, at),
+            ChangeOrigin::Kivori,
+            "a settled unchanged volume permits a mute-only echo"
+        );
+    }
+
+    #[test]
     fn echo_is_kivori_only_for_the_written_field_within_the_window() {
         let t0 = Instant::now();
         let soon = t0 + Duration::from_millis(100);

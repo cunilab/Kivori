@@ -8,6 +8,8 @@ import { detectOs, type DetectedOs } from '@/lib/os';
 interface OsDownloadButtonProps {
   version: string;
   beta: boolean;
+  macAvailable?: boolean;
+  windowsAvailable?: boolean;
 }
 
 interface NavigatorWithHints extends Navigator {
@@ -16,15 +18,22 @@ interface NavigatorWithHints extends Navigator {
 
 /**
  * The big download button. It links straight to the installer route so the browser starts the download
- * with no extra page. Only Windows installers exist, so every visitor gets the Windows file; a Mac
- * visitor is told macOS is coming later.
+ * with no extra page. Mac visitors are never sent a Windows installer.
  */
-export function OsDownloadButton({ version, beta }: OsDownloadButtonProps): ReactElement {
-  const [os, setOs] = useState<DetectedOs>('windows');
+export function OsDownloadButton({
+  version,
+  beta,
+  macAvailable = false,
+  windowsAvailable = true,
+}: OsDownloadButtonProps): ReactElement {
+  const [os, setOs] = useState<DetectedOs | null>(null);
   useEffect(() => {
     const nav = navigator as NavigatorWithHints;
     setOs(detectOs(nav.userAgentData?.platform, nav.userAgent));
   }, []);
+
+  const available = os === 'macos' ? macAvailable : os === 'windows' && windowsAvailable;
+  const label = os === 'macos' ? 'macOS' : 'Windows';
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -32,18 +41,25 @@ export function OsDownloadButton({ version, beta }: OsDownloadButtonProps): Reac
         size="lg"
         className="keycap h-14 px-9 text-lg"
         nativeButton={false}
-        render={<a href="/download/windows/latest" />}
+        render={<a href={available ? `/download/${os}/latest` : '#platforms'} />}
       >
         <DownloadIcon className="size-5" aria-hidden="true" />
-        Download for Windows
+        {available ? `Download for ${label}` : 'Choose your platform'}
       </Button>
       <p className="text-sm text-muted-foreground">
         Version {version}
-        {beta ? ' · Beta' : ''} &middot; for Windows 10 and 11
+        {beta ? ' · Beta' : ''} &middot;{' '}
+        {os === 'macos'
+          ? 'for Apple Silicon Macs'
+          : os === 'windows'
+            ? 'for Windows 10 and 11'
+            : 'Windows and Apple Silicon macOS'}
       </p>
       {os === 'macos' ? (
         <p className="text-sm text-muted-foreground">
-          Looks like you are on a Mac. macOS is coming later.
+          {macAvailable
+            ? 'Apple Silicon build. Intel Macs are not included.'
+            : 'Mac build not published yet.'}
         </p>
       ) : null}
       <a href="#platforms" className="text-sm font-medium text-primary hover:underline">

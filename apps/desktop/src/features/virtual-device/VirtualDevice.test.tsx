@@ -32,6 +32,7 @@ describe('virtual device', () => {
       connected: true,
       generation: 1,
       volume: 42,
+      muted: true,
       mediaTriggers: 3,
       frame,
       error: null,
@@ -41,6 +42,7 @@ describe('virtual device', () => {
     });
     expect(screen.getByRole('status')).toHaveTextContent('Connected');
     expect(screen.getByText('Volume: 42%')).toBeInTheDocument();
+    expect(screen.getByText('Output mute: muted')).toBeInTheDocument();
     expect(screen.getByText('Media triggers: 3')).toBeInTheDocument();
     expect(Array.from((putImageData.mock.calls[0][0] as ImageData).data.slice(0, 4))).toEqual([
       255, 0, 0, 255,

@@ -150,7 +150,7 @@ unsafe extern "C" fn on_devices(
 pub struct MacMicBackend {
     commands: Sender<Command>,
     changes: Mutex<Receiver<MicChange>>,
-    /// `Err(reason)` while there is no capture device.
+    /// `Err(reason)` while capture discovery fails or there is no capture device.
     available: Arc<Mutex<Result<(), String>>>,
     thread: Option<JoinHandle<()>>,
 }
@@ -280,30 +280,46 @@ fn all_device_ids() -> Result<Vec<AudioObjectId>, OsStatus> {
     object_ids(SYSTEM_OBJECT, &DEVICES)
 }
 
-fn has_streams(device: AudioObjectId, streams: &PropertyAddress) -> bool {
+fn has_streams(device: AudioObjectId, streams: &PropertyAddress) -> Result<bool, OsStatus> {
     let mut size = 0u32;
     // SAFETY: valid address and out pointer.
     let status =
         unsafe { AudioObjectGetPropertyDataSize(device, streams, 0, std::ptr::null(), &mut size) };
-    status == 0 && size > 0
+    if status == 0 {
+        Ok(size > 0)
+    } else {
+        Err(status)
+    }
 }
 
-fn has_input(device: AudioObjectId) -> bool {
+fn has_input(device: AudioObjectId) -> Result<bool, OsStatus> {
     has_streams(device, &INPUT_STREAMS)
+}
+
+fn capture_devices_with(
+    ids: Vec<AudioObjectId>,
+    mut include: impl FnMut(AudioObjectId) -> Result<bool, OsStatus>,
+) -> Result<Vec<AudioObjectId>, BackendError> {
+    let mut captures = Vec::new();
+    for id in ids {
+        if include(id).map_err(|status| {
+            BackendError::Os(format!("querying audio device failed (OSStatus {status})"))
+        })? {
+            captures.push(id);
+        }
+    }
+    Ok(captures)
 }
 
 /// Every active capture device: it has an input stream and is neither aggregate nor hidden.
 fn capture_devices() -> Result<Vec<AudioObjectId>, BackendError> {
     let ids = all_device_ids()
         .map_err(|s| BackendError::Os(format!("listing audio devices failed (OSStatus {s})")))?;
-    Ok(ids
-        .into_iter()
-        .filter(|&id| {
-            has_input(id)
-                && get::<u32>(id, &TRANSPORT) != Ok(TRANSPORT_AGGREGATE)
-                && get::<u32>(id, &HIDDEN) != Ok(1)
-        })
-        .collect())
+    capture_devices_with(ids, |id| {
+        Ok(has_input(id)?
+            && get::<u32>(id, &TRANSPORT) != Ok(TRANSPORT_AGGREGATE)
+            && get::<u32>(id, &HIDDEN) != Ok(1))
+    })
 }
 
 /// The device's user-visible name (user data: shown, never logged).
@@ -342,30 +358,46 @@ fn device_name(device: AudioObjectId) -> String {
     }
 }
 
-fn mute_settable(device: AudioObjectId) -> bool {
+fn mute_settable(device: AudioObjectId) -> Result<bool, OsStatus> {
     let mut settable = 0u8;
     // SAFETY: `device` came from the HAL; both pointers are valid.
     let has = unsafe { AudioObjectHasProperty(device, &INPUT_MUTE) } != 0;
-    has && unsafe { AudioObjectIsPropertySettable(device, &INPUT_MUTE, &mut settable) } == 0
-        && settable != 0
+    if !has {
+        return Ok(false);
+    }
+    let status = unsafe { AudioObjectIsPropertySettable(device, &INPUT_MUTE, &mut settable) };
+    if status == 0 {
+        Ok(settable != 0)
+    } else {
+        Err(status)
+    }
 }
 
-/// The device's mute as it reads right now.
-fn read_mute(device: AudioObjectId) -> MicMute {
-    if !mute_settable(device) {
-        return MicMute::Unsettable;
+fn read_mute_with(
+    settable: Result<bool, OsStatus>,
+    read: impl FnOnce() -> Result<u32, OsStatus>,
+) -> MicMute {
+    match settable {
+        Ok(false) => return MicMute::Unsettable,
+        Err(_) => return MicMute::Unreadable,
+        Ok(true) => {}
     }
-    match get::<u32>(device, &INPUT_MUTE) {
+    match read() {
         Ok(0) => MicMute::Live,
         Ok(_) => MicMute::Muted,
         Err(_) => MicMute::Unreadable,
     }
 }
 
+/// The device's mute as it reads right now.
+fn read_mute(device: AudioObjectId) -> MicMute {
+    read_mute_with(mute_settable(device), || get::<u32>(device, &INPUT_MUTE))
+}
+
 /// Writes the device's mute, then reads it back. A failed write is left to the read-back to
 /// report (it then still reads live), so the result is always what the OS says.
 fn write_mute(device: AudioObjectId, muted: bool) -> MicMute {
-    if mute_settable(device) {
+    if mute_settable(device) == Ok(true) {
         let _ = put(device, &INPUT_MUTE, u32::from(muted));
     }
     read_mute(device)
@@ -377,6 +409,20 @@ fn write_mute(device: AudioObjectId, muted: bool) -> MicMute {
 struct Capture {
     any: bool,
     devices: Vec<AudioObjectId>,
+}
+
+fn expand_capture_device(
+    device: AudioObjectId,
+    transport: Result<u32, OsStatus>,
+    sub_devices: impl FnOnce() -> Result<Vec<AudioObjectId>, OsStatus>,
+) -> Option<Vec<AudioObjectId>> {
+    let mut devices = if transport.ok()? == TRANSPORT_AGGREGATE {
+        sub_devices().ok()?
+    } else {
+        Vec::new()
+    };
+    devices.push(device);
+    Some(devices)
 }
 
 fn capture_scan() -> Option<Capture> {
@@ -394,14 +440,11 @@ fn capture_scan() -> Option<Capture> {
         }
         capture.any = true;
         for device in object_ids(process, &PROCESS_INPUT_DEVICES).ok()? {
-            // A process on an aggregate device records from its sub-devices.
-            match object_ids(device, &AGGREGATE_SUB_DEVICES) {
-                Ok(subs) if get::<u32>(device, &TRANSPORT) == Ok(TRANSPORT_AGGREGATE) => {
-                    capture.devices.extend(subs);
-                }
-                _ => {}
-            }
-            capture.devices.push(device);
+            capture.devices.extend(expand_capture_device(
+                device,
+                get::<u32>(device, &TRANSPORT),
+                || object_ids(device, &AGGREGATE_SUB_DEVICES),
+            )?);
         }
     }
     Some(capture)
@@ -422,10 +465,10 @@ fn capturing_of(ids: &[AudioObjectId]) -> Vec<Option<bool>> {
         None => ids
             .iter()
             .map(|&id| {
-                if has_streams(id, &OUTPUT_STREAMS) {
-                    None
-                } else {
+                if has_streams(id, &OUTPUT_STREAMS) == Ok(false) {
                     running_somewhere(id)
+                } else {
+                    None
                 }
             })
             .collect(),
@@ -450,7 +493,10 @@ fn in_use_of(ids: &[AudioObjectId]) -> Option<bool> {
     }
     // No process objects: only an input-only device's "running somewhere" means capture.
     let mut any_known = false;
-    for &id in ids.iter().filter(|&&id| !has_streams(id, &OUTPUT_STREAMS)) {
+    for &id in ids
+        .iter()
+        .filter(|&&id| has_streams(id, &OUTPUT_STREAMS) == Ok(false))
+    {
         match running_somewhere(id) {
             Some(false) => any_known = true,
             Some(true) => return Some(true),
@@ -461,11 +507,32 @@ fn in_use_of(ids: &[AudioObjectId]) -> Option<bool> {
     any_known.then_some(false)
 }
 
+fn reconcile_listeners(
+    listening: &mut Vec<AudioObjectId>,
+    current: &[AudioObjectId],
+    mut change: impl FnMut(AudioObjectId, bool) -> bool,
+) {
+    listening.retain(|&id| {
+        if current.contains(&id) {
+            return true;
+        }
+        change(id, false);
+        false
+    });
+    for &id in current {
+        if !listening.contains(&id) && change(id, true) {
+            listening.push(id);
+        }
+    }
+}
+
 /// State owned by the `kivori-mic` thread.
 struct Mic {
     token: usize,
-    /// Capture devices that carry a mute listener.
+    /// Capture devices that carry a successfully registered mute listener.
     listening: Vec<AudioObjectId>,
+    known: Vec<AudioObjectId>,
+    system_listening: bool,
     /// Mic mute is on: a device that arrives is muted too.
     hold_muted: bool,
     /// Last device state sent on `changes`; notifications that do not change it are dropped.
@@ -479,51 +546,55 @@ impl Mic {
         self.token as *mut c_void
     }
 
-    fn listen(&self, device: AudioObjectId, add: bool) {
+    fn listen(token: usize, device: AudioObjectId, add: bool) -> bool {
         // SAFETY: valid address and an `extern "C"` proc with the HAL's signature; the client
         // data is an opaque token, never dereferenced. A device that vanished just errors.
-        let _ = unsafe {
+        let status = unsafe {
             if add {
                 AudioObjectAddPropertyListener(
                     device,
                     &INPUT_MUTE,
                     on_device_property,
-                    self.client_data(),
+                    token as *mut c_void,
                 )
             } else {
                 AudioObjectRemovePropertyListener(
                     device,
                     &INPUT_MUTE,
                     on_device_property,
-                    self.client_data(),
+                    token as *mut c_void,
                 )
             }
         };
+        status == 0
     }
 
     /// Aligns the listeners with the current capture devices, muting any that arrived while mic
     /// mute is on, and returns the current ids.
     fn rescan(&mut self) -> Result<Vec<AudioObjectId>, BackendError> {
-        let current = capture_devices()?;
-        let gone: Vec<_> = self
-            .listening
-            .iter()
-            .copied()
-            .filter(|id| !current.contains(id))
-            .collect();
-        for id in gone {
-            self.listen(id, false);
+        if !self.system_listening {
+            // SAFETY: the system object exists and client data is an opaque, registered token.
+            self.system_listening = unsafe {
+                AudioObjectAddPropertyListener(
+                    SYSTEM_OBJECT,
+                    &DEVICES,
+                    on_devices,
+                    self.client_data(),
+                )
+            } == 0;
         }
+        let current = capture_devices()?;
+        let token = self.token;
+        reconcile_listeners(&mut self.listening, &current, |id, add| {
+            Self::listen(token, id, add)
+        });
         for &id in &current {
-            if !self.listening.contains(&id) {
-                self.listen(id, true);
-                if self.hold_muted {
-                    let _ = write_mute(id, true);
-                    self.last_write = Some(Instant::now());
-                }
+            if !self.known.contains(&id) && self.hold_muted {
+                let _ = write_mute(id, true);
+                self.last_write = Some(Instant::now());
             }
         }
-        self.listening = current.clone();
+        self.known = current.clone();
         Ok(current)
     }
 
@@ -557,13 +628,26 @@ impl Mic {
         Ok(devices)
     }
 
-    fn publish(&mut self, origin: ChangeOrigin) {
-        let Ok(ids) = self.rescan() else {
-            return;
-        };
-        let devices = snapshot(&ids);
+    fn publish(&mut self, origin: ChangeOrigin) -> bool {
+        let result = self.devices();
+        self.publish_observed(result, origin)
+    }
+
+    fn publish_observed(
+        &mut self,
+        result: Result<Vec<MicDevice>, BackendError>,
+        origin: ChangeOrigin,
+    ) -> bool {
+        let available = result.as_ref().is_ok_and(|devices| !devices.is_empty());
+        let devices = result.unwrap_or_else(|_| {
+            vec![MicDevice {
+                name: "Unverified microphone coverage".to_string(),
+                mute: MicMute::Unreadable,
+                capturing: None,
+            }]
+        });
         if self.reported.as_ref() == Some(&devices) {
-            return;
+            return available;
         }
         let origin = match origin {
             ChangeOrigin::External
@@ -577,6 +661,7 @@ impl Mic {
         };
         self.reported = Some(devices.clone());
         let _ = self.changes.send(MicChange { devices, origin });
+        available
     }
 }
 
@@ -593,20 +678,18 @@ fn mic_thread(
     let mut mic = Mic {
         token,
         listening: Vec::new(),
+        known: Vec::new(),
+        system_listening: false,
         hold_muted: false,
         reported: None,
         last_write: None,
         changes,
     };
-    // SAFETY: as in `Mic::listen`; the system object always exists.
-    let _ = unsafe {
-        AudioObjectAddPropertyListener(SYSTEM_OBJECT, &DEVICES, on_devices, mic.client_data())
-    };
     let set_available = |has_devices: bool| {
         *available.lock().unwrap_or_else(|e| e.into_inner()) = if has_devices {
             Ok(())
         } else {
-            Err("no microphone".to_string())
+            Err("microphone unavailable".to_string())
         };
     };
     set_available(mic.rescan().is_ok_and(|ids| !ids.is_empty()));
@@ -625,10 +708,9 @@ fn mic_thread(
             Ok(Command::InUse(reply)) => {
                 let _ = reply.send(mic.rescan().ok().and_then(|ids| in_use_of(&ids)));
             }
-            Ok(Command::Changed) => mic.publish(ChangeOrigin::External),
+            Ok(Command::Changed) => set_available(mic.publish(ChangeOrigin::External)),
             Ok(Command::DevicesChanged) => {
-                mic.publish(ChangeOrigin::EndpointRebind);
-                set_available(!mic.listening.is_empty());
+                set_available(mic.publish(ChangeOrigin::EndpointRebind));
             }
             Ok(Command::Shutdown) | Err(_) => break,
         }
@@ -636,12 +718,19 @@ fn mic_thread(
 
     // ORDER IS LOAD-BEARING: remove every HAL listener, THEN retire the token (see `audio.rs`).
     for id in std::mem::take(&mut mic.listening) {
-        mic.listen(id, false);
+        Mic::listen(token, id, false);
     }
-    // SAFETY: removes the listener added above with the same proc and client data.
-    let _ = unsafe {
-        AudioObjectRemovePropertyListener(SYSTEM_OBJECT, &DEVICES, on_devices, mic.client_data())
-    };
+    if mic.system_listening {
+        // SAFETY: removes the listener registered by rescan with the same proc and client data.
+        let _ = unsafe {
+            AudioObjectRemovePropertyListener(
+                SYSTEM_OBJECT,
+                &DEVICES,
+                on_devices,
+                mic.client_data(),
+            )
+        };
+    }
     LISTENERS
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -651,6 +740,128 @@ fn mic_thread(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn discovery_failure_never_hides_a_possible_capture_device() {
+        let result =
+            capture_devices_with(vec![1, 2], |id| if id == 1 { Ok(true) } else { Err(-1) });
+        assert!(
+            result.is_err(),
+            "a failed device query cannot be omitted from muted coverage"
+        );
+        assert_eq!(
+            capture_devices_with(vec![1, 2], |id| Ok(id == 1)),
+            Ok(vec![1])
+        );
+    }
+
+    #[test]
+    fn failed_mute_capability_query_is_unknown_not_unsettable() {
+        let unknown = read_mute_with(Err(-1), || {
+            panic!("unreadable capability must not read mute")
+        });
+        let devices = vec![
+            MicDevice {
+                name: "healthy".into(),
+                mute: MicMute::Muted,
+                capturing: Some(false),
+            },
+            MicDevice {
+                name: "unknown".into(),
+                mute: unknown,
+                capturing: Some(false),
+            },
+        ];
+        assert_eq!(crate::platform::mics_muted(&devices), None);
+        assert_eq!(
+            read_mute_with(Ok(false), || panic!("no mute property")),
+            MicMute::Unsettable
+        );
+        assert_eq!(read_mute_with(Ok(true), || Ok(1)), MicMute::Muted);
+        assert_eq!(read_mute_with(Ok(true), || Ok(0)), MicMute::Live);
+        assert_eq!(read_mute_with(Ok(true), || Err(-1)), MicMute::Unreadable);
+    }
+
+    #[test]
+    fn failed_notification_scan_invalidates_previous_muted_snapshot() {
+        let (tx, rx) = mpsc::channel();
+        let mut mic = Mic {
+            token: 0,
+            listening: vec![],
+            known: vec![],
+            system_listening: false,
+            hold_muted: false,
+            reported: None,
+            last_write: None,
+            changes: tx,
+        };
+        let healthy = vec![MicDevice {
+            name: "healthy".into(),
+            mute: MicMute::Muted,
+            capturing: Some(false),
+        }];
+        assert!(mic.publish_observed(Ok(healthy.clone()), ChangeOrigin::External));
+        assert_eq!(
+            crate::platform::mics_muted(&rx.try_recv().unwrap().devices),
+            Some(true)
+        );
+        assert!(!mic.publish_observed(
+            Err(BackendError::Os("query failed".into())),
+            ChangeOrigin::EndpointRebind
+        ));
+        assert_eq!(
+            crate::platform::mics_muted(&rx.try_recv().expect("publish lost certainty").devices),
+            None
+        );
+        assert!(mic.publish_observed(Ok(healthy), ChangeOrigin::EndpointRebind));
+        assert_eq!(
+            crate::platform::mics_muted(&rx.try_recv().unwrap().devices),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn unknown_aggregate_membership_never_marks_physical_devices_idle() {
+        assert!(expand_capture_device(1, Ok(TRANSPORT_AGGREGATE), || Err(-1)).is_none());
+        assert!(expand_capture_device(1, Err(-1), || panic!("unknown transport")).is_none());
+        assert_eq!(
+            expand_capture_device(1, Ok(TRANSPORT_AGGREGATE), || Ok(vec![2, 3])),
+            Some(vec![2, 3, 1])
+        );
+        assert_eq!(
+            expand_capture_device(1, Ok(0), || panic!(
+                "ordinary device has no aggregate members"
+            )),
+            Some(vec![1])
+        );
+    }
+
+    #[test]
+    fn failed_listener_registration_retries_without_hiding_devices() {
+        let mut listening = vec![1];
+        let current = vec![1, 2];
+        let mut calls = Vec::new();
+        reconcile_listeners(&mut listening, &current, |id, add| {
+            calls.push((id, add));
+            false
+        });
+        assert_eq!(listening, vec![1]);
+        assert_eq!(calls, vec![(2, true)]);
+        calls.clear();
+        reconcile_listeners(&mut listening, &current, |id, add| {
+            calls.push((id, add));
+            true
+        });
+        assert_eq!(listening, current);
+        assert_eq!(calls, vec![(2, true)]);
+        calls.clear();
+        reconcile_listeners(&mut listening, &[2], |id, add| {
+            calls.push((id, add));
+            true
+        });
+        assert_eq!(listening, vec![2]);
+        assert_eq!(calls, vec![(1, false)]);
+    }
 
     #[test]
     fn selectors_are_big_endian_ascii() {

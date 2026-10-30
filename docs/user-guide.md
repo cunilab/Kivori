@@ -1,8 +1,7 @@
 # Kivori user guide
 
 A short guide for beta customers. Kivori Pip (model KV-P1) is a desk buddy with a knob, three
-buttons and a small screen. It controls your computer and shows what is going on. It is written for Windows; the few
-macOS differences are called out.
+buttons and a small screen. It controls your computer and shows what is going on. Windows and Apple Silicon macOS builds share the same controls; platform differences are called out.
 
 ## What's in the box
 
@@ -20,7 +19,10 @@ macOS differences are called out.
    info**, then **Run anyway**.
 3. Finish the installer and open Kivori.
 
-**macOS:** open the `.dmg` and drag Kivori to Applications.
+**macOS (Apple Silicon):** open the `.dmg`, drag Kivori to Applications, eject the disk image, then
+open the installed app. Locally built bundles are not notarized; public distribution readiness is
+tracked in [macOS support](./macos.md). Keep Kivori in Applications so its Accessibility permission
+belongs to the installed copy. Install a newer `.dmg` manually to update the app.
 
 ## First run and setup
 
@@ -35,7 +37,7 @@ Kivori walks you through a short setup. You can skip any step, and "Skip setup" 
    actions in Controls. This step does not automatically tick or verify the hardware; continue
    when you are ready.
 5. **Make it yours.** Pick the starting screen, how lively the buddy is, and whether Kivori starts
-   with Windows.
+   at login.
 
 You can repeat setup any time: Device page, **Run setup again**.
 

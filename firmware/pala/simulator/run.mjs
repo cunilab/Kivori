@@ -9,8 +9,8 @@ import { addReplay, createReport, REPLAY_SEEDS, runRecorded, sha256 } from './sm
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const mode = process.argv[2];
-if (process.argv.length > 3 || (mode !== undefined && mode !== '--smoke'))
-  throw new Error('usage: run.mjs [--smoke]');
+if (process.argv.length > 3 || ![undefined, '--smoke', '--endurance'].includes(mode))
+  throw new Error('usage: run.mjs [--smoke | --endurance]');
 const env = { ...process.env, CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS || '2' };
 delete env.RUSTFLAGS;
 delete env.CARGO_ENCODED_RUSTFLAGS;
@@ -27,11 +27,13 @@ const expectedStages = [
   'build-desktop',
   'runner-tests',
   'input',
+  'io',
   'bridge-tests',
   'vertical-slice',
   'connections',
   'desktop',
   'recovery',
+  'presence',
   ...REPLAY_SEEDS.flatMap((seed) => [`replay-${seed}-first`, `replay-${seed}-second`]),
 ];
 const report =
@@ -204,6 +206,15 @@ try {
         expectedMarkers: { prefix: 'PASS S5.3 ', count: 32 },
       },
     });
+    await run(runner, ['--io-smoke'], {
+      stage: {
+        id: 'io',
+        clockMode: 'injected-firmware',
+        layers: ['buffered firmware Runtime', 'production transmit queue'],
+        simulatedLayers: ['64-byte FIFO', 'SPI wire time', 'scheduled input', 'display capture'],
+        expectedMarkers: { prefix: 'PASS IO ', count: 4 },
+      },
+    });
     await run(
       'cargo',
       [
@@ -254,6 +265,13 @@ try {
         9,
         ['labelled policy/admission and virtual-session cases'],
       ],
+      [
+        'presence',
+        ['--presence-smoke'],
+        'PASS PRESENCE ',
+        5,
+        ['production host-presence tracker/actions', 'desktop session', 'firmware Runtime'],
+      ],
     ]) {
       await run(app, [runner, ...args], {
         stage: {
@@ -288,6 +306,9 @@ try {
       console.log(`Replay seed ${seed}: four cases passed; repeated JSON is byte-identical.`);
     }
     console.log(`Firmware pixel artifact: ${frame}`);
+  } else if (mode === '--endurance') {
+    // Opt-in, minutes long: one session past both u16 sequence wraps. Earns no soak hours.
+    await run(app, [runner, '--endurance-smoke']);
   } else {
     if (process.platform === 'darwin') {
       // A local .app gives macOS a distinct inspectable development window; no installation/signing.

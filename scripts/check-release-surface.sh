@@ -49,7 +49,7 @@ present() {
 }
 
 DESKTOP_DEV_SURFACE=(render_preview_frame mirror_state open_preview_stream close_preview_stream
-  ack_preview_frame debug_payload_hex KIVORI-PROVISION virtual_snapshot virtual_input virtual_connection new_simulated KIVORI-VIRTUAL-DEVICE "PASS S5.4" "PASS S5.5")
+  ack_preview_frame debug_payload_hex KIVORI-PROVISION virtual_snapshot virtual_input virtual_connection new_simulated KIVORI-VIRTUAL-DEVICE "PASS S5.4" "PASS S5.5" "PASS PRESENCE" "PASS ENDURANCE")
 # The host-sim adapters are development-only surface.
 FIRMWARE_SIM_SURFACE=(SimPipe CaptureDisplay VirtualClock)
 # Raw-payload tracing is DEVELOPMENT-ONLY surface (T102): the marker and the dump helper must not exist in
@@ -102,7 +102,8 @@ present "the provision example" "target/debug/examples/provision" KIVORI-PROVISI
 # The virtual connection exists only in its explicitly enabled development executable.
 cargo build -q -p kivori-desktop --features virtual-device --example virtual_device
 present "the virtual device example" "target/debug/examples/virtual_device" \
-  virtual_snapshot virtual_input virtual_connection new_simulated KIVORI-VIRTUAL-DEVICE "PASS S5.4" "PASS S5.5"
+  virtual_snapshot virtual_input virtual_connection new_simulated KIVORI-VIRTUAL-DEVICE "PASS S5.4" "PASS S5.5" "PASS PRESENCE" \
+  "PASS ENDURANCE"
 
 echo "[3/6] firmware, production features (host-sim OFF, riscv target)…"
 (cd firmware/pala && cargo build -q --lib)

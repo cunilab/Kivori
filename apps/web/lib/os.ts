@@ -2,7 +2,7 @@ export type DetectedOs = 'windows' | 'macos';
 
 /**
  * Picks the OS to show from `navigator.userAgentData?.platform` (preferred) or the user agent.
- * Only Windows installers exist, so anything that is not recognisably a Mac maps to Windows.
+ * Installer availability is checked separately, so anything that is not recognisably a Mac maps to Windows.
  */
 export function detectOs(platform: string | undefined, userAgent: string | undefined): DetectedOs {
   const hint = `${platform ?? ''} ${userAgent ?? ''}`;

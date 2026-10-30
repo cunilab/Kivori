@@ -950,3 +950,157 @@ fn a_failed_periodic_write_drops_the_accepted_session() {
     assert_eq!(failed.state, Some(CompanionState::Offline));
     assert_eq!(runtime.state(), CompanionState::Offline);
 }
+
+#[test]
+fn input_loss_never_splices_quadrature_and_the_next_clean_detent_survives() {
+    struct Captured {
+        phases: Vec<u8>,
+        last: u8,
+        dropped: u32,
+        lose_during_drain: bool,
+        lose_after_final_sample: bool,
+    }
+    impl InputSource for Captured {
+        fn sample(&mut self) -> InputLevels {
+            InputLevels {
+                a: self.last & 2 != 0,
+                b: self.last & 1 != 0,
+                ..NoInput.sample()
+            }
+        }
+        fn drain(&mut self, now: u32, f: &mut dyn FnMut(InputLevels, u32)) {
+            for phase in core::mem::take(&mut self.phases) {
+                self.last = phase;
+                f(self.sample(), now);
+            }
+            if self.lose_during_drain {
+                self.dropped += 2;
+                self.lose_during_drain = false;
+            }
+            f(self.sample(), now);
+            if self.lose_after_final_sample {
+                self.dropped += 2;
+                self.lose_after_final_sample = false;
+            }
+        }
+        fn dropped_edges(&self) -> u32 {
+            self.dropped
+        }
+    }
+
+    let bytes = compile_default_blob();
+    let blob = AssetBlob::parse(&bytes).unwrap();
+    // Local overflow, loss before/during/after a drain, and a saturated loss counter.
+    for loss in 0..5 {
+        let mut id = identity();
+        id.capabilities = Capabilities::PHYSICAL_INPUT_V1;
+        let mut runtime = Runtime::new(id, RuntimeConfig::default());
+        let clock = VirtualClock::new();
+        let mut pipe = SimPipe::new();
+        let mut display = Box::new(CaptureDisplay::new());
+        let mut input = Captured {
+            phases: Vec::new(),
+            last: 0,
+            dropped: 0,
+            lose_during_drain: false,
+            lose_after_final_sample: false,
+        };
+        host_write(
+            &mut pipe,
+            &Message::Hello(Hello {
+                desktop_version: id.firmware_version,
+                desktop_caps: id.capabilities,
+                nonce: 77,
+            }),
+            0,
+        );
+        runtime.step(&clock, &mut pipe, &mut input, display.as_mut(), &blob);
+        host_write(
+            &mut pipe,
+            &Message::Ready(Ready {
+                negotiated_minor: PROTOCOL_MINOR,
+                negotiated_caps: id.capabilities,
+            }),
+            1,
+        );
+        runtime.step(&clock, &mut pipe, &mut input, display.as_mut(), &blob);
+        let _ = host_drain(&mut pipe);
+
+        // Full motion 00->10->11->01->11->10->00 reverses without completing a detent.
+        // Losing 10,11 makes the suffix look like one legal clockwise cycle from 00.
+        input.phases = if loss == 0 {
+            let mut full = vec![2, 3, 1, 3, 2, 0];
+            full.resize(130, 0); // plus final sample: Runtime drops the first two snapshots
+            full
+        } else if loss == 1 {
+            vec![1, 3, 2, 0]
+        } else if loss == 2 {
+            vec![0, 1, 3, 2, 0] // the unknown gap may be after the first retained sample
+        } else if loss == 3 {
+            Vec::new() // ISR loss after the closing sample affects the next queue
+        } else {
+            vec![1, 3, 2, 0]
+        };
+        input.dropped = match loss {
+            1 => 2,
+            4 => u32::MAX,
+            _ => 0,
+        };
+        input.lose_during_drain = loss == 2;
+        input.lose_after_final_sample = loss == 3;
+        clock.advance(1);
+        runtime.step(&clock, &mut pipe, &mut input, display.as_mut(), &blob);
+        assert!(
+            !host_drain(&mut pipe).iter().any(|message| matches!(
+                message,
+                Message::InputEvent(event) if matches!(event.kind, kivori_protocol::InputKind::Detent(_))
+            )),
+            "loss mode {loss} invented a detent"
+        );
+
+        if loss >= 3 {
+            input.phases = vec![1, 3, 2, 0];
+            clock.advance(1);
+            runtime.step(&clock, &mut pipe, &mut input, display.as_mut(), &blob);
+            assert!(
+                !host_drain(&mut pipe).iter().any(|message| matches!(
+                    message,
+                    Message::InputEvent(event) if matches!(event.kind, kivori_protocol::InputKind::Detent(_))
+                )),
+                "loss mode {loss} trusted a later queue with unaccounted loss"
+            );
+        }
+        // A loss during a drain may belong to the next queue too; settle it before fresh motion.
+        clock.advance(1);
+        runtime.step(&clock, &mut pipe, &mut input, display.as_mut(), &blob);
+        let _ = host_drain(&mut pipe);
+        input.phases = vec![1, 3, 2, 0];
+        clock.advance(1);
+        runtime.step(&clock, &mut pipe, &mut input, display.as_mut(), &blob);
+        let detents: Vec<_> = host_drain(&mut pipe)
+            .into_iter()
+            .filter_map(|message| match message {
+                Message::InputEvent(event)
+                    if matches!(event.kind, kivori_protocol::InputKind::Detent(_)) =>
+                {
+                    Some(event.kind)
+                }
+                _ => None,
+            })
+            .collect();
+        if loss == 4 {
+            assert!(
+                detents.is_empty(),
+                "saturated loss counter must stay fail-closed"
+            );
+        } else {
+            assert_eq!(
+                detents,
+                [kivori_protocol::InputKind::Detent(
+                    kivori_model::input::Direction::Cw
+                )],
+                "loss mode {loss} blocked fresh motion"
+            );
+        }
+    }
+}

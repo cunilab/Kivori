@@ -361,6 +361,14 @@ impl Session {
         self.device_clock
     }
 
+    /// The next outbound and the last accepted inbound sequence numbers, so the virtual endurance
+    /// run can prove both directions wrapped.
+    #[cfg(feature = "virtual-device")]
+    #[must_use]
+    pub const fn sequence_positions(&self) -> (u16, Option<u16>) {
+        (self.tx_seq, self.inbound.last())
+    }
+
     /// The device health and link-quality figures gathered on this connection.
     #[must_use]
     pub fn diagnostics(&self) -> SessionDiagnostics {

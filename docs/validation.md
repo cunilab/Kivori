@@ -514,6 +514,7 @@ right: Previous track, Play/Pause, Next track (Press only; Hold unbound by defau
 
 - [ ] 5.1 Before wiring: inspect the devkit near GPIO0/GPIO1 (display BLK/DC since #123) | no 32.768 kHz crystal fitted (if one is, stop: pick other pins before soldering)
 - [ ] 5.2 Power on with each button held in turn | B2 (GPIO8) and B3 (GPIO10): Kivori boots normally and the boot log still appears on GPIO21. B1 (GPIO9, BOOT): the board enters ROM download mode, as documented. With the display connected and no button held, the board boots (GPIO2 is display RES)
+- [ ] 5.2a Repeat power-on, reset and recovery reboot with every combination of B1/B2/B3 held | record USB enumeration and boot mode; B1+B2 pulls GPIO9/GPIO8 low, an invalid boot strap combination. Release the buttons and verify recovery by reset, with no stale input action. This is a physical check; restarting a virtual Runtime does not exercise ROM straps.
 - [ ] 5.3 Each button, ten short presses while music plays | exactly one Previous / Play-Pause / Next per press; amber "?" badge (Unverified); a white frame on press
 - [ ] 5.4 Each button held about 1 s | nothing runs (Hold is unbound); held 12 s | nothing runs and the device never reboots
 - [ ] 5.5 Two buttons pressed together; a button pressed while the knob switch is down; a button pressed mid-turn | nothing fires from the second control (no chords)
@@ -550,6 +551,15 @@ These rows need a person, the real device and the real OS.
 ## Phase 7: Host presence (M3 S2)
 
 Software is done (tracker, device-thread and Windows window tests, macOS IOKit registration test); these rows need a real sleep, lock and switch.
+Virtual evidence, 2026-10-30 (software only, does not close any row): `just virtual-device-smoke`
+stage `presence` drives the production tracker and presence actions through the real desktop session
+and firmware Runtime. Lock shows Sleeping on the same link and the knob still sets volume; unlock
+restores idle. Suspend sends the goodbye, the still-running device shows Sleeping and keeps it past
+host silence, input made while asleep never runs, and wake reconnects with a fresh session. A console
+switch (no goodbye) lets the device fall to Offline after about 4 s, then reconnects. A device that
+lost USB power while asleep boots fresh and reconnects; a wake with no suspend changes nothing.
+Removing the goodbye or the lock override makes the stage fail. Real notification delivery, USB power
+behavior and measured timings still need these rows. See [virtual-pip.md](./virtual-pip.md#host-presence-scenarios).
 
 - [ ] 7.1 Windows: press Win+L | the buddy sleeps within 1 s; the volume knob still works; button shortcut labels are gone
 - [ ] 7.2 Windows: unlock | back to normal, profile labels restored, the state you had chosen returns
@@ -1666,6 +1676,13 @@ input quality, soak/workdays and unfamiliar-user acceptance remain separate item
 
 ## M2.9 sustained-use acceptance (open)
 
+Virtual pre-soak check, 2026-10-30 (earns no hours or workdays): `just virtual-device-endurance` ran
+one virtual session for 432 s and 107,684 alternating detents until both directions' `u16` sequence
+numbers had wrapped (host 1, device 1). It recorded no sequence gap, malformed frame, device error,
+stale-input rejection or reconnect, every detent arrived, the paired turns left volume at 50 and a
+press after the wrap still ran. A real Windows session wraps after roughly 65,536 frames, well within
+the soak and a workday. See [virtual-pip.md](./virtual-pip.md#endurance-run).
+
 Item 17 preparation, 2026-10-25, Andress-MacBook-Air. No Windows soak or workday was started here.
 Soak: NOT RUN, 0 verified hours. Workdays: 0/10. Item 17 remains unchecked; M2.9 remains 13/19.
 The software baseline, CI runtime and time spent waiting for builds do not count toward either run.
@@ -1926,3 +1943,38 @@ Do not fix only the CAD stand-in to match another unverified drawing. Close item
 the actual selected assembled unit has evidence for every row and unresolved fit/access problems
 are fixed. Firmware/CAD source consistency, interference reports and electrical provisioning PASS
 remain distinct from these physical measurements.
+
+## PR #127 input loss and I/O fidelity follow-up
+
+Local checks on 2026-10-29, on the working changes based on `8d9bb4aa`:
+
+- The overflow regression failed before the fix with `loss mode 0 invented a detent`. It now
+  covers local sample overflow, capture loss between drains, during a drain and after its final
+  sample, plus counter saturation. The after-final-sample case also failed before the accounting
+  fix. Known-loss batches retain switch samples and suppress rotary motion; a concurrent loss
+  conservatively invalidates the next batch too. Clean motion resumes after settling, while a
+  saturated loss counter keeps rotary motion suppressed until reboot.
+- All 208 firmware host-simulation tests passed before the final review hardening; all 93 affected
+  button, production-runtime and rotary tests passed again afterward. Strict firmware and runner
+  Clippy, Rust formatting and launcher formatting passed. The RISC-V library build passed, and
+  the physical `physical-st7789` release build passed again after the final runtime change.
+- The final `node firmware/pala/simulator/run.mjs --smoke` passed all 15 stages, including 18
+  simulator tests, ten Node report/boundary tests, the unchanged replay goldens and the new `io`
+  stage requiring four `PASS IO` assertions. It exercises the buffered production Runtime and
+  transmit queue with a 64-byte FIFO, scheduled raw input and modeled SPI payload time.
+- The I/O assertions establish three windows / 46,080 microseconds for a full frame at 20 MHz,
+  a detent delivered before frame completion within one window plus modeled 1 ms host service,
+  exact `DisplayFault` on a second-window failure followed by a full repaint, and a fresh
+  handshake / detent after 121 virtual seconds of host backpressure. Render scheduling and
+  actual transferred windows are checked during the final ten stalled ticks. These are modeled
+  timings, not measured hardware latency.
+- Claude Opus 5.5 at medium effort reviewed the implementation, identified the loss-accounting
+  race and assertion improvements, then approved the hardened result with no remaining actionable
+  issues, subject to the final test runs above finishing green; those runs subsequently passed.
+
+The final local ignored report is `firmware/pala/simulator/target/reports/run-UhtSOs/report.json`;
+its logs retain the actual assertions and source fingerprint at execution. This evidence note
+followed that run. Two earlier standalone boundary-test attempts hit existing deadlines under
+concurrent builds; all ten Node report/boundary tests passed in both full runs without changing
+those deadlines. No new CI, physical I/O, real OS action, flashing or production acceptance is
+claimed. Paid simulation services are not used.

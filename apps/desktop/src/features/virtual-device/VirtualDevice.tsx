@@ -9,6 +9,7 @@ type Snapshot = {
   generation?: number;
   mode?: string;
   volume: number;
+  muted?: boolean | null;
   mediaTriggers: number;
   frame: number[] | null;
   error: string | null;
@@ -268,6 +269,7 @@ export function VirtualDevice(): ReactElement {
       <section aria-label="Simulated OS">
         <h2>Simulated OS</h2>
         <p>Volume: {snapshot ? `${Math.round(snapshot.volume)}%` : '—'}</p>
+        <p>Output mute: {snapshot?.muted == null ? '—' : snapshot.muted ? 'muted' : 'not muted'}</p>
         <p>Media triggers: {snapshot?.mediaTriggers ?? '—'}</p>
         <p>Actions affect this simulation only.</p>
       </section>
