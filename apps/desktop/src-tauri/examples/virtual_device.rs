@@ -133,11 +133,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args_os().skip(1);
     let runner = PathBuf::from(
         args.next()
-            .ok_or("usage: virtual_device <runner> [--smoke <frame.ppm> | --connection-smoke | --desktop-smoke | --recovery-smoke]")?,
+            .ok_or("usage: virtual_device <runner> [--smoke <frame.ppm> | --connection-smoke | --desktop-smoke | --recovery-smoke | --presence-smoke]")?,
     );
     let mut connection_smoke = false;
     let mut desktop_smoke = false;
     let mut recovery_smoke = false;
+    let mut presence_smoke = false;
     let smoke_output = match args.next() {
         None => None,
         Some(flag) if flag == "--connection-smoke" => {
@@ -152,6 +153,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             recovery_smoke = true;
             None
         }
+        Some(flag) if flag == "--presence-smoke" => {
+            presence_smoke = true;
+            None
+        }
         Some(flag) if flag == "--smoke" => Some(PathBuf::from(
             args.next().ok_or("missing smoke frame output")?,
         )),
@@ -159,6 +164,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     if args.next().is_some() {
         return Err("too many arguments".into());
+    }
+    if presence_smoke {
+        return kivori_desktop::virtual_device::presence_smoke(&runner).map_err(Into::into);
     }
     if recovery_smoke {
         return kivori_desktop::virtual_device::recovery_smoke(&runner).map_err(Into::into);

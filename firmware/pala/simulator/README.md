@@ -42,7 +42,8 @@ relevant tick. A live session may switch to `silent` or `exit`. These are proces
 not protocol messages, physical faults or production wire-schema additions.
 
 Each request except `exit` produces exactly one stdout JSON record with `wire`, optional 57600-pixel `frame`
-(row-major RGB565 integers), `brightness`, and `reboot`. Frames are composed by the production
+(row-major RGB565 integers), `brightness`, `reboot` and the firmware companion `state`
+(`booting`, `idle`, `happy`, `busy`, `sleeping` or `offline`). Frames are composed by the production
 firmware renderer. The runner uses the production buffered renderer and `TxBuffered` over its pipe.
 Time advances only when requested; one request runs exactly one production runtime tick, so pending protocol input may need subsequent ticks to drain.
 

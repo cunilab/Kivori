@@ -251,3 +251,19 @@ unknown"; each Reconnect started a fresh normal session (generation advanced to 
 window and SIGTERM to the owner both left no runner, simulator or Vite process. `fragmented` input
 was not exercised interactively (the run was stopped). The panel now shows the fake output mute,
 and disabled controls are visibly dimmed.
+
+## Host presence scenarios
+
+Added 2026-10-30 at the owner's request, after S5. The native example's `--presence-smoke` (stage
+`presence` in `just virtual-device-smoke`, markers `PASS PRESENCE`) feeds host events through the
+production `HostPresenceTracker` and `apply_presence_action`. Releasing the link keeps the runner
+process alive with no session reading it, like a unit that stays powered over USB; rediscovery
+reattaches it with a fresh handshake, or boots a new runner when the scenario cuts its power. The
+runner now reports the firmware companion `state` with each response, so Sleeping and Offline are
+asserted directly rather than inferred from pixels.
+
+Cases (real elapsed time): lock/unlock, sleep/wake with input made while asleep, console switch
+without a goodbye, USB power cut during sleep, and a stray wake. Expectations follow validation
+[Phase 7](./validation.md#phase-7-host-presence-m3-s2) 7.1–7.4, 7.6 and 7.7. Mutation checks: skipping
+the sleep goodbye or the lock override fails the stage. Not simulated: OS notification registration
+and delivery, the Windows suspend acknowledgement budget, real USB power and measured timings.

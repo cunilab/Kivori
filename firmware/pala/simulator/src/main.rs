@@ -57,6 +57,9 @@ struct Response {
     frame: Option<Vec<u16>>,
     brightness: Option<u8>,
     reboot: bool,
+    /// The firmware companion state after this tick, so harnesses can tell Sleeping from Offline
+    /// without inferring it from pixels. Development-only; not a wire-schema field.
+    state: &'static str,
 }
 
 #[derive(Default)]
@@ -185,7 +188,20 @@ impl Simulator {
                 .then(|| self.display.frame().iter().map(|p| p.raw()).collect()),
             brightness: self.display.brightness,
             reboot: tick.reboot,
+            state: state_token(self.runtime.state()),
         })
+    }
+}
+
+const fn state_token(state: kivori_model::CompanionState) -> &'static str {
+    use kivori_model::CompanionState as S;
+    match state {
+        S::Booting => "booting",
+        S::Idle => "idle",
+        S::Happy => "happy",
+        S::Busy => "busy",
+        S::Sleeping => "sleeping",
+        S::Offline => "offline",
     }
 }
 
@@ -727,7 +743,8 @@ mod tests {
                 wire: vec![255; PIPE_CAPACITY],
                 frame: Some(vec![65535; 240 * 240]),
                 brightness: Some(5),
-                reboot: false
+                reboot: false,
+                state: "offline",
             })
             .unwrap()
             .len()

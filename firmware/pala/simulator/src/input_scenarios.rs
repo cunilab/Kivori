@@ -386,6 +386,7 @@ fn capacity_and_overflow() -> Result<(), String> {
         frame: Some(rig.sim.display.frame().iter().map(|p| p.raw()).collect()),
         brightness: rig.sim.display.brightness,
         reboot: tick.reboot,
+        state: super::state_token(rig.sim.runtime.state()),
     };
     rig.observe(&response)?;
     require(!tick.reboot, "overflow port injection rebooted")?;

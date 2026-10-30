@@ -264,6 +264,13 @@ try {
         9,
         ['labelled policy/admission and virtual-session cases'],
       ],
+      [
+        'presence',
+        ['--presence-smoke'],
+        'PASS PRESENCE ',
+        5,
+        ['production host-presence tracker/actions', 'desktop session', 'firmware Runtime'],
+      ],
     ]) {
       await run(app, [runner, ...args], {
         stage: {

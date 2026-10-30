@@ -551,6 +551,15 @@ These rows need a person, the real device and the real OS.
 ## Phase 7: Host presence (M3 S2)
 
 Software is done (tracker, device-thread and Windows window tests, macOS IOKit registration test); these rows need a real sleep, lock and switch.
+Virtual evidence, 2026-10-30 (software only, does not close any row): `just virtual-device-smoke`
+stage `presence` drives the production tracker and presence actions through the real desktop session
+and firmware Runtime. Lock shows Sleeping on the same link and the knob still sets volume; unlock
+restores idle. Suspend sends the goodbye, the still-running device shows Sleeping and keeps it past
+host silence, input made while asleep never runs, and wake reconnects with a fresh session. A console
+switch (no goodbye) lets the device fall to Offline after about 4 s, then reconnects. A device that
+lost USB power while asleep boots fresh and reconnects; a wake with no suspend changes nothing.
+Removing the goodbye or the lock override makes the stage fail. Real notification delivery, USB power
+behavior and measured timings still need these rows. See [virtual-pip.md](./virtual-pip.md#host-presence-scenarios).
 
 - [ ] 7.1 Windows: press Win+L | the buddy sleeps within 1 s; the volume knob still works; button shortcut labels are gone
 - [ ] 7.2 Windows: unlock | back to normal, profile labels restored, the state you had chosen returns
