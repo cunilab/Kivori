@@ -236,3 +236,18 @@ Each product owns its replay recipes and golden fixture. A deliberate renderer c
 a reviewed fixture update after checking intended pixels and actions; the verification command
 does not accept or regenerate new goldens. CI retains reports even after smoke failure, while a
 job that fails before smoke starts may have no report. Physical and real-use acceptance stays open.
+
+## Interactive macOS pass (2026-10-30)
+
+Driven with synthetic clicks on the dev window at the M2.9 PR #127 head; complements, does not
+replace, the headless smoke (which also passed locally on macOS: 70 PASS lines, all 15 report stages,
+seeds 17/29 byte-identical). Observed: three right detents 50→56% and one left →54% with the
+firmware volume bar; Press once → Play/Pause (media triggers +1); Hold shows the PRESS/HOLD hint, and
+release toggles output mute with a confirmed check (firmware muted icon, fake OS muted), a second
+hold unmutes. Faults: `silent` → Unavailable with "virtual heartbeat timeout" and a cleared panel;
+`exit` → "virtual child closed its output"; `wrong-major` → "device protocol major v1 is unsupported
+(host supports v0)"; `unknown-product`/`unknown-board` → "virtual product or board identity is
+unknown"; each Reconnect started a fresh normal session (generation advanced to 9). Closing the
+window and SIGTERM to the owner both left no runner, simulator or Vite process. `fragmented` input
+was not exercised interactively (the run was stopped). The panel now shows the fake output mute,
+and disabled controls are visibly dimmed.

@@ -40,6 +40,10 @@
   color: var(--secondary-foreground);
   touch-action: none;
 }
+.virtual-controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .virtual-controls button:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;

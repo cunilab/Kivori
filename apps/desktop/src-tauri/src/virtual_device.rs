@@ -267,6 +267,8 @@ pub struct Snapshot {
     pub generation: u32,
     pub mode: &'static str,
     pub volume: u8,
+    /// Fake output mute as read back; `None` when the backend cannot read it.
+    pub muted: Option<bool>,
     pub media_triggers: usize,
     pub detents: usize,
     pub frame: Option<Vec<u16>>,
@@ -362,6 +364,7 @@ impl Sandbox {
                 generation: session_generation,
                 mode: "normal",
                 volume: 50,
+                muted: None,
                 media_triggers: 0,
                 detents: 0,
                 frame: None,
@@ -538,6 +541,7 @@ impl Sandbox {
             self.end_link(Some(error.to_string()));
         }
         self.snapshot.volume = self.volume.read().unwrap_or(0);
+        self.snapshot.muted = self.volume.read_mute().ok();
         self.snapshot.media_triggers = self.synth.sent.lock().expect("fake synth").len();
     }
 
