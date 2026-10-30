@@ -19,7 +19,7 @@ pub use schema::{
     SlotSpec, StepSpec, UpdateSettings, UpdateSnooze, View, CONFIG_VERSION, MAX_CUSTOM_PROFILES,
     MAX_PROFILE_APPS, PROFILE_NAME_MAX,
 };
-pub use store::{ConfigError, ConfigNotice, ConfigStore};
+pub use store::{adopt_earlier_config, ConfigError, ConfigNotice, ConfigStore};
 
 /// The config as the device thread applies it: the built-in profiles with the user's overrides
 /// layered on, and the display and buddy settings.

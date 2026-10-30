@@ -74,7 +74,13 @@ pub fn run() {
             // Without it the app still runs on defaults; saving settings then reports an error.
             let config_store = app.path().app_local_data_dir().map_or_else(
                 |_| config::ConfigStore::detached(),
-                |dir| config::ConfigStore::open(&dir),
+                |dir| {
+                    // The identifier changed (id.immer.kivori -> id.cunilab.kivori); bring settings.
+                    if config::adopt_earlier_config(&dir) {
+                        tracing::info!("settings adopted from the earlier app data folder");
+                    }
+                    config::ConfigStore::open(&dir)
+                },
             );
             match config_store.notice() {
                 Some(

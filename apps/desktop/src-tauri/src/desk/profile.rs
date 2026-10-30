@@ -895,8 +895,8 @@ mod tests {
         ctx.observe(app("figma.exe"), ms(400));
         assert_eq!(ctx.recent_app(), Some(("figma.exe", "figma.exe")));
         // The user clicks into Kivori's own window: it commits, and the answer stays Figma.
-        ctx.observe(app("id.immer.kivori"), ms(500));
-        ctx.observe(app("id.immer.kivori"), ms(900));
+        ctx.observe(app("id.cunilab.kivori"), ms(500));
+        ctx.observe(app("id.cunilab.kivori"), ms(900));
         assert_eq!(name(&ctx), "General");
         assert_eq!(ctx.recent_app(), Some(("figma.exe", "figma.exe")));
         // Protected and Unknown never replace it.
