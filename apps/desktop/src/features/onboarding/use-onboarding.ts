@@ -37,7 +37,8 @@ export const ACCESSIBILITY_POLL_MS = 1000;
 
 /**
  * The Accessibility permission. Read once on mount (so the stepper knows whether to include the
- * permission step), then re-read every second while `watch` is true. `null` = not known yet.
+ * permission step), then re-read every second while `watch` is true, also after a grant so a
+ * revocation in System Settings shows here too. `null` = not known yet.
  */
 export function useAccessibility(watch: boolean): {
   state: AccessibilityState | null;
@@ -60,7 +61,7 @@ export function useAccessibility(watch: boolean): {
   }, []);
   useEffect(read, [read]);
   useEffect(() => {
-    if (!watch || state === 'granted' || state === 'notApplicable') return;
+    if (!watch || state === 'notApplicable') return;
     const timer = setInterval(read, ACCESSIBILITY_POLL_MS);
     return () => clearInterval(timer);
   }, [watch, state, read]);

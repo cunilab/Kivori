@@ -54,7 +54,7 @@ code signing and notarization are separate release actions.
 Mac acceptance is separate from the existing Windows M2.9 20/24 count. Neither shared host tests
 nor the virtual device close either platform's physical gates.
 
-- [ ] Packaged Apple Silicon app starts, displays setup and quits cleanly.
+- [x] Packaged Apple Silicon app starts, displays setup and quits cleanly.
 - [ ] Accessibility denial, grant and revocation behave honestly for the installed copy.
 - [ ] Real volume/mute read-back and external changes; unsupported output devices are handled.
 - [ ] Multiple microphones, unreadable / unsettable devices and hotplug never falsely confirm mute.
@@ -125,4 +125,24 @@ terminates the helper. Two unit tests cover the watcher (each fails when its mec
 the live MediaRemote observer test still streams and stops promptly, and `just macos-check`, strict
 Clippy and formatting pass. On the rebuilt bundle, quitting by Apple event, SIGTERM and SIGKILL each
 left no Kivori process. The setup screen was not re-captured on the rebuilt bundle because the
-display locked mid-run; the first row stays open until that screenshot is taken.
+display locked mid-run; it was captured later on the installed copy (below).
+
+Follow-up, 2026-10-30 (installed copy, `/Applications/Kivori.app`, driven with CoreGraphics clicks):
+
+- Setup: fresh config shows step 1 of 6; Get started and Skip this step advance; with no Pip the
+  plug-in step keeps Continue disabled. First row closed.
+- App icon: the macOS bundle had no icon (no `CFBundleIconFile`, generic icon in the Dock and in
+  System Settings) because only Windows picked up a default. `tauri.release.macos.conf.json` now
+  lists the icons; the rebuilt bundle carries `icon.icns` and System Settings shows it.
+- Denial: with Kivori's entry reset (`tccutil reset Accessibility id.immer.kivori`), Allow access
+  showed macOS's prompt; Deny left Kivori off in System Settings and the step at "not on yet" with
+  Continue disabled.
+- Grant: switching Kivori on while the step was open turned it green by itself with Continue enabled.
+  In two earlier runs Kivori was switched on without the test's own action; that was not reproduced
+  when Deny was repeated and is not attributed to Kivori.
+- Revocation: removing the entry while Kivori runs is **not** seen until restart. Kivori calls
+  `AXIsProcessTrusted()` fresh every second (permission step and the device-thread probe), but macOS
+  keeps answering "trusted" to the running process; a relaunch reports "not on yet". The permission
+  step now keeps polling after a grant (it previously stopped), so it follows macOS where macOS
+  reports the change. The second row stays open: whether input posting actually stops before restart,
+  and how Kivori should report it, needs a session with Pip and a shortcut binding.

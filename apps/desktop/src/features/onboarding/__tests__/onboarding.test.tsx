@@ -174,6 +174,13 @@ describe('permission step', () => {
       await screen.findByText('Accessibility access is on.', {}, { timeout: 4000 }),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
+
+    // Switched off again in System Settings while the step is open.
+    mockGrantAccessibility(false);
+    expect(
+      await screen.findByText('Accessibility access is not on yet.', {}, { timeout: 4000 }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
   });
 
   it('can be skipped on macOS', async () => {

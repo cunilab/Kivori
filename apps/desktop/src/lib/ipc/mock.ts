@@ -106,9 +106,9 @@ export function mockGetAccessibility(): AccessibilityState {
   return accessibilityGranted ? 'granted' : 'missing';
 }
 
-/** Stands in for the user ticking Kivori in System Settings. */
-export function mockGrantAccessibility(): void {
-  accessibilityGranted = true;
+/** Stands in for the user ticking (or, with `false`, unticking) Kivori in System Settings. */
+export function mockGrantAccessibility(granted = true): void {
+  accessibilityGranted = granted;
 }
 
 const startupListeners = new Set<(settings: StartupSettingsDto) => void>();
