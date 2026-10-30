@@ -37,6 +37,8 @@ mod recovery_scenarios;
 pub use recovery_scenarios::recovery_smoke;
 mod presence_scenarios;
 pub use presence_scenarios::presence_smoke;
+mod endurance_scenarios;
+pub use endurance_scenarios::endurance_smoke;
 
 const MAX_LINE: usize = 400_000;
 const WIRE_CAPACITY: usize = 8192;

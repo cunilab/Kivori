@@ -1676,6 +1676,13 @@ input quality, soak/workdays and unfamiliar-user acceptance remain separate item
 
 ## M2.9 sustained-use acceptance (open)
 
+Virtual pre-soak check, 2026-10-30 (earns no hours or workdays): `just virtual-device-endurance` ran
+one virtual session for 432 s and 107,684 alternating detents until both directions' `u16` sequence
+numbers had wrapped (host 1, device 1). It recorded no sequence gap, malformed frame, device error,
+stale-input rejection or reconnect, every detent arrived, the paired turns left volume at 50 and a
+press after the wrap still ran. A real Windows session wraps after roughly 65,536 frames, well within
+the soak and a workday. See [virtual-pip.md](./virtual-pip.md#endurance-run).
+
 Item 17 preparation, 2026-10-25, Andress-MacBook-Air. No Windows soak or workday was started here.
 Soak: NOT RUN, 0 verified hours. Workdays: 0/10. Item 17 remains unchecked; M2.9 remains 13/19.
 The software baseline, CI runtime and time spent waiting for builds do not count toward either run.

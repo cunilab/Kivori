@@ -9,8 +9,8 @@ import { addReplay, createReport, REPLAY_SEEDS, runRecorded, sha256 } from './sm
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const mode = process.argv[2];
-if (process.argv.length > 3 || (mode !== undefined && mode !== '--smoke'))
-  throw new Error('usage: run.mjs [--smoke]');
+if (process.argv.length > 3 || ![undefined, '--smoke', '--endurance'].includes(mode))
+  throw new Error('usage: run.mjs [--smoke | --endurance]');
 const env = { ...process.env, CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS || '2' };
 delete env.RUSTFLAGS;
 delete env.CARGO_ENCODED_RUSTFLAGS;
@@ -33,6 +33,7 @@ const expectedStages = [
   'connections',
   'desktop',
   'recovery',
+  'presence',
   ...REPLAY_SEEDS.flatMap((seed) => [`replay-${seed}-first`, `replay-${seed}-second`]),
 ];
 const report =
@@ -305,6 +306,9 @@ try {
       console.log(`Replay seed ${seed}: four cases passed; repeated JSON is byte-identical.`);
     }
     console.log(`Firmware pixel artifact: ${frame}`);
+  } else if (mode === '--endurance') {
+    // Opt-in, minutes long: one session past both u16 sequence wraps. Earns no soak hours.
+    await run(app, [runner, '--endurance-smoke']);
   } else {
     if (process.platform === 'darwin') {
       // A local .app gives macOS a distinct inspectable development window; no installation/signing.

@@ -203,3 +203,7 @@ virtual-device:
 # Real Runtime/desktop-core smoke with fake OS and a captured firmware framebuffer.
 virtual-device-smoke:
     node firmware/pala/simulator/run.mjs --smoke
+
+# Opt-in, several minutes: one virtual session past both protocol sequence wraps (no soak credit).
+virtual-device-endurance:
+    node firmware/pala/simulator/run.mjs --endurance

@@ -267,3 +267,15 @@ without a goodbye, USB power cut during sleep, and a stray wake. Expectations fo
 [Phase 7](./validation.md#phase-7-host-presence-m3-s2) 7.1–7.4, 7.6 and 7.7. Mutation checks: skipping
 the sleep goodbye or the lock override fails the stage. Not simulated: OS notification registration
 and delivery, the Windows suspend acknowledgement budget, real USB power and measured timings.
+
+## Endurance run
+
+`just virtual-device-endurance` (opt-in, about 7 minutes on an Apple Silicon Mac; not in CI) keeps
+one virtual session turning the knob right then left until both protocol sequence numbers have
+wrapped, observed through a feature-gated `Session::sequence_positions`, then requires every detent
+delivered, no sequence gap, malformed frame, device error, stale rejection or reconnect, volume back
+at 50 and a working press. The first attempt stopped at a fixed detent count and found only the
+device side had wrapped (the host sends about 0.6 frames per detent), so the run now continues until
+both wraps are seen. The 2026-10-30 run passed with 107,684 detents in 432 s. It exercises protocol
+and session longevity only; it earns no soak hours and does not cover OS sleep, USB or memory growth
+on the device.
