@@ -93,7 +93,7 @@ windows = { version = "0.62", features = [
 # The `implement` attribute macro (used to author `IAudioEndpointVolumeCallback` /
 # `IMMNotificationClient`) expands to paths rooted at `::windows_core`, so that crate name must
 # also resolve directly, not just via `windows::core`.
-windows-core = "0.62"
+windows-core = "0.100"
 
 [build-dependencies]
 # Build-time validation of bounded, static product artwork; already in the asset compiler tree.
