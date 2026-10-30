@@ -134,7 +134,7 @@ Follow-up, 2026-10-30 (installed copy, `/Applications/Kivori.app`, driven with C
 - App icon: the macOS bundle had no icon (no `CFBundleIconFile`, generic icon in the Dock and in
   System Settings) because only Windows picked up a default. `tauri.release.macos.conf.json` now
   lists the icons; the rebuilt bundle carries `icon.icns` and System Settings shows it.
-- Denial: with Kivori's entry reset (`tccutil reset Accessibility id.immer.kivori`), Allow access
+- Denial: with Kivori's entry reset (`tccutil reset Accessibility id.immer.kivori`, the identifier at the time), Allow access
   showed macOS's prompt; Deny left Kivori off in System Settings and the step at "not on yet" with
   Continue disabled.
 - Grant: switching Kivori on while the step was open turned it green by itself with Continue enabled.

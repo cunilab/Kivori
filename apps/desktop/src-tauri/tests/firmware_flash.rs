@@ -652,7 +652,7 @@ fn a_restore_that_needs_a_pick_lists_the_products_and_clears_on_the_next_attempt
     let mut flash = FlashWorkflow::new(true, 512);
     flash.ask_restore_choice(vec![
         RestoreOption {
-            id: "pala".into(),
+            id: "pip".into(),
             name: "Kivori Pip".into(),
             board: "board-a".into(),
             board_name: "board-a".into(),
@@ -676,11 +676,9 @@ fn a_restore_that_needs_a_pick_lists_the_products_and_clears_on_the_next_attempt
 #[test]
 fn a_restore_for_a_picked_product_is_queued_with_its_id() {
     let (state, rx) = app_state_with_connection("disconnected");
-    assert!(state
-        .queue_firmware_restore_for("pala".into(), None)
-        .is_ok());
+    assert!(state.queue_firmware_restore_for("pip".into(), None).is_ok());
     assert!(
-        matches!(rx.recv().unwrap(), DeviceCommand::RestoreFirmwareFor(product, None) if product == "pala")
+        matches!(rx.recv().unwrap(), DeviceCommand::RestoreFirmwareFor(product, None) if product == "pip")
     );
     state.shutdown();
 }

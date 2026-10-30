@@ -11,7 +11,7 @@ class PinMapTest(unittest.TestCase):
 
     def test_generator_nets_match_firmware(self):
         root = Path(__file__).resolve().parents[2]
-        firmware = (root / "firmware/pala/src/profile.rs").read_text()
+        firmware = (root / "firmware/pip/src/profile.rs").read_text()
         tree = ast.parse((root / "hardware/enclosure/build_case.py").read_text())
         assignments = {
             node.targets[0].id: node.value

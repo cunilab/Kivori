@@ -371,7 +371,7 @@ pub fn crate_version(cargo_toml: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    const REG: &str = "[products]\npala = 1\n[boards]\nc3-supermini = 1\n";
+    const REG: &str = "[products]\npip = 1\n[boards]\nc3-supermini = 1\n";
 
     fn product(board: &str) -> String {
         format!(
@@ -382,7 +382,7 @@ mod tests {
     }
 
     fn parse(reg: &str, product_src: &str) -> Result<Catalog, CatalogError> {
-        Catalog::parse(reg, &[("pala", product_src)])
+        Catalog::parse(reg, &[("pip", product_src)])
     }
 
     #[test]
@@ -403,10 +403,10 @@ mod tests {
     }
 
     #[test]
-    fn embedded_catalog_is_valid_and_has_pala_on_c3_supermini() {
+    fn embedded_catalog_is_valid_and_has_pip_on_c3_supermini() {
         let catalog = Catalog::embedded();
-        let (product, board) = catalog.by_wire(1, 1).expect("pala on c3-supermini");
-        assert_eq!(product.id, "pala");
+        let (product, board) = catalog.by_wire(1, 1).expect("pip on c3-supermini");
+        assert_eq!(product.id, "pip");
         assert_eq!(product.display_name, "Kivori Pip");
         assert_eq!(product.short_name, "Pip");
         assert_eq!(product.model, "KV-P1");
@@ -419,7 +419,7 @@ mod tests {
         assert_eq!(catalog.usb_ids(), vec![(0x303A, 0x1001)]);
         assert_eq!(catalog.by_wire(1, 2), None);
         assert_eq!(catalog.by_wire(0, 0), None);
-        assert!(catalog.product("pala").is_some());
+        assert!(catalog.product("pip").is_some());
         assert!(catalog.product("nope").is_none());
     }
 
@@ -483,7 +483,7 @@ mod tests {
     fn rejects_reused_or_zero_numbers_and_bad_ids() {
         let dup = "[products]\na = 1\nb = 1\n[boards]\nc3-supermini = 1\n";
         assert!(Catalog::parse(dup, &[]).is_err());
-        let zero = "[products]\npala = 0\n[boards]\nc3-supermini = 1\n";
+        let zero = "[products]\npip = 0\n[boards]\nc3-supermini = 1\n";
         assert!(Catalog::parse(zero, &[]).is_err());
         let bad = "[products]\nDesk = 1\n[boards]\nc3-supermini = 1\n";
         assert!(Catalog::parse(bad, &[]).is_err());

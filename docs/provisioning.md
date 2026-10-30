@@ -13,7 +13,7 @@ or product-name default selects QA requirements.
 
 `just provision` builds the catalog-selected release firmware. With today's sole product/board pair,
 no selection is needed. For an explicit target, set `KIVORI_PRODUCT` and `KIVORI_BOARD`, for example
-`KIVORI_PRODUCT=pala KIVORI_BOARD=c3-supermini just provision`. If the catalog has multiple pairs,
+`KIVORI_PRODUCT=pip KIVORI_BOARD=c3-supermini just provision`. If the catalog has multiple pairs,
 both variables are required; catalog order never selects a default.
 
 `--product/--board/--rev` do **not** select the build. At runtime, they select/assert an exact
@@ -44,7 +44,7 @@ all, such as a blank board, cannot be checked and is flashed).
 
 ## Burning the identity into the chip
 
-`just provision --product pala --board c3-supermini --rev 1` resolves the ids through the
+`just provision --product pip --board c3-supermini --rev 1` resolves the ids through the
 product catalog (an unknown id is an error that lists the valid ones; all three options go together,
 `--rev` is 1 to 255). **Without `--burn-identity` this previews the identity record only** (fields, 12 bytes in hex and
 CRC-32). **Firmware is still flashed and QA still runs. No eFuses are written.** It is not an
@@ -63,7 +63,7 @@ Other boards are refused before device I/O when `--burn-identity` is requested, 
 method is `espflash`. The explicit board binding is a hardware-backend exception, never a product
 selection default. Another eFuse/OTP layout requires separate implementation and bench validation.
 
-To burn, add `--burn-identity`: `just provision --product pala --board c3-supermini --rev 1
+To burn, add `--burn-identity`: `just provision --product pip --board c3-supermini --rev 1
 --burn-identity`. Checks, in order; any failure stops before anything is written:
 
 1. The bundled firmware must be for that product and board (otherwise the unit would show the
@@ -73,7 +73,7 @@ To burn, add `--burn-identity`: `just provision --product pala --board c3-superm
    tool refuses. If it already holds exactly this record it says "already provisioned" and goes on
    without writing. Any other content (another record, a damaged one, stray bits) is an error.
 4. The record and the port are shown, and you must **type the product id** (for example
-   `pala`) exactly. Anything else aborts. There is no flag or environment variable that
+   `pip`) exactly. Anything else aborts. There is no flag or environment variable that
    confirms for you.
 5. It runs `espefuse --chip esp32c3 --port <port> --do-not-confirm burn_block_data BLOCK_USR_DATA
    <file>`; `--do-not-confirm` is passed only now, after your typed confirmation. The file is the 12

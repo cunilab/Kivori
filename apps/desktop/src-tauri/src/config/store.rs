@@ -18,6 +18,9 @@ use crate::desk::profile::builtins;
 const FILE: &str = "config.json";
 const TMP: &str = "config.json.tmp";
 const BEFORE_RESET: &str = "config.before-reset.json";
+/// App identifiers Kivori used before; each one's data folder sits beside the current one. It was
+/// `id.immer.kivori` until 2026-10-30.
+const EARLIER_IDENTIFIERS: [&str; 1] = ["id.immer.kivori"];
 /// Serialized file limit, including formatting and the final newline, shared by reads and writes.
 const MAX_BYTES: u64 = 256 * 1024;
 /// How many quarantined `config.*-*.json` files are kept.
@@ -423,6 +426,25 @@ impl ConfigStore {
     }
 }
 
+/// Copies `config.json` from an earlier identifier's data folder into `dir` once, when `dir` has
+/// none, so renaming the app identifier keeps people's settings; [`ConfigStore::open`] then loads
+/// (and if needed migrates) it as usual. The earlier folder is left as it was, so an older build
+/// still finds its own settings. Returns whether settings were adopted.
+pub fn adopt_earlier_config(dir: &Path) -> bool {
+    if !matches!(read(&dir.join(FILE)), Read::Missing) {
+        return false;
+    }
+    let Some(parent) = dir.parent() else {
+        return false;
+    };
+    EARLIER_IDENTIFIERS
+        .iter()
+        .any(|id| match read(&parent.join(id).join(FILE)) {
+            Read::Bytes(bytes) => write_atomic(dir, &bytes).is_ok(),
+            Read::Missing | Read::Unreadable => false,
+        })
+}
+
 fn read(path: &Path) -> Read {
     match fs::metadata(path) {
         Err(error)
@@ -549,6 +571,51 @@ fn prune(dir: &Path, preserved: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `<root>/<current>` beside `<root>/id.immer.kivori` holding `bytes` (if any).
+    fn identifier_dirs(earlier: Option<&[u8]>) -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let root = tempfile::tempdir().unwrap();
+        let old = root.path().join(EARLIER_IDENTIFIERS[0]);
+        if let Some(bytes) = earlier {
+            fs::create_dir_all(&old).unwrap();
+            fs::write(old.join(FILE), bytes).unwrap();
+        }
+        let current = root.path().join("id.cunilab.kivori");
+        (root, current, old)
+    }
+
+    #[test]
+    fn settings_from_the_earlier_identifier_are_adopted_once_and_left_in_place() {
+        let saved = br#"{"version":1,"onboarding":{"completed":true}}"#;
+        let (_root, current, old) = identifier_dirs(Some(saved));
+        assert!(adopt_earlier_config(&current));
+        assert_eq!(fs::read(current.join(FILE)).unwrap(), saved);
+        assert_eq!(
+            fs::read(old.join(FILE)).unwrap(),
+            saved,
+            "earlier folder untouched"
+        );
+        let store = ConfigStore::open(&current);
+        assert!(
+            store.file().onboarding.completed,
+            "adopted settings load normally"
+        );
+        // Once the current folder has settings, the earlier ones never overwrite them again.
+        fs::write(old.join(FILE), b"{}").unwrap();
+        assert!(!adopt_earlier_config(&current));
+        assert_eq!(fs::read(current.join(FILE)).unwrap(), saved);
+    }
+
+    #[test]
+    fn nothing_is_adopted_without_usable_earlier_settings() {
+        let (_root, current, _old) = identifier_dirs(None);
+        assert!(!adopt_earlier_config(&current));
+        assert!(!current.join(FILE).exists());
+        let too_big = vec![b' '; usize::try_from(MAX_BYTES).unwrap() + 1];
+        let (_root, current, _old) = identifier_dirs(Some(&too_big));
+        assert!(!adopt_earlier_config(&current));
+        assert!(!current.join(FILE).exists());
+    }
 
     fn fail_backup(backup: Backup, dir: &Path) -> io::Result<()> {
         backup.preserve_with(

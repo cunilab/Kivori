@@ -163,8 +163,9 @@ BOOT is the pinhole in the base labelled BOOT; a paperclip reaches it.
 ## Uninstall
 
 Windows: Settings, Apps, Kivori, Uninstall. This also removes the start-with-Windows entry. Your
-settings stay in your user data folder (`%LOCALAPPDATA%\id.immer.kivori`); delete it if you want
-them gone. macOS: drag Kivori from Applications to the Bin.
+settings stay in your user data folder (`%LOCALAPPDATA%\id.cunilab.kivori`, plus
+`%LOCALAPPDATA%\id.immer.kivori` if you used a version from before November 2026); delete them if you
+want them gone. macOS: drag Kivori from Applications to the Bin.
 
 ## Privacy
 

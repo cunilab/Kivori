@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual, parseArgs } from 'node:util';
 
 import { releaseCatalog } from './release-catalog.mjs';
-import { checkFirmwareRelease } from './firmware-release-guard.mjs';
+import { checkFirmwareRelease, firmwareTagPrefixes } from './firmware-release-guard.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -182,20 +182,28 @@ export function planRelease({
 
   // Firmware that keeps an already tagged version is simply unchanged; anything else is a firmware
   // release under the same rules as the app, tagged even when the version stays (the first tag).
-  const fwPrefix = firmwareTag(product, '');
-  const firmwarePrevious = latestTagVersion(tags, fwPrefix);
+  // A renamed product's tags under its earlier id are still its released versions.
+  const fwPrefixes = firmwareTagPrefixes(product);
+  const firmwarePrevious = fwPrefixes
+    .map((prefix) => latestTagVersion(tags, prefix))
+    .reduce(
+      (best, version) => (!best || (version && compareSemver(version, best) > 0) ? version : best),
+      '',
+    );
+  const released = (version) => fwPrefixes.some((prefix) => exists(`${prefix}${version}`));
   const fwOverride = (firmwareExact ?? '').trim().replace(/^v/, '');
   const keeps =
     (fwOverride ? fwOverride === firmwareCurrent : firmwareBump === 'none') &&
-    exists(firmwareTag(product, firmwareCurrent));
+    released(firmwareCurrent);
   if (keeps && compareSemver(firmwareCurrent, firmwarePrevious) < 0) {
     throw new Error(
       `firmware ${firmwareCurrent} is below the latest released version ${firmwarePrevious}`,
     );
   }
   if (!keeps) {
-    const wanted = firmwareTag(product, fwOverride || bumpVersion(firmwareCurrent, firmwareBump));
-    if (exists(wanted)) throw new Error(`tag ${wanted} already exists; pick another version`);
+    const version = fwOverride || bumpVersion(firmwareCurrent, firmwareBump);
+    const taken = fwPrefixes.map((prefix) => `${prefix}${version}`).find(exists);
+    if (taken) throw new Error(`tag ${taken} already exists; pick another version`);
   }
   const firmware = keeps
     ? firmwareCurrent

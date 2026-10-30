@@ -13,9 +13,9 @@ haptics or light sensor. A Tauri
 app, Kivori Desktop, drives it and is the configuration center. The buddy has personality but only
 reports the desktop; it is not a virtual pet with its own goals.
 
-The first product is **Kivori Pip** (short name Pip, model KV-P1, codename `pala` in
-`products/`). Each product gets an Indonesian-spice codename as its permanent machine id; the
-customer name, short name and model code live in its catalog entry and may change.
+The first product is **Kivori Pip** (short name Pip, model KV-P1, machine id `pip` in
+`products/`). A product's machine id is its short name in lowercase (Pip's was the codename `pala`
+until 2026-10-30); the customer name, short name and model code live in its catalog entry.
 
 **Beta target:** a non-maintainer on Windows receives a unit, installs, configures, updates and
 recovers Kivori using only the shipped docs, and pays for it. **v1 target:** decided from beta

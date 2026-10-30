@@ -1,6 +1,6 @@
 # Weekly dependency updates as a few grouped PRs (minor and patch together, majors on their own).
 # Titles read `chore(deps): …` / `ci(deps): …`, so release notes leave them out.
-# firmware/pala is left out on purpose: any change there is a firmware input, so it needs a firmware
+# firmware/pip is left out on purpose: any change there is a firmware input, so it needs a firmware
 # version bump and a hardware test at the next release. Update it by hand when doing firmware work.
 version: 2
 updates:

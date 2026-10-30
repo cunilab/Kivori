@@ -56,7 +56,7 @@ persistence or real Windows adapters; broader scenarios remain S5.2–S5.6.
 | Standalone runner | Six host tests passed: bounded/truncated/invalid records, timestamped raw input, real handshake/Build identity, captured framebuffer and exactly three normalized CW detents. Strict runner Clippy and formatting passed. |
 | Native tests | Full opt-in library suite: 321 passed, three existing ignored. After the final capture-latch fix, all three focused bridge tests passed: record validation, hung-child timeout/reaping and capture demand surviving pending I/O. |
 | Desktop UI | Five focused tests passed, including RGB565 conversion, one pending poll, stale/error handling, pointer/keyboard release and accessible timed raw press. Typecheck and zero-warning targeted lint passed. |
-| Cross-process smoke | `just virtual-device-smoke` builds separate runner and desktop example, performs a real firmware handshake, asserts three actual firmware CW detents and fake volume 50→56, asserts the captured solid confirmed 56% bar (not autonomous mascot motion), then raw press/release yields exactly one fake media trigger. Saves `firmware/pala/simulator/target/smoke-frame.ppm`. |
+| Cross-process smoke | `just virtual-device-smoke` builds separate runner and desktop example, performs a real firmware handshake, asserts three actual firmware CW detents and fake volume 50→56, asserts the captured solid confirmed 56% bar (not autonomous mascot motion), then raw press/release yields exactly one fake media trigger. Saves `firmware/pip/simulator/target/smoke-frame.ppm`. |
 | Interactive macOS | Launched the dedicated development window, observed live firmware pixels and Connected; three interactive right turns changed fake volume from 50 to 56. The accessible Press once control produced exactly one fake media trigger. Closing the window exited the launcher, simulator and native tool with no remaining owned device process. |
 | Release exclusion | No-default-features desktop build passed; `virtual_snapshot`, `virtual_input`, `new_simulated` and the virtual marker were absent from that binary and present in the opt-in example. Production frontend build passed and excluded the virtual entry/commands; an injected virtual sentinel made the exclusion guard fail, then passed after removal. |
 | Firmware boundary | Embedded `physical-st7789` RISC-V check passed. Physical firmware and runner now share the exact same 16-capability constant; extraction preserved all previous flags. No pin map, protocol schema or release recipe changed. |
@@ -280,12 +280,12 @@ runner adds `--replay 17` and `--replay 29`. Each seed runs four fixed raw-input
 actual Simulator/Runtime/protocol/capture: mixed rotary, invalid/bounce then a valid detent,
 buffered switches and cancelled recovery. Expected logical actions are independently specified;
 frame FNV-1a 64-bit hashes are checked against the committed
-[golden fixture](../firmware/pala/simulator/fixtures/replay-goldens.json). Expectations are never
+[golden fixture](../firmware/pip/simulator/fixtures/replay-goldens.json). Expectations are never
 regenerated during verification. Mutated frame and action expectations each fail while the other
 comparison remains unchanged. Unsupported seeds fail nonzero.
 
 `just virtual-device-smoke` now uses Node, matching CI. Each invocation creates a fresh ignored
-`firmware/pala/simulator/target/reports/run-*/` directory with `report.json`, per-stage stdout/stderr
+`firmware/pip/simulator/target/reports/run-*/` directory with `report.json`, per-stage stdout/stderr
 and `firmware-frame.ppm`. The report records checkout SHA, dirty flag and tracked-diff hash;
 Rust/Node versions and host target; binary, lockfile/tool and golden-fixture SHA-256 digests;
 scenario ids, raw inputs/timestamps, expected/actual actions and frame hashes; seeds, clock modes,
@@ -333,7 +333,7 @@ flash/signatures/installers, deployment and sustained-use acceptance remain sepa
 **You need:** the board, a Windows PC and a Mac, one unrelated USB-serial device (Arduino or UART
 adapter), and a phone that films slow motion (backup for latency only).
 
-Current wiring specification (source of truth: `firmware/pala/src/profile.rs`). The GPIO map moved
+Current wiring specification (source of truth: `firmware/pip/src/profile.rs`). The GPIO map moved
 for the enclosure; earlier display measurements do not verify this map. Check continuity against
 the current profile and complete rows 3.15 and 5.1 before powering/flashing an assembled unit.
 
@@ -681,7 +681,7 @@ Rules in [product.md](./product.md#updates-us10-us11); design in ADR-0014 to ADR
 - [ ] 14.2 Plug in a unit with older firmware | the app treats it as Kivori Pip on the C3 SuperMini and offers the firmware update a few seconds after it connects
 - [ ] 14.3 Choose "Later", unplug and replug | the offer comes back; choose "Update now" | "Updating" on the panel, then the buddy; Device page shows the new firmware
 - [ ] 14.4 Try to flash an image built for another board (developer build with a test image) | the app refuses and names the mismatch; nothing is written
-- [ ] 14.5 Provisioning with `--product pala --board c3-supermini --rev 1` on a spare unit: first without, then with `--burn-identity` (permanent; [provisioning.md](./provisioning.md)) | without it the record is previewed and firmware is still flashed/checked, with no eFuse write; with it the record is shown and the product id must be typed; the run prints identity PASS and the log row says `chip`; afterwards Diagnostics shows the identity from the chip; a second burn attempt on the same unit says "already provisioned"
+- [ ] 14.5 Provisioning with `--product pip --board c3-supermini --rev 1` on a spare unit: first without, then with `--burn-identity` (permanent; [provisioning.md](./provisioning.md)) | without it the record is previewed and firmware is still flashed/checked, with no eFuse write; with it the record is shown and the product id must be typed; the run prints identity PASS and the log row says `chip`; afterwards Diagnostics shows the identity from the chip; a second burn attempt on the same unit says "already provisioned"
 - [ ] 14.6 Install an older release, publish a newer one | within a day, or at the next start, a tray badge; opening the window shows the update dialog with the new version and notes
 - [ ] 14.7 "Install & restart" | the installer runs without questions, Kivori restarts on the new version, the device reconnects; the firmware offer follows if the new app bundles newer firmware
 - [ ] 14.8 "Skip this version", restart | no offer for that version; a newer one is offered again
@@ -941,7 +941,7 @@ old-session regression also failed before the capture-time guard was added.
 Local validation on Andress-MacBook-Air:
 
 - Full firmware host simulation: 202 passed (49 library and 153 integration tests), no failures or
-  ignored tests, using `cargo test --manifest-path firmware/pala/Cargo.toml --locked --features host-sim --target aarch64-apple-darwin`.
+  ignored tests, using `cargo test --manifest-path firmware/pip/Cargo.toml --locked --features host-sim --target aarch64-apple-darwin`.
 - Host-sim Clippy for all targets and RISC-V `physical-st7789` library Clippy, both with warnings
   denied: passed.
 - Shipping `physical-st7789` release firmware compiled and linked for `riscv32imc-unknown-none-elf`.
@@ -982,7 +982,7 @@ renders on cadence and requests reboot on time even though reads never return em
 Local validation on Andress-MacBook-Air:
 
 - Full firmware host simulation: 207 passed (49 library and 158 integration tests), no failures or
-  ignored tests, using `cargo test --manifest-path firmware/pala/Cargo.toml --locked --features host-sim --target aarch64-apple-darwin`.
+  ignored tests, using `cargo test --manifest-path firmware/pip/Cargo.toml --locked --features host-sim --target aarch64-apple-darwin`.
 - Host all-target and RISC-V `physical-st7789` library Clippy with warnings denied: passed.
 - Shipping `physical-st7789` release firmware compiled and linked for RISC-V using the consistent
   rustup/LLVM environment described above; the existing local optional debug-strip warning remains.
@@ -1460,7 +1460,7 @@ and placed first on PATH for child scripts. Frozen-lockfile install passed witho
 | Local check | Final result |
 | --- | --- |
 | `cargo test --workspace --locked --no-fail-fast -j 2 -- --test-threads=1` | 887 passed, 4 intentionally ignored; includes native, shared crates, golden frames, asset compiler and host end-to-end suites. |
-| `cargo test --manifest-path firmware/pala/Cargo.toml --locked --features host-sim --target aarch64-apple-darwin -j 2` | 207 passed, none ignored. |
+| `cargo test --manifest-path firmware/pip/Cargo.toml --locked --features host-sim --target aarch64-apple-darwin -j 2` | 207 passed, none ignored. |
 | `bun run --cwd apps/desktop test --maxWorkers=2` | 417 passed across 36 files. |
 | `bun run --cwd apps/web test` | 104 passed across 14 files. |
 | Firmware recipe/catalog tests | 34 passed: `bun test scripts/build-firmware.test.mjs scripts/build-firmware-set.test.mjs scripts/check-product-identifiers.test.mjs`. |
@@ -1958,7 +1958,7 @@ Local checks on 2026-10-29, on the working changes based on `8d9bb4aa`:
   button, production-runtime and rotary tests passed again afterward. Strict firmware and runner
   Clippy, Rust formatting and launcher formatting passed. The RISC-V library build passed, and
   the physical `physical-st7789` release build passed again after the final runtime change.
-- The final `node firmware/pala/simulator/run.mjs --smoke` passed all 15 stages, including 18
+- The final `node firmware/pip/simulator/run.mjs --smoke` passed all 15 stages, including 18
   simulator tests, ten Node report/boundary tests, the unchanged replay goldens and the new `io`
   stage requiring four `PASS IO` assertions. It exercises the buffered production Runtime and
   transmit queue with a 64-byte FIFO, scheduled raw input and modeled SPI payload time.
@@ -1972,7 +1972,7 @@ Local checks on 2026-10-29, on the working changes based on `8d9bb4aa`:
   race and assertion improvements, then approved the hardened result with no remaining actionable
   issues, subject to the final test runs above finishing green; those runs subsequently passed.
 
-The final local ignored report is `firmware/pala/simulator/target/reports/run-UhtSOs/report.json`;
+The final local ignored report is `firmware/pip/simulator/target/reports/run-UhtSOs/report.json`;
 its logs retain the actual assertions and source fingerprint at execution. This evidence note
 followed that run. Two earlier standalone boundary-test attempts hit existing deadlines under
 concurrent builds; all ten Node report/boundary tests passed in both full runs without changing

@@ -1,7 +1,7 @@
 /// The product and board this firmware crate builds (ADR-0014). Their wire numbers and the image's
 /// minimum protocol are read from `products/`, so no number is typed twice. A second product's
 /// firmware crate names its own pair here.
-const PRODUCT: &str = "pala";
+const PRODUCT: &str = "pip";
 const BOARD: &str = "c3-supermini";
 
 /// Looks up `key = <value>` inside the `[section]` of a (simple, flat) TOML file. Only the shapes

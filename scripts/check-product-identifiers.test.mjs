@@ -59,7 +59,7 @@ test('catalog ids, names, models, boards, reservations and separator/camel varia
   usingFixture(({ root, put }) => {
     const forms = [
       'lada',
-      'PALA',
+      'PIP',
       'Beacon',
       'KV-L2',
       'kv_l2',
@@ -75,7 +75,7 @@ test('catalog ids, names, models, boards, reservations and separator/camel varia
     for (const text of forms) {
       put('apps/desktop/src/view.ts', `const value = '${text}';\n`);
       const { violations } = checkProductIdentifiers(root);
-      expect(violations.length > 0).toBe(text !== 'PALA'); // Terms come from this catalog, not the shipping one.
+      expect(violations.length > 0).toBe(text !== 'PIP'); // Terms come from this catalog, not the shipping one.
     }
   }));
 

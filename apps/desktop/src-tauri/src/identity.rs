@@ -12,7 +12,7 @@ use crate::catalog::{Board, Catalog, Product, UsbId};
 use crate::firmware_marker::ImageIdentity;
 
 /// The product a device that sends no `Identity` is (every unit shipped before `PRODUCT_IDENTITY_V1`).
-const LEGACY_PRODUCT: &str = "pala";
+const LEGACY_PRODUCT: &str = "pip";
 /// The board a device that sends no `Identity` is.
 const LEGACY_BOARD: &str = "c3-supermini";
 
@@ -352,9 +352,9 @@ mod tests {
         }
     }
 
-    /// A two-product catalog: `pala` and a pretend second product sharing the C3 SuperMini USB ids.
+    /// A two-product catalog: `pip` and a pretend second product sharing the C3 SuperMini USB ids.
     fn two_products() -> Catalog {
-        let registry = "[products]\npala = 1\nlamp = 2\n[boards]\nc3-supermini = 1\nrp2350 = 2\n";
+        let registry = "[products]\npip = 1\nlamp = 2\n[boards]\nc3-supermini = 1\nrp2350 = 2\n";
         let product = |name: &str, board: &str, usb: &str| {
             format!(
                 "display_name = \"{name}\"\nshort_name = \"{name}\"\nmodel = \"KV-X1\"\n\
@@ -366,7 +366,7 @@ mod tests {
         Catalog::parse(
             registry,
             &[
-                ("pala", &product("Kivori Pip", "c3-supermini", "303A:1001")),
+                ("pip", &product("Kivori Pip", "c3-supermini", "303A:1001")),
                 ("lamp", &product("Lamp", "c3-supermini", "303A:1001")),
             ],
         )
@@ -374,7 +374,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_is_pala_on_the_c3_supermini_with_unknown_revision() {
+    fn legacy_is_pip_on_the_c3_supermini_with_unknown_revision() {
         let legacy = DeviceIdentity::legacy();
         assert_eq!((legacy.product, legacy.board), (1, 1));
         assert_eq!(legacy.hw_rev, None);
@@ -382,7 +382,7 @@ mod tests {
         let (product, board) = legacy.resolve().expect("known");
         assert_eq!(
             (product.id.as_str(), board.id.as_str()),
-            ("pala", "c3-supermini")
+            ("pip", "c3-supermini")
         );
         assert_eq!(legacy.label(), "Kivori Pip on C3 SuperMini");
     }

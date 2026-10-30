@@ -21,7 +21,7 @@ jobs:
           targets: riscv32imc-unknown-none-elf
           components: rustfmt, clippy
       - name: Compile the firmware library for RISC-V (no_std / no-alloc isolation proof)
-        working-directory: firmware/pala
+        working-directory: firmware/pip
         # Building the library pulls in all five shared crates + the device core; the bin target is
         # skipped here (its `embedded` feature is off) and built in the adapters step below.
         run: cargo build --locked --lib
@@ -32,7 +32,7 @@ jobs:
       # HW-040 rotary adapter) — it must be built here, not just `embedded` (which only reaches
       # main.rs's bare fallback and compiles neither adapter).
       - name: Build the hardware adapters compile-only (no hardware test)
-        working-directory: firmware/pala
+        working-directory: firmware/pip
         run: |
           cargo build --locked --release --features embedded
           cargo build --locked --release --features embedded,debug-payloads
@@ -40,7 +40,7 @@ jobs:
           cargo build --locked --release --features physical-st7789,debug-payloads
           cargo build --locked --release --features physical-st7789,latency-probe
       - name: Firmware format + clippy (RISC-V, every feature configuration)
-        working-directory: firmware/pala
+        working-directory: firmware/pip
         run: |
           cargo fmt --all --check
           cargo clippy --locked --lib -- -D warnings
@@ -60,8 +60,8 @@ jobs:
         with:
           components: clippy
       - name: Device-core host simulation tests (handshake, dispatch, render parity)
-        working-directory: firmware/pala
+        working-directory: firmware/pip
         run: cargo test --locked --features host-sim --target x86_64-unknown-linux-gnu
       - name: Host-sim clippy
-        working-directory: firmware/pala
+        working-directory: firmware/pip
         run: cargo clippy --locked --features host-sim --target x86_64-unknown-linux-gnu --all-targets -- -D warnings

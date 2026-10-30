@@ -42,7 +42,9 @@ export const APP_IGNORED_PATHS = [
 export const APP_IGNORED_SCOPES = ['web'];
 
 /** Earlier homes of a product's firmware crate, so history before a folder move still counts. */
-export const LEGACY_FIRMWARE_DIRS = { pala: ['firmware/desk-buddy/', 'firmware/esp32-c3/'] };
+export const LEGACY_FIRMWARE_DIRS = {
+  pip: ['firmware/pala/', 'firmware/desk-buddy/', 'firmware/esp32-c3/'],
+};
 
 export const firmwareDirs = (product) => [
   `firmware/${product}/`,

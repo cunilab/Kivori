@@ -38,7 +38,7 @@ const expectedStages = [
 ];
 const report =
   mode === '--smoke'
-    ? createReport(resolve(root, 'firmware/pala/simulator/target/reports'), {
+    ? createReport(resolve(root, 'firmware/pip/simulator/target/reports'), {
         expectedStages,
         expectedSeeds: REPLAY_SEEDS,
         startedAt: new Date().toISOString(),
@@ -108,11 +108,11 @@ try {
     report.data.inputSha256 = Object.fromEntries(
       [
         'Cargo.lock',
-        'firmware/pala/Cargo.lock',
-        'firmware/pala/simulator/Cargo.lock',
-        'firmware/pala/simulator/run.mjs',
-        'firmware/pala/simulator/smoke-report.mjs',
-        'firmware/pala/simulator/fixtures/replay-goldens.json',
+        'firmware/pip/Cargo.lock',
+        'firmware/pip/simulator/Cargo.lock',
+        'firmware/pip/simulator/run.mjs',
+        'firmware/pip/simulator/smoke-report.mjs',
+        'firmware/pip/simulator/fixtures/replay-goldens.json',
       ].map((file) => [file, sha256(readFileSync(resolve(root, file)))]),
     );
     report.write();
@@ -121,8 +121,8 @@ try {
       'node',
       [
         '--test',
-        'firmware/pala/simulator/smoke-report.test.mjs',
-        'firmware/pala/simulator/boundary.test.mjs',
+        'firmware/pip/simulator/smoke-report.test.mjs',
+        'firmware/pip/simulator/boundary.test.mjs',
       ],
       {
         stage: {
@@ -156,8 +156,8 @@ try {
       }
     });
   });
-  const manifest = 'firmware/pala/simulator/Cargo.toml';
-  const target = resolve(root, 'firmware/pala/simulator/target');
+  const manifest = 'firmware/pip/simulator/Cargo.toml';
+  const target = resolve(root, 'firmware/pip/simulator/target');
   if (report) report.data.build.hostTarget = host;
   await run(
     'cargo',
@@ -321,7 +321,7 @@ try {
         `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>virtual_device</string>
-<key>CFBundleIdentifier</key><string>id.immer.kivori.virtual-device-dev</string>
+<key>CFBundleIdentifier</key><string>id.cunilab.kivori.virtual-device-dev</string>
 <key>CFBundleName</key><string>Kivori Virtual Device</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleVersion</key><string>1</string>

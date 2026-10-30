@@ -283,7 +283,7 @@ fn scenarios(seed: u32, goldens: &Goldens) -> Result<Report, String> {
     let passed = cases.iter().all(|case| case.status == "passed");
     Ok(Report {
         schema_version: 1,
-        product: "pala",
+        product: "pip",
         firmware_version: format!("{}.{}.{}", VERSION.major, VERSION.minor, VERSION.patch),
         seed,
         clock_mode: "injected-firmware",
@@ -298,7 +298,7 @@ fn scenarios(seed: u32, goldens: &Goldens) -> Result<Report, String> {
         ],
         exercised_layers: ["firmware-runtime", "protocol", "firmware-renderer"],
         not_exercised: ["desktop-runtime", "native-os", "electrical-timing"],
-        golden_fixture: "firmware/pala/simulator/fixtures/replay-goldens.json",
+        golden_fixture: "firmware/pip/simulator/fixtures/replay-goldens.json",
         status: if passed { "passed" } else { "failed" },
         cases,
     })

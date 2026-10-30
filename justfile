@@ -32,7 +32,7 @@ build:
 
 # Compile the shared crates for RISC-V (no_std / no-alloc isolation proof).
 fw-check:
-    cd firmware/pala && cargo build -p kivori-model -p kivori-protocol -p kivori-framebuffer -p kivori-renderer -p kivori-assets
+    cd firmware/pip && cargo build -p kivori-model -p kivori-protocol -p kivori-framebuffer -p kivori-renderer -p kivori-assets
 
 # The flashable binary needs `--features embedded` at minimum: the bin target declares it in
 # `required-features`, so a plain `cargo build --release` silently builds only the library and
@@ -46,7 +46,7 @@ fw-build:
 
 # Host-side device-core tests (no hardware).
 fw-test:
-    cd firmware/pala && cargo test --features host-sim --target $(rustc -vV | sed -n 's/^host: //p')
+    cd firmware/pip && cargo test --features host-sim --target $(rustc -vV | sed -n 's/^host: //p')
 
 # Flashes and monitors via the `espflash` runner in .cargo/config.toml.
 # The physical ESP32-C3 + ST7789 profile is verified in docs/validation.md.
@@ -55,12 +55,12 @@ fw-test:
 
 # Flash + monitor the verified physical board profile (ST7789 + rotary product runtime).
 fw-flash:
-    cd firmware/pala && cargo run --release --features physical-st7789
+    cd firmware/pip && cargo run --release --features physical-st7789
 
 # DEVELOPMENT ONLY: physical profile plus the on-panel detent -> flush latency readout (Slice 002
 # checklist row 14). Never a product build.
 fw-flash-latency:
-    cd firmware/pala && cargo run --release --features physical-st7789,latency-probe
+    cd firmware/pip && cargo run --release --features physical-st7789,latency-probe
 
 # ---- assets / golden frames ----
 
@@ -198,12 +198,12 @@ web-deploy:
 
 # DEV ONLY: isolated product-owned simulator + desktop-core sandbox (no physical device).
 virtual-device:
-    bun firmware/pala/simulator/run.mjs
+    bun firmware/pip/simulator/run.mjs
 
 # Real Runtime/desktop-core smoke with fake OS and a captured firmware framebuffer.
 virtual-device-smoke:
-    node firmware/pala/simulator/run.mjs --smoke
+    node firmware/pip/simulator/run.mjs --smoke
 
 # Opt-in, several minutes: one virtual session past both protocol sequence wraps (no soak credit).
 virtual-device-endurance:
-    node firmware/pala/simulator/run.mjs --endurance
+    node firmware/pip/simulator/run.mjs --endurance

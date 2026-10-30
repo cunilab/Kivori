@@ -985,7 +985,7 @@ mod tests {
             Catalog::embedded(),
             &parse_args(&strings(&[
                 "--product",
-                "pala",
+                "pip",
                 "--board=c3-supermini",
                 "--rev",
                 "2",
@@ -1021,7 +1021,7 @@ mod tests {
         let plan = plan();
         assert_eq!(
             (plan.product, plan.board, plan.rev, plan.product_id.as_str()),
-            (1, 1, 2, "pala")
+            (1, 1, 2, "pip")
         );
         assert_eq!(plan.record().encode()[..6], [1, 1, 0, 1, 0, 2]);
     }
@@ -1031,16 +1031,16 @@ mod tests {
         let resolve = |a: &[&str]| resolve_plan(Catalog::embedded(), &parse_args(&strings(a))?);
         let err =
             resolve(&["--product", "lamp", "--board", "c3-supermini", "--rev", "1"]).unwrap_err();
-        assert!(err.contains("lamp") && err.contains("pala"), "{err}");
-        let err = resolve(&["--product", "pala", "--board", "x", "--rev", "1"]).unwrap_err();
+        assert!(err.contains("lamp") && err.contains("pip"), "{err}");
+        let err = resolve(&["--product", "pip", "--board", "x", "--rev", "1"]).unwrap_err();
         assert!(err.contains("c3-supermini"), "{err}");
         for rev in ["0", "256", "-1", "x", ""] {
             assert!(
-                resolve(&["--product", "pala", "--board", "c3-supermini", "--rev", rev]).is_err(),
+                resolve(&["--product", "pip", "--board", "c3-supermini", "--rev", rev]).is_err(),
                 "{rev}"
             );
         }
-        assert!(resolve(&["--product", "pala"]).is_err());
+        assert!(resolve(&["--product", "pip"]).is_err());
         assert!(resolve(&["--burn-identity"]).is_err());
         assert!(parse_args(&strings(&["--yes"])).is_err());
         assert!(parse_args(&strings(&["--burn-identity=1"])).is_err());
@@ -1058,7 +1058,7 @@ mod tests {
     #[test]
     fn the_dry_run_text_shows_fields_bytes_and_crc() {
         let text = describe_record(&plan());
-        assert!(text.contains("pala (wire 1)") && text.contains("revision:  2"));
+        assert!(text.contains("pip (wire 1)") && text.contains("revision:  2"));
         assert!(text.contains("01 01 00 01 00 02 00 00"), "{text}");
         let bytes = plan().record().encode();
         assert!(text.contains(&hex(&bytes)));
@@ -1115,10 +1115,10 @@ mod tests {
     #[test]
     fn confirmation_needs_the_exact_product_id() {
         let plan = plan();
-        assert!(confirmation_matches("pala\n", &plan));
-        assert!(confirmation_matches("pala\r\n", &plan));
-        assert!(confirmation_matches("pala", &plan));
-        for bad in ["", "\n", "y", "yes", "Pala", " pala", "pala ", "desk"] {
+        assert!(confirmation_matches("pip\n", &plan));
+        assert!(confirmation_matches("pip\r\n", &plan));
+        assert!(confirmation_matches("pip", &plan));
+        for bad in ["", "\n", "y", "yes", "Pip", " pip", "pip ", "desk"] {
             assert!(!confirmation_matches(bad, &plan), "{bad:?}");
         }
     }
@@ -1207,7 +1207,7 @@ mod tests {
         assert!(evaluate(&obs, &policy()).passed());
         let log = IdentityLog::from_device(Some(&chip_identity(Some(2), IdentitySource::Chip)));
         let row = csv_row("t", Some("ab"), &obs, &evaluate(&obs, &policy()), &log);
-        assert!(row.ends_with(",chip,pala,c3-supermini,2"), "{row}");
+        assert!(row.ends_with(",chip,pip,c3-supermini,2"), "{row}");
         assert_eq!(row.matches(',').count(), CSV_HEADER.matches(',').count());
         assert!(CSV_HEADER
             .starts_with("timestamp_utc,device_hash,device_fw,bundled_fw,result,failed_checks,"));
