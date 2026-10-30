@@ -471,8 +471,17 @@ fn probe_internals(port: &str) -> Result<(), Box<dyn std::error::Error>> {
             next = now + Duration::from_secs(1);
             if let Some(i) = session.internals() {
                 println!(
-                    "busy {:?}%  compose {:?} ms  flush {:?} ms  fps {:?}  edge high-water {:?}",
-                    i.busy_percent, i.compose_ms, i.flush_ms, i.fps, i.edge_queue_high_water
+                    "busy {:?}%  compose {:?} ms  flush {:?} ms  fps {:?}  edge high-water {:?}  \
+                     stack min free {:?}  ram free {:?} static {:?} total {:?}",
+                    i.busy_percent,
+                    i.compose_ms,
+                    i.flush_ms,
+                    i.fps,
+                    i.edge_queue_high_water,
+                    i.stack_free_min_bytes,
+                    i.ram_free_bytes,
+                    i.ram_static_bytes,
+                    i.ram_total_bytes
                 );
                 if let (Some(c), Some(f)) = (i.compose_ms, i.fps) {
                     samples.push((u32::from(c), u32::from(f)));

@@ -753,7 +753,10 @@ impl<'a> Runtime<'a> {
             // milliseconds on the device, so it goes one tile row at a time, and between rows (as
             // between windows) the loop drains input, sends what is queued and buffers what the
             // host sent: a detent or a host write waits for one row, not the whole frame.
+            // Time spent servicing input and the transport between rows and windows is not drawing
+            // or flushing, so it is measured and left out of both figures.
             let compose_started = clock.now_ms();
+            let mut compose_serviced = 0u32;
             let mut outcome = Ok(());
             for row in 0..TILE_ROWS {
                 outcome = self.renderer.prepare_frame_row(
@@ -768,25 +771,37 @@ impl<'a> Runtime<'a> {
                 if outcome.is_err() {
                     break;
                 }
-                self.pump_input(clock.now_ms(), transport, input);
+                let serviced_from = clock.now_ms();
+                self.pump_input(serviced_from, transport, input);
                 let _ = transport.buffer_inbound();
                 let _ = transport.drain_pending();
+                compose_serviced =
+                    compose_serviced.saturating_add(clock.now_ms().wrapping_sub(serviced_from));
             }
             let composed_at = clock.now_ms();
+            let mut flush_serviced = 0u32;
             while outcome.is_ok() {
                 match self.renderer.flush_next_window(&mut counting) {
                     Ok(true) => {
-                        self.pump_input(clock.now_ms(), transport, input);
+                        let serviced_from = clock.now_ms();
+                        self.pump_input(serviced_from, transport, input);
                         // Push the event toward the host now; a failure resurfaces next tick.
                         let _ = transport.drain_pending();
+                        flush_serviced = flush_serviced
+                            .saturating_add(clock.now_ms().wrapping_sub(serviced_from));
                     }
                     Ok(false) => break,
                     Err(error) => outcome = Err(error),
                 }
             }
             self.load.on_frame(
-                composed_at.wrapping_sub(compose_started),
-                clock.now_ms().wrapping_sub(composed_at),
+                composed_at
+                    .wrapping_sub(compose_started)
+                    .saturating_sub(compose_serviced),
+                clock
+                    .now_ms()
+                    .wrapping_sub(composed_at)
+                    .saturating_sub(flush_serviced),
             );
             tick.tiles_flushed = counting.flushes;
             tick.windows_flushed = counting.windows;
