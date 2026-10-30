@@ -18,25 +18,25 @@
   },
   "dependencies": {
     "@kivori/ui": "workspace:*",
-    "lucide-react": "^1.59.0",
-    "next": "16.4.2",
+    "lucide-react": "^1.62.0",
+    "next": "16.4.3",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@fontsource/space-grotesk": "5.3.0",
-    "@opennextjs/cloudflare": "1.20.12",
+    "@opennextjs/cloudflare": "1.20.13",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "puppeteer-core": "25.14.0",
-    "satori": "0.62.0",
+    "puppeteer-core": "25.16.0",
+    "satori": "0.63.2",
     "sharp": "0.35.5",
     "tailwindcss": "^4.3.3",
     "three": "0.186.1",
     "typescript": "^5.6.0",
     "vitest": "^5.0.5",
-    "wrangler": "4.151.1"
+    "wrangler": "4.153.0"
   }
 }
