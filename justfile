@@ -69,6 +69,16 @@ fw-budget:
     bun scripts/build-firmware.mjs > /dev/null
     bun scripts/firmware-budget.mjs
 
+# Predicted ESP32-C3 compose time per scenario and tile row, without hardware: the real renderer compiled
+# for riscv32imc and run in an instruction-set simulator (firmware/pip/frame-cost). Fails if a
+# scenario got more than 10% slower than the committed fixture. Needs the riscv32imc target.
+fw-frame-cost:
+    firmware/pip/frame-cost/run.sh check
+
+# Rewrite firmware/pip/frame-cost/fixtures/frame-cost.json after an intended renderer cost change.
+fw-frame-cost-update:
+    firmware/pip/frame-cost/run.sh update
+
 # ---- assets / golden frames ----
 
 # Recompile the canonical asset blob.

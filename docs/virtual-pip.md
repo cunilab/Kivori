@@ -309,7 +309,8 @@ Comparing a real unit with the virtual one, using the production session (`devic
 The desktop logs `device link lost` with its cause (heartbeat timeout, I/O error, port removed),
 so a reconnect loop on hardware names its reason. `device_probe PORT internals` samples the device's busy %, compose and flush time and fps once a
 second; compare it before and after a rendering change on the unit, since host timings do not
-predict the ESP32-C3 (no 64-bit divide, flash-resident assets).
+predict the ESP32-C3 (no 64-bit divide, flash-resident assets). Without a unit,
+[Frame cost without hardware](#frame-cost-without-hardware) predicts the compose time.
 
 Not covered by the simulator: pin wiring and electrical bounce, the USB CDC transport and its
 buffering, SPI/panel orientation and real frame timing.
@@ -345,3 +346,120 @@ code that needs it and write the reason in that entry's `why`; reviewers see the
 reason together. After a size or stack change, run `just fw-budget` and copy the new figure with a
 small margin; do not raise a limit just to make a failing check pass without explaining the growth.
 Re-measure `device_probe PORT internals` on the unit when the stack peak moves.
+
+### Frame cost without hardware
+
+`just fw-frame-cost` predicts the ESP32-C3's compose time per frame without a unit, and the firmware
+CI job `frame-cost` runs the same check. It executes the real renderer, not a model of it:
+
+- `firmware/pip/frame-cost/bench/` is a `no_std` binary built for `riscv32imc-unknown-none-elf` with the
+  product's release profile (`opt-level = 3`, `lto`). It calls the same
+  `TileRenderer::prepare_frame_row` once per tile row into a static frame buffer, as `Runtime::step`
+  does, over seven scenarios (below), with the asset blob in a DROM-mapped section and code in IROM
+  (`0x4200_0000`, `0x3C00_0000`, RAM `0x3FC8_0000`). Marker stores to an unmapped window tell the
+  simulator where each row, frame and scenario starts and ends.
+- `firmware/pip/frame-cost/` (own host workspace, like `../simulator`; ADR-0018) is an RV32IMC
+  instruction-set simulator: it loads the ELF and executes every instruction (compressed decode,
+  M extension, CSRs, ROM/flash/SRAM map) and charges cycles by the model below. Tests in
+  `tests/iss.rs` pin instruction semantics against `llvm-mc` encodings, including divide by zero,
+  `MIN / -1`, the `mulh*` family and every compressed form the bench uses.
+- `tests/native_parity.rs` renders the same scenes natively and requires the simulated frame buffer
+  to match bit for bit after every frame (104 frames). The simulator therefore runs the renderer
+  correctly; it also confirmed that the pre-#150 renderer draws identical pixels.
+
+Cycle model (`src/model.rs`; every number is an assumption except the one fitted, because Espressif
+publishes no per-instruction latencies; it is a 4-stage in-order single-issue core):
+
+| Rule | Cycles beyond the base 1 | Why |
+|---|---|---|
+| load result used by the next instruction | +1 | load data arrives a stage later than ALU results |
+| taken branch / `jal` / `jalr` | +2 / +1 / +2 | redirect in EX, no predictor assumed; `jal` target is known at decode |
+| `mul*` | +2 | 3-cycle multiplier (Ibex "slow" class) |
+| `div*`, `rem*` | +34 | 35-cycle serial divider; flat, including divide by zero |
+| load hitting the flash cache (DROM) | +1 | cache read takes a second stage |
+| flash-cache miss (code or data) | +170 | 32-byte line over 80 MHz quad SPI is about 84 flash clocks; a 40 MHz dual-SPI flash would be about 600 |
+| cache | 16 KiB, 8-way, 32-byte lines, LRU, shared by IROM and DROM | datasheet: 16 KB cache; ways and line from ESP-IDF's C3 options |
+| everything above except misses, times | 2.064 | the one fitted number: see Accuracy |
+
+Scenarios (device time sampled across an animation cycle; per-row figures in the fixture):
+`idle_mascot`, `connected_desk` (buddy plus clock, indicators and control legend: what the app shows),
+`media_view`, `system_view`, `clock_view`, `buddy_overlay` (reaction and state change in flight,
+volume overlay, badge, live mic, pressed knob) and `switch_buddy_system` (the view-switch slide with
+both buddy and System drawn: the heaviest frame the device draws).
+
+`firmware/pip/frame-cost/fixtures/frame-cost.json` is the committed output and the input of the
+virtual Pip's clock: for each scenario, `row_ms_mean[r]` and `row_ms_max[r]` are the compose time of
+tile row `r`, `row_cycles[frame][row]` replays a frame sequence, and `frame_ms` is mean/min/max per
+frame; `meta` records the model version, every parameter, the calibration and the scope. Predicted
+compose time (`connected_desk` rows 0 to 5, ms): 4.3, 8.6, 20.8, 23.8, 14.6, 7.0.
+
+| Scenario | mean ms | worst frame ms |
+|---|---:|---:|
+| `media_view` | 30.6 | 30.7 |
+| `clock_view` | 50.6 | 50.7 |
+| `buddy_overlay` | 67.7 | 68.1 |
+| `idle_mascot` | 73.4 | 73.6 |
+| `connected_desk` | 79.0 | 79.3 |
+| `switch_buddy_system` | 91.2 | 97.7 |
+| `system_view` | 97.4 | 97.5 |
+
+#### Accuracy
+
+Two measurements on the owner's unit (ESP32-C3 rev v0.4, 160 MHz):
+
+| Renderer | Measured compose | Predicted | Error |
+|---|---:|---:|---:|
+| after PR #150 (opt-level 3), app connected, desk view with the mascot | 79 ms | 79.0 ms (fitted) | 0 |
+| before PR #150 (commit `20a4b5c`, opt-level `s`, two 64-bit divides per sprite pixel) | 339 ms | 304 ms (not fitted) | -10% |
+
+Only the global factor was fitted, to the first row. The second is a prediction: the bench was built
+from a worktree of `20a4b5c` with `opt-level = "s"` and its whole-frame `prepare_frame` (that
+commit has no per-row call), and run unchanged. Without the factor the model predicts 41 ms and
+150 ms for the two points: a ratio of 3.7 against the measured 4.3, so the model ranks code changes
+sensibly, but absolute cycles are about twice what the rules add up to (flash-cache instruction path,
+SRAM bus effects and anything not modelled individually are folded into the factor). How much the
+assumed miss penalty matters: refitting the factor for penalties of 0, 85, 170, 340 and 600 cycles
+moves the old-renderer prediction to 322, 313, 304, 287 and 261 ms (-5% to -23%), so every plausible
+flash setting stays inside the 25% target.
+
+Limits and uncertainty:
+
+- Row costs, scenario mixes and the 79 ms fit are validated only in total. Whether row 3 costs 23.8 ms
+  on the unit is not measured; the model says where the work is, `internals` only gives the sum.
+- The product links the ROM's `memcpy`, `memset` and 64-bit divide (`esp32c3.rom.*.ld`); the bench links
+  `compiler-builtins` copies, whose cost differs. They are 3% of the current frame, but 23% of the
+  pre-#150 frame, so the old-renderer prediction carries that uncertainty (a slower ROM divide would
+  move it toward 339 ms).
+- Not modelled: SPI flush and its DMA, USB, GPIO interrupts, the work the run loop does between rows
+  (the device measurement leaves it out as well), flash-cache state disturbed by that work (the
+  simulation keeps the cache warm across rows and frames), and data-dependent divider time.
+- The model is a predictor for regression gating and for relative cost, not a substitute for
+  `device_probe PORT internals` on the unit after a rendering change.
+
+#### Gate
+
+`firmware/pip/frame-cost/run.sh check` (`just fw-frame-cost`): builds the bench and simulator, runs
+their tests and the native-parity test, then fails if any scenario's mean or worst frame is more than
+10% above the fixture, or a scenario is missing or new. The result is deterministic; the 10% absorbs
+code-generation drift between stable Rust releases (CI uses the current stable). A 64-bit divide back
+in the sprite path shows as +285% on `connected_desk`. Runtime: about 20 s locally once built (the
+simulation takes 8 s); the CI job builds two small workspaces from cold, so allow a few minutes in
+parallel with `no-std-isolation`.
+
+To accept an intended cost change: `just fw-frame-cost-update`, review the diff of
+`fixtures/frame-cost.json` and commit it with the reason in the message. A faster result is reported
+as a note (not a failure); refresh the fixture to keep the gate tight. Changing a cost rule in
+`src/model.rs` requires bumping `MODEL_VERSION`; the check refuses a fixture of another version.
+
+#### Recalibrating
+
+1. On the unit, flash the repository firmware and run `device_probe PORT internals`; note the average
+   compose ms in the state to calibrate (app connected, desk view, mascot animating).
+2. `cd firmware/pip/frame-cost && ./run.sh run` builds the bench and ELF
+   (`bench/target/riscv32imc-unknown-none-elf/release/kivori-frame-cost-bench`); then
+   `target/<host>/release/kivori-pip-frame-cost calibrate --elf <ELF> --scenario connected_desk --target-ms <ms>`
+   prints the `scale_milli` that reproduces it (add `--miss-penalty N` to try another flash setting).
+3. Put the value in `FITTED_SCALE_MILLI` (`src/model.rs`), update the calibration text in `src/main.rs`
+   and the table above, run `just fw-frame-cost-update`, and keep the second data point
+   (`run --elf <old ELF>` on a build of an older renderer) as a check; a prediction more than 25% off
+   means a cost rule needs revisiting before the fixture is trusted.

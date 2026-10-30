@@ -60,6 +60,30 @@ jobs:
           cargo clippy --locked --lib --features physical-st7789,debug-payloads -- -D warnings
           cargo clippy --locked --lib --features physical-st7789,latency-probe -- -D warnings
 
+  # Predicted ESP32-C3 compose time (no hardware): the real renderer compiled for riscv32imc and run
+  # in an instruction-set simulator with an ESP32-C3 cycle model (docs/virtual-pip.md, Hardware
+  # parity). Separate job so it runs beside the isolation job; fails if a scenario's predicted frame
+  # time grows more than 10% over firmware/pip/frame-cost/fixtures/frame-cost.json. To accept an
+  # intended change: `just fw-frame-cost-update` and commit the fixture with the reason.
+  frame-cost:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: riscv32imc-unknown-none-elf
+          components: rustfmt, clippy
+      - name: Simulator tests, native parity and predicted frame cost vs the fixture
+        run: firmware/pip/frame-cost/run.sh check
+      - name: Frame-cost format + clippy (simulator and bench)
+        run: |
+          cd firmware/pip/frame-cost
+          cargo fmt --all --check
+          cargo clippy --locked --all-targets --target x86_64-unknown-linux-gnu -- -D warnings
+          cd bench
+          cargo fmt --all --check
+          cargo clippy --locked -- -D warnings
+
   host-sim-tests:
     # The hardware-neutral device core is validated on the host (FR-035). The forced RISC-V build
     # target is overridden with the host triple so std + the asset compiler (dev-dep) are available.
