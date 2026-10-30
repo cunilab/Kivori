@@ -35,7 +35,7 @@ use crate::input::quadrature::QuadratureDecoder;
 use crate::internals::{ChipProbe, LoadMeter, ASSET_BLOB_CAP_BYTES};
 use crate::ports::{Clock, DisplaySink, InputSource, Transport};
 use crate::proto::{DeviceIdentity, Dispatcher, HostTakeover};
-use crate::render::TileRenderer;
+use crate::render::{TileRenderer, TILE_ROWS};
 use crate::state::{DeviceEvent, DeviceState};
 use kivori_assets::AssetBlob;
 use kivori_model::desk::{
@@ -749,12 +749,29 @@ impl<'a> Runtime<'a> {
                         .stats(input.dropped_edges(), self.decoder.invalid_transitions()),
                 );
             }
-            // Compose the whole frame, then transfer it window by window. Between windows the loop
-            // drains input, so a detent waits for at most one window, not the whole frame.
+            // Compose the whole frame, then transfer it window by window. Composing takes tens of
+            // milliseconds on the device, so it goes one tile row at a time, and between rows (as
+            // between windows) the loop drains input, sends what is queued and buffers what the
+            // host sent: a detent or a host write waits for one row, not the whole frame.
             let compose_started = clock.now_ms();
-            let mut outcome =
-                self.renderer
-                    .prepare_frame(blob, state, &pose, overlay, &view, &mut counting);
+            let mut outcome = Ok(());
+            for row in 0..TILE_ROWS {
+                outcome = self.renderer.prepare_frame_row(
+                    blob,
+                    state,
+                    &pose,
+                    overlay,
+                    &view,
+                    row,
+                    &mut counting,
+                );
+                if outcome.is_err() {
+                    break;
+                }
+                self.pump_input(clock.now_ms(), transport, input);
+                let _ = transport.buffer_inbound();
+                let _ = transport.drain_pending();
+            }
             let composed_at = clock.now_ms();
             while outcome.is_ok() {
                 match self.renderer.flush_next_window(&mut counting) {

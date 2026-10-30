@@ -189,3 +189,69 @@ fn a_detent_during_a_long_frame_is_sent_before_the_frame_completes() {
         "the detent left the device during the tick that was drawing the frame"
     );
 }
+
+/// Counts how often input is drained before the first display window of a frame.
+struct CountingInput {
+    windows_out: Rc<Cell<bool>>,
+    drains_before_first_window: Rc<Cell<usize>>,
+}
+
+impl InputSource for CountingInput {
+    fn sample(&mut self) -> InputLevels {
+        lv(false, false)
+    }
+    fn drain(&mut self, _now_ms: ElapsedMs, f: &mut dyn FnMut(InputLevels, ElapsedMs)) {
+        if !self.windows_out.get() {
+            self.drains_before_first_window
+                .set(self.drains_before_first_window.get() + 1);
+        }
+        f(lv(false, false), 0);
+    }
+}
+
+/// Composing a frame takes tens of milliseconds on the device, so input (and USB) is serviced after
+/// every tile row while the frame is composed, not only between the windows that follow it.
+#[test]
+fn input_is_drained_after_every_tile_row_while_a_frame_is_composed() {
+    let frame_buffer: &'static mut [Rgb565; FRAME_PIXELS] = Box::leak(
+        vec![Rgb565::from_raw(0); FRAME_PIXELS]
+            .into_boxed_slice()
+            .try_into()
+            .unwrap(),
+    );
+    let identity = DeviceIdentity {
+        device_id: [0x1B; 16],
+        firmware_version: FirmwareVersion {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        capabilities: Capabilities::PHYSICAL_INPUT_V1,
+    };
+    let mut runtime = Runtime::with_frame_buffer(identity, RuntimeConfig::default(), frame_buffer);
+    let clock = VirtualClock::new();
+    let mut pipe = SimPipe::new();
+    let log: Log = Rc::default();
+    let windows_out = Rc::new(Cell::new(false));
+    let drains = Rc::new(Cell::new(0));
+    let mut display = LoggingDisplay {
+        inner: Box::new(CaptureDisplay::new()),
+        log,
+        first_window_done: Rc::clone(&windows_out),
+    };
+    let mut input = CountingInput {
+        windows_out,
+        drains_before_first_window: Rc::clone(&drains),
+    };
+    let blob_bytes = compile_default_blob();
+    let blob = AssetBlob::parse(&blob_bytes).unwrap();
+
+    // The boot frame is the first full composition: every row is composed before any window.
+    runtime.step(&clock, &mut pipe, &mut input, &mut display, &blob);
+
+    assert!(
+        drains.get() >= kivori_firmware::render::TILE_ROWS,
+        "input drained {} times before the first window",
+        drains.get()
+    );
+}

@@ -12,6 +12,10 @@ pub const FIFO_BYTES: usize = 64;
 /// packet still draining.
 pub const TX_QUEUE_BYTES: usize = MAX_WIRE * 2;
 
+/// Inbound buffer filled by [`Transport::buffer_inbound`] while a frame is composed: the host's
+/// connect burst (about 400 bytes) and a few heartbeats fit.
+pub const RX_BUFFER_BYTES: usize = 1024;
+
 /// A [`Transport`] wrapper giving the dispatcher whole-frame writes over a bounded hardware FIFO.
 ///
 /// `write` enqueues (so a frame is never truncated by a full FIFO), `read` delegates straight through, and
@@ -19,6 +23,7 @@ pub const TX_QUEUE_BYTES: usize = MAX_WIRE * 2;
 pub struct TxBuffered<T> {
     inner: T,
     queue: Deque<u8, TX_QUEUE_BYTES>,
+    inbound: Deque<u8, RX_BUFFER_BYTES>,
 }
 
 impl<T: Transport> TxBuffered<T> {
@@ -28,6 +33,7 @@ impl<T: Transport> TxBuffered<T> {
         Self {
             inner,
             queue: Deque::new(),
+            inbound: Deque::new(),
         }
     }
 
@@ -72,7 +78,38 @@ impl<T: Transport> Transport for TxBuffered<T> {
     type Error = T::Error;
 
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        self.inner.read(buf)
+        // Bytes buffered while a frame was composed come first, in arrival order.
+        let mut n = 0;
+        while n < buf.len() {
+            match self.inbound.pop_front() {
+                Some(byte) => {
+                    buf[n] = byte;
+                    n += 1;
+                }
+                None => break,
+            }
+        }
+        if n < buf.len() {
+            n += self.inner.read(&mut buf[n..])?;
+        }
+        Ok(n)
+    }
+
+    fn buffer_inbound(&mut self) -> Result<(), Self::Error> {
+        let mut chunk = [0u8; FIFO_BYTES];
+        loop {
+            let room = (RX_BUFFER_BYTES - self.inbound.len()).min(FIFO_BYTES);
+            if room == 0 {
+                return Ok(());
+            }
+            let n = self.inner.read(&mut chunk[..room])?;
+            for &byte in &chunk[..n] {
+                let _ = self.inbound.push_back(byte);
+            }
+            if n < room {
+                return Ok(());
+            }
+        }
     }
 
     /// Accepts the whole `buf` or nothing. Callers write one frame at a time, so a full queue

@@ -1104,3 +1104,50 @@ fn input_loss_never_splices_quadrature_and_the_next_clean_detent_survives() {
         }
     }
 }
+
+/// While a frame is composed the run loop moves what the host sent into RAM, so the hardware's
+/// 64-byte receive FIFO never fills and blocks the host. Bytes come back in order, buffered ones
+/// first, and what does not fit stays in the hardware for the next read.
+#[test]
+fn inbound_bytes_buffered_during_a_frame_are_read_back_in_order() {
+    use kivori_firmware::ports::Transport;
+    use kivori_firmware::tx_buffer::{TxBuffered, FIFO_BYTES, RX_BUFFER_BYTES};
+
+    /// A receive FIFO holding `pending`, handing out at most one FIFO's worth per read.
+    struct Fifo(std::collections::VecDeque<u8>);
+    impl Transport for Fifo {
+        type Error = core::convert::Infallible;
+        fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+            let n = buf.len().min(FIFO_BYTES).min(self.0.len());
+            for slot in &mut buf[..n] {
+                *slot = self.0.pop_front().unwrap();
+            }
+            Ok(n)
+        }
+        fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+            Ok(buf.len())
+        }
+    }
+
+    let sent: Vec<u8> = (0..RX_BUFFER_BYTES + 300)
+        .map(|i| (i % 251) as u8)
+        .collect();
+    let mut transport = TxBuffered::new(Fifo(sent.iter().copied().collect()));
+    transport.buffer_inbound().unwrap();
+    assert_eq!(
+        transport.inner_mut().0.len(),
+        300,
+        "only the buffer's worth is taken"
+    );
+
+    let mut received = Vec::new();
+    let mut buf = [0u8; 100];
+    loop {
+        let n = transport.read(&mut buf).unwrap();
+        if n == 0 {
+            break;
+        }
+        received.extend_from_slice(&buf[..n]);
+    }
+    assert_eq!(received, sent);
+}
