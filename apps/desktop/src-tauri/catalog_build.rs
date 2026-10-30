@@ -234,10 +234,10 @@ mod tests {
         fs::create_dir(&products).unwrap();
         fs::write(
             products.join("registry.toml"),
-            "[products]\npala = 1\nlada = 2\nreserved = 3\n[boards]\ntest-board = 1\n",
+            "[products]\npip = 1\nlada = 2\nreserved = 3\n[boards]\ntest-board = 1\n",
         )
         .unwrap();
-        add_product(root.path(), "pala");
+        add_product(root.path(), "pip");
         root
     }
 
@@ -261,7 +261,7 @@ mod tests {
         assert_eq!(one.products().len(), 1);
         add_product(root.path(), "lada");
         let mut art_assertions = String::new();
-        for (index, id) in ["lada", "pala"].iter().enumerate() {
+        for (index, id) in ["lada", "pip"].iter().enumerate() {
             let bytes = crate::platform::png::encode_rgba(1, 1, &[index as u8, 1, 2, 255]).unwrap();
             let directory = root.path().join("products").join(id);
             fs::write(directory.join("unit.png"), &bytes).unwrap();
@@ -272,8 +272,8 @@ mod tests {
             .unwrap();
             art_assertions.push_str(&format!("assert_eq!(PRODUCT_ART[{index}].0, {id:?}); assert_eq!(PRODUCT_ART[{index}].1, &{bytes:?});"));
         }
-        let expected_pala =
-            fs::read_to_string(root.path().join("products/pala/product.toml")).unwrap();
+        let expected_pip =
+            fs::read_to_string(root.path().join("products/pip/product.toml")).unwrap();
         let (catalog, source) =
             generate(&root.path().join("products"), &root.path().join("out")).unwrap();
         assert_eq!(
@@ -282,7 +282,7 @@ mod tests {
                 .iter()
                 .map(|p| p.id.as_str())
                 .collect::<Vec<_>>(),
-            ["lada", "pala"]
+            ["lada", "pip"]
         );
         assert!(catalog.product("reserved").is_none());
         assert_eq!(
@@ -293,13 +293,13 @@ mod tests {
         );
 
         // Snapshot bytes must survive source art removal before compilation.
-        for id in ["lada", "pala"] {
+        for id in ["lada", "pip"] {
             fs::remove_file(root.path().join("products").join(id).join("unit.png")).unwrap();
         }
         // Compile the actual generated constants, including quoted/newline metadata, outside
         // shipping discovery. This checks emission rather than a second implementation of it.
         let harness = root.path().join("embedded.rs");
-        fs::write(&harness, format!("{source}\nfn main() {{ assert!(REGISTRY.contains(\"reserved\")); assert_eq!(PRODUCT_FILES.len(), 2); assert_eq!(PRODUCT_FILES[0].0, \"lada\"); assert_eq!(PRODUCT_FILES[1], (\"pala\", {:?})); assert_eq!(PRODUCT_ART.len(), 2); {art_assertions} }}", expected_pala)).unwrap();
+        fs::write(&harness, format!("{source}\nfn main() {{ assert!(REGISTRY.contains(\"reserved\")); assert_eq!(PRODUCT_FILES.len(), 2); assert_eq!(PRODUCT_FILES[0].0, \"lada\"); assert_eq!(PRODUCT_FILES[1], (\"pip\", {:?})); assert_eq!(PRODUCT_ART.len(), 2); {art_assertions} }}", expected_pip)).unwrap();
         let binary = root
             .path()
             .join(format!("embedded{}", std::env::consts::EXE_SUFFIX));
@@ -344,13 +344,13 @@ mod tests {
             match case {
                 "unknown" => add_product(root.path(), "unregistered"),
                 "malformed" => {
-                    fs::write(products.join("pala/product.toml"), "not valid = [").unwrap()
+                    fs::write(products.join("pip/product.toml"), "not valid = [").unwrap()
                 }
-                "missing" => fs::remove_file(products.join("pala/product.toml")).unwrap(),
+                "missing" => fs::remove_file(products.join("pip/product.toml")).unwrap(),
                 "stray" => fs::write(products.join("typo.toml"), product("lada")).unwrap(),
                 "registry" => fs::remove_file(products.join("registry.toml")).unwrap(),
-                "empty" => fs::remove_dir_all(products.join("pala")).unwrap(),
-                "invalid-id" => fs::rename(products.join("pala"), products.join("Pala")).unwrap(),
+                "empty" => fs::remove_dir_all(products.join("pip")).unwrap(),
+                "invalid-id" => fs::rename(products.join("pip"), products.join("Pip")).unwrap(),
                 _ => unreachable!(),
             }
             assert!(
@@ -379,13 +379,13 @@ mod tests {
     #[test]
     fn presentation_must_fit_the_desktop_ipc_limit() {
         for (old, replacement) in [
-            ("Test pala", "X".repeat(97)),
-            ("Test pala", "😀".repeat(49)),
+            ("Test pip", "X".repeat(97)),
+            ("Test pip", "😀".repeat(49)),
             ("KV-T1", format!("KV-{}", "X".repeat(94))),
         ] {
             let root = fixture();
-            let path = root.path().join("products/pala/product.toml");
-            fs::write(path, product("pala").replace(old, &replacement)).unwrap();
+            let path = root.path().join("products/pip/product.toml");
+            fs::write(path, product("pip").replace(old, &replacement)).unwrap();
             let error =
                 generate(&root.path().join("products"), &root.path().join("out")).unwrap_err();
             assert!(error.0.contains("IPC limit"), "{error}");
@@ -395,10 +395,10 @@ mod tests {
     #[test]
     fn missing_declared_art_is_refused() {
         let root = fixture();
-        let path = root.path().join("products/pala/product.toml");
+        let path = root.path().join("products/pip/product.toml");
         fs::write(
             path,
-            product("pala").replace(
+            product("pip").replace(
                 "required_capabilities = []",
                 "image = \"art.png\"\nrequired_capabilities = []",
             ),
@@ -416,7 +416,7 @@ mod tests {
             let root = fixture();
             let products = root.path().join("products");
             match case {
-                "directory" => symlink(products.join("pala"), products.join("lada")).unwrap(),
+                "directory" => symlink(products.join("pip"), products.join("lada")).unwrap(),
                 "registry" => {
                     fs::rename(
                         products.join("registry.toml"),
@@ -431,13 +431,13 @@ mod tests {
                 }
                 "product" => {
                     fs::rename(
-                        products.join("pala/product.toml"),
+                        products.join("pip/product.toml"),
                         root.path().join("product.toml"),
                     )
                     .unwrap();
                     symlink(
                         root.path().join("product.toml"),
-                        products.join("pala/product.toml"),
+                        products.join("pip/product.toml"),
                     )
                     .unwrap();
                 }
@@ -474,9 +474,9 @@ mod tests {
         .unwrap();
         let (catalog, _) =
             generate(&root.path().join("products"), &root.path().join("out")).unwrap();
-        // pala is second in catalog order, but each image still selects its own crate.
+        // pip is second in catalog order, but each image still selects its own crate.
         for (product, version, protocol, crate_id) in
-            [(1, "0.1.0", "0.1", "pala"), (2, "0.2.0", "0.2", "lada")]
+            [(1, "0.1.0", "0.1", "pip"), (2, "0.2.0", "0.2", "lada")]
         {
             let bytes = image(product, 1, version, protocol);
             let parsed = FirmwareImage::parse(&bytes).unwrap();

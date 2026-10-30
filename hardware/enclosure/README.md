@@ -118,7 +118,7 @@ BOOT are pinholes in the plinth, labelled; a paperclip reaches the SuperMini's b
 
 ## Wiring
 
-These are the pins from [`profile.rs`](../../firmware/pala/src/profile.rs) and the README.
+These are the pins from [`profile.rs`](../../firmware/pip/src/profile.rs) and the README.
 
 | SuperMini | Net | Goes to |
 |---|---|---|

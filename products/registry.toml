@@ -1,20 +1,22 @@
 # The one place Kivori machine ids and wire numbers are handed out (ADR-0014).
 #
 # Rules:
-#   * A product id is its codename, an Indonesian spice (`pala` = nutmeg; the next ones are `lada`,
-#     `jahe`, ...). A board id names the board (`c3-supermini`). Both are lowercase kebab-case.
+#   * A product id is the product's short name in lowercase (`pip` = Kivori Pip), so code, folders
+#     and tags use the same name people say. A board id names the board (`c3-supermini`). Both are
+#     lowercase kebab-case. `pip` was the codename `pala` until 2026-10-30 (owner decision).
 #   * An id is a machine name; its number is a u16 sent on the wire
 #     (the Identity message, firmware image records, the chip identity record).
-#   * Ids and numbers are never reused and never renamed, even for a retired product or board.
-#     A rename would orphan every unit already sold; add a new entry instead.
+#   * Numbers are never reused or renumbered, even for a retired product or board: shipped units
+#     report the number, never the id. Renaming an id keeps those units working but moves folders,
+#     CI paths and the firmware tag prefix (`fw-<id>-v`), so it happens only by owner decision.
 #   * Numbers are unique within their table. 0 is reserved for "unknown / legacy" and is never
-#     assigned (a device that sends no identity is the legacy `pala` on the `c3-supermini`).
+#     assigned (a device that sends no identity is the legacy `pip` on the `c3-supermini`).
 #   * The customer name ("Kivori Pip"), short name ("Pip"), model code ("KV-P1"), images and
-#     everything else live in `products/<id>/product.toml`, not here; those may change, ids never.
+#     everything else live in `products/<id>/product.toml`, not here.
 #   * A product's `product.toml` may only name boards listed here.
 
 [products]
-pala = 1 # Kivori Pip, model KV-P1
+pip = 1 # Kivori Pip, model KV-P1
 
 [boards]
 c3-supermini = 1

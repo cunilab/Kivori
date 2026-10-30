@@ -8,7 +8,7 @@ and verified locally and in Linux/Windows CI. See
 
 ## Scope and ownership
 
-Start with Kivori Pip (permanent machine id `pala`), one simulator process and one selected
+Start with Kivori Pip (permanent machine id `pip`), one simulator process and one selected
 desktop connection. Keep the actual no_std firmware core and existing protocol/model/renderer;
 replace hardware adapters, not product behavior. Future products own independent executables,
 input models and scenarios. They must not import Pip's simulator. Shared contracts are the
@@ -17,7 +17,7 @@ existing crates; a universal simulator SDK, plugins and multi-device UI are out 
 Implemented paths:
 
 ```text
-firmware/pala/
+firmware/pip/
   src/                         production no_std firmware; existing sim adapters
   simulator/                   separate host Cargo workspace and executable
     src/                       raw inputs, runner, capture and process control
@@ -173,7 +173,7 @@ results. `Press once` schedules 120 ms raw down/up; Hold accepts pointer or Spac
 sends raw up. A 2 s hold failsafe prevents a missed browser release from keeping the knob held.
 Only in-memory settings are used. Do not count this as normal-app configuration/setup coverage.
 The runner pipe contract and explicit-host commands are in its
-[README](../firmware/pala/simulator/README.md). No new framework, common simulator crate or runtime
+[README](../firmware/pip/simulator/README.md). No new framework, common simulator crate or runtime
 network transport was added.
 
 ## Connection and fault controls (S5.2)

@@ -1098,7 +1098,7 @@ fn identity_message(session: u32, product: u16, board: u16) -> Message {
 }
 
 #[test]
-fn a_device_without_the_identity_capability_is_the_legacy_pala() {
+fn a_device_without_the_identity_capability_is_the_legacy_pip() {
     use kivori_desktop::identity::{DeviceIdentity, IdentitySource};
     let (_link, session, _manager, _orch) = connect(SendableState::Idle);
     let identity = session.identity().expect("legacy identity");

@@ -27,9 +27,9 @@ export function validateReplay(value, seed) {
     value?.schemaVersion !== 1 ||
     value.seed !== seed ||
     !REPLAY_SEEDS.includes(seed) ||
-    value.product !== 'pala' ||
+    value.product !== 'pip' ||
     typeof value.firmwareVersion !== 'string' ||
-    value.goldenFixture !== 'firmware/pala/simulator/fixtures/replay-goldens.json' ||
+    value.goldenFixture !== 'firmware/pip/simulator/fixtures/replay-goldens.json' ||
     value.clockMode !== 'injected-firmware' ||
     value.status !== 'passed' ||
     !Array.isArray(value.cases) ||

@@ -7,6 +7,15 @@ const run = (root, command, args) =>
 const git = (root, ...args) => run(root, 'git', ['--literal-pathspecs', ...args]);
 
 /** Cargo supplies path/build dependencies; build.rs and packaging supply the non-Cargo inputs. */
+/** Tag prefixes an earlier id gave a product's firmware; they stay part of its release lineage. */
+export const LEGACY_FIRMWARE_TAG_PREFIXES = { pip: ['fw-pala-v'] };
+
+/** Every tag prefix of a product's firmware lineage, its own first. */
+export const firmwareTagPrefixes = (product) => [
+  `fw-${product}-v`,
+  ...(LEGACY_FIRMWARE_TAG_PREFIXES[product] ?? []),
+];
+
 export function firmwareInputs(root, product, crate = `firmware/${product}`) {
   root = realpathSync(root);
   const firmware = realpathSync(join(root, crate, 'Cargo.toml'));
@@ -197,10 +206,11 @@ export function checkFirmwareRelease(
   if (git(root, 'rev-parse', '--is-shallow-repository').trim() !== 'false') {
     throw new Error('firmware guard needs full Git history and tags; fetch with fetch-depth: 0');
   }
-  const prefix = `fw-${product}-v`;
-  const productTags = tags.filter((tag) => tag.startsWith(prefix));
+  const prefixes = firmwareTagPrefixes(product);
+  const prefixOf = (tag) => prefixes.find((prefix) => tag.startsWith(prefix));
+  const productTags = tags.filter((tag) => prefixOf(tag));
   for (const tag of productTags) {
-    if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag.slice(prefix.length))) {
+    if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag.slice(prefixOf(tag).length))) {
       throw new Error(`unsupported firmware tag ${tag}; cannot establish a release baseline`);
     }
     const ancestor = spawnSync(
@@ -218,8 +228,12 @@ export function checkFirmwareRelease(
     }
   }
   if (!productTags.length) return 'first release (no firmware tags)';
-  const baseline = `${prefix}${previous}`;
-  if (!previous || !productTags.includes(baseline)) throw new Error('missing firmware baseline');
+  // After an id rename the folder moved, so an unchanged release compares as changed and needs a
+  // firmware bump; the baseline itself may carry the earlier prefix.
+  const baseline = prefixes
+    .map((prefix) => `${prefix}${previous}`)
+    .find((tag) => productTags.includes(tag));
+  if (!previous || !baseline) throw new Error('missing firmware baseline');
   if (firmwareVersion !== previous)
     return `new firmware version ${firmwareVersion} after ${baseline}`;
 

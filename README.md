@@ -154,7 +154,7 @@ colour order, inversion, SPI mode) was physically verified on 2026-08-11 and is 
 enclosure's wiring (#123) and is a *specification* until rows 3.15, 5.1 and 5.2 of the same
 checklist are ticked on a board wired to an enclosure PCB.
 
-Both live in one place, [`firmware/pala/src/profile.rs`](firmware/pala/src/profile.rs), so a
+Both live in one place, [`firmware/pip/src/profile.rs`](firmware/pip/src/profile.rs), so a
 rewire is a single constant change. The case and its printed carrier plate are in
 [`hardware/enclosure/`](hardware/enclosure/README.md); building a unit is in
 [`docs/assembly.md`](docs/assembly.md).
@@ -165,10 +165,10 @@ rewire is a single constant change. The case and its printed carrier plate are i
   permanent machine ids and wire numbers; each product has a catalog entry,
   `products/<id>/product.toml` (customer name, short name, model code, boards, bundled firmware,
   required capabilities), compiled into the app ([ADR-0014](docs/adr/0014-versions-product-identity-and-product-catalog.md)).
-- **Codenames.** A product's id is an Indonesian spice and is never renamed: `pala` (nutmeg) is
-  Kivori Pip, so its firmware lives in `firmware/pala` and its catalog entry in
-  [`products/pala/product.toml`](products/pala/product.toml). Customer names can change; ids
-  cannot.
+- **Product ids.** A product's id is its short name in lowercase: `pip` is Kivori Pip, so its
+  firmware lives in `firmware/pip` and its catalog entry in
+  [`products/pip/product.toml`](products/pip/product.toml). It was the codename `pala` until
+  2026-10-30; devices identify themselves by number, so the rename did not affect shipped units.
 - **Version numbers.** The app has one version (the `vX.Y.Z` tag, the only thing users install).
   Each product's firmware has its own version (tag `fw-<product>-vA.B.C`). Every bundled product's inputs are guarded before release.
   Compatibility is decided by the protocol version and capabilities alone, never by pairing app
@@ -191,7 +191,7 @@ Kivori/
 │   └── web/         the website (Next.js on Cloudflare)
 ├── packages/ui/     shared UI components for the desktop app and the website
 ├── crates/          shared no_std crates: model, protocol, renderer, assets, framebuffer
-├── firmware/pala/   Kivori Pip firmware (ESP32-C3, its own Cargo workspace)
+├── firmware/pip/   Kivori Pip firmware (ESP32-C3, its own Cargo workspace)
 ├── products/        product registry and catalog (registry.toml, <id>/product.toml)
 ├── hardware/        3D-printable enclosure and printed carrier plate (FreeCAD, parametric)
 ├── tests/           golden frames and cross-crate tests

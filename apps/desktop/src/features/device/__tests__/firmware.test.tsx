@@ -247,7 +247,7 @@ describe('firmware update', () => {
       phase: 'failed',
       failure: 'chooseProduct',
       restoreChoices: [
-        { id: 'pala', name: 'Kivori Pip', board: 'board-a', boardName: 'Board A' },
+        { id: 'pip', name: 'Kivori Pip', board: 'board-a', boardName: 'Board A' },
         { id: 'lamp', name: 'Kivori Lamp', board: 'board-b', boardName: 'Board B' },
       ],
     });

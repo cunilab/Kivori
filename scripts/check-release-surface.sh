@@ -84,7 +84,7 @@ if [ "${1:-}" = "--desktop-artifact" ]; then
 fi
 
 DESKTOP_BIN="target/debug/kivori-desktop"
-FIRMWARE_LIB="firmware/pala/target/riscv32imc-unknown-none-elf/debug/libkivori_firmware.rlib"
+FIRMWARE_LIB="firmware/pip/target/riscv32imc-unknown-none-elf/debug/libkivori_firmware.rlib"
 
 echo "[1/6] desktop, production features (Device Studio + debug-payloads OFF)…"
 cargo build -q -p kivori-desktop --no-default-features
@@ -106,29 +106,29 @@ present "the virtual device example" "target/debug/examples/virtual_device" \
   "PASS ENDURANCE"
 
 echo "[3/6] firmware, production features (host-sim OFF, riscv target)…"
-(cd firmware/pala && cargo build -q --lib)
+(cd firmware/pip && cargo build -q --lib)
 [ -f "$FIRMWARE_LIB" ] || { echo "error: $FIRMWARE_LIB not found" >&2; exit 2; }
 absent "the production firmware library" "$FIRMWARE_LIB" "${FIRMWARE_SIM_SURFACE[@]}"
 present "the production firmware library" "$FIRMWARE_LIB" "${FIRMWARE_PRODUCTION_SURFACE[@]}"
 
 echo "[4/6] firmware positive control (host-sim ON)…"
-(cd firmware/pala && cargo build -q --lib --features host-sim)
+(cd firmware/pip && cargo build -q --lib --features host-sim)
 present "the host-sim firmware library" "$FIRMWARE_LIB" "${FIRMWARE_SIM_SURFACE[@]}"
 
 echo "[5/6] firmware raw-payload gate (T102): absent in production, present with debug-payloads…"
 # The production `embedded` build is what ships; prove the raw path is not in it.
-(cd firmware/pala && cargo build -q --lib --features embedded)
+(cd firmware/pip && cargo build -q --lib --features embedded)
 absent "the production embedded firmware library" "$FIRMWARE_LIB" "${FIRMWARE_DEBUG_SURFACE[@]}"
-(cd firmware/pala && cargo build -q --lib --features embedded,debug-payloads)
+(cd firmware/pip && cargo build -q --lib --features embedded,debug-payloads)
 present "the debug-payloads firmware library" "$FIRMWARE_LIB" "${FIRMWARE_DEBUG_SURFACE[@]}"
 echo "[6/6] firmware latency-probe gate: absent from the product build, present with latency-probe…"
 # `physical-st7789` is the product firmware (`just fw-build`); the probe is a dev-only readout.
-(cd firmware/pala && cargo build -q --lib --features physical-st7789)
+(cd firmware/pip && cargo build -q --lib --features physical-st7789)
 absent "the product physical-st7789 firmware library" "$FIRMWARE_LIB" LatencyProbe
-(cd firmware/pala && cargo build -q --lib --features physical-st7789,latency-probe)
+(cd firmware/pip && cargo build -q --lib --features physical-st7789,latency-probe)
 present "the latency-probe firmware library" "$FIRMWARE_LIB" LatencyProbe
 # Leave the firmware artifact in its production configuration.
-(cd firmware/pala && cargo build -q --lib)
+(cd firmware/pip && cargo build -q --lib)
 
 if [ "$fail" -ne 0 ]; then
   echo "Release feature-surface check FAILED." >&2

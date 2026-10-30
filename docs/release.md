@@ -2,6 +2,11 @@
 
 ## How to release (checklist)
 
+**Next release after the `pala` → `pip` rename (2026-10-30):** pick a firmware bump (`patch`, giving
+Pip firmware 0.1.3 tagged `fw-pip-v0.1.3`). The firmware folder moved, so the guard compares it as
+changed against `fw-pala-v0.1.2` and refuses `none`. The old `fw-pala-v*` tags stay Pip's released
+versions; later releases may use `none` again.
+
 1. GitHub, Actions, **Release**, Run workflow on `main`: `stage=prepare`, pick `app_bump` (and a
    firmware bump if firmware changed), tick `dry_run`. Check the versions and notes in the run summary.
 2. Run it again without `dry_run`. It opens a draft PR `chore(release): vX.Y.Z`.

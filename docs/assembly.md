@@ -2,7 +2,7 @@
 
 This draft covers the copper-tape printed-PCB variant (`COPPER_TRACES = True`) developed on
 `worktree-enclosure-freecad`. Its steps require that variant's matching CAD/exports and the wiring
-specification in [`profile.rs`](../firmware/pala/src/profile.rs).
+specification in [`profile.rs`](../firmware/pip/src/profile.rs).
 
 This checkout's [`hardware/enclosure/README.md`](../hardware/enclosure/README.md#assembly) describes the hand-wired
 assembly, including a different SuperMini mounting orientation and no screws, `Spacers` or

@@ -513,7 +513,7 @@ mod installation_tests {
                 assert!(state.queue_firmware_flash().is_err());
                 assert!(state.queue_firmware_restore().is_err());
                 assert!(state
-                    .queue_firmware_restore_for("pala".into(), None)
+                    .queue_firmware_restore_for("pip".into(), None)
                     .is_err());
             });
         });
@@ -529,7 +529,7 @@ mod installation_tests {
         for command in [
             DeviceCommand::FlashFirmware,
             DeviceCommand::RestoreFirmware,
-            DeviceCommand::RestoreFirmwareFor("pala".into(), None),
+            DeviceCommand::RestoreFirmwareFor("pip".into(), None),
         ] {
             let (state, rx, cancel) = state();
             state.reserve_and_queue(command.clone()).unwrap();

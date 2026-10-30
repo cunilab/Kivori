@@ -1,7 +1,7 @@
 [
   {
     "path": ".github/workflows/firmware.yml",
-    "text": "working-directory: firmware/pala",
+    "text": "working-directory: firmware/pip",
     "count": 5,
     "reason": "Existing board-specific development/CI feature matrix; generalizing hardware test matrices is separate work."
   },
@@ -19,7 +19,7 @@
   },
   {
     "path": "apps/desktop/src-tauri/src/identity.rs",
-    "text": "const LEGACY_PRODUCT: &str = \"pala\";",
+    "text": "const LEGACY_PRODUCT: &str = \"pip\";",
     "count": 1,
     "reason": "Fixed legacy identity mapping required by ADR-0014; never a default for devices reporting identity."
   },
@@ -55,103 +55,109 @@
   },
   {
     "path": "justfile",
-    "text": "cd firmware/pala && cargo build -p kivori-model -p kivori-protocol -p kivori-framebuffer -p kivori-renderer -p kivori-assets",
+    "text": "cd firmware/pip && cargo build -p kivori-model -p kivori-protocol -p kivori-framebuffer -p kivori-renderer -p kivori-assets",
     "count": 1,
     "reason": "Explicit board-specific development recipe; desktop build and packaging recipes use the whole catalog."
   },
   {
     "path": "justfile",
-    "text": "cd firmware/pala && cargo run --release --features physical-st7789",
+    "text": "cd firmware/pip && cargo run --release --features physical-st7789",
     "count": 1,
     "reason": "Explicit board-specific development recipe; desktop build and packaging recipes use the whole catalog."
   },
   {
     "path": "justfile",
-    "text": "cd firmware/pala && cargo run --release --features physical-st7789,latency-probe",
+    "text": "cd firmware/pip && cargo run --release --features physical-st7789,latency-probe",
     "count": 1,
     "reason": "Explicit board-specific development recipe; desktop build and packaging recipes use the whole catalog."
   },
   {
     "path": "justfile",
-    "text": "cd firmware/pala && cargo test --features host-sim --target $(rustc -vV | sed -n 's/^host: //p')",
+    "text": "cd firmware/pip && cargo test --features host-sim --target $(rustc -vV | sed -n 's/^host: //p')",
     "count": 1,
     "reason": "Explicit board-specific development recipe; desktop build and packaging recipes use the whole catalog."
   },
   {
     "path": "scripts/check-release-surface.sh",
-    "text": "(cd firmware/pala && cargo build -q --lib --features embedded)",
+    "text": "(cd firmware/pip && cargo build -q --lib --features embedded)",
     "count": 1,
     "reason": "Existing board-specific development/CI feature matrix; generalizing hardware test matrices is separate work."
   },
   {
     "path": "scripts/check-release-surface.sh",
-    "text": "(cd firmware/pala && cargo build -q --lib --features embedded,debug-payloads)",
+    "text": "(cd firmware/pip && cargo build -q --lib --features embedded,debug-payloads)",
     "count": 1,
     "reason": "Existing board-specific development/CI feature matrix; generalizing hardware test matrices is separate work."
   },
   {
     "path": "scripts/check-release-surface.sh",
-    "text": "(cd firmware/pala && cargo build -q --lib --features host-sim)",
+    "text": "(cd firmware/pip && cargo build -q --lib --features host-sim)",
     "count": 1,
     "reason": "Existing board-specific development/CI feature matrix; generalizing hardware test matrices is separate work."
   },
   {
     "path": "scripts/check-release-surface.sh",
-    "text": "(cd firmware/pala && cargo build -q --lib --features physical-st7789)",
+    "text": "(cd firmware/pip && cargo build -q --lib --features physical-st7789)",
     "count": 1,
     "reason": "Existing board-specific development/CI feature matrix; generalizing hardware test matrices is separate work."
   },
   {
     "path": "scripts/check-release-surface.sh",
-    "text": "(cd firmware/pala && cargo build -q --lib --features physical-st7789,latency-probe)",
+    "text": "(cd firmware/pip && cargo build -q --lib --features physical-st7789,latency-probe)",
     "count": 1,
     "reason": "Existing board-specific development/CI feature matrix; generalizing hardware test matrices is separate work."
   },
   {
     "path": "scripts/check-release-surface.sh",
-    "text": "(cd firmware/pala && cargo build -q --lib)",
+    "text": "(cd firmware/pip && cargo build -q --lib)",
     "count": 2,
     "reason": "Existing board-specific development/CI feature matrix; generalizing hardware test matrices is separate work."
   },
   {
     "path": "scripts/check-release-surface.sh",
-    "text": "FIRMWARE_LIB=\"firmware/pala/target/riscv32imc-unknown-none-elf/debug/libkivori_firmware.rlib\"",
+    "text": "FIRMWARE_LIB=\"firmware/pip/target/riscv32imc-unknown-none-elf/debug/libkivori_firmware.rlib\"",
     "count": 1,
     "reason": "Existing board-specific development/CI feature matrix; generalizing hardware test matrices is separate work."
   },
   {
     "path": "scripts/release-info.mjs",
-    "text": "export const LEGACY_FIRMWARE_DIRS = { pala: ['firmware/desk-buddy/', 'firmware/esp32-c3/'] };",
+    "text": "pip: ['firmware/pala/', 'firmware/desk-buddy/', 'firmware/esp32-c3/'],",
     "count": 1,
     "reason": "Permanent legacy firmware history paths used only to read historical release notes."
   },
   {
+    "path": "scripts/firmware-release-guard.mjs",
+    "text": "export const LEGACY_FIRMWARE_TAG_PREFIXES = { pip: ['fw-pala-v'] };",
+    "count": 1,
+    "reason": "Release lineage of a product renamed by owner decision (2026-10-30): its tags under the earlier id stay its released versions."
+  },
+  {
     "path": "justfile",
-    "text": "bun firmware/pala/simulator/run.mjs",
+    "text": "bun firmware/pip/simulator/run.mjs",
     "count": 1,
     "reason": "Explicit product-owned development simulator recipe; no shipping product selection or build changes."
   },
   {
     "path": "justfile",
-    "text": "node firmware/pala/simulator/run.mjs --smoke",
+    "text": "node firmware/pip/simulator/run.mjs --smoke",
     "count": 1,
     "reason": "Explicit product-owned development simulator recipe; no shipping product selection or build changes."
   },
   {
     "path": "justfile",
-    "text": "node firmware/pala/simulator/run.mjs --endurance",
+    "text": "node firmware/pip/simulator/run.mjs --endurance",
     "count": 1,
     "reason": "Explicit product-owned development simulator recipe; no shipping product selection or build changes."
   },
   {
     "path": ".github/workflows/host.yml",
-    "text": "run: node firmware/pala/simulator/run.mjs --smoke",
+    "text": "run: node firmware/pip/simulator/run.mjs --smoke",
     "count": 1,
     "reason": "Explicit product-owned simulator integration smoke; shipping build recipes remain catalog-driven."
   },
   {
     "path": ".github/workflows/host.yml",
-    "text": "path: firmware/pala/simulator/target/reports/",
+    "text": "path: firmware/pip/simulator/target/reports/",
     "count": 1,
     "reason": "CI artifact path belongs to the selected product-owned simulator; it does not select shipping products or dependencies."
   }

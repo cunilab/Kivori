@@ -14,9 +14,9 @@ import {
 function replay() {
   return {
     schemaVersion: 1,
-    product: 'pala',
+    product: 'pip',
     firmwareVersion: '0.1.0',
-    goldenFixture: 'firmware/pala/simulator/fixtures/replay-goldens.json',
+    goldenFixture: 'firmware/pip/simulator/fixtures/replay-goldens.json',
     exercisedLayers: ['firmware Runtime'],
     simulatedLayers: ['raw input'],
     notExercised: ['desktop deadlines'],

@@ -223,7 +223,7 @@ Software done and host-tested (#72); owner key and hardware rows remain.
 
 - [x] **Product identity** (ADR-0014):
   - `products/registry.toml` hands out fixed machine ids and wire numbers for products and boards
-    (`pala` = 1, `c3-supermini` = 1); never reused, never renamed; display names live in the
+    (`pip` = 1, `c3-supermini` = 1); never reused, never renamed; display names live in the
     catalog
   - the device reports product, board and hardware revision in a new `Identity` message after the
     handshake (capability `PRODUCT_IDENTITY_V1`); a device without it is the legacy Kivori Pip on
@@ -237,7 +237,7 @@ Software done and host-tested (#72); owner key and hardware rows remain.
   boards, flash method per board, bundled firmware with version, SHA-256 and minimum protocol,
   required capabilities); the app's device code reads the catalog instead of assuming one board.
   `firmware/esp32-c3` moves to `firmware/desk-buddy` (done), renamed `firmware/pala` with the
-  product codename (2026-10-12)
+  product codename (2026-10-12), then `firmware/pip` with the short name (2026-10-30)
 - [x] **Release tooling:** a Release button (manual workflow, run only when the owner wants a
   release) bumps the app version and, when asked, the firmware version, and builds a draft whose
   notes come from the conventional commits since the last release; the app tags `vX.Y.Z` and gets
@@ -431,14 +431,14 @@ acceptance are recorded separately in [validation.md](./validation.md).
 
 ### S2: Firmware input, transport and settings durability
 
-- [x] **Preserve buffered button intervals** (`firmware/pala/src/input/button.rs`): settle the
+- [x] **Preserve buffered button intervals** (`firmware/pip/src/input/button.rs`): settle the
   previous raw interval before replacing its level. Replay captured edges in one input drain:
   down at 100 ms, up at 200 ms, then poll at 230 ms must retain a short press; two short presses
   separated by a stable 30 ms release must not become Hold. Cover the knob and contextual buttons,
   bounce, negotiated double press, recovery and session boundaries. Software implemented with
   interval settlement before replacement and cross-control ownership checks, plus capture-time
   rejection of old-session button downs. See [software evidence and hardware limits](./validation.md#m29-buffered-button-software-acceptance).
-- [x] **Decode receive bursts incrementally** (`firmware/pala/src/proto.rs`): parse complete frames
+- [x] **Decode receive bursts incrementally** (`firmware/pip/src/proto.rs`): parse complete frames
   before accumulation overflow and bound receive work per tick so input/render/recovery still run.
   The audit's fake transport supplied 100 valid Ping frames (1,800 bytes) to a 1,060-byte buffer;
   only 41 were accepted. Regression checks require every valid frame to be handled exactly once
@@ -541,7 +541,7 @@ Scope, pending-check coverage and evidence rules: [virtual Pip plan](./virtual-p
 These are software verification tasks, not replacements for S4 physical acceptance.
 
 - [x] **S5.1 — Product-owned runner and complete vertical slice:** add a separate host workspace
-  under `firmware/pala/simulator/`, using Pip's actual `Runtime`, timestamped raw input through
+  under `firmware/pip/simulator/`, using Pip's actual `Runtime`, timestamped raw input through
   `InputSource::drain`, existing protocol and captured firmware pixels. A generic dev-only desktop
   child-process bridge must complete a real handshake, three detents and one press against fake
   OS services, returning observed state to the firmware screen. Isolate settings and prohibit real

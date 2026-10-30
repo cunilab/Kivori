@@ -4,8 +4,8 @@ Development-only, product-owned executable. This is its own Cargo workspace: the
 not link the firmware library. Build from the repository root with an explicit host target:
 
 ```sh
-cargo build --locked --manifest-path firmware/pala/simulator/Cargo.toml \
-  --target aarch64-apple-darwin --target-dir firmware/pala/simulator/target
+cargo build --locked --manifest-path firmware/pip/simulator/Cargo.toml \
+  --target aarch64-apple-darwin --target-dir firmware/pip/simulator/target
 ```
 
 Use the host triple reported by `rustc -vV` on other platforms. Tests use the same arguments with

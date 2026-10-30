@@ -74,3 +74,13 @@ Versions reset (2026-10-12): before the first release, app and firmware restarte
 - Firmware as its own downloads now: rejected, a second signing chain and server, and code fetched from the network onto a device; the catalog format leaves room for it later.
 - Lockstep versions: rejected.
 - One version for everything: rejected, every firmware fix would bump every product.
+
+**Amendment (2026-10-30, owner decision): one name.** The product id is now the product's short name
+in lowercase, so code, folders and tags use the name people say. `pala` became `pip`: `products/pip/`,
+`firmware/pip/`, registry `pip = 1` (the wire number is unchanged, so shipped and legacy units keep
+working), desktop `LEGACY_PRODUCT = "pip"`, and new firmware tags `fw-pip-vA.B.C`. The pushed tags
+`fw-pala-v0.1.0`–`v0.1.2` stay as history and count as Pip's firmware lineage (release tooling reads
+both prefixes and `firmware/pala/` history). Numbers are still never reused or renumbered; an id
+rename now happens only by owner decision. Earlier text in this ADR that says ids are never renamed,
+or names `pala`, describes the state before this amendment. Future products follow the same rule once
+their short names are decided.

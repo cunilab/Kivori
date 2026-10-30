@@ -121,7 +121,7 @@ posixTest(
   { timeout: 10000 },
   async () => {
     const root = mkdtempSync(join(tmpdir(), 'kivori-cancel-boundary-'));
-    const product = join(root, 'firmware/pala/simulator');
+    const product = join(root, 'firmware/pip/simulator');
     const ready = join(root, 'probe-ready');
     const called = join(root, 'cargo-called');
     let child;
@@ -137,9 +137,9 @@ posixTest(
       }
       for (const file of [
         'Cargo.lock',
-        'firmware/pala/Cargo.lock',
-        'firmware/pala/simulator/Cargo.lock',
-        'firmware/pala/simulator/fixtures/replay-goldens.json',
+        'firmware/pip/Cargo.lock',
+        'firmware/pip/simulator/Cargo.lock',
+        'firmware/pip/simulator/fixtures/replay-goldens.json',
       ]) {
         put(join(root, file), '{}');
       }
