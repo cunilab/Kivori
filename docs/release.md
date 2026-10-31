@@ -64,7 +64,7 @@ all claiming products; conflicting requests fail before mutation. Each product r
 Planned app/firmware manifest changes are checked too: an app bump requires firmware bumps when
 shared crates reflect workspace version metadata. Catalog and packaging changes conservatively
 count as inputs to every product, so this release-tool change itself requires firmware bumps.
-Full `cargo metadata --locked` resolution validates root and every active firmware lockfile before
+Full `cargo metadata --locked` resolution validates root, every active firmware and every nested workspace lockfile before
 any release writes versions or outputs, including first releases and firmware bumps. Stale locks are
 refused instead of being silently repaired afterward.
 The resolved firmware graph includes local patches and build dependencies. Project Cargo config
@@ -203,8 +203,9 @@ publisher signing. Signed-beta installation and live updater acceptance remain s
      tag, below its `Cargo.toml` version, or whose new tag (`vX.Y.Z`, `fw-<product>-vA.B.C`) already exists
      (`scripts/release-bump.mjs`);
    - validates the entire plan before writing `[workspace.package] version` and the changed
-     catalog firmware package versions. Refreshes root and every unique firmware workspace lockfile
-     with `cargo update --workspace`, even for products whose firmware keeps its version (the app
+     catalog firmware package versions. Refreshes root, every unique firmware workspace lockfile and every
+     other tracked `Cargo.lock` (nested workspaces such as the frame-cost and simulator hosts, found with
+     `git ls-tree`, never listed by name) with `cargo update --workspace`, even for products whose firmware keeps its version (the app
      version can change shared-crate lock entries). Fails on changes outside the planned manifests
      and lockfiles;
    - commits `chore(release): vX.Y.Z` on `release/vX.Y.Z`, pushes only that branch, opens a version
@@ -256,7 +257,7 @@ protocol major is newer than the app's) and never offers the flash by itself; th
 Flash firmware button, after its confirmation, restores it as an incompatible device.
 
 A `v*` tag pushed by hand still works (a hotfix from a branch, for example): bump `version` in
-`Cargo.toml` under `[workspace.package]`, update root and all catalog firmware lockfiles
+`Cargo.toml` under `[workspace.package]`, update root, all catalog firmware lockfiles and every nested workspace `Cargo.lock`
 (which record shared-crate versions), commit, then tag `vX.Y.Z` and push the tag. `release.yml`
 fails at the first step if the tag and the workspace version differ, creates the draft itself and fills
 it the same way. A re-run for the same tag updates the draft; a published release is never changed.

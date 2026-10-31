@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
   existsSync,
@@ -40,7 +41,7 @@ function commit(root, subject) {
   git(root, 'commit', '--quiet', '-m', subject);
 }
 function locks(root) {
-  for (const manifest of ['Cargo.toml', 'firmware/pip/Cargo.toml']) {
+  for (const manifest of ['Cargo.toml', 'firmware/pip/Cargo.toml', 'firmware/pip/sim/Cargo.toml']) {
     execFileSync('cargo', ['generate-lockfile', '--offline', '--manifest-path', manifest], {
       cwd: root,
       stdio: 'pipe',
@@ -103,6 +104,13 @@ function fixture(t, { tagged = true, consumesVersion = false } = {}) {
     '[workspace]\nresolver = "2"\n[package]\nname = "test-firmware"\nversion = "0.1.0"\nedition = "2021"\n[dependencies]\ntest-shared = { path = "../../crates/shared" }\n[build-dependencies]\ntest-compiler = { path = "../../tools/asset-compiler" }\n',
   );
   put(root, 'firmware/pip/src/lib.rs', 'pub const VALUE: u8 = 1;\n');
+  // A separate host workspace nested in the firmware crate pins the same path packages in its own lockfile.
+  put(
+    root,
+    'firmware/pip/sim/Cargo.toml',
+    '[workspace]\nresolver = "2"\n[package]\nname = "test-sim"\nversion = "0.1.0"\nedition = "2021"\n[dependencies]\ntest-firmware = { path = ".." }\ntest-shared = { path = "../../../crates/shared" }\n',
+  );
+  put(root, 'firmware/pip/sim/src/lib.rs', 'pub const VALUE: u8 = 1;\n');
   put(root, 'products/pip/product.toml', productToml('Pip', 'firmware/pip'));
   put(root, 'products/registry.toml', '[products]\npip = 1\n[boards]\nboard = 1\n');
   put(root, 'assets/mascot.svg', '<svg/>\n');
@@ -418,6 +426,12 @@ test('resolved Cargo patches are included even without a dependency.path declara
       '[dependencies]\npatched-dependency = "0.1.0"\n',
     ) + '\n[patch.crates-io]\npatched-dependency = { path = "../../custom/patched" }\n';
   put(root, 'firmware/pip/Cargo.toml', manifest);
+  put(
+    root,
+    'firmware/pip/sim/Cargo.toml',
+    readFileSync(join(root, 'firmware/pip/sim/Cargo.toml'), 'utf8') +
+      '\n[patch.crates-io]\npatched-dependency = { path = "../../../custom/patched" }\n',
+  );
   locks(root);
   commit(root, 'patch dependency baseline');
   git(root, 'tag', 'fw-pip-v0.1.0');
@@ -1041,6 +1055,45 @@ test('version-only validation rejects manifest behavior changes, lock changes an
   }
 });
 
+test('version-only validation covers nested workspace lockfiles', (t) => {
+  const root = fixture(t);
+  const base = git(root, 'rev-parse', 'HEAD');
+  const script = new URL('./release-finalize.mjs', import.meta.url).href;
+  const check = () =>
+    execFileSync(
+      'bun',
+      [
+        '--eval',
+        `import { requireVersionOnly } from ${JSON.stringify(script)}; requireVersionOnly(process.argv[1], process.argv[2], [{crates:['firmware/pip']}]);`,
+        realpathSync(root), // cargo reports real manifest paths; the tmpdir may be a symlink
+        git(root, 'rev-parse', 'HEAD'),
+      ],
+      { encoding: 'utf8', stdio: 'pipe' },
+    );
+  const lock = 'firmware/pip/sim/Cargo.lock';
+  const text = readFileSync(join(root, lock), 'utf8');
+  const bump = (from, to) => put(root, lock, text.replace(from, to));
+  // Version-only: the nested lockfile may follow the firmware bump (see the prepare/finalize test for the full flow).
+  const firmware = readFileSync(join(root, 'firmware/pip/Cargo.toml'), 'utf8');
+  put(root, 'firmware/pip/Cargo.toml', firmware.replace('version = "0.1.0"', 'version = "0.1.1"'));
+  bump('name = "test-firmware"\nversion = "0.1.0"', 'name = "test-firmware"\nversion = "0.1.1"');
+  execFileSync('cargo', ['update', '--workspace', '--offline'], {
+    cwd: join(root, 'firmware/pip'),
+    stdio: 'pipe',
+  });
+  commit(root, 'chore(release): nested lock follows the firmware version');
+  check();
+  // Anything else in it, or any other nested file, is refused.
+  git(root, 'reset', '--hard', base);
+  bump('name = "test-sim"\nversion = "0.1.0"', 'name = "test-sim"\nversion = "0.2.0"');
+  commit(root, 'chore(release): unrelated nested lock change');
+  assert.throws(check, /Non-version lockfile changes in firmware\/pip\/sim\/Cargo\.lock/);
+  git(root, 'reset', '--hard', base);
+  put(root, 'firmware/pip/sim/src/lib.rs', 'pub const VALUE: u8 = 2;\n');
+  commit(root, 'chore(release): nested source change');
+  assert.throws(check, /only catalog manifests and lockfiles/);
+});
+
 test('prepare refreshes all locks and pushes only a version branch with exact files', (t) => {
   const root = twoProducts(t);
   const outputs = outputFile(t);
@@ -1062,11 +1115,16 @@ test('prepare refreshes all locks and pushes only a version branch with exact fi
     root,
   );
   runWorkflowStep('Refresh all Cargo.lock files', root, outputs);
-  for (const crate of ['firmware/pip', 'devices/lamp firmware'])
+  for (const crate of ['firmware/pip', 'firmware/pip/sim', 'devices/lamp firmware'])
     assert.match(
       readFileSync(join(root, crate, 'Cargo.lock'), 'utf8'),
       /name = "test-shared"\nversion = "0.1.1"/,
     );
+  assert.match(
+    readFileSync(join(root, 'firmware/pip/sim/Cargo.lock'), 'utf8'),
+    /name = "test-firmware"\nversion = "0.1.1"/,
+  );
+  assert.ok(JSON.parse(readOutputs(outputs).release_files).includes('firmware/pip/sim/Cargo.lock'));
   runWorkflowStep('Commit version branch', root, outputs);
   assert.equal(git(root, 'status', '--porcelain'), '');
   assert.equal(git(remote, 'rev-parse', 'main'), before);

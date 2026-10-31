@@ -257,7 +257,11 @@ export function checkFirmwareRelease(
   const beforeRoot = git(root, 'show', `${baseline}:Cargo.toml`);
   const afterRoot = git(root, 'show', 'HEAD:Cargo.toml');
   const offending = changed.filter((path) => {
-    if (path !== 'Cargo.toml' && path !== 'Cargo.lock' && path !== `${crate}/Cargo.lock`) {
+    // Lockfiles of workspaces nested in the firmware crate pin the same workspace-version packages.
+    const crateLock =
+      path === `${crate}/Cargo.lock` ||
+      (path.startsWith(`${crate}/`) && path.endsWith('/Cargo.lock'));
+    if (path !== 'Cargo.toml' && path !== 'Cargo.lock' && !crateLock) {
       return true;
     }
     const before = spawnSync('git', ['show', `${baseline}:${path}`], {

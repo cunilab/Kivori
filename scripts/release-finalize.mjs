@@ -7,7 +7,7 @@ import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual, parseArgs } from 'node:util';
 import { main as planRelease, tomlVersion } from './release-bump.mjs';
-import { releaseCatalog } from './release-catalog.mjs';
+import { nestedLockfiles, releaseCatalog } from './release-catalog.mjs';
 
 const run = (root, command, args) =>
   execFileSync(command, args, {
@@ -53,9 +53,10 @@ export function requireVersionOnly(root, sha, products) {
     'Cargo.toml',
     ...new Set(products.flatMap((p) => p.crates.map((c) => `${c}/Cargo.toml`))),
   ];
-  const allowed = new Set(
-    manifestPaths.flatMap((path) => [path, path.replace(/Cargo\.toml$/, 'Cargo.lock')]),
-  );
+  const allowed = new Set([
+    ...manifestPaths.flatMap((path) => [path, path.replace(/Cargo\.toml$/, 'Cargo.lock')]),
+    ...nestedLockfiles(root, parent, [...new Set(products.flatMap((p) => p.crates))]),
+  ]);
   const files = git(root, 'diff', '--name-only', '-z', parent, sha).split('\0').filter(Boolean);
   if (!files.length || files.some((file) => !allowed.has(file)))
     throw new Error('A version PR may change only catalog manifests and lockfiles.');
