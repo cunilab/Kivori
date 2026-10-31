@@ -28,6 +28,12 @@ KIVORI_FIRMWARE_MANIFEST="$(bun scripts/build-firmware-set.mjs --out-dir "$firmw
 [ -s "$KIVORI_FIRMWARE_MANIFEST" ] || { echo "Missing firmware manifest" >&2; exit 1; }
 export KIVORI_FIRMWARE_MANIFEST
 
+# CI passes absent Apple secrets as empty strings. Tauri treats a set-but-empty APPLE_CERTIFICATE as
+# a certificate to import and fails, so drop the empty ones and let the stable identity sign below.
+for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+  [ -n "${!name:-}" ] || unset "$name"
+done
+
 (cd apps/desktop && bunx tauri build \
   --config src-tauri/tauri.release.conf.json \
   --config src-tauri/tauri.release.macos.conf.json \
