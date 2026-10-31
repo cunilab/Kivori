@@ -1153,6 +1153,81 @@ fn identity_is_pending_until_the_message_arrives_then_scoped_to_the_connection()
     assert_eq!(session.identity(), None, "gone with the connection");
 }
 
+fn build_message(session: u32, dirty: bool) -> Message {
+    Message::BuildInfo(kivori_protocol::BuildInfo {
+        session,
+        source_id: Some([0xc2, 0xff, 0x8c, 0x4f, 0x68, 0xde]),
+        dirty,
+    })
+}
+
+#[test]
+fn the_device_build_is_scoped_to_the_session_and_the_connection() {
+    let (mut link, mut session, mut manager, mut orch) = connect_with_caps(
+        SendableState::Idle,
+        Capabilities::MASCOT_INTERACTION.union(Capabilities::BUILD_INFO_V1),
+    );
+    assert_eq!(
+        session.build_info(),
+        None,
+        "negotiated but not yet reported"
+    );
+    let nonce = session.current_session().expect("session");
+
+    // A report for another session is dropped unseen.
+    device_push(
+        &mut link,
+        &build_message(nonce.wrapping_add(1), true),
+        wire_version(),
+        1,
+    );
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+    assert_eq!(session.build_info(), None);
+
+    device_push(&mut link, &build_message(nonce, true), wire_version(), 2);
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+    let build = session.build_info().expect("build");
+    assert!(build.dirty);
+    assert_eq!(build.source_id, Some([0xc2, 0xff, 0x8c, 0x4f, 0x68, 0xde]));
+    let dto = kivori_desktop::ipc::dto::build_dto(&build);
+    assert_eq!(dto.source_id.as_deref(), Some("c2ff8c4f68de"));
+
+    // The first report of a session wins; a repeat cannot rewrite it.
+    device_push(&mut link, &build_message(nonce, false), wire_version(), 3);
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+    assert!(session.build_info().expect("build").dirty);
+
+    device_push(
+        &mut link,
+        &Message::Bye(Bye {
+            reason: ByeReason::Shutdown,
+        }),
+        wire_version(),
+        4,
+    );
+    let _ = session.pump(&mut link, &mut manager, &mut orch);
+    assert_eq!(session.build_info(), None, "gone with the connection");
+}
+
+#[test]
+fn a_device_that_never_negotiated_build_info_has_none_and_a_stray_report_is_ignored() {
+    // An older firmware: no capability, so the app does not see a build; a stray message is dropped.
+    let (mut link, mut session, mut manager, mut orch) = connect(SendableState::Idle);
+    assert_eq!(session.build_info(), None);
+    let nonce = session.current_session().expect("session");
+    device_push(&mut link, &build_message(nonce, false), wire_version(), 1);
+    session
+        .pump(&mut link, &mut manager, &mut orch)
+        .expect("pump");
+    assert_eq!(session.build_info(), None);
+}
+
 #[test]
 fn an_unknown_product_is_never_guessed_and_has_no_effective_support() {
     let (mut link, mut session, mut manager, mut orch) = connect_with_caps(

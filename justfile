@@ -62,6 +62,30 @@ fw-flash:
 fw-flash-latency:
     cd firmware/pip && cargo run --release --features physical-st7789,latency-probe
 
+# Hardware-free resource check of the catalog firmware: image size, RAM, stack (per-function frames
+# and the worst call chain) and the 64-bit division allowlist, against the crate's resource-budget.json.
+# Needs llvm-objdump (rustup component add llvm-tools, or LLVM_OBJDUMP=...).
+fw-budget:
+    bun scripts/build-firmware.mjs > /dev/null
+    bun scripts/firmware-budget.mjs
+    bun scripts/virtual-resource-facts.mjs --check
+
+# Refresh the resource facts the virtual device reports (simulator/fixtures/resource-facts.json)
+# from the freshly built product ELF; commit the result. `just fw-budget` fails when they drift.
+fw-virtual-facts-update:
+    bun scripts/build-firmware.mjs > /dev/null
+    bun scripts/virtual-resource-facts.mjs --write
+
+# Predicted ESP32-C3 compose time per scenario and tile row, without hardware: the real renderer compiled
+# for riscv32imc and run in an instruction-set simulator (the firmware crate's frame-cost). Fails if a
+# scenario got more than 10% slower than the committed fixture. Needs the riscv32imc target.
+fw-frame-cost:
+    firmware/pip/frame-cost/run.sh check
+
+# Rewrite frame-cost/fixtures/frame-cost.json after an intended renderer cost change.
+fw-frame-cost-update:
+    firmware/pip/frame-cost/run.sh update
+
 # ---- assets / golden frames ----
 
 # Recompile the canonical asset blob.

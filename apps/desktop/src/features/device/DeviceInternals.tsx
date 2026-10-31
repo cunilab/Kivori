@@ -10,13 +10,27 @@ import {
 import { Progress } from '@kivori/ui/components/progress';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@kivori/ui/components/tooltip';
 import { getDeviceInternals } from '@/lib/ipc';
-import type { ConnectionStatusDto, DeviceInternalsDto } from '@/lib/ipc/types';
+import type { ConnectionStatusDto, DeviceInfoDto, DeviceInternalsDto } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
 import { INTERNALS_FRESH_MS, setLatestInternals } from './internals-latest';
 
 const t = strings.internals;
 
+/**
+ * Short hash of the virtual device's fixed raw device id (set by the product's simulator), as
+ * `hash_device_id_short` computes it. Pinned to the id by a test.
+ */
+export const VIRTUAL_DEVICE_ID_HASH = '847c795d';
+
 type Snapshot = NonNullable<DeviceInternalsDto['snapshot']>;
+
+/** What the card needs of the connection: the dev virtual window has no more than this. */
+export type InternalsConnection = Pick<
+  ConnectionStatusDto,
+  'connection' | 'connectionGeneration'
+> & {
+  device: (Pick<DeviceInfoDto, 'deviceIdHashShort'> & Partial<Pick<DeviceInfoDto, 'build'>>) | null;
+};
 
 function Row({
   label,
@@ -175,7 +189,7 @@ function Usage({
   );
 }
 
-function Body({ s }: { s: Snapshot }): ReactElement {
+function Body({ s, build }: { s: Snapshot; build: DeviceInfoDto['build'] }): ReactElement {
   // The stack is the RAM the static data leaves over; its peak use is that minus the least that
   // was ever free. Missing inputs stay unavailable rather than being guessed.
   const stackBytes =
@@ -243,6 +257,13 @@ function Body({ s }: { s: Snapshot }): ReactElement {
             }
           </Value>
         </Row>
+        {build ? (
+          <Row label={t.rows.build} testId="internals-build">
+            {build.sourceId
+              ? `${build.sourceId}${build.dirty ? ` (${strings.device.build.uncommitted})` : ''}`
+              : strings.device.build.noGit}
+          </Row>
+        ) : null}
         <Row label={t.rows.temperature}>
           <Value value={s.temperatureDeciCelsius}>{(d) => `${(d / 10).toFixed(1)} °C`}</Value>
         </Row>
@@ -284,7 +305,7 @@ function Body({ s }: { s: Snapshot }): ReactElement {
 export function DeviceInternals({
   connection,
 }: {
-  connection: ConnectionStatusDto | null;
+  connection: InternalsConnection | null;
 }): ReactElement {
   const generation = connection?.connectionGeneration;
   const connected = connection?.connection === 'connected';
@@ -369,6 +390,15 @@ export function DeviceInternals({
           {t.heading}
         </CardTitle>
         <CardDescription>{t.description}</CardDescription>
+        {connection?.device?.deviceIdHashShort === VIRTUAL_DEVICE_ID_HASH ? (
+          <p
+            role="note"
+            data-testid="internals-virtual-note"
+            className="text-sm text-muted-foreground"
+          >
+            <span className="font-medium">{t.virtualNote.label}.</span> {t.virtualNote.body}
+          </p>
+        ) : null}
       </CardHeader>
       <CardContent className="space-y-4">
         {notice ? (
@@ -380,7 +410,7 @@ export function DeviceInternals({
           </p>
         ) : null}
         {!failed && !stale && current?.connected && current.supported && current.snapshot ? (
-          <Body s={current.snapshot} />
+          <Body s={current.snapshot} build={connection?.device?.build} />
         ) : null}
       </CardContent>
     </Card>

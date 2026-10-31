@@ -370,21 +370,22 @@ fn capacity_and_overflow() -> Result<(), String> {
             levels: if i < 159 { 4 } else { 0 },
         })
         .collect();
-    rig.sim.clock.set(400);
+    rig.sim.shared.clock.set_ms(400);
     rig.sim.now = 400;
-    let blob = AssetBlob::parse(include_bytes!(concat!(env!("OUT_DIR"), "/pip.assets")))
-        .map_err(|e| format!("scenario assets: {e:?}"))?;
-    let tick = rig.sim.runtime.step(
-        &rig.sim.clock,
-        &mut rig.sim.pipe,
-        &mut rig.sim.input,
-        &mut *rig.sim.display,
-        &blob,
-    );
+    let tick = rig.sim.run_tick(Fault::Normal);
     let response = Response {
-        wire: rig.sim.pipe.inner_mut().host_recv().to_vec(),
-        frame: Some(rig.sim.display.frame().iter().map(|p| p.raw()).collect()),
-        brightness: rig.sim.display.brightness,
+        wire: rig.sim.shared.link.borrow_mut().host_recv().to_vec(),
+        frame: Some(
+            rig.sim
+                .shared
+                .capture
+                .borrow()
+                .frame()
+                .iter()
+                .map(|p| p.raw())
+                .collect(),
+        ),
+        brightness: rig.sim.shared.capture.borrow().brightness,
         reboot: tick.reboot,
         state: super::state_token(rig.sim.runtime.state()),
     };

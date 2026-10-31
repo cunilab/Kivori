@@ -1,0 +1,137 @@
+{
+  "_about": "Resource budget for the Pip product firmware (--features physical-st7789, release). Checked without hardware by `just fw-budget` (scripts/firmware-budget.mjs) and in the firmware CI job. Set on 2026-10-31 from the build after PR #150 and cross-checked against the unit: device-measured peak stack use 115,740 B vs the 115,744 B this check derives. To change a limit on purpose, edit it here with the reason; see docs/virtual-pip.md (Hardware parity).",
+  "entry": "_start_rust",
+  "limits": {
+    "app_image_bytes": {
+      "max": 360448,
+      "why": "Loadable sections (text, rodata, data) were 343,686 B. About 5% headroom; the app partition is far larger, so this is a regression tripwire, not the physical limit."
+    },
+    "asset_blob_bytes": {
+      "max": 129024,
+      "why": "The compiled asset blob was 127,253 B. The hard cap (ASSET_BLOB_CAP_BYTES, 131,072 B) is read from firmware/pip/src/internals.rs and checked too; this is a tighter early warning."
+    },
+    "static_ram_bytes": {
+      "max": 160000,
+      "why": "Static RAM (data + bss) was 158,332 B. Everything above it comes out of the stack region, which is the rest of data RAM."
+    },
+    "stack_region_bytes": {
+      "min": 160000,
+      "why": "The stack region (_stack_start - _stack_end) was 162,180 B. It must not shrink: the peak below leaves about 46 KiB free on the unit."
+    },
+    "default_frame_bytes": {
+      "max": 1024,
+      "why": "Any function with a bigger frame must be listed in large_frames with its own ceiling, so a new large frame is a decision, not an accident."
+    },
+    "worst_stack_bytes": {
+      "max": 120000,
+      "why": "Direct call chain from the entry was 115,744 B (boot, load_assets with the inlined AssetBlob::parse and the postcard Vec<SceneDef,8> visitor). The unit measured 115,740 B. About 4% headroom for the regression gate."
+    },
+    "indirect_allowance_bytes": {
+      "value": 1024,
+      "why": "Calls through a register (trait objects, fn pointers) cannot be followed. The deepest chain under any function that no direct call reaches (not the entry or the trap vectors) was 384 B; this allows a hop of that kind with a 2.5x margin. Re-derive if an indirect callee grows a big frame."
+    },
+    "interrupt_margin_bytes": {
+      "value": 256,
+      "why": "Added on top of the traced interrupt path (interrupt_path) for the parts of an interrupt that are not followed."
+    },
+    "stack_margin_bytes": {
+      "value": 16384,
+      "why": "The estimated peak plus the allowances plus this margin must fit the stack region. 16 KiB is slack for what the static estimate cannot see (compiler changes between toolchain versions)."
+    }
+  },
+  "interrupt_path": [
+    "_pre_default_start_trap_ret",
+    "_start_trap_rust",
+    "esp_hal::gpio::interrupt::user_gpio_interrupt_handler",
+    "kivori_firmware::physical_rotary::__esp_hal_internal_on_edge"
+  ],
+  "large_frames": [
+    {
+      "fn": "kivori_firmware::physical_st7789::load_assets",
+      "max": 64000,
+      "why": "Boot only: the inlined AssetBlob::parse holds the manifest (Vec<SceneDef,8> and the bitmap table). It sets the stack peak."
+    },
+    {
+      "fn": "<heapless::vec::VecInner<kivori_assets::manifest::SceneDef,*>::deserialize::*",
+      "max": 46000,
+      "why": "Boot only: postcard builds the Vec<SceneDef,8> by value, below load_assets."
+    },
+    {
+      "fn": "kivori_firmware::runtime::run_buffered::*",
+      "max": 7200,
+      "why": "The run loop's locals; lives for the whole session."
+    },
+    {
+      "fn": "kivori_firmware::physical_st7789::run_mode",
+      "max": 6800,
+      "why": "Owns the peripherals and the display buffers' setup; lives for the whole session."
+    },
+    {
+      "fn": "<kivori_firmware::runtime::Runtime>::pump_input::*",
+      "max": 3600,
+      "why": "Input handling with the inlined scene transitions."
+    },
+    {
+      "fn": "<kivori_firmware::proto::Dispatcher>::poll::*",
+      "max": 3100,
+      "why": "Frame decode and dispatch with the inlined handlers."
+    },
+    {
+      "fn": "<heapless::vec::VecInner<kivori_assets::manifest::BitmapEntry,*>::deserialize::*",
+      "max": 1900,
+      "why": "Boot only: postcard builds the bitmap table."
+    },
+    {
+      "fn": "<kivori_firmware::proto::Dispatcher>::send::*",
+      "max": 1700,
+      "why": "Frame encode with the inlined senders."
+    },
+    {
+      "fn": "kivori_renderer::compositor::draw_sprite",
+      "max": 1300,
+      "why": "Per-sprite compositing setup."
+    }
+  ],
+  "int64_division_allowlist": [
+    {
+      "fn": "esp_hal::init",
+      "why": "Once at boot: clock setup in esp-hal."
+    },
+    {
+      "fn": "<esp_hal::delay::Delay>::delay",
+      "why": "esp-hal's blocking delay (panel init); not in the frame path."
+    },
+    {
+      "fn": "<esp_hal::ledc::timer::Timer<*>::configure",
+      "why": "Backlight PWM setup, once."
+    },
+    {
+      "fn": "kivori_firmware::physical_rotary::__esp_hal_internal_on_edge",
+      "why": "Rotary interrupt: scales the edge timestamp. Known debt; keep it cheap."
+    },
+    {
+      "fn": "kivori_firmware::runtime::run_buffered::*",
+      "why": "The run loop's clock and window arithmetic (once per tick, not per pixel)."
+    },
+    {
+      "fn": "<kivori_model::mascot::MascotAnimator>::pose_at",
+      "why": "Animation time scaling, once per frame. Known debt."
+    },
+    {
+      "fn": "<kivori_model::mascot::MascotAnimator>::gaze_offset",
+      "why": "Gaze interpolation, once per frame. Known debt."
+    },
+    {
+      "fn": "kivori_renderer::desk::line",
+      "why": "Line setup (slope), per line not per pixel. Known debt."
+    },
+    {
+      "fn": "kivori_renderer::compositor::draw_sprite",
+      "why": "Per-sprite setup (4 call sites), not per pixel. Known debt; before PR #150 the same class of call in the pixel path made frames 4x slower."
+    },
+    {
+      "fn": "kivori_renderer::compositor::render_scene",
+      "why": "The scene loop length (`frame_count * 1000 * fps.den / fps.num`, compositor.rs), once per frame, not per pixel. Unchanged source: the BuildInfo message (build id) changed which function LTO inlines it into, so it now shows here. The frame-cost fixture is unchanged and passes."
+    }
+  ]
+}

@@ -1,3 +1,5 @@
+use std::path::Path;
+
 /// The product and board this firmware crate builds (ADR-0014). Their wire numbers and the image's
 /// minimum protocol are read from `products/`, so no number is typed twice. A second product's
 /// firmware crate names its own pair here.
@@ -49,6 +51,15 @@ fn export_identity() {
 
 fn main() {
     export_identity();
+    // The firmware source id and dirty flag (`KIVORI_BUILD_SOURCE`, `KIVORI_BUILD_DIRTY`): a hash of
+    // the committed content of the files listed in `build-inputs.txt`, or "unknown" without git.
+    // Never anything that varies between two builds of the same inputs (not the commit, not the
+    // time), so identical inputs give identical firmware bytes.
+    kivori_asset_compiler::build_id::emit(
+        "KIVORI_BUILD",
+        Path::new("../.."),
+        "firmware/pip/build-inputs.txt",
+    );
     // The flashable binary (`embedded`, and so `physical-st7789`) renders real scenes, so it needs the
     // canonical compiled asset blob. Compile it here (host-side, build-time only) and hand it to the
     // firmware via OUT_DIR — the device never parses SVG at runtime (Constitution XI). Skipped for every

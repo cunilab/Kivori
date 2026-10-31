@@ -27,7 +27,8 @@
     "deviceInternalsV1",
     "idleLifeV1",
     "micStateV1",
-    "productIdentityV1"
+    "productIdentityV1",
+    "buildInfoV1"
   ],
   "chipModels": ["esp32c3"],
   "controls": [

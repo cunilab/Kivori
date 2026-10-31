@@ -16,6 +16,9 @@ use crate::device::session::{Session, SessionConfig};
 use crate::device::transport::SerialLink;
 use crate::device::{ConnectionManager, ManagerEvent};
 use crate::input::freshness::Freshness;
+use crate::ipc::dto::{
+    connection_token, device_internals_dto, DeviceInternalsDto, DiagnosticsSnapshot,
+};
 use crate::orchestrator::Orchestrator;
 use crate::platform::host_events::{HostEvent, HostPresenceTracker, PresenceAction};
 use crate::platform::{self, FakeInputSynth, FakeVolumeBackend, OsServices, VolumeBackend};
@@ -132,13 +135,14 @@ struct ProcessLink {
 }
 
 impl ProcessLink {
-    fn open(executable: &Path) -> io::Result<Self> {
+    fn open(executable: &Path, args: &[&str]) -> io::Result<Self> {
         // Only native CLI supplies this executable; the webview cannot select commands or arguments.
         let executable = executable.canonicalize()?;
         if !executable.is_file() {
             return Err(invalid("virtual runner is not a file"));
         }
         let mut child = Command::new(executable)
+            .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -303,6 +307,7 @@ pub struct Snapshot {
 /// Config is in memory only: the tool neither reads nor writes the user's settings.
 pub struct Sandbox {
     executable: PathBuf,
+    runner_args: &'static [&'static str],
     connection_started: Instant,
     link: Option<ProcessLink>,
     session: Session,
@@ -317,6 +322,9 @@ pub struct Sandbox {
     started: Instant,
     next_ping: Duration,
     next_capture: Duration,
+    /// The Device internals card asked: keep requesting a snapshot about once a second.
+    internals_polled: bool,
+    next_internals: Duration,
     edges: VecDeque<Edge>,
     held: bool,
     release_by: Option<Duration>,
@@ -336,6 +344,7 @@ impl Sandbox {
     pub fn open(executable: &Path) -> io::Result<Self> {
         Self::open_with(
             executable,
+            &[],
             Arc::new(FakeVolumeBackend::new(50)),
             Arc::new(FakeInputSynth::new(Ok(()))),
             Arc::new(platform::FakeMicBackend::new()),
@@ -346,13 +355,14 @@ impl Sandbox {
 
     fn open_with(
         executable: &Path,
+        runner_args: &'static [&'static str],
         volume: Arc<FakeVolumeBackend>,
         synth: Arc<FakeInputSynth>,
         mic: Arc<platform::FakeMicBackend>,
         media: Arc<platform::FakeMediaObserver>,
         foreground: Arc<platform::FakeForeground>,
     ) -> io::Result<Self> {
-        let mut link = ProcessLink::open(executable)?;
+        let mut link = ProcessLink::open(executable, runner_args)?;
         let mut session = Session::new(SessionConfig::default());
         let mut manager = ConnectionManager::new();
         session
@@ -371,6 +381,7 @@ impl Sandbox {
         let session_generation = session.connection_generation();
         Ok(Self {
             executable: executable.canonicalize()?,
+            runner_args,
             connection_started: Instant::now(),
             link: Some(link),
             session,
@@ -385,6 +396,8 @@ impl Sandbox {
             started: Instant::now(),
             next_ping: Duration::ZERO,
             next_capture: Duration::ZERO,
+            internals_polled: false,
+            next_internals: Duration::ZERO,
             edges: VecDeque::from([Edge {
                 at_ms: 0,
                 levels: 0,
@@ -416,6 +429,22 @@ impl Sandbox {
 
     pub fn snapshot(&self) -> Snapshot {
         self.snapshot.clone()
+    }
+
+    /// The Device internals card's data, projected from this session exactly as the shipping app
+    /// does. Asking also starts the once-a-second `InternalsRequest`, so nothing is sent until the
+    /// card is open.
+    pub fn device_internals(&mut self) -> DeviceInternalsDto {
+        self.internals_polled = true;
+        let mut diagnostics = DiagnosticsSnapshot::initial();
+        if self.snapshot.connected {
+            diagnostics.connection = connection_token(kivori_model::ConnectionState::Connected);
+            diagnostics.connection_generation = self.snapshot.generation;
+            diagnostics.effective_caps = self.session.effective_caps();
+            diagnostics.internals = self.session.internals();
+            diagnostics.internals_received_at = self.session.internals_received_at();
+        }
+        device_internals_dto(&diagnostics, Instant::now())
     }
 
     fn end_link(&mut self, error: Option<String>) {
@@ -476,8 +505,8 @@ impl Sandbox {
         self.end_link(None);
         self.snapshot.mode = mode;
         let result: Result<(), String> = (|| {
-            let mut link =
-                ProcessLink::open(&self.executable).map_err(|error| error.to_string())?;
+            let mut link = ProcessLink::open(&self.executable, self.runner_args)
+                .map_err(|error| error.to_string())?;
             if mode == "fragmented" {
                 link.chunk = 7;
                 link.read_remaining = 7;
@@ -491,6 +520,7 @@ impl Sandbox {
             self.link = Some(link);
             self.connection_started = Instant::now();
             self.next_ping = Duration::ZERO;
+            self.next_internals = Duration::ZERO;
             self.next_capture = Duration::ZERO;
             self.snapshot.generation = self.session.connection_generation();
             self.snapshot.connection_state = "connecting";
@@ -634,7 +664,8 @@ impl Sandbox {
     fn reattach(&mut self) -> Result<(), String> {
         let mut link = match self.parked.take() {
             Some(link) => link,
-            None => ProcessLink::open(&self.executable).map_err(|error| error.to_string())?,
+            None => ProcessLink::open(&self.executable, self.runner_args)
+                .map_err(|error| error.to_string())?,
         };
         link.inbound.clear();
         self.manager = ConnectionManager::new();
@@ -644,6 +675,7 @@ impl Sandbox {
         self.link = Some(link);
         self.connection_started = Instant::now();
         self.next_ping = Duration::ZERO;
+        self.next_internals = Duration::ZERO;
         self.next_capture = Duration::ZERO;
         self.snapshot.generation = self.session.connection_generation();
         self.snapshot.connection_state = "connecting";
@@ -751,6 +783,12 @@ impl Sandbox {
                 .send_ping(link, ms)
                 .map_err(|_| invalid("virtual ping failed"))?;
             self.next_ping = now + Duration::from_secs(1);
+        }
+        if self.internals_polled && now >= self.next_internals {
+            self.session
+                .request_internals(link)
+                .map_err(|_| invalid("virtual internals request failed"))?;
+            self.next_internals = now + Duration::from_secs(1);
         }
         if self.session.heartbeat_timed_out() {
             return Err(invalid("virtual heartbeat timeout"));
@@ -957,7 +995,7 @@ mod tests {
         std::fs::write(&script, "#!/bin/sh\nexec sleep 30\n").expect("test runner");
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700))
             .expect("executable");
-        let mut link = ProcessLink::open(&script).expect("spawn hung child");
+        let mut link = ProcessLink::open(&script, &[]).expect("spawn hung child");
         link.exchange(0, &mut VecDeque::new(), false)
             .expect("queued tick");
         link.pending = Some(Instant::now() - IO_TIMEOUT - Duration::from_millis(1));

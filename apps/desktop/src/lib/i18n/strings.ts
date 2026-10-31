@@ -541,6 +541,18 @@ export const strings = {
     board: 'Board',
     hardwareRevision: 'Hardware revision',
     identitySource: 'Identity source',
+    build: {
+      label: 'Firmware source',
+      uncommitted: 'with uncommitted changes',
+      noGit: 'Unknown (built without git)',
+      notReported: 'This firmware does not report its build.',
+      dirtyTitle: 'Built from uncommitted changes',
+      dirtyBody:
+        'This unit runs firmware built with changes that are not committed, so it may not match the repository.',
+      differsTitle: 'Firmware source differs',
+      differsBody:
+        "The device firmware source ({device}) differs from this app's build ({app}). Flash the unit if you expect them to match.",
+    },
     identity: {
       sources: {
         legacy: 'Not reported (original firmware)',
@@ -696,6 +708,10 @@ export const strings = {
     heading: 'Device internals',
     description:
       'Flash, memory, load and link numbers from the device. Updates about once a second.',
+    virtualNote: {
+      label: 'Modelled (virtual device)',
+      body: 'The chip figures come from a committed model of the ESP32-C3 build (frame cost, SPI transfer, flash, RAM and stack from the product ELF), not from a measurement. Temperature stays unavailable.',
+    },
     loadFailed: 'Device internals are unavailable right now.',
     stale: 'Device internals are stale. Waiting for a new measurement…',
     notConnected: 'Connect your Kivori to see its internals.',
@@ -730,6 +746,7 @@ export const strings = {
       flush: 'Frame flush time (average)',
       fps: 'Display frames per second',
       chip: 'Chip',
+      build: 'Firmware source',
       temperature: 'Chip temperature (approx.)',
       uptime: 'Uptime',
       resetReason: 'Last reset',

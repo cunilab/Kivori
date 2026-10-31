@@ -117,12 +117,17 @@ fn incompatible_status_carries_reason() {
 fn app_info_reports_supported_protocol_and_studio_flag() {
     let dev = dto::app_info(true);
     assert!(dev.device_studio_enabled);
-    // The protocol restarted at 0.1 before the first release.
+    // The protocol restarted at 0.1 before the first release; 0.2 added `BuildInfo`.
     assert_eq!(dev.supported_majors, vec![0]);
     assert_eq!(
         (dev.protocol_version.major, dev.protocol_version.minor),
-        (0, 1)
+        (0, 2)
     );
+    // The firmware source id of this build: 12 hex digits, or unknown without git.
+    assert!(dev
+        .source_id
+        .as_deref()
+        .is_none_or(|c| c.len() == 12 && c.bytes().all(|b| b.is_ascii_hexdigit())));
     assert!(!dto::app_info(false).device_studio_enabled);
 }
 

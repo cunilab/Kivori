@@ -5,17 +5,17 @@
 //! frames are dropped without side effects and never panic (SC-008).
 
 use crate::health::{build_pong, diagnostic_for_sequence, DeviceDiagnostic, RejectReason};
-use crate::identity::ProductIdentity;
+use crate::identity::{BuildId, ProductIdentity};
 use crate::ports::Transport;
 use crate::state::{DeviceEvent, DeviceState};
 use heapless::Vec;
 use kivori_model::{Capabilities, ProtocolVersion};
 use kivori_protocol::{
-    decode_message, encode_message, BuddySettings, ByeReason, ControlId, ControlLabelsUpdate,
-    DeviceId, Feedback, FirmwareVersion, HelloAck, Identity, InputEvent, InputKind,
-    MascotActionApplied, MediaInfoUpdate, Message, MicStateUpdate, Nonce, PlayMascotAction,
-    Presentation, ProtoError, SeqClass, SequenceTracker, StateReport, Status, MAX_FRAME, MAX_WIRE,
-    PROTOCOL_MAJOR, PROTOCOL_MINOR,
+    decode_message, encode_message, BuddySettings, BuildInfo, ByeReason, ControlId,
+    ControlLabelsUpdate, DeviceId, Feedback, FirmwareVersion, HelloAck, Identity, InputEvent,
+    InputKind, MascotActionApplied, MediaInfoUpdate, Message, MicStateUpdate, Nonce,
+    PlayMascotAction, Presentation, ProtoError, SeqClass, SequenceTracker, StateReport, Status,
+    MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 /// Bounded storage for one inbound packet awaiting its delimiter.
@@ -489,6 +489,22 @@ impl Dispatcher {
                             board: product.board,
                             hw_rev: product.hw_rev,
                             source: product.source,
+                        }),
+                    )?;
+                }
+                // Which exact build this is, right behind the identity and under the same rule: only
+                // to a host that negotiated it, so an older desktop never sees the unknown tag.
+                if let (true, Some(session)) = (
+                    self.negotiated_caps.contains(Capabilities::BUILD_INFO_V1),
+                    self.accepted_session,
+                ) {
+                    let build = BuildId::BUILD;
+                    self.send(
+                        transport,
+                        &Message::BuildInfo(BuildInfo {
+                            session,
+                            source_id: build.source_id,
+                            dirty: build.dirty,
                         }),
                     )?;
                 }

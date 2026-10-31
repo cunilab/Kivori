@@ -20,7 +20,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
-      - run: bun test scripts/build-firmware.test.mjs scripts/build-firmware-set.test.mjs scripts/check-product-identifiers.test.mjs
+      - run: bun test scripts/build-firmware.test.mjs scripts/build-firmware-set.test.mjs scripts/check-product-identifiers.test.mjs scripts/firmware-budget.test.mjs scripts/virtual-resource-facts.test.mjs
       - run: bun scripts/check-product-identifiers.mjs
       - name: Enclosure wiring matches firmware (no CAD runtime)
         if: runner.os == 'Linux'

@@ -19,7 +19,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: riscv32imc-unknown-none-elf
-          components: rustfmt, clippy
+          components: rustfmt, clippy, llvm-tools
       - name: Compile the firmware library for RISC-V (no_std / no-alloc isolation proof)
         working-directory: firmware/pip
         # Building the library pulls in all five shared crates + the device core; the bin target is
@@ -39,6 +39,17 @@ jobs:
           cargo build --locked --release --features physical-st7789
           cargo build --locked --release --features physical-st7789,debug-payloads
           cargo build --locked --release --features physical-st7789,latency-probe
+      # Stack, RAM, size and 64-bit-division budget of the catalog product firmware (no hardware).
+      # build-firmware.mjs rebuilds the product ELF (the loop above ends on a different feature set),
+      # then the budget file beside the firmware crate is checked against it.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Firmware resource budget (resource-budget.json beside the crate) and virtual device facts
+        run: |
+          bun scripts/build-firmware.mjs
+          bun scripts/firmware-budget.mjs
+          bun scripts/virtual-resource-facts.mjs --check
       - name: Firmware format + clippy (RISC-V, every feature configuration)
         working-directory: firmware/pip
         run: |
@@ -49,6 +60,30 @@ jobs:
           cargo clippy --locked --lib --features physical-st7789 -- -D warnings
           cargo clippy --locked --lib --features physical-st7789,debug-payloads -- -D warnings
           cargo clippy --locked --lib --features physical-st7789,latency-probe -- -D warnings
+
+  # Predicted ESP32-C3 compose time (no hardware): the real renderer compiled for riscv32imc and run
+  # in an instruction-set simulator with an ESP32-C3 cycle model (virtual device docs, Hardware
+  # parity). Separate job so it runs beside the isolation job; fails if a scenario's predicted frame
+  # time grows more than 10% over frame-cost/fixtures/frame-cost.json. To accept an
+  # intended change: `just fw-frame-cost-update` and commit the fixture with the reason.
+  frame-cost:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: riscv32imc-unknown-none-elf
+          components: rustfmt, clippy
+      - name: Simulator tests, native parity and predicted frame cost vs the fixture
+        run: firmware/pip/frame-cost/run.sh check
+      - name: Frame-cost format + clippy (simulator and bench)
+        run: |
+          cd firmware/pip/frame-cost
+          cargo fmt --all --check
+          cargo clippy --locked --all-targets --target x86_64-unknown-linux-gnu -- -D warnings
+          cd bench
+          cargo fmt --all --check
+          cargo clippy --locked -- -D warnings
 
   host-sim-tests:
     # The hardware-neutral device core is validated on the host (FR-035). The forced RISC-V build

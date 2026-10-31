@@ -1,0 +1,30 @@
+# Frame-cost bench: the REAL firmware render path compiled for the ESP32-C3's ISA (riscv32imc) and run
+# in the instruction-set simulator one directory up. Own workspace and target dir, like `../`
+# (ADR-0001, ADR-0018); never part of the shipped firmware.
+[workspace]
+
+[package]
+name = "kivori-frame-cost-bench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[features]
+# Pre-#150 renderer (commit 20a4b5c) has no `prepare_frame_row`: compose the frame in one call.
+# Only used to validate the cycle model against the unit's old measurement (docs/virtual-pip.md).
+whole-frame = []
+
+[dependencies]
+# The firmware library only (no `embedded`, no esp-hal): TileRenderer and the shared render path.
+kivori-firmware = { path = "../..", default-features = false }
+kivori-assets = { path = "../../../../crates/kivori-assets" }
+kivori-model = { path = "../../../../crates/kivori-model" }
+kivori-renderer = { path = "../../../../crates/kivori-renderer" }
+
+[build-dependencies]
+kivori-asset-compiler = { path = "../../../../tools/asset-compiler" }
+
+# Must equal firmware/pip/Cargo.toml [profile.release]; the product's flags are the only ones that matter.
+[profile.release]
+opt-level = 3
+lto = true

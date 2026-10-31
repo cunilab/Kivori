@@ -32,6 +32,7 @@ impl Capabilities {
     //   bit 13 IDLE_LIFE_V1        `BuddySettings`: the device runs the buddy's idle life itself; carries brightness
     //   bit 14 MIC_STATE_V1        `MicStateUpdate`: whether every microphone is muted, and whether one is in use
     //   bit 15 PRODUCT_IDENTITY_V1 `Identity`: the device reports its product, board, hardware revision and where they came from
+    //   bit 16 BUILD_INFO_V1       `BuildInfo`: the device reports its firmware source id and whether the tree had uncommitted changes
 
     /// Bit 0 — device accepts deterministic social mascot actions and returns applied-time
     /// acknowledgments.
@@ -91,6 +92,11 @@ impl Capabilities {
     /// source) right after the handshake. Without it the device uses the fixed legacy identity
     /// (ADR-0014).
     pub const PRODUCT_IDENTITY_V1: Capabilities = Capabilities(1 << 15);
+
+    /// Bit 16 — the device sends one `BuildInfo` message (its firmware source id, and
+    /// whether the working tree had uncommitted changes) right after `Identity`. Without it the
+    /// build is simply unknown to the desktop.
+    pub const BUILD_INFO_V1: Capabilities = Capabilities(1 << 16);
 
     /// Creates a capability set from a raw bitmask.
     #[must_use]

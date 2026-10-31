@@ -32,6 +32,7 @@ impl Rig {
         let foreground = Arc::new(FakeForeground::default());
         let sandbox = Sandbox::open_with(
             executable,
+            &[],
             Arc::new(volume),
             Arc::new(FakeInputSynth::new(result)),
             mic.clone(),

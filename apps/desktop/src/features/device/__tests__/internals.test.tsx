@@ -2,14 +2,14 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import axe from 'axe-core';
 import { TooltipProvider } from '@kivori/ui/components/tooltip';
-import type { DeviceInternalsDto } from '../../../lib/ipc/types';
+import type { DeviceInfoDto, DeviceInternalsDto } from '../../../lib/ipc/types';
 import { connectionFixture } from '../../../test/connection';
 import { parseDeviceInternals } from '../../../lib/ipc/validate';
 
 const bridge = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('../../../lib/ipc', () => ({ getDeviceInternals: bridge.get }));
 
-import { DeviceInternals, formatBytes } from '../DeviceInternals';
+import { DeviceInternals, VIRTUAL_DEVICE_ID_HASH, formatBytes } from '../DeviceInternals';
 import { getLatestInternals, internalsForBundle, setLatestInternals } from '../internals-latest';
 
 const view = (): ReturnType<typeof render> =>
@@ -418,6 +418,74 @@ describe('DeviceInternals card', () => {
     view();
     await screen.findByText('Flash');
     expect(getLatestInternals()).toMatchObject({ ...reporting, snapshotAgeMs: expect.any(Number) });
+  });
+});
+
+describe('firmware build in the Chip tile', () => {
+  const withBuild = (build: DeviceInfoDto['build']): ReturnType<typeof render> => {
+    const base = connectionFixture();
+    return render(
+      <TooltipProvider>
+        <DeviceInternals
+          connection={{ ...base, device: base.device ? { ...base.device, build } : null }}
+        />
+      </TooltipProvider>,
+    );
+  };
+
+  it('shows the source id, and says when it has uncommitted changes', async () => {
+    withBuild({ sourceId: 'c2ff8c4f68de', dirty: true });
+    await screen.findByText('Flash');
+    expect(screen.getByTestId('internals-build')).toHaveTextContent(
+      'c2ff8c4f68de (with uncommitted changes)',
+    );
+  });
+
+  it('has no row for a firmware that does not report its build', async () => {
+    withBuild(null);
+    await screen.findByText('Flash');
+    expect(screen.queryByTestId('internals-build')).not.toBeInTheDocument();
+  });
+});
+
+describe('virtual Pip note', () => {
+  const withHash = (hash: string | null): ReturnType<typeof render> => {
+    const base = connectionFixture();
+    const connection = {
+      ...base,
+      device: base.device ? { ...base.device, deviceIdHashShort: hash ?? '' } : null,
+    };
+    return render(
+      <TooltipProvider>
+        <DeviceInternals connection={hash === null ? { ...base, device: null } : connection} />
+      </TooltipProvider>,
+    );
+  };
+
+  it('is shown for the virtual Pip, even before the first snapshot', async () => {
+    bridge.get.mockReturnValue(new Promise(() => {}));
+    withHash(VIRTUAL_DEVICE_ID_HASH);
+    const note = screen.getByTestId('internals-virtual-note');
+    expect(note).toHaveAttribute('role', 'note');
+    expect(note).toHaveTextContent('Modelled (virtual device)');
+    expect(note).toHaveTextContent(/not from a measurement/);
+    expect(note).toHaveTextContent(/Temperature stays unavailable/);
+    expect(screen.getByText('Waiting for the device to answer…')).toBeInTheDocument();
+  });
+
+  it('is not shown for another device or without one', async () => {
+    withHash('deadbeef').unmount();
+    expect(screen.queryByTestId('internals-virtual-note')).not.toBeInTheDocument();
+    withHash(null);
+    expect(screen.queryByTestId('internals-virtual-note')).not.toBeInTheDocument();
+  });
+
+  it('pins the constant to the id: FNV-1a 64 over VIRTUAL-PIP-0001, high 32 bits', () => {
+    let h = 0xcbf29ce484222325n;
+    for (const byte of new TextEncoder().encode('VIRTUAL-PIP-0001')) {
+      h = ((h ^ BigInt(byte)) * 0x100000001b3n) & 0xffffffffffffffffn;
+    }
+    expect((h >> 32n).toString(16).padStart(8, '0')).toBe(VIRTUAL_DEVICE_ID_HASH);
   });
 });
 

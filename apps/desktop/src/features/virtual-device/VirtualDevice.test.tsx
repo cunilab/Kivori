@@ -1,16 +1,28 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
+import type { DeviceInternalsDto } from '../../lib/ipc/types';
 import { VirtualDevice } from './VirtualDevice';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 const mockedInvoke = vi.mocked(invoke);
+const internalsBridge = vi.hoisted(() => ({ get: vi.fn() }));
+vi.mock('../../lib/ipc', () => ({ getDeviceInternals: internalsBridge.get }));
+
+const notConnectedInternals: DeviceInternalsDto = {
+  connected: false,
+  supported: false,
+  connectionGeneration: 0,
+  snapshotAgeMs: null,
+  snapshot: null,
+};
 const putImageData = vi.fn();
 const clearRect = vi.fn();
 
 beforeEach(() => {
   vi.useFakeTimers();
   mockedInvoke.mockReset();
+  internalsBridge.get.mockReset().mockResolvedValue(notConnectedInternals);
   putImageData.mockReset();
   clearRect.mockReset();
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
@@ -304,5 +316,72 @@ describe('virtual connection controls', () => {
       ['virtual_input', { control: 'press', generation: 7 }],
       ['virtual_input', { control: 'release', generation: 7 }],
     ]);
+  });
+});
+
+describe('virtual device internals', () => {
+  const modelled: DeviceInternalsDto = {
+    connected: true,
+    supported: true,
+    connectionGeneration: 1,
+    snapshotAgeMs: 0,
+    snapshot: {
+      appImageBytes: 742_880,
+      appPartitionBytes: 4_128_768,
+      assetBlobBytes: 65_536,
+      assetBlobCapBytes: 131_072,
+      flashTotalBytes: 4_194_304,
+      ramTotalBytes: 320_512,
+      ramStaticBytes: 125_600,
+      ramFreeBytes: null,
+      stackFreeMinBytes: 46_436,
+      busyPercent: 100,
+      composeMs: 79,
+      flushMs: 1,
+      fps: 12,
+      chipModel: 'esp32c3',
+      chipRevision: null,
+      temperatureDeciCelsius: null,
+      uptimeMs: 5000,
+      resetReason: null,
+      edgeQueueHighWater: 2,
+      droppedEdges: 0,
+      invalidTransitions: 0,
+      framesIn: 40,
+      framesOut: 50,
+      framesRejected: 0,
+    },
+  };
+
+  it('shows the modelled compose, flush, fps and busy figures of a connected virtual Pip', async () => {
+    internalsBridge.get.mockResolvedValue(modelled);
+    mockedInvoke.mockImplementation(async (command) =>
+      command === 'virtual_snapshot' ? { ...connectedSnapshot } : undefined,
+    );
+    await act(async () => {
+      render(<VirtualDevice />);
+    });
+    expect(screen.getByRole('heading', { name: 'Device internals' })).toBeInTheDocument();
+    expect(screen.getByTestId('internals-virtual-note')).toHaveTextContent(
+      'Modelled (virtual device)',
+    );
+    expect(screen.getByText('79 ms')).toBeInTheDocument();
+    expect(screen.getByText('12 fps')).toBeInTheDocument();
+    expect(screen.getByText('100%')).toBeInTheDocument();
+    expect(screen.getByTestId('internals-stack-peak')).toHaveTextContent('KiB');
+  });
+
+  it('asks nothing of the device while it is not connected', async () => {
+    mockedInvoke.mockImplementation(async (command) =>
+      command === 'virtual_snapshot'
+        ? { ...connectedSnapshot, connected: false, connectionState: 'disconnected' }
+        : undefined,
+    );
+    await act(async () => {
+      render(<VirtualDevice />);
+    });
+    expect(screen.getByText('Connect your Kivori to see its internals.')).toBeInTheDocument();
+    expect(internalsBridge.get).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('internals-virtual-note')).not.toBeInTheDocument();
   });
 });

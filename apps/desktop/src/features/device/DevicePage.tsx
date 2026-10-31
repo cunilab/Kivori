@@ -24,9 +24,10 @@ import { Page } from '@/components/kivori/page';
 import { PageTabs, type PageTab } from '@/components/kivori/page-tabs';
 import { uiConnection, type UiConnection } from '@/hooks/use-kivori';
 import type { AppInfoDto, ConnectionStatusDto } from '@/lib/ipc/types';
-import { strings } from '@/lib/i18n/strings';
+import { format, strings } from '@/lib/i18n/strings';
 import { cn } from '@kivori/ui/lib/utils';
 import { useDevMode } from '@/lib/dev-mode';
+import { buildNotices } from './build';
 import { DeviceInternals } from './DeviceInternals';
 import { FirmwareUpdate } from './FirmwareUpdate';
 
@@ -72,6 +73,7 @@ export function DevicePage({
   const devMode = useDevMode();
   const version = (value: { major: number; minor: number } | undefined): string | null =>
     value ? `${value.major}.${value.minor}` : null;
+  const notices = buildNotices(device?.build, appInfo?.sourceId, devMode);
   // Without a device, its own rows can only say "Unknown": they collapse into one muted line.
   const hasDevice = ui === 'connected' || ui === 'incompatible';
   const session: [string, string | null, string, boolean][] = [
@@ -135,6 +137,25 @@ export function DevicePage({
                     </span>
                   </p>
                 </div>
+                {notices.dirty ? (
+                  <Alert data-testid="device-build-dirty">
+                    <TriangleAlert aria-hidden="true" />
+                    <AlertTitle>{t.build.dirtyTitle}</AlertTitle>
+                    <AlertDescription>{t.build.dirtyBody}</AlertDescription>
+                  </Alert>
+                ) : null}
+                {notices.differs && device.build?.sourceId && appInfo?.sourceId ? (
+                  <Alert data-testid="device-build-differs">
+                    <TriangleAlert aria-hidden="true" />
+                    <AlertTitle>{t.build.differsTitle}</AlertTitle>
+                    <AlertDescription>
+                      {format(t.build.differsBody, {
+                        device: device.build.sourceId,
+                        app: appInfo.sourceId,
+                      })}
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
                 <section aria-labelledby="device-details-heading" className="space-y-1">
                   <h2
                     id="device-details-heading"
@@ -158,6 +179,22 @@ export function DevicePage({
                         {(source) => t.identity.sources[source]}
                       </Known>
                     </Row>
+                    {device.build || devMode ? (
+                      <Row label={t.build.label} testId="device-build">
+                        <Known value={device.build} why={t.build.notReported}>
+                          {(build) =>
+                            build.sourceId ? (
+                              <>
+                                <span className="font-mono">{build.sourceId}</span>
+                                {build.dirty ? ` · ${t.build.uncommitted}` : ''}
+                              </>
+                            ) : (
+                              t.build.noGit
+                            )
+                          }
+                        </Known>
+                      </Row>
+                    ) : null}
                   </dl>
                 </section>
               </>

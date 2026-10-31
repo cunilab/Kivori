@@ -31,6 +31,29 @@ fn main() {
     std::fs::write(Path::new(&out_dir).join("catalog_sources.rs"), source)
         .expect("write embedded catalog sources");
 
+    // The firmware source id of this checkout (the same hash the firmware stamps into itself, from
+    // the input list beside the catalog's firmware crate), compared with the device's in developer
+    // mode (`BUILD_INFO_V1`). Only the id is used.
+    match catalog
+        .products()
+        .first()
+        .and_then(|product| product.boards.first())
+    {
+        Some(board) => {
+            let crate_dir = board
+                .firmware
+                .crate_dir
+                .to_string_lossy()
+                .replace('\\', "/");
+            kivori_asset_compiler::build_id::emit(
+                "KIVORI_APP",
+                &root,
+                &format!("{crate_dir}/build-inputs.txt"),
+            );
+        }
+        None => println!("cargo:rustc-env=KIVORI_APP_SOURCE=unknown"),
+    }
+
     println!("cargo:rerun-if-env-changed=KIVORI_FIRMWARE_PATH");
     println!("cargo:rerun-if-env-changed=KIVORI_FIRMWARE_MANIFEST");
     let legacy = std::env::var_os("KIVORI_FIRMWARE_PATH");

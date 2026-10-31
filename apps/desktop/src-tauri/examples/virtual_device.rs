@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use kivori_desktop::ipc::dto::DeviceInternalsDto;
 use kivori_desktop::virtual_device::{Sandbox, Snapshot};
 
 struct State(Mutex<Sandbox>);
@@ -14,6 +15,16 @@ fn virtual_snapshot(state: tauri::State<'_, State>) -> Result<Snapshot, String> 
         .0
         .lock()
         .map(|sandbox| sandbox.snapshot())
+        .map_err(|_| "Virtual device unavailable".into())
+}
+
+/// Same name and shape as the shipping app's command, so the Device internals card is reused as is.
+#[tauri::command]
+fn get_device_internals(state: tauri::State<'_, State>) -> Result<DeviceInternalsDto, String> {
+    state
+        .0
+        .lock()
+        .map(|mut sandbox| sandbox.device_internals())
         .map_err(|_| "Virtual device unavailable".into())
 }
 
@@ -79,6 +90,29 @@ fn wait_for(
     }
 }
 
+/// Asks for the Device internals card's data until the modelled device has answered with figures.
+fn wait_for_internals(sandbox: &mut Sandbox) -> Result<DeviceInternalsDto, String> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        sandbox.tick();
+        if let Some(error) = sandbox.snapshot().error {
+            return Err(error);
+        }
+        let internals = sandbox.device_internals();
+        if internals
+            .snapshot
+            .as_ref()
+            .is_some_and(|s| s.compose_ms.is_some() && s.fps.is_some())
+        {
+            return Ok(internals);
+        }
+        if Instant::now() >= deadline {
+            return Err("Timed out waiting for the device internals".into());
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
 fn smoke(mut sandbox: Sandbox, output: PathBuf) -> Result<(), String> {
     wait_for(&mut sandbox, "firmware handshake/frame", |s| {
         s.connected && s.frame.is_some()
@@ -112,6 +146,20 @@ fn smoke(mut sandbox: Sandbox, output: PathBuf) -> Result<(), String> {
             result.volume, result.detents, result.media_triggers
         ));
     }
+    // The Device internals card reads the modelled chip figures through the same session path.
+    let internals = wait_for_internals(&mut sandbox)?;
+    let chip = internals
+        .snapshot
+        .as_ref()
+        .ok_or("Device internals missing")?;
+    if !internals.connected
+        || !internals.supported
+        || chip.chip_model != Some("esp32c3")
+        || chip.busy_percent.is_none()
+        || !chip.compose_ms.is_some_and(|ms| (20..=200).contains(&ms))
+    {
+        return Err(format!("Unexpected device internals: {internals:?}"));
+    }
     let frame = result.frame.ok_or("Firmware frame missing")?;
     if Some(&frame) == initial.frame.as_ref() {
         return Err("Firmware frame did not change".into());
@@ -125,7 +173,7 @@ fn smoke(mut sandbox: Sandbox, output: PathBuf) -> Result<(), String> {
         ]);
     }
     std::fs::write(output, ppm).map_err(|error| error.to_string())?;
-    println!("PASS KIVORI-VIRTUAL-DEVICE: real firmware handshake, three raw detents → fake volume56, raw press/release → one fake media trigger; firmware frame captured. Simulated device/OS, real elapsed time; no physical evidence.");
+    println!("PASS KIVORI-VIRTUAL-DEVICE: real firmware handshake, three raw detents → fake volume56, raw press/release → one fake media trigger; modelled device internals read back; firmware frame captured. Simulated device/OS, real elapsed time; no physical evidence.");
     Ok(())
 }
 
@@ -203,7 +251,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .invoke_handler(tauri::generate_handler![
             virtual_snapshot,
             virtual_input,
-            virtual_connection
+            virtual_connection,
+            get_device_internals
         ])
         .setup(move |app| {
             use tauri::Manager;

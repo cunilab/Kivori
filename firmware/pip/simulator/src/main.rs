@@ -1,21 +1,31 @@
 mod input_scenarios;
 mod io_scenarios;
+mod modelled;
+mod probe;
+mod timing;
 
-use std::io::{self, BufRead, Write};
+use std::{
+    cell::RefCell,
+    convert::Infallible,
+    io::{self, BufRead, Write},
+    rc::Rc,
+};
 
 use kivori_assets::AssetBlob;
 use kivori_firmware::{
     identity::{BootCheck, ProductIdentity},
-    ports::InputSource,
+    ports::{InputSource, Transport},
     profile::physical_st7789::CAPABILITIES as CAPS,
     proto::DeviceIdentity,
-    runtime::{Runtime, RuntimeConfig},
-    sim::{CaptureDisplay, SimPipe, VirtualClock, PIPE_CAPACITY},
+    runtime::{Runtime, RuntimeConfig, Tick},
+    sim::{CaptureDisplay, SimPipe, PIPE_CAPACITY},
     tx_buffer::TxBuffered,
 };
 use kivori_model::input::InputLevels;
 use kivori_protocol::FirmwareVersion;
+use modelled::{Gate, ModelledSimulator};
 use serde::{Deserialize, Serialize};
+use timing::{SharedDisplay, SimClock};
 
 include!(concat!(env!("OUT_DIR"), "/identity.rs"));
 const MAX_LINE: usize = 400_000;
@@ -28,7 +38,7 @@ struct Edge {
     levels: u8,
 }
 
-#[derive(Debug, Default, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 enum Fault {
     #[default]
@@ -67,6 +77,8 @@ struct BufferedInput {
     levels: InputLevels,
     edges: Vec<Edge>,
     high_water: u32,
+    /// Modelled timing only: the host-time gate that supplies edges as device time reaches them.
+    gate: Option<Rc<RefCell<Gate>>>,
 }
 
 fn levels(mask: u8) -> InputLevels {
@@ -83,7 +95,15 @@ impl InputSource for BufferedInput {
         self.levels
     }
     fn drain(&mut self, now_ms: u32, f: &mut dyn FnMut(InputLevels, u32)) {
-        for edge in self.edges.drain(..) {
+        // Every service point of the runtime (the start of a tick, between tile rows and between
+        // display windows) comes through here, so this is where modelled time lets the host catch up
+        // and where input stamped later than `now_ms` stays queued, as on the device.
+        if let Some(gate) = &self.gate {
+            self.edges.extend(gate.borrow_mut().service());
+            self.high_water = self.high_water.max(self.edges.len() as u32);
+        }
+        let due = self.edges.iter().take_while(|e| e.at_ms <= now_ms).count();
+        for edge in self.edges.drain(..due) {
             self.levels = levels(edge.levels);
             f(self.levels, edge.at_ms);
         }
@@ -94,102 +114,192 @@ impl InputSource for BufferedInput {
     }
 }
 
+/// The host side of the in-memory pipe, shared so the modelled device can deliver bytes and collect
+/// replies while the runtime owns the transport.
+struct SharedPipe(Rc<RefCell<SimPipe>>);
+
+impl Transport for SharedPipe {
+    type Error = Infallible;
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        self.0.borrow_mut().read(buf)
+    }
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+        self.0.borrow_mut().write(buf)
+    }
+}
+
+/// Handles the device and the process loop share.
+#[derive(Clone)]
+struct Shared {
+    clock: Rc<SimClock>,
+    link: Rc<RefCell<SimPipe>>,
+    capture: Rc<RefCell<CaptureDisplay>>,
+}
+
+/// What one request returns before faults are applied.
+struct Report {
+    wire: Vec<u8>,
+    frame: Option<Vec<u16>>,
+    brightness: Option<u8>,
+    reboot: bool,
+    state: &'static str,
+}
+
+impl Shared {
+    fn report(&self, reboot: bool, state: &'static str, capture: bool) -> Report {
+        let display = self.capture.borrow();
+        Report {
+            wire: self.link.borrow_mut().host_recv().to_vec(),
+            frame: capture.then(|| display.frame().iter().map(|p| p.raw()).collect()),
+            brightness: display.brightness,
+            reboot,
+            state,
+        }
+    }
+}
+
+/// Rejects a request the runner will not run, before any state changes.
+fn validate(now: u32, rebooted: bool, request: &Request) -> Result<(), String> {
+    if request.fault == Fault::Exit {
+        return Err("exit fault is handled by the process loop".into());
+    }
+    if rebooted {
+        return Err("reboot requested; restart the simulator process".into());
+    }
+    if request.now_ms < now || request.wire.len() > PIPE_CAPACITY || request.edges.len() > MAX_EDGES
+    {
+        return Err("request exceeds time, wire or edge limits".into());
+    }
+    let mut previous = now;
+    for edge in &request.edges {
+        if edge.levels & !63 != 0 || edge.at_ms < previous || edge.at_ms > request.now_ms {
+            return Err("invalid or unordered input edge".into());
+        }
+        previous = edge.at_ms;
+    }
+    Ok(())
+}
+
+/// Applies the request's reply fault to what the firmware produced.
+fn finish(fault: Fault, report: Report) -> Result<Response, String> {
+    let mut wire = report.wire;
+    match fault {
+        Fault::Silent => wire.clear(),
+        Fault::WrongMajor => {
+            wire = wrong_major_ack(&wire)?;
+        }
+        _ => {}
+    }
+    Ok(Response {
+        wire,
+        frame: report.frame,
+        brightness: report.brightness,
+        reboot: report.reboot,
+        state: report.state,
+    })
+}
+
+/// How the runner models time: `Ideal` freezes the clock at the request's time for the whole tick
+/// (every frame costs 0 ms, one request is one tick, as the deterministic scenarios and goldens
+/// need); `Modelled` runs the device on its own clock and charges the ESP32-C3's compose and flush
+/// time (docs/virtual-pip.md).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Timing {
+    Ideal,
+    Modelled,
+}
+
 struct Simulator {
     runtime: Runtime<'static>,
-    clock: VirtualClock,
-    pipe: TxBuffered<SimPipe>,
-    display: Box<CaptureDisplay>,
+    shared: Shared,
+    pipe: TxBuffered<SharedPipe>,
+    display: SharedDisplay,
     input: BufferedInput,
+    blob: AssetBlob<'static>,
     now: u32,
     rebooted: bool,
 }
 
 impl Simulator {
+    /// The zero-time simulator: one request is one runtime tick at the request's time.
     fn new() -> Self {
+        Self::assemble(Timing::Ideal)
+    }
+
+    fn assemble(timing: Timing) -> Self {
+        let shared = Shared {
+            clock: Rc::new(match timing {
+                Timing::Ideal => SimClock::ideal(),
+                Timing::Modelled => SimClock::modelled(),
+            }),
+            link: Rc::new(RefCell::new(SimPipe::new())),
+            capture: Rc::new(RefCell::new(CaptureDisplay::new())),
+        };
+        let mut runtime = Runtime::with_frame_buffer(
+            DeviceIdentity {
+                // Deliberately recognizable, deterministic virtual identity; never a chip identity.
+                device_id: *b"VIRTUAL-PIP-0001",
+                firmware_version: VERSION,
+                capabilities: CAPS,
+            },
+            RuntimeConfig::default(),
+            Box::leak(Box::new(
+                [kivori_model::Rgb565::from_raw(0); kivori_firmware::render::FRAME_PIXELS],
+            )),
+        );
+        runtime.set_chip_probe(probe::probe);
         Self {
-            runtime: Runtime::with_frame_buffer(
-                DeviceIdentity {
-                    // Deliberately recognizable, deterministic virtual identity; never a chip identity.
-                    device_id: *b"VIRTUAL-PIP-0001",
-                    firmware_version: VERSION,
-                    capabilities: CAPS,
-                },
-                RuntimeConfig::default(),
-                Box::leak(Box::new(
-                    [kivori_model::Rgb565::from_raw(0); kivori_firmware::render::FRAME_PIXELS],
-                )),
-            ),
-            clock: VirtualClock::new(),
-            pipe: TxBuffered::new(SimPipe::new()),
-            display: Box::new(CaptureDisplay::new()),
+            runtime,
+            pipe: TxBuffered::new(SharedPipe(shared.link.clone())),
+            display: SharedDisplay::new(shared.capture.clone(), shared.clock.clone()),
+            shared,
             input: BufferedInput::default(),
+            blob: AssetBlob::parse(include_bytes!(concat!(env!("OUT_DIR"), "/pip.assets")))
+                .expect("build-time asset compiler produces a valid blob"),
             now: 0,
             rebooted: false,
         }
     }
 
-    fn step(&mut self, request: Request) -> Result<Response, String> {
-        if request.fault == Fault::Exit {
-            return Err("exit fault is handled by the process loop".into());
-        }
-        if self.rebooted {
-            return Err("reboot requested; restart the simulator process".into());
-        }
-        if request.now_ms < self.now
-            || request.wire.len() > PIPE_CAPACITY
-            || request.edges.len() > MAX_EDGES
-        {
-            return Err("request exceeds time, wire or edge limits".into());
-        }
-        let mut previous = self.now;
-        for edge in &request.edges {
-            if edge.levels & !63 != 0 || edge.at_ms < previous || edge.at_ms > request.now_ms {
-                return Err("invalid or unordered input edge".into());
-            }
-            previous = edge.at_ms;
-        }
-        self.pipe
-            .inner_mut()
-            .host_send(&request.wire)
-            .map_err(|()| "pending firmware input exceeds pipe capacity")?;
+    /// One production runtime tick at the clock's current time, with `fault`'s boot identity.
+    fn run_tick(&mut self, fault: Fault) -> Tick {
         let mut identity = ProductIdentity::BUILD;
-        match request.fault {
+        match fault {
             Fault::UnknownProduct => identity.product = u16::MAX,
             Fault::UnknownBoard => identity.board = u16::MAX,
             _ => {}
         }
         self.runtime.set_boot_check(BootCheck::Run(identity));
+        self.runtime.step(
+            &*self.shared.clock,
+            &mut self.pipe,
+            &mut self.input,
+            &mut self.display,
+            &self.blob,
+        )
+    }
+
+    fn step(&mut self, request: Request) -> Result<Response, String> {
+        validate(self.now, self.rebooted, &request)?;
+        self.shared
+            .link
+            .borrow_mut()
+            .host_send(&request.wire)
+            .map_err(|()| "pending firmware input exceeds pipe capacity")?;
         self.input.high_water = self.input.high_water.max(request.edges.len() as u32);
         self.input.edges = request.edges;
         self.now = request.now_ms;
-        self.clock.set(self.now);
-        let blob = AssetBlob::parse(include_bytes!(concat!(env!("OUT_DIR"), "/pip.assets")))
-            .expect("build-time asset compiler produces a valid blob");
-        let tick = self.runtime.step(
-            &self.clock,
-            &mut self.pipe,
-            &mut self.input,
-            &mut *self.display,
-            &blob,
-        );
+        self.shared.clock.set_ms(self.now);
+        let tick = self.run_tick(request.fault);
         self.rebooted = tick.reboot;
-        let mut wire = self.pipe.inner_mut().host_recv().to_vec();
-        match request.fault {
-            Fault::Silent => wire.clear(),
-            Fault::WrongMajor => {
-                wire = wrong_major_ack(&wire)?;
-            }
-            _ => {}
-        }
-        Ok(Response {
-            wire,
-            frame: request
-                .capture
-                .then(|| self.display.frame().iter().map(|p| p.raw()).collect()),
-            brightness: self.display.brightness,
-            reboot: tick.reboot,
-            state: state_token(self.runtime.state()),
-        })
+        finish(
+            request.fault,
+            self.shared.report(
+                tick.reboot,
+                state_token(self.runtime.state()),
+                request.capture,
+            ),
+        )
     }
 }
 
@@ -261,8 +371,30 @@ fn read_record(reader: &mut impl BufRead) -> Result<Option<Vec<u8>>, String> {
     }
 }
 
-fn run(reader: &mut impl BufRead, writer: &mut impl Write) -> Result<(), String> {
-    let mut sim = Simulator::new();
+/// The device behind the process loop, in either timing.
+enum Device {
+    Ideal(Box<Simulator>),
+    Modelled(ModelledSimulator),
+}
+
+impl Device {
+    fn new(timing: Timing) -> Self {
+        match timing {
+            Timing::Ideal => Self::Ideal(Box::new(Simulator::new())),
+            Timing::Modelled => Self::Modelled(ModelledSimulator::spawn()),
+        }
+    }
+
+    fn step(&mut self, request: Request) -> Result<Response, String> {
+        match self {
+            Self::Ideal(sim) => sim.step(request),
+            Self::Modelled(sim) => sim.step(request),
+        }
+    }
+}
+
+fn run(reader: &mut impl BufRead, writer: &mut impl Write, timing: Timing) -> Result<(), String> {
+    let mut sim = Device::new(timing);
     while let Some(record) = read_record(reader)? {
         let request: Request = serde_json::from_slice(&record).map_err(|e| e.to_string())?;
         if request.fault == Fault::Exit {
@@ -284,12 +416,16 @@ fn run(reader: &mut impl BufRead, writer: &mut impl Write) -> Result<(), String>
 
 fn main() {
     let result = match std::env::args().skip(1).collect::<Vec<_>>().as_slice() {
-        [] => run(&mut io::stdin().lock(), &mut io::stdout().lock()),
+        [] => run(&mut io::stdin().lock(), &mut io::stdout().lock(), Timing::Modelled),
+        [flag] if flag == "--ideal-time" => {
+            run(&mut io::stdin().lock(), &mut io::stdout().lock(), Timing::Ideal)
+        }
         [flag] if flag == "--input-smoke" => input_scenarios::run(),
         [flag] if flag == "--io-smoke" => io_scenarios::run(),
         [flag, seed] if flag == "--replay" => input_scenarios::replay(seed),
         _ => Err(
-            "usage: kivori-pip-simulator [--input-smoke | --io-smoke | --replay <17|29>]".into(),
+            "usage: kivori-pip-simulator [--ideal-time | --input-smoke | --io-smoke | --replay <17|29>]"
+                .into(),
         ),
     };
     if let Err(error) = result {
@@ -479,7 +615,7 @@ mod tests {
     fn exit_ends_process_loop_without_response_or_consuming_next_record() {
         let mut input = Cursor::new(b"{\"now_ms\":0,\"wire\":[],\"edges\":[],\"capture\":false,\"fault\":\"exit\"}\ninvalid\n");
         let mut output = Vec::new();
-        run(&mut input, &mut output).unwrap();
+        run(&mut input, &mut output, Timing::Ideal).unwrap();
         assert!(output.is_empty());
         assert_eq!(read_record(&mut input).unwrap().unwrap(), b"invalid");
         let mut req = request(0);
@@ -580,7 +716,7 @@ mod tests {
     #[test]
     fn malformed_json_fails_without_stdout() {
         let mut output = vec![];
-        assert!(run(&mut Cursor::new(b"{}\n"), &mut output).is_err());
+        assert!(run(&mut Cursor::new(b"{}\n"), &mut output, Timing::Ideal).is_err());
         assert!(output.is_empty());
     }
 
@@ -663,6 +799,7 @@ mod tests {
         assert!(CAPS.contains(
             Capabilities::MIC_STATE_V1
                 .union(Capabilities::PRODUCT_IDENTITY_V1)
+                .union(Capabilities::BUILD_INFO_V1)
                 .union(Capabilities::DEVICE_INTERNALS_V1)
                 .union(Capabilities::QUIET_ACK_V1)
                 .union(Capabilities::IDLE_LIFE_V1)
@@ -715,6 +852,24 @@ mod tests {
         let mut ready = request(34);
         ready.wire = wire.to_vec();
         let identity_response = sim.step(ready).unwrap();
+        // The virtual Pip builds from the same source, so it reports the same build id.
+        let build = identity_response
+            .wire
+            .split(|&byte| byte == 0)
+            .filter(|packet| !packet.is_empty())
+            .find_map(
+                |packet| match decode_message(packet, &mut scratch, &[PROTOCOL_MAJOR]) {
+                    Ok((_, Message::BuildInfo(build))) => Some(build),
+                    _ => None,
+                },
+            )
+            .expect("Ready returns the build id");
+        assert_eq!(build.session, 42);
+        assert_eq!(
+            build.source_id,
+            kivori_firmware::identity::BuildId::BUILD.source_id
+        );
+        assert_eq!(build.dirty, kivori_firmware::identity::BuildId::BUILD.dirty);
         let identity = identity_response
             .wire
             .split(|&byte| byte == 0)

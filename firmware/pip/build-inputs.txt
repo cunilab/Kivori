@@ -1,0 +1,32 @@
+# The files that make up the Pip firmware, one repository-relative path per line (a folder means
+# everything under it). `firmware/pip/build.rs` and the desktop `build.rs` hash the committed
+# content of these paths into the firmware source id (`BuildInfo`), minus every Cargo manifest and
+# lockfile, so workspace version bookkeeping never changes it.
+#
+# This is the firmware release guard's input set (`firmwareInputs` in
+# scripts/firmware-release-guard.mjs); `scripts/build-inputs.test.mjs` fails when the two differ.
+.cargo
+.github/workflows/firmware.yml
+.github/workflows/release-start.yml
+.github/workflows/release.yml
+Cargo.lock
+Cargo.toml
+assets
+crates/kivori-assets
+crates/kivori-framebuffer
+crates/kivori-model
+crates/kivori-protocol
+crates/kivori-renderer
+firmware/.cargo
+firmware/pip
+firmware/pip/.cargo
+justfile
+products
+rust-toolchain
+rust-toolchain.toml
+scripts/build-desktop-firmware.ps1
+scripts/build-firmware-set.mjs
+scripts/build-firmware.mjs
+scripts/bundle-macos.sh
+scripts/release-catalog.mjs
+tools/asset-compiler

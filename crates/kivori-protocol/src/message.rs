@@ -340,6 +340,25 @@ pub struct Identity {
     pub source: IdentitySource,
 }
 
+/// Length of a firmware source id on the wire: 12 hex digits (48 bits) packed into 6 bytes.
+pub const SOURCE_ID_LEN: usize = 6;
+
+/// Device -> desktop: which exact build of the firmware runs (capability `BUILD_INFO_V1`). Sent once,
+/// right after `Identity`; connection scoped. A developer's unit can run a build that differs from
+/// the repository, so this names the firmware source and says whether the tree had uncommitted changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BuildInfo {
+    /// The handshake nonce of the session this applies to.
+    pub session: Nonce,
+    /// The firmware source id: a content hash of the committed firmware input files (excluding
+    /// Cargo manifests and lockfiles), 12 hex digits packed into 6 bytes, or `None`
+    /// when the build could not tell (no git, such as a source tarball).
+    pub source_id: Option<[u8; SOURCE_ID_LEN]>,
+    /// The working tree had uncommitted changes in the files that make up the firmware, so the
+    /// source id alone does not describe the build. Meaningless (`false`) when `source_id` is `None`.
+    pub dirty: bool,
+}
+
 /// The top-level wire message.
 ///
 /// **Append-only**: new variants are added at the end within a major version — the `postcard`
@@ -395,4 +414,6 @@ pub enum Message {
     MicState(MicStateUpdate),
     /// Tag 23 — device -> desktop product identity (capability `PRODUCT_IDENTITY_V1`).
     Identity(Identity),
+    /// Tag 24 — device -> desktop firmware source id and dirty flag (capability `BUILD_INFO_V1`).
+    BuildInfo(BuildInfo),
 }

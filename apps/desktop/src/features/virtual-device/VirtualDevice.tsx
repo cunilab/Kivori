@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { TooltipProvider } from '@kivori/ui/components/tooltip';
 import { blitRgba } from '../../lib/canvas/blit';
+import { DeviceInternals, VIRTUAL_DEVICE_ID_HASH } from '../device/DeviceInternals';
 import './virtual-device.css';
 
 type Snapshot = {
@@ -272,6 +274,21 @@ export function VirtualDevice(): ReactElement {
         <p>Output mute: {snapshot?.muted == null ? '—' : snapshot.muted ? 'muted' : 'not muted'}</p>
         <p>Media triggers: {snapshot?.mediaTriggers ?? '—'}</p>
         <p>Actions affect this simulation only.</p>
+      </section>
+      <section aria-label="Device internals">
+        <TooltipProvider>
+          <DeviceInternals
+            connection={
+              connected
+                ? {
+                    connection: 'connected',
+                    connectionGeneration: snapshot?.generation ?? 0,
+                    device: { deviceIdHashShort: VIRTUAL_DEVICE_ID_HASH },
+                  }
+                : null
+            }
+          />
+        </TooltipProvider>
       </section>
       {(connectionError || error) && <p role="alert">{connectionError || error}</p>}
     </main>

@@ -93,6 +93,13 @@ while IFS= read -r -d '' firmware_crate; do
     SIMULATOR_CRATES+=("$firmware_crate/simulator")
     SOURCE_ROOTS+=("$firmware_crate/simulator/src" "$firmware_crate/simulator/build.rs")
   fi
+  # The frame-cost model (host simulator + riscv bench) is a development tool beside the firmware.
+  if [ -f "$firmware_crate/frame-cost/Cargo.toml" ]; then
+    check_workspace "$firmware_crate/frame-cost" product
+    check_workspace "$firmware_crate/frame-cost/bench" product
+    SIMULATOR_CRATES+=("$firmware_crate/frame-cost")
+    SOURCE_ROOTS+=("$firmware_crate/frame-cost/src" "$firmware_crate/frame-cost/bench/src")
+  fi
 done < "$firmware_paths"
 
 prune=()

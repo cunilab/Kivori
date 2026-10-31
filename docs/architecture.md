@@ -8,7 +8,7 @@ Kivori is a small desk companion. A keycap-shaped mascot lives on a 240x240 scre
 
 | Component | What it is |
 |---|---|
-| Firmware | ESP32-C3, ST7789 240x240 panel, HW-040 rotary encoder, three buttons. Version 0.1.0, protocol 0.1. `no_std`, no heap, `riscv32imc`. |
+| Firmware | ESP32-C3, ST7789 240x240 panel, HW-040 rotary encoder, three buttons. Version 0.1.0, protocol 0.2. `no_std`, no heap, `riscv32imc`. |
 | Desktop native core | Tauri 2.12 Rust process. Owns the serial port, the connection, OS integration, preview rendering, flashing. |
 | Desktop webview | React UI. Only calls a fixed set of typed commands. No serial, filesystem or shell access. |
 | Shared crates | One copy of the model, protocol, renderer and asset reader, used by both firmware and desktop. |
@@ -152,7 +152,7 @@ One packet is `COBS(frame) || 0x00`. COBS makes the stream self-synchronizing, s
 | `payload` | bytes | postcard-encoded `Message` |
 | `crc32` | u32 | CRC-32/IEEE over header and payload |
 
-Constants: `PROTOCOL_MAJOR` 0, `PROTOCOL_MINOR` 1. The numbers restarted at 0.1 before the first release (ADR-0014); boards flashed earlier speak 1.x and are `Incompatible` until reflashed. COBS and CRC are implemented in-crate.
+Constants: `PROTOCOL_MAJOR` 0, `PROTOCOL_MINOR` 2 (0.2 added `BuildInfo`, see Firmware build id). The numbers restarted at 0.1 before the first release (ADR-0014); boards flashed earlier speak 1.x and are `Incompatible` until reflashed. COBS and CRC are implemented in-crate.
 
 Every decode failure is a typed `ProtoError` (`BufferOverflow, Cobs, TooShort, BadMagic, UnsupportedVersion, PayloadTooLarge, LengthMismatch, BadCrc, Postcard`). The decoder never panics, always makes forward progress, and never dispatches a frame that failed CRC.
 
@@ -175,6 +175,7 @@ Desktop                                   Device
 ```
 
 - After `Ready`, a device that negotiated `PRODUCT_IDENTITY_V1` sends one `Identity` (product, board, revision, source); one that did not is the legacy Kivori Pip on the C3 SuperMini (see Product identity).
+- Right after the `Identity` (or first, for a device that did not negotiate that), a device that negotiated `BUILD_INFO_V1` sends one `BuildInfo` (firmware source id and uncommitted-changes flag). An older peer never sees it.
 - A device counts as Kivori only after a well-formed `HelloAck` with the matching nonce. VID:PID alone is not identity.
 - The desktop gives up on a missing `HelloAck` after 5 s, closes the link, and retries with backoff.
 - After connecting, the desktop pings every 1 s and treats 3 misses as a lost link. `Pong.t_ms_echo` matches a ping.
@@ -222,6 +223,15 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 - Wrong-board boot check (tier A, ADR-0016): a valid record whose product or board differs from the build identity makes the firmware run no product. It shows the static "Wrong firmware for this Kivori" screen (`render_wrong_board`; only the recovery hold is drawn above it), advertises only `PRODUCT_IDENTITY_V1`, and reports the chip's identity with source `Chip`, so the app can see what the unit is and reflash it. The recovery hold still reboots it (invariant 24).
 - Image identity record: the firmware image carries `KIVORI-FW-IDENTITY:p=<product>;b=<board>;v=<x.y.z>;m=<major.minor>\0` next to its version marker (`firmware_marker::scan_image_identity`). The desktop `build.rs` resolves that explicit image by its product/board wire identity, never the first catalog entry, then checks both version markers against that board's firmware crate and minimum protocol. Unknown identities or missing markers fail the build. `KIVORI_FIRMWARE_PATH` still supplies one image. An exclusive `KIVORI_FIRMWARE_MANIFEST` may instead name an absolute JSON file containing a nonempty array of absolute image paths. Manifest mode requires exactly every active catalog pair; the explicit single-image path remains available for targeted development/provisioning. The generator validates and indexes the set, and runtime lookup selects only an exact product/board pair.
 - Flashing guard (tier A): before `flash_firmware` reserves a port, the native runtime selects only the image matching the current session's product/board identity (legacy counts as `pip` on `c3-supermini`). Pending identities are refused; an unknown identity or a missing exact image is unavailable. Recovery requires exactly one allowlisted port and uses a live identity only when bound to that port. A pending live identity cannot fall back to USB. Otherwise `decide_recovery` resolves catalog pairs listing the port's USB ids before any image lookup: several candidate pairs require `FlashFailure::ChooseProduct` with product/board `restore_choices`. Both chosen ids are rechecked against fresh candidates; no candidates or stale/invalid selections are refused. The Device firmware card shows the exact pair in a new BOOT confirmation before sending the restore request. Neither catalog order nor image availability proves hardware identity. Only the resolved pair's image may be written. The provisioning pre-flash guard still reports a mismatching image as `WrongProduct` with both names.
+
+### Firmware build id (`BUILD_INFO_V1`, ADR-0014)
+
+- Why: a unit flashed by hand can run firmware that differs from the repository (an uncommitted change, another branch), and nothing said so. The virtual Pip always builds from source, so it could not show the gap either. The device now reports which firmware source it was built from; the desktop shows it and warns.
+- One appended message: tag 24 `BuildInfo { session, source_id, dirty }` (device to desktop), capability bit 16 `BUILD_INFO_V1`, `PROTOCOL_MINOR` 1 to 2 (ADR-0002 change discipline: a new post-handshake message bumps the minor and is gated by the capability). `source_id` is `Option<[u8; 6]>`: 12 hex digits packed into 6 bytes, `None` when the build had no git; `dirty` means uncommitted changes in the firmware's input files and is `false` when the id is unknown. `HelloAck`, `Identity` and every existing tag are unchanged, so nothing about the handshake layout moves. Both directions of compatibility: a device sends `BuildInfo` only after `Ready` negotiated the bit, so an older desktop (no bit 16) never receives the unknown tag and a newer desktop talking to older firmware (no bit 16) just has no source to show. `crates/kivori-protocol/tests/build_info.rs` freezes the 0.1 `Message` enum as an old decoder: it decodes every known tag, rejects tag 24, and the new decoder reads old bytes unchanged.
+- What the id is: a content hash of the committed firmware inputs, never the commit. Identical inputs give an identical id and therefore identical firmware bytes, in a shallow CI clone, after a squash merge or on another branch; embedding the commit would have made the same firmware ship as different binaries under one version and would have defeated the firmware release guard's "inputs unchanged, no new firmware" rule. `firmware/pip/build-inputs.txt` lists the input paths, which are exactly the guard's `firmwareInputs` set (`scripts/build-inputs.test.mjs` fails when the two differ). `kivori_asset_compiler::build_id` runs `git ls-tree -r HEAD` over them, leaves out every `Cargo.*` manifest and lockfile (so workspace version bookkeeping, which the guard also ignores, does not change the id), and hashes the remaining `path<TAB>blob id` listing with `git hash-object`, keeping the first 12 hex digits. `dirty` is `git status` (tracked edits and untracked files) over the same paths and the same filter. Without git (a source tarball, a tree unpacked inside another repository, a repository with no commit) the id is `unknown` and the flag false; git trouble never fails a build. It becomes `KIVORI_BUILD_SOURCE` / `KIVORI_BUILD_DIRTY` for `env!`. Cargo watches every input file and `HEAD` plus its branch ref, so the id refreshes after an edit or a commit (a file created after the build script ran is noticed at the next rerun, not instantly). The image record `KIVORI-FW-IDENTITY` and the version marker are unchanged.
+- Limits: a manifest-only edit that changes the build (a dependency version in a Cargo manifest) is neither in the id nor flagged dirty, because the bookkeeping exclusion cannot tell it apart by file; the lockfile and the guard still cover it for releases. A second product needs its own input list (the desktop currently reads Pip's).
+- Virtual Pip: the simulator runs the same firmware library, so it reports its own source id through the same message.
+- Desktop: `Session::build_info` (connection-scoped, first report of the session wins, other sessions dropped) feeds `DeviceInfoDto.build { sourceId, dirty }`; `AppInfoDto.sourceId` is the same hash computed for the checkout the app was built from (desktop `build.rs`, id only). Device page, Overview, shows "Firmware source" (the id, "with uncommitted changes") and the Developer internals Chip tile repeats it. Wording policy: the dirty notice ("Built from uncommitted changes") shows to everyone, because release firmware is always built from a clean tree, so it only ever appears for a hand-made build; the developer-mode notice "Firmware source differs" (the device firmware source differs from this app's build) shows in developer mode only, because after an app update a release user's unit legitimately runs older firmware than the app bundles (firmware has its own version and update advice) and that would be a false alarm. Nothing is warned when either id is unknown. The build never gates a feature.
 
 ### Quiet Unverified (`QUIET_ACK_V1`)
 
@@ -292,6 +302,7 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 | 21 | `BuddySettings` | D to V | session, personality, self-play on/off, brightness step (1 to 5) | `IDLE_LIFE_V1` |
 | 22 | `MicState` | D to V | session, `MicState` (muted and in use, each optional) | `MIC_STATE_V1` |
 | 23 | `Identity` | V to D | session, product (`u16`), board (`u16`), hw_rev (optional `u8`), source (`Build`, `Chip`) | `PRODUCT_IDENTITY_V1` |
+| 24 | `BuildInfo` | V to D | session, source_id (optional 12 hex digits as 6 bytes), dirty (`bool`) | `BUILD_INFO_V1` |
 
 `InputEvent.control` is `Rotary`, `Button` or `ContextButton(0..3)` (the three contextual buttons, left to right; needs `CONTEXT_BUTTONS_V1`; `Press` and `Hold` only, an index of 3 or more is rejected). With `Rotary`, `kind` is `GestureStarted`, `Detent(Cw|Ccw)` or `GestureEnded`; with `Button` (needs `BUTTON_INPUT_V1` too), it is `Press`, `Hold` or `DoublePress` (needs `DOUBLE_PRESS_V1`), sent once per gesture. The desktop rejects a kind that does not belong to its control. `Presentation.primary` is `Idle, Active, Error, Unknown`. `value` is `{ kind: Volume, current_percent, confidence, at_boundary }`.
 
@@ -315,6 +326,7 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 | 13 | `IDLE_LIFE_V1` |
 | 14 | `MIC_STATE_V1` |
 | 15 | `PRODUCT_IDENTITY_V1` |
+| 16 | `BUILD_INFO_V1` |
 
 `Capabilities` is a `u32` set in `kivori-model`. Bits are allocated centrally and never reused.
 
