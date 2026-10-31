@@ -7,7 +7,7 @@ use std::cell::Cell;
 use heapless::Vec as HVec;
 use kivori_asset_compiler::compile_default_blob;
 use kivori_assets::AssetBlob;
-use kivori_firmware::identity::{BootCheck, ProductIdentity};
+use kivori_firmware::identity::{BootCheck, BuildId, ProductIdentity};
 use kivori_firmware::ports::InputSource;
 use kivori_firmware::proto::DeviceIdentity;
 use kivori_firmware::runtime::{Runtime, RuntimeConfig, Tick};
@@ -22,7 +22,8 @@ use kivori_protocol::{
 const CAPS: Capabilities = Capabilities::PHYSICAL_INPUT_V1
     .union(Capabilities::BUTTON_INPUT_V1)
     .union(Capabilities::CONTEXT_BUTTONS_V1)
-    .union(Capabilities::PRODUCT_IDENTITY_V1);
+    .union(Capabilities::PRODUCT_IDENTITY_V1)
+    .union(Capabilities::BUILD_INFO_V1);
 
 /// Levels the test sets between steps.
 #[derive(Default)]
@@ -250,4 +251,75 @@ fn the_recovery_hold_still_works_on_a_wrong_board() {
     assert!(!rig.run(5_000), "not yet");
     assert_ne!(rig.display.frame(), &screen[..], "recovery owns the screen");
     assert!(rig.run(6_000), "the hold completes and asks for a reboot");
+}
+
+fn builds(messages: &[Message]) -> Vec<kivori_protocol::BuildInfo> {
+    messages
+        .iter()
+        .filter_map(|m| match m {
+            Message::BuildInfo(build) => Some(*build),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn the_build_commit_and_dirty_flag_follow_the_identity_when_negotiated() {
+    let mut rig = Rig::new(None);
+    let messages = rig.connect(CAPS);
+    assert_eq!(
+        builds(&messages),
+        vec![kivori_protocol::BuildInfo {
+            session: rig.nonce,
+            commit: BuildId::BUILD.commit,
+            dirty: BuildId::BUILD.dirty,
+        }]
+    );
+    let order: Vec<_> = messages
+        .iter()
+        .filter(|m| matches!(m, Message::Identity(_) | Message::BuildInfo(_)))
+        .collect();
+    assert!(matches!(
+        order[..],
+        [Message::Identity(_), Message::BuildInfo(_)]
+    ));
+}
+
+#[test]
+fn an_older_desktop_never_receives_the_build_info() {
+    // A desktop from before the capability: it offers everything but bit 16, so negotiation drops it.
+    let mut rig = Rig::new(None);
+    let messages = rig.connect(CAPS.intersection(Capabilities::PRODUCT_IDENTITY_V1));
+    assert!(builds(&messages).is_empty());
+    assert_eq!(identities(&messages).len(), 1);
+}
+
+#[test]
+fn a_hostile_ready_cannot_switch_the_build_info_on() {
+    // `Ready` claims the capability, but the `Hello` never offered it.
+    let mut rig = Rig::new(None);
+    rig.send(&Message::Hello(Hello {
+        desktop_version: FirmwareVersion {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        desktop_caps: Capabilities::PRODUCT_IDENTITY_V1,
+        nonce: rig.nonce,
+    }));
+    rig.step();
+    rig.send(&Message::Ready(Ready {
+        negotiated_minor: PROTOCOL_MINOR,
+        negotiated_caps: CAPS,
+    }));
+    rig.step();
+    assert!(builds(&rig.drain()).is_empty());
+}
+
+#[test]
+fn a_wrong_board_unit_offers_only_identity_so_no_build_info() {
+    let mut rig = Rig::new(Some(BootCheck::WrongBoard(OTHER)));
+    let messages = rig.connect(CAPS);
+    assert_eq!(identities(&messages).len(), 1);
+    assert!(builds(&messages).is_empty());
 }

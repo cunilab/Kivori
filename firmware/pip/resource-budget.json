@@ -128,6 +128,10 @@
     {
       "fn": "kivori_renderer::compositor::draw_sprite",
       "why": "Per-sprite setup (4 call sites), not per pixel. Known debt; before PR #150 the same class of call in the pixel path made frames 4x slower."
+    },
+    {
+      "fn": "kivori_renderer::compositor::render_scene",
+      "why": "The scene loop length (`frame_count * 1000 * fps.den / fps.num`, compositor.rs), once per frame, not per pixel. Unchanged source: the BuildInfo message (build id) changed which function LTO inlines it into, so it now shows here. The frame-cost fixture is unchanged and passes."
     }
   ]
 }

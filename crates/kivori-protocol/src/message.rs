@@ -340,6 +340,24 @@ pub struct Identity {
     pub source: IdentitySource,
 }
 
+/// Length of a build commit on the wire: 12 hex digits (48 bits), like `git rev-parse --short=12`.
+pub const BUILD_COMMIT_LEN: usize = 6;
+
+/// Device -> desktop: which exact build of the firmware runs (capability `BUILD_INFO_V1`). Sent once,
+/// right after `Identity`; connection scoped. A developer's unit can run a build that differs from
+/// the repository, so this names the commit and says whether the tree had uncommitted changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BuildInfo {
+    /// The handshake nonce of the session this applies to.
+    pub session: Nonce,
+    /// The git commit the firmware was built from as 12 hex digits packed into 6 bytes, or `None`
+    /// when the build could not tell (no git, such as a source tarball).
+    pub commit: Option<[u8; BUILD_COMMIT_LEN]>,
+    /// The working tree had uncommitted changes in the files that make up the firmware, so the
+    /// commit alone does not describe the build. Meaningless (`false`) when `commit` is `None`.
+    pub dirty: bool,
+}
+
 /// The top-level wire message.
 ///
 /// **Append-only**: new variants are added at the end within a major version — the `postcard`
@@ -395,4 +413,6 @@ pub enum Message {
     MicState(MicStateUpdate),
     /// Tag 23 — device -> desktop product identity (capability `PRODUCT_IDENTITY_V1`).
     Identity(Identity),
+    /// Tag 24 — device -> desktop build commit and dirty flag (capability `BUILD_INFO_V1`).
+    BuildInfo(BuildInfo),
 }

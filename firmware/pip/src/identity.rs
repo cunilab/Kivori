@@ -3,7 +3,7 @@
 //! supplies the raw chip record bytes.
 
 use kivori_protocol::identity::{ChipRecord, ChipRecordState};
-use kivori_protocol::IdentitySource;
+use kivori_protocol::{IdentitySource, BUILD_COMMIT_LEN};
 
 /// Parses a decimal at compile time; a malformed value fails the build instead of shipping wrong.
 const fn parse_u16(text: &str) -> u16 {
@@ -23,6 +23,51 @@ const fn parse_u16(text: &str) -> u16 {
 pub const BUILD_PRODUCT: u16 = parse_u16(env!("KIVORI_PRODUCT_NUM"));
 /// The board number of this build, from `products/registry.toml` (via `build.rs`).
 pub const BUILD_BOARD: u16 = parse_u16(env!("KIVORI_BOARD_NUM"));
+
+/// Reads the 12 hex digits `build.rs` found (`unknown` without git) into the wire form; anything
+/// else fails the build instead of shipping a wrong id.
+const fn parse_commit(text: &str) -> Option<[u8; BUILD_COMMIT_LEN]> {
+    let bytes = text.as_bytes();
+    if bytes.len() == 7 && bytes[0] == b'u' {
+        return None;
+    }
+    assert!(
+        bytes.len() == 2 * BUILD_COMMIT_LEN,
+        "build commit must be 12 hex digits"
+    );
+    let mut out = [0u8; BUILD_COMMIT_LEN];
+    let mut i = 0;
+    while i < bytes.len() {
+        let digit = match bytes[i] {
+            b @ b'0'..=b'9' => b - b'0',
+            b @ b'a'..=b'f' => b - b'a' + 10,
+            _ => panic!("build commit must be lowercase hex"),
+        };
+        out[i / 2] = (out[i / 2] << 4) | digit;
+        i += 1;
+    }
+    Some(out)
+}
+
+/// Which exact build of the firmware this is: the git commit it was compiled from (`None` without
+/// git) and whether the tree had uncommitted changes in the firmware's files. Reported once per
+/// session as `BuildInfo` (`BUILD_INFO_V1`), so a developer can tell a unit runs a build that differs
+/// from the repository.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuildId {
+    /// The 12-hex-digit commit packed into 6 bytes, or `None`.
+    pub commit: Option<[u8; BUILD_COMMIT_LEN]>,
+    /// Uncommitted changes under the firmware's build paths.
+    pub dirty: bool,
+}
+
+impl BuildId {
+    /// The build id compiled into this firmware (`build.rs`: `KIVORI_BUILD_COMMIT`, `KIVORI_BUILD_DIRTY`).
+    pub const BUILD: BuildId = BuildId {
+        commit: parse_commit(env!("KIVORI_BUILD_COMMIT")),
+        dirty: parse_u16(env!("KIVORI_BUILD_DIRTY")) != 0,
+    };
+}
 
 /// The image identity record: searchable text next to the version marker, so tooling can tell which
 /// product and board a built `.elf` is for without running it. Format:
@@ -127,6 +172,28 @@ mod tests {
                 ";m=0.1\0"
             )
         );
+    }
+
+    #[test]
+    fn parse_commit_reads_twelve_hex_digits_or_unknown() {
+        assert_eq!(
+            parse_commit("c2ff8c4f68de"),
+            Some([0xc2, 0xff, 0x8c, 0x4f, 0x68, 0xde])
+        );
+        assert_eq!(parse_commit("000000000001"), Some([0, 0, 0, 0, 0, 1]));
+        assert_eq!(parse_commit("unknown"), None);
+    }
+
+    #[test]
+    fn the_compiled_build_id_is_either_a_commit_or_unknown_never_dirty_without_one() {
+        let build = BuildId::BUILD;
+        if build.commit.is_none() {
+            assert!(!build.dirty, "an unknown commit cannot be dirty");
+        }
+        // build.rs exports the same facts the const parses.
+        let text = env!("KIVORI_BUILD_COMMIT");
+        assert_eq!(build.commit.is_some(), text != "unknown");
+        assert!(matches!(env!("KIVORI_BUILD_DIRTY"), "0" | "1"));
     }
 
     #[test]

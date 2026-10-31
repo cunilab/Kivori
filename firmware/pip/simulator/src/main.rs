@@ -799,6 +799,7 @@ mod tests {
         assert!(CAPS.contains(
             Capabilities::MIC_STATE_V1
                 .union(Capabilities::PRODUCT_IDENTITY_V1)
+                .union(Capabilities::BUILD_INFO_V1)
                 .union(Capabilities::DEVICE_INTERNALS_V1)
                 .union(Capabilities::QUIET_ACK_V1)
                 .union(Capabilities::IDLE_LIFE_V1)
@@ -851,6 +852,24 @@ mod tests {
         let mut ready = request(34);
         ready.wire = wire.to_vec();
         let identity_response = sim.step(ready).unwrap();
+        // The virtual Pip builds from the same source, so it reports the same build id.
+        let build = identity_response
+            .wire
+            .split(|&byte| byte == 0)
+            .filter(|packet| !packet.is_empty())
+            .find_map(
+                |packet| match decode_message(packet, &mut scratch, &[PROTOCOL_MAJOR]) {
+                    Ok((_, Message::BuildInfo(build))) => Some(build),
+                    _ => None,
+                },
+            )
+            .expect("Ready returns the build id");
+        assert_eq!(build.session, 42);
+        assert_eq!(
+            build.commit,
+            kivori_firmware::identity::BuildId::BUILD.commit
+        );
+        assert_eq!(build.dirty, kivori_firmware::identity::BuildId::BUILD.dirty);
         let identity = identity_response
             .wire
             .split(|&byte| byte == 0)
