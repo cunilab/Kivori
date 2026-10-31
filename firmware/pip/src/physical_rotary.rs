@@ -49,12 +49,13 @@ static DROPPED: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
 static HIGH_WATER: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
 
 fn read(pins: &Pins) -> InputLevels {
-    InputLevels {
-        a: pins.0.is_low(),
-        b: pins.1.is_low(),
-        sw: pins.2.is_low(),
-        keys: [pins.3[0].is_low(), pins.3[1].is_low(), pins.3[2].is_low()],
-    }
+    // (clk, dt, sw); `input::hw040` decides which pin is which quadrature channel.
+    crate::input::hw040::levels(
+        pins.0.is_low(),
+        pins.1.is_low(),
+        pins.2.is_low(),
+        [pins.3[0].is_low(), pins.3[1].is_low(), pins.3[2].is_low()],
+    )
 }
 
 #[esp_hal::handler]

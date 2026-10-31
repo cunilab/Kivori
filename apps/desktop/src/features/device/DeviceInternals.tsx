@@ -97,7 +97,31 @@ const seconds = (s: number): string => {
   return h > 0 ? `${h} h ${m} min` : m > 0 ? `${m} min ${s % 60} s` : `${s} s`;
 };
 
-/** `used` of `limit` with a percentage and a bar; only the size when the limit is unknown or zero. */
+/** A bar turns amber from this share of its limit... */
+export const USAGE_WARNING_PERCENT = 85;
+/** ...and red from this one. */
+export const USAGE_CRITICAL_PERCENT = 95;
+
+type UsageTone = 'normal' | 'warning' | 'critical';
+
+const usageTone = (ratio: number): UsageTone =>
+  ratio >= USAGE_CRITICAL_PERCENT
+    ? 'critical'
+    : ratio >= USAGE_WARNING_PERCENT
+      ? 'warning'
+      : 'normal';
+
+/** Colour for the bar's indicator; the tone is also written out in words next to the figure. */
+const TONE_CLASS: Record<UsageTone, string> = {
+  normal: '',
+  warning: '[&_[data-slot=progress-indicator]]:bg-warning',
+  critical: '[&_[data-slot=progress-indicator]]:bg-destructive',
+};
+
+/**
+ * `used` of `limit` with a percentage and a bar; only the size when the limit is unknown or zero.
+ * The bar is amber from 85% and red from 95%, and says so in text and in `data-tone`.
+ */
 function Usage({
   label,
   used,
@@ -109,6 +133,8 @@ function Usage({
   limit: number | null;
   testId: string;
 }): ReactElement {
+  const ratio = used !== null && limit !== null && limit > 0 ? percent(used, limit) : null;
+  const tone = ratio === null ? 'normal' : usageTone(ratio);
   return (
     <div className="space-y-1.5 py-2 text-sm">
       <dt className="text-muted-foreground">{label}</dt>
@@ -122,8 +148,27 @@ function Usage({
             }
           </Value>
         </span>
-        {used !== null && limit !== null && limit > 0 ? (
-          <Progress value={Math.min(100, percent(used, limit))} aria-label={label} />
+        {ratio !== null ? (
+          <>
+            <Progress
+              value={Math.min(100, ratio)}
+              aria-label={label}
+              data-tone={tone}
+              className={TONE_CLASS[tone]}
+            />
+            {tone === 'normal' ? null : (
+              <span
+                className={
+                  tone === 'critical'
+                    ? 'block text-xs text-destructive'
+                    : 'block text-xs text-warning'
+                }
+                data-testid={`${testId}-tone`}
+              >
+                {t.usageTone[tone]}
+              </span>
+            )}
+          </>
         ) : null}
       </dd>
     </div>
@@ -131,6 +176,16 @@ function Usage({
 }
 
 function Body({ s }: { s: Snapshot }): ReactElement {
+  // The stack is the RAM the static data leaves over; its peak use is that minus the least that
+  // was ever free. Missing inputs stay unavailable rather than being guessed.
+  const stackBytes =
+    s.ramTotalBytes !== null && s.ramStaticBytes !== null
+      ? Math.max(0, s.ramTotalBytes - s.ramStaticBytes)
+      : null;
+  const stackPeakBytes =
+    stackBytes !== null && s.stackFreeMinBytes !== null
+      ? Math.max(0, stackBytes - s.stackFreeMinBytes)
+      : null;
   return (
     <div className="grid items-start gap-4 xl:grid-cols-2">
       <Group title={t.groups.flash} description={t.notes.flash}>
@@ -157,12 +212,12 @@ function Body({ s }: { s: Snapshot }): ReactElement {
           limit={s.ramTotalBytes}
           testId="internals-ram-static"
         />
-        <Row label={t.rows.ramFree}>
-          <Value value={s.ramFreeBytes}>{formatBytes}</Value>
-        </Row>
-        <Row label={t.rows.stackFreeMin}>
-          <Value value={s.stackFreeMinBytes}>{formatBytes}</Value>
-        </Row>
+        <Usage
+          label={t.rows.stackPeak}
+          used={stackPeakBytes}
+          limit={stackBytes}
+          testId="internals-stack-peak"
+        />
       </Group>
       <Group title={t.groups.cpu} description={t.notes.cpu}>
         <Row label={t.rows.busy}>
@@ -178,7 +233,7 @@ function Body({ s }: { s: Snapshot }): ReactElement {
           <Value value={s.fps}>{(n) => `${n} fps`}</Value>
         </Row>
       </Group>
-      <Group title={t.groups.chip}>
+      <Group title={t.groups.chip} description={t.notes.chip}>
         <Row label={t.rows.chip}>
           <Value value={s.chipModel}>
             {(model) =>

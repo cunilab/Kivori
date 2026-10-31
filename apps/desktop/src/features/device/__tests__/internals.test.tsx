@@ -92,11 +92,21 @@ describe('DeviceInternals card', () => {
     const flash = await screen.findByRole('region', { name: 'Flash' });
     expect(within(flash).getByText(/asset blob is included in the image/)).toBeInTheDocument();
     const memory = screen.getByRole('region', { name: 'Memory' });
-    expect(within(memory).getByText('Stack headroom now')).toBeInTheDocument();
-    expect(within(memory).getByText('Lowest stack headroom since boot')).toBeInTheDocument();
+    expect(within(memory).queryByText('Stack headroom now')).not.toBeInTheDocument();
+    expect(within(memory).queryByText('Lowest stack headroom since boot')).not.toBeInTheDocument();
+    expect(within(memory).getByText('Stack peak use')).toBeInTheDocument();
     expect(within(memory).getByText(/this firmware has no heap/)).toBeInTheDocument();
     const runtime = screen.getByRole('region', { name: 'Runtime and frames' });
     expect(within(runtime).getByText(/run-loop ticks that did work/)).toBeInTheDocument();
+    expect(
+      within(runtime).getByText(/averages per frame over the last second.*drawing only/),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('region', { name: 'Chip' })).getByText(
+        /chip's own \(die\) temperature/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Chip temperature (approx.)')).toBeInTheDocument();
     expect(within(runtime).getByText('14%')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Chip' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Input and link' })).toBeInTheDocument();
@@ -104,6 +114,58 @@ describe('DeviceInternals card', () => {
       (await axe.run(page.container, { rules: { 'color-contrast': { enabled: false } } }))
         .violations,
     ).toEqual([]);
+  });
+
+  it('shows the stack peak as use out of the stack size, from the lowest free figure', async () => {
+    view();
+    await screen.findByText('Flash');
+    // Stack = total - static = 194,912 B; peak use = stack - lowest free = 44,912 B.
+    expect(screen.getByTestId('internals-stack-peak')).toHaveTextContent(
+      '43.9 KiB of 190.3 KiB (23.0%)',
+    );
+    const bar = screen.getByRole('progressbar', { name: 'Stack peak use' });
+    expect(Number(bar.getAttribute('aria-valuenow'))).toBeCloseTo(23.04, 1);
+  });
+
+  it.each([
+    ['stackFreeMinBytes', null],
+    ['ramTotalBytes', null],
+    ['ramStaticBytes', null],
+  ] as const)('keeps the stack peak unavailable when %s is missing', async (field, value) => {
+    bridge.get.mockResolvedValue({ ...reporting, snapshot: { ...snapshot, [field]: value } });
+    view();
+    await screen.findByText('Flash');
+    expect(
+      within(screen.getByTestId('internals-stack-peak')).getByText('Unavailable'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('progressbar', { name: 'Stack peak use' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [849, 'normal', null],
+    [850, 'warning', 'Getting full'],
+    [949, 'warning', 'Getting full'],
+    [950, 'critical', 'Nearly full'],
+    [1200, 'critical', 'Nearly full'],
+  ])('marks a bar at %s of 1000 as %s, in words as well as colour', async (used, tone, words) => {
+    bridge.get.mockResolvedValue({
+      ...reporting,
+      snapshot: { ...snapshot, assetBlobBytes: used, assetBlobCapBytes: 1000 },
+    });
+    view();
+    await screen.findByText('Flash');
+    const bar = screen.getByRole('progressbar', { name: 'Asset blob / build limit' });
+    expect(bar).toHaveAttribute('data-tone', tone);
+    if (words === null) {
+      expect(screen.queryByTestId('internals-asset-blob-tone')).not.toBeInTheDocument();
+    } else {
+      expect(screen.getByTestId('internals-asset-blob-tone')).toHaveTextContent(words);
+    }
+    // The other bars in this snapshot stay normal.
+    expect(screen.getByRole('progressbar', { name: 'App image / app partition' })).toHaveAttribute(
+      'data-tone',
+      'normal',
+    );
   });
 
   it.each([null, 0])('omits ratios for unavailable or zero capacities (%s)', async (capacity) => {

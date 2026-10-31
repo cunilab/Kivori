@@ -279,3 +279,34 @@ device side had wrapped (the host sends about 0.6 frames per detent), so the run
 both wraps are seen. The 2026-10-30 run passed with 107,684 detents in 432 s. It exercises protocol
 and session longevity only; it earns no soak hours and does not cover OS sleep, USB or memory growth
 on the device.
+
+## Hardware parity
+
+The virtual runner executes the same firmware `Runtime` as the device, so behavior above the
+`InputSource`, display and transport ports matches once both run the same firmware build. Keep the
+device on repository firmware (`espflash flash --port PORT` with the product build of
+`firmware/pip`); an unknown build cannot be compared.
+
+Facts measured on hardware and pinned in host tests:
+
+- Knob direction (2026-10-31): the HW-040 changes CLK first on a right turn. `input::hw040` maps
+  DT to channel A and CLK to channel B, so a right turn is `Cw` on the device exactly as a virtual
+  `clockwise` (`[2,3,1,0]`) is. Test: `hw040_right_turn_is_clockwise_and_left_turn_is_counter_clockwise`.
+
+Comparing a real unit with the virtual one, using the production session (`device_probe`):
+
+| Command | Shows |
+|---|---|
+| `device_probe PORT session` | handshake and 8 s of heartbeats |
+| `device_probe PORT desk-full` | everything the app sends after connecting, with link health |
+| `device_probe PORT desk-burst` | the app's connect burst in one instant |
+| `device_probe PORT inputs` | each knob/button event (`KIVORI_PROBE_SECS` sets the duration) |
+| `device_probe PORT internals` | the device's load figures once a second, with an average |
+
+The desktop logs `device link lost` with its cause (heartbeat timeout, I/O error, port removed),
+so a reconnect loop on hardware names its reason. `device_probe PORT internals` samples the device's busy %, compose and flush time and fps once a
+second; compare it before and after a rendering change on the unit, since host timings do not
+predict the ESP32-C3 (no 64-bit divide, flash-resident assets).
+
+Not covered by the simulator: pin wiring and electrical bounce, the USB CDC transport and its
+buffering, SPI/panel orientation and real frame timing.
