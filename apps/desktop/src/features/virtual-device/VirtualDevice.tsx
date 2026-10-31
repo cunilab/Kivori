@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { TooltipProvider } from '@kivori/ui/components/tooltip';
 import { blitRgba } from '../../lib/canvas/blit';
-import { DeviceInternals, VIRTUAL_PIP_DEVICE_ID_HASH } from '../device/DeviceInternals';
+import { DeviceInternals, VIRTUAL_DEVICE_ID_HASH } from '../device/DeviceInternals';
 import './virtual-device.css';
 
 type Snapshot = {
@@ -283,7 +283,7 @@ export function VirtualDevice(): ReactElement {
                 ? {
                     connection: 'connected',
                     connectionGeneration: snapshot?.generation ?? 0,
-                    device: { deviceIdHashShort: VIRTUAL_PIP_DEVICE_ID_HASH },
+                    device: { deviceIdHashShort: VIRTUAL_DEVICE_ID_HASH },
                   }
                 : null
             }

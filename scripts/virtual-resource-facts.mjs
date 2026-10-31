@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-// Freshness check for the resource facts the virtual Pip reports in its Device internals
-// (`firmware/pip/simulator/fixtures/resource-facts.json`). The `elf` block of that fixture is a
+// Freshness check for the resource facts the virtual device reports in its Device internals
+// (`simulator/fixtures/resource-facts.json` in the catalog firmware crate). The `elf` block of that fixture is a
 // copy of what `bun scripts/firmware-budget.mjs --json` measures on the catalog product ELF, so
 // it must not drift from the firmware it models.
 //
@@ -15,9 +15,14 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveFirmware } from './build-firmware.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-export const FIXTURE = join(repo, 'firmware/pip/simulator/fixtures/resource-facts.json');
+/** The fixture of the catalog product (KIVORI_PRODUCT/KIVORI_BOARD select one when several exist). */
+export function fixturePath() {
+  const plan = resolveFirmware(repo, process.env.KIVORI_PRODUCT, process.env.KIVORI_BOARD);
+  return join(plan.cwd, 'simulator/fixtures/resource-facts.json');
+}
 /** Largest relative difference between the fixture and a fresh measurement still accepted. */
 export const TOLERANCE = 0.02;
 
@@ -81,11 +86,12 @@ export function main(argv) {
     else throw new Error(`unknown argument: ${a}`);
   }
   const budget = measure();
-  const fixture = JSON.parse(readFileSync(FIXTURE, 'utf8'));
+  const path = fixturePath();
+  const fixture = JSON.parse(readFileSync(path, 'utf8'));
   if (mode === 'write') {
     fixture.elf = factsFromBudget(budget);
-    writeFileSync(FIXTURE, `${JSON.stringify(fixture, null, 2)}\n`);
-    console.log(`virtual-resource-facts: wrote the elf block of ${FIXTURE}`);
+    writeFileSync(path, `${JSON.stringify(fixture, null, 2)}\n`);
+    console.log(`virtual-resource-facts: wrote the elf block of ${path}`);
     return 0;
   }
   const mismatches = compare(fixture.elf, budget, TOLERANCE);

@@ -160,5 +160,29 @@
     "text": "path: firmware/pip/simulator/target/reports/",
     "count": 1,
     "reason": "CI artifact path belongs to the selected product-owned simulator; it does not select shipping products or dependencies."
+  },
+  {
+    "path": "justfile",
+    "text": "firmware/pip/frame-cost/run.sh check",
+    "count": 1,
+    "reason": "Pip-owned frame-cost model (real renderer in an ESP32-C3 instruction-set simulator); product-owned virtual-device tooling per ADR-0018, like the board-specific firmware matrix."
+  },
+  {
+    "path": "justfile",
+    "text": "firmware/pip/frame-cost/run.sh update",
+    "count": 1,
+    "reason": "Pip-owned frame-cost model (real renderer in an ESP32-C3 instruction-set simulator); product-owned virtual-device tooling per ADR-0018, like the board-specific firmware matrix."
+  },
+  {
+    "path": ".github/workflows/firmware.yml",
+    "text": "run: firmware/pip/frame-cost/run.sh check",
+    "count": 1,
+    "reason": "Pip-owned frame-cost model (real renderer in an ESP32-C3 instruction-set simulator); product-owned virtual-device tooling per ADR-0018, like the board-specific firmware matrix."
+  },
+  {
+    "path": ".github/workflows/firmware.yml",
+    "text": "cd firmware/pip/frame-cost",
+    "count": 1,
+    "reason": "Pip-owned frame-cost model (real renderer in an ESP32-C3 instruction-set simulator); product-owned virtual-device tooling per ADR-0018, like the board-specific firmware matrix."
   }
 ]

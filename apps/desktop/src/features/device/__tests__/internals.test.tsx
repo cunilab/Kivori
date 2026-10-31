@@ -9,7 +9,7 @@ import { parseDeviceInternals } from '../../../lib/ipc/validate';
 const bridge = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('../../../lib/ipc', () => ({ getDeviceInternals: bridge.get }));
 
-import { DeviceInternals, VIRTUAL_PIP_DEVICE_ID_HASH, formatBytes } from '../DeviceInternals';
+import { DeviceInternals, VIRTUAL_DEVICE_ID_HASH, formatBytes } from '../DeviceInternals';
 import { getLatestInternals, internalsForBundle, setLatestInternals } from '../internals-latest';
 
 const view = (): ReturnType<typeof render> =>
@@ -464,10 +464,10 @@ describe('virtual Pip note', () => {
 
   it('is shown for the virtual Pip, even before the first snapshot', async () => {
     bridge.get.mockReturnValue(new Promise(() => {}));
-    withHash(VIRTUAL_PIP_DEVICE_ID_HASH);
+    withHash(VIRTUAL_DEVICE_ID_HASH);
     const note = screen.getByTestId('internals-virtual-note');
     expect(note).toHaveAttribute('role', 'note');
-    expect(note).toHaveTextContent('Modelled (virtual Pip)');
+    expect(note).toHaveTextContent('Modelled (virtual device)');
     expect(note).toHaveTextContent(/not from a measurement/);
     expect(note).toHaveTextContent(/Temperature stays unavailable/);
     expect(screen.getByText('Waiting for the device to answer…')).toBeInTheDocument();
@@ -485,7 +485,7 @@ describe('virtual Pip note', () => {
     for (const byte of new TextEncoder().encode('VIRTUAL-PIP-0001')) {
       h = ((h ^ BigInt(byte)) * 0x100000001b3n) & 0xffffffffffffffffn;
     }
-    expect((h >> 32n).toString(16).padStart(8, '0')).toBe(VIRTUAL_PIP_DEVICE_ID_HASH);
+    expect((h >> 32n).toString(16).padStart(8, '0')).toBe(VIRTUAL_DEVICE_ID_HASH);
   });
 });
 

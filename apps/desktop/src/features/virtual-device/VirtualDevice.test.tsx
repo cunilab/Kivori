@@ -363,7 +363,7 @@ describe('virtual device internals', () => {
     });
     expect(screen.getByRole('heading', { name: 'Device internals' })).toBeInTheDocument();
     expect(screen.getByTestId('internals-virtual-note')).toHaveTextContent(
-      'Modelled (virtual Pip)',
+      'Modelled (virtual device)',
     );
     expect(screen.getByText('79 ms')).toBeInTheDocument();
     expect(screen.getByText('12 fps')).toBeInTheDocument();

@@ -45,7 +45,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
-      - name: Firmware resource budget (resource-budget.json beside the crate) and virtual Pip facts
+      - name: Firmware resource budget (resource-budget.json beside the crate) and virtual device facts
         run: |
           bun scripts/build-firmware.mjs
           bun scripts/firmware-budget.mjs
@@ -62,9 +62,9 @@ jobs:
           cargo clippy --locked --lib --features physical-st7789,latency-probe -- -D warnings
 
   # Predicted ESP32-C3 compose time (no hardware): the real renderer compiled for riscv32imc and run
-  # in an instruction-set simulator with an ESP32-C3 cycle model (docs/virtual-pip.md, Hardware
+  # in an instruction-set simulator with an ESP32-C3 cycle model (virtual device docs, Hardware
   # parity). Separate job so it runs beside the isolation job; fails if a scenario's predicted frame
-  # time grows more than 10% over firmware/pip/frame-cost/fixtures/frame-cost.json. To accept an
+  # time grows more than 10% over frame-cost/fixtures/frame-cost.json. To accept an
   # intended change: `just fw-frame-cost-update` and commit the fixture with the reason.
   frame-cost:
     runs-on: ubuntu-latest
