@@ -1,6 +1,6 @@
 # ADR-0017: Product contract and capability-driven Desktop
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-15
 - **Milestone:** M2.8
 - **Related:** [ADR-0014](./0014-versions-product-identity-and-product-catalog.md), [ADR-0013](./0013-device-internals-on-request.md), [issue #76](https://github.com/cunilab/Kivori/issues/76)
