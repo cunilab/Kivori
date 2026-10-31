@@ -497,6 +497,21 @@ fn probe_internals(port: &str) -> Result<(), Box<dyn std::error::Error>> {
         }
         std::thread::sleep(Duration::from_millis(10));
     }
+    match session.build_info() {
+        Some(b) => println!(
+            "firmware source {}{}",
+            b.source_id.map_or_else(
+                || "unknown".into(),
+                |id| id.iter().map(|x| format!("{x:02x}")).collect::<String>()
+            ),
+            if b.dirty {
+                " (uncommitted changes)"
+            } else {
+                ""
+            }
+        ),
+        None => println!("firmware source not reported"),
+    }
     let n = u32::try_from(samples.len()).unwrap_or(1).max(1);
     println!(
         "average over {} samples: compose {} ms, fps {}",
