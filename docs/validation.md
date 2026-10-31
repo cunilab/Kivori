@@ -449,6 +449,27 @@ Desktop automation was unavailable, so no native click-through has been verified
 - [ ] 3.14 Flash `just fw-flash-latency`, turn single detents about 30 times, read `L` (last) and `H` (max) off the panel corner | max under 50 ms detent to flush complete; record several readings plus `H`. This is a gate: the phase is not done while this fails or is unmeasured. Scan-out adds up to one refresh on top. Worst case predicted at about 85 ms (50 ms desktop tick, serial, 33 ms frame), so expect to tune; remedies in order: blocking serial read instead of the 50 ms tick, then a shorter frame interval, then device-local feedback. Re-measure after any change, then `just fw-flash`
 - [ ] 3.15 Check wiring with a continuity test | CLK=GPIO7, DT=GPIO6, SW=GPIO5, COM to GND, VCC to 3V3. Do this first: rows 3.1 to 3.4 depend on it
 
+Measured 2026-10-31 on the owner's assembled unit over USB on macOS (`device_probe PORT inputs`):
+with CLK as quadrature channel A, three clicks to the right arrived as `Detent(Ccw)` and three to
+the left as `Detent(Cw)`, so turning right lowered the volume. The HW-040 changes CLK first on a
+clockwise turn while the decoder counts B-leading as clockwise; `input::hw040` now feeds DT as A and
+CLK as B (host test `hw040_right_turn_is_clockwise_and_left_turn_is_counter_clockwise`). With that
+firmware flashed, right gave three `Cw` and left three `Ccw`. The continuity check above is still
+open. The same session found the unit running an uncommitted firmware 0.1.3 that ended its session
+(`Diagnostic` Io/LinkLost) about 200 ms after the app's routine status, so the app reconnected every
+~5 s; with the repository firmware the app stayed connected and answered 18 of 18 pings.
+
+Render load, same unit and day (`device_probe PORT internals`, Buddy view): compose 339 ms, 2-3 fps,
+busy 100%, and nothing else ran while a frame was composed, so the knob lagged, the receive FIFO
+filled (host `IoError`) and pings went unanswered. On-device phase timing put 173 ms in the mascot
+sprites and 21 ms in tile hashing. Changes: `opt-level = 3` (195 ms), per-column/per-row source
+coordinates instead of two 64-bit divisions per pixel (78 ms in sprites), an opacity table and an
+exact divide-by-15 (65 ms), a pixel-pair tile signature (hash 10 ms), and composing one tile row at a
+time with input drained, output sent and inbound bytes buffered after each row. Result: compose
+80 ms, 11-12 fps, input and USB serviced every ~13 ms. Golden frames are unchanged. Busy stays near
+100% because the 33 ms frame target is still shorter than a frame. The display was turned 180°
+(`Deg270`) at the owner's request and confirmed upright on the unit.
+
 **PRD gates**
 
 - [ ] G1 No false confirmation | the panel never shows Confirmed for a volume Windows did not actually report, across 3.5 to 3.13

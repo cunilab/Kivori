@@ -22,11 +22,19 @@ const WINDOW_MS: u32 = 1000;
 /// The loop never sleeps, so "busy" counts the time of ticks that did something (rendered a frame,
 /// handled a received frame, or sent one) against the wall-clock time of the window. Figures appear
 /// after the first full window and describe the last completed one.
+///
+/// Frame timings are averages per frame over that same window, so they agree with `fps`: the
+/// window sums each frame's compose and flush time and divides by the frames timed in it. A window
+/// that timed no frame leaves the previous averages in place (the cost of a frame does not change
+/// because none was drawn, and an idle desk would otherwise lose them every second).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LoadMeter {
     window_start: Option<u32>,
     busy_ms: u32,
     frames: u32,
+    timed_frames: u32,
+    compose_sum_ms: u32,
+    flush_sum_ms: u32,
     busy_percent: Option<u8>,
     fps: Option<u8>,
     compose_ms: Option<u16>,
@@ -41,6 +49,9 @@ impl LoadMeter {
             window_start: None,
             busy_ms: 0,
             frames: 0,
+            timed_frames: 0,
+            compose_sum_ms: 0,
+            flush_sum_ms: 0,
             busy_percent: None,
             fps: None,
             compose_ms: None,
@@ -60,17 +71,30 @@ impl LoadMeter {
             self.busy_percent = Some((self.busy_ms.saturating_mul(100) / elapsed).min(100) as u8);
             let fps = (self.frames.saturating_mul(1000) + elapsed / 2) / elapsed;
             self.fps = Some(fps.min(u32::from(u8::MAX)) as u8);
+            if self.timed_frames > 0 {
+                let average = |sum: u32| {
+                    let frames = self.timed_frames;
+                    (sum.saturating_add(frames / 2) / frames).min(u32::from(u16::MAX)) as u16
+                };
+                self.compose_ms = Some(average(self.compose_sum_ms));
+                self.flush_ms = Some(average(self.flush_sum_ms));
+            }
             self.window_start = Some(now_ms);
             self.busy_ms = 0;
             self.frames = 0;
+            self.timed_frames = 0;
+            self.compose_sum_ms = 0;
+            self.flush_sum_ms = 0;
         }
     }
 
-    /// The last frame took `compose_ms` to compose and `flush_ms` to flush.
+    /// A frame took `compose_ms` of drawing and `flush_ms` of panel transfer (input and transport
+    /// servicing between rows and windows already taken out). Call it before the tick's
+    /// [`on_tick`](Self::on_tick) so the frame lands in the window that tick closes.
     pub fn on_frame(&mut self, compose_ms: u32, flush_ms: u32) {
-        let clamp = |ms: u32| ms.min(u32::from(u16::MAX)) as u16;
-        self.compose_ms = Some(clamp(compose_ms));
-        self.flush_ms = Some(clamp(flush_ms));
+        self.timed_frames = self.timed_frames.saturating_add(1);
+        self.compose_sum_ms = self.compose_sum_ms.saturating_add(compose_ms);
+        self.flush_sum_ms = self.flush_sum_ms.saturating_add(flush_ms);
     }
 
     /// Writes what has been measured into `out`.
@@ -256,12 +280,57 @@ mod tests {
     }
 
     #[test]
-    fn frame_times_are_clamped_and_kept_until_the_next_frame() {
+    fn frame_times_are_the_per_frame_average_of_the_completed_window() {
         let mut meter = LoadMeter::new();
-        meter.on_frame(7, 70_000);
         let mut out = DeviceInternals::default();
+        meter.on_tick(0, 0, false);
+        // Three frames in the window: compose 10, 20 and 90 ms; flush 30, 30 and 60 ms.
+        for (tick, (compose, flush)) in [(10, 30), (20, 30), (90, 60)].into_iter().enumerate() {
+            meter.on_frame(compose, flush);
+            meter.on_tick((tick as u32 + 1) * 300, 100, true);
+        }
+        // Nothing is reported while the window is still open (900 ms in).
         meter.fill(&mut out);
-        assert_eq!((out.compose_ms, out.flush_ms), (Some(7), Some(u16::MAX)));
+        assert_eq!((out.compose_ms, out.flush_ms), (None, None));
+        meter.on_tick(1000, 0, false);
+        meter.fill(&mut out);
+        assert_eq!((out.compose_ms, out.flush_ms), (Some(40), Some(40)));
+        assert_eq!(out.fps, Some(3));
+    }
+
+    #[test]
+    fn each_window_averages_only_its_own_frames_and_an_idle_one_keeps_the_last() {
+        let mut meter = LoadMeter::new();
+        let mut out = DeviceInternals::default();
+        meter.on_tick(0, 0, false);
+        meter.on_frame(100, 10); // drawn by the tick that closes the first window
+        meter.on_tick(1000, 110, true);
+        meter.fill(&mut out);
+        assert_eq!((out.compose_ms, out.flush_ms), (Some(100), Some(10)));
+        meter.on_frame(20, 6);
+        meter.on_tick(1500, 26, true);
+        meter.on_frame(40, 10);
+        meter.on_tick(2000, 50, true);
+        meter.fill(&mut out);
+        // Not the first window's frame, and not just the last frame either.
+        assert_eq!((out.compose_ms, out.flush_ms), (Some(30), Some(8)));
+        // A window with no frame leaves the averages as they were, while fps drops to 0.
+        meter.on_tick(3000, 0, false);
+        meter.fill(&mut out);
+        assert_eq!((out.compose_ms, out.flush_ms), (Some(30), Some(8)));
+        assert_eq!(out.fps, Some(0));
+    }
+
+    #[test]
+    fn frame_time_averages_round_to_nearest_and_are_clamped() {
+        let mut meter = LoadMeter::new();
+        let mut out = DeviceInternals::default();
+        meter.on_tick(0, 0, false);
+        meter.on_frame(8, 70_000);
+        meter.on_frame(7, 70_000);
+        meter.on_tick(1000, 0, true);
+        meter.fill(&mut out);
+        assert_eq!((out.compose_ms, out.flush_ms), (Some(8), Some(u16::MAX))); // 7.5 rounds up
     }
 
     #[test]

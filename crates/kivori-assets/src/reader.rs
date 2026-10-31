@@ -66,9 +66,12 @@ impl<'a> AssetBlob<'a> {
         }
         let manifest_bytes = &bytes[HEADER_LEN..HEADER_LEN + manifest_len];
         let pool = &bytes[HEADER_LEN + manifest_len..];
-        let manifest =
-            postcard::from_bytes::<Manifest>(manifest_bytes).map_err(|_| AssetError::Postcard)?;
-        Ok(AssetBlob { manifest, pool })
+        // Matched rather than `map_err(..)?`: the manifest is tens of KiB, and every extra move of
+        // it is another full copy in this stack frame.
+        match postcard::from_bytes::<Manifest>(manifest_bytes) {
+            Ok(manifest) => Ok(AssetBlob { manifest, pool }),
+            Err(_) => Err(AssetError::Postcard),
+        }
     }
 
     /// The device profile this blob was compiled for.
