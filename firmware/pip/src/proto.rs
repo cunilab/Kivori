@@ -8,7 +8,8 @@ use crate::health::{build_pong, diagnostic_for_sequence, DeviceDiagnostic, Rejec
 use crate::identity::{BuildId, ProductIdentity};
 use crate::ports::Transport;
 use crate::state::{DeviceEvent, DeviceState};
-use heapless::Vec;
+use heapless::{Deque, Vec};
+use kivori_model::input::Direction;
 use kivori_model::{Capabilities, ProtocolVersion};
 use kivori_protocol::{
     decode_message, encode_message, BuddySettings, BuildInfo, ByeReason, ControlId,
@@ -22,6 +23,39 @@ use kivori_protocol::{
 pub const RX_CAPACITY: usize = MAX_WIRE;
 /// Maximum inbound bytes processed per tick, leaving time for input, rendering and recovery.
 pub const RX_BYTES_PER_POLL: usize = 512;
+
+/// Outbound bytes kept free for everything that is not input (`Pong`, `Health`, `StateReport`,
+/// `Internals`, a `HelloAck`), so a queue that input has filled up to its share still takes the next
+/// heartbeat reply. The largest such frame is well under half of it (tested).
+pub const CONTROL_RESERVE_BYTES: usize = 256;
+/// Input that may wait for outbound space at once: rotation runs and button events together.
+const PENDING_INPUT_ITEMS: usize = 8;
+
+/// Input the outbound queue had no room for yet, kept in the order it happened.
+#[derive(Debug, Clone, Copy)]
+enum PendingInput {
+    /// Rotation, coalesced: the detents not sent yet as a net count (the protocol has one step per
+    /// `Detent`, so the net is sent as that many single steps once there is room).
+    Rotation {
+        /// The gesture the steps go out under.
+        gesture_id: u16,
+        /// `GestureStarted` has not been sent yet.
+        announce: bool,
+        /// Clockwise steps minus counter-clockwise steps not sent yet.
+        net: i16,
+        /// `GestureEnded` is due once the steps are out.
+        ended: bool,
+        /// Device time of the newest event folded in.
+        device_ms: u32,
+    },
+    /// One press, hold or double press of a switch.
+    Button {
+        control: ControlId,
+        gesture_id: u16,
+        kind: InputKind,
+        device_ms: u32,
+    },
+}
 
 /// What a `Bye` told the device the host is doing (needs `HOST_TAKEOVERS_V1`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,6 +149,9 @@ pub struct Dispatcher {
     outbound_frames: u32,
     /// The session of a negotiated `InternalsRequest`, awaiting [`Self::take_internals_request`].
     pending_internals: Option<Nonce>,
+    /// Input waiting for outbound space (the host stopped reading for a while). Always empty
+    /// outside a stall, and emptied at every session boundary: it never outlives its session.
+    pending_input: Deque<PendingInput, PENDING_INPUT_ITEMS>,
 }
 
 impl Dispatcher {
@@ -147,6 +184,7 @@ impl Dispatcher {
             inbound_frames: 0,
             outbound_frames: 0,
             pending_internals: None,
+            pending_input: Deque::new(),
         }
     }
 
@@ -198,8 +236,13 @@ impl Dispatcher {
         self.accepted_session
     }
 
-    /// Encode one input event. Returns `false` when the capability is not negotiated
-    /// or no session is accepted — an unnegotiated capability MUST stay inert.
+    /// Emits one rotary `InputEvent` (`GestureStarted`, `Detent` or `GestureEnded`). Returns `false`
+    /// when the capability is not negotiated or no session is accepted — an unnegotiated capability
+    /// MUST stay inert.
+    ///
+    /// When the outbound queue has no room (the host stopped reading), the event is kept instead of
+    /// ending the session: detents wait as a bounded net count and go out, in order, as room frees
+    /// (see [`Self::flush_input`]). The session ends only on a transport failure.
     pub fn send_input_event<T: Transport>(
         &mut self,
         transport: &mut T,
@@ -210,33 +253,59 @@ impl Dispatcher {
         if !self
             .negotiated_caps
             .contains(Capabilities::PHYSICAL_INPUT_V1)
+            || self.accepted_session.is_none()
         {
             return false;
         }
-        let Some(session) = self.accepted_session else {
-            return false;
-        };
-        let msg = Message::InputEvent(InputEvent {
-            session,
-            gesture_id,
-            control: ControlId::Rotary,
+        debug_assert!(matches!(
             kind,
-            device_ms,
-        });
-        match self.send(transport, &msg) {
-            Ok(()) => true,
-            Err(_) => {
-                self.link_lost();
-                false
+            InputKind::GestureStarted | InputKind::Detent(_) | InputKind::GestureEnded
+        ));
+        // Rotation folds into the run still waiting at the tail of the queue; otherwise it starts one.
+        let step = match kind {
+            InputKind::Detent(Direction::Cw) => 1,
+            InputKind::Detent(Direction::Ccw) => -1,
+            _ => 0,
+        };
+        let folded = if let Some(PendingInput::Rotation {
+            net,
+            ended,
+            device_ms: at,
+            ..
+        }) = self.pending_input.back_mut()
+        {
+            *net = net.saturating_add(step);
+            match kind {
+                InputKind::GestureStarted => *ended = false,
+                InputKind::GestureEnded => *ended = true,
+                _ => {}
             }
-        }
+            *at = device_ms;
+            true
+        } else {
+            false
+        };
+        let queued = folded
+            || self
+                .pending_input
+                .push_back(PendingInput::Rotation {
+                    gesture_id,
+                    announce: kind == InputKind::GestureStarted,
+                    net: step,
+                    ended: kind == InputKind::GestureEnded,
+                    device_ms,
+                })
+                .is_ok();
+        self.settle_input(transport, queued)
     }
 
     /// Emits one push-switch `InputEvent` (`Press` or `Hold`) for the accepted session.
     ///
     /// Inert (returns `false`, writes nothing) unless both `PHYSICAL_INPUT_V1` and
-    /// `BUTTON_INPUT_V1` were negotiated and a session is accepted. Nothing is buffered: a press
-    /// with no session is simply not sent (no stale replay).
+    /// `BUTTON_INPUT_V1` were negotiated and a session is accepted. A press with no session is
+    /// simply not sent (no stale replay); one that finds the outbound queue short of room waits
+    /// its turn behind earlier input, never lost or reordered, and ends the session only if that
+    /// wait outgrows its small bound.
     pub fn send_button_event<T: Transport>(
         &mut self,
         transport: &mut T,
@@ -250,24 +319,145 @@ impl Dispatcher {
             ControlId::Button | ControlId::Rotary => Capabilities::BUTTON_INPUT_V1,
         };
         let needed = Capabilities::PHYSICAL_INPUT_V1.union(control_cap);
-        if !self.negotiated_caps.contains(needed) {
+        if !self.negotiated_caps.contains(needed) || self.accepted_session.is_none() {
             return false;
         }
+        let queued = self
+            .pending_input
+            .push_back(PendingInput::Button {
+                control,
+                gesture_id,
+                kind,
+                device_ms,
+            })
+            .is_ok();
+        self.settle_input(transport, queued)
+    }
+
+    /// Sends what the queue's room allows after an event was queued (`queued`), or ends the session
+    /// when it could not even be queued.
+    fn settle_input<T: Transport>(&mut self, transport: &mut T, queued: bool) -> bool {
+        if queued {
+            self.flush_input(transport);
+        } else {
+            self.link_lost();
+        }
+        queued && self.accepted_session.is_some()
+    }
+
+    /// Sends queued input, oldest first, as far as the outbound queue's room allows. Input never
+    /// takes the last [`CONTROL_RESERVE_BYTES`], so heartbeat replies and other control frames always
+    /// find room. The run loop calls it at every service point; without queued input it does nothing.
+    /// A transport failure ends the session like any other write failure.
+    pub fn flush_input<T: Transport>(&mut self, transport: &mut T) {
         let Some(session) = self.accepted_session else {
-            return false;
+            self.pending_input.clear();
+            return;
         };
-        let msg = Message::InputEvent(InputEvent {
-            session,
-            gesture_id,
-            control,
-            kind,
-            device_ms,
-        });
-        match self.send(transport, &msg) {
-            Ok(()) => true,
-            Err(_) => {
-                self.link_lost();
-                false
+        while let Some(item) = self.pending_input.front().copied() {
+            match self.emit_input(transport, session, item) {
+                Ok(None) => {
+                    let _ = self.pending_input.pop_front();
+                }
+                Ok(Some(rest)) => {
+                    if let Some(front) = self.pending_input.front_mut() {
+                        *front = rest;
+                    }
+                    return;
+                }
+                Err(_) => {
+                    self.link_lost();
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Writes as much of `item` as there is room for; what is left over, if any.
+    fn emit_input<T: Transport>(
+        &mut self,
+        transport: &mut T,
+        session: Nonce,
+        item: PendingInput,
+    ) -> Result<Option<PendingInput>, DispatchError<T::Error>> {
+        let mut send = |this: &mut Self, gesture_id, control, kind, device_ms| {
+            let message = Message::InputEvent(InputEvent {
+                session,
+                gesture_id,
+                control,
+                kind,
+                device_ms,
+            });
+            this.send_within(transport, &message, CONTROL_RESERVE_BYTES)
+        };
+        match item {
+            PendingInput::Button {
+                control,
+                gesture_id,
+                kind,
+                device_ms,
+            } => Ok(if send(self, gesture_id, control, kind, device_ms)? {
+                None
+            } else {
+                Some(item)
+            }),
+            PendingInput::Rotation {
+                gesture_id,
+                mut announce,
+                mut net,
+                ended,
+                device_ms,
+            } => {
+                // A gesture that opened and closed with no net motion and was never announced says nothing.
+                if announce && ended && net == 0 {
+                    return Ok(None);
+                }
+                let rotary = ControlId::Rotary;
+                if announce {
+                    if !send(
+                        self,
+                        gesture_id,
+                        rotary,
+                        InputKind::GestureStarted,
+                        device_ms,
+                    )? {
+                        return Ok(Some(item));
+                    }
+                    announce = false;
+                }
+                while net != 0 {
+                    let (direction, step) = if net > 0 {
+                        (Direction::Cw, -1)
+                    } else {
+                        (Direction::Ccw, 1)
+                    };
+                    if !send(
+                        self,
+                        gesture_id,
+                        rotary,
+                        InputKind::Detent(direction),
+                        device_ms,
+                    )? {
+                        return Ok(Some(PendingInput::Rotation {
+                            gesture_id,
+                            announce,
+                            net,
+                            ended,
+                            device_ms,
+                        }));
+                    }
+                    net += step;
+                }
+                if ended && !send(self, gesture_id, rotary, InputKind::GestureEnded, device_ms)? {
+                    return Ok(Some(PendingInput::Rotation {
+                        gesture_id,
+                        announce,
+                        net,
+                        ended,
+                        device_ms,
+                    }));
+                }
+                Ok(None)
             }
         }
     }
@@ -349,6 +539,7 @@ impl Dispatcher {
         self.negotiated_caps = Capabilities::NONE;
         self.hello_caps = None;
         self.pending_action = None;
+        self.pending_input.clear();
         self.session_ended = true;
     }
 
@@ -446,6 +637,7 @@ impl Dispatcher {
                 self.pending_action = None;
                 // Whatever is still queued was meant for a session that is over (or for no one).
                 transport.discard_unsent();
+                self.pending_input.clear();
                 let ack = HelloAck {
                     device_caps: self.identity.capabilities,
                     device_id: self.identity.device_id,
@@ -622,6 +814,7 @@ impl Dispatcher {
                 self.tracker = SequenceTracker::new();
                 self.pending = Some(DeviceDiagnostic::LinkLost);
                 self.pending_action = None;
+                self.pending_input.clear();
                 // A gesture (or partial motion) from the old session must never complete in a new
                 // one, so the caller resets its input state too (invariant: no stale replay).
                 self.accepted_session = None;
@@ -641,9 +834,23 @@ impl Dispatcher {
         transport: &mut T,
         message: &Message,
     ) -> Result<(), DispatchError<T::Error>> {
+        self.send_within(transport, message, 0).map(|_| ())
+    }
+
+    /// Like [`Self::send`], but writes nothing (`Ok(false)`) unless the transport has room for the
+    /// whole packet and `reserve` more bytes besides.
+    fn send_within<T: Transport>(
+        &mut self,
+        transport: &mut T,
+        message: &Message,
+        reserve: usize,
+    ) -> Result<bool, DispatchError<T::Error>> {
         let mut wire: Vec<u8, MAX_WIRE> = Vec::new();
         encode_message(message, self.version, self.tx_seq, &mut wire)
             .map_err(DispatchError::Encode)?;
+        if reserve > 0 && transport.tx_free() < wire.len().saturating_add(reserve) {
+            return Ok(false);
+        }
         let mut written = 0;
         while written < wire.len() {
             let remaining = wire.len() - written;
@@ -665,6 +872,6 @@ impl Dispatcher {
         }
         self.tx_seq = self.tx_seq.wrapping_add(1);
         self.outbound_frames = self.outbound_frames.wrapping_add(1);
-        Ok(())
+        Ok(true)
     }
 }

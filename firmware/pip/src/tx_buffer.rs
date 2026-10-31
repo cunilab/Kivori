@@ -130,6 +130,12 @@ impl<T: Transport> Transport for TxBuffered<T> {
         Ok(buf.len())
     }
 
+    fn tx_free(&mut self) -> usize {
+        // A failed pump resurfaces on the next write; here only the room matters.
+        let _ = self.pump();
+        self.queue.capacity() - self.queue.len()
+    }
+
     fn drain_pending(&mut self) -> Result<usize, Self::Error> {
         self.pump()
     }

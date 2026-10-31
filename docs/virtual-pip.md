@@ -186,11 +186,52 @@ on the new connection; stale snapshots cannot repaint a completed connection ope
 
 Available faults: `fragmented` (seven-byte per-tick traffic budgets), `wrong-major`,
 `unknown-product`, `unknown-board`, `silent` (suppress wire output while firmware keeps running),
-and `exit` (actual child EOF). Identity/protocol modes start a fresh child; silent/exit require an
-existing usable connection. These controls remain outside the production protocol and release UI.
+`host-stall` (the host stops reading device output; see below) and `exit` (actual child EOF).
+Identity/protocol modes start a fresh child; silent/exit/host-stall require an existing usable
+connection, and `host-resume` ends a stall without reconnecting. These controls remain outside the production protocol and release UI.
 Use Reconnect after a simulated error/reboot; only clock rollover still requires restarting the tool.
-The smoke command includes nine connection scenarios with real desktop time and bounded deadlines;
+The smoke command includes ten connection scenarios (the tenth is the host read stall below) with
+real desktop time and bounded deadlines;
 see [results and CI evidence](./validation.md#s52-connection-and-interruption-evidence).
+
+### Host read stall
+
+`host-stall` models a host that stops draining the device's USB output (a Mac under heavy build load).
+In the runner it is the request fault `host-stall`: while requests carry it, responses return no
+bytes and the device-side pipe holds at most 64 bytes of unread output, the size of the real USB
+Serial/JTAG FIFO. Writes beyond that are accepted only partly (the short count the device's
+non-blocking `UsbJtagTransport::write` reports when `write_byte_nb` says `WouldBlock`), so the
+production outbound queue (`TxBuffered`, about 1 KB) fills exactly as it does on the unit. The stall
+lasts as long as requests keep carrying the fault; the next `normal` request resumes reading and the
+host then receives everything held, in order. The desktop sandbox exposes it as `host-stall` and
+`host-resume`; `firmware/pip/tests/usb_stall.rs` drives it at the firmware level and the runner
+test `a_host_read_stall_during_a_fast_spin_keeps_the_session_and_every_detent` on modelled time.
+
+The older `PASS IO host-stall` scenario (`--io-smoke`, its own in-process bus) covers the other end: a
+121-second stall at one detent a second, ending in a fresh handshake. It is unchanged and still passes.
+
+What it showed (found by running the model, not on the unit): an input event is about 28 bytes on the
+wire, so the queue held about 38 of them, and at 100 detents a second the device ended the session
+(`link_lost`) after about 410 ms of unread output, at 250 a second after about 150 ms. A longer
+stall is a real possibility on a loaded Mac, and ending the session made the app reconnect. The device
+now keeps input that does not fit instead:
+
+- Input never takes the last 256 bytes of the outbound queue (`CONTROL_RESERVE_BYTES`; the largest
+  control frame, an `Internals` report, is 139 bytes), so a `Pong`, `Health` or `StateReport` always
+  has room and the heartbeat is answered after the stall.
+- Rotation that does not fit is kept as a net count per gesture (one `Detent` is one step, so the net
+  goes out as that many single steps as room frees) together with whether `GestureStarted` or
+  `GestureEnded` is still owed; gestures that begin while one is still waiting join it. The
+  host sees the same net rotation, in a gesture sequence the desktop's ingress accepts, but not the
+  individual back-and-forth steps or their timestamps (they carry the newest event's time).
+- Press, hold and double press wait in a queue of 8 behind earlier input, never lost or reordered.
+  If that bound is exceeded the session ends as before; memory is fixed and there is no heap.
+- Queued input is dropped at every session boundary (`Bye`, a new `Hello`, link loss): it never
+  reaches a later session. Under normal load nothing waits and nothing changes: each event goes out
+  when it happens with its own time (tested).
+- The session still ends on a transport error, the host's silence (4 s) or a full queue of control
+  frames (a stall long enough for the once-a-second `Health` alone to fill it: a minute or more, and
+  unchanged by this work).
 
 ## Raw input scenarios (S5.3)
 
@@ -616,5 +657,10 @@ gate above.
 - Internals that need hardware stay unavailable. The app image size and stack peak describe the
   product ELF at the last fixture refresh, not the simulator binary.
 - Ideal-timing scenarios say nothing about timing; use modelled timing (or the unit) for that.
+- The host read stall is a pipe model: the FIFO is exactly 64 bytes and the host reads everything the
+  moment the stall ends. A real stall also depends on what the OS and the USB stack buffer, on how the
+  host's CDC driver resumes, and on a port left closed (the chip's FIFO behaviour with no host attached
+  is not modelled). That the unit's `write_byte_nb` reports `WouldBlock` rather than discarding bytes in
+  those cases is assumed from the driver's documentation, not measured, and stays a hardware row.
 - The development virtual window shows the Device internals card (the shipping component, with the
   "Modelled (virtual Pip)" note); the main app still cannot connect to the virtual device.

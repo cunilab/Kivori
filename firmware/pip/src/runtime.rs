@@ -918,6 +918,8 @@ impl<'a> Runtime<'a> {
         transport: &mut T,
         input: &mut I,
     ) {
+        // Input the outbound queue had no room for goes first, so it keeps its order.
+        self.dispatcher.flush_input(transport);
         let mut samples = heapless::Vec::<(InputLevels, ElapsedMs), INPUT_SAMPLES>::new();
         let before = input.dropped_edges();
         let mut lost = before != self.dropped_edges;

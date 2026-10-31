@@ -26,6 +26,12 @@ pub trait Transport {
     /// Returns [`Self::Error`] on an unrecoverable transport failure.
     fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error>;
 
+    /// How many more bytes [`Self::write`] takes right now (after moving what it can toward the
+    /// hardware). Optional input waits for room beyond this; unbuffered transports report no limit.
+    fn tx_free(&mut self) -> usize {
+        usize::MAX
+    }
+
     /// Advances bytes accepted by an outbound buffer without requiring another message.
     /// Unbuffered transports have no pending work.
     ///

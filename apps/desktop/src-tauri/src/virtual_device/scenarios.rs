@@ -247,6 +247,75 @@ pub fn connection_smoke(executable: &Path) -> Result<(), String> {
         s.snapshot.media_triggers == 2
     })?;
     println!("PASS S5.2 child EOF: no stale replay on retry, fresh press executes once");
+
+    host_read_stall(&mut sandbox)?;
     sandbox.connection("disconnect")?;
+    Ok(())
+}
+
+/// The host stops reading the device's output for 700 ms while the knob turns at 100 detents a
+/// second (more than the device's outbound queue holds). The session must survive, the volume must
+/// see the net rotation, and the next press must still run. Real elapsed time on the modelled device.
+fn host_read_stall(sandbox: &mut Sandbox) -> Result<(), String> {
+    // Down 20, up 20, down 20: the volume stays inside 0..=100 however the device groups the steps.
+    let turns: Vec<&str> = [
+        ("counterclockwise", 20),
+        ("clockwise", 20),
+        ("counterclockwise", 20),
+    ]
+    .into_iter()
+    .flat_map(|(control, count)| std::iter::repeat_n(control, count))
+    .collect();
+    let (generation, volume) = (sandbox.snapshot.generation, sandbox.snapshot.volume);
+    let (triggers, rejected) = (sandbox.snapshot.media_triggers, sandbox.rejected_inputs);
+    let started = Instant::now();
+    let (mut turned, mut stalled) = (0, false);
+    while started.elapsed() < Duration::from_millis(1_200) {
+        let elapsed = started.elapsed();
+        if turned < turns.len() && elapsed >= Duration::from_millis(10 * turned as u64) {
+            sandbox.input(turns[turned])?;
+            turned += 1;
+        }
+        let should_stall =
+            (Duration::from_millis(100)..Duration::from_millis(800)).contains(&elapsed);
+        if should_stall != stalled {
+            sandbox.connection(if should_stall {
+                "host-stall"
+            } else {
+                "host-resume"
+            })?;
+            stalled = should_stall;
+        }
+        sandbox.tick();
+        if let Some(error) = &sandbox.snapshot.error {
+            return Err(format!("stall ended the session: {error}"));
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    check(
+        turned == turns.len(),
+        "stall scenario did not turn every detent",
+    )?;
+    let expected = volume - 2 * 20;
+    until(sandbox, Duration::from_secs(5), |s| {
+        s.snapshot.volume == expected
+    })
+    .map_err(|_| {
+        format!(
+            "stall left the volume at {} instead of {expected}",
+            sandbox.snapshot.volume
+        )
+    })?;
+    check(
+        sandbox.snapshot.connected
+            && sandbox.snapshot.generation == generation
+            && sandbox.rejected_inputs == rejected,
+        "stall dropped or reconnected the session",
+    )?;
+    sandbox.input("tap")?;
+    until(sandbox, Duration::from_secs(2), |s| {
+        s.snapshot.media_triggers == triggers + 1
+    })?;
+    println!("PASS S5.2 host read stall: 700 ms unread during a 100 detents/s spin, same session, net volume change exact, press still runs");
     Ok(())
 }

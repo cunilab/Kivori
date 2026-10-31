@@ -92,6 +92,11 @@ impl Gate {
         self.edges.extend(advance.edges);
         self.capture = advance.capture;
         self.fault = advance.fault;
+        // The host stops or resumes reading at the start of the interval it covers, not at the next tick.
+        self.shared
+            .link
+            .borrow_mut()
+            .set_host_stalled(advance.fault == Fault::HostStall);
     }
 
     /// A service point at the clock's current time: parks until the host has covered it, then
@@ -262,18 +267,23 @@ mod tests {
         }
     }
 
-    fn messages(response: &Response) -> Vec<Message> {
+    /// The messages completed by `wire`, after the `carry` of a frame an earlier response cut short
+    /// (a response can end inside a frame while the host does not read, as the real stream does).
+    fn messages(carry: &mut Vec<u8>, wire: &[u8]) -> Vec<Message> {
+        carry.extend_from_slice(wire);
         let mut scratch = Default::default();
-        response
-            .wire
-            .split(|&b| b == 0)
-            .filter(|p| !p.is_empty())
-            .filter_map(|p| {
-                decode_message(p, &mut scratch, &[PROTOCOL_MAJOR])
-                    .ok()
-                    .map(|(_, m)| m)
-            })
-            .collect()
+        let mut found = vec![];
+        while let Some(end) = carry.iter().position(|&b| b == 0) {
+            let packet: Vec<u8> = carry.drain(..=end).collect();
+            if packet.len() > 1 {
+                if let Ok((_, message)) =
+                    decode_message(&packet[..end], &mut scratch, &[PROTOCOL_MAJOR])
+                {
+                    found.push(message);
+                }
+            }
+        }
+        found
     }
 
     /// A modelled device and the host's side of a negotiated session with it.
@@ -287,6 +297,8 @@ mod tests {
         internals: Vec<DeviceInternals>,
         /// Pongs: the echoed ping stamp and the device time of the reply.
         pongs: Vec<(u32, u32)>,
+        /// The start of a frame the last response ended inside.
+        carry: Vec<u8>,
     }
 
     impl Rig {
@@ -304,6 +316,7 @@ mod tests {
                 events: vec![],
                 internals: vec![],
                 pongs: vec![],
+                carry: vec![],
             };
             let mut hello = request(start_ms);
             hello.wire = rig.wire(&Message::Hello(Hello {
@@ -337,7 +350,7 @@ mod tests {
         fn go(&mut self, request: Request) -> Response {
             self.now = request.now_ms;
             let response = self.sim.step(request).expect("modelled step");
-            for message in messages(&response) {
+            for message in messages(&mut self.carry, &response.wire) {
                 match message {
                     Message::InputEvent(event) => self.events.push((event.kind, event.device_ms)),
                     Message::Internals(report) => self.internals.push(report.internals),
@@ -617,6 +630,65 @@ mod tests {
             "{reported} of {turned} detents reached the host"
         );
         assert!(worst <= 250, "worst heartbeat round trip {worst} ms");
+    }
+
+    /// A host that turns the knob clockwise at 100 detents a second for 120 detents, stops reading the
+    /// device's output from `stall_from` to `stall_to` ms after the start (the device keeps running and
+    /// its output queue fills as with the real 64-byte USB FIFO), and pings once in the middle of the
+    /// stall. Returns the rig and the bytes the responses carried while stalled.
+    fn stalled_spin(stall_from: u32, stall_to: u32) -> (Rig, usize) {
+        let mut rig = Rig::new();
+        rig.connect_desk();
+        rig.run_to(2_000, 5);
+        rig.pongs.clear();
+        rig.events.clear();
+        let t0 = rig.now;
+        let mut stalled_bytes = 0;
+        for ms in 1..=2_400u32 {
+            let at = t0 + ms;
+            let mut req = request(at);
+            let (detent, phase) = ((ms - 1) / 10, (ms - 1) % 10);
+            if detent < 120 && phase < 4 {
+                req.edges = vec![Edge {
+                    at_ms: at,
+                    levels: [2u8, 3, 1, 0][phase as usize],
+                }];
+            }
+            let stalled = (stall_from..stall_to).contains(&ms);
+            if stalled {
+                req.fault = Fault::HostStall;
+            }
+            if ms == (stall_from + stall_to) / 2 {
+                req.wire = rig.wire(&Message::Ping(Ping { t_ms: MARKER }));
+            }
+            let response = rig.go(req);
+            if stalled {
+                stalled_bytes += response.wire.len();
+            }
+        }
+        (rig, stalled_bytes)
+    }
+
+    #[test]
+    fn a_host_read_stall_during_a_fast_spin_keeps_the_session_and_every_detent() {
+        // 120 detents, the host reads nothing from 100 to 700 ms (the outbound queue holds about 30
+        // input events, 300 ms of this spin), then the heartbeat and the rest of the spin go on.
+        let (rig, stalled_bytes) = stalled_spin(100, 700);
+        assert_eq!(stalled_bytes, 0, "a stalled host is handed no bytes");
+        let net: i32 = rig
+            .events
+            .iter()
+            .map(|(kind, _)| match kind {
+                InputKind::Detent(Direction::Cw) => 1,
+                InputKind::Detent(Direction::Ccw) => -1,
+                _ => 0,
+            })
+            .sum();
+        assert_eq!(net, 120, "the net rotation is every detent turned");
+        assert!(
+            rig.pongs.iter().any(|(echo, _)| *echo == MARKER),
+            "the ping sent during the stall is answered after it"
+        );
     }
 
     #[test]

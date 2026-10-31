@@ -122,7 +122,7 @@ Desktop state is in memory only. `desired` defaults to `idle` and is re-sent aft
 
 ### Chosen platform APIs
 
-- Transport: ESP32-C3 native USB Serial/JTAG (VID:PID `0x303A:0x1001`). It has a 64-byte FIFO and TX can stall if the host does not drain, so frames are small and writes are bounded.
+- Transport: ESP32-C3 native USB Serial/JTAG (VID:PID `0x303A:0x1001`). It has a 64-byte FIFO and TX can stall if the host does not drain, so frames are small and writes are bounded. The run loop writes through a whole-frame outbound queue (`TxBuffered`, about 1 KB over the FIFO). When the host stops draining, input events wait instead of ending the session: rotation as a bounded net count, presses in order, always leaving room for heartbeat replies (see [virtual-pip.md](virtual-pip.md#host-read-stall)).
 - Firmware HAL: `esp-hal`, bare metal. Display: `mipidsi` with windowed writes.
 - Desktop serial: blocking `serialport` on a dedicated device thread.
 - Windows volume and mute: Core Audio `IAudioEndpointVolume` with callbacks, on its own COM thread.
