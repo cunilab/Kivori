@@ -50,6 +50,8 @@ means "run the device until `now_ms`", on a device clock that charges the ESP32-
 tile row and SPI time per panel window, so frame time, fps, busy % and the delay before input is seen
 mid-frame resemble the unit, and Device internals are filled in from a committed resource fixture
 (see [Modelled timing and internals](../../../docs/virtual-pip.md#modelled-timing-and-internals)).
+The device powers up at the first request's `now_ms` (its clock starts there, so a child spawned late
+in a long host session does not simulate the time before it existed).
 With `--ideal-time` one request runs exactly one production runtime tick with the clock frozen at
 `now_ms`, so frames cost 0 ms and pending protocol input may need subsequent ticks to drain. The
 in-process scenarios (`--input-smoke`, `--io-smoke`, `--replay`) always use ideal time.
