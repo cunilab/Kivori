@@ -1,7 +1,23 @@
 // Release tooling uses the same active pairs and contained crate paths as packaging. Run with Bun.
+import { execFileSync } from 'node:child_process';
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { listFirmwarePlans } from './build-firmware.mjs';
+
+/**
+ * Tracked Cargo.lock files of nested workspaces (not the root's or a firmware crate's own): they pin
+ * the bumped versions through path dependencies, so a release must refresh them and may change them.
+ */
+export function nestedLockfiles(root, ref, crates) {
+  const own = new Set(['Cargo.lock', ...crates.map((crate) => `${crate}/Cargo.lock`)]);
+  return execFileSync('git', ['ls-tree', '-r', '-z', '--name-only', ref], {
+    cwd: root,
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+  })
+    .split('\0')
+    .filter((path) => /(^|\/)Cargo\.lock$/.test(path) && !own.has(path));
+}
 
 export function releaseCatalog(root) {
   const products = new Map();

@@ -127,22 +127,23 @@ jobs:
             cat "$RUNNER_TEMP/release-info/notes.md"
           } >> "$GITHUB_STEP_SUMMARY"
           cat "$RUNNER_TEMP/release-info/title.txt"; echo; cat "$RUNNER_TEMP/release-info/notes.md"
-      # App versions also appear in every firmware lockfile through workspace path dependencies.
+      # App versions also appear in every firmware and nested-workspace lockfile through path dependencies.
       - name: Refresh all Cargo.lock files
         if: ${{ !inputs.dry_run && steps.plan.outputs.commit_needed == 'true' }}
         env:
-          FIRMWARE_CRATES: ${{ steps.plan.outputs.firmware_crates }}
           RELEASE_FILES: ${{ steps.plan.outputs.release_files }}
         run: |
           set -euo pipefail
           node --input-type=module <<'JS'
           import { execFileSync } from 'node:child_process';
+          import { dirname } from 'node:path';
           const run = (cmd, args, cwd = '.') => execFileSync(cmd, args, { cwd, stdio: 'inherit' });
-          for (const cwd of ['.', ...JSON.parse(process.env.FIRMWARE_CRATES)]) {
+          const files = JSON.parse(process.env.RELEASE_FILES);
+          for (const cwd of files.filter((path) => path.endsWith('Cargo.lock')).map(dirname)) {
             run('cargo', ['update', '--workspace'], cwd);
             execFileSync('cargo', ['metadata', '--locked', '--format-version', '1'], { cwd, stdio: ['ignore', 'ignore', 'inherit'] });
           }
-          const allowed = new Set(JSON.parse(process.env.RELEASE_FILES));
+          const allowed = new Set(files);
           const changed = [
             ...execFileSync('git', ['diff', '--name-only', '-z', 'HEAD']).toString().split('\0'),
             ...execFileSync('git', ['ls-files', '--others', '--exclude-standard', '-z']).toString().split('\0'),

@@ -24,7 +24,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual, parseArgs } from 'node:util';
 
-import { releaseCatalog } from './release-catalog.mjs';
+import { nestedLockfiles, releaseCatalog } from './release-catalog.mjs';
 import { checkFirmwareRelease, firmwareTagPrefixes } from './firmware-release-guard.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -356,8 +356,13 @@ export function main(argv, directory = root) {
   );
   console.log(body);
 
+  const nested = nestedLockfiles(root, 'HEAD', [...crateVersions.keys()]);
   // Lock refresh may only update version bookkeeping, never repair a stale dependency resolution.
-  for (const cwd of [root, ...[...crateVersions.keys()].map((crate) => join(root, crate))]) {
+  for (const cwd of [
+    root,
+    ...[...crateVersions.keys()].map((crate) => join(root, crate)),
+    ...nested.map((path) => join(root, dirname(path))),
+  ]) {
     execFileSync('cargo', ['metadata', '--locked', '--all-features', '--format-version', '1'], {
       cwd,
       stdio: ['ignore', 'ignore', 'pipe'],
@@ -390,6 +395,7 @@ export function main(argv, directory = root) {
         'Cargo.toml',
         'Cargo.lock',
         ...[...crateVersions.keys()].flatMap((c) => [`${c}/Cargo.toml`, `${c}/Cargo.lock`]),
+        ...nested,
       ]),
       commit_needed: String(commitNeeded),
       commit_body: body,
