@@ -10,12 +10,7 @@ import {
   useConnectionStatus,
   useUpdateAvailable,
 } from '@/hooks/use-kivori';
-import {
-  mockGetStartupSettings,
-  mockGrantAccessibility,
-  mockResetOnboarding,
-  mockSimulateInput,
-} from '@/lib/ipc/mock';
+import { mockGetStartupSettings, mockResetOnboarding, mockSimulateInput } from '@/lib/ipc/mock';
 import type { ConnectionStatusDto } from '@/lib/ipc/types';
 import * as ipc from '@/lib/ipc';
 import { strings } from '@/lib/i18n/strings';
@@ -145,8 +140,8 @@ describe('onboarding steps follow real status', () => {
   });
 });
 
-describe('permission step', () => {
-  it('is skipped where there is no such permission (Windows)', async () => {
+describe('permissions', () => {
+  it('asks for no permission in setup (connected device)', async () => {
     scenario('connected');
     const user = userEvent.setup();
     render(<Harness onComplete={() => Promise.resolve()} />);
@@ -155,44 +150,18 @@ describe('permission step', () => {
     await next(user);
     await heading('Try your Kivori');
     expect(screen.getByText('Step 3 of 5')).toBeInTheDocument();
+    expect(screen.queryByText(/Accessibility/)).not.toBeInTheDocument();
   });
 
-  it('on macOS waits for Accessibility and turns green once it is granted', async () => {
+  it('asks for no permission in setup on macOS either: Accessibility waits for a binding', async () => {
     scenario('mac');
     const user = userEvent.setup();
     render(<Harness onComplete={() => Promise.resolve()} />);
     await next(user, 'Get started');
-    await next(user, 'Skip this step');
-    await heading('Let Kivori press keys for you');
-    expect(screen.getByText('Step 3 of 6')).toBeInTheDocument();
-    expect(await screen.findByText('Accessibility access is not on yet.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Open System Settings' })).toBeInTheDocument();
-
-    mockGrantAccessibility();
-    expect(
-      await screen.findByText('Accessibility access is on.', {}, { timeout: 4000 }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
-
-    // Switched off again in System Settings while the step is open.
-    mockGrantAccessibility(false);
-    expect(
-      await screen.findByText('Accessibility access is not on yet.', {}, { timeout: 4000 }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
-  });
-
-  it('can be skipped on macOS', async () => {
-    scenario('mac');
-    const user = userEvent.setup();
-    render(<Harness onComplete={() => Promise.resolve()} />);
-    await next(user, 'Get started');
-    await next(user, 'Skip this step');
-    await heading('Let Kivori press keys for you');
-    await screen.findByText('Accessibility access is not on yet.');
     await next(user, 'Skip this step');
     await heading('Try your Kivori');
+    expect(screen.getByText('Step 3 of 5')).toBeInTheDocument();
+    expect(screen.queryByText(/Accessibility/)).not.toBeInTheDocument();
   });
 });
 
@@ -370,7 +339,7 @@ describe('in the app', () => {
 });
 
 describe('accessibility', () => {
-  it('has no axe violations on the first and the permission steps', async () => {
+  it('has no axe violations on the first two steps', async () => {
     scenario('mac');
     const user = userEvent.setup();
     const { container } = render(<Harness onComplete={() => Promise.resolve()} />);
@@ -380,10 +349,6 @@ describe('accessibility', () => {
     expect((await run()).violations).toEqual([]);
     await next(user, 'Get started');
     await heading('Plug in your Kivori');
-    expect((await run()).violations).toEqual([]);
-    await next(user, 'Skip this step');
-    await heading('Let Kivori press keys for you');
-    await screen.findByText('Accessibility access is not on yet.');
     expect((await run()).violations).toEqual([]);
   });
 });

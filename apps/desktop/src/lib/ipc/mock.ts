@@ -106,6 +106,12 @@ export function mockGetAccessibility(): AccessibilityState {
   return accessibilityGranted ? 'granted' : 'missing';
 }
 
+/** Stands in for the reset: the stale approval goes away, the permission stays off until granted. */
+export function mockResetAccessibility(): AccessibilityState {
+  accessibilityGranted = false;
+  return mockGetAccessibility();
+}
+
 /** Stands in for the user ticking (or, with `false`, unticking) Kivori in System Settings. */
 export function mockGrantAccessibility(granted = true): void {
   accessibilityGranted = granted;

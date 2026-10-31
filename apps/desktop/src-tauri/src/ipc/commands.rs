@@ -241,6 +241,28 @@ pub fn request_accessibility() -> &'static str {
     crate::platform::permissions::request_accessibility().token()
 }
 
+/// Clears this app's own stale Accessibility approval, asks once and opens the Accessibility
+/// list; resolves with the state right after the ask.
+///
+/// # Errors
+/// Returns a fixed message when there is nothing to reset (not an app bundle) or `tccutil` failed.
+#[tauri::command]
+pub fn reset_accessibility() -> Result<&'static str, String> {
+    crate::platform::permissions::reset_accessibility()
+        .map(crate::platform::permissions::Accessibility::token)
+        .map_err(|error| {
+            match error {
+                crate::platform::permissions::ResetError::NotAvailable => {
+                    "There is no approval to reset here."
+                }
+                crate::platform::permissions::ResetError::Failed => {
+                    "macOS did not reset the approval."
+                }
+            }
+            .to_string()
+        })
+}
+
 /// Opens System Settings at the Accessibility list.
 ///
 /// # Errors

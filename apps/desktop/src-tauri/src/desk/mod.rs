@@ -437,6 +437,13 @@ impl DeskRuntime {
         &self.context.profile().bindings
     }
 
+    /// Whether the active profile makes Kivori press keys (shortcuts), which macOS allows only
+    /// with Accessibility.
+    #[must_use]
+    pub fn needs_key_events(&self) -> bool {
+        self.context.profile().needs_key_events()
+    }
+
     /// Which profile owns the controls.
     #[must_use]
     pub const fn context(&self) -> &Context {

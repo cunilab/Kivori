@@ -142,6 +142,26 @@ impl Action {
         }
     }
 
+    /// Whether running this makes Kivori press keys, which macOS allows only with the
+    /// Accessibility permission. Media keys do not: macOS sends them through the player directly
+    /// (the key event is only a fallback), and volume, mute and launching never press keys.
+    #[must_use]
+    pub fn needs_key_events(&self) -> bool {
+        match self {
+            Action::Shortcut(_) => true,
+            Action::Macro(m) => m.actions().any(Action::needs_key_events),
+            Action::PlayPause
+            | Action::PreviousTrack
+            | Action::NextTrack
+            | Action::ToggleMute
+            | Action::ToggleMicMute
+            | Action::Launch(_)
+            | Action::AppMute { .. }
+            | Action::AppVolumeStep { .. }
+            | Action::VolumeNudge { .. } => false,
+        }
+    }
+
     /// What the device legend calls this action: short, in the user's terms.
     #[must_use]
     pub fn label(&self) -> String {
@@ -228,6 +248,17 @@ impl Default for Bindings {
                 }
             }),
         }
+    }
+}
+
+impl Bindings {
+    /// Whether any bound action presses keys (see [`Action::needs_key_events`]).
+    #[must_use]
+    pub fn needs_key_events(&self) -> bool {
+        [&self.press, &self.hold]
+            .into_iter()
+            .chain(self.buttons.iter().flat_map(|b| [&b.press, &b.hold]))
+            .any(|slot| slot.action.as_ref().is_some_and(Action::needs_key_events))
     }
 }
 
@@ -1290,6 +1321,36 @@ mod tests {
 
     fn run(action: Action) -> Step {
         Step::Run(action)
+    }
+
+    #[test]
+    fn only_shortcuts_and_macros_holding_one_press_keys() {
+        assert!(chord().needs_key_events());
+        for action in [
+            Action::PlayPause,
+            Action::PreviousTrack,
+            Action::NextTrack,
+            Action::ToggleMute,
+            Action::ToggleMicMute,
+            Action::Launch("notes".into()),
+            Action::AppMute { app: "a".into() },
+        ] {
+            assert!(!action.needs_key_events(), "{action:?}");
+        }
+        assert!(macro_of(vec![run(Action::PlayPause), run(chord())]).needs_key_events());
+        assert!(!macro_of(vec![
+            run(Action::PlayPause),
+            Step::Delay(Duration::from_millis(50))
+        ])
+        .needs_key_events());
+    }
+
+    #[test]
+    fn the_default_bindings_press_no_keys_until_a_shortcut_is_bound() {
+        let mut bindings = Bindings::default();
+        assert!(!bindings.needs_key_events());
+        bindings.buttons[2].hold = Slot::bound(chord());
+        assert!(bindings.needs_key_events());
     }
 
     fn chord() -> Action {

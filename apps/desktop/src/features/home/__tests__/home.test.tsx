@@ -10,6 +10,10 @@ import type { ConnectionStatusDto, DeskStatusDto } from '../../../lib/ipc/types'
 vi.mock('../../../lib/ipc', () => ({
   playMascotAction: vi.fn(() => Promise.resolve()),
   getDiagnostics: vi.fn(() => new Promise(() => {})),
+  getAccessibility: vi.fn(() => Promise.resolve('missing')),
+  requestAccessibility: vi.fn(() => Promise.resolve('missing')),
+  resetAccessibility: vi.fn(() => Promise.resolve('missing')),
+  openAccessibilitySettings: vi.fn(() => Promise.resolve()),
 }));
 
 import { HomePage } from '../HomePage';
@@ -246,7 +250,7 @@ describe('HomePage', () => {
     expect(screen.getByText('Started')).toHaveAttribute('data-tone', 'success');
   });
 
-  it('shows the Accessibility hint when permission is required', () => {
+  it('shows the Accessibility hint when permission is required', async () => {
     render(
       view(
         desk({ lastAction: { action: 'playPause', result: 'error', permissionRequired: true } }),
@@ -254,8 +258,9 @@ describe('HomePage', () => {
     );
     expect(screen.getByText('Failed')).toHaveAttribute('data-tone', 'error');
     expect(
-      screen.getByText(/System Settings → Privacy & Security → Accessibility/),
+      await screen.findByText(/System Settings → Privacy & Security → Accessibility/),
     ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Allow access' })).toBeInTheDocument();
   });
 
   it('shows catalog name/model and a neutral figure when the product has no artwork', () => {
