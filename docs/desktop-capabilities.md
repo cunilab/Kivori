@@ -145,12 +145,27 @@ Catalog metadata does not implement a new interaction model. See
 
 ## macOS Accessibility
 
-macOS lets an app press keys only with the Accessibility permission. Kivori asks for it just in
-time, never during setup: the Controls page shows the request when a keyboard shortcut is bound, and
-Home shows it when an action failed for lack of it. Nothing prompts by itself or repeatedly; each
-button press asks once. If macOS still reports it off after the user came back from System Settings,
-the notice offers "Reset and ask again", which runs `tccutil reset Accessibility` for Kivori's own
-bundle identifier only, asks once and opens the settings pane.
+macOS lets an app press keys only with the Accessibility permission. Kivori asks by itself exactly
+once, and only while macOS reports it off. Already on means nothing is shown anywhere: no setup
+step, no card, no prompt (AXIsProcessTrusted is read right before anything shows, and again when
+the window regains focus, so anything showing disappears once it is granted).
+
+- First run: setup has an Accessibility step, shown only while it is off. **Allow** shows the macOS
+  prompt once and opens the Accessibility list; the step turns green and continues by itself once
+  macOS says on. **Not now** moves on and is listed as still open on the last step.
+- An install that finished setup before Kivori asked (an update, or setup skipped): on start, if it
+  is off and Kivori never asked, one in-app card explains why (shortcuts need it; media and volume
+  do not) with **Allow** and **Not now**.
+- "Asked" is stored once (`onboarding.accessibilityAsked` in `config.json`) the moment the step or
+  card shows, and by any button press that asks. After that nothing asks by itself again, whatever
+  the person chose; "Reset all settings" keeps it.
+- After that the just-in-time notices stay: the Controls page shows the request when a keyboard
+  shortcut is bound, and Home shows it when an action failed for lack of it. Settings, General has a
+  permanent Accessibility row (macOS only): Allowed, or Not allowed with the ask.
+- Each button press asks once; nothing prompts repeatedly. If macOS still reports it off after the
+  user came back from System Settings, the notice offers "Reset and ask again", which runs
+  `tccutil reset Accessibility` for Kivori's own bundle identifier only, asks once and opens the
+  settings pane.
 
 | Action | Needs Accessibility on macOS | Why |
 | --- | --- | --- |

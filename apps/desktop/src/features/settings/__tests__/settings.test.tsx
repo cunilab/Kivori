@@ -8,6 +8,7 @@ import type { AppInfoDto } from '../../../lib/ipc/types';
 
 vi.mock('../../../lib/ipc', () => ({
   getStartupSettings: () => new Promise(() => {}),
+  getAccessibility: () => Promise.resolve('notApplicable'),
   onStartupChanged: () => Promise.resolve(() => {}),
   getDiagnostics: () => new Promise(() => {}),
   getDeviceInternals: () => new Promise(() => {}),

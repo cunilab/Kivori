@@ -248,6 +248,13 @@ export async function restartOnboarding(): Promise<OnboardingDto> {
   return unavailable();
 }
 
+/** Records that the one automatic Accessibility ask was shown, so nothing asks by itself again. */
+export async function markAccessibilityAsked(): Promise<OnboardingDto> {
+  if (isTauri()) return parseOnboarding(await invoke<unknown>('mark_accessibility_asked'));
+  if (import.meta.env.DEV) return (await devMock()).mockMarkAccessibilityAsked();
+  return unavailable();
+}
+
 /** The Accessibility permission now. Never prompts. */
 export async function getAccessibility(): Promise<AccessibilityState> {
   if (isTauri()) return parseAccessibility(await invoke<unknown>('get_accessibility'));
