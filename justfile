@@ -109,9 +109,15 @@ bundle-windows:
     fi
     KIVORI_FIRMWARE_MANIFEST="$manifest" bunx tauri build "${args[@]}" -- --no-default-features
 
-# Build the macOS .app + .dmg (run on a Mac; signs only when APPLE_SIGNING_IDENTITY is set).
+# Build the macOS .app + .dmg (run on a Mac). Signed with APPLE_SIGNING_IDENTITY, else the stable
+# KIVORI_MACOS_SIGNING_IDENTITY / "Kivori Dev" identity (see macos-dev-identity), else ad-hoc.
 bundle-macos:
     bash scripts/bundle-macos.sh
+
+# Create the self-signed "Kivori Dev" signing identity in your login keychain (once; safe to rerun),
+# so local bundles keep their Accessibility approval across rebuilds (docs/macos.md).
+macos-dev-identity:
+    bash scripts/create-macos-dev-identity.sh
 
 # Native Mac checks without changing audio or launching the media observer / permission prompts.
 macos-check:
