@@ -66,6 +66,6 @@ if [ -n "${KIVORI_MACOS_EXPECT_LEAF:-}" ]; then
   expected="certificate leaf = H\"$(printf '%s' "$KIVORI_MACOS_EXPECT_LEAF" | tr 'A-F' 'a-f')\""
   case "$requirement" in
     *"$expected"*) echo "Signing certificate matches the pinned leaf." ;;
-    *) echo "error: the signing certificate is not the pinned one ($expected)" >&2; exit 1 ;;
+    *) printf "error: the signing certificate is not the pinned one (%s); got:\n%s\n" "$expected" "$requirement" >&2; exit 1 ;;
   esac
 fi
