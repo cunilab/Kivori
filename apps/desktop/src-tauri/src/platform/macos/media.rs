@@ -37,9 +37,9 @@ type View = (Option<MediaStatus>, Option<NowPlaying>);
 type Shared = Arc<Mutex<View>>;
 
 const UNKNOWN: View = (None, None);
-const PERL: &str = "/usr/bin/perl";
+pub(super) const PERL: &str = "/usr/bin/perl";
 const OSASCRIPT: &str = "/usr/bin/osascript";
-const SCRIPT: &str = "mediaremote-adapter.pl";
+pub(super) const SCRIPT: &str = "mediaremote-adapter.pl";
 const SLICE: Duration = Duration::from_millis(100);
 const POLL: Duration = Duration::from_secs(1);
 /// An empty adapter payload must last this long before it means Stopped: the stream prints one
@@ -188,7 +188,7 @@ fn media_thread(shared: &Shared, stop: &AtomicBool) {
 }
 
 /// The adapter files: inside the app bundle (release), else this build's `OUT_DIR` (dev, tests).
-fn adapter_dir() -> Option<PathBuf> {
+pub(super) fn adapter_dir() -> Option<PathBuf> {
     let bundled = std::env::current_exe()
         .ok()
         .and_then(|exe| Some(exe.parent()?.join("../Resources/mediaremote-adapter")));
@@ -280,7 +280,7 @@ fn run_adapter(dir: &Path, shared: &Shared, stop: &AtomicBool) -> Duration {
 }
 
 /// A child that is terminated and reaped when dropped, so no helper outlives its owner.
-struct Reaped(Child);
+pub(super) struct Reaped(pub(super) Child);
 
 impl Drop for Reaped {
     fn drop(&mut self) {

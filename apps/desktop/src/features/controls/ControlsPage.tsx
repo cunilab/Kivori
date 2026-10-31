@@ -89,6 +89,8 @@ import { controlSupported } from '@/lib/device-support';
 import type { ConnectionStatusDto } from '@/lib/ipc/types';
 import { format, strings } from '@/lib/i18n/strings';
 import { errorText } from '@/lib/utils';
+import { AccessibilityHelp } from '../permissions/AccessibilityHelp';
+import { needsKeyEvents } from '../permissions/needs-key-events';
 import { ActionPicker, catalogId } from './ActionPicker';
 import { MacroEditor, describeStep } from './MacroEditor';
 import { ProfilesCard } from './ProfilesCard';
@@ -522,6 +524,13 @@ export function ControlsPage({
           {desk?.pinned ? t.pinnedHint : t.followHint}
         </p>
       </div>
+
+      {needsKeyEvents(config) ? (
+        <AccessibilityHelp
+          title={strings.accessibility.controlsTitle}
+          body={strings.accessibility.controlsBody}
+        />
+      ) : null}
 
       {config ? (
         <Tabs value={selected} onValueChange={(value) => setChosen(value as ProfileId)}>

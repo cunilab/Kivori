@@ -18,6 +18,7 @@ import {
   restartOnboarding,
   getAccessibility,
   requestAccessibility,
+  resetAccessibility,
   getActivityLog,
   getConfig,
   getConnectionStatus,
@@ -785,6 +786,11 @@ describe('onboarding commands', () => {
     await expect(getAccessibility()).resolves.toBe('missing');
     tauri.invoke.mockResolvedValueOnce('maybe');
     await expect(requestAccessibility()).rejects.toThrow();
+    tauri.invoke.mockResolvedValueOnce('missing');
+    await expect(resetAccessibility()).resolves.toBe('missing');
+    expect(tauri.invoke).toHaveBeenCalledWith('reset_accessibility', undefined);
+    tauri.invoke.mockRejectedValueOnce('There is no approval to reset here.');
+    await expect(resetAccessibility()).rejects.toBe('There is no approval to reset here.');
   });
 });
 

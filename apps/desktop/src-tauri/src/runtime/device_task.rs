@@ -1083,7 +1083,7 @@ fn device_loop(
                 {
                     "required"
                 } else {
-                    input_permission.get()
+                    input_permission.get(desk.needs_key_events())
                 },
             },
         );
@@ -1860,7 +1860,8 @@ fn connection_event_kind(event: &ManagerEvent) -> ActivityEventKind {
 }
 
 /// The Accessibility check behind the diagnostics "input permission" row, re-read at most once a
-/// second (the loop ticks far faster than anyone can toggle the setting).
+/// second (the loop ticks far faster than anyone can toggle the setting). It reads `notNeeded`
+/// while no current binding presses keys, since nothing else needs the permission.
 #[derive(Default)]
 struct InputPermissionProbe {
     last: Option<(Instant, &'static str)>,
@@ -1869,25 +1870,43 @@ struct InputPermissionProbe {
 impl InputPermissionProbe {
     const INTERVAL: Duration = Duration::from_secs(1);
 
-    fn get(&mut self) -> &'static str {
+    fn get(&mut self, needed: bool) -> &'static str {
+        if !needed {
+            return "notNeeded";
+        }
         if let Some((at, token)) = self.last {
             if at.elapsed() < Self::INTERVAL {
                 return token;
             }
         }
-        let token = match platform::permissions::accessibility() {
+        let token = Self::token(platform::permissions::accessibility());
+        self.last = Some((Instant::now(), token));
+        token
+    }
+
+    const fn token(state: platform::permissions::Accessibility) -> &'static str {
+        match state {
             platform::permissions::Accessibility::Granted => "granted",
             platform::permissions::Accessibility::Missing => "required",
             platform::permissions::Accessibility::NotApplicable => "notNeeded",
-        };
-        self.last = Some((Instant::now(), token));
-        token
+        }
     }
 }
 
 #[cfg(test)]
 mod diagnostics_tests {
     use super::*;
+
+    #[test]
+    fn the_input_permission_row_is_not_needed_while_no_binding_presses_keys() {
+        let mut probe = InputPermissionProbe::default();
+        assert_eq!(probe.get(false), "notNeeded");
+        assert!(probe.last.is_none(), "it does not even ask the OS");
+        use platform::permissions::Accessibility::{Granted, Missing, NotApplicable};
+        assert_eq!(InputPermissionProbe::token(Missing), "required");
+        assert_eq!(InputPermissionProbe::token(Granted), "granted");
+        assert_eq!(InputPermissionProbe::token(NotApplicable), "notNeeded");
+    }
 
     #[test]
     fn connection_boundaries_bypass_the_diagnostics_publish_interval() {

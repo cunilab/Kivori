@@ -11,7 +11,7 @@ export function Done({
   open = [],
 }: {
   error: string | null;
-  open?: readonly ('plug' | 'permissions')[];
+  open?: readonly 'plug'[];
 }): ReactElement {
   const complete = open.length === 0;
   return (
