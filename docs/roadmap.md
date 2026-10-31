@@ -369,8 +369,8 @@ remaining limits. No release or hardware acceptance is claimed.
 
 Written policy: [release promises and M2.8 guard requirements](./release.md#release-policy), and
 [protocol change discipline](./adr/0002-one-wire-protocol-crate.md). These policies are recorded;
-the checked boxes record verified, merged software implementation. Hardware acceptance and ADR
-approval remain separate; no new hardware evidence is claimed.
+the checked boxes record verified, merged software implementation. ADR-0017 was accepted by the
+owner on 2026-10-31. Hardware acceptance remains separate; no new hardware evidence is claimed.
 
 Out of scope: multi-device UI, a device-gallery Home, visual redesign of customer pages, new
 firmware instrumentation, runtime plugins, cloud sync, downgrade guarantees, update channels,
