@@ -864,7 +864,9 @@ pub fn os_services(main: Option<MainThread>) -> OsServices {
             volume: Arc::new(macos::MacVolumeBackend::new()),
             app_volume: Arc::new(macos::MacAppVolumeBackend),
             mic: Arc::new(macos::MacMicBackend::new()),
-            synth: Arc::new(synth::EnigoInputSynth::new(main)),
+            synth: Arc::new(macos::MacInputSynth::new(Arc::new(
+                synth::EnigoInputSynth::new(main),
+            ))),
             media: Arc::new(macos::MacMediaObserver::new()),
             system: Box::new(macos::MacSystemProbe),
             clock: macos::local_time,

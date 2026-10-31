@@ -35,6 +35,10 @@ on:
         required: false
       APPLE_TEAM_ID:
         required: false
+      KIVORI_MACOS_RELEASE_P12:
+        required: false
+      KIVORI_MACOS_RELEASE_P12_PASSWORD:
+        required: false
   workflow_dispatch:
     inputs:
       macos:
@@ -59,6 +63,7 @@ on:
       - 'bun.lock'
       - 'scripts/fetch-espflash.*'
       - 'scripts/bundle-macos.sh'
+      - 'scripts/sign-macos-bundle.sh'
       - 'scripts/build-firmware.mjs'
       - 'scripts/build-firmware-set.mjs'
       - 'apps/desktop/src-tauri/build.rs'
@@ -355,6 +360,15 @@ jobs:
       APPLE_ID: ${{ secrets.APPLE_ID }} # notarization: not used by the script yet
       APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      # Without a Developer ID, the bundle is signed with this STABLE self-signed identity (base64 of a
+      # .p12), so users' macOS Accessibility approvals survive updates: an approval is tied to the bundle
+      # identifier plus this certificate. NEVER rotate it (docs/release.md). Not a Developer ID: the first
+      # install still needs Open Anyway.
+      KIVORI_MACOS_RELEASE_P12: ${{ secrets.KIVORI_MACOS_RELEASE_P12 }}
+      KIVORI_MACOS_RELEASE_P12_PASSWORD: ${{ secrets.KIVORI_MACOS_RELEASE_P12_PASSWORD }}
+      # The leaf certificate (SHA-1) of that identity. The bundle's designated requirement must show it,
+      # so a silently swapped key fails the release.
+      KIVORI_MACOS_RELEASE_LEAF: f49eb18d72654cbffdc4aec5e17dc7d67e47de2c
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -380,8 +394,34 @@ jobs:
           security unlock-keychain -p ci "$RUNNER_TEMP/build.keychain"
           security import "$RUNNER_TEMP/cert.p12" -k "$RUNNER_TEMP/build.keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ci "$RUNNER_TEMP/build.keychain"
+      - name: Import the stable release identity
+        if: env.APPLE_SIGNING_IDENTITY == '' && env.KIVORI_MACOS_RELEASE_P12 != ''
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/release.keychain-db"
+          security create-keychain -p ci "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p ci "$keychain"
+          printf '%s' "$KIVORI_MACOS_RELEASE_P12" | base64 --decode > "$RUNNER_TEMP/release.p12"
+          security import "$RUNNER_TEMP/release.p12" -k "$keychain" -P "$KIVORI_MACOS_RELEASE_P12_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/release.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ci "$keychain" > /dev/null
+          # Put it in the search list next to the existing keychains so codesign finds it by name.
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          security find-identity -p codesigning "$keychain" | grep -F '"Kivori Release"' > /dev/null \
+            || { echo "::error::the release identity 'Kivori Release' is not in the imported .p12"; exit 1; }
+          echo "KIVORI_MACOS_SIGNING_IDENTITY=Kivori Release" >> "$GITHUB_ENV"
+          echo "KIVORI_MACOS_EXPECT_LEAF=$KIVORI_MACOS_RELEASE_LEAF" >> "$GITHUB_ENV"
+      - name: Warn when the bundle will be signed ad-hoc
+        if: env.APPLE_SIGNING_IDENTITY == '' && env.KIVORI_MACOS_RELEASE_P12 == ''
+        run: |
+          echo "::warning::No Apple Developer ID and no KIVORI_MACOS_RELEASE_P12 secret, so the macOS bundle is signed ad-hoc and users lose their Accessibility approval on every update."
       - name: Build the macOS bundle
         run: bash scripts/bundle-macos.sh
+      - name: Remove the temporary release keychain
+        if: always() && env.APPLE_SIGNING_IDENTITY == '' && env.KIVORI_MACOS_RELEASE_P12 != ''
+        run: security delete-keychain "$RUNNER_TEMP/release.keychain-db" || true
       - uses: actions/upload-artifact@v7
         with:
           name: macos-bundle

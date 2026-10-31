@@ -262,6 +262,16 @@ export async function requestAccessibility(): Promise<AccessibilityState> {
   return unavailable();
 }
 
+/**
+ * Clears this app's own stale Accessibility approval, asks macOS once and opens the Accessibility
+ * list; resolves with the state right after the ask. Rejects when there is nothing to reset.
+ */
+export async function resetAccessibility(): Promise<AccessibilityState> {
+  if (isTauri()) return parseAccessibility(await invoke<unknown>('reset_accessibility'));
+  if (import.meta.env.DEV) return (await devMock()).mockResetAccessibility();
+  return unavailable();
+}
+
 /** Opens System Settings at the Accessibility list. */
 export async function openAccessibilitySettings(): Promise<void> {
   if (isTauri()) return invoke<void>('open_accessibility_settings');

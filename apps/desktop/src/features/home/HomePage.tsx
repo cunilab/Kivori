@@ -11,14 +11,12 @@ import {
   Music2,
   Pause,
   Play,
-  ShieldAlert,
   Square,
   TriangleAlert,
   Volume2,
   VolumeX,
   Zap,
 } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@kivori/ui/components/alert';
 import { Badge } from '@kivori/ui/components/badge';
 import { Button } from '@kivori/ui/components/button';
 import {
@@ -40,6 +38,7 @@ import { hasCapability, canMirrorState } from '@/lib/device-support';
 import type { ConnectionStatusDto, DeskStatusDto } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
 import { useDevMode } from '@/lib/dev-mode';
+import { AccessibilityHelp } from '../permissions/AccessibilityHelp';
 import { LinkHealth } from './LinkHealth';
 import { TONE_BAR, TONE_TEXT, meterTone } from './meter-tone';
 import { cn } from '@kivori/ui/lib/utils';
@@ -412,11 +411,7 @@ function LastAction({ desk }: { desk: DeskStatusDto }): ReactElement {
             </div>
             <p className="text-sm text-muted-foreground">{strings.resultHelp[last.result]}</p>
             {last.permissionRequired ? (
-              <Alert className="border-warning/40 bg-warning/5">
-                <ShieldAlert className="text-warning" aria-hidden="true" />
-                <AlertTitle>{t.permissionTitle}</AlertTitle>
-                <AlertDescription>{t.permission}</AlertDescription>
-              </Alert>
+              <AccessibilityHelp title={t.permissionTitle} body={t.permission} />
             ) : null}
           </>
         ) : (

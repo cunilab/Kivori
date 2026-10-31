@@ -143,3 +143,26 @@ capability-UI criteria to their evidence. Hardware acceptance and PR review/merg
 Catalog metadata does not implement a new interaction model. See
 [ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md) and the
 [M2.8 checklist](./roadmap.md#m28-desktop-organization-and-product-contract).
+
+## macOS Accessibility
+
+macOS lets an app press keys only with the Accessibility permission. Kivori asks for it just in
+time, never during setup: the Controls page shows the request when a keyboard shortcut is bound, and
+Home shows it when an action failed for lack of it. Nothing prompts by itself or repeatedly; each
+button press asks once. If macOS still reports it off after the user came back from System Settings,
+the notice offers "Reset and ask again", which runs `tccutil reset Accessibility` for Kivori's own
+bundle identifier only, asks once and opens the settings pane.
+
+| Action | Needs Accessibility on macOS | Why |
+| --- | --- | --- |
+| Play/pause, next, previous | No | Sent to the now-playing app through the bundled adapter (Apple's own `perl`). Only if the adapter is unavailable or fails does the media key event take over, and then it needs the permission |
+| System volume, output mute, knob volume | No | CoreAudio |
+| Microphone mute, app mute | No | CoreAudio / session controls |
+| Launch an app | No | Opens the app through the OS |
+| Keyboard shortcut (a button or the knob in a shortcut profile) | Yes | A synthesized key event is the only way to type into another app |
+| Macro | Only if a step is a keyboard shortcut | Same |
+
+The default bindings (push switch: play/pause and mute; buttons: previous, play/pause, next; knob:
+volume) need none. The built-in Browser, Code, Zoom and Teams profiles use shortcuts, so they need it
+while those apps are in front. The Diagnostics "Input permission" row reads Not needed while the
+active profile presses no keys. Windows has no such permission and is unchanged.

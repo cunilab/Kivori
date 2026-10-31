@@ -61,6 +61,14 @@ pub struct Profile {
     pub bindings: Bindings,
 }
 
+impl Profile {
+    /// Whether this profile makes Kivori press keys (a shortcut on a button or on the knob).
+    #[must_use]
+    pub fn needs_key_events(&self) -> bool {
+        matches!(self.rotate, RotateBinding::Shortcuts { .. }) || self.bindings.needs_key_events()
+    }
+}
+
 fn shortcut(text: &str) -> Shortcut {
     text.parse()
         .unwrap_or_else(|e| panic!("built-in shortcut {text:?}: {e}"))
@@ -430,6 +438,22 @@ mod tests {
 
     const fn ms(n: u64) -> Duration {
         Duration::from_millis(n)
+    }
+
+    #[test]
+    fn general_and_media_press_no_keys_but_the_app_profiles_do() {
+        let needs = |id: ProfileId| {
+            builtins_for(true)
+                .into_iter()
+                .find(|p| p.id == ProfileRef::Builtin(id))
+                .unwrap()
+                .needs_key_events()
+        };
+        assert!(!needs(ProfileId::General));
+        assert!(!needs(ProfileId::Media));
+        assert!(needs(ProfileId::Browser));
+        assert!(needs(ProfileId::Code));
+        assert!(needs(ProfileId::Zoom));
     }
 
     fn app(id: &str) -> Foreground {
