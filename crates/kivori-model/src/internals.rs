@@ -56,9 +56,12 @@ pub struct DeviceInternals {
     pub stack_free_min_bytes: Option<u32>,
     /// Share of the last second the run loop spent doing work, 0 to 100.
     pub busy_percent: Option<u8>,
-    /// Time the last frame took to compose, ms.
+    /// Average time per frame spent drawing it, ms, over the last completed second (the window
+    /// `fps` covers). Input and transport servicing between tile rows is not counted. After an
+    /// idle second it keeps the last second that drew a frame.
     pub compose_ms: Option<u16>,
-    /// Time the last frame took to flush to the panel, ms.
+    /// Average time per frame spent transferring it to the panel, ms, over the same second as
+    /// `compose_ms`. Input and transport servicing between display windows is not counted.
     pub flush_ms: Option<u16>,
     /// Frames rendered per second over the last second.
     pub fps: Option<u8>,

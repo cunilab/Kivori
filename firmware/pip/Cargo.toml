@@ -85,5 +85,5 @@ kivori-asset-compiler = { path = "../../tools/asset-compiler" }
 kivori-asset-compiler = { path = "../../tools/asset-compiler" }
 
 [profile.release]
-opt-level = "s"
+opt-level = 3
 lto = true

@@ -13,7 +13,7 @@ folder is kept. On Windows the publisher becomes `cunilab`, so the installer rec
 under a new registry key; the in-app update still installs over the default
 `%LOCALAPPDATA%\Kivori`, and the install hook removes the stale `Software\immer\Kivori` key. A
 0.2.x install moved to a custom folder gets a fresh copy in the default folder instead; uninstall the
-old one from Windows Settings. On macOS, Accessibility must be granted again (new bundle id).
+old one from Windows Settings. On macOS, Accessibility must be granted again (new bundle id) if a keyboard shortcut is bound.
 
 1. GitHub, Actions, **Release**, Run workflow on `main`: `stage=prepare`, pick `app_bump` (and a
    firmware bump if firmware changed), tick `dry_run`. Check the versions and notes in the run summary.
@@ -303,8 +303,50 @@ GitHub serves from the newest published, non-pre-release release; drafts are inv
 ## macOS
 
 Run `just bundle-macos` (or `scripts/bundle-macos.sh`) on a Mac with Xcode Command Line Tools. The
-`.app` and `.dmg` land in `target/release/bundle/`. Set `APPLE_SIGNING_IDENTITY` to sign. To build it
-in CI, run the workflow by hand with `macos` ticked.
+`.app` and `.dmg` land in `target/release/bundle/`. To build it in CI, run the workflow by hand with
+`macos` ticked.
+
+### Signing, and why it must be stable
+
+macOS remembers an Accessibility approval by the app's *designated requirement*: its bundle
+identifier plus the certificate that signed it. A build signed ad-hoc (the linker's default) is
+identified by its exact code hash instead, so every rebuild or update would look like a different
+app and the approval would silently stop applying. So every macOS bundle is signed after bundling,
+with the same identity, by `scripts/sign-macos-bundle.sh` (`--deep --force --timestamp=none`, the
+bundle identifier from `tauri.conf.json`, no hardened runtime: the app sends Apple Events and has no
+entitlements). Which identity:
+
+1. **Developer ID** (`APPLE_SIGNING_IDENTITY` and `APPLE_CERTIFICATE`): Tauri's and the script's
+   Developer ID path signs with hardened runtime, as before. Not available yet (#36).
+2. **Release identity** (CI, no Developer ID): the repo secrets `KIVORI_MACOS_RELEASE_P12` (base64 of
+   a legacy-format `.p12`) and `KIVORI_MACOS_RELEASE_P12_PASSWORD`. The macOS job imports it into a
+   temporary keychain (deleted at the end), signs as `Kivori Release`, then verifies
+   `codesign --verify --deep --strict` and that the designated requirement shows the pinned
+   `certificate leaf = H"f49eb18d72654cbffdc4aec5e17dc7d67e47de2c"` (`KIVORI_MACOS_RELEASE_LEAF` in
+   `release.yml`). If the secret is set and signing or verification fails, the release fails; it
+   never falls back to ad-hoc. With no secret at all it signs ad-hoc and prints a warning.
+3. **Local builds**: `KIVORI_MACOS_SIGNING_IDENTITY` if set, else `Kivori Dev` when it is in your
+   keychain, else ad-hoc with a warning. Run `just macos-dev-identity` once to create `Kivori Dev` (a
+   self-signed identity in your login keychain; safe to rerun). A local build then keeps its
+   Accessibility approval across rebuilds, though not across a switch to the release identity.
+
+**Never rotate the release identity.** The certificate is part of what macOS remembers, so a new one
+makes every user approve Accessibility again, once. If the pinned leaf in `release.yml` has to
+change, treat it as a breaking release and say so in the notes. The .p12 is valid to 2046; keep an
+offline copy of it.
+
+The macOS bundle makes no updater archive (`createUpdaterArtifacts` is off there), so there is no
+`.app.tar.gz` or `TAURI_SIGNING_PRIVATE_KEY` signature to redo after signing. The script rebuilds the
+`.dmg` from the signed app and stops if an updater archive ever appears, since it would hold the
+unsigned app. If macOS updates are added, create and sign that archive after
+`scripts/sign-macos-bundle.sh`, never before.
+
+### First install of a build that is not notarized
+
+Neither identity above is notarized, so macOS blocks the first open ("cannot be opened because the
+developer cannot be verified"). The user opens System Settings, Privacy & Security, scrolls to the
+message about Kivori and chooses **Open Anyway** (see [the user guide](./user-guide.md)). Do not tell
+people to turn Gatekeeper off. Notarization needs the Developer ID and is not implemented.
 
 Run `just macos-check` before packaging. For a deliberate output-volume/mute round trip with
 restoration, run `just macos-audio-test`. See [macOS support and acceptance](./macos.md) for
@@ -315,7 +357,7 @@ are not selected.
 
 The macOS override disables updater artifacts: automatic app updates currently support Windows
 only, so a local Mac bundle does not need the updater signing private key. Without an Apple
-signing identity the bundle is not Developer ID signed; notarization is not implemented.
+Developer ID the bundle is not Developer ID signed; notarization is not implemented.
 
 ## Updating espflash
 

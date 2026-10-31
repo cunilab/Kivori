@@ -280,56 +280,108 @@ fn draw_sprite(
         sprite_bounds(origin_x, origin_y, frame_size, transform),
         band,
     );
+    if bounds.0 >= bounds.2 || bounds.1 >= bounds.3 {
+        return Ok(());
+    }
+    // Everything that does not depend on the pixel is worked out once: the sprite origin, the
+    // bitmap data, and the source column of each x (the same `div_euclid` as per pixel, but once
+    // per column and per row). The device has no 64-bit divide, so per pixel this dominated a frame.
+    let (left, top) = transformed_origin(origin_x, origin_y, transform);
+    let data = SpriteData {
+        pixels: blob.bitmap_pixels(entry),
+        alpha: entry.alpha.map(|_| blob.bitmap_alpha(entry)),
+        area: usize::from(frame_size.w) * usize::from(frame_size.h),
+        width: usize::from(frame_size.w),
+        frame: usize::from(frame),
+    };
+    let alpha_of = opacity_table(transform.opacity);
+    let width = (bounds.2 - bounds.0) as usize;
+    let mut columns = [None; MAX_COLUMNS];
+    let mut columns = columns.get_mut(..width);
+    if let Some(columns) = columns.as_deref_mut() {
+        for (i, column) in columns.iter_mut().enumerate() {
+            *column = source_index(
+                bounds.0 + i as i32,
+                left,
+                transform.scale_x_q8,
+                frame_size.w,
+            );
+        }
+    }
     let mut y = bounds.1;
     while y < bounds.3 {
-        let mut x = bounds.0;
-        while x < bounds.2 {
-            if let Some((sx, sy)) = source_at(x, y, origin_x, origin_y, frame_size, transform) {
-                let (color, alpha) = bitmap_sample(blob, entry, frame_size, frame, sx, sy)?;
-                composite_pixel(band, x, y, color, alpha, transform.opacity);
+        if let Some(sy) = source_index(y, top, transform.scale_y_q8, frame_size.h) {
+            let mut x = bounds.0;
+            while x < bounds.2 {
+                let sx = match columns.as_deref() {
+                    Some(columns) => columns[(x - bounds.0) as usize],
+                    None => source_index(x, left, transform.scale_x_q8, frame_size.w),
+                };
+                if let Some(sx) = sx {
+                    let (color, alpha4) = data.sample(sx, sy)?;
+                    composite_pixel(band, x, y, color, alpha_of[usize::from(alpha4 & 0x0F)]);
+                }
+                x += 1;
             }
-            x += 1;
         }
         y += 1;
     }
     Ok(())
 }
 
-fn bitmap_sample(
-    blob: &AssetBlob,
-    entry: &kivori_assets::BitmapEntry,
-    size: kivori_model::Size,
-    frame: u16,
-    sx: u16,
-    sy: u16,
-) -> Result<(Rgb565, u8), RenderError> {
-    let pixels = blob
-        .bitmap_pixels(entry)
-        .ok_or(RenderError::MissingBitmap)?;
-    let area = usize::from(size.w) * usize::from(size.h);
-    let index = usize::from(frame) * area + usize::from(sy) * usize::from(size.w) + usize::from(sx);
-    let byte = index.checked_mul(2).ok_or(RenderError::ShortBitmapData)?;
-    let raw = pixels
-        .get(byte..byte + 2)
-        .ok_or(RenderError::ShortBitmapData)?;
-    let alpha = match entry.alpha {
-        None => 15,
-        Some(_) => {
-            let packed = blob
-                .bitmap_alpha(entry)
-                .ok_or(RenderError::ShortAlphaData)?;
-            let value = *packed.get(index / 2).ok_or(RenderError::ShortAlphaData)?;
-            if index & 1 == 0 {
-                value & 0x0F
-            } else {
-                value >> 4
-            }
+/// Widest clipped sprite row whose source columns are precomputed on the stack (a 240-px panel
+/// fits); a wider band computes them per pixel instead.
+const MAX_COLUMNS: usize = 256;
+
+/// The source row or column of destination `coord` (`floor((coord*256 - origin) / scale)`), or
+/// `None` outside the sprite.
+fn source_index(coord: i32, origin_q8: i64, scale_q8: u16, size: u16) -> Option<u16> {
+    let source = (i64::from(coord) * 256 - origin_q8).div_euclid(i64::from(scale_q8));
+    (0..i64::from(size))
+        .contains(&source)
+        .then_some(source as u16)
+}
+
+/// One sprite frame's pixel and alpha data, looked up once per draw. A missing slice is still
+/// reported only when a pixel actually needs it, as before.
+struct SpriteData<'a> {
+    pixels: Option<&'a [u8]>,
+    /// `None`: opaque bitmap; `Some(None)`: alpha declared but missing from the blob.
+    alpha: Option<Option<&'a [u8]>>,
+    area: usize,
+    width: usize,
+    frame: usize,
+}
+
+impl SpriteData<'_> {
+    fn sample(&self, sx: u16, sy: u16) -> Result<(Rgb565, u8), RenderError> {
+        let pixels = self.pixels.ok_or(RenderError::MissingBitmap)?;
+        let index = self.frame * self.area + usize::from(sy) * self.width + usize::from(sx);
+        let byte = index.checked_mul(2).ok_or(RenderError::ShortBitmapData)?;
+        if byte + 2 > pixels.len() {
+            return Err(RenderError::ShortBitmapData);
         }
-    };
-    Ok((
-        Rgb565::from_raw(u16::from_le_bytes([raw[0], raw[1]])),
-        alpha,
-    ))
+        let alpha = match self.alpha {
+            None => 15,
+            Some(packed) => {
+                let packed = packed.ok_or(RenderError::ShortAlphaData)?;
+                let value = *packed.get(index / 2).ok_or(RenderError::ShortAlphaData)?;
+                if index & 1 == 0 {
+                    value & 0x0F
+                } else {
+                    value >> 4
+                }
+            }
+        };
+        // A fully transparent pixel changes nothing: skip reading its colour from flash.
+        if alpha == 0 {
+            return Ok((Rgb565::from_raw(0), 0));
+        }
+        Ok((
+            Rgb565::from_raw(u16::from_le_bytes([pixels[byte], pixels[byte + 1]])),
+            alpha,
+        ))
+    }
 }
 
 fn sprite_bounds(
@@ -359,27 +411,6 @@ fn clip_bounds(bounds: (i32, i32, i32, i32), band: &TileBand) -> (i32, i32, i32,
     )
 }
 
-fn source_at(
-    x: i32,
-    y: i32,
-    origin_x: i16,
-    origin_y: i16,
-    size: kivori_model::Size,
-    transform: DrawTransform,
-) -> Option<(u16, u16)> {
-    if transform.scale_x_q8 == 0 || transform.scale_y_q8 == 0 {
-        return None;
-    }
-    let (left, top) = transformed_origin(origin_x, origin_y, transform);
-    let sx = (i64::from(x) * 256 - left).div_euclid(i64::from(transform.scale_x_q8));
-    let sy = (i64::from(y) * 256 - top).div_euclid(i64::from(transform.scale_y_q8));
-    if sx < 0 || sy < 0 || sx >= i64::from(size.w) || sy >= i64::from(size.h) {
-        None
-    } else {
-        Some((sx as u16, sy as u16))
-    }
-}
-
 fn transformed_origin(origin_x: i16, origin_y: i16, transform: DrawTransform) -> (i64, i64) {
     if transform.anchored {
         (
@@ -407,12 +438,24 @@ fn ceil_q8(value: i64) -> i32 {
     (-(-value).div_euclid(256)) as i32
 }
 
-fn composite_pixel(band: &mut TileBand, x: i32, y: i32, source: Rgb565, alpha4: u8, opacity: u8) {
-    if alpha4 == 0 || x < 0 || y < 0 || x > i32::from(u16::MAX) || y > i32::from(u16::MAX) {
-        return;
+/// The 4-bit alpha after `opacity`, for every source alpha: `(alpha4 * opacity + 127) / 255`,
+/// worked out once per sprite instead of dividing for every pixel.
+fn opacity_table(opacity: u8) -> [u8; 16] {
+    let mut table = [0u8; 16];
+    for (alpha4, slot) in table.iter_mut().enumerate() {
+        *slot = ((alpha4 as u16 * u16::from(opacity) + 127) / 255) as u8;
     }
-    let alpha = ((u16::from(alpha4) * u16::from(opacity) + 127) / 255) as u8;
-    if alpha == 0 {
+    table
+}
+
+/// `x / 15` for every `x` a blend produces (at most `255 * 15 + 7`), as a multiply and shift:
+/// the device's divide is slow. Exhaustively tested.
+const fn div15(x: u32) -> u32 {
+    (x * 0x889) >> 15
+}
+
+fn composite_pixel(band: &mut TileBand, x: i32, y: i32, source: Rgb565, alpha: u8) {
+    if alpha == 0 || x < 0 || y < 0 || x > i32::from(u16::MAX) || y > i32::from(u16::MAX) {
         return;
     }
     let (x, y) = (x as u16, y as u16);
@@ -425,9 +468,9 @@ fn composite_pixel(band: &mut TileBand, x: i32, y: i32, source: Rgb565, alpha4: 
     }
     let (sr, sg, sb) = source.to_rgb888();
     let (dr, dg, db) = destination.to_rgb888();
-    let a = u16::from(alpha);
+    let a = u32::from(alpha);
     let blend = |source: u8, destination: u8| -> u8 {
-        ((u16::from(source) * a + u16::from(destination) * (15 - a) + 7) / 15) as u8
+        div15(u32::from(source) * a + u32::from(destination) * (15 - a) + 7) as u8
     };
     band.set(
         x,
@@ -438,6 +481,26 @@ fn composite_pixel(band: &mut TileBand, x: i32, y: i32, source: Rgb565, alpha4: 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn div15_matches_division_for_every_blend_value() {
+        for x in 0..=(255 * 15 + 7) {
+            assert_eq!(super::div15(x), x / 15, "x = {x}");
+        }
+    }
+
+    #[test]
+    fn opacity_table_matches_the_per_pixel_formula() {
+        for opacity in 0..=255u8 {
+            let table = super::opacity_table(opacity);
+            for alpha4 in 0..16u16 {
+                assert_eq!(
+                    u16::from(table[alpha4 as usize]),
+                    (alpha4 * u16::from(opacity) + 127) / 255
+                );
+            }
+        }
+    }
+
     use super::*;
     use heapless::Vec;
     use kivori_model::{CompanionState, Keyframe, Point, Size};

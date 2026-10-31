@@ -2,8 +2,9 @@
 //!
 //! macOS only delivers synthesized input from processes the user trusted under
 //! Privacy & Security > Accessibility. Without it this reports
-//! [`ActionError::PermissionRequired`] (and asks the OS to show its prompt), and sends nothing:
-//! a missing permission is a capability state, never a reason to try another mechanism.
+//! [`ActionError::PermissionRequired`] (without prompting: the prompt belongs to the Permissions
+//! step), and sends nothing: a missing permission is a capability state, never a reason to try
+//! another mechanism.
 
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{mpsc, Arc};
@@ -89,8 +90,10 @@ impl EnigoInputSynth {
 
 fn connect() -> Result<Enigo, ActionError> {
     let settings = Settings {
-        // Only reached from a deliberate user action, which is when the OS prompt belongs.
-        open_prompt_to_get_permissions: true,
+        // Never prompt here: this runs on every desk action (a device button press), so with an
+        // approval macOS does not honour it would pop the dialog again and again. The prompt is
+        // shown only by the explicit `request_accessibility` / `reset_accessibility` commands.
+        open_prompt_to_get_permissions: false,
         release_keys_when_dropped: true,
         ..Settings::default()
     };

@@ -578,3 +578,51 @@ fn a_tile_block_rejects_inconsistent_geometry_before_the_bus_is_touched() {
     ));
     assert!(log.borrow().is_empty());
 }
+
+/// Composing a frame row by row (so the run loop can service input between rows) sends the panel
+/// exactly what composing it whole does, for a first frame and for a changed one.
+#[test]
+fn composing_row_by_row_sends_the_same_panel_bytes_as_a_whole_frame() {
+    use kivori_firmware::render::TILE_ROWS;
+    use kivori_model::desk::DeskView;
+
+    let bytes = compile_default_blob();
+    let blob = AssetBlob::parse(&bytes).expect("valid blob");
+    let animator = MascotAnimator::new(CompanionState::Idle, 0);
+    let view = DeskView::default();
+    let transfer = |by_rows: bool| {
+        let (mut sink, log) = harness(full_panel());
+        let mut storage: Box<[Rgb565; kivori_firmware::render::FRAME_PIXELS]> =
+            vec![Rgb565::from_raw(0); kivori_firmware::render::FRAME_PIXELS]
+                .into_boxed_slice()
+                .try_into()
+                .unwrap();
+        let mut renderer = TileRenderer::with_frame_buffer(&mut storage);
+        for at_ms in [0, 2_911] {
+            let pose = animator.pose_at(at_ms);
+            if by_rows {
+                for row in 0..TILE_ROWS {
+                    renderer
+                        .prepare_frame_row(
+                            &blob,
+                            CompanionState::Idle,
+                            &pose,
+                            None,
+                            &view,
+                            row,
+                            &mut sink,
+                        )
+                        .expect("row");
+                }
+            } else {
+                renderer
+                    .prepare_frame(&blob, CompanionState::Idle, &pose, None, &view, &mut sink)
+                    .expect("frame");
+            }
+            while renderer.flush_next_window(&mut sink).expect("window") {}
+        }
+        let log = log.borrow();
+        commands(&log)
+    };
+    assert_eq!(transfer(true), transfer(false));
+}

@@ -10,28 +10,20 @@ import { format, strings } from '@/lib/i18n/strings';
 import { cn } from '@kivori/ui/lib/utils';
 import { Customize } from './steps/Customize';
 import { Done } from './steps/Done';
-import { Permissions } from './steps/Permissions';
 import { PlugIn } from './steps/PlugIn';
 import { Tour } from './steps/Tour';
 import { Welcome } from './steps/Welcome';
-import { useAccessibility } from './use-onboarding';
 
 const t = strings.onboarding;
 
-type StepId = 'welcome' | 'plug' | 'permissions' | 'tour' | 'customize' | 'done';
-const ALL_STEPS: readonly StepId[] = [
-  'welcome',
-  'plug',
-  'permissions',
-  'tour',
-  'customize',
-  'done',
-];
+type StepId = 'welcome' | 'plug' | 'tour' | 'customize' | 'done';
+const steps: readonly StepId[] = ['welcome', 'plug', 'tour', 'customize', 'done'];
 
 /**
  * First-run setup: a full-window stepper shown instead of the normal layout until it is finished
- * or skipped. Plug-in and permission readiness follow current status; the Tour is guidance,
- * not hardware verification. Launch at login is the one setting held back until
+ * or skipped. Plug-in readiness follows current status; the Tour is guidance, not hardware
+ * verification. No OS permission is asked here: Accessibility (macOS) is requested only once a
+ * binding needs it. Launch at login is the one setting held back until
  * Finish.
  */
 export function Onboarding({
@@ -53,7 +45,6 @@ export function Onboarding({
   // Explicit consent, on by default; nothing is changed until Finish.
   const [launch, setLaunch] = useState(true);
 
-  const accessibility = useAccessibility(step === 'permissions');
   const deviceReady = sessionState(connection) === 'ready';
 
   useEffect(() => {
@@ -68,15 +59,8 @@ export function Onboarding({
     };
   }, []);
 
-  // The permission step is for macOS only: skipped wherever there is no such permission.
-  const steps = ALL_STEPS.filter(
-    (id) => id !== 'permissions' || accessibility.state !== 'notApplicable',
-  );
   const index = steps.indexOf(step);
   const go = (to: number): void => setStep(steps[Math.min(Math.max(to, 0), steps.length - 1)]!);
-  useEffect(() => {
-    if (step === 'permissions' && accessibility.state === 'notApplicable') setStep('tour');
-  }, [step, accessibility.state]);
 
   const skipSetup = (): void => {
     setBusy(true);
@@ -108,7 +92,6 @@ export function Onboarding({
   const gate: Record<StepId, { ready: boolean; skippable: boolean }> = {
     welcome: { ready: true, skippable: false },
     plug: { ready: deviceReady, skippable: true },
-    permissions: { ready: accessibility.state === 'granted', skippable: true },
     tour: { ready: true, skippable: false },
     customize: { ready: true, skippable: false },
     done: { ready: true, skippable: false },
@@ -156,8 +139,6 @@ export function Onboarding({
             <Welcome connection={connection} />
           ) : step === 'plug' ? (
             <PlugIn connection={connection} updateAvailable={updateAvailable} />
-          ) : step === 'permissions' ? (
-            <Permissions state={accessibility.state} onChange={accessibility.refresh} />
           ) : step === 'tour' ? (
             <Tour connection={connection} />
           ) : step === 'customize' ? (
@@ -169,10 +150,7 @@ export function Onboarding({
               onLaunchAtLogin={setLaunch}
             />
           ) : (
-            <Done
-              error={finishError}
-              open={open.filter((id): id is 'plug' | 'permissions' => id !== 'done')}
-            />
+            <Done error={finishError} open={open.filter((id): id is 'plug' => id !== 'done')} />
           )}
         </div>
       </main>

@@ -114,6 +114,20 @@ static FRAME_BUFFER: static_cell::ConstStaticCell<[Rgb565; FRAME_PIXELS]> =
 static BACKLIGHT_TIMER: static_cell::StaticCell<esp_hal::ledc::timer::Timer<'static, LowSpeed>> =
     static_cell::StaticCell::new();
 
+/// The parsed asset manifest (about 31 KiB). It lives in `.bss`, not in `run_mode`'s stack frame,
+/// which stays live for the whole run.
+static ASSET_BLOB: static_cell::StaticCell<AssetBlob<'static>> = static_cell::StaticCell::new();
+
+/// Parses the compiled assets into [`ASSET_BLOB`]. Kept out of line so the parse temporaries (each
+/// move of the manifest is another copy on the stack) are released before the run loop starts.
+#[inline(never)]
+fn load_assets(assets: &'static [u8]) -> &'static AssetBlob<'static> {
+    ASSET_BLOB.init_with(|| match AssetBlob::parse(assets) {
+        Ok(blob) => blob,
+        Err(error) => panic!("Kivori asset blob: {error:?}"),
+    })
+}
+
 /// The panel sink plus its backlight PWM channel: pixels go to the panel, brightness to the pin.
 struct Backlit<S> {
     panel: S,
@@ -345,7 +359,7 @@ pub fn run_mode(
     // Compiled Kivori assets
     // -------------------------------------------------------------------------
 
-    let blob = AssetBlob::parse(assets).expect("Kivori asset blob");
+    let blob = load_assets(assets);
     chip_probe::init(peripherals.TSENS, assets.len());
 
     esp_println::println!("KIVORI assets loaded");
@@ -411,7 +425,7 @@ pub fn run_mode(
         &mut transport,
         &mut rotary,
         &mut display,
-        &blob,
+        blob,
         frame_buffer,
         chip_probe::probe,
         boot,

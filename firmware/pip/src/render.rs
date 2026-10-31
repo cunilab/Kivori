@@ -14,7 +14,7 @@
 
 use crate::ports::DisplaySink;
 use kivori_assets::AssetBlob;
-use kivori_framebuffer::{hash_rgb565, TileBand};
+use kivori_framebuffer::TileBand;
 use kivori_model::desk::{DeskView, DisplayMode};
 use kivori_model::presentation::ValueDisplay;
 use kivori_model::{CompanionState, ElapsedMs, MascotAnimator, MascotPose, Rect, Rgb565};
@@ -26,6 +26,21 @@ use kivori_renderer::render_scene;
 
 /// Tile width.
 pub const TILE_W: u16 = 40;
+
+/// Change detection for one tile: FNV-1a 64 over pixel pairs, so the device does a quarter of the
+/// 64-bit multiplies of the byte-wise [`kivori_framebuffer::hash_rgb565`] (golden frames keep that
+/// one). Only ever compared with the same tile's previous signature.
+fn tile_signature(pixels: &[Rgb565]) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for pair in pixels.chunks(2) {
+        let low = u32::from(pair[0].raw());
+        let high = pair.get(1).map_or(0, |pixel| u32::from(pixel.raw()));
+        hash ^= u64::from(low | (high << 16));
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
 /// Tile height.
 pub const TILE_H: u16 = 40;
 /// Panel width in pixels.
@@ -38,6 +53,8 @@ pub const TILE_PIXELS: usize = TILE_W as usize * TILE_H as usize;
 pub const TILE_COLS: usize = (PANEL_W / TILE_W) as usize;
 /// Number of tiles covering the panel.
 pub const TILE_COUNT: usize = TILE_COLS * (PANEL_H / TILE_H) as usize;
+/// Tile rows in a frame (see [`TileRenderer::prepare_frame_row`]).
+pub const TILE_ROWS: usize = TILE_COUNT / TILE_COLS;
 /// Pixels in the optional single-frame staging buffer.
 pub const FRAME_PIXELS: usize = PANEL_W as usize * PANEL_H as usize;
 
@@ -255,6 +272,36 @@ impl<'a> TileRenderer<'a> {
         self.prepare_inner(blob, state, 0, Some(pose), overlay, view, sink)
     }
 
+    /// Composes tile row `row` of a frame, exactly as [`Self::prepare_frame`] composes all of them,
+    /// so the caller can service input and USB between rows: a whole frame takes tens of
+    /// milliseconds on the device. Call it for rows `0..TILE_ROWS` in order; row 0 starts the frame
+    /// (anything still pending is dropped). Changed tiles stay pending for
+    /// [`Self::flush_next_window`].
+    ///
+    /// # Errors
+    /// As [`Self::prepare_frame`]. Nothing stays pending after an error.
+    #[allow(clippy::too_many_arguments)]
+    pub fn prepare_frame_row<S: DisplaySink>(
+        &mut self,
+        blob: &AssetBlob,
+        state: CompanionState,
+        pose: &MascotPose,
+        overlay: Option<ValueDisplay>,
+        view: &DeskView,
+        row: usize,
+        sink: &mut S,
+    ) -> Result<(), RenderError<S::Error>> {
+        if row == 0 {
+            self.discard_pending();
+        }
+        let tiles = (row * TILE_COLS).min(TILE_COUNT)..((row + 1) * TILE_COLS).min(TILE_COUNT);
+        let result = self.compose(blob, state, 0, Some(pose), overlay, view, tiles, sink);
+        if result.is_err() {
+            self.discard_pending();
+        }
+        result
+    }
+
     /// Transfers the next pending window and reports whether more remain. A window is a run of
     /// horizontally adjacent changed tiles, or, when a tile row is changed end to end, that row
     /// merged with the fully changed rows directly below it (up to [`MAX_BAND_ROWS`]).
@@ -339,7 +386,16 @@ impl<'a> TileRenderer<'a> {
         sink: &mut S,
     ) -> Result<(), RenderError<S::Error>> {
         self.discard_pending();
-        let result = self.compose(blob, state, elapsed_ms, pose, overlay, view, sink);
+        let result = self.compose(
+            blob,
+            state,
+            elapsed_ms,
+            pose,
+            overlay,
+            view,
+            0..TILE_COUNT,
+            sink,
+        );
         if result.is_err() {
             self.discard_pending();
         }
@@ -355,6 +411,7 @@ impl<'a> TileRenderer<'a> {
         pose: Option<&MascotPose>,
         overlay: Option<ValueDisplay>,
         view: &DeskView,
+        tiles: core::ops::Range<usize>,
         sink: &mut S,
     ) -> Result<(), RenderError<S::Error>> {
         let scene = blob.scene(state).ok_or(RenderError::MissingScene)?;
@@ -370,7 +427,7 @@ impl<'a> TileRenderer<'a> {
             None => pose.copied(),
         };
         let buffered = self.frame_buffer.is_some();
-        for tile in 0..TILE_COUNT {
+        for tile in tiles {
             let x = (tile % TILE_COLS) as u16 * TILE_W;
             let y = (tile / TILE_COLS) as u16 * TILE_H;
             let rect = Rect::new(x, y, TILE_W, TILE_H);
@@ -416,7 +473,7 @@ impl<'a> TileRenderer<'a> {
             }
             #[cfg(feature = "latency-probe")]
             crate::latency_probe::draw(&mut band, self.latency, self.probe_stats);
-            let signature = hash_rgb565(band.pixels());
+            let signature = tile_signature(band.pixels());
             if self.signatures[tile] == Some(signature) {
                 continue;
             }

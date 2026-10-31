@@ -7,9 +7,10 @@
 # configs (the Tauri build script compiles the vendored mediaremote-adapter and the config bundles it
 # into Contents/Resources/mediaremote-adapter, where `adapter_dir()` looks for it).
 #
-# Signing is a placeholder that runs only when APPLE_SIGNING_IDENTITY is set (a "Developer ID
-# Application: ..." identity from the owner's certificate). Without it the bundle is unsigned and the
-# helpers keep the ad-hoc signature build.rs gave them. Notarization is not done here.
+# Signing: with APPLE_SIGNING_IDENTITY set (a "Developer ID Application: ..." identity) the bundle is
+# signed with it, hardened runtime. Otherwise scripts/sign-macos-bundle.sh signs it with a stable
+# identity (KIVORI_MACOS_SIGNING_IDENTITY, else "Kivori Dev" if present, else ad-hoc with a warning)
+# so the macOS Accessibility approval survives rebuilds and updates. Notarization is not done here.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -55,7 +56,17 @@ if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
   rm -f "$dmg"
   hdiutil create -volname Kivori -srcfolder "$app" -ov -format UDZO "$dmg"
 else
-  echo "APPLE_SIGNING_IDENTITY is not set: leaving the bundle unsigned."
+  bash scripts/sign-macos-bundle.sh "$app"
+  # The .dmg Tauri wrote holds the pre-signing app, so rebuild it from the signed one.
+  dmg="$(ls "$bundle_dir"/dmg/*.dmg | head -n1)"
+  rm -f "$dmg"
+  hdiutil create -volname Kivori -srcfolder "$app" -ov -format UDZO "$dmg"
+  # The macOS bundle config creates no updater archive. Should one appear, it holds the pre-signing
+  # app and its signature would no longer match: refuse rather than ship a stale one.
+  if compgen -G "$bundle_dir/macos/*.tar.gz" >/dev/null; then
+    echo "error: an updater archive exists in $bundle_dir/macos; it predates signing and must be rebuilt" >&2
+    exit 1
+  fi
 fi
 
 echo "Done:"

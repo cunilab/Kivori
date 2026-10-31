@@ -33,6 +33,34 @@ const CCW_CYCLE: [(bool, bool); 5] = [
     (false, false),
 ];
 
+/// A turn to the right on the HW-040, as (CLK, DT) active levels: CLK goes first.
+const HW040_RIGHT_TURN: [(bool, bool); 5] = [
+    (false, false),
+    (true, false),
+    (true, true),
+    (false, true),
+    (false, false),
+];
+
+/// The measured hardware fact (2026-10-31): a right turn must raise the volume, so the HW-040
+/// mapping has to turn CLK-first into clockwise, and the reverse turn into counter-clockwise.
+#[test]
+fn hw040_right_turn_is_clockwise_and_left_turn_is_counter_clockwise() {
+    use kivori_firmware::input::hw040;
+    let channels = |turn: &[(bool, bool)]| -> Vec<(bool, bool)> {
+        turn.iter()
+            .map(|&(clk, dt)| {
+                let levels = hw040::levels(clk, dt, false, [false; 3]);
+                (levels.a, levels.b)
+            })
+            .collect()
+    };
+    assert_eq!(drive(&channels(&HW040_RIGHT_TURN)), vec![Direction::Cw]);
+    let mut left = HW040_RIGHT_TURN;
+    left.reverse();
+    assert_eq!(drive(&channels(&left)), vec![Direction::Ccw]);
+}
+
 #[test]
 fn full_clockwise_cycle_emits_exactly_one_cw_detent() {
     assert_eq!(drive(&CW_CYCLE), vec![Direction::Cw]);

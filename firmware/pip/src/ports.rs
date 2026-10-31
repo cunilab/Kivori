@@ -40,6 +40,17 @@ pub trait Transport {
     /// no host was reading) are stale and must not crowd out the `HelloAck`. Unbuffered
     /// transports have nothing to drop.
     fn discard_unsent(&mut self) {}
+
+    /// Moves bytes the hardware already received into a RAM buffer that later reads serve first,
+    /// without decoding anything. The run loop calls it while it is busy composing a frame, so a
+    /// small receive FIFO never fills and blocks the host's writes. Unbuffered transports keep
+    /// everything in the hardware until the next read.
+    ///
+    /// # Errors
+    /// Returns the underlying transport error; the next read reports it again.
+    fn buffer_inbound(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
 /// A pixel sink for one tile region (the SPI panel on device; a capture buffer in sim).

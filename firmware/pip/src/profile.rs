@@ -128,7 +128,9 @@ pub mod physical_st7789 {
     /// Verified panel orientation.
     #[must_use]
     pub fn orientation() -> Orientation {
-        Orientation::new().rotate(Rotation::Deg90)
+        // Deg270 since 2026-10-31: the owner's assembled unit showed the picture upside down at
+        // Deg90. mipidsi moves the 240x240 window inside the 240x320 controller RAM itself.
+        Orientation::new().rotate(Rotation::Deg270)
     }
 
     /// Verified panel color order.

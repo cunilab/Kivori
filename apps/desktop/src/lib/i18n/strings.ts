@@ -704,6 +704,7 @@ export const strings = {
     waiting: 'Waiting for the device to answer…',
     unavailable: 'Unavailable',
     unavailableWhy: "This device can't measure this.",
+    usageTone: { warning: 'Getting full', critical: 'Nearly full' },
     groups: {
       flash: 'Flash',
       ram: 'Memory',
@@ -714,22 +715,22 @@ export const strings = {
     notes: {
       flash:
         'App image uses the app partition. The asset blob is included in the image and has its own build limit.',
-      ram: 'Static RAM includes RAM-resident code. Stack headroom is free stack space; this firmware has no heap.',
-      cpu: 'Busy is the share of the last second spent in run-loop ticks that did work. Frame times are for the last frame.',
+      ram: 'Static RAM includes RAM-resident code. Stack peak use is the deepest the stack has been since boot, out of the RAM left for it; this firmware has no heap.',
+      cpu: 'Busy is the share of the last second spent in run-loop ticks that did work. Compose and flush are averages per frame over the last second: compose is drawing only, flush is sending the frame to the display.',
+      chip: "Temperature is the chip's own (die) temperature, approximate. It reads warmer than the room.",
     },
     rows: {
       appImage: 'App image / app partition',
       assetBlob: 'Asset blob / build limit',
       flashTotal: 'Declared total flash',
       ramStatic: 'Static RAM / usable data RAM',
-      ramFree: 'Stack headroom now',
-      stackFreeMin: 'Lowest stack headroom since boot',
+      stackPeak: 'Stack peak use',
       busy: 'Run loop busy',
-      compose: 'Frame compose time',
-      flush: 'Frame flush time',
+      compose: 'Frame compose time (average)',
+      flush: 'Frame flush time (average)',
       fps: 'Display frames per second',
       chip: 'Chip',
-      temperature: 'Temperature',
+      temperature: 'Chip temperature (approx.)',
       uptime: 'Uptime',
       resetReason: 'Last reset',
       edgeQueue: 'Edge queue high-water mark',
@@ -800,6 +801,26 @@ export const strings = {
       succeeded: 'Done',
     },
   },
+  /**
+   * The macOS Accessibility permission, asked for only when an action needs Kivori to press keys:
+   * a keyboard shortcut binding, or a media key that could not go through the player directly.
+   */
+  accessibility: {
+    controlsTitle: 'Shortcuts need Accessibility access',
+    controlsBody:
+      'macOS only lets Kivori press keys for you once you allow it. Your keyboard shortcuts need that. Media controls, volume and mute work without it.',
+    allow: 'Allow access',
+    openSettings: 'Open System Settings',
+    steps:
+      'Choose Allow access, then Open System Settings. Switch Kivori on in the Accessibility list and come back here.',
+    settingsFailed: 'System Settings could not be opened.',
+    staleTitle: 'Still showing as off?',
+    staleBody:
+      'If you already switched Kivori on, macOS may still hold an older approval for it. This happens after an update or rebuild. Reset it and Kivori will ask again, then switch Kivori on in the list.',
+    reset: 'Reset and ask again',
+    resetFailed:
+      'The old approval could not be reset. Remove Kivori from the list by hand, then add it again.',
+  },
   onboarding: {
     label: 'Set up Kivori',
     progress: 'Step {current} of {total}',
@@ -832,21 +853,6 @@ export const strings = {
       stuck: 'Still cannot connect. You can restore your Kivori with its BOOT button.',
       updateHint:
         'Your Kivori can be updated. You can do that from the Device page once setup is done.',
-    },
-    permissions: {
-      title: 'Let Kivori press keys for you',
-      body: 'Shortcuts and some media actions work by pressing keys on your behalf. macOS needs your permission for that, called Accessibility.',
-      steps: [
-        'Choose Allow access, then Open System Settings in the macOS prompt.',
-        'Switch Kivori on in the Accessibility list.',
-        'Come back here. This step turns green by itself.',
-      ],
-      allow: 'Allow access',
-      openSettings: 'Open System Settings',
-      granted: 'Accessibility access is on.',
-      missing: 'Accessibility access is not on yet.',
-      skipNote: 'Without it, shortcut and media-key actions will not work. You can allow it later.',
-      settingsFailed: 'System Settings could not be opened.',
     },
     tour: {
       title: 'Try your Kivori',
@@ -897,8 +903,6 @@ export const strings = {
       openBody: 'You can finish now and do these later. Run setup again in Settings at any time.',
       open: {
         plug: 'Plug in your Kivori. It connects by itself whenever you do.',
-        permissions:
-          'Allow Accessibility so shortcuts and media keys work. Switch Kivori on in System Settings, Privacy & Security, Accessibility.',
       },
       finish: 'Finish',
       finishing: 'Finishing…',

@@ -37,9 +37,9 @@ type View = (Option<MediaStatus>, Option<NowPlaying>);
 type Shared = Arc<Mutex<View>>;
 
 const UNKNOWN: View = (None, None);
-const PERL: &str = "/usr/bin/perl";
+pub(super) const PERL: &str = "/usr/bin/perl";
 const OSASCRIPT: &str = "/usr/bin/osascript";
-const SCRIPT: &str = "mediaremote-adapter.pl";
+pub(super) const SCRIPT: &str = "mediaremote-adapter.pl";
 const SLICE: Duration = Duration::from_millis(100);
 const POLL: Duration = Duration::from_secs(1);
 /// An empty adapter payload must last this long before it means Stopped: the stream prints one
@@ -74,30 +74,57 @@ my $script = shift @ARGV;
 do $script;
 die $@ if $@;"#;
 
-/// Spotify then Music. `is running` never launches an app; `run script` compiles the `tell` only
-/// when it runs, so a missing app never shows a "Where is …?" dialog. One record per player
-/// (RS-separated): `name US state US title US artist`, or `name US not-running` / `name US error`.
-const PLAYERS_SCRIPT: &str = r#"set us to character id 31
+/// The players the fallback asks, in order: display name (used in its records) and bundle id.
+const PLAYERS: [(&str, &str); 2] = [
+    ("Spotify", "com.spotify.client"),
+    ("Music", "com.apple.Music"),
+];
+
+/// The fallback script for `players` (only ones seen running). Each is addressed by bundle id:
+/// naming an app that is not installed makes AppleScript show a "Where is …?" picker. `is running`
+/// guards against one quitting in between, so the script never launches a player; `run script`
+/// compiles each `tell` only when it runs. One record per player (RS-separated):
+/// `name US state US title US artist`, or `name US not-running` / `name US error`.
+fn players_script(players: &[(&str, &str)]) -> String {
+    let list = players
+        .iter()
+        .map(|(name, id)| format!("{{\"{name}\", \"{id}\"}}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        r#"set us to character id 31
 set rs to character id 30
 set out to ""
-repeat with p in {"Spotify", "Music"}
-	set p to contents of p
-	if application p is running then
+repeat with p in {{{list}}}
+	set n to item 1 of p
+	set b to item 2 of p
+	if application id b is running then
 		try
-			set r to run script "tell application \"" & p & "\"
+			set r to run script "tell application id \"" & b & "\"
 				set s to player state as text
-				if s is not \"playing\" and s is not \"paused\" then return {s, \"\", \"\"}
-				return {s, name of current track, artist of current track}
+				if s is not \"playing\" and s is not \"paused\" then return {{s, \"\", \"\"}}
+				return {{s, name of current track, artist of current track}}
 			end tell"
-			set out to out & p & us & (item 1 of r) & us & (item 2 of r) & us & (item 3 of r) & rs
+			set out to out & n & us & (item 1 of r) & us & (item 2 of r) & us & (item 3 of r) & rs
 		on error
-			set out to out & p & us & "error" & rs
+			set out to out & n & us & "error" & rs
 		end try
 	else
-		set out to out & p & us & "not-running" & rs
+		set out to out & n & us & "not-running" & rs
 	end if
 end repeat
-return out"#;
+return out"#
+    )
+}
+
+/// The [`PLAYERS`] running right now (bundle ids compared case-insensitively).
+fn running_players() -> Vec<(&'static str, &'static str)> {
+    let running = super::apps::running_apps();
+    PLAYERS
+        .into_iter()
+        .filter(|(_, id)| running.iter().any(|app| app.id.eq_ignore_ascii_case(id)))
+        .collect()
+}
 
 pub struct MacMediaObserver {
     shared: Shared,
@@ -172,13 +199,19 @@ fn media_thread(shared: &Shared, stop: &AtomicBool) {
         let retry_at = Instant::now() + backoff;
         backoff = (backoff * 2).min(MAX_BACKOFF);
         while Instant::now() < retry_at {
-            let view = run_bounded(
-                Command::new(OSASCRIPT).args(["-e", PLAYERS_SCRIPT]),
-                SCRIPT_TIMEOUT,
-                stop,
-            )
-            .filter(|(ok, _)| *ok)
-            .map_or(UNKNOWN, |(_, out)| fallback_view(&parse_players(&out)));
+            // No player running: nothing to ask, and no AppleScript runs at all.
+            let players = running_players();
+            let view = if players.is_empty() {
+                UNKNOWN
+            } else {
+                run_bounded(
+                    Command::new(OSASCRIPT).args(["-e", &players_script(&players)]),
+                    SCRIPT_TIMEOUT,
+                    stop,
+                )
+                .filter(|(ok, _)| *ok)
+                .map_or(UNKNOWN, |(_, out)| fallback_view(&parse_players(&out)))
+            };
             publish(shared, view);
             if !sleep_unless_stopped(POLL, stop) {
                 return;
@@ -188,7 +221,7 @@ fn media_thread(shared: &Shared, stop: &AtomicBool) {
 }
 
 /// The adapter files: inside the app bundle (release), else this build's `OUT_DIR` (dev, tests).
-fn adapter_dir() -> Option<PathBuf> {
+pub(super) fn adapter_dir() -> Option<PathBuf> {
     let bundled = std::env::current_exe()
         .ok()
         .and_then(|exe| Some(exe.parent()?.join("../Resources/mediaremote-adapter")));
@@ -280,7 +313,7 @@ fn run_adapter(dir: &Path, shared: &Shared, stop: &AtomicBool) -> Duration {
 }
 
 /// A child that is terminated and reaped when dropped, so no helper outlives its owner.
-struct Reaped(Child);
+pub(super) struct Reaped(pub(super) Child);
 
 impl Drop for Reaped {
     fn drop(&mut self) {
@@ -417,7 +450,7 @@ impl AdapterTracker {
     }
 }
 
-/// The players [`PLAYERS_SCRIPT`] found playing or paused, in script order. Not running,
+/// The players [`players_script`] found playing or paused, in script order. Not running,
 /// stopped, permission denied and anything unreadable are left out: unknown.
 fn parse_players(out: &str) -> Vec<(MediaStatus, Option<NowPlaying>)> {
     out.trim_end_matches('\n')
@@ -447,6 +480,21 @@ fn fallback_view(players: &[(MediaStatus, Option<NowPlaying>)]) -> View {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_fallback_script_names_players_only_by_bundle_id() {
+        let script = players_script(&PLAYERS);
+        for (name, id) in PLAYERS {
+            assert!(script.contains(&format!("{{\"{name}\", \"{id}\"}}")));
+            // A bare name would make AppleScript ask "Where is …?" when the app is missing.
+            assert!(!script.contains(&format!("application \"{name}\"")));
+        }
+        assert!(script.contains("application id b is running"));
+        assert!(script.contains("tell application id"));
+        if let Ok(path) = std::env::var("KIVORI_WRITE_PLAYER_SCRIPT") {
+            std::fs::write(path, players_script(&[PLAYERS[1]])).unwrap();
+        }
+    }
     use std::os::unix::process::ExitStatusExt;
 
     /// `PARENT_WATCH` around a stand-in adapter script (no MediaRemote entitlement needed).
