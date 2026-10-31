@@ -76,6 +76,14 @@ impl Gate {
 
     fn take(&mut self, advance: Advance) {
         let at_us = u64::from(advance.to_ms) * 1000;
+        if self.granted_us.is_none() {
+            // The unit powers up when the host starts it: its clock reads the host's time from
+            // that first request on. It does not run (and the runner does not simulate frame by
+            // frame) the time the host spent before the process existed, which grows with the host's
+            // age and would stall a late reconnect for as long as the whole session has run.
+            self.shared.clock.set_ms(advance.to_ms);
+            self.tick_started_us = at_us;
+        }
         self.granted_us = Some(at_us);
         self.awaiting_report = true;
         if !advance.wire.is_empty() {
@@ -295,24 +303,29 @@ mod tests {
 
     impl Rig {
         fn new() -> Self {
+            Self::new_at(0)
+        }
+
+        /// A rig whose first request is stamped `start_ms`, like a child spawned late in a session.
+        fn new_at(start_ms: u32) -> Self {
             let mut rig = Self {
                 sim: ModelledSimulator::spawn(),
                 seq: 0,
-                now: 0,
-                next_ping: 1_000,
+                now: start_ms,
+                next_ping: start_ms + 1_000,
                 events: vec![],
                 internals: vec![],
                 pongs: vec![],
                 carry: vec![],
             };
-            let mut hello = request(0);
+            let mut hello = request(start_ms);
             hello.wire = rig.wire(&Message::Hello(Hello {
                 desktop_version: VERSION,
                 desktop_caps: CAPS,
                 nonce: SESSION,
             }));
             rig.go(hello);
-            let mut ready = request(10);
+            let mut ready = request(start_ms + 10);
             ready.wire = rig.wire(&Message::Ready(Ready {
                 negotiated_minor: PROTOCOL_MINOR,
                 negotiated_caps: CAPS,
@@ -675,6 +688,47 @@ mod tests {
         assert!(
             rig.pongs.iter().any(|(echo, _)| *echo == MARKER),
             "the ping sent during the stall is answered after it"
+        );
+    }
+
+    #[test]
+    fn the_first_request_is_the_device_power_up_not_a_catch_up_from_zero() {
+        let sim = Simulator::assemble(Timing::Modelled);
+        let (_advances, advance_rx) = channel();
+        let (report_tx, _reports) = channel();
+        let mut gate = Gate::new(advance_rx, report_tx, sim.shared.clone());
+        gate.take(Advance {
+            to_ms: 600_000,
+            wire: vec![],
+            edges: vec![],
+            capture: false,
+            fault: Fault::Normal,
+        });
+        // Ten minutes of host time: simulating them tick by tick took tens of seconds in a debug
+        // build, longer than the desktop waits for a reply from a freshly spawned child.
+        assert_eq!(sim.shared.clock.us(), 600_000_000);
+        assert_eq!(gate.tick_started_us, 600_000_000);
+        // A later request advances the grant only; the clock is the device's own from then on.
+        gate.take(Advance {
+            to_ms: 600_010,
+            wire: vec![],
+            edges: vec![],
+            capture: false,
+            fault: Fault::Normal,
+        });
+        assert_eq!(sim.shared.clock.us(), 600_000_000);
+        assert_eq!(gate.granted_us, Some(600_010_000));
+    }
+
+    #[test]
+    fn a_device_first_asked_late_still_runs_on_the_host_clock() {
+        let mut rig = Rig::new_at(600_000);
+        rig.run_to(601_500, 5);
+        let &(_, answered) = rig.pongs.last().expect("a heartbeat was answered");
+        // Device and host clocks agree (the desktop's freshness check relies on a stable offset).
+        assert!(
+            (600_000..=601_600).contains(&answered),
+            "device clock {answered} ms"
         );
     }
 
