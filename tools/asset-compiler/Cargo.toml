@@ -14,7 +14,7 @@ path = "src/main.rs"
 kivori-model = { path = "../../crates/kivori-model" }
 kivori-assets = { path = "../../crates/kivori-assets" }
 # Deterministic, pure-Rust SVG rasterization (research R-9). Host-only; not a firmware dependency.
-resvg = "0.48"
+resvg = "0.49"
 heapless = { version = "0.9", features = ["serde"] }
 postcard = { version = "1", features = ["use-std"] }
 
