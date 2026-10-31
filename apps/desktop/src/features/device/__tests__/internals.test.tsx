@@ -2,7 +2,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import axe from 'axe-core';
 import { TooltipProvider } from '@kivori/ui/components/tooltip';
-import type { DeviceInternalsDto } from '../../../lib/ipc/types';
+import type { DeviceInfoDto, DeviceInternalsDto } from '../../../lib/ipc/types';
 import { connectionFixture } from '../../../test/connection';
 import { parseDeviceInternals } from '../../../lib/ipc/validate';
 
@@ -418,6 +418,33 @@ describe('DeviceInternals card', () => {
     view();
     await screen.findByText('Flash');
     expect(getLatestInternals()).toMatchObject({ ...reporting, snapshotAgeMs: expect.any(Number) });
+  });
+});
+
+describe('firmware build in the Chip tile', () => {
+  const withBuild = (build: DeviceInfoDto['build']): ReturnType<typeof render> => {
+    const base = connectionFixture();
+    return render(
+      <TooltipProvider>
+        <DeviceInternals
+          connection={{ ...base, device: base.device ? { ...base.device, build } : null }}
+        />
+      </TooltipProvider>,
+    );
+  };
+
+  it('shows the commit, and says when it has uncommitted changes', async () => {
+    withBuild({ commit: 'c2ff8c4f68de', dirty: true });
+    await screen.findByText('Flash');
+    expect(screen.getByTestId('internals-build')).toHaveTextContent(
+      'c2ff8c4 (with uncommitted changes)',
+    );
+  });
+
+  it('has no row for a firmware that does not report its build', async () => {
+    withBuild(null);
+    await screen.findByText('Flash');
+    expect(screen.queryByTestId('internals-build')).not.toBeInTheDocument();
   });
 });
 

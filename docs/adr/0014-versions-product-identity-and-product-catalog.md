@@ -67,6 +67,8 @@ It runs before version/output writes, resolves both lockfiles with `--locked`, a
 harmless workspace-version bookkeeping by content. Full history, ancestry and exact overrides are
 checked; details and the hand-pushed-tag limitation are in [release.md](../release.md#release-policy).
 
+**As built (firmware build id, 2026-10-31).** Which exact build a unit runs is reported, not inferred: `BuildInfo { session, commit, dirty }` (tag 24, `BUILD_INFO_V1`, bit 16) follows `Identity`, and `PROTOCOL_MINOR` is 2 under the ADR-0002 discipline for a new post-handshake message. It is a separate message because `HelloAck` is a fixed struct and an unnegotiated peer must never see a new tag; the firmware version, catalog and release semantics are untouched, and the image identity record is unchanged. The commit is `git rev-parse --short=12 HEAD` at build time and `dirty` means uncommitted changes under the firmware's own build paths; without git the commit is unknown. The desktop shows it on Device and warns about uncommitted changes always, and about a commit that differs from the app's own only in developer mode (a release user's older firmware commit is normal). Details in [architecture.md](../architecture.md#firmware-build-id-build_info_v1-adr-0014).
+
 Versions reset (2026-10-12): before the first release, app and firmware restarted at 0.1.0 and the protocol at 0.1; earlier version numbers in these records belong to pre-release development.
 
 ## Alternatives considered

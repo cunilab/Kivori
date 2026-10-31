@@ -18,6 +18,8 @@ export interface AppInfoDto {
   protocolVersion: ProtocolVersion;
   supportedMajors: number[];
   deviceStudioEnabled: boolean;
+  /** The git commit this app was built from (12 hex digits); `null` when built without git. */
+  commit?: string | null;
 }
 
 /** Where a device's identity came from: `legacy` means it reported none (the fixed identity from ADR-0014). */
@@ -43,6 +45,14 @@ export interface ProductPresentationDto {
   art: string | null;
 }
 
+/** Which exact firmware build a device runs; only a device that reports it has one. */
+export interface DeviceBuildDto {
+  /** 12 lowercase hex digits; `null` when the firmware was built without git. */
+  commit: string | null;
+  /** Built with uncommitted changes in the firmware's files. */
+  dirty: boolean;
+}
+
 export interface DeviceInfoDto {
   presentation: ProductPresentationDto | null;
   firmwareVersion: string;
@@ -50,6 +60,8 @@ export interface DeviceInfoDto {
   deviceIdHashShort: string;
   /** `null` while a device that reports its identity has not yet. */
   identity: DeviceIdentityDto | null;
+  /** `null` (or absent) when the firmware does not report its build (older firmware). */
+  build?: DeviceBuildDto | null | undefined;
 }
 
 export const FIRMWARE_PHASES = [
@@ -197,6 +209,7 @@ export const CAPABILITY_NAMES = [
   'idleLifeV1',
   'micStateV1',
   'productIdentityV1',
+  'buildInfoV1',
 ] as const;
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
 

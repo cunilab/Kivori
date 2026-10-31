@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@kivori/ui/components/tooltip';
 import { resetPageTabs } from '../../../components/kivori/page-tabs';
 import { setDevMode } from '../../../lib/dev-mode';
-import type { ConnectionStatusDto } from '../../../lib/ipc/types';
+import type { AppInfoDto, ConnectionStatusDto, DeviceBuildDto } from '../../../lib/ipc/types';
 
 vi.mock('../../../lib/ipc', () => ({
   getFirmwareStatus: () =>
@@ -222,5 +222,87 @@ describe('DevicePage', () => {
       rules: { 'color-contrast': { enabled: false } },
     });
     expect(results.violations).toEqual([]);
+  });
+});
+
+describe('DevicePage firmware build', () => {
+  const APP = 'c2ff8c4f68de';
+  const appInfo = (commit: string | null): AppInfoDto => ({
+    appVersion: '0.2.1',
+    protocolVersion: { major: 0, minor: 2 },
+    supportedMajors: [0],
+    deviceStudioEnabled: false,
+    commit,
+  });
+  const withBuild = (
+    build: DeviceBuildDto | null | undefined,
+    commit: string | null = APP,
+  ): ReactElement => (
+    <TooltipProvider>
+      <DevicePage
+        appInfo={appInfo(commit)}
+        connection={status({
+          connection: 'connected',
+          device: {
+            presentation: null,
+            firmwareVersion: '0.1.2',
+            protocolVersion: { major: 0, minor: 2 },
+            deviceIdHashShort: 'deadbeef',
+            identity: null,
+            build,
+          },
+        })}
+      />
+    </TooltipProvider>
+  );
+
+  beforeEach(() => act(() => setDevMode(false)));
+
+  it('shows the short commit and stays quiet when it matches the app', () => {
+    render(withBuild({ commit: APP, dirty: false }));
+    expect(screen.getByTestId('device-build')).toHaveTextContent(/^c2ff8c4$/);
+    expect(screen.queryByTestId('device-build-dirty')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('device-build-differs')).not.toBeInTheDocument();
+  });
+
+  it('warns for everyone when the unit runs a build with uncommitted changes', () => {
+    render(withBuild({ commit: APP, dirty: true }));
+    expect(screen.getByTestId('device-build')).toHaveTextContent(
+      'c2ff8c4 · with uncommitted changes',
+    );
+    expect(screen.getByTestId('device-build-dirty')).toHaveTextContent(
+      'Built from uncommitted changes',
+    );
+  });
+
+  it('says a different commit only in developer mode, so release users get no false alarm', () => {
+    const other = { commit: '0123456789ab', dirty: false };
+    const page = render(withBuild(other));
+    expect(screen.getByTestId('device-build')).toHaveTextContent('0123456');
+    expect(screen.queryByTestId('device-build-differs')).not.toBeInTheDocument();
+    act(() => setDevMode(true));
+    expect(screen.getByTestId('device-build-differs')).toHaveTextContent(
+      'This unit runs build 0123456; this app was built from c2ff8c4.',
+    );
+    page.unmount();
+  });
+
+  it('says nothing about a difference when either side does not know its commit', () => {
+    act(() => setDevMode(true));
+    const first = render(withBuild({ commit: null, dirty: false }));
+    expect(screen.getByTestId('device-build')).toHaveTextContent('Unknown (built without git)');
+    expect(screen.queryByTestId('device-build-differs')).not.toBeInTheDocument();
+    first.unmount();
+    render(withBuild({ commit: '0123456789ab', dirty: false }, null));
+    expect(screen.queryByTestId('device-build-differs')).not.toBeInTheDocument();
+  });
+
+  it('shows no build row for older firmware, except as "Unknown" in developer mode', () => {
+    const page = render(withBuild(null));
+    expect(screen.queryByTestId('device-build')).not.toBeInTheDocument();
+    page.unmount();
+    act(() => setDevMode(true));
+    render(withBuild(undefined));
+    expect(screen.getByTestId('device-build')).toHaveTextContent('Unknown');
   });
 });

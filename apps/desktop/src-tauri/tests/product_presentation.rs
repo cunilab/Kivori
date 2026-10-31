@@ -15,6 +15,7 @@ fn status() -> ConnectionStatusDto {
             device_id_hash_short: "test".into(),
             identity: None,
             presentation: None,
+            build: None,
         }),
         ..initial_status()
     }

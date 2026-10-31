@@ -26,10 +26,10 @@ use kivori_model::{
     Capabilities, CompanionState, MascotAction, MascotPersonality, ProtocolVersion, SendableState,
 };
 use kivori_protocol::{
-    decode_frame, decode_message, encode_message, evaluate_hello_ack, BuddySettings, Bye,
-    ByeReason, ControlLabelsUpdate, Feedback, FirmwareVersion, HandshakeOutcome, Hello, InputEvent,
-    InternalsRequest, MascotActionApplied, MediaInfoUpdate, Message, MicStateUpdate, Ping,
-    PlayMascotAction, Presentation, ProtoError, SeqClass, SequenceTracker, SetState, Status,
+    decode_frame, decode_message, encode_message, evaluate_hello_ack, BuddySettings, BuildInfo,
+    Bye, ByeReason, ControlLabelsUpdate, Feedback, FirmwareVersion, HandshakeOutcome, Hello,
+    InputEvent, InternalsRequest, MascotActionApplied, MediaInfoUpdate, Message, MicStateUpdate,
+    Ping, PlayMascotAction, Presentation, ProtoError, SeqClass, SequenceTracker, SetState, Status,
     MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
@@ -74,7 +74,8 @@ impl Default for SessionConfig {
                 .union(Capabilities::DEVICE_INTERNALS_V1)
                 .union(Capabilities::IDLE_LIFE_V1)
                 .union(Capabilities::MIC_STATE_V1)
-                .union(Capabilities::PRODUCT_IDENTITY_V1),
+                .union(Capabilities::PRODUCT_IDENTITY_V1)
+                .union(Capabilities::BUILD_INFO_V1),
             supported_majors: vec![PROTOCOL_MAJOR],
         }
     }
@@ -152,6 +153,9 @@ pub struct Session {
     /// The identity the device reported after the handshake (`PRODUCT_IDENTITY_V1`).
     /// Connection-scoped, exactly like `current_session`.
     identity: Option<DeviceIdentity>,
+    /// The firmware build the device reported after the handshake (`BUILD_INFO_V1`).
+    /// Connection-scoped, like `identity`.
+    build: Option<BuildInfo>,
 }
 
 impl Session {
@@ -191,6 +195,7 @@ impl Session {
             internals: None,
             internals_received_at: None,
             identity: None,
+            build: None,
         }
     }
 
@@ -215,6 +220,7 @@ impl Session {
         self.diagnostics = SessionDiagnostics::default();
         self.internals = None;
         self.identity = None;
+        self.build = None;
         self.pending_inputs.clear();
         self.last_mascot_action_applied = None;
         self.activity.clear();
@@ -294,6 +300,13 @@ impl Session {
         } else {
             Some(DeviceIdentity::legacy())
         }
+    }
+
+    /// The firmware build the device reported for this connection: `None` with no session, or from
+    /// a device that did not negotiate `BUILD_INFO_V1` (older firmware) or has not sent it yet.
+    #[must_use]
+    pub const fn build_info(&self) -> Option<BuildInfo> {
+        self.build
     }
 
     /// Drains every `InputEvent` decoded by [`Session::pump`] since the last call.
@@ -983,6 +996,14 @@ impl Session {
                 self.identity = Some(identity);
                 self.transmit_set_state(link, orchestrator.resync_state())?;
             }
+            // Only the build report of this session counts, once; it never gates anything.
+            Message::BuildInfo(report)
+                if self.negotiated_caps.contains(Capabilities::BUILD_INFO_V1)
+                    && self.current_session == Some(report.session)
+                    && self.build.is_none() =>
+            {
+                self.build = Some(report);
+            }
             // The device is ending the session: no connection, no session identity.
             Message::Bye(_) => {
                 self.clear_session_identity();
@@ -1079,6 +1100,7 @@ impl Session {
         self.internals = None;
         self.internals_received_at = None;
         self.identity = None;
+        self.build = None;
     }
 
     fn observe(&mut self, kind: ActivityEventKind, metadata: Option<ActivityMetadata>) {

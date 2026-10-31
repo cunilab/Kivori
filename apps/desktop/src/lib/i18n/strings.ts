@@ -541,6 +541,18 @@ export const strings = {
     board: 'Board',
     hardwareRevision: 'Hardware revision',
     identitySource: 'Identity source',
+    build: {
+      label: 'Firmware build',
+      uncommitted: 'with uncommitted changes',
+      noGit: 'Unknown (built without git)',
+      notReported: 'This firmware does not report its build.',
+      dirtyTitle: 'Built from uncommitted changes',
+      dirtyBody:
+        'This unit runs a firmware build made with changes that are not committed, so it may not match the repository.',
+      differsTitle: 'Different build than this app',
+      differsBody:
+        'This unit runs build {device}; this app was built from {app}. Flash the unit if you expect them to match.',
+    },
     identity: {
       sources: {
         legacy: 'Not reported (original firmware)',
@@ -734,6 +746,7 @@ export const strings = {
       flush: 'Frame flush time (average)',
       fps: 'Display frames per second',
       chip: 'Chip',
+      build: 'Firmware build',
       temperature: 'Chip temperature (approx.)',
       uptime: 'Uptime',
       resetReason: 'Last reset',

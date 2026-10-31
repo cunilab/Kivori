@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@kivori/ui/components/t
 import { getDeviceInternals } from '@/lib/ipc';
 import type { ConnectionStatusDto, DeviceInfoDto, DeviceInternalsDto } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
+import { shortCommit } from './build';
 import { INTERNALS_FRESH_MS, setLatestInternals } from './internals-latest';
 
 const t = strings.internals;
@@ -29,7 +30,7 @@ export type InternalsConnection = Pick<
   ConnectionStatusDto,
   'connection' | 'connectionGeneration'
 > & {
-  device: Pick<DeviceInfoDto, 'deviceIdHashShort'> | null;
+  device: (Pick<DeviceInfoDto, 'deviceIdHashShort'> & Partial<Pick<DeviceInfoDto, 'build'>>) | null;
 };
 
 function Row({
@@ -189,7 +190,7 @@ function Usage({
   );
 }
 
-function Body({ s }: { s: Snapshot }): ReactElement {
+function Body({ s, build }: { s: Snapshot; build: DeviceInfoDto['build'] }): ReactElement {
   // The stack is the RAM the static data leaves over; its peak use is that minus the least that
   // was ever free. Missing inputs stay unavailable rather than being guessed.
   const stackBytes =
@@ -257,6 +258,13 @@ function Body({ s }: { s: Snapshot }): ReactElement {
             }
           </Value>
         </Row>
+        {build ? (
+          <Row label={t.rows.build} testId="internals-build">
+            {build.commit
+              ? `${shortCommit(build.commit)}${build.dirty ? ` (${strings.device.build.uncommitted})` : ''}`
+              : strings.device.build.noGit}
+          </Row>
+        ) : null}
         <Row label={t.rows.temperature}>
           <Value value={s.temperatureDeciCelsius}>{(d) => `${(d / 10).toFixed(1)} °C`}</Value>
         </Row>
@@ -403,7 +411,7 @@ export function DeviceInternals({
           </p>
         ) : null}
         {!failed && !stale && current?.connected && current.supported && current.snapshot ? (
-          <Body s={current.snapshot} />
+          <Body s={current.snapshot} build={connection?.device?.build} />
         ) : null}
       </CardContent>
     </Card>

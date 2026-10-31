@@ -233,7 +233,8 @@ fn device_loop(
         session.connection_generation(),
         presence.presence(),
     )
-    .with_identity(session.identity());
+    .with_identity(session.identity())
+    .with_build(session.build_info());
     *status.lock().expect("status lock") = last.clone();
     events::emit_status(&app, &last);
     lifecycle::refresh_tray(&app, &last);
@@ -997,7 +998,8 @@ fn device_loop(
             session.connection_generation(),
             presence.presence(),
         )
-        .with_identity(session.identity());
+        .with_identity(session.identity())
+        .with_build(session.build_info());
         if snapshot != last {
             *status.lock().expect("status lock") = snapshot.clone();
             events::emit_status(&app, &snapshot);

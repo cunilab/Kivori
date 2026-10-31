@@ -53,6 +53,7 @@ export function mockAppInfo(): AppInfoDto {
     protocolVersion: { major: 0, minor: 1 },
     supportedMajors: [0],
     deviceStudioEnabled: true,
+    commit: 'c2ff8c4f68de',
   };
 }
 
@@ -344,6 +345,7 @@ export function mockConnectionStatus(): ConnectionStatusDto {
           protocolVersion: { major: 0, minor: 1 },
           deviceIdHashShort: '3fa9c1d2',
           identity: mockIdentity,
+          build: { commit: 'c2ff8c4f68de', dirty: false },
         },
         connectionGeneration: 1,
         capabilities: [...CAPABILITY_NAMES],

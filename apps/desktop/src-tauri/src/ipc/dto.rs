@@ -110,6 +110,9 @@ pub struct AppInfoDto {
     pub supported_majors: Vec<u16>,
     /// Whether Device Studio is present in this build (false in release).
     pub device_studio_enabled: bool,
+    /// The git commit this app was built from (12 hex digits), `null` when it was built without
+    /// git. Compared with the device's build in developer mode.
+    pub commit: Option<String>,
 }
 
 /// Whether first-run setup is finished (or was skipped).
@@ -304,6 +307,32 @@ pub fn identity_dto(identity: &DeviceIdentity) -> DeviceIdentityDto {
     }
 }
 
+/// Which exact firmware build a device runs (`BUILD_INFO_V1`). Not personal data. Present only when
+/// the device reported it; an older firmware has none.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceBuildDto {
+    /// The commit as 12 lowercase hex digits, `null` when the firmware was built without git.
+    pub commit: Option<String>,
+    /// Built with uncommitted changes in the firmware's files.
+    pub dirty: bool,
+}
+
+/// Projects a device's build report for the UI.
+#[must_use]
+pub fn build_dto(build: &kivori_protocol::BuildInfo) -> DeviceBuildDto {
+    DeviceBuildDto {
+        commit: build.commit.map(|bytes| {
+            use std::fmt::Write;
+            bytes.iter().fold(String::new(), |mut hex, byte| {
+                let _ = write!(hex, "{byte:02x}");
+                hex
+            })
+        }),
+        dirty: build.dirty,
+    }
+}
+
 /// Customer presentation resolved from the compiled product catalog, never device-provided text.
 /// Artwork is an optional compiled key; no image bytes or filesystem paths cross this DTO.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -338,9 +367,20 @@ pub struct DeviceInfoDto {
     pub identity: Option<DeviceIdentityDto>,
     /// Current known product/board only; absent while pending, unknown or disconnected.
     pub presentation: Option<ProductPresentationDto>,
+    /// Which firmware build the device runs; `null` when it did not report one (older firmware).
+    pub build: Option<DeviceBuildDto>,
 }
 
 impl ConnectionStatusDto {
+    /// Adds the build the connected device reported (`BUILD_INFO_V1`), if any.
+    #[must_use]
+    pub fn with_build(mut self, build: Option<kivori_protocol::BuildInfo>) -> Self {
+        if let Some(device) = self.device.as_mut() {
+            device.build = build.as_ref().map(build_dto);
+        }
+        self
+    }
+
     /// Adds which product and board the connected device is (known to the session, not to the
     /// connection manager). Without a device there is nothing to add it to.
     #[must_use]
@@ -645,6 +685,9 @@ pub fn app_info(device_studio_enabled: bool) -> AppInfoDto {
         protocol_version: ProtocolVersion::new(PROTOCOL_MAJOR, PROTOCOL_MINOR).into(),
         supported_majors: vec![PROTOCOL_MAJOR],
         device_studio_enabled,
+        commit: Some(env!("KIVORI_APP_COMMIT"))
+            .filter(|commit| *commit != "unknown")
+            .map(str::to_string),
     }
 }
 
@@ -673,6 +716,7 @@ pub fn connection_status(
         device_id_hash_short: d.device_id_hash_short.clone(),
         identity: None,
         presentation: None,
+        build: None,
     });
     ConnectionStatusDto {
         connection: connection_token(manager.state()).to_string(),
@@ -1784,7 +1828,7 @@ pub const fn availability_token(
 }
 
 /// Every capability flag with the name the diagnostics page lists it by, in bit order.
-const CAPABILITY_TABLE: [(Capabilities, &str); 16] = [
+const CAPABILITY_TABLE: [(Capabilities, &str); 17] = [
     (Capabilities::MASCOT_INTERACTION, "mascotInteraction"),
     (Capabilities::PHYSICAL_INPUT_V1, "physicalInputV1"),
     (Capabilities::PRESENTATION_V1, "presentationV1"),
@@ -1801,6 +1845,7 @@ const CAPABILITY_TABLE: [(Capabilities, &str); 16] = [
     (Capabilities::IDLE_LIFE_V1, "idleLifeV1"),
     (Capabilities::MIC_STATE_V1, "micStateV1"),
     (Capabilities::PRODUCT_IDENTITY_V1, "productIdentityV1"),
+    (Capabilities::BUILD_INFO_V1, "buildInfoV1"),
 ];
 
 /// The capability names the diagnostics page lists, in bit order.

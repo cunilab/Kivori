@@ -123,6 +123,7 @@ The remaining message capabilities do not hide host readings or saved editors:
 | `quietAckV1` | Native trigger-feedback rendering policy; no extra desktop control. |
 | `micStateV1` | Device microphone indicator messages. Host microphone readings remain available independently. |
 | `productIdentityV1` | Identity exchange and legacy fallback under ADR-0014; not an ordinary interactive feature. |
+| `buildInfoV1` | The device reports its firmware build (git commit, uncommitted-changes flag); shown on Device, never gates a feature. |
 
 Known identity-only firmware shows firmware attention guidance and links to Device for the existing
 guarded matching-image workflow. Unknown identity shows app-update guidance and remains refused by

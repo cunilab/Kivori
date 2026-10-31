@@ -22,6 +22,18 @@ fn main() {
     std::fs::write(Path::new(&out_dir).join("kivori.assets"), &blob)
         .expect("write compiled asset blob");
 
+    // The commit this app is built from, compared with the device's firmware build in developer
+    // mode (`BUILD_INFO_V1`). Only the commit: nothing here depends on the working tree.
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let commit = kivori_asset_compiler::build_id::detect(&repo, &[]).commit;
+    println!(
+        "cargo:rustc-env=KIVORI_APP_COMMIT={}",
+        commit.as_deref().unwrap_or("unknown")
+    );
+    for path in kivori_asset_compiler::build_id::watch_paths(&repo, &[]) {
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
+
     // Cargo scans this directory recursively: metadata and artwork edits/additions/removals rebuild.
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let products = root.join("products");
