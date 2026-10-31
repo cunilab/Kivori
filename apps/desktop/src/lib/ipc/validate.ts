@@ -294,8 +294,10 @@ export function parseFirmwareOffer(raw: unknown): FirmwareOfferDto {
 /** Validates an `OnboardingDto`. */
 export function parseOnboarding(raw: unknown): OnboardingDto {
   const r = record('onboarding', raw);
-  if (typeof r.completed !== 'boolean') throw new Error('Kivori: invalid onboarding state.');
-  return { completed: r.completed };
+  if (typeof r.completed !== 'boolean' || typeof r.accessibilityAsked !== 'boolean') {
+    throw new Error('Kivori: invalid onboarding state.');
+  }
+  return { completed: r.completed, accessibilityAsked: r.accessibilityAsked };
 }
 
 /** Validates an Accessibility token: an unknown one is rejected, never shown as a state. */

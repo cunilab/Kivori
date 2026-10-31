@@ -739,6 +739,46 @@ mod tests {
     }
 
     #[test]
+    fn the_accessibility_ask_is_recorded_once_and_survives_a_restart_and_a_reset() {
+        let dir = tempfile::tempdir().unwrap();
+        // An install from before the field: finished setup, never asked.
+        fs::write(
+            dir.path().join(FILE),
+            br#"{"version":1,"onboarding":{"completed":true}}"#,
+        )
+        .unwrap();
+        let mut store = ConfigStore::open(dir.path());
+        assert!(store.file().onboarding.completed);
+        assert!(!store.file().onboarding.accessibility_asked);
+
+        let next = store.edited(|file| file.onboarding.accessibility_asked = true);
+        store.save(next).unwrap();
+        assert!(
+            ConfigStore::open(dir.path())
+                .file()
+                .onboarding
+                .accessibility_asked
+        );
+
+        store.reset().unwrap();
+        assert!(
+            ConfigStore::open(dir.path())
+                .file()
+                .onboarding
+                .accessibility_asked,
+            "Reset all settings does not make Kivori ask again"
+        );
+    }
+
+    #[test]
+    fn a_fresh_install_has_not_asked_yet() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::open(dir.path());
+        assert!(!store.file().onboarding.completed);
+        assert!(!store.file().onboarding.accessibility_asked);
+    }
+
+    #[test]
     fn failed_migration_writeback_keeps_its_backup_and_can_retry_without_replacing_it() {
         let dir = tempfile::tempdir().unwrap();
         let original = br#"{"version":1,"onboarding":{"completed":true}}"#;

@@ -244,17 +244,13 @@ impl AppState {
         }
     }
 
-    /// Whether first-run setup is finished.
+    /// Whether first-run setup is finished, and whether the Accessibility ask was made.
     #[must_use]
     pub fn onboarding_snapshot(&self) -> dto::OnboardingDto {
+        let onboarding = self.config.lock().expect("config lock").file().onboarding;
         dto::OnboardingDto {
-            completed: self
-                .config
-                .lock()
-                .expect("config lock")
-                .file()
-                .onboarding
-                .completed,
+            completed: onboarding.completed,
+            accessibility_asked: onboarding.accessibility_asked,
         }
     }
 

@@ -30,10 +30,12 @@ down to the message about Kivori and choose **Open Anyway**, then confirm with y
 Touch ID. You only do this once. Do not turn Gatekeeper off. Public distribution readiness is
 tracked in [macOS support](./macos.md).
 
-Most things work without any permission on a Mac. Only keyboard shortcuts need **Accessibility**:
-Kivori asks for it on the Controls page when you bind one. Choose **Allow access**, then switch
-Kivori on in System Settings, Privacy & Security, Accessibility. Play/pause, next, previous, volume
-and mute never need it.
+Most things work without any permission on a Mac. Only keyboard shortcuts need **Accessibility**.
+Kivori asks once if it is not on yet (in setup, or in one card the first time you open an updated
+Kivori), and never when it is already on. Choose **Allow**, then switch Kivori on in System
+Settings, Privacy & Security, Accessibility. If you choose **Not now**, it will not ask again by
+itself: the Controls page reminds you when you bind a shortcut, and Settings shows whether it is
+**Allowed** and lets you allow it. Play/pause, next, previous, volume and mute never need it.
 
 ## First run and setup
 
@@ -42,10 +44,12 @@ Kivori walks you through a short setup. You can skip any step, and "Skip setup" 
 1. **Welcome.**
 2. **Plug in.** Connect Kivori with a USB-C **data** cable. Kivori finds it by itself; there is no
    port to choose.
-3. **Try it.** Follow the guidance for your device's supported controls and check their assigned
+3. **Allow Accessibility (macOS only).** Shown only if it is not on yet. **Allow** opens System
+   Settings; the step continues by itself once you switch Kivori on. **Not now** skips it.
+4. **Try it.** Follow the guidance for your device's supported controls and check their assigned
    actions in Controls. This step does not automatically tick or verify the hardware; continue
    when you are ready.
-4. **Make it yours.** Pick the starting screen, how lively the buddy is, and whether Kivori starts
+5. **Make it yours.** Pick the starting screen, how lively the buddy is, and whether Kivori starts
    at login.
 
 You can repeat setup any time: Device page, **Run setup again**.
@@ -165,7 +169,8 @@ BOOT is the pinhole in the base labelled BOOT; a paperclip reaches it.
 - **Another program has the port.** Close serial monitors and other apps that use USB serial devices.
 - **Shortcuts do nothing (macOS).** Allow Kivori under System Settings, Privacy & Security,
   Accessibility. If you switched it on and Kivori still says it is off, choose **Reset and ask
-  again** in the notice on the Controls page, then switch it on once more.
+  again** in the notice on the Controls page (or in Settings, General), then switch it on once
+  more.
 - **macOS will not open Kivori the first time.** See Open Anyway above.
 - **Still stuck.** Try the BOOT button recovery above.
 - **Asking for help.** On the Device page choose **Copy diagnostics** and paste it into your message.

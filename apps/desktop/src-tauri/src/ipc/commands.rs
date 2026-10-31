@@ -140,7 +140,26 @@ fn set_onboarding(
         let next = store.edited(|file| file.onboarding.completed = completed);
         store.save(next)
     })
-    .map(|_| OnboardingDto { completed })
+    .map(|_| app.onboarding_snapshot())
+}
+
+/// Records that Kivori has shown its one automatic Accessibility ask, so it never asks by itself
+/// again. Saves nothing when it is already recorded.
+///
+/// # Errors
+/// Returns an error when the setting cannot be saved.
+#[tauri::command]
+pub fn mark_accessibility_asked(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+) -> Result<OnboardingDto, String> {
+    if !app.onboarding_snapshot().accessibility_asked {
+        commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+            let next = store.edited(|file| file.onboarding.accessibility_asked = true);
+            store.save(next)
+        })?;
+    }
+    Ok(app.onboarding_snapshot())
 }
 
 /// The app updater's status (all builds). A development build reports `disabled`, macOS

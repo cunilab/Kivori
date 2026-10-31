@@ -218,7 +218,7 @@ fn the_file_uses_the_documented_shape() {
             "macros": [],
             "display": { "defaultView": "clock", "secondaryView": "cycle", "brightness": 2 },
             "buddy": { "reactions": false, "intensity": "high" },
-            "onboarding": { "completed": false },
+            "onboarding": { "completed": false, "accessibilityAsked": false },
             "updates": { "autoCheck": true, "skippedVersion": null, "snoozed": null }
         })
     );

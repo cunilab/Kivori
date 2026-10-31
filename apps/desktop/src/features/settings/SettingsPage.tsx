@@ -29,6 +29,7 @@ import { cn } from '@kivori/ui/lib/utils';
 import { Diagnostics } from '../device/Diagnostics';
 import { StartupCard } from '../device/StartupCard';
 import { DeveloperTools } from '../developer/DeveloperTools';
+import { AccessibilityStatus } from '../permissions/AccessibilityStatus';
 import { AppUpdates } from '../updates/AppUpdates';
 
 const t = strings.settings;
@@ -99,6 +100,7 @@ export function SettingsPage({
             <StartupCard />
           </div>
           <div className="flex flex-col gap-4">
+            <AccessibilityStatus />
             <Card size="sm">
               <CardHeader>
                 <CardTitle>{strings.onboarding.runAgain.title}</CardTitle>

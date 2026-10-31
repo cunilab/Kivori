@@ -1,21 +1,31 @@
 import { useCallback, useEffect, useState } from 'react';
-import { completeOnboarding, getOnboarding, restartOnboarding } from '@/lib/ipc';
+import {
+  completeOnboarding,
+  getOnboarding,
+  markAccessibilityAsked,
+  restartOnboarding,
+} from '@/lib/ipc';
+import type { OnboardingDto } from '@/lib/ipc/types';
 
 /**
- * Whether first-run setup is finished. `completed` is `null` until the native side answers, so the
- * caller can tell "not known yet" from "needs setup".
+ * Whether first-run setup is finished, and whether the one automatic Accessibility ask was made.
+ * `completed` is `null` until the native side answers, so the caller can tell "not known yet"
+ * from "needs setup".
  */
 export function useOnboarding(): {
   completed: boolean | null;
+  accessibilityAsked: boolean | null;
   complete: () => Promise<void>;
   restart: () => Promise<void>;
+  /** Records that the one automatic Accessibility ask was shown. */
+  markAccessibilityAsked: () => Promise<void>;
 } {
-  const [completed, setCompleted] = useState<boolean | null>(null);
+  const [state, setState] = useState<OnboardingDto | null>(null);
   useEffect(() => {
     let active = true;
     void getOnboarding()
-      .then((state) => {
-        if (active) setCompleted(state.completed);
+      .then((next) => {
+        if (active) setState(next);
       })
       .catch(() => {});
     return () => {
@@ -23,10 +33,19 @@ export function useOnboarding(): {
     };
   }, []);
   const complete = useCallback(async () => {
-    setCompleted((await completeOnboarding()).completed);
+    setState(await completeOnboarding());
   }, []);
   const restart = useCallback(async () => {
-    setCompleted((await restartOnboarding()).completed);
+    setState(await restartOnboarding());
   }, []);
-  return { completed, complete, restart };
+  const markAsked = useCallback(async () => {
+    setState(await markAccessibilityAsked());
+  }, []);
+  return {
+    completed: state?.completed ?? null,
+    accessibilityAsked: state?.accessibilityAsked ?? null,
+    complete,
+    restart,
+    markAccessibilityAsked: markAsked,
+  };
 }
