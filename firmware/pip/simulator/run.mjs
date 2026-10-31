@@ -248,7 +248,7 @@ try {
         'connections',
         ['--connection-smoke'],
         'PASS S5.2 ',
-        9,
+        10,
         ['firmware Runtime', 'desktop session/connection policy'],
       ],
       [

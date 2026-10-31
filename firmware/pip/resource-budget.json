@@ -82,7 +82,7 @@
       "why": "Boot only: postcard builds the bitmap table."
     },
     {
-      "fn": "<kivori_firmware::proto::Dispatcher>::send::*",
+      "fn": "<kivori_firmware::proto::Dispatcher>::send_within::*",
       "max": 1700,
       "why": "Frame encode with the inlined senders."
     },

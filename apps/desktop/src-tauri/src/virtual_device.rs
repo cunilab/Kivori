@@ -483,11 +483,17 @@ impl Sandbox {
                 self.end_link(None);
                 return Ok(());
             }
-            "silent" | "exit" => {
+            "silent" | "exit" | "host-stall" | "host-resume" => {
                 if !self.snapshot.connected {
                     return Err("Connect the virtual device first".into());
                 }
-                let mode = if action == "silent" { "silent" } else { "exit" };
+                // The host stops reading the device (or reads again): the session stays up either way.
+                let mode = match action {
+                    "silent" => "silent",
+                    "exit" => "exit",
+                    "host-stall" => "host-stall",
+                    _ => "normal",
+                };
                 self.link.as_mut().ok_or("Virtual link closed")?.fault = mode;
                 self.snapshot.mode = mode;
                 return Ok(());

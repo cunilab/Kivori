@@ -35,11 +35,15 @@ An optional `fault` field selects one bounded development fault per request (def
   preserving firmware-produced payload and sequence. Other packets are unchanged.
 - `unknown-product` / `unknown-board`: report `65535` for that identity field through the actual
   firmware boot-identity seam and `Ready` response; retain other build identity fields.
+- `host-stall`: the host stops reading device output while requests carry it: `wire` stays empty and
+  the device-side pipe holds at most 64 unread bytes (the USB FIFO), so the device's outbound queue
+  fills as on the unit. The next `normal` request returns everything held, in order. A live session
+  may switch to it and back.
 - `exit`: close the process cleanly without a response, exercising real pipe EOF.
 
 Use a fresh process for identity and protocol fault scenarios, and send the selected mode on every
-relevant tick. A live session may switch to `silent` or `exit`. These are process-control values,
-not protocol messages, physical faults or production wire-schema additions.
+relevant tick. A live session may switch to `silent`, `host-stall` or `exit`. These are
+process-control values, not protocol messages, physical faults or production wire-schema additions.
 
 Each request except `exit` produces exactly one stdout JSON record with `wire`, optional 57600-pixel `frame`
 (row-major RGB565 integers), `brightness`, `reboot` and the firmware companion `state`

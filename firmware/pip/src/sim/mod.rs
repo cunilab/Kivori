@@ -9,6 +9,7 @@ use crate::proto::{DeviceIdentity, Dispatcher};
 use crate::render::{TILE_H, TILE_PIXELS, TILE_W};
 use crate::runtime::GESTURE_END_MS;
 use crate::state::DeviceState;
+use crate::tx_buffer::FIFO_BYTES;
 use core::cell::Cell;
 use core::convert::Infallible;
 use heapless::Vec;
@@ -39,9 +40,12 @@ pub const SCRIPT_CAPACITY: usize = 32;
 
 /// A bidirectional in-memory byte pipe. The device sees it as a [`Transport`]; the test plays the
 /// host role via [`SimPipe::host_send`] / [`SimPipe::host_recv`].
+///
+/// [`SimPipe::set_host_stalled`] models a host that stops reading (see there).
 pub struct SimPipe {
     to_device: Vec<u8, PIPE_CAPACITY>,
     to_host: Vec<u8, PIPE_CAPACITY>,
+    host_stalled: bool,
 }
 
 impl SimPipe {
@@ -51,7 +55,18 @@ impl SimPipe {
         Self {
             to_device: Vec::new(),
             to_host: Vec::new(),
+            host_stalled: false,
         }
+    }
+
+    /// Models a host that stops draining device-to-host bytes (a Mac under heavy load, a port nobody
+    /// reads). While stalled the device-side endpoint holds at most one USB FIFO ([`FIFO_BYTES`], 64)
+    /// of unread bytes, like the real USB Serial/JTAG FIFO: further writes are accepted only up to
+    /// that and report the short count (`WouldBlock` on the device, never an error), and
+    /// [`Self::host_recv`] returns nothing. Un-stalling lets the host read what is held and
+    /// everything written afterwards. Host-to-device traffic is not affected.
+    pub fn set_host_stalled(&mut self, stalled: bool) {
+        self.host_stalled = stalled;
     }
 
     /// Host → device: queues `bytes` for the device to read. `Err` if the pipe is full.
@@ -64,6 +79,9 @@ impl SimPipe {
     /// Device → host: drains and returns everything the device has written so far.
     #[must_use]
     pub fn host_recv(&mut self) -> Vec<u8, PIPE_CAPACITY> {
+        if self.host_stalled {
+            return Vec::new();
+        }
         let out = self.to_host.clone();
         self.to_host.clear();
         out
@@ -72,7 +90,7 @@ impl SimPipe {
     /// Whether the device has produced any unread output.
     #[must_use]
     pub fn host_has_output(&self) -> bool {
-        !self.to_host.is_empty()
+        !self.host_stalled && !self.to_host.is_empty()
     }
 }
 
@@ -95,7 +113,12 @@ impl Transport for SimPipe {
     }
 
     fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
-        let space = PIPE_CAPACITY - self.to_host.len();
+        let capacity = if self.host_stalled {
+            FIFO_BYTES
+        } else {
+            PIPE_CAPACITY
+        };
+        let space = capacity.saturating_sub(self.to_host.len());
         let n = space.min(buf.len());
         let _ = self.to_host.extend_from_slice(&buf[..n]);
         Ok(n)

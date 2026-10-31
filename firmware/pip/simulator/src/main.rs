@@ -47,6 +47,8 @@ enum Fault {
     WrongMajor,
     UnknownProduct,
     UnknownBoard,
+    /// The host stops reading device output while the fault is sent (see `SimPipe::set_host_stalled`).
+    HostStall,
     Exit,
 }
 
@@ -290,6 +292,10 @@ impl Simulator {
         self.input.edges = request.edges;
         self.now = request.now_ms;
         self.shared.clock.set_ms(self.now);
+        self.shared
+            .link
+            .borrow_mut()
+            .set_host_stalled(request.fault == Fault::HostStall);
         let tick = self.run_tick(request.fault);
         self.rebooted = tick.reboot;
         finish(
@@ -498,6 +504,7 @@ mod tests {
             ("wrong-major", Fault::WrongMajor),
             ("unknown-product", Fault::UnknownProduct),
             ("unknown-board", Fault::UnknownBoard),
+            ("host-stall", Fault::HostStall),
             ("exit", Fault::Exit),
         ] {
             assert_eq!(
@@ -609,6 +616,32 @@ mod tests {
             !response.wire.is_empty(),
             "normal restores outbound traffic"
         );
+    }
+
+    #[test]
+    fn host_stall_holds_device_output_until_the_host_reads_again() {
+        use kivori_protocol::{decode_message, Message, Ping, PROTOCOL_MAJOR};
+        let mut sim = Simulator::new();
+        sim.step(hello()).unwrap();
+        sim.step(ready(1)).unwrap();
+        // The host stops reading while it pings: nothing comes back, and the device keeps running.
+        let mut ping = message_request(Message::Ping(Ping { t_ms: 77 }), 10);
+        ping.fault = Fault::HostStall;
+        let response = sim.step(ping).unwrap();
+        assert!(response.wire.is_empty(), "a stalled host reads nothing");
+        let mut quiet = request(20);
+        quiet.fault = Fault::HostStall;
+        assert!(sim.step(quiet).unwrap().wire.is_empty());
+        // Reading again returns the held reply, whole.
+        let response = sim.step(request(30)).unwrap();
+        let mut scratch = Default::default();
+        let pong = response
+            .wire
+            .split(|&b| b == 0)
+            .filter(|p| !p.is_empty())
+            .filter_map(|p| decode_message(p, &mut scratch, &[PROTOCOL_MAJOR]).ok())
+            .any(|(_, m)| matches!(m, Message::Pong(pong) if pong.t_ms_echo == 77));
+        assert!(pong, "the Pong held during the stall arrives after it");
     }
 
     #[test]
