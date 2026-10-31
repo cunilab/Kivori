@@ -24,7 +24,7 @@ pub use message::{
     ErrorReport, Feedback, FirmwareVersion, Health, Hello, HelloAck, Identity, IdentitySource,
     InputEvent, InputKind, InternalsReport, InternalsRequest, MascotActionApplied, MediaInfoUpdate,
     Message, MicStateUpdate, Nonce, Ping, PlayMascotAction, Pong, Presentation, Ready, SetState,
-    StateReport, Status, BUILD_COMMIT_LEN, CONTEXT_BUTTONS,
+    StateReport, Status, CONTEXT_BUTTONS, SOURCE_ID_LEN,
 };
 pub use negotiate::negotiate;
 

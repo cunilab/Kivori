@@ -264,14 +264,14 @@ fn builds(messages: &[Message]) -> Vec<kivori_protocol::BuildInfo> {
 }
 
 #[test]
-fn the_build_commit_and_dirty_flag_follow_the_identity_when_negotiated() {
+fn the_build_source_id_and_dirty_flag_follow_the_identity_when_negotiated() {
     let mut rig = Rig::new(None);
     let messages = rig.connect(CAPS);
     assert_eq!(
         builds(&messages),
         vec![kivori_protocol::BuildInfo {
             session: rig.nonce,
-            commit: BuildId::BUILD.commit,
+            source_id: BuildId::BUILD.source_id,
             dirty: BuildId::BUILD.dirty,
         }]
     );

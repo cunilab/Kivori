@@ -866,8 +866,8 @@ mod tests {
             .expect("Ready returns the build id");
         assert_eq!(build.session, 42);
         assert_eq!(
-            build.commit,
-            kivori_firmware::identity::BuildId::BUILD.commit
+            build.source_id,
+            kivori_firmware::identity::BuildId::BUILD.source_id
         );
         assert_eq!(build.dirty, kivori_firmware::identity::BuildId::BUILD.dirty);
         let identity = identity_response

@@ -3,7 +3,7 @@
 //! supplies the raw chip record bytes.
 
 use kivori_protocol::identity::{ChipRecord, ChipRecordState};
-use kivori_protocol::{IdentitySource, BUILD_COMMIT_LEN};
+use kivori_protocol::{IdentitySource, SOURCE_ID_LEN};
 
 /// Parses a decimal at compile time; a malformed value fails the build instead of shipping wrong.
 const fn parse_u16(text: &str) -> u16 {
@@ -26,22 +26,22 @@ pub const BUILD_BOARD: u16 = parse_u16(env!("KIVORI_BOARD_NUM"));
 
 /// Reads the 12 hex digits `build.rs` found (`unknown` without git) into the wire form; anything
 /// else fails the build instead of shipping a wrong id.
-const fn parse_commit(text: &str) -> Option<[u8; BUILD_COMMIT_LEN]> {
+const fn parse_source_id(text: &str) -> Option<[u8; SOURCE_ID_LEN]> {
     let bytes = text.as_bytes();
     if bytes.len() == 7 && bytes[0] == b'u' {
         return None;
     }
     assert!(
-        bytes.len() == 2 * BUILD_COMMIT_LEN,
-        "build commit must be 12 hex digits"
+        bytes.len() == 2 * SOURCE_ID_LEN,
+        "build source id must be 12 hex digits"
     );
-    let mut out = [0u8; BUILD_COMMIT_LEN];
+    let mut out = [0u8; SOURCE_ID_LEN];
     let mut i = 0;
     while i < bytes.len() {
         let digit = match bytes[i] {
             b @ b'0'..=b'9' => b - b'0',
             b @ b'a'..=b'f' => b - b'a' + 10,
-            _ => panic!("build commit must be lowercase hex"),
+            _ => panic!("build source id must be lowercase hex"),
         };
         out[i / 2] = (out[i / 2] << 4) | digit;
         i += 1;
@@ -49,22 +49,22 @@ const fn parse_commit(text: &str) -> Option<[u8; BUILD_COMMIT_LEN]> {
     Some(out)
 }
 
-/// Which exact build of the firmware this is: the git commit it was compiled from (`None` without
-/// git) and whether the tree had uncommitted changes in the firmware's files. Reported once per
+/// Which exact firmware source this build is: the content hash of its committed input files (`None`
+/// without git) and whether the tree had uncommitted changes in the firmware's files. Reported once per
 /// session as `BuildInfo` (`BUILD_INFO_V1`), so a developer can tell a unit runs a build that differs
 /// from the repository.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuildId {
-    /// The 12-hex-digit commit packed into 6 bytes, or `None`.
-    pub commit: Option<[u8; BUILD_COMMIT_LEN]>,
+    /// The 12-hex-digit source id packed into 6 bytes, or `None`.
+    pub source_id: Option<[u8; SOURCE_ID_LEN]>,
     /// Uncommitted changes under the firmware's build paths.
     pub dirty: bool,
 }
 
 impl BuildId {
-    /// The build id compiled into this firmware (`build.rs`: `KIVORI_BUILD_COMMIT`, `KIVORI_BUILD_DIRTY`).
+    /// The build id compiled into this firmware (`build.rs`: `KIVORI_BUILD_SOURCE`, `KIVORI_BUILD_DIRTY`).
     pub const BUILD: BuildId = BuildId {
-        commit: parse_commit(env!("KIVORI_BUILD_COMMIT")),
+        source_id: parse_source_id(env!("KIVORI_BUILD_SOURCE")),
         dirty: parse_u16(env!("KIVORI_BUILD_DIRTY")) != 0,
     };
 }
@@ -175,24 +175,24 @@ mod tests {
     }
 
     #[test]
-    fn parse_commit_reads_twelve_hex_digits_or_unknown() {
+    fn parse_source_id_reads_twelve_hex_digits_or_unknown() {
         assert_eq!(
-            parse_commit("c2ff8c4f68de"),
+            parse_source_id("c2ff8c4f68de"),
             Some([0xc2, 0xff, 0x8c, 0x4f, 0x68, 0xde])
         );
-        assert_eq!(parse_commit("000000000001"), Some([0, 0, 0, 0, 0, 1]));
-        assert_eq!(parse_commit("unknown"), None);
+        assert_eq!(parse_source_id("000000000001"), Some([0, 0, 0, 0, 0, 1]));
+        assert_eq!(parse_source_id("unknown"), None);
     }
 
     #[test]
-    fn the_compiled_build_id_is_either_a_commit_or_unknown_never_dirty_without_one() {
+    fn the_compiled_build_id_is_either_a_source_id_or_unknown_never_dirty_without_one() {
         let build = BuildId::BUILD;
-        if build.commit.is_none() {
-            assert!(!build.dirty, "an unknown commit cannot be dirty");
+        if build.source_id.is_none() {
+            assert!(!build.dirty, "an unknown source id cannot be dirty");
         }
         // build.rs exports the same facts the const parses.
-        let text = env!("KIVORI_BUILD_COMMIT");
-        assert_eq!(build.commit.is_some(), text != "unknown");
+        let text = env!("KIVORI_BUILD_SOURCE");
+        assert_eq!(build.source_id.is_some(), text != "unknown");
         assert!(matches!(env!("KIVORI_BUILD_DIRTY"), "0" | "1"));
     }
 

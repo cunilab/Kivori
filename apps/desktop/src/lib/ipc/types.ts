@@ -18,8 +18,8 @@ export interface AppInfoDto {
   protocolVersion: ProtocolVersion;
   supportedMajors: number[];
   deviceStudioEnabled: boolean;
-  /** The git commit this app was built from (12 hex digits); `null` when built without git. */
-  commit?: string | null;
+  /** The firmware source id of the checkout this app was built from (12 hex digits); `null` when built without git. */
+  sourceId?: string | null;
 }
 
 /** Where a device's identity came from: `legacy` means it reported none (the fixed identity from ADR-0014). */
@@ -47,8 +47,8 @@ export interface ProductPresentationDto {
 
 /** Which exact firmware build a device runs; only a device that reports it has one. */
 export interface DeviceBuildDto {
-  /** 12 lowercase hex digits; `null` when the firmware was built without git. */
-  commit: string | null;
+  /** The firmware source id: 12 lowercase hex digits; `null` when the firmware was built without git. */
+  sourceId: string | null;
   /** Built with uncommitted changes in the firmware's files. */
   dirty: boolean;
 }

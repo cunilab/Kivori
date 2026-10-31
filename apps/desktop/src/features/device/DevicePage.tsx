@@ -27,7 +27,7 @@ import type { AppInfoDto, ConnectionStatusDto } from '@/lib/ipc/types';
 import { format, strings } from '@/lib/i18n/strings';
 import { cn } from '@kivori/ui/lib/utils';
 import { useDevMode } from '@/lib/dev-mode';
-import { buildNotices, shortCommit } from './build';
+import { buildNotices } from './build';
 import { DeviceInternals } from './DeviceInternals';
 import { FirmwareUpdate } from './FirmwareUpdate';
 
@@ -73,7 +73,7 @@ export function DevicePage({
   const devMode = useDevMode();
   const version = (value: { major: number; minor: number } | undefined): string | null =>
     value ? `${value.major}.${value.minor}` : null;
-  const notices = buildNotices(device?.build, appInfo?.commit, devMode);
+  const notices = buildNotices(device?.build, appInfo?.sourceId, devMode);
   // Without a device, its own rows can only say "Unknown": they collapse into one muted line.
   const hasDevice = ui === 'connected' || ui === 'incompatible';
   const session: [string, string | null, string, boolean][] = [
@@ -144,14 +144,14 @@ export function DevicePage({
                     <AlertDescription>{t.build.dirtyBody}</AlertDescription>
                   </Alert>
                 ) : null}
-                {notices.differs && device.build?.commit && appInfo?.commit ? (
+                {notices.differs && device.build?.sourceId && appInfo?.sourceId ? (
                   <Alert data-testid="device-build-differs">
                     <TriangleAlert aria-hidden="true" />
                     <AlertTitle>{t.build.differsTitle}</AlertTitle>
                     <AlertDescription>
                       {format(t.build.differsBody, {
-                        device: shortCommit(device.build.commit),
-                        app: shortCommit(appInfo.commit),
+                        device: device.build.sourceId,
+                        app: appInfo.sourceId,
                       })}
                     </AlertDescription>
                   </Alert>
@@ -183,9 +183,9 @@ export function DevicePage({
                       <Row label={t.build.label} testId="device-build">
                         <Known value={device.build} why={t.build.notReported}>
                           {(build) =>
-                            build.commit ? (
+                            build.sourceId ? (
                               <>
-                                <span className="font-mono">{shortCommit(build.commit)}</span>
+                                <span className="font-mono">{build.sourceId}</span>
                                 {build.dirty ? ` · ${t.build.uncommitted}` : ''}
                               </>
                             ) : (

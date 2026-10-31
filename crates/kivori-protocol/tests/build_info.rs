@@ -55,20 +55,24 @@ fn payload(msg: &Message, version: ProtocolVersion) -> std::vec::Vec<u8> {
         .to_vec()
 }
 
-const COMMIT: [u8; 6] = [0xc2, 0xff, 0x8c, 0x4f, 0x68, 0xde];
+const SOURCE_ID: [u8; 6] = [0xc2, 0xff, 0x8c, 0x4f, 0x68, 0xde];
 
-fn sample(commit: Option<[u8; 6]>, dirty: bool) -> Message {
+fn sample(source_id: Option<[u8; 6]>, dirty: bool) -> Message {
     Message::BuildInfo(BuildInfo {
         session: 7,
-        commit,
+        source_id,
         dirty,
     })
 }
 
 #[test]
 fn build_info_is_appended_as_tag_24_and_roundtrips() {
-    for (commit, dirty) in [(Some(COMMIT), false), (Some(COMMIT), true), (None, false)] {
-        let msg = sample(commit, dirty);
+    for (source_id, dirty) in [
+        (Some(SOURCE_ID), false),
+        (Some(SOURCE_ID), true),
+        (None, false),
+    ] {
+        let msg = sample(source_id, dirty);
         let version = ProtocolVersion::new(PROTOCOL_MAJOR, PROTOCOL_MINOR);
         let bytes = payload(&msg, version);
         assert_eq!(bytes[0], 24);
@@ -84,10 +88,10 @@ fn build_info_is_appended_as_tag_24_and_roundtrips() {
 
 #[test]
 fn build_info_wire_bytes_are_stable() {
-    // tag 24, session 7, Some(1) + six commit bytes, dirty true
+    // tag 24, session 7, Some(1) + six source_id bytes, dirty true
     assert_eq!(
         payload(
-            &sample(Some(COMMIT), true),
+            &sample(Some(SOURCE_ID), true),
             ProtocolVersion::new(PROTOCOL_MAJOR, PROTOCOL_MINOR)
         ),
         [24, 7, 1, 0xc2, 0xff, 0x8c, 0x4f, 0x68, 0xde, 1]
@@ -130,7 +134,7 @@ fn a_minor_1_peer_rejects_build_info_as_an_unknown_tag() {
     // This is why the capability gate matters: the device never sends tag 24 to a peer that did
     // not negotiate it, because an old decoder would count it as a malformed message.
     let bytes = payload(
-        &sample(Some(COMMIT), false),
+        &sample(Some(SOURCE_ID), false),
         ProtocolVersion::new(PROTOCOL_MAJOR, PROTOCOL_MINOR),
     );
     assert!(postcard::from_bytes::<Minor1Message>(&bytes).is_err());

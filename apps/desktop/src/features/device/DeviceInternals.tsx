@@ -12,7 +12,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@kivori/ui/components/t
 import { getDeviceInternals } from '@/lib/ipc';
 import type { ConnectionStatusDto, DeviceInfoDto, DeviceInternalsDto } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
-import { shortCommit } from './build';
 import { INTERNALS_FRESH_MS, setLatestInternals } from './internals-latest';
 
 const t = strings.internals;
@@ -260,8 +259,8 @@ function Body({ s, build }: { s: Snapshot; build: DeviceInfoDto['build'] }): Rea
         </Row>
         {build ? (
           <Row label={t.rows.build} testId="internals-build">
-            {build.commit
-              ? `${shortCommit(build.commit)}${build.dirty ? ` (${strings.device.build.uncommitted})` : ''}`
+            {build.sourceId
+              ? `${build.sourceId}${build.dirty ? ` (${strings.device.build.uncommitted})` : ''}`
               : strings.device.build.noGit}
           </Row>
         ) : null}

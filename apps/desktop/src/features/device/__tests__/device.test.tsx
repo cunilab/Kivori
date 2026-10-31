@@ -227,20 +227,20 @@ describe('DevicePage', () => {
 
 describe('DevicePage firmware build', () => {
   const APP = 'c2ff8c4f68de';
-  const appInfo = (commit: string | null): AppInfoDto => ({
+  const appInfo = (sourceId: string | null): AppInfoDto => ({
     appVersion: '0.2.1',
     protocolVersion: { major: 0, minor: 2 },
     supportedMajors: [0],
     deviceStudioEnabled: false,
-    commit,
+    sourceId,
   });
   const withBuild = (
     build: DeviceBuildDto | null | undefined,
-    commit: string | null = APP,
+    sourceId: string | null = APP,
   ): ReactElement => (
     <TooltipProvider>
       <DevicePage
-        appInfo={appInfo(commit)}
+        appInfo={appInfo(sourceId)}
         connection={status({
           connection: 'connected',
           device: {
@@ -258,42 +258,42 @@ describe('DevicePage firmware build', () => {
 
   beforeEach(() => act(() => setDevMode(false)));
 
-  it('shows the short commit and stays quiet when it matches the app', () => {
-    render(withBuild({ commit: APP, dirty: false }));
-    expect(screen.getByTestId('device-build')).toHaveTextContent(/^c2ff8c4$/);
+  it('shows the source id and stays quiet when it matches the app', () => {
+    render(withBuild({ sourceId: APP, dirty: false }));
+    expect(screen.getByTestId('device-build')).toHaveTextContent(/^c2ff8c4f68de$/);
     expect(screen.queryByTestId('device-build-dirty')).not.toBeInTheDocument();
     expect(screen.queryByTestId('device-build-differs')).not.toBeInTheDocument();
   });
 
   it('warns for everyone when the unit runs a build with uncommitted changes', () => {
-    render(withBuild({ commit: APP, dirty: true }));
+    render(withBuild({ sourceId: APP, dirty: true }));
     expect(screen.getByTestId('device-build')).toHaveTextContent(
-      'c2ff8c4 · with uncommitted changes',
+      'c2ff8c4f68de · with uncommitted changes',
     );
     expect(screen.getByTestId('device-build-dirty')).toHaveTextContent(
       'Built from uncommitted changes',
     );
   });
 
-  it('says a different commit only in developer mode, so release users get no false alarm', () => {
-    const other = { commit: '0123456789ab', dirty: false };
+  it('says a different firmware source only in developer mode, so release users get no false alarm', () => {
+    const other = { sourceId: '0123456789ab', dirty: false };
     const page = render(withBuild(other));
-    expect(screen.getByTestId('device-build')).toHaveTextContent('0123456');
+    expect(screen.getByTestId('device-build')).toHaveTextContent('0123456789ab');
     expect(screen.queryByTestId('device-build-differs')).not.toBeInTheDocument();
     act(() => setDevMode(true));
     expect(screen.getByTestId('device-build-differs')).toHaveTextContent(
-      'This unit runs build 0123456; this app was built from c2ff8c4.',
+      "The device firmware source (0123456789ab) differs from this app's build (c2ff8c4f68de).",
     );
     page.unmount();
   });
 
-  it('says nothing about a difference when either side does not know its commit', () => {
+  it('says nothing about a difference when either side does not know its source id', () => {
     act(() => setDevMode(true));
-    const first = render(withBuild({ commit: null, dirty: false }));
+    const first = render(withBuild({ sourceId: null, dirty: false }));
     expect(screen.getByTestId('device-build')).toHaveTextContent('Unknown (built without git)');
     expect(screen.queryByTestId('device-build-differs')).not.toBeInTheDocument();
     first.unmount();
-    render(withBuild({ commit: '0123456789ab', dirty: false }, null));
+    render(withBuild({ sourceId: '0123456789ab', dirty: false }, null));
     expect(screen.queryByTestId('device-build-differs')).not.toBeInTheDocument();
   });
 

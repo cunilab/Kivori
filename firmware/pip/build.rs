@@ -49,31 +49,17 @@ fn export_identity() {
     println!("cargo:rerun-if-changed=../../products");
 }
 
-/// Everything that goes into this firmware image, relative to the repository root. An uncommitted
-/// change under one of these makes the build "dirty" (reported on the wire as `BuildInfo`); an edit
-/// to the simulator, the tests or the desktop app does not, because it cannot change the image.
-/// Extend it with the firmware's build inputs (`docs/release.md`, firmware release guard).
-const BUILD_PATHS: &[&str] = &[
-    "firmware/pip/src",
-    "firmware/pip/build.rs",
-    "firmware/pip/Cargo.toml",
-    "firmware/pip/Cargo.lock",
-    "firmware/pip/rust-toolchain.toml",
-    "firmware/pip/.cargo",
-    "crates",
-    "tools/asset-compiler",
-    "assets",
-    "products",
-    "Cargo.toml",
-    "Cargo.lock",
-    "rust-toolchain.toml",
-];
-
 fn main() {
     export_identity();
-    // The commit and dirty flag of this build (`KIVORI_BUILD_COMMIT`, `KIVORI_BUILD_DIRTY`), or
-    // "unknown" without git. Never anything that varies between two builds of the same commit.
-    kivori_asset_compiler::build_id::emit("KIVORI_BUILD", Path::new("../.."), BUILD_PATHS);
+    // The firmware source id and dirty flag (`KIVORI_BUILD_SOURCE`, `KIVORI_BUILD_DIRTY`): a hash of
+    // the committed content of the files listed in `build-inputs.txt`, or "unknown" without git.
+    // Never anything that varies between two builds of the same inputs (not the commit, not the
+    // time), so identical inputs give identical firmware bytes.
+    kivori_asset_compiler::build_id::emit(
+        "KIVORI_BUILD",
+        Path::new("../.."),
+        "firmware/pip/build-inputs.txt",
+    );
     // The flashable binary (`embedded`, and so `physical-st7789`) renders real scenes, so it needs the
     // canonical compiled asset blob. Compile it here (host-side, build-time only) and hand it to the
     // firmware via OUT_DIR — the device never parses SVG at runtime (Constitution XI). Skipped for every

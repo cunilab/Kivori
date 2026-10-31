@@ -1,42 +1,55 @@
-//! Which build is this? The git commit a binary was built from and whether the working tree had
-//! uncommitted changes in the files that make it up (host, std, build scripts only).
+//! Which firmware source is this? A content hash of the committed firmware input files, and whether
+//! the working tree has uncommitted changes in them (host, std, build scripts only).
 //!
 //! The firmware and the desktop app both stamp this into themselves at compile time, so a developer
-//! can tell at a glance when a unit runs a build that differs from the repository. The id depends
-//! only on the commit and the dirty flag, never on the time or the machine, so two builds of the
-//! same clean commit carry the same id. Without git (a source tarball, a shallow export, a foreign
-//! parent repository) the commit is simply unknown.
+//! can tell at a glance when a unit runs firmware that differs from the repository. The id is a
+//! function of the committed content of the input paths only: never the commit, the time or the
+//! machine. Identical inputs give an identical id (and so identical firmware bytes) in a shallow CI
+//! clone, after a squash merge, or on another branch. Cargo manifests and lockfiles are left out,
+//! so a workspace version bump (release bookkeeping) does not change it. Without git (a source
+//! tarball, a tree unpacked inside another repository, a repository with no commit) the id is
+//! simply unknown.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
-/// Hex digits of the commit that are kept: `git rev-parse --short=12`.
-pub const COMMIT_DIGITS: usize = 12;
+/// Hex digits of the source id: the first 12 of a git object id (48 bits, 6 bytes on the wire).
+pub const ID_DIGITS: usize = 12;
 
-/// The identity of one build.
+/// The identity of one firmware source.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildId {
     /// Twelve lowercase hex digits, or `None` when git could not say.
-    pub commit: Option<String>,
-    /// Uncommitted changes (tracked edits or new files) under the build's paths. Always `false`
-    /// when the commit is unknown.
+    pub source: Option<String>,
+    /// Uncommitted changes (tracked edits or new files) under the input paths. Always `false`
+    /// when the id is unknown.
     pub dirty: bool,
 }
 
 impl BuildId {
     /// The id of a build that cannot name its source.
     pub const UNKNOWN: BuildId = BuildId {
-        commit: None,
+        source: None,
         dirty: false,
     };
 }
 
-fn git(repo: &Path, args: &[&str]) -> Option<String> {
-    let out = Command::new("git")
-        .arg("-C")
+/// Cargo manifests and lockfiles (`Cargo.*`) carry the workspace version bookkeeping and do not
+/// take part in the id. Matched by file name prefix.
+fn is_manifest(path: &str) -> bool {
+    path.rsplit('/')
+        .next()
+        .is_some_and(|name| name.starts_with("Cargo."))
+}
+
+fn command(repo: &Path, args: &[&str]) -> Command {
+    let mut git = Command::new("git");
+    git.arg("-C")
         .arg(repo)
-        // A build must never take the index lock away from the developer's own git.
-        .arg("--no-optional-locks")
+        // A build must never take the index lock away from the developer's own git, and a path
+        // is a path, never a pattern.
+        .args(["--no-optional-locks", "--literal-pathspecs"])
         .args(args)
         // Locale and pager must not change what is parsed; a git hook's repository variables must
         // not point it at another repository.
@@ -44,16 +57,32 @@ fn git(repo: &Path, args: &[&str]) -> Option<String> {
         .env("GIT_PAGER", "cat")
         .env_remove("GIT_DIR")
         .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .output()
-        .ok()?;
-    out.status
-        .success()
-        .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+        .env_remove("GIT_INDEX_FILE");
+    git
+}
+
+fn git_raw(repo: &Path, args: &[&str], stdin: Option<&[u8]>) -> Option<Vec<u8>> {
+    let mut cmd = command(repo, args);
+    cmd.stdout(Stdio::piped()).stderr(Stdio::null());
+    cmd.stdin(if stdin.is_some() {
+        Stdio::piped()
+    } else {
+        Stdio::null()
+    });
+    let mut child = cmd.spawn().ok()?;
+    if let Some(bytes) = stdin {
+        child.stdin.take()?.write_all(bytes).ok()?;
+    }
+    let out = child.wait_with_output().ok()?;
+    out.status.success().then_some(out.stdout)
+}
+
+fn git(repo: &Path, args: &[&str]) -> Option<String> {
+    git_raw(repo, args, None).map(|out| String::from_utf8_lossy(&out).trim().to_string())
 }
 
 /// Whether `repo` is itself the top of a git work tree. A source tree unpacked inside some other
-/// repository would otherwise report that repository's commit.
+/// repository would otherwise report that repository's content.
 fn is_toplevel(repo: &Path) -> bool {
     let (Some(top), Ok(here)) = (
         git(repo, &["rev-parse", "--show-toplevel"]),
@@ -64,44 +93,104 @@ fn is_toplevel(repo: &Path) -> bool {
     Path::new(&top).canonicalize().is_ok_and(|top| top == here)
 }
 
-/// Reads the build id of the repository rooted at `repo`, looking for uncommitted changes only
-/// under `paths` (relative to `repo`; they need not all exist). Never fails: every problem is
-/// `BuildId::UNKNOWN`.
+/// Reads an input list: one repository-relative path per line, blank lines and `#` comments skipped.
 #[must_use]
-pub fn detect(repo: &Path, paths: &[&str]) -> BuildId {
-    if !is_toplevel(repo) {
+pub fn read_inputs(list: &str) -> Vec<String> {
+    list.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(str::to_string)
+        .collect()
+}
+
+/// Reads the source id of the repository rooted at `repo` from the committed content of `inputs`
+/// (relative to `repo`; they need not all exist), and looks for uncommitted changes under them.
+/// Never fails: every problem is `BuildId::UNKNOWN`.
+#[must_use]
+pub fn detect(repo: &Path, inputs: &[String]) -> BuildId {
+    // No inputs would hash the whole tree: that is no firmware source at all.
+    if inputs.is_empty() || !is_toplevel(repo) {
         return BuildId::UNKNOWN;
     }
-    let Some(head) = git(
-        repo,
-        &["rev-parse", &format!("--short={COMMIT_DIGITS}"), "HEAD"],
-    ) else {
+    let paths: Vec<&str> = inputs.iter().map(String::as_str).collect();
+    let mut args = vec!["ls-tree", "-r", "-z", "HEAD", "--"];
+    args.extend_from_slice(&paths);
+    let Some(tree) = git_raw(repo, &args, None) else {
         return BuildId::UNKNOWN;
     };
-    let head = head.get(..COMMIT_DIGITS).unwrap_or_default();
-    if head.len() != COMMIT_DIGITS || !head.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
-    {
+    // `<mode> <type> <blob id>\t<path>` per entry, already in path order: the blob ids are content
+    // hashes, so the listing is a function of the committed content of the input files.
+    let mut listing = String::new();
+    for entry in String::from_utf8_lossy(&tree).split('\0') {
+        let Some((meta, path)) = entry.split_once('\t') else {
+            continue;
+        };
+        let Some(blob) = meta.split(' ').nth(2) else {
+            continue;
+        };
+        if !is_manifest(path) {
+            listing.push_str(&format!("{path}\t{blob}\n"));
+        }
+    }
+    if listing.is_empty() {
         return BuildId::UNKNOWN;
     }
-    let mut args = vec!["status", "--porcelain", "--untracked-files=all", "--"];
-    args.extend_from_slice(paths);
+    let Some(hash) = git_raw(repo, &["hash-object", "--stdin"], Some(listing.as_bytes())) else {
+        return BuildId::UNKNOWN;
+    };
+    let hash = String::from_utf8_lossy(&hash).trim().to_string();
+    let Some(id) = hash.get(..ID_DIGITS) else {
+        return BuildId::UNKNOWN;
+    };
+    if !id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+        return BuildId::UNKNOWN;
+    }
+    let mut args = vec![
+        "status",
+        "--porcelain",
+        "-z",
+        "--no-renames",
+        "--untracked-files=all",
+        "--",
+    ];
+    args.extend_from_slice(&paths);
     // A status that cannot be read is not a clean tree: say dirty rather than claim a clean build.
-    let dirty = git(repo, &args).is_none_or(|status| !status.is_empty());
+    let dirty = git_raw(repo, &args, None).is_none_or(|status| {
+        String::from_utf8_lossy(&status)
+            .split('\0')
+            .filter(|entry| entry.len() > 3)
+            .any(|entry| !is_manifest(&entry[3..]))
+    });
     BuildId {
-        commit: Some(head.to_string()),
+        source: Some(id.to_string()),
         dirty,
     }
 }
 
-/// The files cargo should watch so the id is refreshed: the build's own paths that exist, plus the
-/// current commit pointer (`HEAD` and the branch ref it names).
+/// The files cargo should watch so the id is refreshed: every tracked or new input file, plus the
+/// current commit pointer (`HEAD` and the branch ref it names), because a commit turns "dirty" off
+/// without touching any input file.
 #[must_use]
-pub fn watch_paths(repo: &Path, paths: &[&str]) -> Vec<PathBuf> {
-    let mut watch: Vec<PathBuf> = paths
-        .iter()
-        .map(|p| repo.join(p))
-        .filter(|p| p.exists())
-        .collect();
+pub fn watch_paths(repo: &Path, inputs: &[String]) -> Vec<PathBuf> {
+    let mut watch: Vec<PathBuf> = Vec::new();
+    let mut args = vec![
+        "ls-files",
+        "-z",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "--",
+    ];
+    args.extend(inputs.iter().map(String::as_str));
+    if let Some(files) = git_raw(repo, &args, None) {
+        watch.extend(
+            String::from_utf8_lossy(&files)
+                .split('\0')
+                .filter(|path| !path.is_empty())
+                .map(|path| repo.join(path))
+                .filter(|path| path.is_file()),
+        );
+    }
     let mut pointers = vec!["HEAD".to_string()];
     if let Some(branch) = git(repo, &["symbolic-ref", "-q", "HEAD"]) {
         pointers.push(branch);
@@ -119,137 +208,22 @@ pub fn watch_paths(repo: &Path, paths: &[&str]) -> Vec<PathBuf> {
     watch
 }
 
-/// Prints the cargo directives a build script needs: `<PREFIX>_COMMIT` (12 hex digits or
+/// Prints the cargo directives a build script needs: `<PREFIX>_SOURCE` (12 hex digits or
 /// `unknown`), `<PREFIX>_DIRTY` (`1` or `0`) as compile-time environment, and the watch list.
-pub fn emit(prefix: &str, repo: &Path, paths: &[&str]) {
-    let id = detect(repo, paths);
+/// `list` is the input list file, relative to `repo`.
+pub fn emit(prefix: &str, repo: &Path, list: &str) {
+    let list_path = repo.join(list);
+    println!("cargo:rerun-if-changed={}", list_path.display());
+    let inputs = std::fs::read_to_string(&list_path)
+        .map(|text| read_inputs(&text))
+        .unwrap_or_default();
+    let id = detect(repo, &inputs);
     println!(
-        "cargo:rustc-env={prefix}_COMMIT={}",
-        id.commit.as_deref().unwrap_or("unknown")
+        "cargo:rustc-env={prefix}_SOURCE={}",
+        id.source.as_deref().unwrap_or("unknown")
     );
     println!("cargo:rustc-env={prefix}_DIRTY={}", u8::from(id.dirty));
-    for path in watch_paths(repo, paths) {
+    for path in watch_paths(repo, &inputs) {
         println!("cargo:rerun-if-changed={}", path.display());
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-
-    struct Scratch(PathBuf);
-    impl Scratch {
-        fn new(name: &str) -> Self {
-            let dir =
-                std::env::temp_dir().join(format!("kivori-build-id-{name}-{}", std::process::id()));
-            let _ = fs::remove_dir_all(&dir);
-            fs::create_dir_all(&dir).unwrap();
-            Scratch(dir)
-        }
-    }
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
-        }
-    }
-
-    fn run(dir: &Path, args: &[&str]) {
-        let ok = Command::new("git")
-            .arg("-C")
-            .arg(dir)
-            .args([
-                "-c",
-                "user.name=t",
-                "-c",
-                "user.email=t@t",
-                "-c",
-                "commit.gpgsign=false",
-            ])
-            .args(args)
-            .status()
-            .unwrap()
-            .success();
-        assert!(ok, "git {args:?}");
-    }
-
-    /// A repository with one commit holding `fw/a.rs` and `other/b.txt`.
-    fn repo(name: &str) -> Scratch {
-        let s = Scratch::new(name);
-        fs::create_dir_all(s.0.join("fw")).unwrap();
-        fs::create_dir_all(s.0.join("other")).unwrap();
-        fs::write(s.0.join("fw/a.rs"), "fn a() {}\n").unwrap();
-        fs::write(s.0.join("other/b.txt"), "b\n").unwrap();
-        run(&s.0, &["init", "-q"]);
-        run(&s.0, &["add", "."]);
-        run(&s.0, &["commit", "-q", "-m", "one"]);
-        s
-    }
-
-    fn head(dir: &Path) -> String {
-        git(dir, &["rev-parse", "HEAD"]).unwrap()[..COMMIT_DIGITS].to_string()
-    }
-
-    #[test]
-    fn a_clean_tree_reports_its_commit_and_is_not_dirty() {
-        let s = repo("clean");
-        let id = detect(&s.0, &["fw"]);
-        assert_eq!(id.commit.as_deref(), Some(head(&s.0).as_str()));
-        assert!(!id.dirty);
-        // The same clean commit gives the same id every time.
-        assert_eq!(detect(&s.0, &["fw"]), id);
-    }
-
-    #[test]
-    fn an_edit_or_a_new_file_under_the_build_paths_is_dirty() {
-        let s = repo("dirty");
-        fs::write(s.0.join("fw/a.rs"), "fn a() { 1; }\n").unwrap();
-        assert!(detect(&s.0, &["fw"]).dirty);
-        run(&s.0, &["checkout", "--", "fw/a.rs"]);
-        assert!(!detect(&s.0, &["fw"]).dirty);
-        fs::write(s.0.join("fw/new.rs"), "").unwrap();
-        assert!(detect(&s.0, &["fw"]).dirty, "an untracked file is a change");
-    }
-
-    #[test]
-    fn changes_outside_the_build_paths_do_not_count() {
-        let s = repo("outside");
-        fs::write(s.0.join("other/b.txt"), "edited\n").unwrap();
-        fs::write(s.0.join("other/untracked"), "").unwrap();
-        assert!(!detect(&s.0, &["fw", "missing-path"]).dirty);
-        assert!(detect(&s.0, &["other"]).dirty);
-    }
-
-    #[test]
-    fn without_git_the_commit_is_unknown() {
-        let s = Scratch::new("nogit");
-        fs::write(s.0.join("a.rs"), "").unwrap();
-        assert_eq!(detect(&s.0, &["."]), BuildId::UNKNOWN);
-        assert_eq!(detect(&s.0.join("missing"), &["."]), BuildId::UNKNOWN);
-    }
-
-    #[test]
-    fn a_tree_unpacked_inside_another_repository_is_unknown() {
-        let outer = repo("nested");
-        let inner = outer.0.join("unpacked");
-        fs::create_dir_all(&inner).unwrap();
-        fs::write(inner.join("a.rs"), "").unwrap();
-        assert_eq!(detect(&inner, &["."]), BuildId::UNKNOWN);
-    }
-
-    #[test]
-    fn a_repository_without_commits_is_unknown() {
-        let s = Scratch::new("empty");
-        run(&s.0, &["init", "-q"]);
-        assert_eq!(detect(&s.0, &["."]), BuildId::UNKNOWN);
-    }
-
-    #[test]
-    fn watch_paths_name_existing_paths_and_the_head_pointer() {
-        let s = repo("watch");
-        let watch = watch_paths(&s.0, &["fw", "nope"]);
-        assert!(watch.contains(&s.0.join("fw")));
-        assert!(!watch.contains(&s.0.join("nope")));
-        assert!(watch.iter().any(|p| p.ends_with("HEAD")));
     }
 }

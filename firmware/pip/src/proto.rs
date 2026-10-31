@@ -503,7 +503,7 @@ impl Dispatcher {
                         transport,
                         &Message::BuildInfo(BuildInfo {
                             session,
-                            commit: build.commit,
+                            source_id: build.source_id,
                             dirty: build.dirty,
                         }),
                     )?;

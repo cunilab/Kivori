@@ -123,9 +123,9 @@ fn app_info_reports_supported_protocol_and_studio_flag() {
         (dev.protocol_version.major, dev.protocol_version.minor),
         (0, 2)
     );
-    // The commit this app was built from: 12 hex digits, or unknown without git.
+    // The firmware source id of this build: 12 hex digits, or unknown without git.
     assert!(dev
-        .commit
+        .source_id
         .as_deref()
         .is_none_or(|c| c.len() == 12 && c.bytes().all(|b| b.is_ascii_hexdigit())));
     assert!(!dto::app_info(false).device_studio_enabled);

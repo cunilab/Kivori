@@ -1156,7 +1156,7 @@ fn identity_is_pending_until_the_message_arrives_then_scoped_to_the_connection()
 fn build_message(session: u32, dirty: bool) -> Message {
     Message::BuildInfo(kivori_protocol::BuildInfo {
         session,
-        commit: Some([0xc2, 0xff, 0x8c, 0x4f, 0x68, 0xde]),
+        source_id: Some([0xc2, 0xff, 0x8c, 0x4f, 0x68, 0xde]),
         dirty,
     })
 }
@@ -1192,9 +1192,9 @@ fn the_device_build_is_scoped_to_the_session_and_the_connection() {
         .expect("pump");
     let build = session.build_info().expect("build");
     assert!(build.dirty);
-    assert_eq!(build.commit, Some([0xc2, 0xff, 0x8c, 0x4f, 0x68, 0xde]));
+    assert_eq!(build.source_id, Some([0xc2, 0xff, 0x8c, 0x4f, 0x68, 0xde]));
     let dto = kivori_desktop::ipc::dto::build_dto(&build);
-    assert_eq!(dto.commit.as_deref(), Some("c2ff8c4f68de"));
+    assert_eq!(dto.source_id.as_deref(), Some("c2ff8c4f68de"));
 
     // The first report of a session wins; a repeat cannot rewrite it.
     device_push(&mut link, &build_message(nonce, false), wire_version(), 3);

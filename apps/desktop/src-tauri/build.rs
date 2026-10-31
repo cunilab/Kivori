@@ -22,18 +22,6 @@ fn main() {
     std::fs::write(Path::new(&out_dir).join("kivori.assets"), &blob)
         .expect("write compiled asset blob");
 
-    // The commit this app is built from, compared with the device's firmware build in developer
-    // mode (`BUILD_INFO_V1`). Only the commit: nothing here depends on the working tree.
-    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let commit = kivori_asset_compiler::build_id::detect(&repo, &[]).commit;
-    println!(
-        "cargo:rustc-env=KIVORI_APP_COMMIT={}",
-        commit.as_deref().unwrap_or("unknown")
-    );
-    for path in kivori_asset_compiler::build_id::watch_paths(&repo, &[]) {
-        println!("cargo:rerun-if-changed={}", path.display());
-    }
-
     // Cargo scans this directory recursively: metadata and artwork edits/additions/removals rebuild.
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let products = root.join("products");
@@ -42,6 +30,29 @@ fn main() {
         catalog_build::generate(&products, Path::new(&out_dir)).expect("valid product catalog");
     std::fs::write(Path::new(&out_dir).join("catalog_sources.rs"), source)
         .expect("write embedded catalog sources");
+
+    // The firmware source id of this checkout (the same hash the firmware stamps into itself, from
+    // the input list beside the catalog's firmware crate), compared with the device's in developer
+    // mode (`BUILD_INFO_V1`). Only the id is used.
+    match catalog
+        .products()
+        .first()
+        .and_then(|product| product.boards.first())
+    {
+        Some(board) => {
+            let crate_dir = board
+                .firmware
+                .crate_dir
+                .to_string_lossy()
+                .replace('\\', "/");
+            kivori_asset_compiler::build_id::emit(
+                "KIVORI_APP",
+                &root,
+                &format!("{crate_dir}/build-inputs.txt"),
+            );
+        }
+        None => println!("cargo:rustc-env=KIVORI_APP_SOURCE=unknown"),
+    }
 
     println!("cargo:rerun-if-env-changed=KIVORI_FIRMWARE_PATH");
     println!("cargo:rerun-if-env-changed=KIVORI_FIRMWARE_MANIFEST");

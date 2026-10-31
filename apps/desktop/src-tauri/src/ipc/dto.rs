@@ -110,9 +110,9 @@ pub struct AppInfoDto {
     pub supported_majors: Vec<u16>,
     /// Whether Device Studio is present in this build (false in release).
     pub device_studio_enabled: bool,
-    /// The git commit this app was built from (12 hex digits), `null` when it was built without
-    /// git. Compared with the device's build in developer mode.
-    pub commit: Option<String>,
+    /// The firmware source id of the checkout this app was built from (12 hex digits), `null`
+    /// when it was built without git. Compared with the device's in developer mode.
+    pub source_id: Option<String>,
 }
 
 /// Whether first-run setup is finished (or was skipped).
@@ -312,8 +312,8 @@ pub fn identity_dto(identity: &DeviceIdentity) -> DeviceIdentityDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceBuildDto {
-    /// The commit as 12 lowercase hex digits, `null` when the firmware was built without git.
-    pub commit: Option<String>,
+    /// The firmware source id as 12 lowercase hex digits, `null` when it was built without git.
+    pub source_id: Option<String>,
     /// Built with uncommitted changes in the firmware's files.
     pub dirty: bool,
 }
@@ -322,7 +322,7 @@ pub struct DeviceBuildDto {
 #[must_use]
 pub fn build_dto(build: &kivori_protocol::BuildInfo) -> DeviceBuildDto {
     DeviceBuildDto {
-        commit: build.commit.map(|bytes| {
+        source_id: build.source_id.map(|bytes| {
             use std::fmt::Write;
             bytes.iter().fold(String::new(), |mut hex, byte| {
                 let _ = write!(hex, "{byte:02x}");
@@ -685,8 +685,8 @@ pub fn app_info(device_studio_enabled: bool) -> AppInfoDto {
         protocol_version: ProtocolVersion::new(PROTOCOL_MAJOR, PROTOCOL_MINOR).into(),
         supported_majors: vec![PROTOCOL_MAJOR],
         device_studio_enabled,
-        commit: Some(env!("KIVORI_APP_COMMIT"))
-            .filter(|commit| *commit != "unknown")
+        source_id: Some(env!("KIVORI_APP_SOURCE"))
+            .filter(|source| *source != "unknown")
             .map(str::to_string),
     }
 }

@@ -288,6 +288,13 @@ The virtual runner executes the same firmware `Runtime` as the device, so behavi
 device on repository firmware (`espflash flash --port PORT` with the product build of
 `firmware/pip`); an unknown build cannot be compared.
 
+Which firmware a unit runs is reported, not guessed: the device and the virtual Pip both send a
+firmware source id (a hash of the committed firmware input files, `BuildInfo`), and the Device page
+shows it as "Firmware source". Developer mode warns when it differs from the app's own ("Firmware
+source differs"), and everyone is warned when it was built with uncommitted changes. Identical inputs
+give an identical id, so a unit flashed from another branch or a squash-merged commit with the same
+firmware files still matches. See [architecture.md](architecture.md#firmware-build-id-build_info_v1-adr-0014).
+
 Facts measured on hardware and pinned in host tests:
 
 - Knob direction (2026-10-31): the HW-040 changes CLK first on a right turn. `input::hw040` maps

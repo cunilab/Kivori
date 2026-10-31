@@ -433,11 +433,11 @@ describe('firmware build in the Chip tile', () => {
     );
   };
 
-  it('shows the commit, and says when it has uncommitted changes', async () => {
-    withBuild({ commit: 'c2ff8c4f68de', dirty: true });
+  it('shows the source id, and says when it has uncommitted changes', async () => {
+    withBuild({ sourceId: 'c2ff8c4f68de', dirty: true });
     await screen.findByText('Flash');
     expect(screen.getByTestId('internals-build')).toHaveTextContent(
-      'c2ff8c4 (with uncommitted changes)',
+      'c2ff8c4f68de (with uncommitted changes)',
     );
   });
 
