@@ -12,7 +12,7 @@
 # identity that is set but missing, or any signing/verification failure, is an error: it never
 # silently falls back to ad-hoc.
 # KIVORI_MACOS_EXPECT_LEAF (optional, certificate SHA-1): the designated requirement must pin that
-# leaf, so a swapped key is caught.
+# leaf (or root, for a self-signed identity), so a swapped key is caught.
 #
 # No hardened runtime: the app sends Apple Events (now-playing fallback) and has no entitlements to
 # go with it. When a real Developer ID (APPLE_SIGNING_IDENTITY) is configured, scripts/bundle-macos.sh
@@ -63,9 +63,11 @@ printf '%s\n' "$details" | grep -Fxq "Identifier=$bundle_id" ||
   { echo "error: the signature does not carry the identifier $bundle_id" >&2; exit 1; }
 requirement="$(codesign -d -r- "$app" 2>&1)"
 if [ -n "${KIVORI_MACOS_EXPECT_LEAF:-}" ]; then
-  expected="certificate leaf = H\"$(printf '%s' "$KIVORI_MACOS_EXPECT_LEAF" | tr 'A-F' 'a-f')\""
+  # A self-signed identity is its own root, so codesign may pin it as "certificate root" instead.
+  hash="H\"$(printf '%s' "$KIVORI_MACOS_EXPECT_LEAF" | tr 'A-F' 'a-f')\""
+  expected="certificate leaf = $hash"
   case "$requirement" in
-    *"$expected"*) echo "Signing certificate matches the pinned leaf." ;;
+    *"$expected"* | *"certificate root = $hash"*) echo "Signing certificate matches the pinned leaf." ;;
     *) printf "error: the signing certificate is not the pinned one (%s); got:\n%s\n" "$expected" "$requirement" >&2; exit 1 ;;
   esac
 fi
