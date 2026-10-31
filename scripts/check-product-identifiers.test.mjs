@@ -290,6 +290,9 @@ if (process.argv[2] === 'metadata') console.log(JSON.stringify({ packages: [{ na
       put('products/jahe/product.toml', 'broken = [');
       expect(run().status).not.toBe(0); // Catalog discovery failure cannot silently become an empty workspace list.
     }),
+  // Runs check-offline-deps.sh (cargo metadata over every workspace) several times: well over
+  // bun's 5 s default on a cold CI runner.
+  60_000,
 );
 
 test('Unicode customer names and compound board words derive without adding bare chip tokens', () =>

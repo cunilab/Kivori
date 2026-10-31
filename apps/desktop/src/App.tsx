@@ -28,6 +28,7 @@ import { migrateLegacyBuddy } from './features/display/legacy-buddy';
 import { HomePage } from './features/home/HomePage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { Onboarding } from './features/onboarding/Onboarding';
+import { AccessibilityAskDialog } from './features/permissions/AccessibilityAskDialog';
 import { FirmwareOfferDialog } from './features/updates/FirmwareOfferDialog';
 import { UpdateDialog } from './features/updates/UpdateDialog';
 import { useOnboarding } from './features/onboarding/use-onboarding';
@@ -293,6 +294,11 @@ export function App(): ReactElement {
           </div>
         </SidebarInset>
       </SidebarProvider>
+      <AccessibilityAskDialog
+        ready={onboarding.completed === true && onboarding.accessibilityAsked !== null}
+        asked={onboarding.accessibilityAsked ?? true}
+        onShown={() => void onboarding.markAccessibilityAsked().catch(() => {})}
+      />
       <UpdateDialog />
       <FirmwareOfferDialog />
       <Toaster theme={resolvedTheme} position="bottom-right" richColors closeButton />

@@ -1,35 +1,26 @@
-import { useState } from 'react';
 import type { ReactElement } from 'react';
-import { toast } from 'sonner';
 import { CircleCheck, ShieldAlert } from 'lucide-react';
 import { Button } from '@kivori/ui/components/button';
 import { Skeleton } from '@kivori/ui/components/skeleton';
-import { openAccessibilitySettings, requestAccessibility } from '@/lib/ipc';
-import type { AccessibilityState } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
+import { StaleNote, useAccessibilityActions } from '../../permissions/AccessibilityActions';
+import type { AccessibilityControl } from '../../permissions/use-accessibility';
 import { StepFrame } from './frame';
 
 const t = strings.onboarding.permissions;
 
-/** macOS only: asks for Accessibility, and turns green when macOS says it is on. */
+/**
+ * macOS only, and only while it is off: the one time Kivori asks by itself during setup. Allow
+ * shows the macOS prompt once and opens the Accessibility list; the step turns green and moves on
+ * by itself once macOS says it is on. "Not now" (the footer's skip) never blocks setup.
+ */
 export function Permissions({
-  state,
-  onChange,
+  accessibility,
 }: {
-  state: AccessibilityState | null;
-  onChange: (next: AccessibilityState) => void;
+  accessibility: AccessibilityControl;
 }): ReactElement {
-  const [busy, setBusy] = useState(false);
-  const allow = (): void => {
-    setBusy(true);
-    requestAccessibility()
-      .then(onChange)
-      .catch(() => {})
-      .finally(() => setBusy(false));
-  };
-  const openSettings = (): void => {
-    openAccessibilitySettings().catch(() => toast.error(t.settingsFailed));
-  };
+  const actions = useAccessibilityActions(accessibility);
+  const { state } = accessibility;
   return (
     <StepFrame title={t.title} body={t.body}>
       {state === null ? (
@@ -63,16 +54,16 @@ export function Permissions({
         ))}
       </ol>
       {state === 'missing' ? (
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={allow} disabled={busy}>
-            {t.allow}
-          </Button>
-          <Button variant="outline" onClick={openSettings}>
-            {t.openSettings}
-          </Button>
-        </div>
+        <>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={actions.allowAndOpen} disabled={actions.busy}>
+              {t.allow}
+            </Button>
+          </div>
+          {accessibility.stale ? <StaleNote actions={actions} /> : null}
+          <p className="text-sm text-muted-foreground">{t.skipNote}</p>
+        </>
       ) : null}
-      {state === 'missing' ? <p className="text-sm text-muted-foreground">{t.skipNote}</p> : null}
     </StepFrame>
   );
 }

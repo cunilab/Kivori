@@ -818,6 +818,45 @@ export const strings = {
       succeeded: 'Done',
     },
   },
+  /**
+   * The macOS Accessibility permission. Kivori asks by itself exactly once (the setup step, or
+   * the card for an install that finished setup before); after that only where an action needs
+   * Kivori to press keys (a keyboard shortcut binding, or a media key that could not go through
+   * the player directly) and from Settings.
+   */
+  accessibility: {
+    ask: {
+      title: 'Let Kivori press keys for you?',
+      body: 'Your keyboard shortcuts and some app actions work by pressing keys on your behalf, and macOS needs your permission for that. It is called Accessibility. Media controls, volume and mute work without it.',
+      allow: 'Allow',
+      notNow: 'Not now',
+      later: 'You can allow it later in Settings.',
+      sent: 'Switch Kivori on in the Accessibility list, then come back here. This closes by itself.',
+      close: 'Close',
+    },
+    settings: {
+      title: 'Accessibility access',
+      description:
+        'macOS needs this for Kivori to press keys for your shortcuts. Media controls, volume and mute work without it.',
+      allowed: 'Allowed',
+      notAllowed: 'Not allowed',
+      allowedNote: 'Kivori can press keys for your shortcuts.',
+    },
+    controlsTitle: 'Shortcuts need Accessibility access',
+    controlsBody:
+      'macOS only lets Kivori press keys for you once you allow it. Your keyboard shortcuts need that. Media controls, volume and mute work without it.',
+    allow: 'Allow access',
+    openSettings: 'Open System Settings',
+    steps:
+      'Choose Allow access, then Open System Settings. Switch Kivori on in the Accessibility list and come back here.',
+    settingsFailed: 'System Settings could not be opened.',
+    staleTitle: 'Still showing as off?',
+    staleBody:
+      'If you already switched Kivori on, macOS may still hold an older approval for it. This happens after an update or rebuild. Reset it and Kivori will ask again, then switch Kivori on in the list.',
+    reset: 'Reset and ask again',
+    resetFailed:
+      'The old approval could not be reset. Remove Kivori from the list by hand, then add it again.',
+  },
   onboarding: {
     label: 'Set up Kivori',
     progress: 'Step {current} of {total}',
@@ -855,16 +894,15 @@ export const strings = {
       title: 'Let Kivori press keys for you',
       body: 'Shortcuts and some media actions work by pressing keys on your behalf. macOS needs your permission for that, called Accessibility.',
       steps: [
-        'Choose Allow access, then Open System Settings in the macOS prompt.',
+        'Choose Allow. macOS shows its prompt and System Settings opens.',
         'Switch Kivori on in the Accessibility list.',
-        'Come back here. This step turns green by itself.',
+        'Come back here. This step turns green and continues by itself.',
       ],
-      allow: 'Allow access',
-      openSettings: 'Open System Settings',
+      allow: 'Allow',
       granted: 'Accessibility access is on.',
       missing: 'Accessibility access is not on yet.',
-      skipNote: 'Without it, shortcut and media-key actions will not work. You can allow it later.',
-      settingsFailed: 'System Settings could not be opened.',
+      notNow: 'Not now',
+      skipNote: 'Without it, shortcut actions will not work. You can allow it later in Settings.',
     },
     tour: {
       title: 'Try your Kivori',
@@ -916,7 +954,7 @@ export const strings = {
       open: {
         plug: 'Plug in your Kivori. It connects by itself whenever you do.',
         permissions:
-          'Allow Accessibility so shortcuts and media keys work. Switch Kivori on in System Settings, Privacy & Security, Accessibility.',
+          'Allow Accessibility so shortcuts work. You can do that in Settings, or switch Kivori on in System Settings, Privacy & Security, Accessibility.',
       },
       finish: 'Finish',
       finishing: 'Finishing…',

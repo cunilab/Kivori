@@ -43,6 +43,11 @@ function Harness({ onComplete }: { onComplete: () => Promise<void> }): ReactElem
 const scenario = (name: string): void => history.replaceState({}, '', `/?mock=${name}&onboarding`);
 const heading = (name: string): Promise<HTMLElement> =>
   screen.findByRole('heading', { level: 1, name });
+const focus = (): void => {
+  act(() => {
+    window.dispatchEvent(new Event('focus'));
+  });
+};
 const next = (user: ReturnType<typeof userEvent.setup>, label = 'Continue'): Promise<void> =>
   user.click(screen.getByRole('button', { name: label }));
 
@@ -145,8 +150,8 @@ describe('onboarding steps follow real status', () => {
   });
 });
 
-describe('permission step', () => {
-  it('is skipped where there is no such permission (Windows)', async () => {
+describe('permissions', () => {
+  it('asks for no permission in setup (connected device)', async () => {
     scenario('connected');
     const user = userEvent.setup();
     render(<Harness onComplete={() => Promise.resolve()} />);
@@ -155,9 +160,10 @@ describe('permission step', () => {
     await next(user);
     await heading('Try your Kivori');
     expect(screen.getByText('Step 3 of 5')).toBeInTheDocument();
+    expect(screen.queryByText(/Accessibility/)).not.toBeInTheDocument();
   });
 
-  it('on macOS waits for Accessibility and turns green once it is granted', async () => {
+  it('on macOS asks once, waits for Accessibility, and continues by itself when it is granted', async () => {
     scenario('mac');
     const user = userEvent.setup();
     render(<Harness onComplete={() => Promise.resolve()} />);
@@ -167,23 +173,30 @@ describe('permission step', () => {
     expect(screen.getByText('Step 3 of 6')).toBeInTheDocument();
     expect(await screen.findByText('Accessibility access is not on yet.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Open System Settings' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Allow' })).toBeInTheDocument();
+    // Recorded as asked the moment it shows, so the card for existing installs never follows.
+    await waitFor(async () => expect((await ipc.getOnboarding()).accessibilityAsked).toBe(true));
 
     mockGrantAccessibility();
-    expect(
-      await screen.findByText('Accessibility access is on.', {}, { timeout: 4000 }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
-
-    // Switched off again in System Settings while the step is open.
-    mockGrantAccessibility(false);
-    expect(
-      await screen.findByText('Accessibility access is not on yet.', {}, { timeout: 4000 }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    focus();
+    expect(await screen.findByText('Accessibility access is on.')).toBeInTheDocument();
+    await heading('Try your Kivori');
   });
 
-  it('can be skipped on macOS', async () => {
+  it('is skipped entirely when Accessibility is already on', async () => {
+    scenario('mac');
+    mockGrantAccessibility();
+    const user = userEvent.setup();
+    render(<Harness onComplete={() => Promise.resolve()} />);
+    await next(user, 'Get started');
+    await next(user, 'Skip this step');
+    await heading('Try your Kivori');
+    expect(screen.getByText('Step 3 of 5')).toBeInTheDocument();
+    expect(screen.queryByText(/Accessibility/)).not.toBeInTheDocument();
+    expect((await ipc.getOnboarding()).accessibilityAsked).toBe(false);
+  });
+
+  it('can be left with Not now and is listed as still open at the end', async () => {
     scenario('mac');
     const user = userEvent.setup();
     render(<Harness onComplete={() => Promise.resolve()} />);
@@ -191,8 +204,12 @@ describe('permission step', () => {
     await next(user, 'Skip this step');
     await heading('Let Kivori press keys for you');
     await screen.findByText('Accessibility access is not on yet.');
-    await next(user, 'Skip this step');
+    await next(user, 'Not now');
     await heading('Try your Kivori');
+    await next(user);
+    await next(user);
+    await heading('Almost done');
+    expect(screen.getByTestId('onboarding-open-steps')).toHaveTextContent(/Allow Accessibility/);
   });
 });
 

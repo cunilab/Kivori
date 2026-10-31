@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Bricolage_Grotesque, Instrument_Sans, Silkscreen } from 'next/font/google';
+import localFont from 'next/font/local';
 import type { ReactElement, ReactNode } from 'react';
 import brandIcon from '@brand/icon/kivori-icon.svg';
 import { SiteFooter } from '@/components/site-footer';
@@ -26,24 +26,31 @@ export const metadata: Metadata = {
   twitter: { card: 'summary_large_image', images: [ogImagePath()] },
 };
 
-// Fonts are fetched at build time and self-hosted; the browser makes no Google requests.
-const display = Bricolage_Grotesque({
-  subsets: ['latin'],
-  weight: ['700', '800'],
+// Fonts are self-hosted from app/fonts (latin subset, SIL OFL; licences alongside), so the build needs no
+// network and the browser makes no Google requests. Bricolage Grotesque and Instrument Sans are
+// variable fonts: one file covers the weight range.
+const display = localFont({
+  src: './fonts/bricolage-grotesque-latin-wght.woff2',
+  weight: '700 800',
   variable: '--font-bricolage',
   display: 'swap',
+  adjustFontFallback: 'Arial',
 });
-const body = Instrument_Sans({
-  subsets: ['latin'],
-  weight: ['400', '500', '600'],
+const body = localFont({
+  src: './fonts/instrument-sans-latin-wght.woff2',
+  weight: '400 600',
   variable: '--font-instrument',
   display: 'swap',
+  adjustFontFallback: 'Arial',
 });
-const pixel = Silkscreen({
-  subsets: ['latin'],
-  weight: ['400', '700'],
+const pixel = localFont({
+  src: [
+    { path: './fonts/silkscreen-latin-400.woff2', weight: '400', style: 'normal' },
+    { path: './fonts/silkscreen-latin-700.woff2', weight: '700', style: 'normal' },
+  ],
   variable: '--font-silkscreen',
   display: 'swap',
+  adjustFontFallback: 'Arial',
 });
 
 export const viewport: Viewport = {

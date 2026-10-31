@@ -115,11 +115,13 @@ pub struct AppInfoDto {
     pub source_id: Option<String>,
 }
 
-/// Whether first-run setup is finished (or was skipped).
+/// Whether first-run setup is finished (or was skipped), and whether the one automatic
+/// Accessibility ask was already made.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OnboardingDto {
     pub completed: bool,
+    pub accessibility_asked: bool,
 }
 
 /// Whether Kivori starts when the user signs in (read from the OS entry, never stored in config).

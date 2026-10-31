@@ -140,7 +140,26 @@ fn set_onboarding(
         let next = store.edited(|file| file.onboarding.completed = completed);
         store.save(next)
     })
-    .map(|_| OnboardingDto { completed })
+    .map(|_| app.onboarding_snapshot())
+}
+
+/// Records that Kivori has shown its one automatic Accessibility ask, so it never asks by itself
+/// again. Saves nothing when it is already recorded.
+///
+/// # Errors
+/// Returns an error when the setting cannot be saved.
+#[tauri::command]
+pub fn mark_accessibility_asked(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+) -> Result<OnboardingDto, String> {
+    if !app.onboarding_snapshot().accessibility_asked {
+        commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+            let next = store.edited(|file| file.onboarding.accessibility_asked = true);
+            store.save(next)
+        })?;
+    }
+    Ok(app.onboarding_snapshot())
 }
 
 /// The app updater's status (all builds). A development build reports `disabled`, macOS
@@ -239,6 +258,28 @@ pub fn get_accessibility() -> &'static str {
 #[tauri::command]
 pub fn request_accessibility() -> &'static str {
     crate::platform::permissions::request_accessibility().token()
+}
+
+/// Clears this app's own stale Accessibility approval, asks once and opens the Accessibility
+/// list; resolves with the state right after the ask.
+///
+/// # Errors
+/// Returns a fixed message when there is nothing to reset (not an app bundle) or `tccutil` failed.
+#[tauri::command]
+pub fn reset_accessibility() -> Result<&'static str, String> {
+    crate::platform::permissions::reset_accessibility()
+        .map(crate::platform::permissions::Accessibility::token)
+        .map_err(|error| {
+            match error {
+                crate::platform::permissions::ResetError::NotAvailable => {
+                    "There is no approval to reset here."
+                }
+                crate::platform::permissions::ResetError::Failed => {
+                    "macOS did not reset the approval."
+                }
+            }
+            .to_string()
+        })
 }
 
 /// Opens System Settings at the Accessibility list.

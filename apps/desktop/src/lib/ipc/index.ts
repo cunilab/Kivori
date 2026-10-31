@@ -248,6 +248,13 @@ export async function restartOnboarding(): Promise<OnboardingDto> {
   return unavailable();
 }
 
+/** Records that the one automatic Accessibility ask was shown, so nothing asks by itself again. */
+export async function markAccessibilityAsked(): Promise<OnboardingDto> {
+  if (isTauri()) return parseOnboarding(await invoke<unknown>('mark_accessibility_asked'));
+  if (import.meta.env.DEV) return (await devMock()).mockMarkAccessibilityAsked();
+  return unavailable();
+}
+
 /** The Accessibility permission now. Never prompts. */
 export async function getAccessibility(): Promise<AccessibilityState> {
   if (isTauri()) return parseAccessibility(await invoke<unknown>('get_accessibility'));
@@ -259,6 +266,16 @@ export async function getAccessibility(): Promise<AccessibilityState> {
 export async function requestAccessibility(): Promise<AccessibilityState> {
   if (isTauri()) return parseAccessibility(await invoke<unknown>('request_accessibility'));
   if (import.meta.env.DEV) return (await devMock()).mockGetAccessibility();
+  return unavailable();
+}
+
+/**
+ * Clears this app's own stale Accessibility approval, asks macOS once and opens the Accessibility
+ * list; resolves with the state right after the ask. Rejects when there is nothing to reset.
+ */
+export async function resetAccessibility(): Promise<AccessibilityState> {
+  if (isTauri()) return parseAccessibility(await invoke<unknown>('reset_accessibility'));
+  if (import.meta.env.DEV) return (await devMock()).mockResetAccessibility();
   return unavailable();
 }
 

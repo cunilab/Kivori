@@ -58,12 +58,18 @@ impl Default for ConfigFile {
     }
 }
 
-/// Whether the first-run setup has been finished (or skipped).
+/// Whether the first-run setup has been finished (or skipped), and whether the one automatic
+/// macOS Accessibility ask has been made.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OnboardingState {
     #[serde(default)]
     pub completed: bool,
+    /// Kivori has shown its Accessibility ask on this install (the setup step or the one-time
+    /// card). Set once and never cleared; after it nothing asks by itself again. A file from
+    /// before this field loads as not asked, so an existing install is asked once, if needed.
+    #[serde(default)]
+    pub accessibility_asked: bool,
 }
 
 /// App update settings (ADR-0015). Every field has a default, so older files load unchanged.
