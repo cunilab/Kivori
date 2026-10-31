@@ -79,21 +79,36 @@ export function mockGetStartupSettings(): StartupSettingsDto {
 // First-run setup. The browser preview starts finished so ordinary pages stay reachable; open
 // `?onboarding` to see setup (and `?mock=mac` for the macOS permission step).
 let onboardingCompleted: boolean | null = null;
+// Whether the one automatic Accessibility ask was made. The preview starts as an install that
+// asked already, so the card stays away; `?ask` shows it as an existing install would see it.
+let accessibilityAsked: boolean | null = null;
 
 export function mockGetOnboarding(): OnboardingDto {
   onboardingCompleted ??=
     typeof location === 'undefined' || !new URLSearchParams(location.search).has('onboarding');
-  return { completed: onboardingCompleted };
+  accessibilityAsked ??=
+    typeof location === 'undefined' || !new URLSearchParams(location.search).has('ask');
+  return { completed: onboardingCompleted, accessibilityAsked };
 }
 
 export function mockSetOnboarding(completed: boolean): OnboardingDto {
   onboardingCompleted = completed;
-  return { completed };
+  return mockGetOnboarding();
 }
 
-/** Tests only: set the stored state, and the accessibility permission back to its start. */
-export function mockResetOnboarding(completed: boolean): void {
+export function mockMarkAccessibilityAsked(): OnboardingDto {
+  mockGetOnboarding();
+  accessibilityAsked = true;
+  return mockGetOnboarding();
+}
+
+/**
+ * Tests only: set the stored state, and the accessibility permission back to its start.
+ * `asked` is whether the one automatic Accessibility ask was already made (default: not yet).
+ */
+export function mockResetOnboarding(completed: boolean, asked = false): void {
   onboardingCompleted = completed;
+  accessibilityAsked = asked;
   accessibilityGranted = false;
   launchAtLogin = false;
 }

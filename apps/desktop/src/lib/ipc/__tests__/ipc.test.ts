@@ -17,6 +17,7 @@ import {
   completeOnboarding,
   restartOnboarding,
   getAccessibility,
+  markAccessibilityAsked,
   requestAccessibility,
   resetAccessibility,
   getActivityLog,
@@ -775,13 +776,24 @@ describe('onboarding commands', () => {
 
   it('validate what the native side returns', async () => {
     (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
-    tauri.invoke.mockResolvedValueOnce({ completed: true });
-    await expect(getOnboarding()).resolves.toEqual({ completed: true });
+    tauri.invoke.mockResolvedValueOnce({ completed: true, accessibilityAsked: false });
+    await expect(getOnboarding()).resolves.toEqual({ completed: true, accessibilityAsked: false });
     expect(tauri.invoke).toHaveBeenCalledWith('get_onboarding', undefined);
-    tauri.invoke.mockResolvedValueOnce({ completed: 'yes' });
+    tauri.invoke.mockResolvedValueOnce({ completed: 'yes', accessibilityAsked: false });
     await expect(completeOnboarding()).rejects.toThrow();
-    tauri.invoke.mockResolvedValueOnce({ completed: false });
-    await expect(restartOnboarding()).resolves.toEqual({ completed: false });
+    tauri.invoke.mockResolvedValueOnce({ completed: true });
+    await expect(getOnboarding()).rejects.toThrow();
+    tauri.invoke.mockResolvedValueOnce({ completed: false, accessibilityAsked: true });
+    await expect(restartOnboarding()).resolves.toEqual({
+      completed: false,
+      accessibilityAsked: true,
+    });
+    tauri.invoke.mockResolvedValueOnce({ completed: true, accessibilityAsked: true });
+    await expect(markAccessibilityAsked()).resolves.toEqual({
+      completed: true,
+      accessibilityAsked: true,
+    });
+    expect(tauri.invoke).toHaveBeenCalledWith('mark_accessibility_asked', undefined);
     tauri.invoke.mockResolvedValueOnce('missing');
     await expect(getAccessibility()).resolves.toBe('missing');
     tauri.invoke.mockResolvedValueOnce('maybe');

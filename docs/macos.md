@@ -30,7 +30,7 @@ just bundle-macos
 ```
 
 The app and DMG are written to `target/release/bundle/`. Copy the app to Applications before
-allowing Accessibility in System Settings → Privacy & Security → Accessibility. Denying that
+allowing Accessibility in System Settings → Privacy & Security → Accessibility (Kivori asks once, in setup or in one card on the first start after an update; later in Settings). Denying that
 permission keeps keyboard shortcuts unavailable; it must not affect media controls, volume or
 configuration. Run `just macos-dev-identity` once first: it creates a self-signed `Kivori Dev`
 identity, which `just bundle-macos` then signs with, so the approval survives rebuilds. Without it

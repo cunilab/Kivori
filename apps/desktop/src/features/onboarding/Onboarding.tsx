@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@kivori/ui/components/button';
-import { getStartupSettings, setLaunchAtLogin } from '@/lib/ipc';
+import { getStartupSettings, markAccessibilityAsked, setLaunchAtLogin } from '@/lib/ipc';
 import type { ConfigDto, ConnectionStatusDto, StartupSettingsDto } from '@/lib/ipc/types';
 import { sessionState } from '@/lib/device-support';
 import { brandIconUrl } from '@/lib/brand';
@@ -10,21 +10,33 @@ import { format, strings } from '@/lib/i18n/strings';
 import { cn } from '@kivori/ui/lib/utils';
 import { Customize } from './steps/Customize';
 import { Done } from './steps/Done';
+import { Permissions } from './steps/Permissions';
 import { PlugIn } from './steps/PlugIn';
 import { Tour } from './steps/Tour';
 import { Welcome } from './steps/Welcome';
+import { useAccessibility } from '../permissions/use-accessibility';
 
 const t = strings.onboarding;
 
-type StepId = 'welcome' | 'plug' | 'tour' | 'customize' | 'done';
-const steps: readonly StepId[] = ['welcome', 'plug', 'tour', 'customize', 'done'];
+type StepId = 'welcome' | 'plug' | 'permissions' | 'tour' | 'customize' | 'done';
+const ALL_STEPS: readonly StepId[] = [
+  'welcome',
+  'plug',
+  'permissions',
+  'tour',
+  'customize',
+  'done',
+];
+
+/** How long the permission step stays green before it moves on by itself. */
+export const PERMISSION_ADVANCE_MS = 900;
 
 /**
  * First-run setup: a full-window stepper shown instead of the normal layout until it is finished
  * or skipped. Plug-in readiness follows current status; the Tour is guidance, not hardware
- * verification. No OS permission is asked here: Accessibility (macOS) is requested only once a
- * binding needs it. Launch at login is the one setting held back until
- * Finish.
+ * verification. The Accessibility step (macOS) is the one time Kivori asks by itself: it is only
+ * in the list while macOS reports the permission off, and never when it is already on. Launch at
+ * login is the one setting held back until Finish.
  */
 export function Onboarding({
   connection,
@@ -46,6 +58,12 @@ export function Onboarding({
   const [launch, setLaunch] = useState(true);
 
   const deviceReady = sessionState(connection) === 'ready';
+  const accessibility = useAccessibility(step === 'permissions');
+  // The step is in the list only while macOS says the permission is off (or while it is the open
+  // step, so it can turn green before moving on): never when it is already on, never elsewhere.
+  const steps = ALL_STEPS.filter(
+    (id) => id !== 'permissions' || step === 'permissions' || accessibility.state === 'missing',
+  );
 
   useEffect(() => {
     let active = true;
@@ -61,6 +79,24 @@ export function Onboarding({
 
   const index = steps.indexOf(step);
   const go = (to: number): void => setStep(steps[Math.min(Math.max(to, 0), steps.length - 1)]!);
+
+  // Recorded when the step first shows with the permission off, so nothing asks by itself again.
+  const recorded = useRef(false);
+  useEffect(() => {
+    if (step !== 'permissions' || accessibility.state !== 'missing' || recorded.current) return;
+    recorded.current = true;
+    markAccessibilityAsked().catch(() => {});
+  }, [step, accessibility.state]);
+  // Switched on while the step is open: show it green for a moment, then move on by itself.
+  useEffect(() => {
+    if (step !== 'permissions' || accessibility.state === null) return;
+    if (accessibility.state === 'missing') return;
+    const timer = setTimeout(
+      () => setStep('tour'),
+      accessibility.state === 'granted' ? PERMISSION_ADVANCE_MS : 0,
+    );
+    return () => clearTimeout(timer);
+  }, [step, accessibility.state]);
 
   const skipSetup = (): void => {
     setBusy(true);
@@ -92,6 +128,7 @@ export function Onboarding({
   const gate: Record<StepId, { ready: boolean; skippable: boolean }> = {
     welcome: { ready: true, skippable: false },
     plug: { ready: deviceReady, skippable: true },
+    permissions: { ready: accessibility.state === 'granted', skippable: true },
     tour: { ready: true, skippable: false },
     customize: { ready: true, skippable: false },
     done: { ready: true, skippable: false },
@@ -139,6 +176,8 @@ export function Onboarding({
             <Welcome connection={connection} />
           ) : step === 'plug' ? (
             <PlugIn connection={connection} updateAvailable={updateAvailable} />
+          ) : step === 'permissions' ? (
+            <Permissions accessibility={accessibility} />
           ) : step === 'tour' ? (
             <Tour connection={connection} />
           ) : step === 'customize' ? (
@@ -150,7 +189,10 @@ export function Onboarding({
               onLaunchAtLogin={setLaunch}
             />
           ) : (
-            <Done error={finishError} open={open.filter((id): id is 'plug' => id !== 'done')} />
+            <Done
+              error={finishError}
+              open={open.filter((id): id is 'plug' | 'permissions' => id !== 'done')}
+            />
           )}
         </div>
       </main>
@@ -166,7 +208,7 @@ export function Onboarding({
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {skippable && !ready ? (
               <Button variant="outline" disabled={busy} onClick={() => go(index + 1)}>
-                {t.skipStep}
+                {step === 'permissions' ? t.permissions.notNow : t.skipStep}
               </Button>
             ) : null}
             {last ? (

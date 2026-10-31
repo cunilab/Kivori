@@ -79,9 +79,13 @@ export const UPDATE_ADVICE = ['upToDate', 'updateAvailable', 'deviceNewer', 'unk
 export type UpdateAdvice = (typeof UPDATE_ADVICE)[number];
 
 /** Which OS this build runs on, for the wording of the start-at-login switch. */
-/** Whether first-run setup is finished (or was skipped). */
+/**
+ * Whether first-run setup is finished (or was skipped), and whether Kivori already made its one
+ * automatic macOS Accessibility ask (after that it never asks by itself again).
+ */
 export interface OnboardingDto {
   completed: boolean;
+  accessibilityAsked: boolean;
 }
 
 /** The macOS Accessibility permission; `notApplicable` on every other OS. */
