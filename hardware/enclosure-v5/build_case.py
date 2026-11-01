@@ -29,9 +29,9 @@ V = App.Vector
 # Parameters
 # ---------------------------------------------------------------------------------------------
 
-# Case (blueprint, widened from 100 to 110 mm so the Ø48 knob clears the button arc).
+# Case (blueprint, widened from 100 to 110 mm so the knob clears the button arc).
 # Design "big keycap": the walls lean in towards the face like a keycap, a 45° bevel frames the
-# face, a dark visor carries the display and buttons, and the shell floats on a dark plinth.
+# face, a black visor carries the display and buttons, and the gray shell floats on a black plinth.
 W, H = 110.0, 70.0          # face outline (outer edge of the bevel)
 R_CORNER = 8.0              # face corner radius
 T_NEAR, T_FAR = 18.8, 30.8  # case thickness at the near (y=0) and far (y=H) edge -> ~9.7° wedge (was 20.7 / 32.7: the
@@ -46,7 +46,7 @@ BP_CLR = 0.2                # back plate to wall clearance (per side)
 
 # Knob + encoder (EC11 dimensions from KiCad RotaryEncoder_Alps_EC11E-Switch_Vertical_H20mm)
 KNOB_C = (27.5, 35.0)       # knob / shaft centre on the face
-KNOB_D = 48.0               # height comes from the shaft: KNOB_H further down
+KNOB_D = 42.0               # height comes from the shaft: KNOB_H further down
 KNOB_GAP = 1.5              # air gap between knob skirt and face (push travel is ~0.5; at 1.0 a press hit the face)
 KNOB_TOP_T = 4.5            # knob top above the shaft-tip clearance: sets the knob 10.5 tall
 KNOB_TIP_CLR = 1.0          # free space between the shaft tip and the bore's ceiling
@@ -55,7 +55,7 @@ KNOB_HUB_D = 12.0           # hub round the shaft, hanging from the top, tied to
 KNOB_RIBS, KNOB_RIB_T = 4, 1.2
 KNOB_FLUTES, KNOB_FLUTE_D = 60, 1.2   # fine vertical grip ribs round the skirt
 KNOB_CHAMFER = 1.2          # 45° chamfer round the top edge (prints on the bed)
-KNOB_MARK = (13.0, 20.5, 135.0, 1.2)   # radial line marker: from r, to r, angle, width
+KNOB_MARK = (12.0, 17.5, 135.0, 1.2)   # radial line marker: from r, to r, angle, width
 KNOB_HALO = None            # (r in, r out, depth) groove ring round the knob: off, it ran into the
                             # face's left bevel and left slivers too thin to print
 EC11_BODY = (12.0, 11.6)    # NOMINAL body footprint
@@ -268,23 +268,22 @@ ENC_RELIEF = 1.0            # window through the plate (not the plinth below) un
                             # this margin: the module hangs lowest there, and the plate's inner face is within
                             # 0.5 mm of it without the window
 
-# Floating plinth under the shell (part of the back plate, printed dark)
+# Floating plinth under the shell (part of the back plate, printed black)
 PLINTH_H = 3.0
-# TPU feet: two long rails under the plinth (near and far edge, each covering the two corner screw
-# counterbores on its side) and a small round disc over the middle screw. Each drops into a shallow
-# groove in the plinth's bottom face (the bed side), so it locates itself and can be glued or pressed in.
-# A rail is a flange (FOOT_W wide, FOOT_PROUD proud, chamfered top, covers the groove edge) over a body
-# FOOT_CLR narrower per side that fills the groove, plus a plug up into each counterbore it covers.
-FOOT_W = 5.6                # rail / flange width = groove width at the plinth face
-FOOT_END_X = 6.75           # rail end-cap centres from the left / right edge: the near rail's groove keeps
-                            # 0.7 mm from the flat's edge at the corners (the flat is 0.2 mm tighter each
-                            # side since the case got thinner: 6.5 left 0.51), and the cap still covers the
-                            # Ø4.4 counterbore (screws at 6 / 104) to within 0.15 mm
-DISC_D = 6.0                # middle foot Ø (flange and groove)
+# TPU feet: five round dots under the plinth, one centred near each corner screw (the dot hides its
+# counterbore) and one on the middle screw. Each drops into a shallow round pocket in the plinth's bottom
+# face (the bed side), so it locates itself and can be glued or pressed in. A dot is a flange (FOOT_D wide,
+# FOOT_PROUD proud, chamfered sole, covers the pocket edge) over a body FOOT_CLR narrower per side that fills
+# the pocket, plus a plug up into the counterbore.
+FOOT_D = 9.0                # dot Ø = pocket Ø at the plinth face
+FOOT_SHIFT = (2.3, 0.84)    # a corner dot's centre sits this far inboard (x, y) of its screw: the flat is so
+                            # tight at the corners (the screw is 2.84 from its rounded corner, 2.95 from the
+                            # side) that a Ø9 pocket with a 0.7 mm rim cannot cover the whole Ø4.4
+                            # counterbore, so it moves in until it stops 0.15 mm short of the bore's far wall
 FOOT_PROUD = 1.5            # feet stand this far below the plinth face: the plinth stays off the desk
-GROOVE_D = 0.9              # groove depth into the plinth (0.8 to 1.0)
-FOOT_CLR = 0.2              # body to groove wall, per side
-FOOT_EDGE = 0.5             # 45° chamfer round the foot's sole
+POCKET_D = 0.9              # pocket depth into the plinth (0.8 to 1.0)
+FOOT_CLR = 0.2              # body to pocket wall, per side
+FOOT_EDGE = 0.8             # 45° chamfer round the foot's sole
 FOOT_PEG_D, FOOT_PEG_L = SCREW_HEAD_D - 0.2, 1.5  # plug up into the screw counterbore (TPU press fit)
 
 # Dark visor: separate black panel standing 1 mm proud of the face (a recess would need a 60 mm
@@ -292,22 +291,13 @@ FOOT_PEG_D, FOOT_PEG_L = SCREW_HEAD_D - 0.2, 1.5  # plug up into the screw count
 VISOR_T = 1.0
 VISOR_BOX = (44.0, 5.5, 106.5, 62.5)  # x0, y0, x1, y1 before the knob cut-out
 VISOR_R = 6.0
-VISOR_KNOB_R = 26.3         # concentric cut-out round the knob (even gap ring)
+VISOR_KNOB_GAP = 2.3        # even gap ring between the knob and the visor's cut-out round it
+VISOR_KNOB_R = KNOB_D / 2 + VISOR_KNOB_GAP  # concentric cut-out radius
 VISOR_EDGE = 0.5            # chamfer round the visor top edge
 VISOR_PEGS = [(50.0, 60.0), (103.5, 60.0), (104.5, 32.0)]  # locating pegs into the face
 VISOR_PEG_D, VISOR_PEG_H, VISOR_HOLE_D, VISOR_HOLE_DEPTH = 1.8, 1.0, 2.3, 1.2  # (FDM holes print small)
 UNDER_CLR = 0.3             # face openings behind the visor are this much bigger per side
 
-FONT = "/System/Library/Fonts/Supplemental/Arial Black.ttf"   # heavy, simple sans: strokes over 0.8 mm
-TEXT_D = 0.4                # underside text recess: exactly 2 layers of 0.2 (colour-change bed text)
-TEXT_STROKE = 0.0           # no extra stroke: the font is already heavy
-TEXT_EF = 0.1               # elephant-foot relief: the first layer's recess is this much wider per side
-BED_WORD = ("KIVORI", 9.8)  # underside wordmark and font size (cap height about 7.5 mm)
-BED_CODE = ("KV-P1", 6.6)   # model code, under it (cap height about 5 mm)
-BED_TRACK = 1.2             # extra letter spacing (letter gaps stay over 1 mm)
-BED_LINE_GAP = 3.0          # between the lines
-BED_Y = 49.5                # wordmark centre on the plinth, desk-frame y (between the middle foot and the far rail)
-LABEL_PAD, LABEL_R = 1.0, 0.8  # label box: recessed round the letters, which stay standing
 
 OVH_MAX = 45.0              # steepest overhang that prints without support: degrees from vertical
 BRIDGE_MAX = 10.0           # longest bridge accepted (mm)
@@ -416,80 +406,6 @@ def fuse_all(shapes):
     if len(shapes) == 1:
         return shapes[0]
     return shapes[0].fuse(shapes[1:]).removeSplitter()
-
-
-def grow_face(f, b):
-    """Offset a glyph face: grow its outline by b, shrink each hole by b (a hole that closes is
-    dropped). Done wire by wire, so a closing hole cannot break the whole glyph."""
-    try:
-        out = Part.Face(f.OuterWire).makeOffset2D(b).Faces[0]
-    except Exception:  # some outlines (S) only offset in small steps
-        out, done = Part.Face(f.OuterWire), 0.0
-        while done < b - 1e-6:
-            step = min(0.3, b - done)
-            out = Part.Face(out.makeOffset2D(step).Faces[0].OuterWire)
-            done += step
-    out = Part.Face(out.OuterWire)  # drop slivers the offset can leave inside (S, 5)
-    for w in f.Wires:
-        if w.isSame(f.OuterWire):
-            continue
-        try:
-            hole = Part.Face(w).makeOffset2D(-b)
-            if hole.Faces and hole.Area > 0.05:
-                out = out.cut(hole).Faces[0]
-        except Exception:
-            pass  # the hole closed up
-    return out
-
-
-def text_faces(s, size, track=None):
-    """Glyph faces of s (one per letter, origin at the font baseline start), each grown by TEXT_STROKE."""
-    faces = []
-    for ch in Part.makeWireString(s, FONT, size, 2 * TEXT_STROKE if track is None else track):
-        if not ch:
-            continue
-        wires = [w if isinstance(w, Part.Wire) else Part.Wire(w) for w in ch]
-        # fine polygons offset reliably (some glyph curves do not)
-        wires = [Part.makePolygon(w.discretize(Deflection=0.01) + [w.discretize(Deflection=0.01)[0]])
-                 for w in wires]
-        f = Part.makeFace(wires, "Part::FaceMakerBullseye")
-        if TEXT_STROKE:
-            try:
-                f = grow_face(f, TEXT_STROKE)
-            except Exception as exc:
-                print("text stroke skipped:", s, exc)
-        faces.append(f)
-    return faces
-
-
-def text_solid(s, x, y, size, z0, depth, mirror=False, track=None, grow=0.0):
-    """Letters extruded up from z0, centred on (x, y); grow widens every letter by that much per side."""
-    if not os.path.exists(FONT):
-        return None
-    try:
-        faces = text_faces(s, size, track)
-        bb = Part.makeCompound(faces).BoundBox
-        if grow:
-            faces = [grow_face(f, grow) for f in faces]
-        sol = Part.makeCompound(faces).extrude(V(0, 0, depth))
-        sol.translate(V(x - (bb.XMin + bb.XMax) / 2, y - (bb.YMin + bb.YMax) / 2, z0))
-        if mirror:
-            sol = sol.mirror(V(x, 0, 0), V(1, 0, 0))
-        return sol
-    except Exception as exc:  # text is cosmetic, never fail the build on it
-        print("text skipped:", s, exc)
-        return None
-
-
-def label_cut(s, x, y, size, z0, mirror=False):
-    """A label: a recessed rounded box with the letters left standing inside it."""
-    t = text_solid(s, x, y, size, z0, TEXT_D + 0.1, mirror)
-    if not t:
-        return None
-    bb = t.BoundBox
-    box_ = rr_prism(bb.XLength + 2 * LABEL_PAD, bb.YLength + 2 * LABEL_PAD, LABEL_R,
-                    (bb.XMin + bb.XMax) / 2, (bb.YMin + bb.YMax) / 2, z0, z0 + TEXT_D + 0.1)
-    return box_.cut(t)
 
 
 def rot(pt, ang):
@@ -735,8 +651,8 @@ def make_back_plate():
     except Exception as exc:
         print("plinth chamfer skipped:", exc)
     zb = -PLINTH_H
-    # desk-side details: the recessed wordmark and model code (bed text) and the foot grooves
-    under = bed_text(zb) + [foot_prism(site, 0, zb - 0.1, zb + GROOVE_D) for site in foot_sites()]
+    # desk-side details: the five round foot pockets
+    under = [foot_prism(site, 0, zb - 0.1, zb + POCKET_D) for site in foot_sites()]
     plinth = plinth.cut(under)
     plinth = desk_to_face(plinth)
     plate = plate.fuse(plinth)
@@ -776,24 +692,6 @@ def plinth_flat():
     return f
 
 
-def bed_text(zb):
-    """Wordmark and model code recessed TEXT_D into the bed face (desk frame, mirrored so they read
-    with the case turned over), each with a TEXT_EF wider relief in its first layer."""
-    out = []
-    word = text_solid(BED_WORD[0], W / 2, BED_Y, BED_WORD[1], zb - 0.1, TEXT_D + 0.1, True, BED_TRACK)
-    if not word:
-        return out
-    ymin = word.BoundBox.YMin
-    for grow, depth in ((0.0, TEXT_D + 0.1), (TEXT_EF, 0.3)):
-        w_ = text_solid(BED_WORD[0], W / 2, BED_Y, BED_WORD[1], zb - 0.1, depth, True, BED_TRACK, grow)
-        c_ = text_solid(BED_CODE[0], W / 2, 0.0, BED_CODE[1], zb - 0.1, depth, True, BED_TRACK, grow)
-        if grow == 0.0:  # the code sits BED_LINE_GAP under the wordmark; the relief copy follows it
-            dy = ymin - BED_LINE_GAP - c_.BoundBox.YMax
-        c_.translate(V(0, dy, 0))
-        out += [w_, c_]
-    return out
-
-
 def screw_axes():
     """Screw axes at the plinth bottom, desk frame (x, y), in POSTS order."""
     sa, ca = math.sin(ALPHA), math.cos(ALPHA)
@@ -801,28 +699,30 @@ def screw_axes():
 
 
 def foot_sites():
-    """The three TPU feet in the desk frame: (kind, centre x, centre y, plug positions): the near rail
-    over the two near corner screws, the far rail over the far ones, the disc over the middle screw
-    (POSTS order: near-left, far-left, far-right, near-right, middle)."""
+    """The five TPU feet in the desk frame: (centre x, centre y, plug position), in POSTS order
+    (near-left, far-left, far-right, near-right, middle). The middle dot sits on its screw, a corner dot
+    FOOT_SHIFT inboard of its screw."""
     ax = screw_axes()
-    return [("rail", W / 2, ax[0][1], [ax[0], ax[3]]), ("rail", W / 2, ax[1][1], [ax[1], ax[2]]),
-            ("disc", ax[4][0], ax[4][1], [ax[4]])]
+    mid = plinth_flat().CenterOfMass
+    sites = []
+    for i, (x, y) in enumerate(ax):
+        if i == 4:
+            sites.append((x, y, ax[i]))
+        else:  # inboard: towards the flat's centre in x and y
+            sites.append((x + math.copysign(FOOT_SHIFT[0], mid.x - x), y + math.copysign(FOOT_SHIFT[1], mid.y - y), ax[i]))
+    return sites
 
 
 def foot_prism(site, shrink, z0, z1):
-    """A foot's plan (rounded ends) shrunk by `shrink` per side, extruded from z0 to z1."""
-    kind, cx, cy, _ = site
-    if kind == "disc":
-        return cyl(DISC_D - 2 * shrink, cx, cy, z0, z1)
-    r = FOOT_W / 2 - shrink
-    return rr_prism(W - 2 * FOOT_END_X + 2 * r, 2 * r, r, cx, cy, z0, z1)
+    """A foot's plan (round) shrunk by `shrink` per side, extruded from z0 to z1."""
+    return cyl(FOOT_D - 2 * shrink, site[0], site[1], z0, z1)
 
 
 def make_tpu_feet():
-    """Two rails and the disc as one part (one print, soles on the bed). Flange on the plinth face,
-    body in the groove, plugs up into the counterbores (they lean 10° with the screws, so each plug
-    sits on the axis at mid height)."""
-    zb, zt = -PLINTH_H, -PLINTH_H + GROOVE_D
+    """The five dots as one part (one print, soles on the bed). Flange on the plinth face, body in the
+    pocket, a plug up into the counterbore (it leans 10° with the screw, so the plug sits on the axis at
+    mid height)."""
+    zb, zt = -PLINTH_H, -PLINTH_H + POCKET_D
     feet = []
     for site in foot_sites():
         flange = foot_prism(site, 0, zb - FOOT_PROUD, zb)
@@ -831,56 +731,23 @@ def make_tpu_feet():
                                                     if abs(e.BoundBox.ZMax - (zb - FOOT_PROUD)) < 1e-6])
         except Exception as exc:
             print("foot chamfer skipped:", exc)
-        plugs = [cyl(FOOT_PEG_D, hx, hy - (GROOVE_D + FOOT_PEG_L / 2) * math.tan(ALPHA), zt - 0.01, zt + FOOT_PEG_L)
-                 for (hx, hy) in site[3]]
-        feet.append(flange.fuse([foot_prism(site, FOOT_CLR, zb - 0.01, zt)] + plugs).removeSplitter())
+        hx, hy = site[2]
+        plug = cyl(FOOT_PEG_D, hx, hy - (POCKET_D + FOOT_PEG_L / 2) * math.tan(ALPHA), zt - 0.01, zt + FOOT_PEG_L)
+        feet.append(flange.fuse([foot_prism(site, FOOT_CLR, zb - 0.01, zt), plug]).removeSplitter())
     return desk_to_face(Part.makeCompound(feet))
 
 
-def thin_sliver(face, w):
-    """Largest area (mm2) of `face` lost when it is eroded by w/2 and grown back: parts narrower than
-    w vanish and show up here (sharp corners lose a little, under 0.5 mm2 at w = 0.8)."""
-    r = w / 2 - 0.005
-    er = face.makeOffset2D(-r)
-    if not er.Faces:
-        return face.Area
-    lost = face.cut(Part.makeCompound([f.makeOffset2D(r) for f in er.Faces]))
-    return max([f.Area for f in lost.Faces] + [0.0])
-
-
 def check_underside():
-    """The bed side's plastic and layout: foot grooves and text keep WIRE_RIDGE_MIN from the plinth's
-    flat edge and from each other, letters keep strokes, counters and gaps of 0.8 mm. Returns problems."""
+    """The bed side's plastic and layout: the foot pockets keep WIRE_RIDGE_MIN from the plinth's flat
+    edge, and the feet stand level and alone below the plinth. Returns problems."""
     zb = -PLINTH_H
     flat = plinth_flat().OuterWire
-    grooves = [foot_prism(site, 0, zb, zb + GROOVE_D) for site in foot_sites()]
-    words = bed_text(zb)[:2]
+    pockets = [foot_prism(site, 0, zb, zb + POCKET_D) for site in foot_sites()]
     problems = []
-    rim = min(g_.distToShape(flat)[0] for g_ in grooves)
-    text_rim = min(t.distToShape(flat)[0] for t in words)
-    text_gap = min(t.distToShape(g_)[0] for t in words for g_ in grooves)
-    for what, d in (("groove to the flat's edge", rim), ("text to the flat's edge", text_rim),
-                    ("text to a groove", text_gap)):
-        if d < WIRE_RIDGE_MIN - 1e-6:
-            problems.append("%s %.2f" % (what, d))
-    sliver, counter, gap = 0.0, 9.0, 9.0
-    for (txt, size) in (BED_WORD, BED_CODE):
-        fs = text_faces(txt, size, BED_TRACK)
-        for k, f in enumerate(fs):
-            sliver = max(sliver, thin_sliver(f, 0.8))
-            for w_ in f.Wires:
-                if not w_.isSame(f.OuterWire):  # counter: plastic island, 0.1 smaller in the first layer
-                    hole = Part.Face(w_).makeOffset2D(-TEXT_EF).Faces[0]
-                    sliver = max(sliver, thin_sliver(hole, 0.8))
-                    bb = hole.BoundBox
-                    counter = min(counter, bb.XLength, bb.YLength)
-            if k:
-                gap = min(gap, fs[k - 1].distToShape(f)[0] - 2 * TEXT_EF)
-    if sliver > 1.0:
-        problems.append("text part under 0.8 mm (%.2f mm2)" % sliver)
-    if gap < 1.0:
-        problems.append("letter gap %.2f" % gap)
-    # level: the three soles are coplanar at -(PLINTH_H + FOOT_PROUD); no other part goes below the plinth
+    rim = min(g_.distToShape(flat)[0] for g_ in pockets)
+    if rim < WIRE_RIDGE_MIN - 1e-6:
+        problems.append("pocket to the flat's edge %.2f" % rim)
+    # level: the five soles are coplanar at -(PLINTH_H + FOOT_PROUD); no other part goes below the plinth
     low = -(PLINTH_H + FOOT_PROUD)
     for n, shp in PRINTED.items():
         sd = shp.copy()
@@ -891,8 +758,7 @@ def check_underside():
             problems.append("feet soles at z %.2f, not %.2f" % (z, low))
         elif n != "TpuFeet" and z < -PLINTH_H - 1e-3:
             problems.append("%s below the plinth bottom (z %.2f)" % (n, z))
-    print("underside: groove rim %.2f, text rim %.2f, text to groove %.2f, letter gap %.2f, counter %.2f, "
-          "thinnest-part test %.2f mm2 (limit 1.0)" % (rim, text_rim, text_gap, gap, counter, sliver))
+    print("underside: pocket rim %.2f" % rim)
     return problems
 
 
@@ -1428,8 +1294,8 @@ def dummy_kapton():
 PRINTED = {}
 DUMMIES = {}
 
-COLORS = {  # print colours: white shell, black visor / knob / feet, grey keys, back plate and plinth
-    "Shell": (0.95, 0.95, 0.94), "Visor": (0.06, 0.06, 0.07), "BackPlate": (0.55, 0.56, 0.58),
+COLORS = {  # print colours, only gray and black: gray shell and keys, black visor / knob / back plate / feet
+    "Shell": (0.55, 0.56, 0.58), "Visor": (0.06, 0.06, 0.07), "BackPlate": (0.08, 0.08, 0.09),
     "Carrier": (0.12, 0.45, 0.25), "Knob": (0.08, 0.08, 0.09),
     "CapLeft": (0.55, 0.56, 0.58), "CapRight": (0.55, 0.56, 0.58), "CapMiddle": (0.55, 0.56, 0.58),
     "Dummy": (0.30, 0.45, 0.85), "TpuFeet": (0.07, 0.07, 0.08),
@@ -1578,14 +1444,18 @@ def flat_roof(s, f):
     if not sup:
         return "island", 0.0
     cm = f.CenterOfMass
-    ang = sorted(math.atan2(e.CenterOfMass.y - cm.y, e.CenterOfMass.x - cm.x) for e in sup)
+    # a supporting edge counts along its whole length (one long arc round a pocket is not one point)
+    ang = sorted(math.atan2(q.y - cm.y, q.x - cm.x) for e in sup for q in e.discretize(Number=24))
     gaps = [b - a for a, b in zip(ang, ang[1:])] + [ang[0] + 2 * math.pi - ang[-1]]
     around = any(e.isClosed() for e in sup) or max(gaps) <= math.pi + 0.05
     sc = Part.makeCompound(sup)
     free = [e for e in f.Edges if not any(e.isSame(e2) for e2 in sup)]
-    if (not around and len(free) == 1 and free[0].Curve.TypeId == "Part::GeomLine"
-            and all(sc.distToShape(v)[0] < 1e-6 for v in free[0].Vertexes)):
-        return "bridge", free[0].Length  # a D: the lines parallel to its straight edge stand on both ends
+    if not around and free and all(e.Curve.TypeId == "Part::GeomLine" for e in free):
+        pts = [v.Point for e in free for v in e.Vertexes]
+        a_, b_ = max(((p, q) for p in pts for q in pts), key=lambda pq: (pq[0] - pq[1]).Length)
+        if (abs(sum(e.Length for e in free) - (a_ - b_).Length) < 1e-6  # one straight chord, maybe in pieces
+                and all(sc.distToShape(Part.Vertex(q))[0] < 1e-6 for q in (a_, b_))):
+            return "bridge", (a_ - b_).Length  # a D: the lines parallel to its straight edge stand on both ends
     reach = 0.0
     u0, u1, v0, v1 = f.ParameterRange
     for i in range(11):

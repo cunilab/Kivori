@@ -1,12 +1,13 @@
 # Kivori enclosure v5, "Visor Dashboard"
 
 The inside of [`../enclosure-v4`](../enclosure-v4/) in the outside of [`../enclosure-v2`](../enclosure-v2/)
-(the "big keycap"): a light matte wedge with leaning walls and a bevelled face, a black visor
-carrying the screen and the keys, and a big Ø48 knob. Same parts, part positions, pin map and
+(the "big keycap"): a gray matte wedge with leaning walls and a bevelled face, a black visor
+carrying the screen and the keys, and a big Ø42 knob. Same parts, part positions, pin map and
 solder-free wiring (0.3 mm enamelled wire, see [Wire wiring](#wire-wiring)) as v2 and v4; the
 printed PCB, wire channels, nut-mounted encoder, key mechanism, five screw posts, back plate,
 hooks and plinth construction are v4's. Only the look comes from v2: v4's full top plate, bezel and
-light ring are gone. The TPU feet (two rails and a disc in grooves) and the underside text are new.
+light ring are gone. The five round TPU feet (dots in shallow pockets) are new. The case is only gray
+and black.
 
 A 110 × 70 mm face on a wedge case (30.8 mm thick at the far edge, 18.8 mm at the near edge, so
 the face tilts about 10° towards you; on the desk it is 34.5 mm to the top of the shell and keys, 45.4 mm
@@ -14,43 +15,43 @@ to the top of the knob, feet included). The walls lean in 6° like a keycap, so 
 117 × 76 mm (v4: 113 × 73). The thickness is set by the parts inside (the encoder hangs deep for
 its long shaft): what limits it is listed under [How thin the case can get](#how-thin-the-case-can-get).
 
-- **Shell:** white, matte, the walls lean in 6° towards the face, R8 corners and a 2 mm 45° bevel
+- **Shell:** gray, matte, the walls lean in 6° towards the face, R8 corners and a 2 mm 45° bevel
   frames the face. The sides are clean: no latch windows or screws.
 - **Visor:** a black panel, 1 mm proud of the face, carries the display window (bevelled down to
   the glass) and the three key openings, plus the RST needle hole. Its edge follows the knob at an
   even 2.3 mm gap. It is separate from the shell (a recess in the face would need a 60 mm bridge
   in the face-down print) and goes on with three small pegs (Ø1.8) that drop into holes in the
   shell face, so it cannot go on turned round. Printed on a smooth PEI sheet it comes out glossy.
-- **Knob:** Ø48 × 11.3 mm. The encoder hangs deep in the case, so a knob this low still covers
+- **Knob:** Ø42 × 11.3 mm. The encoder hangs deep in the case, so a knob this low still covers
   its whole shaft and nothing needs cutting. Fine ribs round the skirt give grip, a 1.2 mm 45°
   chamfer round the top and a radial line marker. Inside it is hollow: a hub round the shaft
   (round bore, then D-shaped over the shaft's flat), tied to the skirt by four ribs. Its skirt
   clears the face by 1.5 mm (so 0.5 mm above the visor, and the visor's knob cut-out leaves a
   further 2.3 mm all round).
 - **Keys:** three low keys, 5 mm above the face (4 mm above the visor, as in v4), tapering slightly
-  from 13.4 to 12.4 mm above the visor, all three grey. Each clicks on with two fingers and is held
+  from 13.4 to 12.4 mm above the visor, all three gray. Each clicks on with two fingers and is held
   square by two ribbed walls, so a press on a corner still pushes the switch straight down. The
   visor's key openings (14 mm) leave 0.3 mm round the 13.4 mm cap.
 - **Plinth:** set back under the shell, the back plate's own outline chamfered 45° all round (no
-  overhang). Grey, so a thin grey line sits under the white shell and it seems to float above the desk.
-- **Feet:** three black TPU feet stand 1.5 mm proud of the plinth's flat bottom, so the plinth never
-  touches the desk and the case sits level on them: a 5.6 mm wide rail along the near edge and one
-  along the far edge (102.1 mm long, rounded ends, 0.5 mm chamfer on the sole), each covering the two
-  corner screw counterbores on its side so the screws are hidden, and a Ø6 disc over the middle screw.
-  Each drops into a 0.9 mm deep groove in the plinth's bottom face (0.2 mm clearance per side), so it
-  locates itself and can be glued (CA or contact glue) or pressed in. A Ø4.2 plug under each screw
-  position presses into the counterbore. The flange of the foot covers the groove's edge. At the rail
-  ends the cap covers the counterbore to within 0.15 mm (the plinth's flat is tight at the corners:
-  the groove keeps 0.7 mm from its edge).
-- **Underside:** the wordmark KIVORI (cap height 7.5 mm) and under it the model code KV-P1 (5 mm),
-  in Arial Black, recessed 0.4 mm (two layers) into the bed face, not raised. Strokes are at least 1.1 mm
-  (the hyphen), counters at least 0.9 mm and letter gaps at least 1.1 mm, so they print cleanly. Print the colour change
-  below and the letters come out black through the grey plate.
+  overhang). Black, so a thin black line sits under the gray shell and it seems to float above the desk.
+- **Feet:** five round black TPU dots, Ø9, stand 1.5 mm proud of the plinth's flat bottom, so the
+  plinth never touches the desk and the case sits level on them (the four corner dots carry it, the
+  middle one is the same height). One dot at each corner hides that corner's screw counterbore, one
+  sits on the middle screw. Each has a 0.8 mm 45° chamfer round its sole and drops into a 0.9 mm deep
+  round pocket in the plinth's bottom face (0.2 mm clearance per side), so it locates itself and can
+  be glued (CA or contact glue) or pressed in. A Ø4.2 plug under each screw position presses into the
+  counterbore. The flange of the dot covers the pocket's edge. The flat is tight at the corners (the
+  near screws are 2.84 mm from the rounded corner and 2.95 mm from the side), so a corner dot is
+  centred 2.3 mm (towards the middle of the case) and 0.84 mm (away from the edge) off its screw:
+  that keeps a 0.73 mm rim between the pocket and the flat's edge, and the dot covers the counterbore
+  to within 0.15 mm of its far wall. The middle dot is centred on its screw. The four corner dots are
+  at x 8.3 and 101.7 mm, y 8.5 and 63.1 mm (desk frame, from the near-left corner of the flat).
+- **Underside:** plain, no text. The back plate is black and prints in one colour.
 - **Back plate window:** the HW-040 hangs lower than anything else, so the plate has a window right
   through its 2 mm under the module (the board outline plus 1 mm each side, 28 × 20.5 mm); the
   plinth below it stays closed. That is what lets the plate sit 1.9 mm higher than in the first v5.
-- **Colours:** shell white; visor black; knob black; all three keys grey; plinth and back plate grey;
-  feet black TPU; underside letters black (colour change).
+- **Colours:** only gray and black. Gray: shell and all three keys. Black: visor, knob, back plate
+  with the plinth, and the TPU feet.
 
 Inside is a **printed PCB** (`Carrier`): a plate with the outline, mounting holes and part positions
 a real PCB would have. Components sit on its front; the wire runs in channels on its back. Once the prototype works, `export/pcb-outline.dxf` becomes the Edge.Cuts layer in KiCad.
@@ -102,7 +103,7 @@ exec(open(p).read(), {"__file__": p, "__name__": "__main__"})
 ```
 
 It prints an interference report (`interference: none` is the goal) and a wire-channel check
-(`plastic under 0.7 mm: none` is the goal), an underside check (foot grooves, text, letter strokes, the feet standing level
+(`plastic under 0.7 mm: none` is the goal), an underside check (foot pockets, the feet standing level
 and below the plinth; `underside problems: none` is the goal), an overhang check of every printed part in its
 print pose (`overhang problems: none` is the goal; the line above it lists each part's bridges), the
 encoder-to-back-plate clearance (1.24 mm; keep it over 0.5), regenerates the document and rewrites `export/`.
@@ -122,14 +123,12 @@ Checked for FDM in each part's print orientation:
     0.8 mm wall.
   - `Visor` (top down): none. Its window chamfer and 0.5 mm edge chamfer are 45°; the pegs point up.
   - `BackPlate` (desk side down): the plinth slopes 45°; the hook barbs come out at 44° (the wedge tilt
-    shortens their ramps); the foot grooves are recesses in the bed face, so each bridges its 5.6 mm
-    width at 0.9 mm (the disc's ring 1.6 mm); the 0.4 mm letters bridge up to 2.7 mm (the bridge layer
-    is what shows black in the colour-change print; the stepped first layer leaves 0.1 mm ledges); the
-    five screw-head seats (Ø4.4, tilted 10° with the screw) are stepped bridges, see Screw seats
+    shortens their ramps); the five Ø9 foot pockets are recesses in the bed face, so each bridges 9 mm
+    at 0.9 mm (the counterbore leaves a ring or crescent); the five screw-head seats (Ø4.4, tilted 10° with the screw) are stepped bridges, see Screw seats
     below: two D-shaped pads, each bridging 3.7 mm, and two 2.0 mm bridges.
     The window under the encoder is open to the top: no overhang.
-  - `TpuFeet` (sole down): sole chamfer, flange, body, plugs: none beyond a 0.3 mm ledge where a
-    plug stands 0.3 mm past the rail's end.
+  - `TpuFeet` (sole down): sole chamfer, flange, body, plugs: none beyond a 0.25 mm ledge where a
+    plug stands 0.25 mm past the dot's body.
   - `Carrier` (back down): bridges over the 0.8 mm wire channels, 1.4 mm leg pockets and the 2 mm
     Kapton seats.
   - `Knob` (top down): the line marker bridges 1.2 mm; the grip grooves run out of the skirt edge.
@@ -140,8 +139,7 @@ Checked for FDM in each part's print orientation:
   back (on the bed) the wire channels are 0.8 mm wide and the leg pockets 1.4 mm, so the layer
   over each is a short bridge. The back is flat along the pin rows.
   Every channel keeps at least 0.7 mm of plastic to anything that is not its own (the build
-  checks it). On the plinth bottom the foot grooves keep 0.7 mm to the flat face's edge and the text
-  keeps 0.7 mm to the grooves (checked too); the letters have no stroke or counter under 0.8 mm.
+  checks it). On the plinth bottom the foot pockets keep 0.7 mm to the flat face's edge (checked too).
 - **Fits:** FDM prints holes 0.1-0.2 mm small, so the fits allow for it: spigot 3.4 in 3.9, knob bore 6.25 on the 6 mm shaft, cap 13.4 in a 14 mm opening, cap fingers 0.05 mm onto the 3.8 mm switch head.
 - **Screw seats:** each Ø4.4 counterbore ends in a seat square to the screw, so the pan head sits
   flat; in the print pose that seat is a 10° roof. Printed as a plain ring it was a 1 mm wide
@@ -166,32 +164,16 @@ Checked for FDM in each part's print orientation:
 
 | Part | Material | Orientation (already applied in the STL) |
 |---|---|---|
-| `Shell` | light matte PLA | face down |
+| `Shell` | gray matte PLA | face down |
 | `Visor` | black PLA; a smooth PEI sheet gives it a glossy face | top down (pegs up) |
-| `BackPlate` (with the plinth) | grey **PETG** (the hooks crack in PLA), black for layers 3-4 (colour change below) | desk side down |
+| `BackPlate` (with the plinth) | black **PETG** (the hooks crack in PLA) | desk side down |
 | `Carrier` (printed PCB) | PETG preferred (the folded switch legs and pegs press on it for years); PLA works | back down, pegs and standoffs up |
 | `Knob` | black PLA | top down |
-| `CapLeft` / `CapMiddle` / `CapRight` | grey PLA, PETG if a finger cracks | top down |
-| `TpuFeet` (both rails and the disc in one file) | **TPU** (95A), black | sole down, plugs up |
+| `CapLeft` / `CapMiddle` / `CapRight` | gray PLA, PETG if a finger cracks | top down |
+| `TpuFeet` (all five dots in one file) | **TPU** (95A), black | sole down, plugs up |
 
-Every part is printed in a single colour except the back plate, which has one colour change for the
-underside text; the rest of the look comes from printing the parts in different filaments.
-
-**Back plate colour change (black underside letters).** The letters are 0.4 mm deep holes, exactly
-two 0.2 mm layers (use 0.2 mm layers with a 0.2 mm first layer):
-
-| Print Z | What |
-|---|---|
-| 0 to 0.4 mm (layers 1-2) | grey; the letters are holes |
-| **0.4 mm** | change filament to **black**: layers 3-4 (0.4 to 0.8 mm) are black; layer 3 bridges the holes, so the letters show black through the grey |
-| **0.8 mm** | change back to **grey** for the rest of the plate |
-
-Slicers that name a layer by its top height (PrusaSlicer, OrcaSlicer) take the change at the layers
-labelled 0.6 mm (first black layer) and 1.0 mm (first grey layer again). Without a colour change the
-letters are clean 0.4 mm recesses in a single colour. Black layers 3-4 also show as a 0.4 mm black
-pinstripe on the plinth's lowest 45° slope; to avoid it, change back after one layer (Z 0.6 mm, first
-grey layer 0.8 mm): the single black bridge layer still shows the letters, a little thinner. The first-layer relief (`TEXT_EF`, 0.1 mm per side, the
-first layer only) offsets the elephant foot that squeezes the letters narrower at the bed.
+Every part is printed in a single colour (gray or black), no filament swaps; the look comes from
+printing the parts in different filaments.
 
 ## How thin the case can get
 
@@ -261,19 +243,18 @@ everything after that is solderless.
 8. Lower the printed PCB over the five spigots and press it down onto the posts: each switch head
    clicks into its cap. The spigots stick out past the back and locate the back plate's columns.
 9. Press the back plate straight in until all four hooks click. Then drive the five screws in from under the plinth until snug (do not overtighten in
-   PLA). Press the TPU feet into their grooves (a drop of glue in each groove if you want them fixed), the rail
-   plugs into the corner screw holes and the disc plug into the middle one; the rails hide the four corner screws.
+   PLA). Press the five TPU dots into their pockets (a drop of glue in each pocket if you want them fixed), each
+   plug into its screw hole; the corner dots hide the four corner screws.
 10. Press the visor's three pegs into their holes in the face (key openings over the caps, the
    window over the screen). A drop of CA glue or a few small pieces of thin double-sided tape on
    the face keep it down.
 11. Push the knob onto the D-shaft.
 
-To open: pull the three TPU feet off, take the screws out, grip the plinth in the shadow
+To open: pull the five TPU dots off, take the screws out, grip the plinth in the shadow
 gap and pull. RST is a Ø1 needle hole in the visor, above the SuperMini (a needle or SIM pin
 reaches the button through a guide tube).
 
-The underside text is deliberately big and heavy (Arial Black, 7.5 mm and 5 mm cap height) and
-recessed, not raised: it prints on the bed, where small raised letters come out unclear. The printed
+The underside has no text. The printed
 PCB's back carries the pin and button names next to their holes.
 
 ## Wire wiring
