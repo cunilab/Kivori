@@ -192,8 +192,8 @@ SCREW_HEAD_D = 4.4          # counterbore for a pan head up to 4 mm
 SCREW_SEAT_Z = -16.5        # all heads seat here, so every screw is 12 mm
 SEAT_LAYER = 0.2            # stepped bridge over each counterbore: one layer (along the screw) per step, see make_back_plate
 PEG_CLR = 0.1               # peg diameter = hole - 2 * clearance (press fit)
-PEG_PROUD = 1.0             # peg tip past the module board: press fit, or melt it (heat-stake)
-PEG_RELIEF = 0.7            # face-back relief over the display peg tips (room for a staked head)
+PEG_PROUD = 2.0             # peg tip past the module board: press fit, or melt it (heat-stake); 1.0 -> 2.0 per user 2026-11-01
+PEG_RELIEF = 0.8            # face-back relief over the display peg tips: 0.1 above the 2.0 tips, leaving 0.7 under the visor pocket
 
 # ESP32-C3 SuperMini: it stands on the front of the printed PCB on its own soldered header strips,
 # components towards the face, and its long pins go through to the wiring on the back
