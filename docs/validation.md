@@ -3,6 +3,10 @@
 The one checklist for everything CI cannot prove: real ESP32-C3 + ST7789 + HW-040 hardware, real
 OS behavior, real timing. Host-sim and other host tests are never promoted to physical evidence.
 
+For issues #164, #165 and #167, use the [Windows desktop checklist](./windows-validation.md)
+to record installed-app launch, close-to-tray and security-warning evidence. Those checks remain
+pending until run on Windows with a connected device.
+
 Current M2.9 scope, updated 2026-10-29: CAD/enclosure work is owner-managed and outside the
 software milestone. The [roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness)
 now has **20/24 complete**, including all six virtual Pip software items and public website acceptance;

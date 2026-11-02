@@ -156,16 +156,32 @@ pub enum ProfileId {
     Media,
     Zoom,
     Teams,
+    Capcut,
+    Photoshop,
+    Aftereffects,
+    Premiere,
+    Blender,
+    Claudecode,
+    Codex,
+    Opencode,
 }
 
 impl ProfileId {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 14] = [
         Self::General,
         Self::Browser,
         Self::Code,
         Self::Media,
         Self::Zoom,
         Self::Teams,
+        Self::Capcut,
+        Self::Photoshop,
+        Self::Aftereffects,
+        Self::Premiere,
+        Self::Blender,
+        Self::Claudecode,
+        Self::Codex,
+        Self::Opencode,
     ];
 
     /// The lowercase token used in the file and over IPC.
@@ -178,7 +194,31 @@ impl ProfileId {
             Self::Media => "media",
             Self::Zoom => "zoom",
             Self::Teams => "teams",
+            Self::Capcut => "capcut",
+            Self::Photoshop => "photoshop",
+            Self::Aftereffects => "aftereffects",
+            Self::Premiere => "premiere",
+            Self::Blender => "blender",
+            Self::Claudecode => "claudecode",
+            Self::Codex => "codex",
+            Self::Opencode => "opencode",
         }
+    }
+
+    /// Starter profiles are opt-in to the device pin cycle.
+    #[must_use]
+    pub const fn is_starter(self) -> bool {
+        matches!(
+            self,
+            Self::Capcut
+                | Self::Photoshop
+                | Self::Aftereffects
+                | Self::Premiere
+                | Self::Blender
+                | Self::Claudecode
+                | Self::Codex
+                | Self::Opencode
+        )
     }
 
     #[must_use]
@@ -266,6 +306,9 @@ pub struct ProfileOverride {
     /// Built-in apps the user moved out of this built-in profile to General.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub removed_apps: Vec<String>,
+    /// Starter profiles can be added to the physical pin cycle.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub in_pin_cycle: bool,
 }
 
 fn buttons_untouched(buttons: &[ButtonOverride; 3]) -> bool {

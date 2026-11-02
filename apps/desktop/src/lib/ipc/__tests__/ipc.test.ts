@@ -46,6 +46,7 @@ import {
   renderPreviewFrame,
   addCustomProfile,
   assignApp,
+  pinProfile,
   renameProfile,
   deleteProfile,
   setProfilePinCycle,
@@ -946,6 +947,10 @@ describe('profile commands', () => {
     });
     await deleteProfile('custom-1');
     expect(tauri.invoke).toHaveBeenLastCalledWith('delete_profile', { profile: 'custom-1' });
+    await pinProfile('codex');
+    expect(tauri.invoke).toHaveBeenLastCalledWith('pin_profile', { profile: 'codex' });
+    await pinProfile(null);
+    expect(tauri.invoke).toHaveBeenLastCalledWith('pin_profile', { profile: null });
     await setProfilePinCycle('custom-1', true);
     expect(tauri.invoke).toHaveBeenLastCalledWith('set_profile_pin_cycle', {
       profile: 'custom-1',

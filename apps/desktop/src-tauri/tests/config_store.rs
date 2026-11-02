@@ -772,6 +772,57 @@ mod profiles {
     }
 
     #[test]
+    fn starter_profile_edits_and_cycle_persist_and_reset_to_its_own_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = ConfigStore::open(dir.path());
+        let id = ProfileRef::Builtin(ProfileId::Codex);
+        let original = store
+            .resolved()
+            .profiles
+            .iter()
+            .find(|p| p.id == id)
+            .unwrap()
+            .clone();
+        store
+            .save(store.edited(|file| {
+                file.profiles.entry(ProfileId::Codex).or_default().press = Some(SlotSpec {
+                    action: Some(ActionSpec::Shortcut {
+                        keys: "Ctrl+K".into(),
+                    }),
+                    label: Some("Mine".into()),
+                });
+                file.profiles.entry(ProfileId::Browser).or_default().press = Some(SlotSpec {
+                    action: Some(ActionSpec::Shortcut {
+                        keys: "Ctrl+J".into(),
+                    }),
+                    label: None,
+                });
+            }))
+            .unwrap();
+        store.set_pin_cycle(&id, true).unwrap();
+        let mut reopened = ConfigStore::open(dir.path());
+        let edited = reopened
+            .resolved()
+            .profiles
+            .iter()
+            .find(|p| p.id == id)
+            .unwrap()
+            .clone();
+        assert_eq!(edited.bindings.press.label.as_deref(), Some("Mine"));
+        assert!(edited.in_pin_cycle);
+        reopened.reset_profile(&id).unwrap();
+        let reset = reopened
+            .resolved()
+            .profiles
+            .iter()
+            .find(|p| p.id == id)
+            .unwrap()
+            .clone();
+        assert_eq!(reset, original);
+        assert!(reopened.file().profiles.contains_key(&ProfileId::Browser));
+    }
+
+    #[test]
     fn a_custom_profile_copies_general_once_and_survives_a_reopen() {
         let dir = tempfile::tempdir().unwrap();
         let mut store = ConfigStore::open(dir.path());
@@ -958,11 +1009,11 @@ mod profiles {
         store.add_custom_profile("figma.exe", "Figma").unwrap();
         store.set_pin_cycle(&custom("custom-1"), true).unwrap();
         let dto = kivori_desktop::ipc::dto::config_dto(&store);
-        assert_eq!(dto.profiles.len(), 7);
+        assert_eq!(dto.profiles.len(), ProfileId::ALL.len() + 1);
         assert!(dto.profiles[..6]
             .iter()
             .all(|p| !p.custom && p.in_pin_cycle));
-        let mine = &dto.profiles[6];
+        let mine = dto.profiles.last().unwrap();
         assert_eq!(
             (mine.id.as_str(), mine.custom, mine.in_pin_cycle),
             ("custom-1", true, true)

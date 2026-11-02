@@ -464,7 +464,22 @@ export const CONFIG_NOTICES = [
 export type ConfigNotice = (typeof CONFIG_NOTICES)[number];
 
 /** The built-in profiles; a custom profile's id is `custom-<n>`. */
-export const PROFILE_IDS = ['general', 'browser', 'code', 'media', 'zoom', 'teams'] as const;
+export const PROFILE_IDS = [
+  'general',
+  'browser',
+  'code',
+  'media',
+  'zoom',
+  'teams',
+  'capcut',
+  'photoshop',
+  'aftereffects',
+  'premiere',
+  'blender',
+  'claudecode',
+  'codex',
+  'opencode',
+] as const;
 export type BuiltinProfileId = (typeof PROFILE_IDS)[number];
 export type ProfileId = BuiltinProfileId | `custom-${number}`;
 /** A custom profile's id: `custom-` and 1 to 4 digits. */
@@ -552,7 +567,7 @@ export interface ProfileConfigDto {
   name: string;
   /** The user's own profile: it can be renamed and deleted. Built-ins cannot. */
   custom: boolean;
-  /** The middle button's Hold cycle visits it (always true for a built-in). */
+  /** The middle button's Hold cycle visits it. */
   inPinCycle: boolean;
   /** Foreground app ids that select this profile (empty for General). */
   apps: string[];

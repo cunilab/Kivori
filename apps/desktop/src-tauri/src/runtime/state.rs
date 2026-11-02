@@ -32,6 +32,8 @@ pub enum DeviceCommand {
     SetDesired(SendableState),
     /// Dev-only state request, kept distinct in native activity even though its wire state is identical.
     MirrorDesired(SendableState),
+    /// Pin a profile, or return to automatic foreground matching.
+    PinProfile(Option<crate::config::ProfileRef>),
     /// Adopt a saved config: the buddy's intensity and reactions, and the display views.
     ApplyConfig(Arc<ResolvedConfig>),
     /// Play one immediate social reaction using current companion settings.

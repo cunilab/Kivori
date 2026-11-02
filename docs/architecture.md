@@ -352,7 +352,9 @@ The webview may call only these commands and listen to these events. No command 
 | `reset_profile` | `profile`; a built-in drops every override, including its app changes; a custom profile gets a fresh copy of General's bindings (name and apps stay); returns the config | all |
 | `add_custom_profile` | `appId`, `name` (the app's display name, may be empty); creates a custom profile (at most 16) as a one-time copy of General's bindings and moves the app into it; returns the config | all |
 | `assign_app` | `profile` (`general` = out of the profile that lists it), `appId`; one app belongs to one profile, so this moves it; returns the config | all |
-| `rename_profile` / `delete_profile` / `set_profile_pin_cycle` | custom profiles only (`profile`, plus `name` or `enabled`); a name is 1 to 32 characters; returns the config | all |
+| `rename_profile` / `delete_profile` | custom profiles only (`profile`, plus `name` for rename); a name is 1 to 32 characters; returns the config | all |
+| `set_profile_pin_cycle` | Opt a custom or starter profile into the device pin cycle (`profile`, `enabled`); returns the config | all |
+| `pin_profile` | Pin a known `profile`, or pass `null` to resume foreground matching; applies through the device thread | all |
 | `list_running_apps` | none; apps with a window open now (`id`, `name`), run off the UI thread; empty where the OS gives none | all |
 | `get_app_icon` | `appId`; a PNG data URL or `null` (the UI shows a letter); off the UI thread, cached per id. macOS: `NSWorkspace iconForFile` re-encoded by `NSBitmapImageRep`; Windows: `ExtractIconExW` of the running executable | all |
 | `reset_config` | Every setting back to its default; returns the config | all |

@@ -431,6 +431,12 @@ impl DeskRuntime {
         }
     }
 
+    /// Pin a profile from the desktop, or follow the foreground app again.
+    pub fn pin_profile(&mut self, profile: Option<&crate::config::ProfileRef>) {
+        self.context.pin(profile);
+        self.sent_controls = None;
+    }
+
     /// The active profile's bindings.
     #[must_use]
     pub fn bindings(&self) -> &Bindings {

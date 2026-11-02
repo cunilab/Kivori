@@ -349,7 +349,7 @@ impl ConfigStore {
         self.save(next)
     }
 
-    /// Puts a custom profile in or out of the pin cycle.
+    /// Puts a custom or starter profile in or out of the pin cycle.
     ///
     /// # Errors
     /// [`ConfigError`]; on any error the stored config is unchanged.

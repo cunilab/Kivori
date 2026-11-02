@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import type { FormEvent, ReactElement } from 'react';
+import { useRef, useState } from 'react';
+import type { FormEvent, KeyboardEvent, ReactElement } from 'react';
 import { Button } from '@kivori/ui/components/button';
 import { Input } from '@kivori/ui/components/input';
 import { Label } from '@kivori/ui/components/label';
@@ -341,30 +341,25 @@ function PickerForm({
         )}
         {params === 'shortcut' && (
           <Field id="picker-shortcut" label={p.shortcut}>
-            <Input
+            <ShortcutInput
               id="picker-shortcut"
               value={keys}
               placeholder={p.shortcutPlaceholder}
-              onChange={(e) => setKeys(e.target.value)}
+              onChange={setKeys}
             />
           </Field>
         )}
         {params === 'shortcutPair' && (
           <>
             <Field id="picker-cw" label={p.clockwise}>
-              <Input
-                id="picker-cw"
-                value={cw}
-                placeholder="Ctrl+Tab"
-                onChange={(e) => setCw(e.target.value)}
-              />
+              <ShortcutInput id="picker-cw" value={cw} placeholder="Ctrl+Tab" onChange={setCw} />
             </Field>
             <Field id="picker-ccw" label={p.counterClockwise}>
-              <Input
+              <ShortcutInput
                 id="picker-ccw"
                 value={ccw}
                 placeholder="Ctrl+Shift+Tab"
-                onChange={(e) => setCcw(e.target.value)}
+                onChange={setCcw}
               />
             </Field>
           </>
@@ -410,6 +405,145 @@ function PickerForm({
         </Button>
       </SheetFooter>
     </form>
+  );
+}
+
+const namedKeys: Record<string, string> = {
+  ' ': 'Space',
+  ArrowUp: 'Up',
+  ArrowDown: 'Down',
+  ArrowLeft: 'Left',
+  ArrowRight: 'Right',
+  Enter: 'Enter',
+  Tab: 'Tab',
+  Escape: 'Escape',
+  Backspace: 'Backspace',
+  Delete: 'Delete',
+  Home: 'Home',
+  End: 'End',
+  PageUp: 'PageUp',
+  PageDown: 'PageDown',
+};
+const shiftedKeys: Record<string, [string, string]> = {
+  '!': ['Digit1', '1'],
+  '@': ['Digit2', '2'],
+  '#': ['Digit3', '3'],
+  $: ['Digit4', '4'],
+  '%': ['Digit5', '5'],
+  '^': ['Digit6', '6'],
+  '&': ['Digit7', '7'],
+  '*': ['Digit8', '8'],
+  '(': ['Digit9', '9'],
+  ')': ['Digit0', '0'],
+  '{': ['BracketLeft', '['],
+  '}': ['BracketRight', ']'],
+  '~': ['Backquote', '`'],
+};
+
+function ShortcutInput({
+  id,
+  value,
+  placeholder,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}): ReactElement {
+  const [recording, setRecording] = useState(false);
+  const [error, setError] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+
+  function capture(event: KeyboardEvent<HTMLInputElement>): void {
+    if (!recording) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (['Control', 'Shift', 'Alt', 'Meta'].includes(event.key)) return;
+    if (
+      event.key === 'Escape' &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.shiftKey &&
+      !event.metaKey
+    ) {
+      setRecording(false);
+      setError(false);
+      button.current?.focus();
+      return;
+    }
+    const functionKey = /^F(\d{1,2})$/.exec(event.key);
+    const maxFunction = /Windows/i.test(navigator.userAgent) ? 24 : 20;
+    const shifted = shiftedKeys[event.key];
+    const key =
+      namedKeys[event.key] ??
+      (/^[a-z0-9]$/i.test(event.key) || ['`', '[', ']'].includes(event.key)
+        ? event.key.toUpperCase()
+        : null) ??
+      (event.shiftKey && shifted?.[0] === event.code ? shifted[1] : null) ??
+      (functionKey && Number(functionKey[1]) >= 1 && Number(functionKey[1]) <= maxFunction
+        ? event.key
+        : null);
+    if (!key || event.getModifierState('AltGraph')) {
+      setError(true);
+      return;
+    }
+    onChange(
+      [
+        event.ctrlKey && 'Ctrl',
+        event.altKey && 'Alt',
+        event.shiftKey && 'Shift',
+        event.metaKey && 'Meta',
+        key,
+      ]
+        .filter(Boolean)
+        .join('+'),
+    );
+    setError(false);
+    setRecording(false);
+    button.current?.focus();
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex gap-2">
+        <Input
+          ref={input}
+          id={id}
+          value={value}
+          placeholder={placeholder}
+          readOnly={recording}
+          aria-describedby={recording || error ? `${id}-recording` : undefined}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={capture}
+          onBlur={(event) => {
+            if (event.relatedTarget !== button.current) setRecording(false);
+          }}
+        />
+        <Button
+          ref={button}
+          type="button"
+          variant="outline"
+          aria-label={`${recording ? p.cancelRecording : p.recordKeys} for ${id === 'picker-cw' ? p.clockwise : id === 'picker-ccw' ? p.counterClockwise : p.shortcut}`}
+          onClick={() => {
+            setError(false);
+            if (recording) setRecording(false);
+            else {
+              setRecording(true);
+              input.current?.focus();
+            }
+          }}
+        >
+          {recording ? p.cancel : p.record}
+        </Button>
+      </div>
+      {recording || error ? (
+        <p id={`${id}-recording`} role="status" className="text-xs text-muted-foreground">
+          {error ? p.recordUnsupported : p.recordHint}
+        </p>
+      ) : null}
+    </div>
   );
 }
 

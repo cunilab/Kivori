@@ -199,19 +199,23 @@ pub fn rename_profile(
     Ok(())
 }
 
-/// Puts a custom profile in or out of the middle button's pin cycle.
+/// Puts a custom or starter profile in or out of the middle button's pin cycle.
 ///
 /// # Errors
-/// A fixed reason for an unknown or built-in profile (built-ins are always in the cycle).
+/// A fixed reason for an unknown or fixed-cycle profile.
 pub fn set_pin_cycle(
     file: &mut ConfigFile,
     id: &ProfileRef,
     in_pin_cycle: bool,
 ) -> Result<(), &'static str> {
-    let ProfileRef::Custom(id) = id else {
-        return Err("a built-in profile is always in the pin cycle");
-    };
-    custom_mut(file, id)?.in_pin_cycle = in_pin_cycle;
+    match id {
+        ProfileRef::Custom(id) => custom_mut(file, id)?.in_pin_cycle = in_pin_cycle,
+        ProfileRef::Builtin(id) if id.is_starter() => {
+            file.profiles.entry(*id).or_default().in_pin_cycle = in_pin_cycle;
+            file.profiles.retain(|_, over| !over.is_empty());
+        }
+        ProfileRef::Builtin(_) => return Err("a built-in profile is always in the pin cycle"),
+    }
     Ok(())
 }
 

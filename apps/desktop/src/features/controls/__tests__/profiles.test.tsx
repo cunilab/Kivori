@@ -53,6 +53,25 @@ beforeEach(async () => {
 });
 
 describe('ProfilesCard', () => {
+  it('pins an agent profile directly and returns to following the foreground app', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(await screen.findByRole('tab', { name: 'Codex' }));
+    const card = await screen.findByTestId('profile-codex');
+    expect(card).toHaveTextContent('terminal does not identify');
+    const cycle = within(card).getByRole('switch', { name: 'In pin cycle' });
+    expect(cycle).not.toBeChecked();
+    await user.click(cycle);
+    await waitFor(() => expect(cycle).toBeChecked());
+    await user.click(within(card).getByRole('button', { name: 'Use this profile' }));
+    expect(
+      await within(card).findByRole('button', { name: 'Follow foreground app' }),
+    ).toBeVisible();
+    expect(screen.getByTestId('active-profile')).toHaveTextContent('Codex');
+    await user.click(within(card).getByRole('button', { name: 'Follow foreground app' }));
+    expect(await within(card).findByRole('button', { name: 'Use this profile' })).toBeVisible();
+  });
+
   it('shows the selected profile with friendly app names and letter avatars where there is no icon', async () => {
     const user = userEvent.setup();
     render(<Harness />);

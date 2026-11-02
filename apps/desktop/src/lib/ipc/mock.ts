@@ -711,15 +711,24 @@ const meetingButtons = (
   buttons: [[string, string], [string, string]],
 ): ProfileConfigDto['buttons'] => [
   { press: slot({ kind: 'micMute' }), hold: slot(null) },
-  { press: slot(key(buttons[0][1]), buttons[0][0]), hold: 'pin' },
-  { press: slot(key(buttons[1][1]), buttons[1][0]), hold: slot(null) },
+  { press: slot(buttons[0][1] ? key(buttons[0][1]) : null, buttons[0][0] || null), hold: 'pin' },
+  {
+    press: slot(buttons[1][1] ? key(buttons[1][1]) : null, buttons[1][0] || null),
+    hold: slot(null),
+  },
 ];
 const shortcutButtons = (
   buttons: [[string, string], [string, string], [string, string]],
 ): ProfileConfigDto['buttons'] => [
-  { press: slot(key(buttons[0][1]), buttons[0][0]), hold: slot(null) },
-  { press: slot(key(buttons[1][1]), buttons[1][0]), hold: 'pin' },
-  { press: slot(key(buttons[2][1]), buttons[2][0]), hold: slot(null) },
+  {
+    press: slot(buttons[0][1] ? key(buttons[0][1]) : null, buttons[0][0] || null),
+    hold: slot(null),
+  },
+  { press: slot(buttons[1][1] ? key(buttons[1][1]) : null, buttons[1][0] || null), hold: 'pin' },
+  {
+    press: slot(buttons[2][1] ? key(buttons[2][1]) : null, buttons[2][0] || null),
+    hold: slot(null),
+  },
 ];
 function builtin(
   id: ProfileId,
@@ -800,6 +809,92 @@ function builtinProfiles(): ProfileConfigDto[] {
         ['Leave', 'Ctrl+Shift+H'],
       ]),
     ),
+    ...[
+      builtin(
+        'capcut',
+        'CapCut',
+        ['capcut.exe'],
+        shortcutButtons([
+          ['Play', 'Space'],
+          ['Split', 'Ctrl+B'],
+          ['', ''],
+        ]),
+      ),
+      builtin(
+        'photoshop',
+        'Photoshop',
+        ['photoshop.exe'],
+        shortcutButtons([
+          ['Undo', 'Ctrl+Z'],
+          ['Redo', 'Ctrl+Shift+Z'],
+          ['Brush', 'B'],
+        ]),
+      ),
+      builtin(
+        'aftereffects',
+        'After Effects',
+        ['afterfx.exe'],
+        shortcutButtons([
+          ['Undo', 'Ctrl+Z'],
+          ['Redo', 'Ctrl+Shift+Z'],
+          ['', ''],
+        ]),
+      ),
+      builtin(
+        'premiere',
+        'Premiere Pro',
+        ['adobe premiere pro.exe'],
+        shortcutButtons([
+          ['', ''],
+          ['Play', 'Space'],
+          ['', ''],
+        ]),
+        { kind: 'shortcuts', cw: 'Right', ccw: 'Left', label: 'Frame' },
+      ),
+      builtin(
+        'blender',
+        'Blender',
+        ['blender.exe'],
+        shortcutButtons([
+          ['Undo', 'Ctrl+Z'],
+          ['Redo', 'Ctrl+Shift+Z'],
+          ['', ''],
+        ]),
+      ),
+      builtin(
+        'claudecode',
+        'Claude Code',
+        [],
+        shortcutButtons([
+          ['Search', 'Ctrl+R'],
+          ['Transcript', 'Ctrl+O'],
+          ['', ''],
+        ]),
+        { kind: 'shortcuts', cw: 'Down', ccw: 'Up', label: 'History' },
+      ),
+      builtin(
+        'codex',
+        'Codex',
+        [],
+        shortcutButtons([
+          ['Search', 'Ctrl+R'],
+          ['Copy', 'Ctrl+O'],
+          ['', ''],
+        ]),
+        { kind: 'shortcuts', cw: 'Down', ccw: 'Up', label: 'History' },
+      ),
+      builtin(
+        'opencode',
+        'OpenCode',
+        [],
+        shortcutButtons([
+          ['', ''],
+          ['', ''],
+          ['', ''],
+        ]),
+        { kind: 'shortcuts', cw: 'Down', ccw: 'Up', label: 'Navigate' },
+      ),
+    ].map((profile) => ({ ...profile, inPinCycle: false })),
   ];
 }
 
@@ -1376,8 +1471,15 @@ export function mockRenameProfile(profile: ProfileId, name: string): ConfigDto {
 
 export function mockSetProfilePinCycle(profile: ProfileId, enabled: boolean): ConfigDto {
   const profiles = structuredClone(config.profiles);
-  mockCustom(profiles, profile, 'a built-in profile is always in the pin cycle').inPinCycle =
-    enabled;
+  const target = profiles.find((p) => p.id === profile);
+  if (!target) throw new Error('unknown profile');
+  if (
+    !target.custom &&
+    ['general', 'browser', 'code', 'media', 'zoom', 'teams'].includes(profile)
+  ) {
+    throw new Error('a built-in profile is always in the pin cycle');
+  }
+  target.inPinCycle = enabled;
   return saveConfig({ display: config.display, buddy: config.buddy, profiles }, null);
 }
 
@@ -1473,4 +1575,17 @@ export function mockPreviewStream(
       return Promise.resolve();
     },
   };
+}
+
+/** The mock pins directly without attempting foreground-process detection. */
+export function mockPinProfile(profile: ProfileId | null): void {
+  const target =
+    profile === null ? config.profiles[0] : config.profiles.find((p) => p.id === profile);
+  if (!target) throw new Error('unknown profile');
+  updateDesk({
+    profileId: target.id,
+    profile: profile === null ? null : target.name,
+    pinned: profile !== null,
+  });
+  syncDesk();
 }

@@ -40,6 +40,7 @@ import {
   getAppIcon,
   getStartupSettings,
   listRunningApps,
+  pinProfile,
   renameProfile,
   setProfilePinCycle,
 } from '@/lib/ipc';
@@ -354,7 +355,34 @@ export function ProfilesCard({
             )}
             <Badge variant="outline">{profile.custom ? t.yourProfile : t.builtIn}</Badge>
             <div className="ml-auto flex items-center gap-2">
-              {profile.custom ? (
+              {desk?.pinned && desk.profileId === profile.id ? (
+                <Button size="sm" variant="outline" onClick={() => pinProfile(null).catch(fail)}>
+                  {t.follow}
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => pinProfile(profile.id).catch(fail)}
+                  aria-describedby={`pin-hint-${profile.id}`}
+                >
+                  {t.pin}
+                </Button>
+              )}
+              <span id={`pin-hint-${profile.id}`} className="sr-only">
+                {t.pinHint}
+              </span>
+              {profile.custom ||
+              [
+                'capcut',
+                'photoshop',
+                'aftereffects',
+                'premiere',
+                'blender',
+                'claudecode',
+                'codex',
+                'opencode',
+              ].includes(profile.id) ? (
                 <div className="flex items-center gap-2">
                   <Switch
                     id={`cycle-${profile.id}`}
@@ -409,6 +437,9 @@ export function ProfilesCard({
             </div>
           </div>
 
+          {['claudecode', 'codex', 'opencode'].includes(profile.id) ? (
+            <p className="text-xs text-muted-foreground">{t.agentHint}</p>
+          ) : null}
           {profile.id === 'general' ? (
             <p className="text-xs text-muted-foreground">{t.generalApps}</p>
           ) : groups.length === 0 ? (

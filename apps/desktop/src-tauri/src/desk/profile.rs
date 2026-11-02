@@ -53,8 +53,7 @@ pub struct Profile {
     /// Lowercase foreground ids, Windows executables and macOS bundle ids in one list. Config
     /// resolution keeps an id in one profile only.
     pub ids: Vec<String>,
-    /// Whether the middle button's Hold cycle visits it (every built-in does; a custom profile
-    /// opts in).
+    /// Whether the middle button's Hold cycle visits it.
     pub in_pin_cycle: bool,
     pub mood: ContextMood,
     pub rotate: RotateBinding,
@@ -194,6 +193,127 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
                 named("Video", os("Ctrl+Shift+O", "Meta+Shift+O")),
                 named("Leave", os("Ctrl+Shift+H", "Meta+Shift+H")),
             ]),
+            ..general.clone()
+        },
+        Profile {
+            id: ProfileRef::Builtin(ProfileId::Capcut),
+            name: "CapCut".into(),
+            ids: ids(&["capcut.exe", "com.lemon.lvoverseas"]),
+            in_pin_cycle: false,
+            bindings: with_buttons([
+                named("Play", shortcut("Space")),
+                named("Split", os("Ctrl+B", "Meta+B")),
+                ButtonSlots::default(),
+            ]),
+            ..general.clone()
+        },
+        Profile {
+            id: ProfileRef::Builtin(ProfileId::Photoshop),
+            name: "Photoshop".into(),
+            ids: ids(&["photoshop.exe", "com.adobe.photoshop"]),
+            in_pin_cycle: false,
+            bindings: with_buttons([
+                named("Undo", os("Ctrl+Z", "Meta+Z")),
+                named("Redo", os("Ctrl+Shift+Z", "Meta+Shift+Z")),
+                named("Brush", shortcut("B")),
+            ]),
+            ..general.clone()
+        },
+        Profile {
+            id: ProfileRef::Builtin(ProfileId::Aftereffects),
+            name: "After Effects".into(),
+            ids: ids(&["afterfx.exe", "com.adobe.aftereffects"]),
+            in_pin_cycle: false,
+            bindings: with_buttons([
+                named("Undo", os("Ctrl+Z", "Meta+Z")),
+                named("Redo", os("Ctrl+Shift+Z", "Meta+Shift+Z")),
+                ButtonSlots::default(),
+            ]),
+            ..general.clone()
+        },
+        Profile {
+            id: ProfileRef::Builtin(ProfileId::Premiere),
+            name: "Premiere Pro".into(),
+            ids: ids(&[
+                "adobe premiere pro.exe",
+                "com.adobe.premierepro.15",
+                "com.adobe.premierepro.22",
+                "com.adobe.premierepro.23",
+            ]),
+            in_pin_cycle: false,
+            rotate: RotateBinding::Shortcuts {
+                label: "Frame".into(),
+                cw: shortcut("Right"),
+                ccw: shortcut("Left"),
+            },
+            bindings: with_buttons([
+                ButtonSlots::default(),
+                named("Play", shortcut("Space")),
+                ButtonSlots::default(),
+            ]),
+            ..general.clone()
+        },
+        Profile {
+            id: ProfileRef::Builtin(ProfileId::Blender),
+            name: "Blender".into(),
+            ids: ids(&["blender.exe", "org.blenderfoundation.blender"]),
+            in_pin_cycle: false,
+            bindings: with_buttons([
+                named("Undo", os("Ctrl+Z", "Meta+Z")),
+                named("Redo", os("Ctrl+Shift+Z", "Meta+Shift+Z")),
+                ButtonSlots::default(),
+            ]),
+            ..general.clone()
+        },
+        Profile {
+            id: ProfileRef::Builtin(ProfileId::Claudecode),
+            name: "Claude Code".into(),
+            ids: Vec::new(),
+            in_pin_cycle: false,
+            rotate: RotateBinding::Shortcuts {
+                label: "History".into(),
+                cw: shortcut("Down"),
+                ccw: shortcut("Up"),
+            },
+            bindings: with_buttons([
+                named("Search", shortcut("Ctrl+R")),
+                named("Transcript", shortcut("Ctrl+O")),
+                ButtonSlots::default(),
+            ]),
+            ..general.clone()
+        },
+        Profile {
+            id: ProfileRef::Builtin(ProfileId::Codex),
+            name: "Codex".into(),
+            ids: Vec::new(),
+            in_pin_cycle: false,
+            rotate: RotateBinding::Shortcuts {
+                label: "History".into(),
+                cw: shortcut("Down"),
+                ccw: shortcut("Up"),
+            },
+            bindings: with_buttons([
+                named("Search", shortcut("Ctrl+R")),
+                named("Copy", shortcut("Ctrl+O")),
+                ButtonSlots::default(),
+            ]),
+            ..general.clone()
+        },
+        Profile {
+            id: ProfileRef::Builtin(ProfileId::Opencode),
+            name: "OpenCode".into(),
+            ids: Vec::new(),
+            in_pin_cycle: false,
+            rotate: RotateBinding::Shortcuts {
+                label: "Navigate".into(),
+                cw: shortcut("Down"),
+                ccw: shortcut("Up"),
+            },
+            bindings: with_buttons([
+                ButtonSlots::default(),
+                ButtonSlots::default(),
+                ButtonSlots::default(),
+            ]),
             ..general
         },
     ]
@@ -321,11 +441,21 @@ impl Context {
         };
     }
 
-    /// Auto -> General -> the built-ins -> the custom profiles marked "In pin cycle", in list
-    /// order -> Auto.
+    /// Auto -> profiles marked "In pin cycle", in list order -> Auto.
     pub fn cycle_pin(&mut self) {
         let from = self.pinned.map_or(0, |i| i + 1);
         self.pinned = (from..self.profiles.len()).find(|&i| self.profiles[i].in_pin_cycle);
+    }
+
+    /// Pin a profile by identity, or return to automatic matching.
+    pub fn pin(&mut self, id: Option<&ProfileRef>) {
+        if let Some(id) = id {
+            if let Some(index) = self.profiles.iter().position(|p| p.id == *id) {
+                self.pinned = Some(index);
+            }
+        } else {
+            self.pinned = None;
+        }
     }
 
     /// The last non-Kivori app that held focus, as `(id, display name)`; `None` until one has.
@@ -454,6 +584,93 @@ mod tests {
         assert!(needs(ProfileId::Browser));
         assert!(needs(ProfileId::Code));
         assert!(needs(ProfileId::Zoom));
+    }
+
+    #[test]
+    fn starters_match_creative_apps_but_never_claim_terminal_agents() {
+        for mac in [false, true] {
+            let profiles = builtins_for(mac);
+            for (app, expected) in [
+                ("capcut.exe", ProfileId::Capcut),
+                ("photoshop.exe", ProfileId::Photoshop),
+                ("afterfx.exe", ProfileId::Aftereffects),
+                ("adobe premiere pro.exe", ProfileId::Premiere),
+                ("blender.exe", ProfileId::Blender),
+            ] {
+                assert_eq!(
+                    profiles[match_profile(&profiles, app)].id,
+                    ProfileRef::Builtin(expected)
+                );
+            }
+            assert_eq!(
+                profiles[match_profile(&profiles, "windowsterminal.exe")].id,
+                ProfileRef::Builtin(ProfileId::General)
+            );
+            for id in [ProfileId::Claudecode, ProfileId::Codex, ProfileId::Opencode] {
+                let profile = profiles
+                    .iter()
+                    .find(|p| p.id == ProfileRef::Builtin(id))
+                    .unwrap();
+                assert!(profile.ids.is_empty());
+                assert!(!profile.in_pin_cycle);
+            }
+            let photoshop = profiles
+                .iter()
+                .find(|p| p.id == ProfileRef::Builtin(ProfileId::Photoshop))
+                .unwrap();
+            let Action::Shortcut(undo) =
+                photoshop.bindings.buttons[0].press.action.as_ref().unwrap()
+            else {
+                panic!("undo shortcut")
+            };
+            assert_eq!(undo.ctrl, !mac);
+            assert_eq!(undo.meta, mac);
+        }
+    }
+
+    #[test]
+    fn starter_pin_cycle_choice_survives_config_round_trip() {
+        let mut file = crate::config::ConfigFile::default();
+        let id = ProfileRef::Builtin(ProfileId::Codex);
+        crate::config::profiles::set_pin_cycle(&mut file, &id, true).unwrap();
+        let saved = serde_json::to_string(&file).unwrap();
+        let loaded: crate::config::ConfigFile = serde_json::from_str(&saved).unwrap();
+        let resolved = crate::config::resolve::resolve(builtins_for(false), &loaded).unwrap();
+        assert!(
+            resolved
+                .profiles
+                .iter()
+                .find(|p| p.id == id)
+                .unwrap()
+                .in_pin_cycle
+        );
+        let mut ctx = Context::new(resolved.profiles);
+        for _ in 0..7 {
+            ctx.cycle_pin();
+        }
+        assert_eq!(ctx.profile().id, id);
+        crate::config::profiles::set_pin_cycle(&mut file, &id, false).unwrap();
+        assert!(!file.profiles.contains_key(&ProfileId::Codex));
+    }
+
+    #[test]
+    fn direct_pin_changes_profile_and_auto_restores_foreground_matching() {
+        let mut ctx = Context::new(builtins_for(false));
+        ctx.observe(app("chrome.exe"), ms(0));
+        ctx.commit_pending();
+        ctx.pin(Some(&ProfileRef::Builtin(ProfileId::Codex)));
+        assert_eq!(ctx.profile().id, ProfileRef::Builtin(ProfileId::Codex));
+        assert!(ctx.pinned());
+        ctx.pin(Some(&ProfileRef::Custom("custom-999".into())));
+        assert_eq!(ctx.profile().id, ProfileRef::Builtin(ProfileId::Codex));
+        ctx.observe(Foreground::Protected, ms(1));
+        assert!(ctx.protected());
+        assert!(ctx.rotate().is_none());
+        ctx.observe(app("chrome.exe"), ms(2));
+        ctx.commit_pending();
+        ctx.pin(None);
+        assert_eq!(ctx.profile().id, ProfileRef::Builtin(ProfileId::Browser));
+        assert!(!ctx.pinned());
     }
 
     fn app(id: &str) -> Foreground {

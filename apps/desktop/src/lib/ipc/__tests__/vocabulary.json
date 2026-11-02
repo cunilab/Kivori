@@ -73,7 +73,22 @@
   "hostMedia": ["observable", "notObservable"],
   "hostPresence": ["active", "locked", "sleeping"],
   "identitySources": ["legacy", "build", "chip"],
-  "profileIds": ["general", "browser", "code", "media", "zoom", "teams"],
+  "profileIds": [
+    "general",
+    "browser",
+    "code",
+    "media",
+    "zoom",
+    "teams",
+    "capcut",
+    "photoshop",
+    "aftereffects",
+    "premiere",
+    "blender",
+    "claudecode",
+    "codex",
+    "opencode"
+  ],
   "profileLimits": {
     "apps": 32,
     "customProfiles": 16,

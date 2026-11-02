@@ -298,6 +298,7 @@ fn device_loop(
                         );
                     }
                 }
+                DeviceCommand::PinProfile(profile) => desk.pin_profile(profile.as_ref()),
                 DeviceCommand::ApplyConfig(config) => {
                     let now = elapsed_ms(started.elapsed());
                     let (personality, self_play) =
@@ -1542,7 +1543,8 @@ pub fn plan_device_request(
         | DeviceCommand::RequestInternals
         | DeviceCommand::SetDisplayMode(_)
         | DeviceCommand::TestAction(_, _)
-        | DeviceCommand::ApplyConfig(_) => None,
+        | DeviceCommand::ApplyConfig(_)
+        | DeviceCommand::PinProfile(_) => None,
     };
     request.map_or_else(Vec::new, |request| activity_planner.requests(request))
 }

@@ -1605,7 +1605,7 @@ pub struct ProfileConfigDto {
     pub name: String,
     /// The user's own profile (renamable, deletable); built-ins are not.
     pub custom: bool,
-    /// Whether the middle button's Hold cycle visits it (always for a built-in).
+    /// Whether the middle button's Hold cycle visits it.
     pub in_pin_cycle: bool,
     /// The foreground app ids that select this profile (empty for General).
     pub apps: Vec<String>,

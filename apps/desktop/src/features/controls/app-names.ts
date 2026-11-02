@@ -32,6 +32,16 @@ const KNOWN: Record<string, readonly string[]> = {
   Teams: ['ms-teams', 'teams', 'com.microsoft.teams', 'com.microsoft.teams2'],
   'OBS Studio': ['obs', 'obs64', 'com.obsproject.obs-studio'],
   Figma: ['figma', 'com.figma.desktop'],
+  CapCut: ['capcut', 'com.lemon.lvoverseas'],
+  Photoshop: ['photoshop', 'com.adobe.photoshop'],
+  'After Effects': ['afterfx', 'com.adobe.aftereffects'],
+  'Premiere Pro': [
+    'adobe premiere pro',
+    'com.adobe.premierepro.15',
+    'com.adobe.premierepro.22',
+    'com.adobe.premierepro.23',
+  ],
+  Blender: ['blender', 'org.blenderfoundation.blender'],
   Slack: ['slack', 'com.tinyspeck.slackmacgap'],
   Discord: ['discord', 'com.hnc.discord'],
 };
