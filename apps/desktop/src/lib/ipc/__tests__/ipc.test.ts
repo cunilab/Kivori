@@ -72,6 +72,7 @@ import vocabulary from './vocabulary.json';
 import {
   ACTION_SPEC_KINDS,
   CAPABILITY_NAMES,
+  CONTROL_LAYOUTS,
   COMPANION_STATES,
   CONTROL_REFS,
   DESK_ACTIONS,
@@ -750,6 +751,7 @@ describe('Rust/TS token vocabulary', () => {
     expect([...STEP_SPEC_KINDS]).toEqual(vocabulary.stepSpecKinds);
     expect([...ROTATE_SPEC_KINDS]).toEqual(vocabulary.rotateSpecKinds);
     expect([...CAPABILITY_NAMES]).toEqual(vocabulary.capabilityNames);
+    expect([...CONTROL_LAYOUTS]).toEqual(vocabulary.controlLayouts);
     expect([...HOST_AVAILABILITIES]).toEqual(vocabulary.hostAvailability);
     expect([...HOST_MEDIA]).toEqual(vocabulary.hostMedia);
     expect([...CHIP_MODELS]).toEqual(vocabulary.chipModels);

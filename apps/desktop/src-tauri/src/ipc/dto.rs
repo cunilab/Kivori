@@ -343,6 +343,7 @@ pub struct ProductPresentationDto {
     pub display_name: String,
     pub model: String,
     pub art: Option<String>,
+    pub control_layout: Option<crate::catalog::ControlLayout>,
 }
 
 /// Projects customer metadata independently of a product's currently negotiated capabilities.
@@ -352,6 +353,7 @@ pub fn product_presentation_dto(product: &crate::catalog::Product) -> ProductPre
         display_name: product.display_name.clone(),
         model: product.model.clone(),
         art: product.image.as_ref().map(|_| product.id.clone()),
+        control_layout: product.control_layout,
     }
 }
 
@@ -2242,6 +2244,7 @@ pub fn vocabulary_json() -> serde_json::Value {
         "rotateSpecKinds": crate::config::resolve::ROTATE_SPEC_KINDS,
         "deskActions": crate::desk::ActionToken::ALL.map(crate::desk::ActionToken::token),
         "capabilityNames": CAPABILITY_TABLE.map(|(_, name)| name),
+        "controlLayouts": [crate::catalog::ControlLayout::RotaryThreeButton],
         "chipModels": CHIP_MODEL_TOKENS,
         "resetReasons": RESET_REASON_TOKENS,
         "hostAvailability": HOST_AVAILABILITY_TOKENS,

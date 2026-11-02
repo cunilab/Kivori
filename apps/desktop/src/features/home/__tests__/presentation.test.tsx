@@ -14,7 +14,12 @@ import { HomePage } from '../HomePage';
 function fakeProduct() {
   const connection = connectionFixture(['productIdentityV1'], { connectionGeneration: 2 });
   connection.device!.identity!.product = 'Test dial';
-  connection.device!.presentation = { displayName: 'Test dial', model: 'KV-T2', art: null };
+  connection.device!.presentation = {
+    displayName: 'Test dial',
+    model: 'KV-T2',
+    art: null,
+    controlLayout: null,
+  };
   return connection;
 }
 
@@ -88,6 +93,7 @@ describe('catalog product presentation', () => {
       displayName: 'Test dial',
       model: 'KV-T2',
       art: null,
+      controlLayout: null,
     });
     for (const presentation of [
       { displayName: 7, model: 'KV-T2', art: null },
@@ -96,6 +102,7 @@ describe('catalog product presentation', () => {
       { displayName: 'Dial', model: 'KV-T2', art: '../art.png' },
       { displayName: 'Dial', model: 'KV-T2', art: 4 },
       { displayName: 'Dial', model: 'KV-T2', art: 'a'.repeat(97) },
+      { displayName: 'Dial', model: 'KV-T2', controlLayout: 'unknown-layout' },
     ]) {
       expect(() =>
         parseConnectionStatus({ ...connection, device: { ...connection.device, presentation } }),

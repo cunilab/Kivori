@@ -34,9 +34,17 @@ function Harness(): ReactElement {
 
 const profile = (id: string): HTMLElement => screen.getByTestId(`profile-${id}`);
 
-/** The profile panel follows the selected tab. */
+async function selectProfile(
+  user: ReturnType<typeof userEvent.setup>,
+  name: string,
+): Promise<void> {
+  await user.click(await screen.findByRole('combobox', { name: 'Profile' }));
+  await user.click(await screen.findByRole('option', { name }));
+}
+
+/** The profile panel follows the selected profile. */
 async function show(user: ReturnType<typeof userEvent.setup>, name: string): Promise<HTMLElement> {
-  await user.click(await screen.findByRole('tab', { name }));
+  await selectProfile(user, name);
   return screen.findByTestId(`profile-${name.toLowerCase()}`);
 }
 
@@ -56,7 +64,7 @@ describe('ProfilesCard', () => {
   it('pins an agent profile directly and returns to following the foreground app', async () => {
     const user = userEvent.setup();
     render(<Harness />);
-    await user.click(await screen.findByRole('tab', { name: 'Codex' }));
+    await selectProfile(user, 'Codex');
     const card = await screen.findByTestId('profile-codex');
     expect(card).toHaveTextContent('terminal does not identify');
     const cycle = within(card).getByRole('switch', { name: 'In pin cycle' });
@@ -146,7 +154,7 @@ describe('ProfilesCard', () => {
     expect(added).toHaveTextContent('Your profile');
     expect(await within(added).findByTestId('app-icon-figma.exe')).toHaveAttribute('src', ICON);
     // It is selected and shows General's bindings.
-    expect(await screen.findByRole('tab', { name: 'Figma', selected: true })).toBeVisible();
+    expect(await screen.findByRole('combobox', { name: 'Profile' })).toHaveTextContent('Figma');
     expect(screen.getByTestId('gesture-press')).toHaveTextContent('Play / Pause');
     expect(screen.getByText(/Later changes to General do not flow into it/)).toBeVisible();
   });
@@ -200,11 +208,11 @@ describe('ProfilesCard', () => {
     const user = userEvent.setup();
     render(<Harness />);
     await ipc.addCustomProfile('figma.exe', 'Figma');
-    await user.click(await screen.findByRole('tab', { name: 'Browser' }));
+    await selectProfile(user, 'Browser');
     expect(
       within(profile('browser')).queryByRole('button', { name: 'Profile options for Browser' }),
     ).toBeNull();
-    await user.click(await screen.findByRole('tab', { name: 'Figma' }));
+    await selectProfile(user, 'Figma');
     const card = await screen.findByTestId('profile-custom-1');
     await user.click(within(card).getByRole('button', { name: 'Profile options for Figma' }));
     await user.click(await screen.findByRole('menuitem', { name: /Rename/ }));
@@ -218,16 +226,16 @@ describe('ProfilesCard', () => {
     await user.type(input, '  Design ');
     await user.click(within(card).getByRole('button', { name: 'Save name' }));
     await waitFor(() => expect(card).toHaveTextContent('Design'));
-    expect(screen.getByRole('tab', { name: 'Design' })).toBeVisible();
+    expect(screen.getByRole('combobox', { name: 'Profile' })).toHaveTextContent('Design');
   });
 
   it('toggles the pin cycle, off by default and only for custom profiles', async () => {
     const user = userEvent.setup();
     render(<Harness />);
     await ipc.addCustomProfile('figma.exe', 'Figma');
-    await user.click(await screen.findByRole('tab', { name: 'Code' }));
+    await selectProfile(user, 'Code');
     expect(within(profile('code')).queryByRole('switch')).toBeNull();
-    await user.click(await screen.findByRole('tab', { name: 'Figma' }));
+    await selectProfile(user, 'Figma');
     const card = await screen.findByTestId('profile-custom-1');
     const toggle = within(card).getByRole('switch', { name: 'In pin cycle' });
     expect(toggle).not.toBeChecked();
@@ -239,7 +247,7 @@ describe('ProfilesCard', () => {
     const user = userEvent.setup();
     render(<Harness />);
     await ipc.addCustomProfile('chrome.exe', 'Mine');
-    await user.click(await screen.findByRole('tab', { name: 'Mine' }));
+    await selectProfile(user, 'Mine');
     const card = await screen.findByTestId('profile-custom-1');
     await user.click(within(card).getByRole('button', { name: 'Profile options for Mine' }));
     await user.click(await screen.findByRole('menuitem', { name: /Delete/ }));
@@ -252,7 +260,7 @@ describe('ProfilesCard', () => {
       within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }),
     );
     await waitFor(() => expect(screen.queryByTestId('profile-custom-1')).not.toBeInTheDocument());
-    await user.click(await screen.findByRole('tab', { name: 'Browser' }));
+    await selectProfile(user, 'Browser');
     expect(await screen.findByTestId('app-browser-chrome.exe')).toBeVisible();
   });
 
@@ -271,7 +279,7 @@ describe('ProfilesCard', () => {
     render(<Harness />);
     await ipc.addCustomProfile('figma.exe', 'Figma');
     await ipc.setBinding('custom-1', 'press', { action: { kind: 'nextTrack' } });
-    await user.click(await screen.findByRole('tab', { name: 'Figma' }));
+    await selectProfile(user, 'Figma');
     expect(screen.getByTestId('gesture-press')).toHaveTextContent('Next track');
     await user.click(screen.getByRole('tab', { name: 'Reset & help' }));
     await user.click(screen.getByRole('button', { name: 'Reset to General' }));

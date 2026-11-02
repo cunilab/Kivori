@@ -1,0 +1,162 @@
+/* Proportions and materials match the website's physical product visual. */
+.device-visual {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  aspect-ratio: 1100 / 700;
+  border-radius: 9% / 14%;
+  background: linear-gradient(170deg, #f7f6f2 0%, #e6e5df 45%, #cfcdc5 100%);
+  box-shadow:
+    0 2px 0 rgb(255 255 255 / 0.6) inset,
+    0 -10px 0 rgb(0 0 0 / 0.06) inset,
+    0 20px 32px -20px rgb(0 0 0 / 0.5);
+  container-type: inline-size;
+}
+
+.device-visual__visor {
+  position: absolute;
+  left: 47.5%;
+  top: 6%;
+  width: 49%;
+  height: 88%;
+  border-radius: 9% / 8%;
+  background: linear-gradient(160deg, #262a31, #121418 60%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
+}
+
+.device-visual__bezel {
+  position: absolute;
+  left: 60.2%;
+  top: 11.4%;
+  width: 23.4%;
+  aspect-ratio: 1;
+  border-radius: 6%;
+  background: #050608;
+  box-shadow: inset 0 0 0 2px #0d0f12;
+}
+
+.device-visual__screen {
+  position: absolute;
+  inset: 7%;
+  display: flex;
+  align-items: flex-start;
+  overflow: hidden;
+  padding: 8%;
+  border-radius: 3%;
+  color: #9ff7d4;
+  background: #080d19;
+  font-size: max(5px, 1.3cqw);
+  font-weight: 600;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.device-visual__well {
+  position: absolute;
+  left: 4.5%;
+  top: 15.7%;
+  width: 43.6%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 45%, #f3f2ee 60%, #d9d7cf 71%, #c4c2ba 72%);
+}
+
+.device-visual__knob {
+  position: absolute;
+  inset: 4.5%;
+  border: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 42% 34%, #3a3e46, #23262c 38%, #15171b 70%);
+  box-shadow:
+    0 1.2em 1.8em rgb(0 0 0 / 0.5),
+    inset 0 2px 0 rgb(255 255 255 / 0.07),
+    inset 0 -6px 12px rgb(0 0 0 / 0.5);
+}
+
+.device-visual__knob::before {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: repeating-conic-gradient(rgb(255 255 255 / 0.07) 0deg 2deg, transparent 2deg 6deg);
+  -webkit-mask: radial-gradient(circle, transparent 82%, #000 83%);
+  mask: radial-gradient(circle, transparent 82%, #000 83%);
+  content: '';
+}
+
+.device-visual__dial {
+  position: absolute;
+  inset: 0;
+  transition: transform 180ms ease-out;
+}
+
+.device-visual__dial::after {
+  position: absolute;
+  left: 48.4%;
+  top: 8%;
+  width: 3.2%;
+  height: 14%;
+  border-radius: 99px;
+  background: #e8e6e0;
+  opacity: 0.85;
+  content: '';
+}
+
+.device-visual__knob[data-selected='true'] .device-visual__dial {
+  transform: rotate(-35deg);
+}
+
+.device-visual__keys {
+  position: absolute;
+  left: 49.6%;
+  top: 59%;
+  width: 44.6%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3.4%;
+}
+
+.device-visual__key {
+  aspect-ratio: 1.08;
+  border: 0;
+  border-radius: 16%;
+  background: linear-gradient(180deg, #a9f8d8, #8fe6bf 55%);
+  box-shadow:
+    inset 0 -0.55em 0 #5ba980,
+    0 0.35em 0 #0c0e11,
+    0 0.6em 0.8em rgb(0 0 0 / 0.45);
+  font-size: max(6px, 2cqw);
+  transition: transform 120ms ease-out;
+}
+
+button.device-visual__knob,
+button.device-visual__key {
+  cursor: pointer;
+}
+
+button.device-visual__knob:disabled,
+button.device-visual__key:disabled {
+  cursor: not-allowed;
+  filter: saturate(0.25);
+}
+
+button.device-visual__knob:focus-visible,
+button.device-visual__key:focus-visible {
+  outline: 3px solid #67dca7;
+  outline-offset: 3px;
+}
+
+.device-visual__key[data-selected='true'],
+button.device-visual__key:active {
+  transform: translateY(0.25em);
+  box-shadow:
+    inset 0 -0.25em 0 #5ba980,
+    0 0.05em 0 #0c0e11,
+    0 0.2em 0.3em rgb(0 0 0 / 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .device-visual__dial,
+  .device-visual__key {
+    transition: none;
+  }
+}

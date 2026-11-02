@@ -111,6 +111,10 @@ countdown: focus the receiving app, or choose **Cancel** before it runs. The tes
 while it waits for its result. **Reset** puts the built-in action back. Changes are saved on this
 computer for your Windows user.
 
+Choose the knob or a button on the device illustration to see its gestures and bindings. The
+Knob, Left, Middle and Right tabs make the same selection, including when no device is connected.
+Selecting a control never runs its action; use **Test** when you want to try the saved binding.
+
 For keyboard shortcuts, choose **Record** and press the combination, then review it before
 saving. **Escape** or **Cancel** leaves the previous value in place; you can also type
 the shortcut manually. Recording is available for buttons, both knob directions and macro steps.

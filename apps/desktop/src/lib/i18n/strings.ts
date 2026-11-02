@@ -199,7 +199,7 @@ export const strings = {
   },
   controls: {
     title: 'Controls',
-    description: 'What each control does with the app in front of you.',
+    description: 'Choose a control to edit its actions.',
     doublePressFixed: 'Fixed. Choose the views under Display.',
     holdNote:
       'Hold actions on the three buttons work, but the device does not show them on screen yet.',
@@ -212,6 +212,16 @@ export const strings = {
       more: 'Reset & help',
     },
     groups: { knob: 'Knob', buttons: 'Buttons' },
+    selectControl: 'Select {control}',
+    workbench: {
+      title: 'Choose a control',
+      hint: 'Select a control to see and edit its actions.',
+      profileHint: 'Editing profile',
+      editing: 'Editing',
+      left: 'Left',
+      middle: 'Middle',
+      right: 'Right',
+    },
     editRow: 'Edit {control}',
     moreActions: 'More actions for {control}',
     status: {

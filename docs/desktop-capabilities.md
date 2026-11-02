@@ -40,8 +40,8 @@ Catalog name/model and an optional artwork key are exposed on `DeviceInfoDto.pre
 inside copied diagnostics. Shipping builds reject names/models/art keys over the IPC limit of 96
 UTF-16 units. Home, Welcome and Tour show those labels and only that product's bundled artwork for
 a known current connected product/board. Missing/pending/unknown/disconnected identities never
-borrow another product's picture; missing/failed artwork uses a neutral figure. The fixed
-hardware-body illustration is removed; Display keeps its existing software-view illustrations.
+borrow another product's picture; missing/failed artwork uses a neutral figure unless that product
+declares a supported control layout. Display keeps its existing software-view illustrations.
 
 Catalog `image` is empty or a lowercase kebab-case `.png` filename directly inside its product
 directory. The build refuses symlinks, missing or malformed files, APNG, files over 512 KiB and
@@ -50,7 +50,9 @@ checks the remaining chunks, then embeds a copy of the validated original bytes 
 metadata). Cargo's recursive catalog watch covers artwork changes. `get_product_art` serves only
 compiled keys as PNG data URLs: no runtime filesystem access/downloads, and no image bytes in status
 updates or diagnostic copies. Lookups are cached in the frontend; product changes, disconnects and
-image errors cannot retain the wrong image. Pip currently declares no artwork and stays neutral.
+image errors cannot retain the wrong image. Optional `control_layout = "rotary-three-button"`
+declares the supported interactive geometry; absent layouts stay neutral or use catalog art. Layout
+metadata is not capability authorization, and controls remain gated by the current session.
 
 Setup uses the same effective control rules as Controls. Plug-in Continue requires a known usable
 current session, including compatible legacy baseline sessions; a transport connection alone is

@@ -361,7 +361,12 @@ export function mockConnectionStatus(): ConnectionStatusDto {
         connection: 'connected',
         reported: 'idle',
         device: {
-          presentation: { displayName: mockIdentity.product, model: 'KV-P1', art: null },
+          presentation: {
+            displayName: mockIdentity.product,
+            model: 'KV-P1',
+            art: null,
+            controlLayout: 'rotary-three-button',
+          },
           firmwareVersion: '0.1.0',
           protocolVersion: { major: 0, minor: 1 },
           deviceIdHashShort: '3fa9c1d2',

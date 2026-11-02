@@ -37,12 +37,17 @@ export interface DeviceIdentityDto {
   known: boolean;
 }
 
+/** Physical layouts that the desktop can illustrate. */
+export const CONTROL_LAYOUTS = ['rotary-three-button'] as const;
+
 /** Customer metadata from the compiled catalog. It never authorizes live features. */
 export interface ProductPresentationDto {
   displayName: string;
   model: string;
   /** Opaque compiled artwork key, never a filesystem path or URL. */
   art: string | null;
+  /** Recognized physical control arrangement; null when none is declared. */
+  controlLayout: (typeof CONTROL_LAYOUTS)[number] | null;
 }
 
 /** Which exact firmware build a device runs; only a device that reports it has one. */

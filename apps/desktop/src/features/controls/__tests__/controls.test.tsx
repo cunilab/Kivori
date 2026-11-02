@@ -35,6 +35,14 @@ async function openTab(user: ReturnType<typeof userEvent.setup>, name: string): 
   await user.click(await screen.findByRole('tab', { name }));
 }
 
+async function selectProfile(
+  user: ReturnType<typeof userEvent.setup>,
+  name: string,
+): Promise<void> {
+  await user.click(await screen.findByRole('combobox', { name: 'Profile' }));
+  await user.click(await screen.findByRole('option', { name }));
+}
+
 const row = (key: string): HTMLElement => screen.getByTestId(`gesture-${key}`);
 
 /** Runs an item of a row's overflow menu (Test or Reset). */
@@ -83,6 +91,22 @@ afterEach(() => {
 });
 
 describe('ControlsPage', () => {
+  it('selects a physical button for editing without running its action', async () => {
+    const user = userEvent.setup();
+    render(<Harness connection={connectionFixture()} />);
+    await screen.findByTestId('gesture-press');
+    const left = screen.getByRole('button', { name: 'Select Left button' });
+    expect(left).toHaveAttribute('aria-pressed', 'false');
+    await user.click(left);
+    expect(left).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('tab', { name: 'Left button', selected: true })).toBeVisible();
+    expect(row('button1')).toHaveTextContent('Previous track');
+    expect(ipc.testAction).not.toHaveBeenCalled();
+    expect(ipc.testRotate).not.toHaveBeenCalled();
+    await user.click(within(row('button1')).getByRole('button', { name: 'Edit Left button' }));
+    expect(await screen.findByRole('dialog', { name: 'Edit Left button' })).toBeVisible();
+  });
+
   it('retains edited bindings and host tests when switching to a device without their controls', async () => {
     const user = userEvent.setup();
     const page = render(<Harness connection={connectionFixture()} />);
@@ -110,10 +134,11 @@ describe('ControlsPage', () => {
 
   it('opens on the active profile and shows each control with its action', async () => {
     render(<Harness />);
-    expect(await screen.findByRole('tab', { name: 'General', selected: true })).toBeVisible();
+    expect(await screen.findByRole('combobox', { name: 'Profile' })).toHaveTextContent('General');
     expect(row('rotate')).toHaveTextContent('System volume');
     expect(row('press')).toHaveTextContent('Play / Pause');
     expect(row('hold')).toHaveTextContent('Mute');
+    await userEvent.setup().click(screen.getByRole('tab', { name: 'Left button' }));
     expect(row('button1')).toHaveTextContent('Previous track');
     expect(row('button1Hold')).toHaveTextContent('Not set');
     // The disclaimers live under Reset & help, not above the controls.
@@ -129,9 +154,12 @@ describe('ControlsPage', () => {
     render(<Harness />);
     await screen.findByTestId('gesture-press');
     const knob = screen.getByRole('list', { name: 'Knob' });
-    const buttons = screen.getByRole('list', { name: 'Buttons' });
     expect(within(knob).getAllByRole('listitem')).toHaveLength(4);
-    expect(within(buttons).getAllByRole('listitem')).toHaveLength(6);
+    await user.click(screen.getByRole('tab', { name: 'Left button' }));
+    expect(
+      within(screen.getByRole('list', { name: 'Left button' })).getAllByRole('listitem'),
+    ).toHaveLength(2);
+    await user.click(screen.getByRole('tab', { name: 'Knob' }));
     // Test and Reset are not on the row itself.
     expect(within(row('press')).queryByRole('button', { name: 'Test' })).toBeNull();
     expect(within(row('press')).queryByRole('button', { name: 'Reset' })).toBeNull();
@@ -346,7 +374,7 @@ describe('ControlsPage', () => {
     await screen.findByTestId('gesture-hold');
     await rowAction(user, 'hold', 'Test');
     if (change === 'unmount') page.unmount();
-    else await user.click(screen.getByRole('tab', { name: 'Browser' }));
+    else await selectProfile(user, 'Browser');
     const errorToast = vi.spyOn(toast, 'error');
     await act(async () => reject(new Error('obsolete test')));
     expect(errorToast).not.toHaveBeenCalled();
@@ -387,10 +415,28 @@ describe('ControlsPage', () => {
     expect(ipc.testRotate).toHaveBeenCalledWith(pair);
   });
 
+  it('cancels a pending shortcut test when selecting another control', async () => {
+    const user = userEvent.setup();
+    await ipc.setRotate('general', {
+      kind: 'shortcuts',
+      cw: 'Ctrl+Tab',
+      ccw: 'Ctrl+Shift+Tab',
+      label: 'Tabs',
+    });
+    render(<Harness />);
+    await screen.findByTestId('gesture-rotate');
+    await rowActionFake(user, 'rotate', 'Test');
+    await user.click(screen.getByRole('tab', { name: 'Left button' }));
+    act(() => vi.advanceTimersByTime(3000));
+    expect(ipc.testRotate).not.toHaveBeenCalled();
+    expect(row('button1')).toBeVisible();
+  });
+
   it('counts down 3 seconds before testing a shortcut, and Cancel stops it', async () => {
     const user = userEvent.setup();
     render(<Harness />);
-    await user.click(await screen.findByRole('tab', { name: 'Browser' }));
+    await selectProfile(user, 'Browser');
+    await user.click(screen.getByRole('tab', { name: 'Left button' }));
 
     await rowActionFake(user, 'button1', 'Test');
     expect(within(row('button1')).getByRole('status')).toHaveTextContent('Running in 3');
@@ -410,10 +456,13 @@ describe('ControlsPage', () => {
   });
 
   it('keeps the middle button Hold locked as Pin profile', async () => {
+    const user = userEvent.setup();
     render(<Harness />);
+    await user.click(await screen.findByRole('tab', { name: 'Middle button' }));
     await screen.findByTestId('gesture-button2Hold');
     expect(row('button2Hold')).toHaveTextContent('Pin profile');
     expect(within(row('button2Hold')).queryByRole('button')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Left button' }));
     expect(within(row('button1Hold')).getByRole('button', { name: /^Edit/ })).toBeVisible();
   });
 
@@ -454,7 +503,7 @@ describe('ControlsPage tabs', () => {
     ).toEqual(['Controls', 'Macros', 'Reset & help']);
     // The first screen is controls: the profile chips and the rows, no explanations or resets.
     // The profile chips wait for the config, which loads after the page frame.
-    expect(await screen.findByRole('tablist', { name: 'Profile' })).toBeVisible();
+    expect(await screen.findByRole('combobox', { name: 'Profile' })).toBeVisible();
     expect(await screen.findByTestId('gesture-press')).toBeVisible();
     expect(screen.queryByTestId('macros')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Reset everything' })).not.toBeInTheDocument();
@@ -472,8 +521,8 @@ describe('ControlsPage tabs', () => {
   it('still switches profile from the chips', async () => {
     const user = userEvent.setup();
     render(<Harness />);
-    await user.click(await screen.findByRole('tab', { name: 'Browser' }));
-    expect(await screen.findByRole('tab', { name: 'Browser', selected: true })).toBeVisible();
+    await selectProfile(user, 'Browser');
+    expect(await screen.findByRole('combobox', { name: 'Profile' })).toHaveTextContent('Browser');
     expect(screen.getByTestId('profile-browser')).toBeVisible();
   });
 });

@@ -56,10 +56,19 @@ import {
   ItemMedia,
 } from '@kivori/ui/components/item';
 import { Skeleton } from '@kivori/ui/components/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@kivori/ui/components/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@kivori/ui/components/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@kivori/ui/components/tooltip';
 import { Page } from '@/components/kivori/page';
 import { PageTabs } from '@/components/kivori/page-tabs';
+import { ProductArt } from '@/components/kivori/product-art';
+import type { DeviceControl } from '@/components/kivori/device-visual';
 import { ResultBadge } from '@/components/kivori/result-badge';
 import {
   deleteMacro,
@@ -250,6 +259,7 @@ export function ControlsPage({
   connection?: ConnectionStatusDto | null;
 }): ReactElement {
   const [chosen, setChosen] = useState<ProfileId | null>(null);
+  const [selectedControl, setSelectedControl] = useState<DeviceControl>('knob');
   const [catalog, setCatalog] = useState<ActionCatalogEntryDto[] | null>(null);
   const [editing, setEditing] = useState<PickerTarget | null>(null);
   // The New profile block under the profile chips.
@@ -278,12 +288,21 @@ export function ControlsPage({
     setCountdown(null);
   };
 
+  const selectControl = (control: DeviceControl): void => {
+    if (control === selectedControl) return;
+    stopCountdown();
+    invocation.current += 1;
+    setTested(null);
+    setSelectedControl(control);
+  };
+
   const has = (id: ProfileId | null | undefined): id is ProfileId =>
     !!id && !!config?.profiles.some((candidate) => candidate.id === id);
   // A profile that was deleted (or not loaded yet) falls back to the active one, then General.
   const selected = has(chosen) ? chosen : has(desk?.profileId) ? desk.profileId : 'general';
   const profile = config?.profiles.find((candidate) => candidate.id === selected) ?? null;
   const macros = config?.macros ?? [];
+  const profileRows = profile ? rows(profile) : [];
 
   useEffect(() => {
     invocation.current += 1;
@@ -503,13 +522,13 @@ export function ControlsPage({
     <>
       <div
         data-testid="active-profile"
-        className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border bg-card px-3 py-2.5"
+        className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"
       >
         <AppWindow className="size-4 shrink-0 text-primary" aria-hidden="true" />
-        <div className="min-w-0 flex-1">
-          <p className="text-xs text-muted-foreground">{t.profile}</p>
+        <div className="flex min-w-0 max-w-full items-center gap-2">
+          <p className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">{t.profile}:</p>
           {desk ? (
-            <p className="font-medium">{desk.profile ?? t.profileGeneral}</p>
+            <p className="truncate font-medium">{desk.profile ?? t.profileGeneral}</p>
           ) : (
             <Skeleton className="h-5 w-28" />
           )}
@@ -520,7 +539,7 @@ export function ControlsPage({
             {t.pinned}
           </Badge>
         )}
-        <p className="basis-full text-xs text-muted-foreground">
+        <p className="min-w-0 flex-1 basis-56 text-xs text-muted-foreground">
           {desk?.pinned ? t.pinnedHint : t.followHint}
         </p>
       </div>
@@ -533,74 +552,128 @@ export function ControlsPage({
       ) : null}
 
       {config ? (
-        <Tabs value={selected} onValueChange={(value) => setChosen(value as ProfileId)}>
-          {/* Chips, not an underline bar, so the profiles are not mistaken for the page tabs. */}
-          <TabsList
-            aria-label={t.profilesLabel}
-            className="w-full flex-wrap justify-start gap-1.5 bg-transparent p-0 group-data-horizontal/tabs:h-auto"
-          >
-            {config.profiles.map((entry) => (
-              <TabsTrigger
-                key={entry.id}
-                value={entry.id}
-                data-active-profile={desk?.profileId === entry.id}
-                className="h-8 flex-none rounded-full border-border px-3.5 hover:bg-muted data-active:border-primary data-active:bg-primary data-active:text-primary-foreground data-active:hover:bg-primary dark:data-active:border-primary dark:data-active:bg-primary dark:data-active:text-primary-foreground"
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1.5">
+              <label
+                htmlFor="controls-profile"
+                className="text-xs font-medium text-muted-foreground"
               >
-                {entry.name}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-          {profile ? (
-            <details
-              data-testid="new-profile"
-              open={newOpen}
-              onToggle={(event) => setNewOpen(event.currentTarget.open)}
-              className="group mt-3 text-sm"
-            >
-              <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-sm text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-                <Plus className="size-3.5" aria-hidden="true" />
-                {t.newProfileToggle}
-                <ChevronDown
-                  className="size-3.5 transition-transform group-open:rotate-180"
-                  aria-hidden="true"
-                />
-              </summary>
-              <div className="mt-2 rounded-xl border bg-card p-3">
-                <ProfilesCard
-                  config={config}
-                  desk={desk}
-                  profile={profile}
-                  onShow={(id) => {
-                    setChosen(id);
-                    setNewOpen(false);
-                  }}
-                  part="new"
-                />
-              </div>
-            </details>
-          ) : null}
-          {config.profiles
-            .filter((entry) => entry.id === selected)
-            .map((entry) => (
-              <TabsContent key={entry.id} value={entry.id} className="mt-4">
-                <ProfilesCard
-                  config={config}
-                  desk={desk}
-                  profile={entry}
-                  onShow={setChosen}
-                  part="profile"
+                {t.workbench.profileHint}
+              </label>
+              <Select
+                value={selected}
+                onValueChange={(value) => value && setChosen(value as ProfileId)}
+                items={config.profiles.map((entry) => ({ value: entry.id, label: entry.name }))}
+              >
+                <SelectTrigger
+                  id="controls-profile"
+                  aria-label={t.profilesLabel}
+                  className="min-w-48 bg-card"
                 >
-                  <div className="space-y-4">
-                    {entry.custom ? (
-                      <p className="text-xs text-muted-foreground">{t.customProfileNote}</p>
-                    ) : null}
-                    {renderGroup(entry, t.groups.knob, rows(entry).slice(0, 4))}
-                    {renderGroup(entry, t.groups.buttons, rows(entry).slice(4))}
-                  </div>
-                </ProfilesCard>
-              </TabsContent>
-            ))}
-        </Tabs>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="start">
+                  {config.profiles.map((entry) => (
+                    <SelectItem key={entry.id} value={entry.id}>
+                      {entry.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {profile ? (
+              <details
+                data-testid="new-profile"
+                open={newOpen}
+                onToggle={(event) => setNewOpen(event.currentTarget.open)}
+                className="group relative w-full pb-1.5 text-sm sm:w-auto"
+              >
+                <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-sm text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                  <Plus className="size-3.5" aria-hidden="true" />
+                  {t.newProfileToggle}
+                  <ChevronDown
+                    className="size-3.5 transition-transform group-open:rotate-180"
+                    aria-hidden="true"
+                  />
+                </summary>
+                <div className="z-10 mt-2 w-full rounded-xl border bg-card p-3 shadow-lg sm:absolute sm:right-0 sm:w-80 sm:max-w-[calc(100vw-3rem)]">
+                  <ProfilesCard
+                    config={config}
+                    desk={desk}
+                    profile={profile}
+                    onShow={(id) => {
+                      setChosen(id);
+                      setNewOpen(false);
+                    }}
+                    part="new"
+                  />
+                </div>
+              </details>
+            ) : null}
+          </div>
+          {profile ? (
+            <ProfilesCard
+              config={config}
+              desk={desk}
+              profile={profile}
+              onShow={setChosen}
+              part="profile"
+            >
+              <div className="grid items-start gap-6 min-[900px]:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+                <div className="mx-auto w-full max-w-sm space-y-3 min-[900px]:sticky min-[900px]:top-4 min-[900px]:max-w-none">
+                  <ProductArt
+                    connection={connection}
+                    selectedControl={selectedControl}
+                    onSelectControl={selectControl}
+                    profileName={profile.name}
+                  />
+                  <p className="text-center text-xs text-muted-foreground">{t.workbench.hint}</p>
+                </div>
+                <div className="min-w-0 space-y-3">
+                  {profile.custom ? (
+                    <p className="text-xs text-muted-foreground">{t.customProfileNote}</p>
+                  ) : null}
+                  <Tabs
+                    value={selectedControl}
+                    onValueChange={(value) => selectControl(value as DeviceControl)}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h2 className="text-sm font-semibold">{t.workbench.title}</h2>
+                      <TabsList
+                        aria-label={t.workbench.title}
+                        className="grid h-auto grid-cols-4 gap-0.5"
+                      >
+                        <TabsTrigger value="knob">{t.groups.knob}</TabsTrigger>
+                        <TabsTrigger value="button1" aria-label={t.gestures.button1.name}>
+                          {t.workbench.left}
+                        </TabsTrigger>
+                        <TabsTrigger value="button2" aria-label={t.gestures.button2.name}>
+                          {t.workbench.middle}
+                        </TabsTrigger>
+                        <TabsTrigger value="button3" aria-label={t.gestures.button3.name}>
+                          {t.workbench.right}
+                        </TabsTrigger>
+                      </TabsList>
+                    </div>
+                    {(
+                      [
+                        ['knob', t.groups.knob, profileRows.slice(0, 4)],
+                        ['button1', t.gestures.button1.name, [profileRows[4]!, profileRows[7]!]],
+                        ['button2', t.gestures.button2.name, [profileRows[5]!, profileRows[8]!]],
+                        ['button3', t.gestures.button3.name, [profileRows[6]!, profileRows[9]!]],
+                      ] as const
+                    ).map(([control, title, entries]) => (
+                      <TabsContent key={control} value={control} className="mt-3">
+                        {renderGroup(profile, title, [...entries])}
+                      </TabsContent>
+                    ))}
+                  </Tabs>
+                </div>
+              </div>
+            </ProfilesCard>
+          ) : null}
+        </div>
       ) : (
         loadingRows
       )}

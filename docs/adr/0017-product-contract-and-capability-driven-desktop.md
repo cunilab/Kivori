@@ -80,6 +80,8 @@ or hide its editor. Recovery never bypasses product/board checks or existing con
 **Art.** Product art is optional and bundled. A missing image uses a neutral frame, never another
 product's picture. The Kivori app icon and brand can stay shared. Device previews still use the
 shared renderer; metadata must not introduce a second frontend implementation of device pixels.
+An optional catalog control layout selects a supported hardware illustration; missing or unknown
+layouts do not infer another product's geometry. Layout metadata never authorizes live controls.
 
 **Developer tools and support.** A Developer page is always visible, with a master toggle off by
 default. It owns Activity, technical protocol details, Device Internals and direct reaction tools.

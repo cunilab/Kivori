@@ -10,7 +10,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// A `(vendor, product)` USB id pair.
 pub type UsbId = (u16, u16);
@@ -21,6 +21,14 @@ pub type UsbId = (u16, u16);
 pub enum FlashMethod {
     /// `espflash` over the board's USB serial port.
     Espflash,
+}
+
+/// A supported physical control arrangement for desktop illustrations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ControlLayout {
+    /// A rotary control and three context buttons.
+    RotaryThreeButton,
 }
 
 /// The firmware bundled for one board.
@@ -107,6 +115,8 @@ pub struct Product {
     pub model: String,
     /// Product picture, relative to the product directory (none yet when empty).
     pub image: Option<String>,
+    /// Optional catalog-declared physical control arrangement.
+    pub control_layout: Option<ControlLayout>,
     /// Names of the capabilities every unit must negotiate.
     pub required_capabilities: Vec<String>,
     /// The boards this product ships on.
@@ -150,6 +160,8 @@ struct RawProduct {
     model: String,
     #[serde(default)]
     image: String,
+    #[serde(default)]
+    control_layout: Option<ControlLayout>,
     required_capabilities: Vec<String>,
     boards: BTreeMap<String, RawBoard>,
 }
@@ -315,6 +327,7 @@ impl Catalog {
                 short_name: raw.short_name,
                 model: raw.model,
                 image: (!raw.image.is_empty()).then_some(raw.image),
+                control_layout: raw.control_layout,
                 required_capabilities: raw.required_capabilities,
                 boards,
             });
@@ -538,6 +551,26 @@ mod tests {
             let source = format!("image = {name:?}\n{source}");
             assert!(parse(REG, &source).is_err(), "{name}");
         }
+    }
+
+    #[test]
+    fn control_layout_is_optional_and_accepts_only_supported_geometry() {
+        let source = product("c3-supermini");
+        assert_eq!(
+            parse(REG, &source).unwrap().products()[0].control_layout,
+            None
+        );
+        let supported = format!("control_layout = 'rotary-three-button'\n{source}");
+        assert_eq!(
+            parse(REG, &supported).unwrap().products()[0].control_layout,
+            Some(ControlLayout::RotaryThreeButton)
+        );
+        let unknown = format!("control_layout = 'unknown-layout'\n{source}");
+        assert!(parse(REG, &unknown).is_err());
+        assert_eq!(
+            Catalog::embedded().product("pip").unwrap().control_layout,
+            Some(ControlLayout::RotaryThreeButton)
+        );
     }
 
     #[test]

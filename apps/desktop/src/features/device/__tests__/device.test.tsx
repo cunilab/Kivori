@@ -7,6 +7,7 @@ import { TooltipProvider } from '@kivori/ui/components/tooltip';
 import { resetPageTabs } from '../../../components/kivori/page-tabs';
 import { setDevMode } from '../../../lib/dev-mode';
 import type { AppInfoDto, ConnectionStatusDto, DeviceBuildDto } from '../../../lib/ipc/types';
+import { connectionFixture } from '../../../test/connection';
 
 vi.mock('../../../lib/ipc', () => ({
   getFirmwareStatus: () =>
@@ -61,6 +62,15 @@ beforeEach(() => {
 });
 
 describe('DevicePage', () => {
+  it('shows catalog-declared product visual on the connected device overview', () => {
+    const connection = connectionFixture();
+    const page = render(view(connection));
+    expect(screen.getByTestId('device-visual')).toBeInTheDocument();
+    connection.device!.identity!.known = false;
+    page.rerender(view(connection));
+    expect(screen.queryByTestId('device-visual')).not.toBeInTheDocument();
+  });
+
   it('shows customer device details without developer protocol/state rows', () => {
     render(
       view(

@@ -5,6 +5,7 @@ import {
   ACTION_SPEC_KINDS,
   BRIGHTNESS_STEPS,
   CAPABILITY_NAMES,
+  CONTROL_LAYOUTS,
   CHIP_MODELS,
   RESET_REASONS,
   HOST_AVAILABILITIES,
@@ -193,6 +194,8 @@ function parsePresentation(raw: unknown): ProductPresentationDto | null {
   }
   return {
     art,
+    controlLayout:
+      r.controlLayout == null ? null : oneOf('control layout', CONTROL_LAYOUTS, r.controlLayout),
     displayName: text('product display name', r.displayName, 96),
     model: text('product model', r.model, 96),
   };

@@ -12,7 +12,12 @@ function dial(capabilities: CapabilityName[], generation = 2): ConnectionStatusD
   const status = connectionFixture(capabilities, { connectionGeneration: generation });
   status.device!.identity!.product = 'Acceptance dial';
   status.device!.identity!.board = 'Test board';
-  status.device!.presentation = { displayName: 'Acceptance dial', model: 'KV-T2', art: null };
+  status.device!.presentation = {
+    displayName: 'Acceptance dial',
+    model: 'KV-T2',
+    art: null,
+    controlLayout: null,
+  };
   return status;
 }
 
@@ -138,6 +143,7 @@ describe('product acceptance through the app shell', () => {
     mixed.device!.presentation!.art = 'acceptance-missing-art';
     const pip = connectionFixture();
     pip.device!.presentation!.art = 'acceptance-pip-art';
+    pip.device!.presentation!.controlLayout = null;
     const publish = connect(pip);
     const pipImage =
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4v8AAAAASUVORK5CYII=';
@@ -167,6 +173,7 @@ describe('product acceptance through the app shell', () => {
     expect(setMode).toHaveBeenCalledWith('media');
     await navigate(user, 'Controls');
     expect(await screen.findByTestId('gesture-press')).toHaveTextContent('Saved only');
+    await user.click(screen.getByRole('tab', { name: 'Left button' }));
     expect(screen.getByTestId('gesture-button1')).not.toHaveTextContent('Saved only');
     await testRow(user, 'button1');
     expect(testAction).toHaveBeenCalledWith({ kind: 'previousTrack' });
