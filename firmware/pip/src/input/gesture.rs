@@ -112,6 +112,12 @@ impl RotaryGesture {
         None
     }
 
+    /// Closes a gesture when its owning control is released.
+    pub fn finish(&mut self) -> Option<RotaryEvent> {
+        let (gesture_id, _) = self.open.take()?;
+        Some(RotaryEvent::GestureEnded { gesture_id })
+    }
+
     /// A gesture is open (a detent arrived inside the inactivity window).
     #[must_use]
     pub const fn is_open(&self) -> bool {

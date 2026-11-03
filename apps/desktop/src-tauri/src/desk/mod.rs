@@ -214,6 +214,8 @@ const KNOB: u64 = 1 << 63;
 /// What a knob gesture drives, fixed when it begins (invariant 12).
 #[derive(Debug, Clone)]
 enum KnobTarget {
+    /// No binding for this gesture.
+    Unbound,
     /// `(cw, ccw)`; `None` = suspended (a protected context), every detent is refused.
     Shortcuts(Option<(Shortcut, Shortcut)>),
     /// One app's volume: a lowercase foreground-style id.
@@ -625,7 +627,11 @@ impl DeskRuntime {
             LogicalInput::Detent {
                 gesture_id,
                 direction,
-            } => return self.on_detent(gesture_id, direction, observe),
+            } => return self.on_detent(gesture_id, direction, None, observe),
+            LogicalInput::PressedDetent {
+                gesture_id,
+                direction,
+            } => return self.on_detent(gesture_id, direction, remaining, observe),
             LogicalInput::GestureEnded { gesture_id } => {
                 let ours = self
                     .knob
@@ -647,19 +653,29 @@ impl DeskRuntime {
         match *input {
             LogicalInput::DoublePress { .. } => self.next_mode(observe),
             // A gesture keeps the binding it began with until it ends (invariant 12).
-            LogicalInput::GestureStarted { gesture_id } => {
+            LogicalInput::GestureStarted { gesture_id }
+            | LogicalInput::PressedGestureStarted { gesture_id } => {
                 // A new gesture means the device dropped the old one without ending it.
                 if let Some(old) = self.knob.take() {
                     self.end_app_gesture(old.id, observe);
                 }
-                let binding = match self.context.rotate() {
-                    Some(RotateBinding::Volume) => return true,
+                let pressed = matches!(input, LogicalInput::PressedGestureStarted { .. });
+                let rotate = if pressed {
+                    self.context.profile().held_rotate.as_ref()
+                } else {
+                    self.context.rotate()
+                };
+                let binding = match rotate {
+                    Some(RotateBinding::Volume) if !pressed => return true,
+                    Some(RotateBinding::Volume) => KnobTarget::Unbound,
                     Some(RotateBinding::Shortcuts { cw, ccw, .. }) => {
-                        KnobTarget::Shortcuts(Some((*cw, *ccw)))
+                        KnobTarget::Shortcuts((!self.context.protected()).then_some((*cw, *ccw)))
                     }
+                    Some(RotateBinding::AppVolume { .. }) if pressed => KnobTarget::Unbound,
                     Some(RotateBinding::AppVolume { app, .. }) => {
                         KnobTarget::AppVolume(app.clone())
                     }
+                    None if pressed => KnobTarget::Unbound,
                     None => KnobTarget::Shortcuts(None),
                 };
                 self.knob_count += 1;
@@ -700,12 +716,14 @@ impl DeskRuntime {
         &mut self,
         gesture_id: u16,
         direction: Direction,
+        remaining: Option<Duration>,
         observe: &mut impl FnMut(SessionActivity),
     ) -> bool {
         let Some(knob) = self.knob.clone().filter(|k| k.gesture_id == gesture_id) else {
             return true;
         };
         let (token, sent) = match &knob.binding {
+            KnobTarget::Unbound => return false,
             KnobTarget::Shortcuts(keys) => {
                 // Protected beats even the binding a gesture began with: no keys into a secure
                 // surface. Focus moved since the gesture began: Context Lost, its remaining
@@ -714,7 +732,11 @@ impl DeskRuntime {
                     .filter(|_| !self.context.protected() && *self.context.latest() == knob.target);
                 let sent = keys.is_some_and(|(cw, ccw)| {
                     let key = if direction == Direction::Cw { cw } else { ccw };
-                    self.worker.request(knob.id, Action::Shortcut(key))
+                    self.worker.request_by(
+                        knob.id,
+                        Action::Shortcut(key),
+                        remaining.map(|left| Instant::now() + left),
+                    )
                 });
                 (ActionToken::Shortcut, sent)
             }
@@ -1874,6 +1896,127 @@ mod tests {
             std::thread::sleep(ms(1));
         }
         assert_eq!(sent(&synth), ["Ctrl+Tab", "Ctrl+Right"]);
+    }
+
+    #[test]
+    fn pressed_rotation_uses_its_own_shortcuts_and_unbound_never_changes_volume() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        focus(&fg, "notepad.exe");
+        let _ = desk.tick(ms(0), &mut |_| {});
+        let _ = desk.tick(ms(400), &mut |_| {});
+        assert!(!desk.on_input(
+            &LogicalInput::PressedGestureStarted { gesture_id: 1 },
+            ms(500),
+            &mut |_| {}
+        ));
+        assert!(!desk.on_input(
+            &LogicalInput::PressedDetent {
+                gesture_id: 1,
+                direction: Direction::Cw
+            },
+            ms(510),
+            &mut |_| {}
+        ));
+        assert!(sent(&synth).is_empty());
+        desk.on_input(
+            &LogicalInput::GestureEnded { gesture_id: 1 },
+            ms(520),
+            &mut |_| {},
+        );
+        let bound = config(|file| {
+            override_of(file, crate::config::ProfileId::General).held_rotate =
+                Some(crate::config::RotateSpec::Shortcuts {
+                    cw: "Ctrl+Right".into(),
+                    ccw: "Ctrl+Left".into(),
+                    label: "Seek".into(),
+                });
+        });
+        desk.apply_config(&bound, &mut |_| {});
+        assert!(!desk.on_input(
+            &LogicalInput::PressedGestureStarted { gesture_id: 2 },
+            ms(600),
+            &mut |_| {}
+        ));
+        for direction in [Direction::Cw, Direction::Ccw] {
+            assert!(!desk.on_input(
+                &LogicalInput::PressedDetent {
+                    gesture_id: 2,
+                    direction
+                },
+                ms(610),
+                &mut |_| {}
+            ));
+        }
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while sent(&synth).len() < 2 && std::time::Instant::now() < deadline {
+            std::thread::sleep(ms(1));
+        }
+        assert_eq!(sent(&synth), ["Ctrl+Right", "Ctrl+Left"]);
+        desk.on_input(
+            &LogicalInput::GestureEnded { gesture_id: 2 },
+            ms(620),
+            &mut |_| {},
+        );
+        assert!(desk.on_input(
+            &LogicalInput::GestureStarted { gesture_id: 3 },
+            ms(630),
+            &mut |_| {}
+        ));
+    }
+
+    #[test]
+    fn pressed_rotation_shortcut_expires_while_waiting_behind_a_slow_action() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        focus(&fg, "notepad.exe");
+        let _ = desk.tick(ms(0), &mut |_| {});
+        let _ = desk.tick(ms(400), &mut |_| {});
+        let bound = config(|file| {
+            override_of(file, crate::config::ProfileId::General).held_rotate =
+                Some(crate::config::RotateSpec::Shortcuts {
+                    cw: "Ctrl+Right".into(),
+                    ccw: "Ctrl+Left".into(),
+                    label: "Seek".into(),
+                });
+        });
+        desk.apply_config(&bound, &mut |_| {});
+        desk.run_within(
+            Action::Macro(Arc::new(actions::Macro {
+                id: "slow".into(),
+                name: "Slow".into(),
+                steps: vec![actions::Step::Delay(ms(150))],
+            })),
+            ms(500),
+            None,
+            &mut |_| {},
+        );
+        desk.on_input(
+            &LogicalInput::PressedGestureStarted { gesture_id: 1 },
+            ms(510),
+            &mut |_| {},
+        );
+        desk.on_input_within(
+            &LogicalInput::PressedDetent {
+                gesture_id: 1,
+                direction: Direction::Cw,
+            },
+            ms(520),
+            ms(20),
+            &mut |_| {},
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        let mut stale = false;
+        while !stale && std::time::Instant::now() < deadline {
+            desk.tick(ms(600), &mut |activity| {
+                stale |= activity.kind == ActivityEventKind::InputStale;
+            });
+            std::thread::sleep(ms(2));
+        }
+        assert!(stale, "the delayed held shortcut must be reported stale");
+        assert!(sent(&synth).is_empty());
     }
 
     /// A desk whose General knob drives `spotify.exe`'s volume, over the given app backend.

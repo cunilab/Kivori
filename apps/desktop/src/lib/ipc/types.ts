@@ -219,6 +219,7 @@ export const CAPABILITY_NAMES = [
   'micStateV1',
   'productIdentityV1',
   'buildInfoV1',
+  'heldRotationV1',
 ] as const;
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
 
@@ -577,6 +578,9 @@ export interface ProfileConfigDto {
   /** Foreground app ids that select this profile (empty for General). */
   apps: string[];
   rotate: { spec: RotateSpec; deviceLabel: string; overridden: boolean };
+  /** Optional shortcuts sent when the knob is held while turning. */
+  heldRotate: RotateSpec | null;
+  heldRotateOverridden: boolean;
   press: SlotDto;
   hold: SlotDto;
   /** A button's Hold is `'pin'` for the middle one (reserved for profile pin). */

@@ -1679,6 +1679,24 @@ fn input_requires_the_specific_control_and_gesture_capabilities() {
             true,
         ),
         (
+            Capabilities::BUTTON_INPUT_V1,
+            ControlId::PressedRotary,
+            InputKind::GestureStarted,
+            false,
+        ),
+        (
+            Capabilities::HELD_ROTATION_V1,
+            ControlId::PressedRotary,
+            InputKind::GestureStarted,
+            false,
+        ),
+        (
+            Capabilities::BUTTON_INPUT_V1.union(Capabilities::HELD_ROTATION_V1),
+            ControlId::PressedRotary,
+            InputKind::GestureStarted,
+            true,
+        ),
+        (
             Capabilities::NONE,
             ControlId::Button,
             InputKind::Press,

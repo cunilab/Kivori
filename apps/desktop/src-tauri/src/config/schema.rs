@@ -1,9 +1,8 @@
-//! The persisted config file (version 1). Everything the user can change lives here and nowhere else.
+//! The persisted config file (version 2). Everything the user can change lives here and nowhere else.
 //!
 //! The file is strict (`deny_unknown_fields`): an unknown field is treated as corruption, backed up
-//! and reported, rather than silently dropped on the next save. Fields added during M2 stay in
-//! version 1 with `#[serde(default)]` (custom profiles and the per-profile app lists included);
-//! once the beta ships, any field change bumps [`CONFIG_VERSION`].
+//! and reported, rather than silently dropped on the next save. Version 2 adds the held-rotation
+//! binding so older strict readers recognize the file as newer instead of corrupt.
 
 use std::collections::BTreeMap;
 
@@ -14,7 +13,7 @@ use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 
 /// The schema version this build reads and writes.
-pub const CONFIG_VERSION: u32 = 1;
+pub const CONFIG_VERSION: u32 = 2;
 
 /// The whole config file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -293,6 +292,8 @@ pub struct CustomProfile {
 pub struct ProfileOverride {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rotate: Option<RotateSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub held_rotate: Option<RotateSpec>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub press: Option<SlotSpec>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

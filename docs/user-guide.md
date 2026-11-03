@@ -120,6 +120,13 @@ saving. **Escape** or **Cancel** leaves the previous value in place; you can als
 the shortcut manually. Recording is available for buttons, both knob directions and macro steps.
 Some shortcuts are intercepted by the operating system or terminal and must be entered manually.
 
+To use **Hold + rotate**, assign separate clockwise and counterclockwise shortcuts in the knob
+controls. Press the knob first, then turn it while holding it down. This uses the selected shortcut
+instead of the ordinary turn, press or hold action. Start turning before the recovery indicator
+appears; once it has appeared, release the knob and try again. To restart after using this gesture,
+release the knob first, then hold it still for 10 seconds. Hold + rotate requires firmware that
+supports it; older firmware keeps working and the binding stays saved until the device is updated.
+
 A **macro** runs up to 8 steps in order, with optional waits. It stops at the first step that fails
 and does not undo earlier steps. Create macros on the Controls page, then bind one to a control.
 

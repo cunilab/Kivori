@@ -77,6 +77,7 @@ import {
   resetProfile,
   setBinding,
   setRotate,
+  setHeldRotate,
   testAction,
   testRotate,
 } from '@/lib/ipc';
@@ -116,7 +117,7 @@ interface Row {
   key: GestureKey;
   Icon: LucideIcon;
   /** What `setBinding` / `setRotate` edits; `null` = not editable. */
-  control: ControlRef | 'rotate' | null;
+  control: ControlRef | 'rotate' | 'heldRotate' | null;
   /** The bound action (`null` = unbound), or `undefined` for rows that are not bindings. */
   spec?: ActionSpec | RotateSpec | null;
   label?: string | null;
@@ -155,6 +156,13 @@ function rows(profile: ProfileConfigDto): Row[] {
       spec: rotate.spec,
       deviceLabel: rotate.deviceLabel,
       overridden: rotate.overridden,
+    },
+    {
+      key: 'heldRotate',
+      Icon: RotateCw,
+      control: 'heldRotate',
+      spec: profile.heldRotate,
+      overridden: profile.heldRotateOverridden,
     },
     slotRow('press', MousePointerClick, 'press', press),
     { key: 'doublePress', Icon: RefreshCw, control: null, fixed: t.doublePressFixed },
@@ -350,9 +358,13 @@ export function ControlsPage({
     }, 1000);
   };
 
-  const resetRow = (control: ControlRef | 'rotate'): void => {
+  const resetRow = (control: ControlRef | 'rotate' | 'heldRotate'): void => {
     const saved =
-      control === 'rotate' ? setRotate(selected, null) : setBinding(selected, control, null);
+      control === 'rotate'
+        ? setRotate(selected, null)
+        : control === 'heldRotate'
+          ? setHeldRotate(selected, null)
+          : setBinding(selected, control, null);
     saved.catch((error: unknown) => toast.error(t.resetFailed, { description: errorText(error) }));
   };
   const removeMacro = (target: MacroSpec): void => {
@@ -429,6 +441,12 @@ export function ControlsPage({
           ) : (
             <p className="text-xs text-muted-foreground">
               {t.gestures[row.key].hint}
+              {row.key === 'heldRotate' &&
+              connection?.connection === 'connected' &&
+              connection.device?.identity?.known === true &&
+              !controlSupported(connection, 'heldRotate')
+                ? ` ${t.heldRotateUnsupported}`
+                : ''}
               {deviceNote ? ` ${deviceNote}` : ''}
             </p>
           )}
@@ -658,10 +676,10 @@ export function ControlsPage({
                     </div>
                     {(
                       [
-                        ['knob', t.groups.knob, profileRows.slice(0, 4)],
-                        ['button1', t.gestures.button1.name, [profileRows[4]!, profileRows[7]!]],
-                        ['button2', t.gestures.button2.name, [profileRows[5]!, profileRows[8]!]],
-                        ['button3', t.gestures.button3.name, [profileRows[6]!, profileRows[9]!]],
+                        ['knob', t.groups.knob, profileRows.slice(0, 5)],
+                        ['button1', t.gestures.button1.name, [profileRows[5]!, profileRows[8]!]],
+                        ['button2', t.gestures.button2.name, [profileRows[6]!, profileRows[9]!]],
+                        ['button3', t.gestures.button3.name, [profileRows[7]!, profileRows[10]!]],
                       ] as const
                     ).map(([control, title, entries]) => (
                       <TabsContent key={control} value={control} className="mt-3">
@@ -797,11 +815,19 @@ export function ControlsPage({
         macros={macros}
         onClose={() => setEditing(null)}
         onSaveSlot={async (target, slot) => {
-          if (target.control === 'rotate' || target.control === 'step' || !target.profile) return;
+          if (
+            target.control === 'rotate' ||
+            target.control === 'heldRotate' ||
+            target.control === 'step' ||
+            !target.profile
+          )
+            return;
           await setBinding(target.profile.id, target.control, slot);
         }}
         onSaveRotate={async (target, rotate) => {
-          if (target.profile) await setRotate(target.profile.id, rotate);
+          if (!target.profile) return;
+          if (target.control === 'heldRotate') await setHeldRotate(target.profile.id, rotate);
+          else await setRotate(target.profile.id, rotate);
         }}
       />
 

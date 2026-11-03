@@ -57,6 +57,8 @@ pub struct Profile {
     pub in_pin_cycle: bool,
     pub mood: ContextMood,
     pub rotate: RotateBinding,
+    /// Shortcut pair for turning while the knob is pressed; unbound by default.
+    pub held_rotate: Option<RotateBinding>,
     pub bindings: Bindings,
 }
 
@@ -64,7 +66,9 @@ impl Profile {
     /// Whether this profile makes Kivori press keys (a shortcut on a button or on the knob).
     #[must_use]
     pub fn needs_key_events(&self) -> bool {
-        matches!(self.rotate, RotateBinding::Shortcuts { .. }) || self.bindings.needs_key_events()
+        matches!(self.rotate, RotateBinding::Shortcuts { .. })
+            || self.held_rotate.is_some()
+            || self.bindings.needs_key_events()
     }
 }
 
@@ -99,6 +103,7 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
         in_pin_cycle: true,
         mood: ContextMood::Neutral,
         rotate: RotateBinding::Volume,
+        held_rotate: None,
         bindings: Bindings::default(),
     };
     vec![

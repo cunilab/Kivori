@@ -1612,6 +1612,8 @@ pub struct ProfileConfigDto {
     /// The foreground app ids that select this profile (empty for General).
     pub apps: Vec<String>,
     pub rotate: RotateDto,
+    pub held_rotate: Option<crate::config::RotateSpec>,
+    pub held_rotate_overridden: bool,
     pub press: SlotDto,
     pub hold: SlotDto,
     pub buttons: [ButtonDto; 3],
@@ -1806,6 +1808,11 @@ fn profile_dtos(store: &crate::config::ConfigStore) -> Vec<ProfileConfigDto> {
                     device_label: profile.rotate.label().to_string(),
                     overridden: over.rotate.is_some(),
                 },
+                held_rotate: profile
+                    .held_rotate
+                    .as_ref()
+                    .map(crate::config::resolve::rotate_spec),
+                held_rotate_overridden: over.held_rotate.is_some(),
                 press: slot_dto(&b.press, over.press.is_some()),
                 hold: slot_dto(&b.hold, over.hold.is_some()),
                 buttons: [button(0), button(1), button(2)],
@@ -1832,7 +1839,7 @@ pub const fn availability_token(
 }
 
 /// Every capability flag with the name the diagnostics page lists it by, in bit order.
-const CAPABILITY_TABLE: [(Capabilities, &str); 17] = [
+const CAPABILITY_TABLE: [(Capabilities, &str); 18] = [
     (Capabilities::MASCOT_INTERACTION, "mascotInteraction"),
     (Capabilities::PHYSICAL_INPUT_V1, "physicalInputV1"),
     (Capabilities::PRESENTATION_V1, "presentationV1"),
@@ -1850,6 +1857,7 @@ const CAPABILITY_TABLE: [(Capabilities, &str); 17] = [
     (Capabilities::MIC_STATE_V1, "micStateV1"),
     (Capabilities::PRODUCT_IDENTITY_V1, "productIdentityV1"),
     (Capabilities::BUILD_INFO_V1, "buildInfoV1"),
+    (Capabilities::HELD_ROTATION_V1, "heldRotationV1"),
 ];
 
 /// The capability names the diagnostics page lists, in bit order.

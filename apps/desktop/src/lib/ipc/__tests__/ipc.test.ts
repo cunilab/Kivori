@@ -34,6 +34,7 @@ import {
   setBinding,
   setBuddySettings,
   setRotate,
+  setHeldRotate,
   setDisplaySettings,
   listStates,
   onActivityLog,
@@ -654,6 +655,36 @@ describe('config ipc', () => {
     expect(browser.buttons[0].press).toMatchObject({ deviceLabel: 'Back', overridden: false });
   });
 
+  it('validates and clears held-rotation shortcuts on built-in and custom profiles', async () => {
+    await resetConfig();
+    const pair = {
+      kind: 'shortcuts',
+      cw: 'Ctrl+Right',
+      ccw: 'Ctrl+Left',
+      label: 'Navigate',
+    } as const;
+    const saved = await setHeldRotate('general', pair);
+    expect(parseConfig(JSON.parse(JSON.stringify(saved))).profiles[0]).toMatchObject({
+      heldRotate: pair,
+      heldRotateOverridden: true,
+    });
+    const old = JSON.parse(JSON.stringify(saved));
+    delete old.profiles[0].heldRotate;
+    delete old.profiles[0].heldRotateOverridden;
+    expect(parseConfig(old).profiles[0]).toMatchObject({
+      heldRotate: null,
+      heldRotateOverridden: false,
+    });
+    old.profiles[0].heldRotate = { kind: 'systemVolume' };
+    expect(() => parseConfig(old)).toThrow('invalid held rotate');
+    await expect(setHeldRotate('general', { kind: 'systemVolume' })).rejects.toThrow('shortcuts');
+    expect((await setHeldRotate('general', null)).profiles[0].heldRotate).toBeNull();
+    const custom = (await addCustomProfile('notes.exe', 'Notes')).profiles.at(-1)!;
+    expect(custom.heldRotate).toBeNull();
+    await setHeldRotate(custom.id, pair);
+    expect((await setHeldRotate(custom.id, null)).profiles.at(-1)!.heldRotate).toBeNull();
+  });
+
   it('saves, validates and deletes macros in the mock, refusing a bound delete', async () => {
     await resetConfig();
     const play = { kind: 'action', action: { kind: 'playPause' } } as const;
@@ -734,6 +765,11 @@ describe('config ipc', () => {
     expect(tauri.invoke).toHaveBeenLastCalledWith('set_rotate', {
       profile: 'browser',
       rotate: { kind: 'systemVolume' },
+    });
+    await setHeldRotate('browser', null);
+    expect(tauri.invoke).toHaveBeenLastCalledWith('set_held_rotate', {
+      profile: 'browser',
+      rotate: null,
     });
     await resetProfile('code');
     expect(tauri.invoke).toHaveBeenLastCalledWith('reset_profile', { profile: 'code' });

@@ -34,7 +34,13 @@ export function sessionState(
 }
 
 export type ControlGesture =
-  'rotate' | 'press' | 'hold' | 'doublePress' | `button${1 | 2 | 3}` | `button${1 | 2 | 3}Hold`;
+  | 'rotate'
+  | 'heldRotate'
+  | 'press'
+  | 'hold'
+  | 'doublePress'
+  | `button${1 | 2 | 3}`
+  | `button${1 | 2 | 3}Hold`;
 
 /** The same live-control support rule for saved binding rows and setup guidance. */
 export function controlSupported(
@@ -45,6 +51,10 @@ export function controlSupported(
   switch (key) {
     case 'rotate':
       return true;
+    case 'heldRotate':
+      return (
+        hasCapability(connection, 'buttonInputV1') && hasCapability(connection, 'heldRotationV1')
+      );
     case 'press':
     case 'hold':
       return hasCapability(connection, 'buttonInputV1');

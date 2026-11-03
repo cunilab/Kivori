@@ -43,7 +43,8 @@ pub mod physical_st7789 {
             .union(kivori_model::Capabilities::IDLE_LIFE_V1)
             .union(kivori_model::Capabilities::MIC_STATE_V1)
             .union(kivori_model::Capabilities::PRODUCT_IDENTITY_V1)
-            .union(kivori_model::Capabilities::BUILD_INFO_V1);
+            .union(kivori_model::Capabilities::BUILD_INFO_V1)
+            .union(kivori_model::Capabilities::HELD_ROTATION_V1);
 
     /// SPI clock pin (display SCL).
     pub const SCK: u8 = 4;

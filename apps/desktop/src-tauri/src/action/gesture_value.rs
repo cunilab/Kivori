@@ -66,7 +66,9 @@ impl GestureValue {
                 self.flush(backend)
             }
             // The push switch never drives the continuous volume value.
-            LogicalInput::Press { .. }
+            LogicalInput::PressedGestureStarted { .. }
+            | LogicalInput::PressedDetent { .. }
+            | LogicalInput::Press { .. }
             | LogicalInput::Hold { .. }
             | LogicalInput::DoublePress { .. }
             | LogicalInput::ButtonPress { .. }

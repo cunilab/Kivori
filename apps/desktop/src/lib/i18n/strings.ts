@@ -428,6 +428,10 @@ export const strings = {
     },
     gestures: {
       rotate: { name: 'Rotate', hint: 'Turn the knob. Faster turns take bigger steps.' },
+      heldRotate: {
+        name: 'Hold + rotate',
+        hint: 'Press the knob, then turn it while holding it down.',
+      },
       press: { name: 'Press', hint: 'Press and release within half a second.' },
       doublePress: { name: 'Double press', hint: 'Two quick presses.' },
       hold: { name: 'Hold', hint: 'Hold for about one second, then release.' },
@@ -438,6 +442,7 @@ export const strings = {
       button2Hold: { name: 'Middle button hold', hint: 'Hold. Reserved for pinning a profile.' },
       button3Hold: { name: 'Right button hold', hint: 'Hold. Not shown on the device.' },
     },
+    heldRotateUnsupported: 'Update the device firmware to use hold + rotate.',
     macros: {
       title: 'Macros',
       description:

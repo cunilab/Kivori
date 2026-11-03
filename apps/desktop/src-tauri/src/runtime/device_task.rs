@@ -1335,7 +1335,7 @@ impl RotaryPipeline {
 
     /// [`Self::accept_inputs`] plus the age rule (issue #26): after the session and gesture
     /// checks, a discrete action older than the freshness limit is dropped and recorded as
-    /// `InputStale`. Detents and gesture boundaries are always delivered. `desk` also receives
+    /// `InputStale`. Normal detents and gesture boundaries are always delivered. `desk` also receives
     /// how much longer the action may wait in the action queue.
     pub fn accept_inputs_fresh(
         &mut self,

@@ -753,6 +753,8 @@ function builtin(
       deviceLabel: rotateLabel(rotate),
       overridden: false,
     },
+    heldRotate: null,
+    heldRotateOverridden: false,
     press: slot(media),
     hold: slot({ kind: 'systemMute' }),
     buttons,
@@ -905,7 +907,7 @@ function builtinProfiles(): ProfileConfigDto[] {
 
 function defaultConfig(): ConfigDto {
   return {
-    version: 1,
+    version: 2,
     revision: 0,
     notice: null,
     profiles: builtinProfiles(),
@@ -1246,6 +1248,21 @@ export function mockSetRotate(profile: ProfileId, rotate: RotateSpec | null): Co
   });
 }
 
+export function mockSetHeldRotate(profile: ProfileId, rotate: RotateSpec | null): ConfigDto {
+  if (rotate && rotate.kind !== 'shortcuts') throw new Error('hold and rotate needs shortcuts');
+  return editProfile(profile, false, (target) => {
+    target.heldRotate = rotate
+      ? {
+          kind: 'shortcuts',
+          cw: mockShortcut(rotate.cw),
+          ccw: mockShortcut(rotate.ccw),
+          label: mockLabel(rotate.label),
+        }
+      : null;
+    target.heldRotateOverridden = !target.custom && rotate !== null;
+  });
+}
+
 /** Whether any profile binds macro `id`. */
 function macroBound(id: string): boolean {
   const bound = (s: SlotDto | 'pin'): boolean =>
@@ -1342,12 +1359,16 @@ function clearOverridden(profile: ProfileConfigDto): void {
   for (const b of profile.buttons) slots.push(b.press, ...(b.hold === 'pin' ? [] : [b.hold]));
   for (const slot of slots) slot.overridden = false;
   profile.rotate.overridden = false;
+  profile.heldRotateOverridden = false;
 }
 
 /** The bindings a custom profile starts with: General's as they are now. */
-function copyOfGeneral(): Pick<ProfileConfigDto, 'rotate' | 'press' | 'hold' | 'buttons'> {
+function copyOfGeneral(): Pick<
+  ProfileConfigDto,
+  'rotate' | 'heldRotate' | 'heldRotateOverridden' | 'press' | 'hold' | 'buttons'
+> {
   const { rotate, press, hold, buttons } = structuredClone(config.profiles[0]);
-  const copy = { rotate, press, hold, buttons };
+  const copy = { rotate, heldRotate: null, heldRotateOverridden: false, press, hold, buttons };
   clearOverridden({ ...config.profiles[0], ...copy });
   return copy;
 }

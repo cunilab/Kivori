@@ -54,7 +54,7 @@ export function labelProblem(label: string): string | null {
 export interface PickerTarget {
   /** `null` when picking a macro step (no profile involved). */
   profile: ProfileConfigDto | null;
-  control: ControlRef | 'rotate' | 'step';
+  control: ControlRef | 'rotate' | 'heldRotate' | 'step';
   /** The control's name, for the sheet title. */
   name: string;
   /** What is bound now (`null` = unbound). */
@@ -69,7 +69,7 @@ export interface ActionPickerProps {
   /** The user's macros, for the Macros group's picker. */
   macros?: MacroSpec[] | undefined;
   onSaveSlot: (target: PickerTarget, slot: SlotSpec) => Promise<void>;
-  onSaveRotate: (target: PickerTarget, rotate: RotateSpec) => Promise<void>;
+  onSaveRotate: (target: PickerTarget, rotate: RotateSpec | null) => Promise<void>;
   /** Called with the chosen step when the target's control is `'step'`. */
   onPickStep?: ((step: StepSpec) => void) | undefined;
 }
@@ -113,10 +113,11 @@ function PickerForm({
   onSaveRotate,
   onPickStep,
 }: Omit<ActionPickerProps, 'target'> & { target: PickerTarget }): ReactElement {
-  const rotate = target.control === 'rotate';
+  const heldRotate = target.control === 'heldRotate';
+  const rotate = target.control === 'rotate' || heldRotate;
   const stepMode = target.control === 'step';
   const spec = target.spec;
-  const [id, setId] = useState(spec ? catalogId(spec) : NOT_SET);
+  const [id, setId] = useState(spec ? catalogId(spec) : heldRotate ? 'knobShortcuts' : NOT_SET);
   const [app, setApp] = useState(
     spec && 'app' in spec ? spec.app : (target.profile?.apps[0] ?? ''),
   );
@@ -127,7 +128,12 @@ function PickerForm({
   const [label, setLabel] = useState(
     spec?.kind === 'shortcuts'
       ? spec.label
-      : (target.label ?? (spec?.kind === 'appVolume' ? (spec.label ?? '') : '')),
+      : (target.label ??
+          (spec?.kind === 'appVolume'
+            ? (spec.label ?? '')
+            : heldRotate
+              ? t.gestures.heldRotate.name
+              : '')),
   );
   const [macroId, setMacroId] = useState(spec?.kind === 'macro' ? spec.id : '');
   const [delayMs, setDelayMs] = useState('500');
@@ -136,7 +142,10 @@ function PickerForm({
 
   // A step is a discrete action that is not a macro (no nesting), or a wait.
   const entries = (catalog ?? []).filter(
-    (e) => e.slot === (rotate ? 'rotate' : 'discrete') && !(stepMode && e.id === 'macro'),
+    (e) =>
+      e.slot === (rotate ? 'rotate' : 'discrete') &&
+      !(stepMode && e.id === 'macro') &&
+      (!heldRotate || e.id === 'knobShortcuts'),
   );
   const entry = entries.find((e) => e.id === id) ?? null;
   const isDelay = stepMode && id === DELAY;
@@ -151,6 +160,7 @@ function PickerForm({
     );
   const showLabel =
     !stepMode &&
+    !heldRotate &&
     id !== NOT_SET &&
     id !== 'systemVolume' &&
     (!rotate || params === 'app' || params === 'shortcutPair');
@@ -188,7 +198,8 @@ function PickerForm({
         return null;
     }
   };
-  const rotation = (): RotateSpec => {
+  const rotation = (): RotateSpec | null => {
+    if (heldRotate && id === NOT_SET) return null;
     const text = label.trim();
     if (id === 'appVolume') {
       return text ? { kind: 'appVolume', app, label: text } : { kind: 'appVolume', app };
@@ -243,7 +254,7 @@ function PickerForm({
           onValueChange={(value) => setId(value as string)}
           className="gap-4"
         >
-          {!rotate && !stepMode && (
+          {(!rotate || heldRotate) && !stepMode && (
             <Option
               value={NOT_SET}
               name={p.notSet}

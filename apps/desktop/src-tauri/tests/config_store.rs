@@ -9,6 +9,86 @@ use kivori_desktop::config::{
     MacroSpec, ProfileId, ProfileOverride, SecondaryView, SlotSpec, StepSpec, View,
 };
 
+#[test]
+fn held_rotation_migrates_v1_and_round_trips_without_losing_bindings() {
+    use kivori_desktop::config::{ProfileRef, RotateSpec};
+    let dir = tempfile::tempdir().unwrap();
+    let mut original = serde_json::to_value(ConfigFile::default()).unwrap();
+    original["version"] = 1.into();
+    original["profiles"]["general"] = serde_json::json!({
+        "press": {"action": {"kind": "shortcut", "keys": "Ctrl+A"}}
+    });
+    original["macros"] = serde_json::json!([{
+        "id": "macro-1", "name": "Legacy", "steps": [{"kind": "action", "action": {"kind": "playPause"}}]
+    }]);
+    original["customProfiles"] = serde_json::json!([{
+        "id": "custom-1", "name": "Legacy", "apps": ["legacy.exe"],
+        "bindings": {"press": {"action": {"kind": "macro", "id": "macro-1"}}}
+    }]);
+    fs::write(
+        dir.path().join("config.json"),
+        serde_json::to_vec(&original).unwrap(),
+    )
+    .unwrap();
+    let mut store = ConfigStore::open(dir.path());
+    assert_eq!(store.file().version, 2);
+    assert!(store.file().profiles[&ProfileId::General].press.is_some());
+    assert_eq!(store.file().macros[0].id, "macro-1");
+    assert!(store.file().custom_profiles[0].bindings.press.is_some());
+    let general = ProfileRef::Builtin(ProfileId::General);
+    let pair = RotateSpec::Shortcuts {
+        cw: "Ctrl+Right".into(),
+        ccw: "Ctrl+Left".into(),
+        label: "Seek".into(),
+    };
+    store.set_held_rotate(&general, Some(pair.clone())).unwrap();
+    assert!(store
+        .set_held_rotate(&general, Some(RotateSpec::SystemVolume))
+        .is_err());
+    assert_eq!(
+        ConfigStore::open(dir.path()).file().profiles[&ProfileId::General].held_rotate,
+        Some(pair)
+    );
+    store.add_custom_profile("notepad.exe", "Notes").unwrap();
+    let custom = ProfileRef::Custom(store.file().custom_profiles[1].id.clone());
+    assert!(store.file().custom_profiles[1]
+        .bindings
+        .held_rotate
+        .is_none());
+    store
+        .set_held_rotate(
+            &custom,
+            Some(RotateSpec::Shortcuts {
+                cw: "Ctrl+A".into(),
+                ccw: "Ctrl+B".into(),
+                label: "Tabs".into(),
+            }),
+        )
+        .unwrap();
+    store.reset_profile(&custom).unwrap();
+    assert!(store.file().custom_profiles[1]
+        .bindings
+        .held_rotate
+        .is_none());
+    store
+        .set_held_rotate(
+            &custom,
+            Some(RotateSpec::Shortcuts {
+                cw: "Ctrl+A".into(),
+                ccw: "Ctrl+B".into(),
+                label: "Tabs".into(),
+            }),
+        )
+        .unwrap();
+    store.set_held_rotate(&custom, None).unwrap();
+    assert!(store.file().custom_profiles[1]
+        .bindings
+        .held_rotate
+        .is_none());
+    store.reset_profile(&general).unwrap();
+    assert!(!store.file().profiles.contains_key(&ProfileId::General));
+}
+
 fn names(dir: &Path) -> Vec<String> {
     let mut names: Vec<String> = fs::read_dir(dir)
         .unwrap()
@@ -212,7 +292,7 @@ fn the_file_uses_the_documented_shape() {
     assert_eq!(
         json,
         serde_json::json!({
-            "version": 1,
+            "version": 2,
             "profiles": {},
             "customProfiles": [],
             "macros": [],
@@ -234,7 +314,7 @@ fn update_settings_default_to_checking_and_round_trip() {
     )
     .unwrap();
     let mut store = ConfigStore::open(dir.path());
-    assert_eq!(store.notice(), None);
+    assert_eq!(store.notice(), Some(ConfigNotice::Migrated));
     assert_eq!(
         store.file().updates,
         kivori_desktop::config::UpdateSettings::default()
@@ -668,7 +748,7 @@ fn an_existing_file_without_the_field_counts_as_already_set_up() {
     )
     .unwrap();
     let store = ConfigStore::open(dir.path());
-    assert_eq!(store.notice(), None);
+    assert_eq!(store.notice(), Some(ConfigNotice::Migrated));
     assert!(store.file().onboarding.completed);
     assert!(!store.file().buddy.reactions);
 }
@@ -700,8 +780,7 @@ fn reset_keeps_onboarding_completed() {
     assert!(ConfigStore::open(dir.path()).file().onboarding.completed);
 }
 
-/// A file written before the brightness setting existed stays version 1 and loads at the top step
-/// (the always-on backlight it had), so no migration and no backup is needed.
+/// A file written before the brightness setting existed migrates and loads at the top step.
 #[test]
 fn a_file_without_brightness_loads_at_full_and_the_setting_survives_a_reopen() {
     let dir = tempfile::tempdir().unwrap();
@@ -711,10 +790,10 @@ fn a_file_without_brightness_loads_at_full_and_the_setting_survives_a_reopen() {
     )
     .unwrap();
     let mut store = ConfigStore::open(dir.path());
-    assert_eq!(store.notice(), None);
-    assert_eq!(store.file().version, 1);
+    assert_eq!(store.notice(), Some(ConfigNotice::Migrated));
+    assert_eq!(store.file().version, 2);
     assert_eq!(store.file().display.brightness, 5);
-    assert_eq!(names(dir.path()), ["config.json"]);
+    assert_eq!(names(dir.path()), ["config.json", "config.v1.bak"]);
 
     let next = store.edited(|file| file.display.brightness = 1);
     store.save(next).unwrap();
@@ -758,7 +837,7 @@ mod profiles {
     }
 
     #[test]
-    fn a_file_without_custom_profiles_loads_with_the_default_and_stays_version_1() {
+    fn a_file_without_custom_profiles_loads_with_the_default_and_migrates() {
         let dir = tempfile::tempdir().unwrap();
         fs::write(
             dir.path().join("config.json"),
@@ -766,9 +845,9 @@ mod profiles {
         )
         .unwrap();
         let store = ConfigStore::open(dir.path());
-        assert_eq!(store.notice(), None);
+        assert_eq!(store.notice(), Some(ConfigNotice::Migrated));
         assert!(store.file().custom_profiles.is_empty());
-        assert_eq!(store.file().version, 1);
+        assert_eq!(store.file().version, 2);
     }
 
     #[test]
@@ -959,7 +1038,7 @@ mod profiles {
     #[test]
     fn a_newer_file_with_custom_profiles_is_still_set_aside() {
         let dir = tempfile::tempdir().unwrap();
-        let newer = r#"{ "version": 2, "customProfiles": [{ "id": "custom-1", "name": "A" }] }"#;
+        let newer = r#"{ "version": 3, "customProfiles": [{ "id": "custom-1", "name": "A" }] }"#;
         fs::write(dir.path().join("config.json"), newer).unwrap();
         let store = ConfigStore::open(dir.path());
         assert_eq!(store.notice(), Some(ConfigNotice::RecoveredNewerVersion));
