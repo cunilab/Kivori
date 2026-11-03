@@ -3,6 +3,10 @@
 The one checklist for everything CI cannot prove: real ESP32-C3 + ST7789 + HW-040 hardware, real
 OS behavior, real timing. Host-sim and other host tests are never promoted to physical evidence.
 
+For issues #164, #165 and #167, use the [Windows desktop checklist](./windows-validation.md)
+to record installed-app launch, close-to-tray and security-warning evidence. Those checks remain
+pending until run on Windows with a connected device.
+
 Current M2.9 scope, updated 2026-10-29: CAD/enclosure work is owner-managed and outside the
 software milestone. The [roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness)
 now has **20/24 complete**, including all six virtual Pip software items and public website acceptance;
@@ -488,7 +492,9 @@ Hold = master mute. Shortcut and launch run from Device Studio's Test action pan
 - [ ] 4.3 Hold 3 s, release | the recovery screen with a filling bar appears at about 2 s; release cancels it; nothing runs
 - [ ] 4.4 Hold 10 s with Kivori Desktop running | "Restarting", the device reboots, the app shows the disconnect and reconnects by itself (gate 8)
 - [ ] 4.5 Hold 10 s with Kivori Desktop quit | the device still reboots (gate 8, invariant 24)
-- [ ] 4.6 Turn the knob while holding the switch | volume does not change and recovery is not cancelled (invariant 33)
+- [ ] 4.6 With held-turn firmware, assign both Hold + rotate shortcuts, press before turning, then turn both ways and release | each direction runs only its assigned shortcut; no ordinary volume, Press, Hold or double-press action leaks (invariant 33)
+- [ ] 4.6a Keep a claimed hold-and-turn gesture pressed for more than 10 s | it does not reboot; release, then hold stationary for 10 s and confirm recovery still works
+- [ ] 4.6b Hold stationary until recovery starts, then turn | recovery remains in control; on firmware without held-turn support, switch-down detents remain ignored
 - [ ] 4.7 Press while the knob is still turning | no Play/Pause fires
 - [ ] 4.8 Unplug, press and hold during the outage, replug | nothing runs after reconnect (gate 2)
 

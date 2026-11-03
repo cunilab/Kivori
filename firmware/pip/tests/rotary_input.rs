@@ -595,6 +595,123 @@ fn send_input_event_emits_on_the_wire_once_negotiated_and_accepted() {
 }
 
 #[test]
+fn stalled_pressed_rotation_preserves_opposite_shortcuts_and_control_boundaries() {
+    struct Gate<'a> {
+        pipe: &'a mut SimPipe,
+        blocked: bool,
+    }
+    impl Transport for Gate<'_> {
+        type Error = <SimPipe as Transport>::Error;
+        fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+            self.pipe.read(buf)
+        }
+        fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+            self.pipe.write(buf)
+        }
+        fn tx_free(&mut self) -> usize {
+            if self.blocked {
+                0
+            } else {
+                usize::MAX
+            }
+        }
+    }
+    let caps = Capabilities::PHYSICAL_INPUT_V1
+        .union(Capabilities::BUTTON_INPUT_V1)
+        .union(Capabilities::HELD_ROTATION_V1);
+    let mut identity = gating_identity();
+    identity.capabilities = caps;
+    let mut dispatcher = Dispatcher::new(identity);
+    let mut pipe = SimPipe::new();
+    let mut device = DeviceState::new();
+    gating_host_write(
+        &mut pipe,
+        &Message::Hello(Hello {
+            desktop_version: identity.firmware_version,
+            desktop_caps: caps,
+            nonce: 42,
+        }),
+        0,
+    );
+    dispatcher.poll(&mut pipe, &mut device, 0).unwrap();
+    gating_host_write(
+        &mut pipe,
+        &Message::Ready(Ready {
+            negotiated_minor: PROTOCOL_MINOR,
+            negotiated_caps: caps,
+        }),
+        1,
+    );
+    dispatcher.poll(&mut pipe, &mut device, 0).unwrap();
+    let _ = pipe.host_recv();
+    let mut gate = Gate {
+        pipe: &mut pipe,
+        blocked: true,
+    };
+    for (control, gesture, kind, at) in [
+        (ControlId::Rotary, 1, InputKind::GestureStarted, 100),
+        (ControlId::Rotary, 1, InputKind::Detent(Direction::Cw), 110),
+        (ControlId::Rotary, 1, InputKind::GestureEnded, 120),
+        (ControlId::PressedRotary, 2, InputKind::GestureStarted, 130),
+        (
+            ControlId::PressedRotary,
+            2,
+            InputKind::Detent(Direction::Cw),
+            140,
+        ),
+        (
+            ControlId::PressedRotary,
+            2,
+            InputKind::Detent(Direction::Cw),
+            145,
+        ),
+        (
+            ControlId::PressedRotary,
+            2,
+            InputKind::Detent(Direction::Ccw),
+            150,
+        ),
+        (ControlId::PressedRotary, 2, InputKind::GestureEnded, 160),
+    ] {
+        assert!(dispatcher.send_rotary_event(&mut gate, control, gesture, kind, at));
+    }
+    gate.blocked = false;
+    dispatcher.flush_input(&mut gate);
+    let events: Vec<_> = gating_host_drain(&mut pipe)
+        .into_iter()
+        .filter_map(|m| match m {
+            Message::InputEvent(e) => Some((e.control, e.kind, e.device_ms)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        events,
+        [
+            (ControlId::Rotary, InputKind::GestureStarted, 120),
+            (ControlId::Rotary, InputKind::Detent(Direction::Cw), 120),
+            (ControlId::Rotary, InputKind::GestureEnded, 120),
+            (ControlId::PressedRotary, InputKind::GestureStarted, 130),
+            (
+                ControlId::PressedRotary,
+                InputKind::Detent(Direction::Cw),
+                130
+            ),
+            (
+                ControlId::PressedRotary,
+                InputKind::Detent(Direction::Cw),
+                130
+            ),
+            (
+                ControlId::PressedRotary,
+                InputKind::Detent(Direction::Ccw),
+                150
+            ),
+            (ControlId::PressedRotary, InputKind::GestureEnded, 150),
+        ]
+    );
+}
+
+#[test]
 fn a_failed_input_write_invalidates_the_session_for_runtime_recovery() {
     struct ZeroWrite;
 

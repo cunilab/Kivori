@@ -8,12 +8,12 @@
 //! defence in depth against intra-session reordering.
 //!
 //! A third rule is about age, not identity ([`freshness`], issue #26): a discrete action older
-//! than [`MAX_ACTION_AGE`] when the desktop is about to run it is dropped. Detents and gesture
-//! boundaries are always delivered.
+//! than [`MAX_ACTION_AGE`] when the desktop is about to run it is dropped. Ordinary detents and
+//! gesture boundaries are always delivered; held-rotation shortcuts use discrete freshness.
 
 use kivori_model::input::Direction;
 use kivori_protocol::message::{ControlId, InputEvent, InputKind, CONTEXT_BUTTONS};
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 pub mod freshness;
 pub use freshness::{DeviceClock, Freshness, MAX_ACTION_AGE};
@@ -26,11 +26,18 @@ pub enum LogicalInput {
         /// The gesture identifier assigned by the device for this gesture.
         gesture_id: u16,
     },
+    /// A rotation started while the knob switch is pressed.
+    PressedGestureStarted { gesture_id: u16 },
     /// One completed, validated logical detent within an open gesture.
     Detent {
         /// The gesture this detent belongs to.
         gesture_id: u16,
         /// The direction of the detent.
+        direction: Direction,
+    },
+    /// A shortcut detent while the knob is pressed; subject to action freshness.
+    PressedDetent {
+        gesture_id: u16,
         direction: Direction,
     },
     /// A gesture has ended.
@@ -70,13 +77,16 @@ pub enum LogicalInput {
 
 impl LogicalInput {
     /// Whether this input triggers a one-shot action, so it is dropped when it arrives too old.
-    /// Gesture boundaries and detents are never discrete: dropping them would corrupt a gesture
-    /// or lose a turn the user made.
+    /// Gesture boundaries and normal rotation detents are never discrete; held detents fire
+    /// shortcuts and must not execute after their freshness window.
     #[must_use]
     pub const fn is_discrete(&self) -> bool {
         !matches!(
             self,
-            Self::GestureStarted { .. } | Self::Detent { .. } | Self::GestureEnded { .. }
+            Self::GestureStarted { .. }
+                | Self::PressedGestureStarted { .. }
+                | Self::Detent { .. }
+                | Self::GestureEnded { .. }
         )
     }
 }
@@ -103,7 +113,7 @@ pub enum RejectReason {
 #[derive(Debug, Default)]
 pub struct InputIngress {
     session: Option<u32>,
-    open_gestures: HashSet<u16>,
+    open_gestures: HashMap<u16, bool>,
 }
 
 impl InputIngress {
@@ -169,24 +179,53 @@ impl InputIngress {
                 gesture_id: event.gesture_id,
             })),
             InputKind::GestureStarted => {
-                self.open_gestures.insert(event.gesture_id);
-                Ok(Some(LogicalInput::GestureStarted {
-                    gesture_id: event.gesture_id,
+                let pressed = event.control == ControlId::PressedRotary;
+                if self
+                    .open_gestures
+                    .get(&event.gesture_id)
+                    .is_some_and(|open| *open != pressed)
+                {
+                    return Err(RejectReason::ControlMismatch);
+                }
+                // A new mode owns the rotary input; delayed detents from an abandoned gesture
+                // must not resume the other mode.
+                self.open_gestures.retain(|_, open| *open == pressed);
+                self.open_gestures.insert(event.gesture_id, pressed);
+                Ok(Some(if pressed {
+                    LogicalInput::PressedGestureStarted {
+                        gesture_id: event.gesture_id,
+                    }
+                } else {
+                    LogicalInput::GestureStarted {
+                        gesture_id: event.gesture_id,
+                    }
                 }))
             }
             InputKind::Detent(direction) => {
-                if !self.open_gestures.contains(&event.gesture_id) {
+                if self.open_gestures.get(&event.gesture_id)
+                    != Some(&(event.control == ControlId::PressedRotary))
+                {
                     return Err(RejectReason::UnknownGesture);
                 }
-                Ok(Some(LogicalInput::Detent {
-                    gesture_id: event.gesture_id,
-                    direction,
+                Ok(Some(if event.control == ControlId::PressedRotary {
+                    LogicalInput::PressedDetent {
+                        gesture_id: event.gesture_id,
+                        direction,
+                    }
+                } else {
+                    LogicalInput::Detent {
+                        gesture_id: event.gesture_id,
+                        direction,
+                    }
                 }))
             }
             InputKind::GestureEnded => {
-                if !self.open_gestures.remove(&event.gesture_id) {
+                if self.open_gestures.get(&event.gesture_id)
+                    != Some(&(event.control == ControlId::PressedRotary))
+                {
                     return Err(RejectReason::UnknownGesture);
                 }
+                self.open_gestures.remove(&event.gesture_id);
                 Ok(Some(LogicalInput::GestureEnded {
                     gesture_id: event.gesture_id,
                 }))
@@ -207,6 +246,63 @@ mod tests {
             kind,
             device_ms: 0,
         }
+    }
+
+    #[test]
+    fn pressed_rotation_cannot_change_control_or_cross_sessions() {
+        let mut ingress = InputIngress::new();
+        ingress.begin_session(7);
+        assert_eq!(
+            ingress.accept(&event(ControlId::PressedRotary, InputKind::GestureStarted)),
+            Ok(Some(LogicalInput::PressedGestureStarted { gesture_id: 1 }))
+        );
+        assert_eq!(
+            ingress.accept(&event(ControlId::Rotary, InputKind::GestureStarted)),
+            Err(RejectReason::ControlMismatch)
+        );
+        assert_eq!(
+            ingress.accept(&event(ControlId::Rotary, InputKind::Detent(Direction::Cw))),
+            Err(RejectReason::UnknownGesture)
+        );
+        assert_eq!(
+            ingress.accept(&event(
+                ControlId::PressedRotary,
+                InputKind::Detent(Direction::Ccw)
+            )),
+            Ok(Some(LogicalInput::PressedDetent {
+                gesture_id: 1,
+                direction: Direction::Ccw
+            }))
+        );
+        assert_eq!(
+            ingress.accept(&event(ControlId::Rotary, InputKind::GestureEnded)),
+            Err(RejectReason::UnknownGesture)
+        );
+        ingress.end_session();
+        ingress.begin_session(8);
+        assert_eq!(
+            ingress.accept(&event(
+                ControlId::PressedRotary,
+                InputKind::Detent(Direction::Cw)
+            )),
+            Err(RejectReason::StaleSession)
+        );
+    }
+
+    #[test]
+    fn a_new_rotary_mode_invalidates_delayed_detents_from_the_previous_mode() {
+        let mut ingress = InputIngress::new();
+        ingress.begin_session(7);
+        ingress
+            .accept(&event(ControlId::Rotary, InputKind::GestureStarted))
+            .unwrap();
+        let mut pressed = event(ControlId::PressedRotary, InputKind::GestureStarted);
+        pressed.gesture_id = 2;
+        ingress.accept(&pressed).unwrap();
+        assert_eq!(
+            ingress.accept(&event(ControlId::Rotary, InputKind::Detent(Direction::Cw))),
+            Err(RejectReason::UnknownGesture)
+        );
     }
 
     #[test]

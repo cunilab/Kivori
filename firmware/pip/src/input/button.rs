@@ -7,7 +7,7 @@
 //! - Recovery: at [`RECOVERY_START_MS`] recovery owns the gesture and any Hold is cancelled; at
 //!   [`REBOOT_MS`] from key-down the MCU reboots. Releasing before that cancels recovery and
 //!   fires nothing. This needs no host, no session and no capability (invariant 24), and nothing
-//!   but the switch can cancel it (invariant 33).
+//!   but the switch can cancel it once recovery begins (invariant 33).
 //!
 //! All times are measured between debounced edges at the moment the switch first changed, not at
 //! the moment the loop noticed, so a long render pass cannot turn a short press into a Hold.
@@ -55,6 +55,8 @@ enum Phase {
         /// recovery hold, but never a Press or Hold (one gesture owns all input at a time).
         eligible: bool,
         recovery: bool,
+        /// A held rotation owns this press until its release.
+        consumed: bool,
         /// This press began inside the double-press window of a short press: if it is short
         /// too, the pair is a `DoublePress`.
         second: bool,
@@ -104,6 +106,37 @@ impl ButtonGesture {
     #[must_use]
     pub const fn is_down(&self) -> bool {
         matches!(self.phase, Phase::Down { .. })
+    }
+
+    /// Claims an eligible press for held rotation. Returns whether an earlier short press is due.
+    pub fn claim_rotation(&mut self) -> Option<bool> {
+        let Phase::Down {
+            since_ms,
+            eligible: true,
+            recovery: false,
+            second,
+            ..
+        } = self.phase
+        else {
+            return None;
+        };
+        if !self.raw {
+            return None;
+        }
+        self.phase = Phase::Down {
+            since_ms,
+            eligible: true,
+            recovery: false,
+            consumed: true,
+            second: false,
+        };
+        Some(second)
+    }
+
+    /// Whether this switch press has already been consumed by held rotation.
+    #[must_use]
+    pub const fn rotation_claimed(&self) -> bool {
+        matches!(self.phase, Phase::Down { consumed: true, .. })
     }
 
     /// Recovery-hold progress 0..=100 at `now_ms`, while recovery owns the gesture.
@@ -165,11 +198,15 @@ impl ButtonGesture {
             since_ms,
             eligible,
             recovery,
+            consumed,
             second,
         } = self.phase
         else {
             return None;
         };
+        if consumed {
+            return None;
+        }
         // A release still inside its debounce window already ended the press at its edge: the
         // hold clock stops there, or a 1.99 s hold would turn into recovery while debouncing.
         let until_ms = if self.raw { now_ms } else { self.raw_since_ms };
@@ -181,6 +218,7 @@ impl ButtonGesture {
                 since_ms,
                 eligible,
                 recovery,
+                consumed,
                 second: false,
             };
             return Some(ButtonEvent::Press);
@@ -190,6 +228,7 @@ impl ButtonGesture {
                 since_ms,
                 eligible,
                 recovery: true,
+                consumed,
                 second,
             };
             return Some(ButtonEvent::RecoveryStarted);
@@ -218,6 +257,7 @@ impl ButtonGesture {
                 since_ms: edge_ms,
                 eligible,
                 recovery: false,
+                consumed: false,
                 second,
             };
             // A waiting first press that is not part of a pair fires now, exactly once.
@@ -232,27 +272,30 @@ impl ButtonGesture {
             since_ms,
             eligible,
             recovery,
+            consumed,
             second,
         } = core::mem::replace(&mut self.phase, Phase::Up)
         else {
             return None;
         };
         let held = edge_ms.wrapping_sub(since_ms);
-        Some(if recovery || !eligible || held >= RECOVERY_START_MS {
-            ButtonEvent::Released
-        } else if held < PRESS_MAX_MS {
-            if second {
-                ButtonEvent::DoublePress
-            } else if self.double_press {
-                // Wait to see whether a second press follows; `poll` fires it otherwise.
-                self.pending_press_ms = Some(edge_ms);
+        Some(
+            if consumed || recovery || !eligible || held >= RECOVERY_START_MS {
                 ButtonEvent::Released
+            } else if held < PRESS_MAX_MS {
+                if second {
+                    ButtonEvent::DoublePress
+                } else if self.double_press {
+                    // Wait to see whether a second press follows; `poll` fires it otherwise.
+                    self.pending_press_ms = Some(edge_ms);
+                    ButtonEvent::Released
+                } else {
+                    ButtonEvent::Press
+                }
             } else {
-                ButtonEvent::Press
-            }
-        } else {
-            ButtonEvent::Hold
-        })
+                ButtonEvent::Hold
+            },
+        )
     }
 
     /// Forgets any press in progress, as if the switch were released with no event. Used when a
@@ -266,6 +309,7 @@ impl ButtonGesture {
         if let Phase::Down {
             since_ms,
             recovery: false,
+            consumed,
             ..
         } = self.phase
         {
@@ -274,6 +318,7 @@ impl ButtonGesture {
                 since_ms,
                 eligible: false,
                 recovery: false,
+                consumed,
                 second: false,
             };
         }

@@ -75,7 +75,8 @@ impl Default for SessionConfig {
                 .union(Capabilities::IDLE_LIFE_V1)
                 .union(Capabilities::MIC_STATE_V1)
                 .union(Capabilities::PRODUCT_IDENTITY_V1)
-                .union(Capabilities::BUILD_INFO_V1),
+                .union(Capabilities::BUILD_INFO_V1)
+                .union(Capabilities::HELD_ROTATION_V1),
             supported_majors: vec![PROTOCOL_MAJOR],
         }
     }
@@ -1022,6 +1023,10 @@ impl Session {
         caps.contains(Capabilities::PHYSICAL_INPUT_V1)
             && match event.control {
                 ControlId::Rotary => true,
+                ControlId::PressedRotary => {
+                    caps.contains(Capabilities::BUTTON_INPUT_V1)
+                        && caps.contains(Capabilities::HELD_ROTATION_V1)
+                }
                 ControlId::Button => caps.contains(Capabilities::BUTTON_INPUT_V1),
                 ControlId::ContextButton(_) => caps.contains(Capabilities::CONTEXT_BUTTONS_V1),
             }

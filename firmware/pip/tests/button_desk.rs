@@ -12,7 +12,7 @@ use kivori_firmware::runtime::{Runtime, RuntimeConfig, Tick};
 use kivori_firmware::sim::{CaptureDisplay, SimPipe, VirtualClock};
 use kivori_framebuffer::hash_rgb565;
 use kivori_model::desk::{ControlLabels, DeskStatus, DisplayMode, MediaText};
-use kivori_model::input::InputLevels;
+use kivori_model::input::{Direction, InputLevels};
 use kivori_model::{Capabilities, CompanionState, ProtocolVersion, SendableState};
 use kivori_protocol::{
     decode_message, encode_message, ByeReason, ControlId, ControlLabelsUpdate, FirmwareVersion,
@@ -31,6 +31,7 @@ struct Levels(
     Cell<(bool, bool, bool)>,
     Cell<[bool; 3]>,
     RefCell<Vec<(InputLevels, u32)>>,
+    Cell<u32>,
 );
 
 impl InputSource for &Levels {
@@ -49,6 +50,10 @@ impl InputSource for &Levels {
             f(levels, at_ms);
         }
         f(self.sample(), now_ms);
+    }
+
+    fn dropped_edges(&self) -> u32 {
+        self.3.get()
     }
 }
 
@@ -84,7 +89,8 @@ impl Rig {
                 .union(Capabilities::DOUBLE_PRESS_V1)
                 .union(Capabilities::MEDIA_INFO_V1)
                 .union(Capabilities::CONTROL_LABELS_V1)
-                .union(Capabilities::CONTEXT_BUTTONS_V1),
+                .union(Capabilities::CONTEXT_BUTTONS_V1)
+                .union(Capabilities::HELD_ROTATION_V1),
         };
         let mut rig = Self {
             runtime: Runtime::new(identity, RuntimeConfig::default()),
@@ -171,6 +177,19 @@ impl Rig {
     fn switch(&mut self, down: bool) {
         let (a, b, _) = self.levels.0.get();
         self.levels.0.set((a, b, down));
+    }
+
+    fn turn(&mut self, direction: Direction) {
+        let (_, _, sw) = self.levels.0.get();
+        let phases = match direction {
+            Direction::Cw => [(false, true), (true, true), (true, false), (false, false)],
+            Direction::Ccw => [(true, false), (true, true), (false, true), (false, false)],
+        };
+        for (a, b) in phases {
+            self.levels.0.set((a, b, sw));
+            self.clock.advance(5);
+            self.step();
+        }
     }
 
     fn key(&mut self, index: usize, down: bool) {
@@ -288,6 +307,263 @@ impl Rig {
         reboot |= self.run(100);
         reboot
     }
+}
+
+#[test]
+fn held_rotation_is_distinct_and_consumes_the_button_press() {
+    for initial_hold in [100, 700] {
+        let mut rig = Rig::new();
+        rig.connect(M1.union(Capabilities::HELD_ROTATION_V1));
+        rig.switch(true);
+        rig.run(initial_hold);
+        rig.turn(Direction::Cw);
+        rig.turn(Direction::Ccw);
+        rig.switch(false);
+        rig.run(400);
+        let inputs = rig.inputs();
+        assert!(inputs.contains(&(ControlId::PressedRotary, InputKind::Detent(Direction::Cw))));
+        assert!(inputs.contains(&(ControlId::PressedRotary, InputKind::Detent(Direction::Ccw))));
+        assert!(inputs.contains(&(ControlId::PressedRotary, InputKind::GestureEnded)));
+        assert!(!inputs
+            .iter()
+            .any(|(control, kind)| *control == ControlId::Rotary
+                || (*control == ControlId::Button
+                    && matches!(
+                        kind,
+                        InputKind::Press | InputKind::Hold | InputKind::DoublePress
+                    ))));
+        rig.turn(Direction::Cw);
+        assert!(
+            rig.inputs()
+                .contains(&(ControlId::Rotary, InputKind::Detent(Direction::Cw))),
+            "ordinary rotation works after release"
+        );
+    }
+}
+
+#[test]
+fn held_rotation_never_turns_into_recovery_even_after_ten_seconds() {
+    let mut rig = Rig::new();
+    rig.connect(M1.union(Capabilities::HELD_ROTATION_V1));
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    assert!(!rig.run_with_heartbeat(11_000));
+    rig.turn(Direction::Ccw);
+    rig.switch(false);
+    rig.run(100);
+    let inputs = rig.inputs();
+    assert!(inputs.contains(&(ControlId::PressedRotary, InputKind::Detent(Direction::Ccw))));
+    assert!(!inputs
+        .iter()
+        .any(|(control, _)| *control == ControlId::Button));
+}
+
+#[test]
+fn recovery_already_started_cannot_be_stolen_by_held_rotation() {
+    let mut rig = Rig::new();
+    rig.connect(M1.union(Capabilities::HELD_ROTATION_V1));
+    rig.switch(true);
+    assert!(!rig.run_with_heartbeat(2_100));
+    rig.turn(Direction::Cw);
+    assert!(rig.run_with_heartbeat(8_100));
+    assert!(rig.inputs().is_empty());
+}
+
+#[test]
+fn old_host_still_swallows_held_rotation_and_gets_hold() {
+    let mut rig = Rig::new();
+    rig.connect(M1);
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    rig.run(500);
+    rig.switch(false);
+    rig.run(100);
+    assert_eq!(rig.inputs(), [(ControlId::Button, InputKind::Hold)]);
+}
+
+#[test]
+fn held_rotation_without_button_capability_remains_inert() {
+    let mut rig = Rig::new();
+    rig.connect(Capabilities::PHYSICAL_INPUT_V1.union(Capabilities::HELD_ROTATION_V1));
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    rig.run(500);
+    rig.switch(false);
+    rig.run(100);
+    assert!(rig.inputs().is_empty());
+}
+
+#[test]
+fn an_existing_normal_rotation_cannot_become_a_held_rotation() {
+    let mut rig = Rig::new();
+    rig.connect(M1.union(Capabilities::HELD_ROTATION_V1));
+    rig.turn(Direction::Cw);
+    rig.switch(true);
+    rig.run(50);
+    rig.turn(Direction::Ccw);
+    rig.run(300);
+    rig.turn(Direction::Cw);
+    rig.switch(false);
+    rig.run(100);
+    let inputs = rig.inputs();
+    assert!(inputs.contains(&(ControlId::Rotary, InputKind::Detent(Direction::Cw))));
+    assert!(!inputs
+        .iter()
+        .any(|(c, _)| matches!(c, ControlId::PressedRotary | ControlId::Button)));
+}
+
+#[test]
+fn an_existing_context_button_press_cannot_become_a_held_rotation() {
+    let mut rig = Rig::new();
+    rig.connect(
+        M1.union(Capabilities::CONTEXT_BUTTONS_V1)
+            .union(Capabilities::HELD_ROTATION_V1),
+    );
+    rig.key(0, true);
+    rig.run(50);
+    rig.switch(true);
+    rig.run(50);
+    rig.turn(Direction::Cw);
+    rig.switch(false);
+    rig.run(50);
+    rig.key(0, false);
+    rig.run(100);
+    let inputs = rig.inputs();
+    assert_eq!(inputs, [(ControlId::ContextButton(0), InputKind::Press)]);
+}
+
+#[test]
+fn a_detent_during_button_debounce_cannot_claim_held_rotation() {
+    let mut rig = Rig::new();
+    rig.connect(M1.union(Capabilities::HELD_ROTATION_V1));
+    rig.switch(true);
+    rig.step();
+    rig.turn(Direction::Cw);
+    rig.switch(false);
+    rig.run(100);
+    assert_eq!(rig.inputs(), [(ControlId::Button, InputKind::Press)]);
+}
+
+#[test]
+fn prior_short_press_is_preserved_but_held_turn_does_not_double_press() {
+    for held_ms in [50, 700] {
+        let mut rig = Rig::new();
+        rig.connect(
+            M1.union(Capabilities::DOUBLE_PRESS_V1)
+                .union(Capabilities::HELD_ROTATION_V1),
+        );
+        rig.press_for(100);
+        rig.switch(true);
+        rig.run(held_ms);
+        rig.turn(Direction::Cw);
+        rig.switch(false);
+        rig.run(400);
+        let inputs = rig.inputs();
+        assert_eq!(
+            inputs
+                .iter()
+                .filter(|(c, k)| *c == ControlId::Button && *k == InputKind::Press)
+                .count(),
+            1
+        );
+        assert!(!inputs.iter().any(|(c, k)| *c == ControlId::Button
+            && matches!(k, InputKind::Hold | InputKind::DoublePress)));
+        assert!(inputs.contains(&(ControlId::PressedRotary, InputKind::Detent(Direction::Cw))));
+    }
+}
+
+#[test]
+fn captured_input_loss_preserves_an_ordinary_press_but_blocks_claiming_it_for_rotation() {
+    let mut rig = Rig::new();
+    rig.connect(M1.union(Capabilities::HELD_ROTATION_V1));
+    rig.switch(true);
+    rig.run(100);
+    rig.levels.3.set(1);
+    rig.step();
+    rig.turn(Direction::Cw);
+    rig.switch(false);
+    rig.run(400);
+    assert_eq!(rig.inputs(), [(ControlId::Button, InputKind::Press)]);
+
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Ccw);
+    rig.switch(false);
+    rig.run(400);
+    assert!(rig
+        .inputs()
+        .contains(&(ControlId::PressedRotary, InputKind::Detent(Direction::Ccw))));
+}
+
+#[test]
+fn captured_input_loss_during_held_turn_requires_a_fresh_press_after_reconnect() {
+    let mut rig = Rig::new();
+    let caps = M1.union(Capabilities::HELD_ROTATION_V1);
+    rig.connect(caps);
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    assert!(rig
+        .inputs()
+        .contains(&(ControlId::PressedRotary, InputKind::Detent(Direction::Cw))));
+    rig.levels.3.set(1);
+    assert!(rig.step().link_dropped);
+    rig.nonce += 1;
+    rig.connect(caps);
+    rig.turn(Direction::Ccw);
+    rig.switch(false);
+    rig.run(400);
+    assert!(
+        rig.inputs().is_empty(),
+        "the pre-boundary press must not act or replay"
+    );
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Ccw);
+    rig.switch(false);
+    rig.run(400);
+    assert!(rig
+        .inputs()
+        .contains(&(ControlId::PressedRotary, InputKind::Detent(Direction::Ccw))));
+}
+
+#[test]
+fn a_new_session_while_still_pressed_cannot_replay_or_reboot_the_consumed_press() {
+    let mut rig = Rig::new();
+    let caps = M1.union(Capabilities::HELD_ROTATION_V1);
+    rig.connect(caps);
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    let _ = rig.inputs();
+    rig.nonce += 1;
+    rig.connect(caps);
+    rig.turn(Direction::Ccw);
+    assert!(!rig.run_with_heartbeat(10_100));
+    for (a, b) in [(false, true), (true, true), (true, false)] {
+        rig.levels.0.set((a, b, true));
+        rig.clock.advance(5);
+        rig.step();
+    }
+    rig.switch(false);
+    rig.run(400);
+    rig.levels.0.set((false, false, false));
+    rig.step();
+    assert!(
+        rig.inputs().is_empty(),
+        "a consumed press cannot act in a new session"
+    );
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Ccw);
+    rig.switch(false);
+    rig.run(400);
+    assert!(rig
+        .inputs()
+        .contains(&(ControlId::PressedRotary, InputKind::Detent(Direction::Ccw))));
 }
 
 #[test]

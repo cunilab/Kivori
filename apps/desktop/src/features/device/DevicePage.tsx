@@ -21,6 +21,7 @@ import {
 import { Skeleton } from '@kivori/ui/components/skeleton';
 import { Known } from '@/components/kivori/known';
 import { Page } from '@/components/kivori/page';
+import { ProductArt } from '@/components/kivori/product-art';
 import { PageTabs, type PageTab } from '@/components/kivori/page-tabs';
 import { uiConnection, type UiConnection } from '@/hooks/use-kivori';
 import type { AppInfoDto, ConnectionStatusDto } from '@/lib/ipc/types';
@@ -124,18 +125,26 @@ export function DevicePage({
             ) : null}
             {device ? (
               <>
-                <div className="space-y-0.5" data-testid="device-summary">
-                  <p className="text-lg font-semibold tracking-tight" data-testid="device-product">
-                    {device.identity?.product ?? t.unnamed}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {t.firmware}{' '}
-                    <span data-testid="device-firmware">
-                      <Known value={device.firmwareVersion} why={strings.why.firmware}>
-                        {(v) => v}
-                      </Known>
-                    </span>
-                  </p>
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="space-y-0.5" data-testid="device-summary">
+                    <p
+                      className="text-lg font-semibold tracking-tight"
+                      data-testid="device-product"
+                    >
+                      {device.identity?.product ?? t.unnamed}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {t.firmware}{' '}
+                      <span data-testid="device-firmware">
+                        <Known value={device.firmwareVersion} why={strings.why.firmware}>
+                          {(v) => v}
+                        </Known>
+                      </span>
+                    </p>
+                  </div>
+                  {ui === 'connected' && device.identity?.known && device.presentation ? (
+                    <ProductArt connection={connection} className="max-w-52" showCaption={false} />
+                  ) : null}
                 </div>
                 {notices.dirty ? (
                   <Alert data-testid="device-build-dirty">

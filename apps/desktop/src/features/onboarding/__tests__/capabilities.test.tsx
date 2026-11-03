@@ -77,7 +77,12 @@ describe('capability-aware setup', () => {
       connectionGeneration: 2,
     });
     dial.device!.identity!.product = 'Test dial';
-    dial.device!.presentation = { displayName: 'Test dial', model: 'KV-T2', art: null };
+    dial.device!.presentation = {
+      displayName: 'Test dial',
+      model: 'KV-T2',
+      art: null,
+      controlLayout: null,
+    };
     page.rerender(setup(dial));
     expect(screen.getByText('Turn the rotary control')).toBeInTheDocument();
     expect(screen.queryByText('Press the push-switch')).not.toBeInTheDocument();
@@ -115,7 +120,12 @@ describe('capability-aware setup', () => {
     expect(screen.queryByText('Saved only')).not.toBeInTheDocument();
     const otherProduct = connectionFixture(['physicalInputV1'], { connectionGeneration: 9 });
     otherProduct.device!.identity!.product = 'Test dial';
-    otherProduct.device!.presentation = { displayName: 'Test dial', model: 'KV-T2', art: null };
+    otherProduct.device!.presentation = {
+      displayName: 'Test dial',
+      model: 'KV-T2',
+      art: null,
+      controlLayout: null,
+    };
     page.rerender(setup(otherProduct));
     expect(screen.queryByText(/Hold the middle context button/)).not.toBeInTheDocument();
     expect(screen.getAllByText('Saved only')).toHaveLength(2);

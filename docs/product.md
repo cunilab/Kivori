@@ -99,20 +99,25 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   first reverse detent applies immediately at 1x.
 - A `Rotate` binding owns both directions. A profile may replace the whole binding,
   never one direction.
+- With negotiated support, pressing the knob before turning selects a separate, optional
+  hold-and-rotate shortcut pair. The first completed detent consumes that press, so it does not
+  also fire Press, Hold, or Double press. An already-started recovery hold cannot be interrupted.
 - Short press fires only if released within **500 ms**. Discrete mappings fire once per
   press; no implicit key-repeat.
 - Contextual buttons give Press and Hold with the same timings, never recovery: held past ~2 s they
   fire nothing. Their labels on screen always match what they run.
 - Recovery button: release between 500 ms and ~2 s may run a mapped Hold. At ~2 s
   recovery owns the gesture and the Hold is cancelled; at ~10 s from key-down the MCU
-  reboots. Rotation during the hold changes nothing. Not configurable in v1.
+  reboots. Once recovery begins, rotation changes nothing. A hold-and-rotate gesture that
+  started before recovery owns the press until release. Recovery itself is not configurable.
 - **Input freshness:** a discrete action (switch or contextual-button Press, Hold, Double
   press) older than **750 ms** when Desktop is about to run it is dropped and logged, never
-  run late, whether it waited on the link, the device task or the action queue. Knob detents
-  and gesture start/end are never dropped for age: a late turn is still a turn, and dropping a
-  gesture end would leave the gesture open. Age needs the device clock offset from the
+  run late, whether it waited on the link, the device task or the action queue. Held-rotation
+  shortcut detents follow the same rule. Ordinary knob detents and gesture start/end are never
+  dropped for age: a late turn is still a turn, and dropping a gesture end would leave the
+  gesture open. Age needs the device clock offset from the
   heartbeat; until the first reply there is no age and nothing is dropped.
-- Rapid rotation uses a local preview, no round trip per detent. During a gesture,
+- Rapid ordinary rotation uses a local preview, no round trip per detent. During a gesture,
   external updates to the same value do not fight the preview; the confirmed value
   wins when the gesture ends.
 

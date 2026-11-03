@@ -397,6 +397,12 @@ fn apply(
     if let Some(spec) = &over.rotate {
         profile.rotate = rotate(spec)?;
     }
+    if let Some(spec) = &over.held_rotate {
+        if !matches!(spec, RotateSpec::Shortcuts { .. }) {
+            return Err("hold and rotate requires keyboard shortcuts");
+        }
+        profile.held_rotate = Some(rotate(spec)?);
+    }
     let bindings = &mut profile.bindings;
     if let Some(spec) = &over.press {
         bindings.press = slot(spec, macros)?;
@@ -459,6 +465,9 @@ pub fn resolve(
             continue;
         };
         apply(profile, over, &macros).map_err(ConfigError::Invalid)?;
+        if id.is_starter() {
+            profile.in_pin_cycle = over.in_pin_cycle;
+        }
         let added = app_list(&over.added_apps).map_err(ConfigError::Invalid)?;
         let removed = app_list(&over.removed_apps).map_err(ConfigError::Invalid)?;
         if id == ProfileId::General && !(added.is_empty() && removed.is_empty()) {
@@ -532,6 +541,7 @@ pub fn full_override(profile: &Profile) -> ProfileOverride {
     let bindings = &profile.bindings;
     ProfileOverride {
         rotate: Some(rotate_spec(&profile.rotate)),
+        held_rotate: None,
         press: Some(spec(&bindings.press)),
         hold: Some(spec(&bindings.hold)),
         buttons: std::array::from_fn(|i| ButtonOverride {
@@ -1053,7 +1063,7 @@ mod tests {
             .push(custom("custom-1", "Mine", &["Chrome.exe", "figma.exe"]));
         let resolved = run(false, &file).unwrap();
         let mine = resolved.profiles.last().unwrap();
-        assert_eq!(resolved.profiles.len(), 7);
+        assert_eq!(resolved.profiles.len(), ProfileId::ALL.len() + 1);
         assert_eq!((mine.name.as_str(), mine.ids.len()), ("Mine", 2));
         assert_eq!(mine.ids[0], "chrome.exe", "stored ids are lowercase");
         assert!(!resolved.profiles[1].ids.contains(&"chrome.exe".to_string()));
@@ -1153,7 +1163,7 @@ mod tests {
         file.custom_profiles.push(c);
         let resolved = run(false, &file).unwrap();
         assert_eq!(
-            resolved.profiles[6].bindings.press.action,
+            resolved.profiles.last().unwrap().bindings.press.action,
             Some(Action::NextTrack)
         );
         // The middle button's Hold stays reserved.

@@ -361,7 +361,12 @@ export function mockConnectionStatus(): ConnectionStatusDto {
         connection: 'connected',
         reported: 'idle',
         device: {
-          presentation: { displayName: mockIdentity.product, model: 'KV-P1', art: null },
+          presentation: {
+            displayName: mockIdentity.product,
+            model: 'KV-P1',
+            art: null,
+            controlLayout: 'rotary-three-button',
+          },
           firmwareVersion: '0.1.0',
           protocolVersion: { major: 0, minor: 1 },
           deviceIdHashShort: '3fa9c1d2',
@@ -711,15 +716,24 @@ const meetingButtons = (
   buttons: [[string, string], [string, string]],
 ): ProfileConfigDto['buttons'] => [
   { press: slot({ kind: 'micMute' }), hold: slot(null) },
-  { press: slot(key(buttons[0][1]), buttons[0][0]), hold: 'pin' },
-  { press: slot(key(buttons[1][1]), buttons[1][0]), hold: slot(null) },
+  { press: slot(buttons[0][1] ? key(buttons[0][1]) : null, buttons[0][0] || null), hold: 'pin' },
+  {
+    press: slot(buttons[1][1] ? key(buttons[1][1]) : null, buttons[1][0] || null),
+    hold: slot(null),
+  },
 ];
 const shortcutButtons = (
   buttons: [[string, string], [string, string], [string, string]],
 ): ProfileConfigDto['buttons'] => [
-  { press: slot(key(buttons[0][1]), buttons[0][0]), hold: slot(null) },
-  { press: slot(key(buttons[1][1]), buttons[1][0]), hold: 'pin' },
-  { press: slot(key(buttons[2][1]), buttons[2][0]), hold: slot(null) },
+  {
+    press: slot(buttons[0][1] ? key(buttons[0][1]) : null, buttons[0][0] || null),
+    hold: slot(null),
+  },
+  { press: slot(buttons[1][1] ? key(buttons[1][1]) : null, buttons[1][0] || null), hold: 'pin' },
+  {
+    press: slot(buttons[2][1] ? key(buttons[2][1]) : null, buttons[2][0] || null),
+    hold: slot(null),
+  },
 ];
 function builtin(
   id: ProfileId,
@@ -739,6 +753,8 @@ function builtin(
       deviceLabel: rotateLabel(rotate),
       overridden: false,
     },
+    heldRotate: null,
+    heldRotateOverridden: false,
     press: slot(media),
     hold: slot({ kind: 'systemMute' }),
     buttons,
@@ -800,12 +816,98 @@ function builtinProfiles(): ProfileConfigDto[] {
         ['Leave', 'Ctrl+Shift+H'],
       ]),
     ),
+    ...[
+      builtin(
+        'capcut',
+        'CapCut',
+        ['capcut.exe'],
+        shortcutButtons([
+          ['Play', 'Space'],
+          ['Split', 'Ctrl+B'],
+          ['', ''],
+        ]),
+      ),
+      builtin(
+        'photoshop',
+        'Photoshop',
+        ['photoshop.exe'],
+        shortcutButtons([
+          ['Undo', 'Ctrl+Z'],
+          ['Redo', 'Ctrl+Shift+Z'],
+          ['Brush', 'B'],
+        ]),
+      ),
+      builtin(
+        'aftereffects',
+        'After Effects',
+        ['afterfx.exe'],
+        shortcutButtons([
+          ['Undo', 'Ctrl+Z'],
+          ['Redo', 'Ctrl+Shift+Z'],
+          ['', ''],
+        ]),
+      ),
+      builtin(
+        'premiere',
+        'Premiere Pro',
+        ['adobe premiere pro.exe'],
+        shortcutButtons([
+          ['', ''],
+          ['Play', 'Space'],
+          ['', ''],
+        ]),
+        { kind: 'shortcuts', cw: 'Right', ccw: 'Left', label: 'Frame' },
+      ),
+      builtin(
+        'blender',
+        'Blender',
+        ['blender.exe'],
+        shortcutButtons([
+          ['Undo', 'Ctrl+Z'],
+          ['Redo', 'Ctrl+Shift+Z'],
+          ['', ''],
+        ]),
+      ),
+      builtin(
+        'claudecode',
+        'Claude Code',
+        [],
+        shortcutButtons([
+          ['Search', 'Ctrl+R'],
+          ['Transcript', 'Ctrl+O'],
+          ['', ''],
+        ]),
+        { kind: 'shortcuts', cw: 'Down', ccw: 'Up', label: 'History' },
+      ),
+      builtin(
+        'codex',
+        'Codex',
+        [],
+        shortcutButtons([
+          ['Search', 'Ctrl+R'],
+          ['Copy', 'Ctrl+O'],
+          ['', ''],
+        ]),
+        { kind: 'shortcuts', cw: 'Down', ccw: 'Up', label: 'History' },
+      ),
+      builtin(
+        'opencode',
+        'OpenCode',
+        [],
+        shortcutButtons([
+          ['', ''],
+          ['', ''],
+          ['', ''],
+        ]),
+        { kind: 'shortcuts', cw: 'Down', ccw: 'Up', label: 'Navigate' },
+      ),
+    ].map((profile) => ({ ...profile, inPinCycle: false })),
   ];
 }
 
 function defaultConfig(): ConfigDto {
   return {
-    version: 1,
+    version: 2,
     revision: 0,
     notice: null,
     profiles: builtinProfiles(),
@@ -1146,6 +1248,21 @@ export function mockSetRotate(profile: ProfileId, rotate: RotateSpec | null): Co
   });
 }
 
+export function mockSetHeldRotate(profile: ProfileId, rotate: RotateSpec | null): ConfigDto {
+  if (rotate && rotate.kind !== 'shortcuts') throw new Error('hold and rotate needs shortcuts');
+  return editProfile(profile, false, (target) => {
+    target.heldRotate = rotate
+      ? {
+          kind: 'shortcuts',
+          cw: mockShortcut(rotate.cw),
+          ccw: mockShortcut(rotate.ccw),
+          label: mockLabel(rotate.label),
+        }
+      : null;
+    target.heldRotateOverridden = !target.custom && rotate !== null;
+  });
+}
+
 /** Whether any profile binds macro `id`. */
 function macroBound(id: string): boolean {
   const bound = (s: SlotDto | 'pin'): boolean =>
@@ -1242,12 +1359,16 @@ function clearOverridden(profile: ProfileConfigDto): void {
   for (const b of profile.buttons) slots.push(b.press, ...(b.hold === 'pin' ? [] : [b.hold]));
   for (const slot of slots) slot.overridden = false;
   profile.rotate.overridden = false;
+  profile.heldRotateOverridden = false;
 }
 
 /** The bindings a custom profile starts with: General's as they are now. */
-function copyOfGeneral(): Pick<ProfileConfigDto, 'rotate' | 'press' | 'hold' | 'buttons'> {
+function copyOfGeneral(): Pick<
+  ProfileConfigDto,
+  'rotate' | 'heldRotate' | 'heldRotateOverridden' | 'press' | 'hold' | 'buttons'
+> {
   const { rotate, press, hold, buttons } = structuredClone(config.profiles[0]);
-  const copy = { rotate, press, hold, buttons };
+  const copy = { rotate, heldRotate: null, heldRotateOverridden: false, press, hold, buttons };
   clearOverridden({ ...config.profiles[0], ...copy });
   return copy;
 }
@@ -1376,8 +1497,15 @@ export function mockRenameProfile(profile: ProfileId, name: string): ConfigDto {
 
 export function mockSetProfilePinCycle(profile: ProfileId, enabled: boolean): ConfigDto {
   const profiles = structuredClone(config.profiles);
-  mockCustom(profiles, profile, 'a built-in profile is always in the pin cycle').inPinCycle =
-    enabled;
+  const target = profiles.find((p) => p.id === profile);
+  if (!target) throw new Error('unknown profile');
+  if (
+    !target.custom &&
+    ['general', 'browser', 'code', 'media', 'zoom', 'teams'].includes(profile)
+  ) {
+    throw new Error('a built-in profile is always in the pin cycle');
+  }
+  target.inPinCycle = enabled;
   return saveConfig({ display: config.display, buddy: config.buddy, profiles }, null);
 }
 
@@ -1473,4 +1601,17 @@ export function mockPreviewStream(
       return Promise.resolve();
     },
   };
+}
+
+/** The mock pins directly without attempting foreground-process detection. */
+export function mockPinProfile(profile: ProfileId | null): void {
+  const target =
+    profile === null ? config.profiles[0] : config.profiles.find((p) => p.id === profile);
+  if (!target) throw new Error('unknown profile');
+  updateDesk({
+    profileId: target.id,
+    profile: profile === null ? null : target.name,
+    pinned: profile !== null,
+  });
+  syncDesk();
 }

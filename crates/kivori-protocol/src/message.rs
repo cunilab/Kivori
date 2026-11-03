@@ -161,6 +161,8 @@ pub enum ControlId {
     /// Contextual button 0, 1 or 2, left to right (capability `CONTEXT_BUTTONS_V1`). Press and
     /// Hold only; it never runs the recovery hold.
     ContextButton(u8),
+    /// Rotary encoder while its push switch is down (`HELD_ROTATION_V1`).
+    PressedRotary,
 }
 
 /// How many contextual buttons there are; a `ContextButton` index must be below this.
@@ -202,8 +204,8 @@ pub struct InputEvent {
     /// What kind of input this event represents.
     pub kind: InputKind,
     /// Device-local elapsed time (ms, wraps) at which this event was produced. Same clock as
-    /// `Pong::uptime_ms`; the desktop drops a `Press`, `Hold` or `DoublePress` that is too old
-    /// by it, and never a detent or gesture boundary.
+    /// `Pong::uptime_ms`; the desktop drops an old `Press`, `Hold`, `DoublePress`, or
+    /// `PressedRotary` detent. Ordinary rotary detents and gesture boundaries are never dropped.
     pub device_ms: u32,
 }
 

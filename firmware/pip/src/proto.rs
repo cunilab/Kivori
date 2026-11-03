@@ -37,6 +37,7 @@ enum PendingInput {
     /// Rotation, coalesced: the detents not sent yet as a net count (the protocol has one step per
     /// `Detent`, so the net is sent as that many single steps once there is room).
     Rotation {
+        control: ControlId,
         /// The gesture the steps go out under.
         gesture_id: u16,
         /// `GestureStarted` has not been sent yet.
@@ -250,6 +251,18 @@ impl Dispatcher {
         kind: InputKind,
         device_ms: u32,
     ) -> bool {
+        self.send_rotary_event(transport, ControlId::Rotary, gesture_id, kind, device_ms)
+    }
+
+    /// Emits a normal or held rotary event, preserving each held direction under backpressure.
+    pub fn send_rotary_event<T: Transport>(
+        &mut self,
+        transport: &mut T,
+        control: ControlId,
+        gesture_id: u16,
+        kind: InputKind,
+        device_ms: u32,
+    ) -> bool {
         if !self
             .negotiated_caps
             .contains(Capabilities::PHYSICAL_INPUT_V1)
@@ -257,6 +270,13 @@ impl Dispatcher {
         {
             return false;
         }
+        if control == ControlId::PressedRotary && !self.held_rotation_enabled() {
+            return false;
+        }
+        debug_assert!(matches!(
+            control,
+            ControlId::Rotary | ControlId::PressedRotary
+        ));
         debug_assert!(matches!(
             kind,
             InputKind::GestureStarted | InputKind::Detent(_) | InputKind::GestureEnded
@@ -268,20 +288,35 @@ impl Dispatcher {
             _ => 0,
         };
         let folded = if let Some(PendingInput::Rotation {
+            control: queued_control,
+            gesture_id: queued_gesture,
             net,
             ended,
             device_ms: at,
             ..
         }) = self.pending_input.back_mut()
         {
-            *net = net.saturating_add(step);
-            match kind {
-                InputKind::GestureStarted => *ended = false,
-                InputKind::GestureEnded => *ended = true,
-                _ => {}
+            if *queued_control != control
+                || *queued_gesture != gesture_id
+                || (control == ControlId::PressedRotary
+                    && step != 0
+                    && *net != 0
+                    && step != net.signum())
+            {
+                false
+            } else {
+                *net = net.saturating_add(step);
+                match kind {
+                    InputKind::GestureStarted => *ended = false,
+                    InputKind::GestureEnded => *ended = true,
+                    _ => {}
+                }
+                if control == ControlId::Rotary {
+                    *at = device_ms;
+                }
+                // shortcut: folded held steps share the oldest time, retain per-step times if precision is needed.
+                true
             }
-            *at = device_ms;
-            true
         } else {
             false
         };
@@ -289,6 +324,7 @@ impl Dispatcher {
             || self
                 .pending_input
                 .push_back(PendingInput::Rotation {
+                    control,
                     gesture_id,
                     announce: kind == InputKind::GestureStarted,
                     net: step,
@@ -317,6 +353,7 @@ impl Dispatcher {
         let control_cap = match control {
             ControlId::ContextButton(_) => Capabilities::CONTEXT_BUTTONS_V1,
             ControlId::Button | ControlId::Rotary => Capabilities::BUTTON_INPUT_V1,
+            ControlId::PressedRotary => return false,
         };
         let needed = Capabilities::PHYSICAL_INPUT_V1.union(control_cap);
         if !self.negotiated_caps.contains(needed) || self.accepted_session.is_none() {
@@ -340,6 +377,7 @@ impl Dispatcher {
         if queued {
             self.flush_input(transport);
         } else {
+            transport.discard_unsent();
             self.link_lost();
         }
         queued && self.accepted_session.is_some()
@@ -402,6 +440,7 @@ impl Dispatcher {
                 Some(item)
             }),
             PendingInput::Rotation {
+                control,
                 gesture_id,
                 mut announce,
                 mut net,
@@ -412,12 +451,11 @@ impl Dispatcher {
                 if announce && ended && net == 0 {
                     return Ok(None);
                 }
-                let rotary = ControlId::Rotary;
                 if announce {
                     if !send(
                         self,
                         gesture_id,
-                        rotary,
+                        control,
                         InputKind::GestureStarted,
                         device_ms,
                     )? {
@@ -434,11 +472,12 @@ impl Dispatcher {
                     if !send(
                         self,
                         gesture_id,
-                        rotary,
+                        control,
                         InputKind::Detent(direction),
                         device_ms,
                     )? {
                         return Ok(Some(PendingInput::Rotation {
+                            control,
                             gesture_id,
                             announce,
                             net,
@@ -448,8 +487,17 @@ impl Dispatcher {
                     }
                     net += step;
                 }
-                if ended && !send(self, gesture_id, rotary, InputKind::GestureEnded, device_ms)? {
+                if ended
+                    && !send(
+                        self,
+                        gesture_id,
+                        control,
+                        InputKind::GestureEnded,
+                        device_ms,
+                    )?
+                {
                     return Ok(Some(PendingInput::Rotation {
+                        control,
                         gesture_id,
                         announce,
                         net,
@@ -491,6 +539,17 @@ impl Dispatcher {
     #[must_use]
     pub const fn double_press_enabled(&self) -> bool {
         self.negotiated_caps.contains(Capabilities::DOUBLE_PRESS_V1)
+    }
+
+    /// Whether this session supports the separate held-rotation control.
+    #[must_use]
+    pub const fn held_rotation_enabled(&self) -> bool {
+        self.accepted_session.is_some()
+            && self.negotiated_caps.contains(
+                Capabilities::PHYSICAL_INPUT_V1
+                    .union(Capabilities::BUTTON_INPUT_V1)
+                    .union(Capabilities::HELD_ROTATION_V1),
+            )
     }
 
     /// Takes the pending accepted `Feedback`, if any.

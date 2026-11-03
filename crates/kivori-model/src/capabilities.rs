@@ -33,6 +33,7 @@ impl Capabilities {
     //   bit 14 MIC_STATE_V1        `MicStateUpdate`: whether every microphone is muted, and whether one is in use
     //   bit 15 PRODUCT_IDENTITY_V1 `Identity`: the device reports its product, board, hardware revision and where they came from
     //   bit 16 BUILD_INFO_V1       `BuildInfo`: the device reports its firmware source id and whether the tree had uncommitted changes
+    //   bit 17 HELD_ROTATION_V1   rotary detents while its push switch is held
 
     /// Bit 0 — device accepts deterministic social mascot actions and returns applied-time
     /// acknowledgments.
@@ -97,6 +98,9 @@ impl Capabilities {
     /// whether the working tree had uncommitted changes) right after `Identity`. Without it the
     /// build is simply unknown to the desktop.
     pub const BUILD_INFO_V1: Capabilities = Capabilities(1 << 16);
+
+    /// Bit 17 — the device emits rotary gestures made while its switch is held.
+    pub const HELD_ROTATION_V1: Capabilities = Capabilities(1 << 17);
 
     /// Creates a capability set from a raw bitmask.
     #[must_use]

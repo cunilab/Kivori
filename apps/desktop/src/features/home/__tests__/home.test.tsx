@@ -264,7 +264,9 @@ describe('HomePage', () => {
   });
 
   it('shows catalog name/model and a neutral figure when the product has no artwork', () => {
-    render(view(desk({ mode: 'buddy' })));
+    const noArtwork = connection();
+    noArtwork.device!.presentation!.controlLayout = null;
+    render(view(desk({ mode: 'buddy' }), noArtwork));
     const art = screen.getByRole('img', { name: 'Kivori Pip · KV-P1' });
     expect(within(art).getByText('Kivori Pip')).toBeInTheDocument();
     expect(within(art).getByText('KV-P1')).toBeInTheDocument();

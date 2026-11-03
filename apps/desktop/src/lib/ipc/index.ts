@@ -443,6 +443,16 @@ export async function setRotate(profile: ProfileId, rotate: RotateSpec | null): 
   return unavailable();
 }
 
+/** Sets the shortcut pair for turning while the knob is pressed; null clears it. */
+export async function setHeldRotate(
+  profile: ProfileId,
+  rotate: RotateSpec | null,
+): Promise<ConfigDto> {
+  if (isTauri()) return parseConfig(await invoke<unknown>('set_held_rotate', { profile, rotate }));
+  if (import.meta.env.DEV) return (await devMock()).mockSetHeldRotate(profile, rotate);
+  return unavailable();
+}
+
 /** Creates or replaces a macro by its id; rejects with the native error string. */
 export async function saveMacro(spec: MacroSpec): Promise<ConfigDto> {
   if (isTauri()) return parseConfig(await invoke<unknown>('save_macro', { spec }));
@@ -472,6 +482,13 @@ export async function addCustomProfile(appId: string, name: string): Promise<Con
   return unavailable();
 }
 
+/** Pins a profile, or returns to automatic app matching. */
+export async function pinProfile(profile: ProfileId | null): Promise<void> {
+  if (isTauri()) return invoke<void>('pin_profile', { profile });
+  if (import.meta.env.DEV) return (await devMock()).mockPinProfile(profile);
+  return unavailable();
+}
+
 /** Moves an app into a profile (`'general'` = out of the profile that lists it). */
 export async function assignApp(profile: ProfileId, appId: string): Promise<ConfigDto> {
   if (isTauri()) return parseConfig(await invoke<unknown>('assign_app', { profile, appId }));
@@ -493,7 +510,7 @@ export async function deleteProfile(profile: ProfileId): Promise<ConfigDto> {
   return unavailable();
 }
 
-/** Puts a custom profile in or out of the middle button's pin cycle. */
+/** Puts a custom or starter profile in or out of the middle button's pin cycle. */
 export async function setProfilePinCycle(profile: ProfileId, enabled: boolean): Promise<ConfigDto> {
   if (isTauri()) {
     return parseConfig(await invoke<unknown>('set_profile_pin_cycle', { profile, enabled }));

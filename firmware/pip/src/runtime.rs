@@ -429,6 +429,10 @@ pub struct Runtime<'a> {
     dropped_edges: u32,
     /// Groups validated detents into gestures (identity + the 250 ms inactivity boundary).
     gesture: RotaryGesture,
+    /// The control owning the currently open rotary gesture.
+    rotary_control: ControlId,
+    /// Lost captures cannot turn an existing press into a new held-rotation gesture.
+    held_rotation_blocked: bool,
     /// Session-scoped acceptance and local expiry of the device-rendered `Presentation` overlay.
     presentation: PresentationState,
     /// Push-switch debounce, Press / Hold and the recovery hold.
@@ -480,6 +484,8 @@ impl<'a> Runtime<'a> {
             decoder: QuadratureDecoder::new(),
             dropped_edges: 0,
             gesture: RotaryGesture::new(GESTURE_END_MS),
+            rotary_control: ControlId::Rotary,
+            held_rotation_blocked: false,
             presentation: PresentationState::new(),
             button: ButtonGesture::new(),
             keys: [
@@ -918,8 +924,6 @@ impl<'a> Runtime<'a> {
         transport: &mut T,
         input: &mut I,
     ) {
-        // Input the outbound queue had no room for goes first, so it keeps its order.
-        self.dispatcher.flush_input(transport);
         let mut samples = heapless::Vec::<(InputLevels, ElapsedMs), INPUT_SAMPLES>::new();
         let before = input.dropped_edges();
         let mut lost = before != self.dropped_edges;
@@ -935,6 +939,20 @@ impl<'a> Runtime<'a> {
         lost |= dropped != before || dropped == u32::MAX;
         // Loss after the closing sample belongs to the next queue; invalidate that drain too.
         self.dropped_edges = before;
+        if lost && (self.button.is_down() || samples.iter().any(|(levels, _)| levels.sw)) {
+            self.held_rotation_blocked = true;
+            if self.button.rotation_claimed() && self.dispatcher.accepted_session().is_some() {
+                // Closing the session also discards any held detents waiting behind a stalled link.
+                transport.discard_unsent();
+                self.dispatcher.link_lost();
+                self.button.reset();
+                self.gesture.reset();
+                self.rotary_control = ControlId::Rotary;
+                self.input_boundary_ms = Some(now);
+            }
+        }
+        // Flush only after checking capture loss, which must invalidate queued held shortcuts.
+        self.dispatcher.flush_input(transport);
         for (levels, at_ms) in samples {
             // A loss may be inside this batch; no pair of retained phases is known continuous.
             if lost {
@@ -956,6 +974,7 @@ impl<'a> Runtime<'a> {
         self.input_boundary_ms = Some(now_ms);
         self.decoder.reset();
         self.gesture.reset();
+        self.rotary_control = ControlId::Rotary;
         let session = self.dispatcher.accepted_session();
         match session {
             Some(session) => {
@@ -985,8 +1004,13 @@ impl<'a> Runtime<'a> {
     /// Ends the open rotary gesture if its inactivity window has passed by `at_ms`.
     fn close_idle_gesture<T: Transport>(&mut self, transport: &mut T, at_ms: ElapsedMs) {
         if let Some(RotaryEvent::GestureEnded { gesture_id }) = self.gesture.poll(at_ms) {
-            self.dispatcher
-                .send_input_event(transport, gesture_id, InputKind::GestureEnded, at_ms);
+            self.dispatcher.send_rotary_event(
+                transport,
+                self.rotary_control,
+                gesture_id,
+                InputKind::GestureEnded,
+                at_ms,
+            );
         }
     }
 
@@ -997,6 +1021,21 @@ impl<'a> Runtime<'a> {
         levels: InputLevels,
         at_ms: ElapsedMs,
     ) {
+        if !levels.sw
+            && (self.rotary_control == ControlId::PressedRotary || self.button.rotation_claimed())
+        {
+            if let Some(RotaryEvent::GestureEnded { gesture_id }) = self.gesture.finish() {
+                self.dispatcher.send_rotary_event(
+                    transport,
+                    ControlId::PressedRotary,
+                    gesture_id,
+                    InputKind::GestureEnded,
+                    at_ms,
+                );
+            }
+            self.decoder.reset();
+            self.rotary_control = ControlId::Rotary;
+        }
         // Settle every previous level before deciding whether another control still owns input.
         self.poll_buttons(transport, at_ms);
         // Equal-ms captures are ambiguous; only a strictly later raw down may act in this session.
@@ -1016,6 +1055,9 @@ impl<'a> Runtime<'a> {
         {
             self.on_button(transport, event, at_ms);
         }
+        if !levels.sw && !self.button.is_down() {
+            self.held_rotation_blocked = false;
+        }
         let switch_busy = levels.sw || self.button.is_down();
         for index in 0..self.keys.len() {
             let others = (0..3).any(|i| i != index && key_busy(&self.keys, i));
@@ -1028,24 +1070,45 @@ impl<'a> Runtime<'a> {
                 self.on_key(transport, index, event, at_ms);
             }
         }
-        // The decoder always tracks the phase, but while the switch is down its detents are
-        // swallowed: one gesture owns input, and rotation never cancels or acts during a hold
-        // (invariant 33).
+        // A partial turn during switch debounce must never start a held rotation.
+        if levels.sw && !self.button.is_down() && self.dispatcher.held_rotation_enabled() {
+            self.decoder.reset();
+            return;
+        }
         let Some(direction) = self.decoder.update(levels.a, levels.b) else {
             return;
         };
         // The raw level counts too: a knob wobbles as it is pressed, and a detent inside the
         // switch's debounce window must not change the volume either.
-        if levels.sw || self.button.is_down() || keys_busy {
+        if keys_busy {
             return;
         }
+        let control = if levels.sw
+            && self.button.is_down()
+            && !self.held_rotation_blocked
+            && self.dispatcher.held_rotation_enabled()
+        {
+            let Some(prior_press) = self.button.claim_rotation() else {
+                return;
+            };
+            if prior_press {
+                self.on_button(transport, ButtonEvent::Press, at_ms);
+            }
+            ControlId::PressedRotary
+        } else if levels.sw || self.button.is_down() {
+            return;
+        } else {
+            ControlId::Rotary
+        };
         // The look is the device's own reaction to the touch: it needs no round trip and does not
         // wait for whatever the action shows.
         self.animator.look_at(LookTarget::Knob, at_ms);
         let (started, detent) = self.gesture.on_detent(direction, at_ms);
         if let Some(RotaryEvent::GestureStarted { gesture_id }) = started {
-            self.dispatcher.send_input_event(
+            self.rotary_control = control;
+            self.dispatcher.send_rotary_event(
                 transport,
+                control,
                 gesture_id,
                 InputKind::GestureStarted,
                 at_ms,
@@ -1056,8 +1119,9 @@ impl<'a> Runtime<'a> {
             direction,
         } = detent
         {
-            let _sent = self.dispatcher.send_input_event(
+            let _sent = self.dispatcher.send_rotary_event(
                 transport,
+                control,
                 gesture_id,
                 InputKind::Detent(direction),
                 at_ms,

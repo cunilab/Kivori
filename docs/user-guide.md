@@ -78,13 +78,19 @@ Kivori can distinguish it from a double press.
 
 Kivori changes what the controls do to suit the app in front of you, for example media keys in a
 player or tab switching in a browser. This is **Auto**, and the profile name shows at the top left of
-the screen. The built-in profiles are General, Browser, Code, Media, Zoom and Teams. In Zoom and Teams the left
-button mutes your microphones.
+the screen. The built-in profiles include General, Browser, Code, Media, Zoom and Teams. In Zoom and
+Teams the left button mutes your microphones. Editable [starter profiles](./starter-profiles.md)
+also cover CapCut, Photoshop, After Effects, Premiere Pro, Blender, Claude Code, Codex and OpenCode.
+
+On Controls, choose **Use this profile** to pin the selected profile, or **Follow foreground app**
+to return to Auto. Agent profiles need manual selection because Kivori cannot identify the agent
+inside a terminal window. Review the starter shortcuts for your app version and keymap before use.
 
 To stay on one profile, hold the middle button. Each hold moves on: General, Browser, Code, Media,
 Zoom, Teams, then back to Auto. A dot next to the name shows it is pinned. On a protected window
 (such as a Windows permission prompt or the lock screen) shortcuts and app launches pause, while
-volume, media keys and mute keep working.
+volume, media keys and mute keep working. Starter profiles join this cycle only when you enable
+**In pin cycle** for them.
 
 ## Muting your microphones
 
@@ -104,6 +110,22 @@ runs the selected action. Keyboard shortcuts, including those in macros, first s
 countdown: focus the receiving app, or choose **Cancel** before it runs. The test shows Processing
 while it waits for its result. **Reset** puts the built-in action back. Changes are saved on this
 computer for your Windows user.
+
+Choose the knob or a button on the device illustration to see its gestures and bindings. The
+Knob, Left, Middle and Right tabs make the same selection, including when no device is connected.
+Selecting a control never runs its action; use **Test** when you want to try the saved binding.
+
+For keyboard shortcuts, choose **Record** and press the combination, then review it before
+saving. **Escape** or **Cancel** leaves the previous value in place; you can also type
+the shortcut manually. Recording is available for buttons, both knob directions and macro steps.
+Some shortcuts are intercepted by the operating system or terminal and must be entered manually.
+
+To use **Hold + rotate**, assign separate clockwise and counterclockwise shortcuts in the knob
+controls. Press the knob first, then turn it while holding it down. This uses the selected shortcut
+instead of the ordinary turn, press or hold action. Start turning before the recovery indicator
+appears; once it has appeared, release the knob and try again. To restart after using this gesture,
+release the knob first, then hold it still for 10 seconds. Hold + rotate requires firmware that
+supports it; older firmware keeps working and the binding stays saved until the device is updated.
 
 A **macro** runs up to 8 steps in order, with optional waits. It stops at the first step that fails
 and does not undo earlier steps. Create macros on the Controls page, then bind one to a control.
@@ -167,6 +189,9 @@ BOOT is the pinhole in the base labelled BOOT; a paperclip reaches it.
   computer rather than through a hub.
 - **Charge-only cable.** Some USB-C cables only carry power. Use a data cable.
 - **Another program has the port.** Close serial monitors and other apps that use USB serial devices.
+- **Windows blocks Kivori or the flashing tool.** Record the exact warning and affected file using
+  the [Windows checklist](./windows-validation.md#windows-security-warning). SmartScreen warnings
+  and antivirus detections need different investigation; do not assume a detection is a false positive.
 - **Shortcuts do nothing (macOS).** Allow Kivori under System Settings, Privacy & Security,
   Accessibility. If you switched it on and Kivori still says it is off, choose **Reset and ask
   again** in the notice on the Controls page (or in Settings, General), then switch it on once

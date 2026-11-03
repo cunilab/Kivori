@@ -5,6 +5,7 @@ import {
   ACTION_SPEC_KINDS,
   BRIGHTNESS_STEPS,
   CAPABILITY_NAMES,
+  CONTROL_LAYOUTS,
   CHIP_MODELS,
   RESET_REASONS,
   HOST_AVAILABILITIES,
@@ -193,6 +194,8 @@ function parsePresentation(raw: unknown): ProductPresentationDto | null {
   }
   return {
     art,
+    controlLayout:
+      r.controlLayout == null ? null : oneOf('control layout', CONTROL_LAYOUTS, r.controlLayout),
     displayName: text('product display name', r.displayName, 96),
     model: text('product model', r.model, 96),
   };
@@ -639,6 +642,9 @@ function buttonDto(raw: unknown): ButtonDto {
 function profileDto(raw: unknown): ProfileConfigDto {
   const r = record('profile', raw);
   const rotate = record('rotate', r.rotate);
+  const heldRotate = r.heldRotate == null ? null : rotateSpec(r.heldRotate);
+  if (heldRotate && heldRotate.kind !== 'shortcuts')
+    throw new Error('Kivori: invalid held rotate.');
   if (typeof rotate.overridden !== 'boolean') throw new Error('Kivori: invalid overridden.');
   if (!Array.isArray(r.apps)) throw new Error('Kivori: invalid apps.');
   if (!Array.isArray(r.buttons) || r.buttons.length !== 3) {
@@ -655,6 +661,11 @@ function profileDto(raw: unknown): ProfileConfigDto {
       deviceLabel: text('device label', rotate.deviceLabel),
       overridden: rotate.overridden,
     },
+    heldRotate,
+    heldRotateOverridden:
+      r.heldRotateOverridden === undefined
+        ? false
+        : bool('heldRotateOverridden', r.heldRotateOverridden),
     press: slotDto(r.press),
     hold: slotDto(r.hold),
     buttons: [buttonDto(r.buttons[0]), buttonDto(r.buttons[1]), buttonDto(r.buttons[2])],

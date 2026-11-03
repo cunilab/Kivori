@@ -15,6 +15,9 @@ model = "KV-P1"
 # <=1024 pixels per side). Empty until artwork exists.
 image = ""
 
+# Recognized control geometry for the interactive desktop illustration.
+control_layout = "rotary-three-button"
+
 # Capabilities (names of `kivori_model::Capabilities` flags) every unit of this product must
 # negotiate. Features stay capability-driven; nothing branches on the product id.
 required_capabilities = [

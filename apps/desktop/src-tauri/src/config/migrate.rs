@@ -17,8 +17,14 @@ pub enum LoadError {
 /// One step: version `i + 1` to version `i + 2`.
 type Migration = fn(Value) -> Result<Value, LoadError>;
 
-/// The real chain. Empty while version 1 is the only version.
-const MIGRATIONS: &[Migration] = &[];
+fn v1_to_v2(mut raw: Value) -> Result<Value, LoadError> {
+    raw.as_object_mut()
+        .ok_or(LoadError::Corrupt)?
+        .insert("version".into(), Value::from(2));
+    Ok(raw)
+}
+
+const MIGRATIONS: &[Migration] = &[v1_to_v2];
 
 /// Upgrades `raw` to the current version. Returns the config and, when a migration ran, the version
 /// it started from.
@@ -61,9 +67,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_real_chain_is_empty_and_current_files_load_untouched() {
-        assert!(MIGRATIONS.is_empty());
-        let (file, from) = migrate(json!({ "version": 1 })).unwrap();
+    fn old_files_migrate_and_current_files_load_untouched() {
+        let (old, from) = migrate(json!({ "version": 1 })).unwrap();
+        assert_eq!(old, ConfigFile::default());
+        assert_eq!(from, Some(1));
+        let (file, from) = migrate(json!({ "version": 2 })).unwrap();
         assert_eq!(file, ConfigFile::default());
         assert_eq!(from, None);
     }

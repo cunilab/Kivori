@@ -372,7 +372,8 @@ Per-unit flashing and QA of new units: see [provisioning.md](./provisioning.md).
 ## Known limits
 
 - Unsigned: SmartScreen warns, and Defender may block `espflash.exe` (the app then reports the tool
-  as missing).
+  as missing). These are different protection mechanisms; collect the exact warning and affected
+  file using the [Windows validation checklist](./windows-validation.md) before choosing a remedy.
 - The WebView2 bootstrapper needs a network connection on a PC that does not have WebView2 yet.
 
 ## Catalog firmware builds and packaging

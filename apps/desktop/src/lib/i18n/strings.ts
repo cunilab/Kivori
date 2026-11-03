@@ -199,7 +199,7 @@ export const strings = {
   },
   controls: {
     title: 'Controls',
-    description: 'What each control does with the app in front of you.',
+    description: 'Choose a control to edit its actions.',
     doublePressFixed: 'Fixed. Choose the views under Display.',
     holdNote:
       'Hold actions on the three buttons work, but the device does not show them on screen yet.',
@@ -212,6 +212,16 @@ export const strings = {
       more: 'Reset & help',
     },
     groups: { knob: 'Knob', buttons: 'Buttons' },
+    selectControl: 'Select {control}',
+    workbench: {
+      title: 'Choose a control',
+      hint: 'Select a control to see and edit its actions.',
+      profileHint: 'Editing profile',
+      editing: 'Editing',
+      left: 'Left',
+      middle: 'Middle',
+      right: 'Right',
+    },
     editRow: 'Edit {control}',
     moreActions: 'More actions for {control}',
     status: {
@@ -273,7 +283,13 @@ export const strings = {
       listLabel: 'Profiles and their apps',
       builtIn: 'Built-in',
       yourProfile: 'Your profile',
-      noApps: 'No apps. This profile matches the apps no other profile lists.',
+      noApps: 'No apps assigned. Pin this profile or add an app to use it.',
+      pin: 'Use this profile',
+      follow: 'Follow foreground app',
+      pinned: 'Profile in use',
+      pinHint: 'Pin this profile until you choose to follow the foreground app again.',
+      agentHint:
+        'Select this profile manually for your agent. The terminal does not identify the agent running inside it.',
       generalApps: 'Every app that no other profile lists.',
       showControls: 'Show controls',
       addApp: 'Add app',
@@ -389,6 +405,12 @@ export const strings = {
       appHint: 'The program’s file name, for example spotify.exe.',
       shortcut: 'Shortcut',
       shortcutPlaceholder: 'Ctrl+Shift+T',
+      recordKeys: 'Record keys',
+      cancelRecording: 'Cancel recording',
+      record: 'Record',
+      recordUnsupported: 'That key cannot be used. Try another combination or cancel.',
+      recordHint:
+        'Press a combination. Escape cancels; type it manually to use it as a shortcut. Some system shortcuts cannot be captured.',
       clockwise: 'Clockwise shortcut',
       counterClockwise: 'Counter-clockwise shortcut',
       target: 'Application',
@@ -406,6 +428,10 @@ export const strings = {
     },
     gestures: {
       rotate: { name: 'Rotate', hint: 'Turn the knob. Faster turns take bigger steps.' },
+      heldRotate: {
+        name: 'Hold + rotate',
+        hint: 'Press the knob, then turn it while holding it down.',
+      },
       press: { name: 'Press', hint: 'Press and release within half a second.' },
       doublePress: { name: 'Double press', hint: 'Two quick presses.' },
       hold: { name: 'Hold', hint: 'Hold for about one second, then release.' },
@@ -416,6 +442,7 @@ export const strings = {
       button2Hold: { name: 'Middle button hold', hint: 'Hold. Reserved for pinning a profile.' },
       button3Hold: { name: 'Right button hold', hint: 'Hold. Not shown on the device.' },
     },
+    heldRotateUnsupported: 'Update the device firmware to use hold + rotate.',
     macros: {
       title: 'Macros',
       description:

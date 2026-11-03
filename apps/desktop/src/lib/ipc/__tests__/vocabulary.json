@@ -28,9 +28,11 @@
     "idleLifeV1",
     "micStateV1",
     "productIdentityV1",
-    "buildInfoV1"
+    "buildInfoV1",
+    "heldRotationV1"
   ],
   "chipModels": ["esp32c3"],
+  "controlLayouts": ["rotary-three-button"],
   "controls": [
     "press",
     "hold",
@@ -73,7 +75,22 @@
   "hostMedia": ["observable", "notObservable"],
   "hostPresence": ["active", "locked", "sleeping"],
   "identitySources": ["legacy", "build", "chip"],
-  "profileIds": ["general", "browser", "code", "media", "zoom", "teams"],
+  "profileIds": [
+    "general",
+    "browser",
+    "code",
+    "media",
+    "zoom",
+    "teams",
+    "capcut",
+    "photoshop",
+    "aftereffects",
+    "premiere",
+    "blender",
+    "claudecode",
+    "codex",
+    "opencode"
+  ],
   "profileLimits": {
     "apps": 32,
     "customProfiles": 16,

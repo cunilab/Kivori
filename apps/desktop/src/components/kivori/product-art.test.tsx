@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { connectionFixture } from '@/test/connection';
 import { ProductArt } from './product-art';
@@ -8,7 +9,12 @@ vi.mock('@/lib/ipc', () => ipc);
 
 function product(art: string | null) {
   const connection = connectionFixture();
-  connection.device!.presentation = { displayName: `Product ${art}`, model: 'KV-T1', art };
+  connection.device!.presentation = {
+    displayName: `Product ${art}`,
+    model: 'KV-T1',
+    art,
+    controlLayout: null,
+  };
   return connection;
 }
 
@@ -23,6 +29,36 @@ function deferred() {
 beforeEach(() => ipc.getProductArt.mockReset());
 
 describe('bundled product artwork', () => {
+  it('selects only supported controls for a catalog-declared physical layout', async () => {
+    const user = userEvent.setup();
+    const connection = connectionFixture(['physicalInputV1', 'buttonInputV1']);
+    connection.device!.presentation!.controlLayout = 'rotary-three-button';
+    const select = vi.fn();
+    render(<ProductArt connection={connection} selectedControl="knob" onSelectControl={select} />);
+
+    const knob = screen.getByRole('button', { name: 'Select Knob' });
+    expect(knob).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Select Left button' })).toBeDisabled();
+    knob.focus();
+    await user.keyboard('{Enter}');
+    expect(select).toHaveBeenCalledOnce();
+    expect(select).toHaveBeenCalledWith('knob');
+  });
+
+  it('does not draw a declared layout for an unknown or disconnected product', () => {
+    const connection = connectionFixture();
+    connection.device!.presentation!.controlLayout = 'rotary-three-button';
+    const page = render(<ProductArt connection={connection} />);
+    expect(screen.getByTestId('device-visual')).toBeInTheDocument();
+    connection.device!.identity!.known = false;
+    page.rerender(<ProductArt connection={connection} />);
+    expect(screen.queryByTestId('device-visual')).not.toBeInTheDocument();
+    expect(screen.getByTestId('product-art-neutral')).toBeInTheDocument();
+    connection.device!.identity!.known = true;
+    page.rerender(<ProductArt connection={{ ...connection, connection: 'disconnected' }} />);
+    expect(screen.queryByTestId('device-visual')).not.toBeInTheDocument();
+  });
+
   it('does not request art without a current known product and an art key', () => {
     const page = render(<ProductArt connection={product(null)} />);
     expect(screen.getByTestId('product-art-neutral')).toBeInTheDocument();

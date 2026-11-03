@@ -95,6 +95,23 @@ pub fn set_launch_at_login(app: AppHandle, enabled: bool) -> Result<StartupSetti
     crate::runtime::lifecycle::set_launch_at_login(&app, enabled)
 }
 
+/// Pins a known profile, or follows the foreground application when `profile` is null.
+///
+/// # Errors
+/// Returns an error for an unknown profile or when the device runtime is unavailable.
+#[tauri::command]
+pub fn pin_profile(app: State<'_, AppState>, profile: Option<String>) -> Result<(), String> {
+    let id = profile
+        .map(|token| {
+            if !app.config_snapshot().profiles.iter().any(|p| p.id == token) {
+                return Err("unknown profile".to_string());
+            }
+            crate::config::ProfileRef::parse(&token).ok_or_else(|| "unknown profile".to_string())
+        })
+        .transpose()?;
+    app.send_command(DeviceCommand::PinProfile(id))
+}
+
 /// The stored settings (initial sync; `config://changed` carries changes).
 #[tauri::command]
 pub fn get_config(app: State<'_, AppState>) -> ConfigDto {
@@ -445,6 +462,23 @@ pub fn set_rotate(
     })
 }
 
+/// Sets or clears the shortcut pair for turning while holding the knob.
+///
+/// # Errors
+/// Returns an error for an unknown profile, invalid shortcuts, or failed save.
+#[tauri::command]
+pub fn set_held_rotate(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+    profile: String,
+    rotate: Option<crate::config::RotateSpec>,
+) -> Result<ConfigDto, String> {
+    let profile = profile_ref(&profile)?;
+    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+        store.set_held_rotate(&profile, rotate)
+    })
+}
+
 /// Creates a custom profile for an app, as a copy of General's bindings made now. `name` is the
 /// app's display name (empty = derived from `app`); the app moves out of any profile that held it.
 ///
@@ -514,7 +548,7 @@ pub fn delete_profile(
     })
 }
 
-/// Puts a custom profile in or out of the middle button's pin cycle.
+/// Puts a custom or starter profile in or out of the middle button's pin cycle.
 ///
 /// # Errors
 /// Returns an error for an unknown or built-in profile, or a failed save.

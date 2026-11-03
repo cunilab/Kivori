@@ -43,7 +43,7 @@
   },
   {
     "path": "apps/desktop/src/lib/ipc/mock.ts",
-    "text": "presentation: { displayName: mockIdentity.product, model: 'KV-P1', art: null },",
+    "text": "model: 'KV-P1',",
     "count": 1,
     "reason": "Browser-only fixture; production exclusion is checked by check-mock-excluded.mjs."
   },

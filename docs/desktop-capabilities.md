@@ -1,6 +1,6 @@
 # Desktop capability surfaces
 
-This is the current main-window mapping for M2.8. Capability names refer to the existing wire
+This is the current main-window mapping. Capability names refer to the existing wire
 contract in `kivori-model`; they describe implemented messages, not inferred product traits.
 The backend supplies current-session effective capabilities. Live UI additionally requires a
 connected session with a known identity. Retained metadata never authorizes a live action.
@@ -40,8 +40,8 @@ Catalog name/model and an optional artwork key are exposed on `DeviceInfoDto.pre
 inside copied diagnostics. Shipping builds reject names/models/art keys over the IPC limit of 96
 UTF-16 units. Home, Welcome and Tour show those labels and only that product's bundled artwork for
 a known current connected product/board. Missing/pending/unknown/disconnected identities never
-borrow another product's picture; missing/failed artwork uses a neutral figure. The fixed
-hardware-body illustration is removed; Display keeps its existing software-view illustrations.
+borrow another product's picture; missing/failed artwork uses a neutral figure unless that product
+declares a supported control layout. Display keeps its existing software-view illustrations.
 
 Catalog `image` is empty or a lowercase kebab-case `.png` filename directly inside its product
 directory. The build refuses symlinks, missing or malformed files, APNG, files over 512 KiB and
@@ -50,7 +50,9 @@ checks the remaining chunks, then embeds a copy of the validated original bytes 
 metadata). Cargo's recursive catalog watch covers artwork changes. `get_product_art` serves only
 compiled keys as PNG data URLs: no runtime filesystem access/downloads, and no image bytes in status
 updates or diagnostic copies. Lookups are cached in the frontend; product changes, disconnects and
-image errors cannot retain the wrong image. Pip currently declares no artwork and stays neutral.
+image errors cannot retain the wrong image. Optional `control_layout = "rotary-three-button"`
+declares the supported interactive geometry; absent layouts stay neutral or use catalog art. Layout
+metadata is not capability authorization, and controls remain gated by the current session.
 
 Setup uses the same effective control rules as Controls. Plug-in Continue requires a known usable
 current session, including compatible legacy baseline sessions; a transport connection alone is
@@ -89,6 +91,7 @@ on Finish; Skip setup leaves it unchanged.
 | Saved buddy settings | Always editable; used by device idle life (`idleLifeV1`) or desktop reactions (`mascotInteraction`). |
 | Rotary inputs | `physicalInputV1`. |
 | Push-switch press and hold | `physicalInputV1` and `buttonInputV1`. |
+| Hold + rotate | `physicalInputV1`, `buttonInputV1`, and the optional `heldRotationV1`. |
 | Push-switch double press | Physical input, push-switch and `doublePressV1`. |
 | Context buttons | `physicalInputV1` and `contextButtonsV1`. |
 | Device Studio reaction preview | Host renderer always; request device playback only with `mascotInteraction`. |
@@ -108,7 +111,8 @@ changing activity outcome semantics would require a separate implementation chan
 
 `mediaInfoV1` adds now-playing title/artist messages. It is not a prerequisite for the Media view,
 whose playback state is in `Status`. `mascotInteraction` enables transient actions and acknowledgments;
-it is not a substitute for a screen or baseline-mascot capability. No new protocol bits are added.
+it is not a substitute for a screen or baseline-mascot capability. `heldRotationV1` is negotiated
+independently and is never inferred from the firmware or protocol version.
 Baseline `SetState` remains part of the current compatible protocol, including legacy firmware with
 no advertised feature bits. This step does not invent a per-product baseline-state model.
 
@@ -175,6 +179,7 @@ the window regains focus, so anything showing disappears once it is granted).
 | Microphone mute, app mute | No | CoreAudio / session controls |
 | Launch an app | No | Opens the app through the OS |
 | Keyboard shortcut (a button or the knob in a shortcut profile) | Yes | A synthesized key event is the only way to type into another app |
+| Hold + rotate shortcut pair | Yes | One shortcut per direction while the knob is held; requires `heldRotationV1`, physical input, and push-switch support |
 | Macro | Only if a step is a keyboard shortcut | Same |
 
 The default bindings (push switch: play/pause and mute; buttons: previous, play/pause, next; knob:

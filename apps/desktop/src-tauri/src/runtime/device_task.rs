@@ -298,6 +298,7 @@ fn device_loop(
                         );
                     }
                 }
+                DeviceCommand::PinProfile(profile) => desk.pin_profile(profile.as_ref()),
                 DeviceCommand::ApplyConfig(config) => {
                     let now = elapsed_ms(started.elapsed());
                     let (personality, self_play) =
@@ -1334,7 +1335,7 @@ impl RotaryPipeline {
 
     /// [`Self::accept_inputs`] plus the age rule (issue #26): after the session and gesture
     /// checks, a discrete action older than the freshness limit is dropped and recorded as
-    /// `InputStale`. Detents and gesture boundaries are always delivered. `desk` also receives
+    /// `InputStale`. Normal detents and gesture boundaries are always delivered. `desk` also receives
     /// how much longer the action may wait in the action queue.
     pub fn accept_inputs_fresh(
         &mut self,
@@ -1542,7 +1543,8 @@ pub fn plan_device_request(
         | DeviceCommand::RequestInternals
         | DeviceCommand::SetDisplayMode(_)
         | DeviceCommand::TestAction(_, _)
-        | DeviceCommand::ApplyConfig(_) => None,
+        | DeviceCommand::ApplyConfig(_)
+        | DeviceCommand::PinProfile(_) => None,
     };
     request.map_or_else(Vec::new, |request| activity_planner.requests(request))
 }

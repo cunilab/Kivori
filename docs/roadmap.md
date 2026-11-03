@@ -88,7 +88,8 @@ Software complete and host-tested (S1–S7); the hardware rows and gates below r
   - pins GPIO9, GPIO8, GPIO10 to GND (moved to match the enclosure's wiring, #123), internal pull-ups, no resistors; GPIO21 stays the UART0 boot
     log; B1 on GPIO9 doubles as BOOT (held at reset: download mode)
   - same edge interrupt as the encoder (ADR-0007); each button gives Press and Hold, never recovery;
-    one gesture owns all input, so no chords and nothing during a recovery hold
+    one gesture owns all input: no contextual-button chords and nothing during recovery;
+    negotiated knob hold-and-turn is a separate owned gesture
   - wire: `ControlId::ContextButton(0..3)`, `CONTEXT_BUTTONS_V1`; labels in `ControlLabels.buttons`
   - defaults Previous / Play-Pause / Next (Unverified media keys); Hold unbound by default, and
     bindable (the middle button's Hold stays reserved for the profile pin)

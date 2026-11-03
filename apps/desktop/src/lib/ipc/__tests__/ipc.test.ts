@@ -34,6 +34,7 @@ import {
   setBinding,
   setBuddySettings,
   setRotate,
+  setHeldRotate,
   setDisplaySettings,
   listStates,
   onActivityLog,
@@ -46,6 +47,7 @@ import {
   renderPreviewFrame,
   addCustomProfile,
   assignApp,
+  pinProfile,
   renameProfile,
   deleteProfile,
   setProfilePinCycle,
@@ -71,6 +73,7 @@ import vocabulary from './vocabulary.json';
 import {
   ACTION_SPEC_KINDS,
   CAPABILITY_NAMES,
+  CONTROL_LAYOUTS,
   COMPANION_STATES,
   CONTROL_REFS,
   DESK_ACTIONS,
@@ -652,6 +655,36 @@ describe('config ipc', () => {
     expect(browser.buttons[0].press).toMatchObject({ deviceLabel: 'Back', overridden: false });
   });
 
+  it('validates and clears held-rotation shortcuts on built-in and custom profiles', async () => {
+    await resetConfig();
+    const pair = {
+      kind: 'shortcuts',
+      cw: 'Ctrl+Right',
+      ccw: 'Ctrl+Left',
+      label: 'Navigate',
+    } as const;
+    const saved = await setHeldRotate('general', pair);
+    expect(parseConfig(JSON.parse(JSON.stringify(saved))).profiles[0]).toMatchObject({
+      heldRotate: pair,
+      heldRotateOverridden: true,
+    });
+    const old = JSON.parse(JSON.stringify(saved));
+    delete old.profiles[0].heldRotate;
+    delete old.profiles[0].heldRotateOverridden;
+    expect(parseConfig(old).profiles[0]).toMatchObject({
+      heldRotate: null,
+      heldRotateOverridden: false,
+    });
+    old.profiles[0].heldRotate = { kind: 'systemVolume' };
+    expect(() => parseConfig(old)).toThrow('invalid held rotate');
+    await expect(setHeldRotate('general', { kind: 'systemVolume' })).rejects.toThrow('shortcuts');
+    expect((await setHeldRotate('general', null)).profiles[0].heldRotate).toBeNull();
+    const custom = (await addCustomProfile('notes.exe', 'Notes')).profiles.at(-1)!;
+    expect(custom.heldRotate).toBeNull();
+    await setHeldRotate(custom.id, pair);
+    expect((await setHeldRotate(custom.id, null)).profiles.at(-1)!.heldRotate).toBeNull();
+  });
+
   it('saves, validates and deletes macros in the mock, refusing a bound delete', async () => {
     await resetConfig();
     const play = { kind: 'action', action: { kind: 'playPause' } } as const;
@@ -733,6 +766,11 @@ describe('config ipc', () => {
       profile: 'browser',
       rotate: { kind: 'systemVolume' },
     });
+    await setHeldRotate('browser', null);
+    expect(tauri.invoke).toHaveBeenLastCalledWith('set_held_rotate', {
+      profile: 'browser',
+      rotate: null,
+    });
     await resetProfile('code');
     expect(tauri.invoke).toHaveBeenLastCalledWith('reset_profile', { profile: 'code' });
   });
@@ -749,6 +787,7 @@ describe('Rust/TS token vocabulary', () => {
     expect([...STEP_SPEC_KINDS]).toEqual(vocabulary.stepSpecKinds);
     expect([...ROTATE_SPEC_KINDS]).toEqual(vocabulary.rotateSpecKinds);
     expect([...CAPABILITY_NAMES]).toEqual(vocabulary.capabilityNames);
+    expect([...CONTROL_LAYOUTS]).toEqual(vocabulary.controlLayouts);
     expect([...HOST_AVAILABILITIES]).toEqual(vocabulary.hostAvailability);
     expect([...HOST_MEDIA]).toEqual(vocabulary.hostMedia);
     expect([...CHIP_MODELS]).toEqual(vocabulary.chipModels);
@@ -946,6 +985,10 @@ describe('profile commands', () => {
     });
     await deleteProfile('custom-1');
     expect(tauri.invoke).toHaveBeenLastCalledWith('delete_profile', { profile: 'custom-1' });
+    await pinProfile('codex');
+    expect(tauri.invoke).toHaveBeenLastCalledWith('pin_profile', { profile: 'codex' });
+    await pinProfile(null);
+    expect(tauri.invoke).toHaveBeenLastCalledWith('pin_profile', { profile: null });
     await setProfilePinCycle('custom-1', true);
     expect(tauri.invoke).toHaveBeenLastCalledWith('set_profile_pin_cycle', {
       profile: 'custom-1',

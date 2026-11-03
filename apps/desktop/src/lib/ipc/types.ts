@@ -37,12 +37,17 @@ export interface DeviceIdentityDto {
   known: boolean;
 }
 
+/** Physical layouts that the desktop can illustrate. */
+export const CONTROL_LAYOUTS = ['rotary-three-button'] as const;
+
 /** Customer metadata from the compiled catalog. It never authorizes live features. */
 export interface ProductPresentationDto {
   displayName: string;
   model: string;
   /** Opaque compiled artwork key, never a filesystem path or URL. */
   art: string | null;
+  /** Recognized physical control arrangement; null when none is declared. */
+  controlLayout: (typeof CONTROL_LAYOUTS)[number] | null;
 }
 
 /** Which exact firmware build a device runs; only a device that reports it has one. */
@@ -214,6 +219,7 @@ export const CAPABILITY_NAMES = [
   'micStateV1',
   'productIdentityV1',
   'buildInfoV1',
+  'heldRotationV1',
 ] as const;
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
 
@@ -464,7 +470,22 @@ export const CONFIG_NOTICES = [
 export type ConfigNotice = (typeof CONFIG_NOTICES)[number];
 
 /** The built-in profiles; a custom profile's id is `custom-<n>`. */
-export const PROFILE_IDS = ['general', 'browser', 'code', 'media', 'zoom', 'teams'] as const;
+export const PROFILE_IDS = [
+  'general',
+  'browser',
+  'code',
+  'media',
+  'zoom',
+  'teams',
+  'capcut',
+  'photoshop',
+  'aftereffects',
+  'premiere',
+  'blender',
+  'claudecode',
+  'codex',
+  'opencode',
+] as const;
 export type BuiltinProfileId = (typeof PROFILE_IDS)[number];
 export type ProfileId = BuiltinProfileId | `custom-${number}`;
 /** A custom profile's id: `custom-` and 1 to 4 digits. */
@@ -552,11 +573,14 @@ export interface ProfileConfigDto {
   name: string;
   /** The user's own profile: it can be renamed and deleted. Built-ins cannot. */
   custom: boolean;
-  /** The middle button's Hold cycle visits it (always true for a built-in). */
+  /** The middle button's Hold cycle visits it. */
   inPinCycle: boolean;
   /** Foreground app ids that select this profile (empty for General). */
   apps: string[];
   rotate: { spec: RotateSpec; deviceLabel: string; overridden: boolean };
+  /** Optional shortcuts sent when the knob is held while turning. */
+  heldRotate: RotateSpec | null;
+  heldRotateOverridden: boolean;
   press: SlotDto;
   hold: SlotDto;
   /** A button's Hold is `'pin'` for the middle one (reserved for profile pin). */

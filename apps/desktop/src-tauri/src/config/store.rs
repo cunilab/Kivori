@@ -308,6 +308,7 @@ impl ConfigStore {
 
     /// Creates a custom profile for `app` (`name` is its display name, may be empty) as a copy of
     /// General's bindings as they are now, moving `app` out of any profile that held it.
+    /// Held rotation starts unbound in the new profile.
     ///
     /// # Errors
     /// [`ConfigError`]; on any error the stored config is unchanged.
@@ -349,7 +350,7 @@ impl ConfigStore {
         self.save(next)
     }
 
-    /// Puts a custom profile in or out of the pin cycle.
+    /// Puts a custom or starter profile in or out of the pin cycle.
     ///
     /// # Errors
     /// [`ConfigError`]; on any error the stored config is unchanged.
@@ -359,8 +360,34 @@ impl ConfigStore {
         self.save(next)
     }
 
+    /// Sets or clears the shortcut pair for turning while the knob is held.
+    ///
+    /// # Errors
+    /// Returns an error for an unknown profile, invalid shortcut pair, or failed save.
+    pub fn set_held_rotate(
+        &mut self,
+        profile: &ProfileRef,
+        rotate: Option<super::RotateSpec>,
+    ) -> Result<(), ConfigError> {
+        let rotate = rotate
+            .as_ref()
+            .map(|spec| {
+                if !matches!(spec, super::RotateSpec::Shortcuts { .. }) {
+                    return Err(ConfigError::Invalid(
+                        "hold and rotate requires keyboard shortcuts",
+                    ));
+                }
+                super::resolve::canonical_rotate(spec).map_err(ConfigError::Invalid)
+            })
+            .transpose()?;
+        let mut next = self.file.clone();
+        profiles::edit_bindings(&mut next, profile, false, |over| over.held_rotate = rotate)
+            .map_err(ConfigError::Invalid)?;
+        self.save(next)
+    }
+
     /// A built-in profile goes back to its built-in bindings and app list; a custom one goes back
-    /// to a fresh copy of General's bindings (its name and apps stay).
+    /// to a fresh copy of General's bindings with held rotation unbound (its name and apps stay).
     ///
     /// # Errors
     /// [`ConfigError`]; on any error the stored config is unchanged.
@@ -600,10 +627,13 @@ mod tests {
             store.file().onboarding.completed,
             "adopted settings load normally"
         );
+        assert_eq!(store.file().version, super::super::CONFIG_VERSION);
+        assert_eq!(fs::read(current.join("config.v1.bak")).unwrap(), saved);
+        let migrated = fs::read(current.join(FILE)).unwrap();
         // Once the current folder has settings, the earlier ones never overwrite them again.
         fs::write(old.join(FILE), b"{}").unwrap();
         assert!(!adopt_earlier_config(&current));
-        assert_eq!(fs::read(current.join(FILE)).unwrap(), saved);
+        assert_eq!(fs::read(current.join(FILE)).unwrap(), migrated);
     }
 
     #[test]
@@ -625,9 +655,10 @@ mod tests {
         )
     }
 
-    // The released schema is still v1; inject migration output to exercise its real store branch.
+    // Inject migration output to exercise its real store branch.
     fn migrated(raw: Value) -> Result<(ConfigFile, Option<u32>), LoadError> {
         let mut file: ConfigFile = serde_json::from_value(raw).map_err(|_| LoadError::Corrupt)?;
+        file.version = super::super::CONFIG_VERSION;
         file.buddy.intensity = super::super::Intensity::High;
         Ok((file, Some(1)))
     }

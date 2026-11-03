@@ -34,7 +34,7 @@ fn fake_product_presentation_comes_from_its_own_catalog_metadata() {
     let dto = product_presentation_dto(product);
     assert_eq!(
         serde_json::to_value(dto).unwrap(),
-        serde_json::json!({"displayName": "Test dial", "model": "KV-T2", "art": "fixture"})
+        serde_json::json!({"displayName": "Test dial", "model": "KV-T2", "art": "fixture", "controlLayout": null})
     );
 }
 
@@ -53,6 +53,10 @@ fn known_and_legacy_identities_get_presentation_without_authorizing_features() {
         let presentation = dto.device.unwrap().presentation.unwrap();
         assert_eq!(presentation.display_name, "Kivori Pip");
         assert_eq!(presentation.model, "KV-P1");
+        assert_eq!(
+            presentation.control_layout,
+            Some(kivori_desktop::catalog::ControlLayout::RotaryThreeButton)
+        );
         assert!(dto.capabilities.is_empty());
     }
 }
