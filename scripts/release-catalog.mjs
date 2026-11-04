@@ -35,10 +35,13 @@ export function releaseCatalog(root) {
         product: plan.product,
         name: names.short_name.trim(),
         display: names.display_name.trim(),
+        model: names.model,
+        boards: [],
         crates: [],
       };
       products.set(plan.product, product);
     }
+    product.boards.push(plan.board);
     const crate = relative(realpathSync(root), realpathSync(plan.cwd)).split(sep).join('/');
     if (!product.crates.includes(crate)) product.crates.push(crate);
   }

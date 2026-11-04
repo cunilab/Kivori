@@ -52,6 +52,7 @@ function locks(root) {
 function productToml(name, crate) {
   return `short_name = "${name}"
 display_name = "Kivori ${name}"
+model = "KV-${name === 'Pip' ? 'P1' : 'L1'}"
 [boards.board.firmware]
 crate = "${crate}"
 artifact = "target/riscv32imc-unknown-none-elf/release/device"
@@ -650,6 +651,47 @@ test('whole catalog first release and independent per-product overrides preserve
   assert.ok(notes.startsWith('Kivori 0.1.0 · Pip firmware 0.1.0 · Lamp firmware 0.4.0\n'));
   assert.match(notes, /Kivori Pip firmware 0.1.0, Kivori Lamp firmware 0.4.0/);
   assert.equal(git(root, 'status', '--porcelain'), '');
+});
+
+test('release metadata uses the checked-out catalog and rejects mixed inputs', (t) => {
+  const root = twoProducts(t, { tagged: false });
+  put(
+    root,
+    'products/registry.toml',
+    '[products]\npip = 1\nlamp = 2\n[boards]\nboard = 1\nother = 2\n',
+  );
+  const pip = readFileSync(join(root, 'products/pip/product.toml'), 'utf8');
+  put(
+    root,
+    'products/pip/product.toml',
+    pip +
+      pip
+        .slice(pip.indexOf('[boards.board.firmware]'))
+        .replaceAll('boards.board.', 'boards.other.'),
+  );
+  commit(root, 'test: second board');
+  const out = outputFile(t);
+  const args = ['--version', '0.1.0', '--metadata-out', out];
+  info(args, root);
+  assert.deepEqual(JSON.parse(readFileSync(out, 'utf8')), {
+    schema_version: 1,
+    desktop_version: '0.1.0',
+    commit: git(root, 'rev-parse', 'HEAD'),
+    firmware: [
+      { product: 'pip', model: 'KV-P1', version: '0.1.0', boards: ['board', 'other'] },
+      { product: 'lamp', model: 'KV-L1', version: '0.4.0', boards: ['board'] },
+    ],
+  });
+  assert.throws(() => info([...args, '--to', 'HEAD^'], root), /Metadata ref must match/);
+  assert.throws(() => info(['--version', '0.2.0', '--metadata-out', out], root), /desktop version/);
+  assert.throws(
+    () => info([...args, '--firmware-versions', '{"pip":"0.2.0","lamp":"0.4.0"}'], root),
+    /firmware version mismatch/,
+  );
+  put(root, 'products/pip/product.toml', pip.replace('KV-P1', 'invalid'));
+  assert.throws(() => info(args, root), /inputs must match/);
+  commit(root, 'test: malformed model');
+  assert.throws(() => info(args, root), /Invalid metadata model/);
 });
 
 test('a later product refusing unchanged firmware leaves every version and output untouched', (t) => {

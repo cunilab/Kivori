@@ -297,7 +297,8 @@ jobs:
           prev="$(git describe --tags --abbrev=0 --match 'v[0-9]*' "${tag}^" 2>/dev/null || true)"
           # Notes come from the conventional commits since the previous app tag (scripts/release-info.mjs).
           bun scripts/release-info.mjs --version "${tag#v}" ${prev:+--prev-tag "$prev"} \
-            --repo '${{ github.repository }}' --out-dir "$RUNNER_TEMP/release-info"
+            --to "$tag" --repo '${{ github.repository }}' --out-dir "$RUNNER_TEMP/release-info" \
+            --metadata-out target/release/bundle/nsis/release-metadata.json
           cat "$RUNNER_TEMP/release-info/title.txt"; echo; cat "$RUNNER_TEMP/release-info/notes.md"
       - name: Write latest.json (updater manifest)
         if: steps.release.outputs.tag != '' && steps.updater.outputs.enabled == 'true'
@@ -317,6 +318,7 @@ jobs:
             ${{ steps.installer.outputs.path }}.sig
             target/release/bundle/nsis/SHA256SUMS
             target/release/bundle/nsis/latest.json
+            target/release/bundle/nsis/release-metadata.json
           if-no-files-found: error
       # One draft per version: the first run for a tag creates it, a re-run updates it. Either way this
       # step sets the title and notes and uploads the assets. It never publishes, never marks a
@@ -330,7 +332,7 @@ jobs:
         run: |
           set -euo pipefail
           dir=target/release/bundle/nsis
-          assets=('${{ steps.installer.outputs.path }}' "$dir/SHA256SUMS")
+          assets=('${{ steps.installer.outputs.path }}' "$dir/SHA256SUMS" "$dir/release-metadata.json")
           [ -f "$dir/latest.json" ] && assets+=("$dir/latest.json")
           [ -f '${{ steps.installer.outputs.path }}.sig' ] && assets+=('${{ steps.installer.outputs.path }}.sig')
           title="$(cat "$RUNNER_TEMP/release-info/title.txt")"
