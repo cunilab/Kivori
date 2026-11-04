@@ -42,11 +42,11 @@ export async function downloadResponse(
     return new Response('Not found', { status: 404 });
   }
 
-  const result = await load();
+  const result = await load(undefined, undefined, { includeMetadata: false });
   const releases: Release[] = result.status === 'ok' ? result.releases : [];
   const release =
     version === 'latest'
-      ? releases[0]
+      ? releases.find((candidate) => !candidate.prerelease && !candidate.version.includes('-'))
       : releases.find((candidate) => candidate.version === version);
   const installer = os === 'macos' ? release?.macInstaller : release?.installer;
   if (!release || !installer) return internalRedirect(request.url);

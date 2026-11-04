@@ -28,11 +28,12 @@ interface HomePageProps {
 export default async function HomePage({ searchParams }: HomePageProps): Promise<ReactElement> {
   const { product: productParam } = await searchParams;
   const preselected = Array.isArray(productParam) ? productParam[0] : productParam;
-  const faq = getProduct('kivori')?.faq ?? [];
+  const faq = getProduct('kv-p1')?.faq ?? [];
+  const selectedProduct = preselected ? getProduct(preselected)?.slug : undefined;
 
   return (
     <>
-      <Hero initialProduct={preselected} />
+      <Hero initialProduct={selectedProduct} />
       <MoodsSection />
       <ProfilesSection />
       <Section

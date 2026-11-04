@@ -23,7 +23,8 @@ function release(over: Partial<RawRelease>): RawRelease {
 const installerAsset = {
   name: 'Kivori_0.2.0_x64-setup.exe',
   size: 1234,
-  browser_download_url: 'https://example.test/Kivori_0.2.0_x64-setup.exe',
+  browser_download_url:
+    'https://github.com/cunilab/Kivori/releases/download/v0.2.0/Kivori_0.2.0_x64-setup.exe',
 };
 const otherAsset = {
   name: 'notes.txt',
@@ -136,4 +137,153 @@ it('selects only an unambiguous Apple Silicon dmg', () => {
   expect(findMacInstaller([{ ...asset, name: 'Kivori_x64.dmg' }])).toBeNull();
   expect(findMacInstaller([{ ...asset, name: 'Kivori.dmg' }])).toBeNull();
   expect(findMacInstaller([asset, asset])).toBeNull();
+});
+
+it('rejects unsafe and ambiguous installer URLs', () => {
+  expect(
+    findInstaller([{ ...installerAsset, browser_download_url: 'https://evil.test/file' }]),
+  ).toBeNull();
+  expect(findInstaller([installerAsset, installerAsset])).toBeNull();
+});
+it('filters firmware tags and unlabelled prerelease tags', async () => {
+  const fetcher = (async () =>
+    new Response(
+      JSON.stringify([
+        release({ tag_name: 'pip-v0.1.4' }),
+        release({ tag_name: 'v0.3.0-beta.1' }),
+        release({ tag_name: 'v0.3.0-beta.2', prerelease: true }),
+        release({ tag_name: 'v0.2.0' }),
+      ]),
+    )) as typeof fetch;
+  const result = await loadReleases(fetcher, 'https://api.test/filter');
+  expect(result.status === 'ok' && result.releases.map((r) => r.version)).toEqual([
+    '0.3.0-beta.2',
+    '0.2.0',
+  ]);
+});
+it('rejects malformed API records', async () => {
+  const fetcher = (async () => new Response('[{"tag_name":"v1.0.0"}]')) as typeof fetch;
+  expect(await loadReleases(fetcher, 'https://api.test/shape')).toEqual({ status: 'error' });
+});
+it('maps valid release metadata without hiding releases when metadata is invalid', async () => {
+  const url = 'https://github.com/cunilab/Kivori/releases/download/v0.2.0/release-metadata.json';
+  const item = release({
+    tag_name: 'v0.2.0',
+    assets: [{ name: 'release-metadata.json', size: 1, browser_download_url: url }],
+  });
+  const data = {
+    schema_version: 1,
+    desktop_version: '0.2.0',
+    commit: 'a'.repeat(40),
+    firmware: [{ product: 'pip', model: 'KV-P1', version: '0.1.4', boards: ['rp2040'] }],
+  };
+  const fetcher = (async (input: RequestInfo | URL) =>
+    new Response(JSON.stringify(String(input) === url ? data : [item]))) as typeof fetch;
+  const result = await loadReleases(fetcher, 'https://api.test/metadata');
+  expect(result.status === 'ok' && result.releases[0]).toMatchObject({
+    sourceCommit: 'a'.repeat(40),
+    firmware: data.firmware,
+  });
+  resetMemoryCache();
+  data.firmware[0].boards.push('rp2040');
+  const invalid = await loadReleases(fetcher, 'https://api.test/metadata');
+  expect(invalid.status === 'ok' && invalid.releases[0].firmware).toEqual([]);
+});
+
+it('rejects non-public or forbidden firmware model names', async () => {
+  const url = 'https://github.com/cunilab/Kivori/releases/download/v0.2.0/release-metadata.json';
+  const item = release({
+    tag_name: 'v0.2.0',
+    assets: [{ name: 'release-metadata.json', size: 1, browser_download_url: url }],
+  });
+  for (const model of ['ESP32', 'HW-040', 'github.com/cunilab/Kivori', 'KV-1 TBC']) {
+    resetMemoryCache();
+    const data = {
+      schema_version: 1,
+      desktop_version: '0.2.0',
+      commit: 'a'.repeat(40),
+      firmware: [{ product: 'pip', model, version: '0.1.4', boards: ['board'] }],
+    };
+    const fetcher = (async (input: RequestInfo | URL) =>
+      new Response(JSON.stringify(String(input) === url ? data : [item]))) as typeof fetch;
+    const result = await loadReleases(fetcher, 'https://api.test/model');
+    expect(result.status === 'ok' && result.releases[0].firmware).toEqual([]);
+  }
+});
+
+it('bounds metadata enrichment and skips it for download resolution', async () => {
+  const items = Array.from({ length: 12 }, (_, index) => {
+    const version = `1.0.${index}`;
+    return release({
+      tag_name: `v${version}`,
+      published_at: `2026-01-${String(index + 1).padStart(2, '0')}T00:00:00Z`,
+      assets: [
+        {
+          name: 'release-metadata.json',
+          size: 100,
+          browser_download_url: `https://github.com/cunilab/Kivori/releases/download/v${version}/release-metadata.json`,
+        },
+      ],
+    });
+  });
+  let calls = 0,
+    active = 0,
+    maximum = 0;
+  const fetcher = (async (input: RequestInfo | URL) => {
+    if (String(input).startsWith('https://api.test/')) return new Response(JSON.stringify(items));
+    calls++;
+    active++;
+    maximum = Math.max(maximum, active);
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    active--;
+    return new Response('{}');
+  }) as typeof fetch;
+  const result = await loadReleases(fetcher, 'https://api.test/budget');
+  expect(result.status === 'ok' && result.releases.length).toBe(12);
+  expect(calls).toBe(4);
+  expect(maximum).toBeLessThanOrEqual(2);
+  resetMemoryCache();
+  calls = 0;
+  await loadReleases(fetcher, 'https://api.test/budget', { includeMetadata: false });
+  expect(calls).toBe(0);
+});
+
+it('reads later release pages when firmware-only tags fill the first page', async () => {
+  const seen: string[] = [];
+  const fetcher = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    seen.push(url);
+    return new Response(
+      JSON.stringify(
+        new URL(url).searchParams.has('page')
+          ? [release({ tag_name: 'v0.3.1' })]
+          : Array.from({ length: 100 }, () => release({ tag_name: 'fw-pip-v0.1.4' })),
+      ),
+    );
+  }) as typeof fetch;
+  const result = await loadReleases(fetcher, 'https://api.test/pages?per_page=100');
+  expect(result.status === 'ok' && result.releases.map((item) => item.version)).toEqual(['0.3.1']);
+  expect(seen).toHaveLength(2);
+});
+
+it('keeps separate product and board firmware mappings in one desktop release', async () => {
+  const url = 'https://github.com/cunilab/Kivori/releases/download/v0.2.0/release-metadata.json';
+  const item = release({
+    tag_name: 'v0.2.0',
+    assets: [{ name: 'release-metadata.json', size: 100, browser_download_url: url }],
+  });
+  const firmware = [
+    { product: 'dial', model: 'KV-D1', version: '0.1.4', boards: ['board-a', 'board-b'] },
+    { product: 'keys', model: 'KV-K2', version: '1.2.0', boards: ['board-a'] },
+  ];
+  const fetcher = (async (input: RequestInfo | URL) =>
+    new Response(
+      JSON.stringify(
+        String(input) === url
+          ? { schema_version: 1, desktop_version: '0.2.0', commit: 'a'.repeat(40), firmware }
+          : [item],
+      ),
+    )) as typeof fetch;
+  const result = await loadReleases(fetcher, 'https://api.test/products');
+  expect(result.status === 'ok' && result.releases[0].firmware).toEqual(firmware);
 });

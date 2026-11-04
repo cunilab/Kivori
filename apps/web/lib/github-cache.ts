@@ -1,26 +1,20 @@
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 
 export const CACHE_TTL_SECONDS = 600;
-
-interface MemoryEntry {
-  expires: number;
+export const MAX_STALE_SECONDS = 86400;
+const TIMEOUT_MS = 8000;
+interface Entry {
   body: string;
+  fetchedAt: number;
 }
-
-// Per-isolate layer: always available (dev, Node, tests) and also covers workers.dev, where the
-// Workers Cache API accepts writes but never stores them.
-const memory = new Map<string, MemoryEntry>();
-
+const memory = new Map<string, Entry>();
 interface EdgeCache {
   match(request: Request): Promise<Response | undefined>;
   put(request: Request, response: Response): Promise<void>;
 }
-
 function edgeCache(): EdgeCache | undefined {
-  const store = (globalThis as { caches?: { default?: EdgeCache } }).caches;
-  return store?.default;
+  return (globalThis as { caches?: { default?: EdgeCache } }).caches?.default;
 }
-
 function waitUntil(promise: Promise<unknown>): void {
   try {
     getCloudflareContext().ctx.waitUntil(promise);
@@ -28,56 +22,73 @@ function waitUntil(promise: Promise<unknown>): void {
     void promise.catch(() => undefined);
   }
 }
-
-/** Clears the per-isolate layer; for tests. */
 export function resetMemoryCache(): void {
   memory.clear();
 }
 
-/**
- * GET text through a 600 s cache: per-isolate memory, then the Workers Cache API (`caches.default`)
- * when running in a Worker. Only 2xx responses are cached. When the network fails or answers non-2xx,
- * a stale in-memory copy is served if there is one. Returns `{ ok: false }` rather than throwing.
- */
+/** Preserve origin fetch time across cache layers; stale data expires after one day. */
 export async function cachedFetchText(
   url: string,
   headers: Record<string, string>,
   fetcher: typeof fetch = fetch,
-): Promise<{ ok: true; body: string } | { ok: false; status: number }> {
+): Promise<
+  { ok: true; body: string; fetchedAt: number; stale: boolean } | { ok: false; status: number }
+> {
   const now = Date.now();
-  const hit = memory.get(url);
-  if (hit && hit.expires > now) return { ok: true, body: hit.body };
-
+  let hit = memory.get(url);
   const cache = edgeCache();
-  const key = new Request(url, { method: 'GET' });
-  if (cache) {
+  const key = new Request(url);
+  if (!hit && cache) {
     try {
-      const cached = await cache.match(key);
-      if (cached?.ok) {
-        const body = await cached.text();
-        memory.set(url, { expires: now + CACHE_TTL_SECONDS * 1000, body });
-        return { ok: true, body };
+      const response = await cache.match(key);
+      const fetchedAt = Number(response?.headers.get('x-kivori-fetched-at'));
+      if (response?.ok && fetchedAt > 0 && fetchedAt <= now) {
+        hit = { body: await response.text(), fetchedAt };
+        memory.set(url, hit);
       }
     } catch {
-      // a broken edge cache must not break the page
+      /* cache is optional */
     }
   }
-
+  if (hit && now - hit.fetchedAt < CACHE_TTL_SECONDS * 1000)
+    return { ok: true, ...hit, stale: false };
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof setTimeout>;
+  const deadline = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      controller.abort();
+      reject(new Error('timeout'));
+    }, TIMEOUT_MS);
+  });
   try {
-    const response = await fetcher(url, { headers });
-    if (!response.ok) {
-      return hit ? { ok: true, body: hit.body } : { ok: false, status: response.status };
-    }
-    const body = await response.text();
-    memory.set(url, { expires: now + CACHE_TTL_SECONDS * 1000, body });
-    if (cache) {
-      const stored = new Response(body, {
-        headers: { 'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}` },
-      });
-      waitUntil(cache.put(key, stored));
-    }
-    return { ok: true, body };
-  } catch {
-    return hit ? { ok: true, body: hit.body } : { ok: false, status: 0 };
+    const body = await Promise.race([
+      (async () => {
+        const response = await fetcher(url, { headers, signal: controller.signal });
+        if (!response.ok) throw response.status;
+        return response.text();
+      })(),
+      deadline,
+    ]);
+    const entry = { body, fetchedAt: Date.now() };
+    memory.set(url, entry);
+    if (cache)
+      waitUntil(
+        cache.put(
+          key,
+          new Response(body, {
+            headers: {
+              'Cache-Control': `public, max-age=${MAX_STALE_SECONDS}`,
+              'x-kivori-fetched-at': String(entry.fetchedAt),
+            },
+          }),
+        ),
+      );
+    return { ok: true, ...entry, stale: false };
+  } catch (error) {
+    if (hit && Date.now() - hit.fetchedAt <= MAX_STALE_SECONDS * 1000)
+      return { ok: true, ...hit, stale: true };
+    return { ok: false, status: typeof error === 'number' ? error : 0 };
+  } finally {
+    clearTimeout(timeout!);
   }
 }

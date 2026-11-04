@@ -19,7 +19,8 @@ export function Hero({ initialProduct }: { initialProduct?: string | undefined }
             Say hi to your desk&apos;s new <em className="text-mint not-italic">roommate.</em>
           </h1>
           <p className="lead mb-7 max-w-[34ch]">
-            A big knob, three keys and a tiny friend who shows what your computer is up to.{' '}
+            Meet KV-P1: a big knob, three keys and a tiny friend, powered by the Kivori desktop
+            platform.{' '}
             <strong className="font-semibold text-foreground">Turn it. Watch it react.</strong>
           </p>
           <div id="waitlist" className="scroll-mt-20">

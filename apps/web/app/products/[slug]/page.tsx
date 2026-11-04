@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import type { ReactElement } from 'react';
-import { renders } from '@/lib/media';
 import { FaqList } from '@/components/faq-list';
 import { BuyBar } from '@/components/buy-bar';
 import { FeatureIcon } from '@/components/feature-icon';
@@ -66,7 +65,7 @@ export default async function ProductPage({ params }: ProductPageProps): Promise
           </h1>
           <p className="lead mx-auto mt-5 max-w-2xl text-balance">{product.tagline}</p>
           <ProductStage
-            image={renders.heroTransparent}
+            image={product.hero.image}
             large
             priority
             sizes="(min-width: 1000px) 1000px, 100vw"

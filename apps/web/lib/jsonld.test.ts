@@ -24,10 +24,10 @@ describe('productJsonLd', () => {
   it('describes the product with its brand and share image', () => {
     const data = productJsonLd(kivori, origin);
     expect(data['@type']).toBe('Product');
-    expect(data.name).toBe('Kivori');
+    expect(data.name).toBe('Kivori KV-P1');
     expect(data.brand).toEqual({ '@type': 'Brand', name: 'Kivori' });
-    expect(data.image).toBe('https://kivori.example/generated/og/kivori.png');
-    expect(data.url).toBe('https://kivori.example/products/kivori');
+    expect(data.image).toBe('https://kivori.example/generated/og/kv-p1.png');
+    expect(data.url).toBe('https://kivori.example/products/kv-p1');
   });
 
   it('has no offers without a price', () => {

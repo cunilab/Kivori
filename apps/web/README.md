@@ -18,6 +18,41 @@ Run from the repo root (or `cd apps/web`).
 
 `SITE_URL` (e.g. `https://kivori.example`) sets `metadataBase`; it defaults to `http://localhost:3000`.
 
+## Products and published releases
+
+Kivori is the shared desktop platform. The first device is presented as Kivori KV-P1; its internal
+catalog identity remains `pip`. `scripts/build-product-catalog.mjs` generates the public model/art
+subset from the repository's `products/` catalog before development, builds, tests, and typechecks.
+Join editorial product content by catalog ID. Do not hand-edit `catalog.generated.ts` or put current
+firmware versions in product copy. Product catalog changes also trigger website CI/deployment.
+The old `/products/kivori` URL redirects to `/products/kv-p1`; historic waitlist payloads remain valid.
+
+`/download` reads published desktop releases at runtime, so publishing a release does not require
+a website deployment. Stable desktop releases supply the default download; beta releases remain
+labeled in history. Installers are streamed through first-party routes. Missing platform builds and
+upstream failure are distinct from an empty release list.
+
+The release workflow attaches `release-metadata.json` while creating the draft. Its versioned schema
+records the exact release commit, desktop version, and catalog product/model/board firmware versions.
+It is separate from Tauri's `latest.json`. The website validates this metadata and displays model
+firmware versions separately from the shared desktop version. Older releases without metadata still
+show their published notes and downloads; firmware details remain unavailable. Published release notes
+are rendered as a restricted text/heading/list subset with source-host references and restricted
+hardware details removed. The local 0.1.0 notes remain a fallback for an absent release body.
+
+The reader scans at most 300 releases and enriches four recent bundles (including the latest stable
+release) with firmware metadata, with at most two metadata requests in flight. Installer resolution
+does not fetch metadata. Extend this bounded history if older firmware browsing becomes necessary.
+Successful responses are fresh for ten minutes, retaining their original fetch time across cache
+layers. On upstream failure, cached data can be used for at most 24 hours and is visibly marked stale.
+The timestamp is shown in UTC. A cold Worker with no usable cache can still show unavailable; there
+is no durable release mirror or publication webhook. Server logs report upstream status without
+including credentials or response bodies.
+
+The existing live feed failure has not been diagnosed: the deployed October 31 Worker hides its
+upstream error. Local tests cannot establish a production fix. After an approved deployment, verify
+the live version/history and both download routes, using the new server logs if the feed still fails.
+
 ## One-time Cloudflare setup (owner)
 
 1. Create a Cloudflare account and run `bunx wrangler login` once for local deploys.

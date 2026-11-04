@@ -5,8 +5,9 @@ export type CompatibilityStatus =
 
 /** Brand art drawn in code or taken from the shared brand assets (never a photo, there are none yet). */
 export interface ProductHero {
-  art: 'device' | 'mascot';
+  art: 'rotary-three-button' | 'catalog-image';
   alt: string;
+  image: { src: string; width: number; height: number; alt: string };
 }
 
 export interface ProductFeature {
@@ -37,6 +38,8 @@ export interface FaqItem {
 }
 
 export interface Product {
+  id: string;
+  model: string;
   slug: string;
   name: string;
   edition: string;
