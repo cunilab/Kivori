@@ -40,18 +40,29 @@ show their published notes and downloads; firmware details remain unavailable. P
 are rendered as a restricted text/heading/list subset with source-host references and restricted
 hardware details removed. The local 0.1.0 notes remain a fallback for an absent release body.
 
-The reader scans at most 300 releases and enriches four recent bundles (including the latest stable
-release) with firmware metadata, with at most two metadata requests in flight. Installer resolution
-does not fetch metadata. Extend this bounded history if older firmware browsing becomes necessary.
-Successful responses are fresh for ten minutes, retaining their original fetch time across cache
-layers. On upstream failure, cached data can be used for at most 24 hours and is visibly marked stale.
-The timestamp is shown in UTC. A cold Worker with no usable cache can still show unavailable; there
-is no durable release mirror or publication webhook. Server logs report upstream status without
-including credentials or response bodies.
+Production reads a validated, server-only snapshot from the `release_snapshots` table in the existing
+D1 database. The deployment applies the additive migration and refreshes this row before activating
+the new Worker. Waitlist records are untouched. This avoids the intermittent HTTP 403 observed when
+production Workers requested the public release API directly.
 
-The existing live feed failure has not been diagnosed: the deployed October 31 Worker hides its
-upstream error. Local tests cannot establish a production fix. After an approved deployment, verify
-the live version/history and both download routes, using the new server logs if the feed still fails.
+The `release-sync` workflow uses the ephemeral Actions GitHub token to fetch published releases and
+existing Cloudflare credentials to replace the snapshot atomically. It runs on publication, edits,
+channel changes, removal/unpublication, every ten minutes, and manual dispatch. It checks out `main`
+explicitly rather than executing synchronizer code from an old release tag. Drafts are filtered before
+storage, credentials stay with their respective providers, and failed refreshes preserve the previous
+snapshot. An advertised firmware metadata fetch/validation failure aborts publication; legacy
+releases without metadata remain valid. Earlier-started refreshes cannot overwrite newer snapshots.
+
+The snapshot is bounded to 1 MB and 300 releases; four recent bundles (including the latest stable)
+receive firmware metadata, with two concurrent upstream requests. Published notes remain available
+throughout the bounded app history. Extend this limit when older firmware browsing is needed.
+The website shows the last successful check in UTC, marks information older than ten minutes stale,
+and uses snapshots for at most 24 hours. A missing, invalid, or expired snapshot falls back to the
+public API for local development and recovery. Monitor failed `release-sync` jobs; GitHub schedules
+can be delayed or disabled after repository inactivity. Manually dispatch `release-sync` to recover.
+Publication by `GITHUB_TOKEN` can suppress another workflow, so reconciliation/manual dispatch is
+also required for that automation path. Installers still stream from the release host through
+first-party routes and must be verified independently of snapshot availability.
 
 ## One-time Cloudflare setup (owner)
 

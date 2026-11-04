@@ -1,4 +1,5 @@
-import { cachedFetchText } from '@/lib/github-cache';
+import { cachedFetchText, CACHE_TTL_SECONDS, MAX_STALE_SECONDS } from '@/lib/github-cache';
+import { readReleaseSnapshot } from '@/lib/release-snapshot';
 
 export const RELEASES_API_URL = 'https://api.github.com/repos/cunilab/Kivori/releases?per_page=100';
 const API_HEADERS = {
@@ -45,6 +46,113 @@ export interface Release {
 }
 export type ReleasesResult =
   { status: 'ok'; releases: Release[]; fetchedAt?: number; stale?: boolean } | { status: 'error' };
+
+export const MAX_SNAPSHOT_BYTES = 1_000_000;
+export interface ReleaseSnapshot {
+  schema_version: 1;
+  synced_at: number;
+  releases: Release[];
+}
+
+function validSnapshotInstaller(value: unknown, tag: string, pattern: RegExp): boolean {
+  if (value === null) return true;
+  if (!value || typeof value !== 'object') return false;
+  const item = value as Installer;
+  if (typeof item.url !== 'string') return false;
+  try {
+    const url = new URL(item.url);
+    const name = decodeURIComponent(url.pathname.slice(url.pathname.lastIndexOf('/') + 1));
+    return (
+      pattern.test(name) &&
+      validAsset({ name, size: item.size, browser_download_url: item.url }) &&
+      url.pathname ===
+        `/cunilab/Kivori/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(name)}`
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Validate persisted data before it can select a download or render public notes. */
+export function parseReleaseSnapshot(payload: string): ReleaseSnapshot | null {
+  if (new TextEncoder().encode(payload).byteLength > MAX_SNAPSHOT_BYTES) return null;
+  try {
+    const data = JSON.parse(payload) as ReleaseSnapshot;
+    if (
+      data.schema_version !== 1 ||
+      !Number.isSafeInteger(data.synced_at) ||
+      data.synced_at <= 0 ||
+      !Array.isArray(data.releases) ||
+      data.releases.length > 300
+    )
+      return null;
+    const tags = new Set<string>();
+    for (const value of data.releases) {
+      if (!value || typeof value !== 'object') return null;
+      const r = value as Release & { draft?: unknown };
+      const tag = typeof r.tag === 'string' ? TAG.exec(r.tag) : null;
+      if (
+        !tag ||
+        r.version !== tag[1] + (tag[2] ? `-${tag[2]}` : '') ||
+        typeof r.prerelease !== 'boolean' ||
+        (tag[2] && !r.prerelease) ||
+        r.draft === true ||
+        (r.date !== null && (typeof r.date !== 'string' || !Number.isFinite(Date.parse(r.date)))) ||
+        typeof r.notes !== 'string' ||
+        tags.has(r.tag) ||
+        !Array.isArray(r.firmware) ||
+        !validSnapshotInstaller(r.installer, r.tag, /-setup\.exe$/i) ||
+        (r.macInstaller !== undefined &&
+          !validSnapshotInstaller(r.macInstaller, r.tag, /(?:_|-)aarch64\.dmg$/i))
+      )
+        return null;
+      tags.add(r.tag);
+      if (
+        r.sourceCommit !== undefined &&
+        (typeof r.sourceCommit !== 'string' || !/^[a-f0-9]{40}$/i.test(r.sourceCommit))
+      )
+        return null;
+      if (
+        r.firmware.length &&
+        (!r.sourceCommit ||
+          !metadata(
+            {
+              schema_version: 1,
+              desktop_version: r.version,
+              commit: r.sourceCommit,
+              firmware: r.firmware,
+            },
+            r.version,
+          ))
+      )
+        return null;
+    }
+    data.releases.sort((a, b) => (Date.parse(b.date ?? '') || 0) - (Date.parse(a.date ?? '') || 0));
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+/** Production reads the authenticated publisher snapshot before attempting the public API. */
+export async function loadReleases(
+  fetcher: typeof fetch = fetch,
+  apiUrl: string = process.env.RELEASES_API_URL || RELEASES_API_URL,
+  options: { includeMetadata?: boolean } = {},
+): Promise<ReleasesResult> {
+  const payload = await readReleaseSnapshot();
+  const snapshot = payload ? parseReleaseSnapshot(payload) : null;
+  const age = snapshot ? Date.now() - snapshot.synced_at : Infinity;
+  if (snapshot && age >= -60_000 && age <= MAX_STALE_SECONDS * 1000) {
+    return {
+      status: 'ok',
+      releases: snapshot.releases,
+      fetchedAt: snapshot.synced_at,
+      stale: age > CACHE_TTL_SECONDS * 1000,
+    };
+  }
+  return loadUpstreamReleases(fetcher, apiUrl, options);
+}
 
 function releaseTime(release: RawRelease): number {
   return Date.parse(release.published_at ?? release.created_at ?? '') || 0;
@@ -177,10 +285,13 @@ function metadata(
   return { firmware: m.firmware as Firmware[], sourceCommit: m.commit };
 }
 /** Fetches up to 300 releases. shortcut: older history beyond 300 releases is omitted, add pagination UI when needed. */
-export async function loadReleases(
+export async function loadUpstreamReleases(
   fetcher: typeof fetch = fetch,
   apiUrl: string = process.env.RELEASES_API_URL || RELEASES_API_URL,
-  { includeMetadata = true }: { includeMetadata?: boolean } = {},
+  {
+    includeMetadata = true,
+    strictMetadata = false,
+  }: { includeMetadata?: boolean; strictMetadata?: boolean } = {},
 ): Promise<ReleasesResult> {
   try {
     const raw: RawRelease[] = [];
@@ -233,9 +344,16 @@ export async function loadReleases(
             const rawRelease = published.find((r) => r.tag_name === result.tag);
             const assets =
               rawRelease?.assets?.filter((a) => a.name === 'release-metadata.json') ?? [];
-            if (assets.length !== 1 || !validAsset(assets[0])) continue;
+            if (!assets.length) continue;
+            if (assets.length !== 1 || !validAsset(assets[0])) {
+              if (strictMetadata) throw new Error('Invalid advertised metadata');
+              continue;
+            }
             const expected = `/cunilab/Kivori/releases/download/${encodeURIComponent(result.tag)}/release-metadata.json`;
-            if (new URL(assets[0].browser_download_url).pathname !== expected) continue;
+            if (new URL(assets[0].browser_download_url).pathname !== expected) {
+              if (strictMetadata) throw new Error('Invalid advertised metadata URL');
+              continue;
+            }
             try {
               const response = await cachedFetchText(
                 assets[0].browser_download_url,
@@ -244,11 +362,14 @@ export async function loadReleases(
               );
               if (response.ok) {
                 const m = metadata(JSON.parse(response.body), result.version);
+                if (strictMetadata && (!m || response.stale))
+                  throw new Error('Metadata unavailable');
                 if (m) Object.assign(result, m);
                 fetchedAt = Math.min(fetchedAt, response.fetchedAt);
                 stale ||= response.stale;
-              }
+              } else if (strictMetadata) throw new Error('Metadata unavailable');
             } catch {
+              if (strictMetadata) throw new Error('Metadata unavailable');
               /* optional metadata must not hide history */
             }
           }

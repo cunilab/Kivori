@@ -1,13 +1,13 @@
 # Kivori platform, products, and release publishing
 
-Status: implementation on `feat/web-multiproduct-releases`, 2026-11-04; production deployment pending.
+Status: base implementation merged as PR #174; production HTTP 403 prompted the authenticated D1 snapshot follow-up, 2026-11-04.
 
 The branch implements catalog-linked KV-P1 presentation, compatible product URL/waitlist handling,
 published changelog rendering, stable desktop download selection, bounded release caching and
 metadata reads, and draft-release metadata generation. The findings below describe the baseline.
 See the [website runbook](../apps/web/README.md#products-and-published-releases) for the implemented
 limits. The live feed's original failure remains unconfirmed until runtime verification after an
-approved deployment. No durable mirror or webhook has been added.
+approved deployment. The follow-up adds the narrow durable snapshot described below after confirming production HTTP 403; it uses the existing D1 database and Actions credentials.
 
 Desktop 0.3.1 / Pip firmware 0.1.4 is now [published](https://github.com/cunilab/Kivori/releases/tag/v0.3.1). Work continues on `feat/web-multiproduct-releases`.
 
