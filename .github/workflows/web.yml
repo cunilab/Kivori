@@ -10,12 +10,14 @@ on:
       - 'apps/web/**'
       - 'packages/ui/**'
       - 'assets/**'
+      - 'products/**'
       - '.github/workflows/web.yml'
   pull_request:
     paths:
       - 'apps/web/**'
       - 'packages/ui/**'
       - 'assets/**'
+      - 'products/**'
       - '.github/workflows/web.yml'
 
 permissions:

@@ -4,10 +4,11 @@
 // .github/workflows/release-start.yml.
 //
 //   bun scripts/release-info.mjs --version 0.2.0 [--prev-tag v0.1.0] [--to HEAD] \
-//        [--firmware-versions JSON_MAP] [--repo cunilab/Kivori] [--out-dir DIR]
+//        [--firmware-versions JSON_MAP] [--repo cunilab/Kivori] [--out-dir DIR] [--metadata-out FILE]
 //
 // Writes DIR/title.txt, DIR/notes.md (the release body) and DIR/notes-short.md (the same without the
-// compare link, for latest.json); without --out-dir it prints title and notes. The firmware version
+// compare link, for latest.json); without --out-dir it prints title and notes. --metadata-out writes
+// catalog metadata only when the checked-out commit and its versions match the requested release. The firmware version
 // comes from every catalog firmware crate (or a complete --firmware-versions map for preview) and the names from products/<product>/product.toml; nothing is hardcoded. Without a
 // previous app tag (the first release) the body is a short "First release" note naming both versions
 // and pointing to the README, not the whole history.
@@ -19,12 +20,12 @@
 // under Firmware when it touches the product's catalog crate paths and the version changed since the
 // previous app tag. The owner reviews (and can edit) the draft before publishing it.
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { releaseCatalog } from './release-catalog.mjs';
-import { tomlVersion } from './release-bump.mjs';
+import { parseSemver, tomlVersion } from './release-bump.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -252,6 +253,7 @@ export function main(argv, directory = root) {
       'firmware-versions': { type: 'string' },
       repo: { type: 'string', default: '' },
       'out-dir': { type: 'string' },
+      'metadata-out': { type: 'string' },
     },
   });
   if (!opt.version) throw new Error('--version is required');
@@ -269,6 +271,63 @@ export function main(argv, directory = root) {
   )
     throw new Error('Invalid catalog firmware version overrides');
   const products = catalog.map((p) => ({ ...p, version: versions[p.product] ?? p.version }));
+
+  if (opt['metadata-out']) {
+    const commit = git(root, 'rev-parse', '--verify', 'HEAD^{commit}').trim();
+    if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('Invalid metadata commit');
+    parseSemver(opt.version);
+    if (git(root, 'rev-parse', '--verify', `${opt.to}^{commit}`).trim() !== commit)
+      throw new Error('Metadata ref must match checked-out HEAD');
+    const paths = [
+      'Cargo.toml',
+      'products',
+      ...catalog
+        .map((p) => p.crates)
+        .flat()
+        .map((c) => `${c}/Cargo.toml`),
+    ];
+    if (git(root, 'status', '--porcelain', '--untracked-files=all', '--', ...paths).trim())
+      throw new Error('Metadata inputs must match checked-out HEAD');
+    for (const path of [
+      'Cargo.toml',
+      'products/registry.toml',
+      ...catalog.map((p) => `products/${p.product}/product.toml`),
+      ...catalog.flatMap((p) => p.crates.map((c) => `${c}/Cargo.toml`)),
+    ])
+      git(root, 'cat-file', '-e', `HEAD:${path}`);
+    if (
+      tomlVersion(readFileSync(join(root, 'Cargo.toml'), 'utf8'), 'workspace.package') !==
+      opt.version
+    )
+      throw new Error('Metadata desktop version must match Cargo.toml');
+    if (
+      products.some(
+        (p, i) =>
+          p.version !== catalog[i].version ||
+          typeof p.model !== 'string' ||
+          !/^[A-Z]{2}-[A-Z0-9]+$/.test(p.model),
+      )
+    )
+      throw new Error('Invalid metadata model or firmware version mismatch');
+    writeFileSync(
+      opt['metadata-out'],
+      JSON.stringify(
+        {
+          schema_version: 1,
+          desktop_version: opt.version,
+          commit,
+          firmware: products.map(({ product, model, version, boards }) => ({
+            product,
+            model,
+            version,
+            boards,
+          })),
+        },
+        null,
+        2,
+      ) + '\n',
+    );
+  }
 
   const prev = opt['prev-tag'];
   // A first release lists no commits, so the history is read only when there is a previous tag.

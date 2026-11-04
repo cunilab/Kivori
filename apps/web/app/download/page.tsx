@@ -45,7 +45,11 @@ export const metadata: Metadata = pageMetadata({
   path: '/download',
 });
 
-const REQUIREMENTS = ['Windows 10 or 11, 64-bit', 'A free USB-C port', 'Your Kivori'] as const;
+const REQUIREMENTS = [
+  'Windows 10 or 11, 64-bit',
+  'A free USB-C port',
+  'A supported Kivori device',
+] as const;
 
 const pill = 'keycap h-11 px-6 text-base';
 
@@ -54,15 +58,13 @@ export default async function DownloadPage(): Promise<ReactElement> {
   const state = downloadState(result);
   const releases = result.status === 'ok' ? result.releases : [];
   const ready = state.kind === 'ready' ? state : null;
+  const stable = releases.find((release) => !release.prerelease && !release.version.includes('-'));
+  const stale = result.status === 'ok' && result.stale;
 
   return (
     <>
       <JsonLd
-        data={softwareApplicationJsonLd(
-          releases[0]?.version,
-          undefined,
-          Boolean(releases[0]?.macInstaller),
-        )}
+        data={softwareApplicationJsonLd(stable?.version, undefined, Boolean(stable?.macInstaller))}
       />
       <section
         aria-labelledby="download-title"
@@ -74,15 +76,16 @@ export default async function DownloadPage(): Promise<ReactElement> {
             Download Kivori.
           </h1>
           <p className="lead mx-auto mt-6 max-w-xl">
-            The app that pairs with your Kivori. It runs offline and keeps your device up to date.
+            One desktop app for Kivori devices, including KV-P1. It runs offline and keeps your
+            device up to date.
           </p>
           <div className="mt-12">
-            {ready || releases[0]?.macInstaller ? (
+            {stable && (ready || stable.macInstaller) ? (
               <OsDownloadButton
-                version={releases[0].version}
-                beta={releases[0].prerelease}
-                macAvailable={Boolean(releases[0].macInstaller)}
-                windowsAvailable={Boolean(releases[0].installer)}
+                version={stable.version}
+                beta={false}
+                macAvailable={Boolean(stable.macInstaller)}
+                windowsAvailable={Boolean(stable.installer)}
               />
             ) : state.kind === 'empty' ? (
               <div className="flex flex-col items-center gap-4">
@@ -93,7 +96,7 @@ export default async function DownloadPage(): Promise<ReactElement> {
                   size="lg"
                   className="keycap h-14 px-9 text-lg"
                   nativeButton={false}
-                  render={<a href={notifyHref('kivori')} />}
+                  render={<a href={notifyHref('kv-p1')} />}
                 >
                   Join the waitlist
                 </Button>
@@ -103,9 +106,29 @@ export default async function DownloadPage(): Promise<ReactElement> {
               </div>
             ) : (
               <p className="text-lg text-muted-foreground">
-                Downloads are temporarily unavailable. Please try again shortly.
+                {state.kind === 'unavailable'
+                  ? 'Downloads are temporarily unavailable. Please try again shortly.'
+                  : 'Downloads are not available for the latest stable release.'}
               </p>
             )}
+            {stale ? (
+              <p role="status" className="mt-4 text-sm text-muted-foreground">
+                Release information may be out of date. Please check again shortly.
+              </p>
+            ) : null}
+            {result.status === 'ok' && result.fetchedAt ? (
+              <p className="mt-3 text-sm text-muted-foreground">
+                Last checked{' '}
+                <time dateTime={new Date(result.fetchedAt).toISOString()}>
+                  {new Date(result.fetchedAt).toLocaleString('en-GB', {
+                    timeZone: 'UTC',
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })}{' '}
+                  UTC
+                </time>
+              </p>
+            ) : null}
           </div>
         </div>
       </section>
@@ -135,9 +158,11 @@ export default async function DownloadPage(): Promise<ReactElement> {
                     ]
                       .filter(Boolean)
                       .join(' · ')
-                  : releases.length
-                    ? 'Windows build not published for this release'
-                    : 'First release coming soon'}
+                  : state.kind === 'unavailable'
+                    ? 'Release information temporarily unavailable'
+                    : stable
+                      ? 'Windows build not published for this release'
+                      : 'First stable release coming soon'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6 px-6 pb-6 sm:px-8 sm:pb-8">
@@ -162,14 +187,18 @@ export default async function DownloadPage(): Promise<ReactElement> {
                 >
                   Download for Windows
                 </Button>
-              ) : (
+              ) : state.kind === 'empty' ? (
                 <Button
                   size="lg"
                   className={pill}
                   nativeButton={false}
-                  render={<a href={notifyHref('kivori')} />}
+                  render={<a href={notifyHref('kv-p1')} />}
                 >
                   Join the waitlist
+                </Button>
+              ) : (
+                <Button size="lg" className={pill} disabled>
+                  Download for Windows
                 </Button>
               )}
             </CardContent>
@@ -184,9 +213,11 @@ export default async function DownloadPage(): Promise<ReactElement> {
                 macOS
               </CardTitle>
               <CardDescription className="text-base">
-                {releases[0]?.macInstaller
-                  ? `Version ${releases[0].version} · Apple Silicon`
-                  : 'Mac build not published yet'}
+                {stable?.macInstaller
+                  ? `Version ${stable.version} · Apple Silicon`
+                  : state.kind === 'unavailable'
+                    ? 'Release information temporarily unavailable'
+                    : 'Mac build not published for the latest stable release'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6 px-6 pb-6 sm:px-8 sm:pb-8">
@@ -195,7 +226,7 @@ export default async function DownloadPage(): Promise<ReactElement> {
                 not available on macOS.
               </p>
               <div className="flex flex-wrap gap-3">
-                {releases[0]?.macInstaller ? (
+                {stable?.macInstaller ? (
                   <Button
                     size="lg"
                     className={pill}
@@ -214,7 +245,7 @@ export default async function DownloadPage(): Promise<ReactElement> {
                   variant="outline"
                   className={pill}
                   nativeButton={false}
-                  render={<a href={notifyHref('kivori')} />}
+                  render={<a href={notifyHref('kv-p1')} />}
                 >
                   Join the waitlist
                 </Button>
@@ -236,8 +267,9 @@ export default async function DownloadPage(): Promise<ReactElement> {
             <Table className="min-w-[34rem]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="h-12 px-6">Version</TableHead>
+                  <TableHead className="h-12 px-6">Desktop app</TableHead>
                   <TableHead className="h-12">Date</TableHead>
+                  <TableHead className="h-12">Bundled firmware</TableHead>
                   <TableHead className="h-12">Status</TableHead>
                   <TableHead className="h-12 pr-6 text-right">Windows</TableHead>
                 </TableRow>
@@ -251,6 +283,15 @@ export default async function DownloadPage(): Promise<ReactElement> {
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {formatDate(release.date)}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {release.firmware.length
+                          ? release.firmware.map((firmware) => (
+                              <div key={firmware.product}>
+                                {firmware.model} {firmware.version}
+                              </div>
+                            ))
+                          : 'Details unavailable'}
                       </TableCell>
                       <TableCell>
                         {release.prerelease ? <Badge variant="secondary">Beta</Badge> : null}
@@ -269,7 +310,7 @@ export default async function DownloadPage(): Promise<ReactElement> {
                       </TableCell>
                     </TableRow>
                     <TableRow className="hover:bg-transparent">
-                      <TableCell colSpan={4} className="px-6 pt-0 pb-2 whitespace-normal">
+                      <TableCell colSpan={5} className="px-6 pt-0 pb-2 whitespace-normal">
                         <Accordion>
                           <AccordionItem value="notes" className="border-0">
                             <AccordionTrigger className="w-fit flex-none gap-2 py-1 text-sm font-medium text-muted-foreground hover:text-foreground hover:no-underline">
@@ -277,7 +318,7 @@ export default async function DownloadPage(): Promise<ReactElement> {
                             </AccordionTrigger>
                             <AccordionContent>
                               <div className="pt-2">
-                                <ReleaseNotes version={release.version} />
+                                <ReleaseNotes version={release.version} notes={release.notes} />
                               </div>
                             </AccordionContent>
                           </AccordionItem>

@@ -1,14 +1,35 @@
 import notes010 from '@/content/releases/0.1.0.md';
 
-// Curated, user-facing notes. Add `content/releases/<version>.md` and list it here; the GitHub release
-// body is never read. Only `- ` bullets and plain paragraphs are understood.
+// Curated notes remain a fallback for releases without a published body.
 const NOTES: Record<string, string> = {
   '0.1.0': notes010,
 };
 
 export const FALLBACK_NOTE = 'Improvements and fixes.';
 
-export type NoteBlock = { kind: 'paragraph'; text: string } | { kind: 'list'; items: string[] };
+export type NoteBlock =
+  | { kind: 'paragraph'; text: string }
+  | { kind: 'heading'; text: string }
+  | { kind: 'list'; items: string[] };
+
+function clean(text: string): string {
+  return text
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/<[^>]*>/g, '')
+    .replace(/[`*_~]/g, '')
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/(?:api\.)?github\.com(?:\/[^\s]*)?/gi, '')
+    .replace(/\bcunilab\/kivori(?:#[0-9]+)?\b/gi, '')
+    .replace(/ESP32|ST7789|HW-040|SuperMini/gi, 'device')
+    .replace(/blueprint/gi, 'design')
+    .replace(/\b\d+(?:\.\d+)?\s?mm\b/gi, 'specified size')
+    .replace(/\bTBC\b/g, 'pending confirmation')
+    .replace(/\(?#[0-9]+\)?/g, '')
+    .replace(/\b[0-9a-f]{7,40}\b/gi, '')
+    .replace(/@[\w-]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 /** Parses the tiny supported subset: blank-line separated paragraphs and `- ` bullet runs. */
 export function parseNotes(source: string): NoteBlock[] {
@@ -24,10 +45,15 @@ export function parseNotes(source: string): NoteBlock[] {
     list = null;
   };
   for (const raw of source.split(/\r?\n/)) {
-    const line = raw.trim();
+    const line = clean(raw.trim());
+    if (/^full changelog:?$/i.test(line)) continue;
     if (!line) {
       flushParagraph();
       flushList();
+    } else if (/^#{1,6}\s/.test(line)) {
+      flushParagraph();
+      flushList();
+      blocks.push({ kind: 'heading', text: line.replace(/^#{1,6}\s+/, '') });
     } else if (line.startsWith('- ')) {
       flushParagraph();
       (list ??= []).push(line.slice(2).trim());
@@ -42,8 +68,8 @@ export function parseNotes(source: string): NoteBlock[] {
 }
 
 /** Notes for a version, or the one-line fallback when no file was written for it. */
-export function notesFor(version: string, source: Record<string, string> = NOTES): NoteBlock[] {
-  const text = source[version];
+export function notesFor(version: string, notes?: string): NoteBlock[] {
+  const text = notes || NOTES[version];
   const blocks = text ? parseNotes(text) : [];
   return blocks.length ? blocks : [{ kind: 'paragraph', text: FALLBACK_NOTE }];
 }

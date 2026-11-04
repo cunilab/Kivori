@@ -21,13 +21,9 @@ interface LocalDb extends WaitlistDb {
   prepare(sql: string): LocalStatement;
 }
 
-const context = vi.hoisted(() => ({ env: {} as Record<string, unknown>, unavailable: false }));
-vi.mock('@opennextjs/cloudflare', () => ({
-  getCloudflareContext: () => {
-    if (context.unavailable) throw new Error('Outside a Worker');
-    return { env: context.env };
-  },
-}));
+// Use the adapter's runtime injection rather than mocking its re-exported package entry.
+const contextKey = Symbol.for('__cloudflare-context__');
+const context = { env: {} as Record<string, unknown> };
 
 describe('local waitlist rehearsal (local D1, mocked Turnstile and Worker context)', () => {
   const directory = mkdtempSync(join(tmpdir(), 'kivori-waitlist-test-'));
@@ -72,7 +68,6 @@ describe('local waitlist rehearsal (local D1, mocked Turnstile and Worker contex
   beforeEach(async () => {
     vi.clearAllMocks();
     await db.prepare('DELETE FROM waitlist').run();
-    context.unavailable = false;
     context.env = {
       WAITLIST_DB: db,
       WAITLIST_RATE_LIMITER: { limit },
@@ -80,6 +75,7 @@ describe('local waitlist rehearsal (local D1, mocked Turnstile and Worker contex
       TURNSTILE_SITE_KEY: TURNSTILE_TEST_SITE_KEY,
       CONTACT_EMAIL: 'privacy@example.com',
     };
+    vi.stubGlobal(contextKey, context);
     vi.stubEnv('CONTACT_EMAIL', '');
     vi.stubGlobal('fetch', verify);
   });
@@ -142,6 +138,13 @@ describe('local waitlist rehearsal (local D1, mocked Turnstile and Worker contex
     );
     expect(columns).not.toContain('ip');
     expect(columns).not.toContain('turnstileToken');
+  });
+
+  it('accepts the canonical KV-P1 choice alongside the historic product alias', async () => {
+    expect((await signup({ product: 'kv-p1' })).status).toBe(200);
+    expect((await db.prepare('SELECT product FROM waitlist').all()).results).toEqual([
+      { product: 'kv-p1' },
+    ]);
   });
 
   it.each([
@@ -230,13 +233,13 @@ describe('local waitlist rehearsal (local D1, mocked Turnstile and Worker contex
   });
 
   it('keeps test keys confined to plain Next dev rendering', async () => {
-    context.unavailable = true;
+    Reflect.deleteProperty(globalThis, contextKey);
     expect((await WaitlistSection({})).props).toMatchObject({ siteKey: TURNSTILE_TEST_SITE_KEY });
   });
 
   it('renders the Worker contact, local fallback and unconfigured privacy message', () => {
     expect(renderToStaticMarkup(PrivacyPage())).toContain('href="mailto:privacy@example.com"');
-    context.unavailable = true;
+    Reflect.deleteProperty(globalThis, contextKey);
     vi.stubEnv('CONTACT_EMAIL', ' local-privacy@example.com ');
     expect(renderToStaticMarkup(PrivacyPage())).toContain(
       'href="mailto:local-privacy@example.com"',

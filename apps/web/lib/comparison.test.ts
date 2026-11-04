@@ -17,7 +17,7 @@ const other: Product = {
 describe('buildComparison', () => {
   it('renders a single product cleanly', () => {
     const c = buildComparison([kivori]);
-    expect(c.columns).toEqual([{ slug: 'kivori', name: 'Kivori', edition: 'Beta' }]);
+    expect(c.columns).toEqual([{ slug: 'kv-p1', name: 'Kivori KV-P1', edition: 'Beta' }]);
     expect(c.groups[0]).toEqual({
       group: 'Overview',
       rows: [

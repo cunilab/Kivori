@@ -12,7 +12,9 @@ function loaded(withInstaller: boolean): () => Promise<ReleasesResult> {
         version: '0.2.0',
         tag: 'v0.2.0',
         date: '2026-02-01T00:00:00Z',
-        prerelease: true,
+        prerelease: false,
+        notes: '',
+        firmware: [],
         installer: withInstaller ? { size: 4, url: UPSTREAM } : null,
       },
     ],
@@ -136,4 +138,17 @@ it('streams the Apple Silicon dmg with macOS analytics', async () => {
     redirect: 'follow',
   });
   expect(record).toHaveBeenCalledWith(expect.objectContaining({ os: 'macos' }));
+});
+
+it('does not select a newer preview for latest', async () => {
+  const base = await loaded(true)();
+  if (base.status !== 'ok') throw new Error('fixture');
+  base.releases.unshift({ ...base.releases[0], version: '0.3.0-beta.1', prerelease: true });
+  const fetcher = vi.fn(async () => new Response('data'));
+  const response = await downloadResponse(request(), 'windows', 'latest', {
+    load: async () => base,
+    fetcher,
+    record: vi.fn(),
+  });
+  expect(response.headers.get('content-disposition')).toContain('0.2.0');
 });

@@ -19,6 +19,7 @@ const nextConfig: NextConfig = {
   images: { unoptimized: true },
   // Version history now lives on the download page.
   redirects: async () => [
+    { source: '/products/kivori', destination: '/products/kv-p1', permanent: true },
     { source: '/changelog', destination: '/download#history', permanent: true },
   ],
 };

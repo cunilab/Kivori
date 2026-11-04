@@ -5,7 +5,6 @@ import { Card } from '@kivori/ui/components/card';
 import { cn } from '@kivori/ui/lib/utils';
 import { ProductStage } from '@/components/product-shot';
 import type { Product } from '@/content/products/types';
-import { renders } from '@/lib/media';
 import { notifyHref, PRODUCT_STATUS_LABEL } from '@/lib/product-labels';
 
 interface ProductCardProps {
@@ -25,11 +24,7 @@ export function ProductCard({ product, layout = 'card' }: ProductCardProps): Rea
       )}
     >
       <div className={cn('flex items-center justify-center p-6 sm:p-10', wide && 'lg:w-3/5')}>
-        <ProductStage
-          image={renders.heroTransparent}
-          large
-          sizes="(min-width: 1024px) 700px, 100vw"
-        />
+        <ProductStage image={product.hero.image} large sizes="(min-width: 1024px) 700px, 100vw" />
       </div>
       <div className={cn('flex flex-1 flex-col gap-3 p-8 sm:p-10', wide && 'lg:justify-center')}>
         <div className="flex items-center gap-3">

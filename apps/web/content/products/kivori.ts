@@ -1,18 +1,25 @@
+import { renders } from '@/lib/media';
+import { catalogProduct } from './catalog';
 import type { Product } from './types';
+
+const device = catalogProduct('pip');
 
 // Public selling points only. Keep part names, exact dimensions and build details out of this file;
 // a fact that is not decided yet is left out rather than guessed.
 export const kivori: Product = {
-  slug: 'kivori',
-  name: 'Kivori',
+  id: device.id,
+  model: device.model,
+  slug: device.model.toLowerCase(),
+  name: `Kivori ${device.model}`,
   edition: 'Beta',
   status: 'coming-soon',
   tagline: 'Control the desktop physically. Understand the desktop visually.',
   summary:
     'A desk buddy you control your computer with: a physical knob and three buttons, and a small screen where the buddy shows what your computer is really doing.',
   hero: {
-    art: 'device',
-    alt: 'Illustration of the Kivori wedge: a big knob on the left, a square screen and three buttons on the right.',
+    art: device.image ? 'catalog-image' : 'rotary-three-button',
+    alt: `Illustration of ${device.model}: a big knob on the left, a square screen and three buttons on the right.`,
+    image: { ...(device.image ?? renders.heroTransparent), alt: `Kivori ${device.model}` },
   },
   features: [
     {
