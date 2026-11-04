@@ -53,9 +53,11 @@ export default function ProductsPage(): ReactElement {
         </ul>
       </section>
 
-      <Section id="compare" tone="surface" eyebrow="Compare" title="Side by side.">
-        <ComparisonTable comparison={comparison} />
-      </Section>
+      {products.length > 1 ? (
+        <Section id="compare" tone="surface" eyebrow="Compare" title="Side by side.">
+          <ComparisonTable comparison={comparison} />
+        </Section>
+      ) : null}
     </>
   );
 }

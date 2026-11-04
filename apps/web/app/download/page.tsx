@@ -187,15 +187,6 @@ export default async function DownloadPage(): Promise<ReactElement> {
                 >
                   Download for Windows
                 </Button>
-              ) : state.kind === 'empty' ? (
-                <Button
-                  size="lg"
-                  className={pill}
-                  nativeButton={false}
-                  render={<a href={notifyHref('kv-p1')} />}
-                >
-                  Join the waitlist
-                </Button>
               ) : (
                 <Button size="lg" className={pill} disabled>
                   Download for Windows
@@ -240,15 +231,6 @@ export default async function DownloadPage(): Promise<ReactElement> {
                     Download for macOS
                   </Button>
                 )}
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className={pill}
-                  nativeButton={false}
-                  render={<a href={notifyHref('kv-p1')} />}
-                >
-                  Join the waitlist
-                </Button>
               </div>
             </CardContent>
           </Card>

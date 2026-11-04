@@ -21,7 +21,6 @@ import {
 } from '@kivori/ui/components/sheet';
 import { MAIN_NAV } from '@/lib/nav';
 
-/** Centre links (NavigationMenu) on desktop, a Sheet menu on mobile, plus the waitlist button on the right. */
 export function SiteNav(): ReactElement {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -31,7 +30,7 @@ export function SiteNav(): ReactElement {
   };
 
   return (
-    <>
+    <div className="flex items-center gap-7">
       <NavigationMenu aria-label="Main" className="hidden md:flex">
         <NavigationMenuList className="gap-1">
           {MAIN_NAV.map((item) => (
@@ -51,7 +50,8 @@ export function SiteNav(): ReactElement {
       <div className="flex items-center justify-end gap-1.5">
         <Button
           size="sm"
-          className="keycap h-8 px-4 text-[0.8125rem]"
+          variant="outline"
+          className="h-9 rounded-full border-mint/70 px-4 text-[0.8125rem]"
           nativeButton={false}
           render={<Link href="/#waitlist" />}
         >
@@ -90,6 +90,6 @@ export function SiteNav(): ReactElement {
           </SheetContent>
         </Sheet>
       </div>
-    </>
+    </div>
   );
 }

@@ -2,15 +2,7 @@ import type { Metadata } from 'next';
 import type { ReactElement } from 'react';
 import { FaqList } from '@/components/faq-list';
 import { Hero } from '@/components/hero';
-import {
-  CustomizeSection,
-  FinalBand,
-  LightsSection,
-  MoodsSection,
-  PrivacySection,
-  ProductLookSection,
-  ProfilesSection,
-} from '@/components/home-sections';
+import { FinalBand, ProfilesSection } from '@/components/home-sections';
 import { JsonLd } from '@/components/json-ld';
 import { Section } from '@/components/section';
 import { ScreensShowcase } from '@/components/screens-showcase';
@@ -33,8 +25,7 @@ export default async function HomePage({ searchParams }: HomePageProps): Promise
 
   return (
     <>
-      <Hero initialProduct={selectedProduct} />
-      <MoodsSection />
+      <Hero />
       <ProfilesSection />
       <Section
         id="screens"
@@ -46,16 +37,12 @@ export default async function HomePage({ searchParams }: HomePageProps): Promise
       >
         <ScreensShowcase />
       </Section>
-      <LightsSection />
-      <CustomizeSection />
-      <PrivacySection />
-      <ProductLookSection />
       <Section id="faq" tone="surface" eyebrow="Questions" title="Good to know.">
         <div className="max-w-3xl">
           <FaqList items={faq} />
         </div>
       </Section>
-      <FinalBand />
+      <FinalBand initialProduct={selectedProduct} />
       <JsonLd data={faqJsonLd(faq)} />
     </>
   );
