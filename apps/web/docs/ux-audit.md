@@ -10,8 +10,8 @@ use a consistent compact shape and visible focus treatment. The device sits on i
 its established palette remains unchanged in both light and dark appearance. Visitors may choose
 Light, Dark or System (the default); the choice is stored in their browser.
 
-The homepage introduces KV-P1, lets visitors try the controls, and groups profile and screen details
-before questions and updates. The products pages put the device, availability, compatibility and
+The homepage is an object stage on a sage ground taken from the mint keys, using transparent studio cut-outs (`tools/render-studio`, `*-cutout`) so the device sits on the page colour in both themes: the device render stays pinned while its real screen changes through Turn, Press, Glance and Know chapters, followed by the live demo, buddy moods, the offline promise, questions and the waitlist.
+The products pages put the device, availability, compatibility and
 specifications first, with compact grouped rows across two columns on wide screens. The download page presents Windows and macOS choices with their requirements
 and release history; unavailable and stale release states remain visible. Support groups common tasks
 and troubleshooting, and privacy uses a narrow reading column to distinguish desktop privacy from

@@ -95,6 +95,32 @@ const SHOTS = [
     distance: 320,
     transparent: true,
   },
+  // Transparent cut-outs for coloured page grounds. Wider frame than the white shots so the floor
+  // shadow fades out inside the image instead of being clipped at its borders.
+  {
+    name: 'hero-34-cutout',
+    width: 1500,
+    height: 1000,
+    screen: 'buddy',
+    fov: 22,
+    target: [4, 11, 2],
+    azimuth: -32,
+    elevation: 24,
+    distance: 340,
+    transparent: true,
+  },
+  ...['buddy', 'volume', 'media', 'system'].map((view) => ({
+    name: `front-cutout-${view}`,
+    width: 1500,
+    height: 900,
+    screen: view,
+    fov: 20,
+    target: [0, 11, 0],
+    azimuth: 0,
+    elevation: 16,
+    distance: 300,
+    transparent: true,
+  })),
   ...['clock', 'volume', 'media'].map((view) => ({
     name: `front-${view}`,
     width: 1200,

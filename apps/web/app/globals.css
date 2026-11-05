@@ -41,6 +41,14 @@
   --teal: #147d68;
   --radius: 0.5rem;
   color-scheme: light;
+
+  /* Homepage palette: a sage studio ground drawn from the mint keys, green-black ink. */
+  --home-paper: #e6ece8;
+  --home-raised: #f1f5f2;
+  --home-ink: #0f1513;
+  --home-graphite: #4b5751;
+  --home-hairline: #c9d3cd;
+  --home-deep: #0f1513;
 }
 
 .dark {
@@ -68,6 +76,13 @@
   --ring: #8de0c0;
   --teal: #8de0c0;
   color-scheme: dark;
+
+  --home-paper: #0e1412;
+  --home-raised: #151d1a;
+  --home-ink: #e7eeea;
+  --home-graphite: #98a69f;
+  --home-hairline: #26312c;
+  --home-deep: #080c0b;
 }
 
 @theme inline {
@@ -79,6 +94,12 @@
   --color-mint: var(--mint);
   --color-mint-deep: var(--mint-deep);
   --color-teal: var(--teal);
+  --color-home-paper: var(--home-paper);
+  --color-home-ink: var(--home-ink);
+  --color-home-graphite: var(--home-graphite);
+  --color-home-hairline: var(--home-hairline);
+  --color-home-raised: var(--home-raised);
+  --color-home-deep: var(--home-deep);
 }
 
 @layer base {
@@ -134,5 +155,45 @@
   .site-button {
     border-radius: 0.4rem;
     font-weight: 600;
+  }
+  /* Homepage display type: Instrument Sans set heavy and tight, sentence case. */
+  .home-display {
+    font-weight: 620;
+    letter-spacing: -0.045em;
+    line-height: 0.98;
+  }
+  /* The straight-on cut-outs keep a faint floor shadow at their side borders; fade it out. */
+  .home-fade-sides {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
+    mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
+  }
+}
+
+/* Homepage only: page, header and footer sit on the sage ground. */
+body:has([data-home]) {
+  background-color: var(--home-paper);
+}
+body:has([data-home]) header.sticky {
+  background-color: color-mix(in srgb, var(--home-paper) 88%, transparent);
+  border-color: transparent;
+}
+body:has([data-home]) footer {
+  border-color: var(--home-hairline);
+}
+
+@keyframes home-rise {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .home-rise {
+    animation: home-rise 700ms cubic-bezier(0.23, 1, 0.32, 1) both;
   }
 }
