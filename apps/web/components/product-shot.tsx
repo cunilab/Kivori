@@ -14,7 +14,7 @@ interface ProductShotProps {
 
 /**
  * A studio render from public/media. Use the transparent hero render on the dark stage, inside a
- * `ProductStage` so the mint glow sits under it.
+ * `ProductStage` for consistent sizing.
  */
 export function ProductShot({
   image,
@@ -39,7 +39,7 @@ export function ProductShot({
   );
 }
 
-/** The transparent device render lit from below by a soft mint glow. */
+/** The product render at a responsive size. */
 export function ProductStage({
   image,
   large = false,
@@ -49,10 +49,6 @@ export function ProductStage({
 }: ProductShotProps): ReactElement {
   return (
     <div className={cn('relative isolate mx-auto w-full', className)}>
-      <div
-        aria-hidden="true"
-        className="glow stage-glow absolute inset-x-0 -top-[6%] -bottom-[14%] -z-10 blur-xl"
-      />
       <ProductShot image={image} large={large} priority={priority} sizes={sizes} />
     </div>
   );

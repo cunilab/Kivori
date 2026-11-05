@@ -22,34 +22,32 @@ interface BuyBarProps {
 /** Sticky bar under the site nav: name, price or "Coming soon", Buy, and Notify me (opens the waitlist). */
 export function BuyBar({ name, price, buyUrl, waitlist }: BuyBarProps): ReactElement {
   return (
-    <div className="sticky top-14 z-40 border-b border-border/70 bg-background/85 backdrop-blur-xl">
+    <div className="sticky top-16 z-40 border-b border-border/70 bg-background/85 backdrop-blur-xl">
       <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-3 px-5 sm:px-8">
-        <p className="font-display text-lg font-bold tracking-tight">{name}</p>
-        <p className="pixel hidden text-[0.7rem] text-muted-foreground sm:block">
-          {price ?? 'Coming soon'}
-        </p>
+        <p className="hidden font-display text-lg font-semibold tracking-tight sm:block">{name}</p>
+        <p className="hidden text-sm text-muted-foreground sm:block">{price ?? 'Coming soon'}</p>
         <div className="ml-auto flex items-center gap-2">
           {buyUrl ? (
             <Button
               size="sm"
-              className="keycap h-8 px-4"
+              className="site-button h-8 px-4"
               nativeButton={false}
               render={<a href={buyUrl} />}
             >
               Buy
             </Button>
           ) : (
-            <Button size="sm" variant="secondary" className="h-8 rounded-full px-4" disabled>
+            <Button size="sm" variant="secondary" className="h-8 rounded-md px-4" disabled>
               Buy &middot; Coming soon
             </Button>
           )}
           <Sheet>
-            <SheetTrigger render={<Button size="sm" className="keycap h-8 px-4" />}>
+            <SheetTrigger render={<Button size="sm" className="site-button h-8 px-4" />}>
               Notify me
             </SheetTrigger>
             <SheetContent side="right" className="overflow-y-auto sm:max-w-md">
               <SheetHeader>
-                <SheetTitle className="font-display text-2xl font-bold tracking-tight">
+                <SheetTitle className="font-display text-2xl font-semibold tracking-tight">
                   Be the first to know.
                 </SheetTitle>
                 <SheetDescription>

@@ -38,7 +38,7 @@ export function SiteNav(): ReactElement {
               <NavigationMenuLink
                 active={isActive(item.href)}
                 render={<Link href={item.href} />}
-                className="rounded-full px-3.5 py-1.5 text-[0.8125rem] text-muted-foreground hover:text-foreground data-active:bg-transparent data-active:text-foreground"
+                className="rounded-md px-3.5 py-1.5 text-[0.8125rem] text-muted-foreground hover:text-foreground data-active:bg-transparent data-active:text-foreground"
               >
                 {item.label}
               </NavigationMenuLink>
@@ -51,11 +51,11 @@ export function SiteNav(): ReactElement {
         <Button
           size="sm"
           variant="outline"
-          className="h-9 rounded-full border-mint/70 px-4 text-[0.8125rem]"
+          className="h-10 rounded-md border-border px-4 text-sm"
           nativeButton={false}
           render={<Link href="/#waitlist" />}
         >
-          Join the waitlist
+          Get updates
         </Button>
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger
@@ -63,7 +63,7 @@ export function SiteNav(): ReactElement {
               <Button
                 variant="ghost"
                 size="icon"
-                className="rounded-full md:hidden"
+                className="rounded-md md:hidden"
                 aria-label="Open menu"
               />
             }
@@ -81,7 +81,7 @@ export function SiteNav(): ReactElement {
                   key={item.href}
                   href={item.href}
                   onClick={() => setOpen(false)}
-                  className="border-b border-border py-4 font-display text-2xl font-bold tracking-tight"
+                  className="border-b border-border py-4 font-display text-2xl font-semibold tracking-tight"
                 >
                   {item.label}
                 </Link>

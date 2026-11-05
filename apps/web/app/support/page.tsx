@@ -1,12 +1,5 @@
 import type { Metadata } from 'next';
 import type { ReactElement, ReactNode } from 'react';
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@kivori/ui/components/accordion';
-import { Eyebrow } from '@/components/section';
 import { contactEmail } from '@/lib/contact';
 import { pageMetadata } from '@/lib/metadata';
 
@@ -195,34 +188,42 @@ export default function SupportPage(): ReactElement {
 
   return (
     <>
-      <section
-        aria-labelledby="support-title"
-        className="px-5 pt-20 pb-12 text-center sm:px-8 sm:pt-28"
-      >
-        <div className="mx-auto max-w-3xl">
-          <Eyebrow>Support</Eyebrow>
+      <section aria-labelledby="support-title" className="px-5 pt-14 pb-8 sm:px-8 sm:pt-20">
+        <div className="mx-auto max-w-[1180px]">
           <h1 id="support-title" className="display-1 mt-3">
             How can we help?
           </h1>
-          <p className="lead mx-auto mt-6 max-w-xl">
+          <p className="lead mt-6 max-w-xl">
             Quick answers for setting up and living with your Kivori.
           </p>
         </div>
       </section>
+      <nav aria-label="Help topics" className="px-5 sm:px-8">
+        <ul className="mx-auto flex max-w-[1180px] flex-wrap gap-x-7 gap-y-3 border-y border-border py-5 text-sm font-semibold">
+          {sections.map((section) => (
+            <li key={section.id}>
+              <a className="text-teal underline-offset-4 hover:underline" href={`#${section.id}`}>
+                {section.title}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
       <section id="help" aria-label="Help topics" className="px-5 pt-8 pb-24 sm:px-8 sm:pb-32">
         <div className="mx-auto max-w-3xl">
-          <Accordion defaultValue={['getting-started']}>
-            {sections.map((section) => (
-              <AccordionItem key={section.id} value={section.id}>
-                <AccordionTrigger className="py-5 font-display text-xl font-bold tracking-tight sm:text-2xl">
-                  {section.title}
-                </AccordionTrigger>
-                <AccordionContent className="text-base text-muted-foreground">
-                  {section.body}
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
+          {sections.map((section) => (
+            <section
+              key={section.id}
+              id={section.id}
+              aria-labelledby={`${section.id}-title`}
+              className="scroll-mt-24 border-t border-border py-8"
+            >
+              <h2 id={`${section.id}-title`} className="text-2xl font-semibold tracking-tight">
+                {section.title}
+              </h2>
+              <div className="mt-4 leading-relaxed text-muted-foreground">{section.body}</div>
+            </section>
+          ))}
         </div>
       </section>
     </>

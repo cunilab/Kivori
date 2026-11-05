@@ -137,7 +137,7 @@ export function WaitlistForm({
             'error-callback': () => setToken(''),
             // Stay invisible unless Cloudflare actually needs the visitor to click something.
             appearance: 'interaction-only',
-            theme: 'dark',
+            theme: 'light',
           });
         })
         .catch(() => {
@@ -214,7 +214,7 @@ export function WaitlistForm({
   if (status === 'success') {
     return inline ? (
       <div role="status" className="max-w-[440px]">
-        <p className="flex items-center gap-2 font-display text-xl font-bold tracking-tight text-mint">
+        <p className="flex items-center gap-2 font-display text-xl font-semibold tracking-tight text-teal">
           <CheckCircle2Icon className="size-5" aria-hidden="true" />
           You&apos;re on the list.
         </p>
@@ -224,9 +224,9 @@ export function WaitlistForm({
         </p>
       </div>
     ) : (
-      <Card role="status" className="rounded-3xl p-8 text-center shadow-sm">
+      <Card role="status" className="rounded-lg p-8 text-center shadow-sm">
         <CheckCircle2Icon className="mx-auto size-10 text-primary" aria-hidden="true" />
-        <p className="mt-3 font-display text-2xl font-bold tracking-tight">
+        <p className="mt-3 font-display text-2xl font-semibold tracking-tight">
           You&apos;re on the list
         </p>
         <p className="mt-2 text-muted-foreground">
@@ -269,7 +269,7 @@ export function WaitlistForm({
   if (inline) {
     return (
       <form ref={formRef} onSubmit={onSubmit} className="w-full max-w-[440px]">
-        <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-1.5 transition-colors focus-within:border-mint-deep sm:flex-row sm:rounded-full">
+        <div className="flex flex-col gap-2 rounded-md border border-border bg-card p-1.5 focus-within:border-teal sm:flex-row">
           <Label htmlFor={id('email')} className="sr-only">
             Email
           </Label>
@@ -281,7 +281,7 @@ export function WaitlistForm({
             autoComplete="email"
             placeholder="you@example.com"
             maxLength={LIMITS.email}
-            className="h-11 min-w-0 flex-1 rounded-full border-0 bg-transparent px-3.5 text-base shadow-none ring-0 focus-visible:ring-0 dark:bg-transparent"
+            className="h-11 min-w-0 flex-1 rounded-md border-0 bg-transparent px-3.5 text-base shadow-none ring-0 focus-visible:ring-0"
           />
           <input type="hidden" name="product" value={selected} />
           <Button
@@ -289,7 +289,7 @@ export function WaitlistForm({
             size="lg"
             disabled={submitting}
             aria-busy={submitting}
-            className="keycap h-11 px-5 text-[0.95rem] disabled:cursor-wait"
+            className="site-button h-11 px-5 text-[0.95rem] disabled:cursor-wait"
           >
             {submitting ? 'Sending...' : 'Join the waitlist'}
           </Button>
@@ -309,7 +309,7 @@ export function WaitlistForm({
   }
 
   return (
-    <Card className="w-full rounded-3xl p-6 text-left shadow-sm sm:p-8">
+    <Card className="w-full rounded-lg p-6 text-left shadow-sm sm:p-8">
       <form ref={formRef} onSubmit={onSubmit} className="w-full">
         <div>
           <Label htmlFor={id('email')}>Email</Label>
@@ -320,7 +320,7 @@ export function WaitlistForm({
             required
             autoComplete="email"
             maxLength={LIMITS.email}
-            className="mt-1.5 h-11 rounded-xl px-3.5 text-base"
+            className="mt-1.5 h-11 rounded-md px-3.5 text-base"
           />
         </div>
         <div className="mt-4">
@@ -328,7 +328,7 @@ export function WaitlistForm({
           <Select name="product" defaultValue={selected} key={selected} items={productItems}>
             <SelectTrigger
               id={id('product')}
-              className="mt-1.5 h-11 w-full rounded-xl px-3.5 text-base"
+              className="mt-1.5 h-11 w-full rounded-md px-3.5 text-base"
             >
               <SelectValue />
             </SelectTrigger>
@@ -351,7 +351,7 @@ export function WaitlistForm({
             name="use_case"
             rows={3}
             maxLength={LIMITS.useCase}
-            className="mt-1.5 rounded-xl px-3.5 text-base"
+            className="mt-1.5 rounded-md px-3.5 text-base"
           />
         </div>
 
@@ -366,7 +366,7 @@ export function WaitlistForm({
           size="lg"
           disabled={submitting}
           aria-busy={submitting}
-          className="keycap mt-2 h-12 w-full text-base disabled:cursor-wait"
+          className="site-button mt-2 h-12 w-full text-base disabled:cursor-wait"
         >
           {submitting ? 'Sending...' : 'Join the waitlist'}
         </Button>

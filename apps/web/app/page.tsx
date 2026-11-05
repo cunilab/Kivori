@@ -29,15 +29,12 @@ export default async function HomePage({ searchParams }: HomePageProps): Promise
       <ProfilesSection />
       <Section
         id="screens"
-        tone="surface"
-        eyebrow="The screen"
         title="Five screens, one double press."
         intro="Buddy, clock, volume, media and system. Double-press the knob to flip between them."
-        align="center"
       >
         <ScreensShowcase />
       </Section>
-      <Section id="faq" tone="surface" eyebrow="Questions" title="Good to know.">
+      <Section id="faq" title="Common questions.">
         <div className="max-w-3xl">
           <FaqList items={faq} />
         </div>
