@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import localFont from 'next/font/local';
 import type { ReactElement, ReactNode } from 'react';
+import { ThemeProvider } from 'next-themes';
 import brandIcon from '@brand/icon/kivori-icon.svg';
 import { SiteFooter } from '@/components/site-footer';
 import { JsonLd } from '@/components/json-ld';
@@ -45,25 +46,35 @@ const pixel = localFont({
 });
 
 export const viewport: Viewport = {
-  themeColor: '#f7f9fa',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#f7f9fa' },
+    { media: '(prefers-color-scheme: dark)', color: '#11191c' },
+  ],
 };
 
 export default function RootLayout({ children }: { children: ReactNode }): ReactElement {
   return (
-    <html lang="en" className={`${body.variable} ${pixel.variable}`}>
+    <html lang="en" className={`${body.variable} ${pixel.variable}`} suppressHydrationWarning>
       <body className="flex min-h-screen flex-col">
-        <a
-          href="#main"
-          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60] focus:rounded-full focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
         >
-          Skip to content
-        </a>
-        <SiteHeader />
-        <main id="main" className="flex-1">
-          {children}
-        </main>
-        <SiteFooter />
-        <JsonLd data={organizationJsonLd()} />
+          <a
+            href="#main"
+            className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60] focus:rounded-full focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
+          >
+            Skip to content
+          </a>
+          <SiteHeader />
+          <main id="main" className="flex-1">
+            {children}
+          </main>
+          <SiteFooter />
+          <JsonLd data={organizationJsonLd()} />
+        </ThemeProvider>
       </body>
     </html>
   );

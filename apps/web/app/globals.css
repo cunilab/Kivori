@@ -38,8 +38,36 @@
   --border: #d5dfe1;
   --input: #b8c8cb;
   --ring: #147d68;
+  --teal: #147d68;
   --radius: 0.5rem;
   color-scheme: light;
+}
+
+.dark {
+  --background: #11191c;
+  --foreground: #edf3f3;
+  --surface: #202d30;
+  --card: #192427;
+  --card-foreground: #edf3f3;
+  --popover: #202d30;
+  --popover-foreground: #edf3f3;
+  --primary: #edf3f3;
+  --primary-foreground: #182126;
+  --secondary: #29383b;
+  --secondary-foreground: #edf3f3;
+  --muted: #29383b;
+  --muted-foreground: #b3c2c3;
+  --accent: #24483f;
+  --accent-foreground: #d5f6e9;
+  --destructive: #ff8a82;
+  --destructive-foreground: #25110f;
+  --success: #8de0c0;
+  --warning: #f0c77b;
+  --border: #3a4b4e;
+  --input: #53696b;
+  --ring: #8de0c0;
+  --teal: #8de0c0;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -50,7 +78,7 @@
   --color-stage: var(--stage);
   --color-mint: var(--mint);
   --color-mint-deep: var(--mint-deep);
-  --color-teal: #147d68;
+  --color-teal: var(--teal);
 }
 
 @layer base {

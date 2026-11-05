@@ -97,10 +97,12 @@ export default async function ProductPage({ params }: ProductPageProps): Promise
         </ul>
       </Section>
 
-      <Section id="specs" eyebrow="Specs" title="Tech specs.">
-        <div className="mx-auto max-w-3xl">
-          <SpecsTable groups={product.specs} name={product.name} />
-        </div>
+      <Section
+        id="specs"
+        title="Tech specs."
+        className="py-12 sm:py-16 [&>div>div:last-child]:mt-7"
+      >
+        <SpecsTable groups={product.specs} name={product.name} />
       </Section>
 
       <Section id="compatibility" eyebrow="Compatibility" title="Works with.">

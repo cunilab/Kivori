@@ -20,6 +20,7 @@ import {
   SheetTrigger,
 } from '@kivori/ui/components/sheet';
 import { MAIN_NAV } from '@/lib/nav';
+import { ThemeMenu } from '@/components/theme-menu';
 
 export function SiteNav(): ReactElement {
   const pathname = usePathname();
@@ -51,12 +52,13 @@ export function SiteNav(): ReactElement {
         <Button
           size="sm"
           variant="outline"
-          className="h-10 rounded-md border-border px-4 text-sm"
+          className="hidden h-10 rounded-md border-border px-4 text-sm sm:inline-flex"
           nativeButton={false}
           render={<Link href="/#waitlist" />}
         >
           Get updates
         </Button>
+        <ThemeMenu />
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger
             render={
@@ -86,6 +88,13 @@ export function SiteNav(): ReactElement {
                   {item.label}
                 </Link>
               ))}
+              <Link
+                href="/#waitlist"
+                onClick={() => setOpen(false)}
+                className="border-b border-border py-4 text-2xl font-semibold tracking-tight sm:hidden"
+              >
+                Get updates
+              </Link>
             </nav>
           </SheetContent>
         </Sheet>

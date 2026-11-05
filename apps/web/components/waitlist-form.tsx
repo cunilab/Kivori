@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useTheme } from 'next-themes';
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { CheckCircle2Icon } from 'lucide-react';
 import { Button } from '@kivori/ui/components/button';
@@ -51,6 +52,7 @@ interface TurnstileApi {
     },
   ): string;
   reset(widgetId?: string): void;
+  remove(widgetId?: string): void;
 }
 
 declare global {
@@ -87,12 +89,14 @@ export function WaitlistForm({
   idPrefix = 'waitlist',
   variant = 'card',
 }: WaitlistFormProps): ReactElement {
+  const { resolvedTheme } = useTheme();
   const uid = useId();
   const id = (name: string): string => `${idPrefix}${uid}-${name}`;
   const formRef = useRef<HTMLFormElement>(null);
   const widgetRef = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | undefined>(undefined);
   const [status, setStatus] = useState<Status>('idle');
+  const completed = status === 'success';
   const [message, setMessage] = useState('');
   const [token, setToken] = useState('');
   const [attribution, setAttribution] = useState({
@@ -124,6 +128,7 @@ export function WaitlistForm({
 
   // Load Turnstile lazily: when the form nears the viewport (or at once without IntersectionObserver).
   useEffect(() => {
+    if (!resolvedTheme || completed) return;
     const form = formRef.current;
     let cancelled = false;
     const start = (): void => {
@@ -132,12 +137,18 @@ export function WaitlistForm({
           if (cancelled || !widgetRef.current || widgetId.current !== undefined) return;
           widgetId.current = api.render(widgetRef.current, {
             sitekey: siteKey,
-            callback: setToken,
-            'expired-callback': () => setToken(''),
-            'error-callback': () => setToken(''),
+            callback: (value) => {
+              if (!cancelled) setToken(value);
+            },
+            'expired-callback': () => {
+              if (!cancelled) setToken('');
+            },
+            'error-callback': () => {
+              if (!cancelled) setToken('');
+            },
             // Stay invisible unless Cloudflare actually needs the visitor to click something.
             appearance: 'interaction-only',
-            theme: 'light',
+            theme: resolvedTheme === 'dark' ? 'dark' : 'light',
           });
         })
         .catch(() => {
@@ -147,11 +158,15 @@ export function WaitlistForm({
           }
         });
     };
+    const cleanup = (): void => {
+      cancelled = true;
+      if (widgetId.current !== undefined) window.turnstile?.remove(widgetId.current);
+      widgetId.current = undefined;
+      setToken('');
+    };
     if (!form || typeof IntersectionObserver === 'undefined') {
       start();
-      return () => {
-        cancelled = true;
-      };
+      return cleanup;
     }
     const observer = new IntersectionObserver(
       (entries) => {
@@ -164,10 +179,10 @@ export function WaitlistForm({
     );
     observer.observe(form);
     return () => {
-      cancelled = true;
       observer.disconnect();
+      cleanup();
     };
-  }, [siteKey]);
+  }, [siteKey, resolvedTheme, completed]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();

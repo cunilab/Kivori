@@ -33,6 +33,10 @@ export default function PrivacyPage(): ReactElement {
           Engine as totals by operating system and version, with no personal data.
         </p>
 
+        <p className="mt-3 text-base text-muted-foreground sm:text-lg">
+          Your appearance preference is saved in this browser and is not sent as account data.
+        </p>
+
         <h2 className="mt-14 font-display text-2xl font-semibold tracking-tight sm:text-3xl">
           The waitlist
         </h2>
