@@ -20,8 +20,8 @@ import {
   SheetTrigger,
 } from '@kivori/ui/components/sheet';
 import { MAIN_NAV } from '@/lib/nav';
+import { ThemeMenu } from '@/components/theme-menu';
 
-/** Centre links (NavigationMenu) on desktop, a Sheet menu on mobile, plus the waitlist button on the right. */
 export function SiteNav(): ReactElement {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -31,7 +31,7 @@ export function SiteNav(): ReactElement {
   };
 
   return (
-    <>
+    <div className="flex items-center gap-7">
       <NavigationMenu aria-label="Main" className="hidden md:flex">
         <NavigationMenuList className="gap-1">
           {MAIN_NAV.map((item) => (
@@ -39,7 +39,7 @@ export function SiteNav(): ReactElement {
               <NavigationMenuLink
                 active={isActive(item.href)}
                 render={<Link href={item.href} />}
-                className="rounded-full px-3.5 py-1.5 text-[0.8125rem] text-muted-foreground hover:text-foreground data-active:bg-transparent data-active:text-foreground"
+                className="rounded-md px-3.5 py-1.5 text-[0.8125rem] text-muted-foreground hover:text-foreground data-active:bg-transparent data-active:text-foreground"
               >
                 {item.label}
               </NavigationMenuLink>
@@ -51,19 +51,21 @@ export function SiteNav(): ReactElement {
       <div className="flex items-center justify-end gap-1.5">
         <Button
           size="sm"
-          className="keycap h-8 px-4 text-[0.8125rem]"
+          variant="outline"
+          className="hidden h-10 rounded-md border-border px-4 text-sm sm:inline-flex"
           nativeButton={false}
           render={<Link href="/#waitlist" />}
         >
-          Join the waitlist
+          Get updates
         </Button>
+        <ThemeMenu />
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger
             render={
               <Button
                 variant="ghost"
                 size="icon"
-                className="rounded-full md:hidden"
+                className="rounded-md md:hidden"
                 aria-label="Open menu"
               />
             }
@@ -81,15 +83,22 @@ export function SiteNav(): ReactElement {
                   key={item.href}
                   href={item.href}
                   onClick={() => setOpen(false)}
-                  className="border-b border-border py-4 font-display text-2xl font-bold tracking-tight"
+                  className="border-b border-border py-4 font-display text-2xl font-semibold tracking-tight"
                 >
                   {item.label}
                 </Link>
               ))}
+              <Link
+                href="/#waitlist"
+                onClick={() => setOpen(false)}
+                className="border-b border-border py-4 text-2xl font-semibold tracking-tight sm:hidden"
+              >
+                Get updates
+              </Link>
             </nav>
           </SheetContent>
         </Sheet>
       </div>
-    </>
+    </div>
   );
 }

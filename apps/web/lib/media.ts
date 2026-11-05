@@ -88,6 +88,36 @@ export const renders = {
     1600,
     'Kivori showing the song that is playing on its screen.',
   ),
+  // Transparent cut-outs (3000x2000 and 3000x1800) for coloured page grounds.
+  heroCutout: render(
+    'hero-34-cutout',
+    'webp',
+    3000,
+    2000,
+    'Kivori, the desk buddy with a big knob, three mint keys and a bright little screen.',
+  ),
+  cutoutBuddy: render('front-cutout-buddy', 'webp', 3000, 1800, FRONT_ALT),
+  cutoutVolume: render(
+    'front-cutout-volume',
+    'webp',
+    3000,
+    1800,
+    'Kivori showing the volume dial on its screen.',
+  ),
+  cutoutMedia: render(
+    'front-cutout-media',
+    'webp',
+    3000,
+    1800,
+    'Kivori showing the song that is playing on its screen.',
+  ),
+  cutoutSystem: render(
+    'front-cutout-system',
+    'webp',
+    3000,
+    1800,
+    'Kivori showing live processor and memory gauges on its screen.',
+  ),
 } as const satisfies Record<string, MediaImage>;
 
 export const screens = {

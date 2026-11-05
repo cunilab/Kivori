@@ -55,12 +55,12 @@ const VIEWS: readonly View[] = [
 export function ScreensShowcase(): ReactElement {
   return (
     <Tabs defaultValue="buddy" className="items-center gap-10">
-      <TabsList className="h-auto! max-w-full flex-wrap justify-center gap-1 rounded-full border border-border bg-card p-1.5">
+      <TabsList className="h-auto! max-w-full flex-wrap justify-center gap-1 rounded-lg border border-border bg-card p-1.5">
         {VIEWS.map((view) => (
           <TabsTrigger
             key={view.value}
             value={view.value}
-            className="pixel h-10 rounded-full px-5 text-xs data-active:bg-mint data-active:text-primary-foreground dark:data-active:border-transparent dark:data-active:bg-mint dark:data-active:text-primary-foreground"
+            className="h-10 rounded-md px-5 text-sm data-active:bg-primary data-active:text-primary-foreground"
           >
             {view.label}
           </TabsTrigger>
@@ -70,10 +70,6 @@ export function ScreensShowcase(): ReactElement {
         <TabsContent key={view.value} value={view.value} className="w-full">
           <div className="grid items-center gap-8 md:grid-cols-2 md:gap-16">
             <div className="relative isolate mx-auto w-full max-w-[420px] md:justify-self-end">
-              <div
-                aria-hidden="true"
-                className="glow stage-glow absolute -inset-10 -z-10 blur-xl"
-              />
               <div className="rounded-[2rem] bg-linear-to-b from-[#222a40] to-[#0a0d17] p-3 shadow-[0_30px_80px_-20px_rgb(0_0_0/0.7)] ring-1 ring-white/10 sm:p-4">
                 <Image
                   src={view.image.src}

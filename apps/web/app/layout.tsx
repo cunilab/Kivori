@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import localFont from 'next/font/local';
 import type { ReactElement, ReactNode } from 'react';
+import { ThemeProvider } from 'next-themes';
 import brandIcon from '@brand/icon/kivori-icon.svg';
 import { SiteFooter } from '@/components/site-footer';
 import { JsonLd } from '@/components/json-ld';
@@ -26,16 +27,7 @@ export const metadata: Metadata = {
   twitter: { card: 'summary_large_image', images: [ogImagePath()] },
 };
 
-// Fonts are self-hosted from app/fonts (latin subset, SIL OFL; licences alongside), so the build needs no
-// network and the browser makes no Google requests. Bricolage Grotesque and Instrument Sans are
-// variable fonts: one file covers the weight range.
-const display = localFont({
-  src: './fonts/bricolage-grotesque-latin-wght.woff2',
-  weight: '700 800',
-  variable: '--font-bricolage',
-  display: 'swap',
-  adjustFontFallback: 'Arial',
-});
+// Self-hosted fonts keep the site and the device preview independent of third-party requests.
 const body = localFont({
   src: './fonts/instrument-sans-latin-wght.woff2',
   weight: '400 600',
@@ -54,30 +46,35 @@ const pixel = localFont({
 });
 
 export const viewport: Viewport = {
-  themeColor: '#0b0f1a',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#f7f9fa' },
+    { media: '(prefers-color-scheme: dark)', color: '#11191c' },
+  ],
 };
 
 export default function RootLayout({ children }: { children: ReactNode }): ReactElement {
   return (
-    // The web is one committed dark look (see globals.css); the `dark` class keeps shared primitives' dark variants on.
-    <html
-      lang="en"
-      className={`dark ${display.variable} ${body.variable} ${pixel.variable}`}
-      style={{ colorScheme: 'dark' }}
-    >
+    <html lang="en" className={`${body.variable} ${pixel.variable}`} suppressHydrationWarning>
       <body className="flex min-h-screen flex-col">
-        <a
-          href="#main"
-          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60] focus:rounded-full focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
         >
-          Skip to content
-        </a>
-        <SiteHeader />
-        <main id="main" className="flex-1">
-          {children}
-        </main>
-        <SiteFooter />
-        <JsonLd data={organizationJsonLd()} />
+          <a
+            href="#main"
+            className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60] focus:rounded-full focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
+          >
+            Skip to content
+          </a>
+          <SiteHeader />
+          <main id="main" className="flex-1">
+            {children}
+          </main>
+          <SiteFooter />
+          <JsonLd data={organizationJsonLd()} />
+        </ThemeProvider>
       </body>
     </html>
   );

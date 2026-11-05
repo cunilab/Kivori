@@ -11,7 +11,7 @@ export function SiteFooter(): ReactElement {
           <div>
             <Link
               href="/"
-              className="flex w-fit items-center gap-2.5 font-display text-xl font-bold tracking-tight"
+              className="flex w-fit items-center gap-2.5 font-display text-xl font-semibold tracking-tight"
             >
               <BrandMark />
               Kivori
@@ -22,7 +22,7 @@ export function SiteFooter(): ReactElement {
           </div>
           {FOOTER_NAV.map((column) => (
             <nav key={column.title} aria-label={column.title}>
-              <p className="pixel text-xs text-mint">{column.title}</p>
+              <p className="text-sm font-semibold text-foreground">{column.title}</p>
               <ul className="mt-4 space-y-2.5 text-sm text-muted-foreground">
                 {column.links.map((link) => (
                   <li key={link.href}>

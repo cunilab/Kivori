@@ -179,12 +179,14 @@ Sign-up counts (product and utm_source only, no email) go to the `SIGNUPS` Analy
 
 ### Permanent website address
 
-Use `https://kivori-web.andres12holivin.workers.dev` as the public address. The live Worker serves
-the tested website there with version preview routing disabled. Wrangler explicitly sets
-`workers_dev: true` and `preview_urls: false` to retain that routing on future deployments.
+Use `https://kivori-web.andres12holivin.workers.dev` as the public address. Wrangler sets
+`workers_dev: true` and `preview_urls: true` so a reviewed branch can have a version preview.
+After `bun run assets` and `bunx opennextjs-cloudflare build`, run
+`bunx opennextjs-cloudflare upload --preview-alias web-redesign` from `apps/web` to upload
+a preview without changing production traffic. The command prints the preview URL.
 PR CI builds and checks the Worker without uploading preview versions or posting changing URLs.
 Pushes to main retain the existing migration/deployment path. An approved production deployment
 from a reviewed branch can happen without merging its PR; PR #127 remains unmerged.
-Temporary preview hostnames can now be removed from the Turnstile widget while retaining the
+The Turnstile widget must allow a preview hostname before signups can work there; retain the
 permanent hostname. Deployment evidence and remaining signup/deletion acceptance are recorded in
 [validation](../../docs/validation.md#m29-public-website-readiness-and-acceptance).

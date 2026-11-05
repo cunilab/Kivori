@@ -25,15 +25,14 @@ import {
   TableRow,
 } from '@kivori/ui/components/table';
 import { JsonLd } from '@/components/json-ld';
-import { OsDownloadButton } from '@/components/os-download-button';
 import { ReleaseNotes } from '@/components/release-notes';
 import { Eyebrow, Section } from '@/components/section';
 import { downloadState } from '@/lib/download-page';
 import { formatBytes, formatDate } from '@/lib/format';
 import { softwareApplicationJsonLd } from '@/lib/jsonld';
 import { pageMetadata } from '@/lib/metadata';
-import { notifyHref } from '@/lib/product-labels';
 import { loadReleases } from '@/lib/releases';
+import { notifyHref } from '@/lib/product-labels';
 
 // Rendered per request; release data is cached for 600 s by lib/github-cache.ts.
 export const dynamic = 'force-dynamic';
@@ -51,7 +50,7 @@ const REQUIREMENTS = [
   'A supported Kivori device',
 ] as const;
 
-const pill = 'keycap h-11 px-6 text-base';
+const pill = 'site-button h-11 px-6 text-base';
 
 export default async function DownloadPage(): Promise<ReactElement> {
   const result = await loadReleases();
@@ -66,58 +65,38 @@ export default async function DownloadPage(): Promise<ReactElement> {
       <JsonLd
         data={softwareApplicationJsonLd(stable?.version, undefined, Boolean(stable?.macInstaller))}
       />
-      <section
-        aria-labelledby="download-title"
-        className="px-5 pt-20 pb-24 text-center sm:px-8 sm:pt-28 sm:pb-32"
-      >
-        <div className="mx-auto max-w-3xl">
+      <section aria-labelledby="download-title" className="px-5 pt-14 pb-2 sm:px-8 sm:pt-20">
+        <div className="mx-auto max-w-[1180px]">
           <Eyebrow>Kivori Desktop</Eyebrow>
           <h1 id="download-title" className="display-1 mt-3">
             Download Kivori.
           </h1>
-          <p className="lead mx-auto mt-6 max-w-xl">
+          <p className="lead mt-6 max-w-xl">
             One desktop app for Kivori devices, including KV-P1. It runs offline and keeps your
             device up to date.
           </p>
-          <div className="mt-12">
-            {stable && (ready || stable.macInstaller) ? (
-              <OsDownloadButton
-                version={stable.version}
-                beta={false}
-                macAvailable={Boolean(stable.macInstaller)}
-                windowsAvailable={Boolean(stable.installer)}
-              />
-            ) : state.kind === 'empty' ? (
-              <div className="flex flex-col items-center gap-4">
-                <p className="font-display text-2xl font-bold tracking-tight">
-                  First release coming soon
-                </p>
-                <Button
-                  size="lg"
-                  className="keycap h-14 px-9 text-lg"
-                  nativeButton={false}
-                  render={<a href={notifyHref('kv-p1')} />}
+          <div className="mt-6 text-sm text-muted-foreground">
+            {state.kind === 'unavailable' ? (
+              <p>Downloads are temporarily unavailable. Please try again shortly.</p>
+            ) : null}
+            {state.kind === 'empty' ? (
+              <p>
+                First release coming soon.{' '}
+                <a
+                  href={notifyHref('kv-p1')}
+                  className="font-semibold text-teal underline underline-offset-4"
                 >
-                  Join the waitlist
-                </Button>
-                <a href="#platforms" className="text-sm font-medium text-primary hover:underline">
-                  Other platforms &rsaquo;
+                  Get updates
                 </a>
-              </div>
-            ) : (
-              <p className="text-lg text-muted-foreground">
-                {state.kind === 'unavailable'
-                  ? 'Downloads are temporarily unavailable. Please try again shortly.'
-                  : 'Downloads are not available for the latest stable release.'}
               </p>
-            )}
+            ) : null}
             {stale ? (
-              <p role="status" className="mt-4 text-sm text-muted-foreground">
+              <p role="status">
                 Release information may be out of date. Please check again shortly.
               </p>
             ) : null}
             {result.status === 'ok' && result.fetchedAt ? (
-              <p className="mt-3 text-sm text-muted-foreground">
+              <p className="mt-2">
                 Last checked{' '}
                 <time dateTime={new Date(result.fetchedAt).toISOString()}>
                   {new Date(result.fetchedAt).toLocaleString('en-GB', {
@@ -135,18 +114,17 @@ export default async function DownloadPage(): Promise<ReactElement> {
 
       <Section
         id="platforms"
-        tone="surface"
-        eyebrow="Platforms"
-        title="Pick your computer."
+
+        title="Choose your platform."
         className="scroll-mt-14"
       >
         <div className="grid gap-6 md:grid-cols-2">
-          <Card className="rounded-2xl p-2 shadow-none ring-1 ring-border">
+          <Card className="rounded-lg p-2 shadow-none ring-1 ring-border">
             <CardHeader className="p-6 sm:p-8">
-              <span className="flex size-12 items-center justify-center rounded-2xl bg-accent text-accent-foreground">
+              <span className="flex size-12 items-center justify-center rounded-md bg-accent text-accent-foreground">
                 <MonitorIcon className="size-6" aria-hidden="true" />
               </span>
-              <CardTitle className="mt-4 font-display text-3xl font-bold tracking-tight">
+              <CardTitle className="mt-4 font-display text-3xl font-semibold tracking-tight">
                 Windows
               </CardTitle>
               <CardDescription className="text-base">
@@ -187,15 +165,6 @@ export default async function DownloadPage(): Promise<ReactElement> {
                 >
                   Download for Windows
                 </Button>
-              ) : state.kind === 'empty' ? (
-                <Button
-                  size="lg"
-                  className={pill}
-                  nativeButton={false}
-                  render={<a href={notifyHref('kv-p1')} />}
-                >
-                  Join the waitlist
-                </Button>
               ) : (
                 <Button size="lg" className={pill} disabled>
                   Download for Windows
@@ -204,12 +173,12 @@ export default async function DownloadPage(): Promise<ReactElement> {
             </CardContent>
           </Card>
 
-          <Card className="rounded-2xl p-2 shadow-none ring-1 ring-border">
+          <Card className="rounded-lg p-2 shadow-none ring-1 ring-border">
             <CardHeader className="p-6 sm:p-8">
-              <span className="flex size-12 items-center justify-center rounded-2xl bg-secondary text-muted-foreground">
+              <span className="flex size-12 items-center justify-center rounded-md bg-secondary text-muted-foreground">
                 <AppleIcon className="size-6" aria-hidden="true" />
               </span>
-              <CardTitle className="mt-4 font-display text-3xl font-bold tracking-tight">
+              <CardTitle className="mt-4 font-display text-3xl font-semibold tracking-tight">
                 macOS
               </CardTitle>
               <CardDescription className="text-base">
@@ -240,15 +209,6 @@ export default async function DownloadPage(): Promise<ReactElement> {
                     Download for macOS
                   </Button>
                 )}
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className={pill}
-                  nativeButton={false}
-                  render={<a href={notifyHref('kv-p1')} />}
-                >
-                  Join the waitlist
-                </Button>
               </div>
             </CardContent>
           </Card>
@@ -263,7 +223,7 @@ export default async function DownloadPage(): Promise<ReactElement> {
               : 'No releases yet. The first one is coming soon.'}
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-2xl bg-card ring-1 ring-border">
+          <div className="overflow-x-auto rounded-md bg-card ring-1 ring-border">
             <Table className="min-w-[34rem]">
               <TableHeader>
                 <TableRow>

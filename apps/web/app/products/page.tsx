@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import type { ReactElement } from 'react';
 import { ComparisonTable } from '@/components/comparison-table';
 import { ProductCard } from '@/components/product-card';
-import { Eyebrow, Section } from '@/components/section';
+import { Section } from '@/components/section';
 import { getProducts } from '@/content/products';
 import { buildComparison } from '@/lib/comparison';
 import { pageMetadata } from '@/lib/metadata';
@@ -21,23 +21,18 @@ export default function ProductsPage(): ReactElement {
 
   return (
     <>
-      <section
-        aria-labelledby="products-title"
-        className="px-5 pt-20 pb-12 text-center sm:px-8 sm:pt-28"
-      >
-        <div className="mx-auto max-w-3xl">
-          <Eyebrow>Lineup</Eyebrow>
-          <h1 id="products-title" className="display-1 mt-3">
-            Meet the Kivori lineup.
+      <section aria-labelledby="products-title" className="px-5 pt-14 pb-8 sm:px-8 sm:pt-20">
+        <div className="mx-auto max-w-[1180px]">
+          <h1 id="products-title" className="display-1">
+            Products
           </h1>
-          <p className="lead mx-auto mt-6 max-w-xl">
-            Kivori brings your devices together in one desktop app. Meet KV-P1, our first desk
-            companion.
+          <p className="lead mt-4 max-w-xl">
+            Physical controls and a desktop app designed to work together.
           </p>
         </div>
       </section>
 
-      <section aria-label="Lineup" className="px-5 pb-24 sm:px-8 sm:pb-32">
+      <section aria-label="Lineup" className="px-5 pb-16 sm:px-8 sm:pb-24">
         <ul
           className={
             single
@@ -53,9 +48,11 @@ export default function ProductsPage(): ReactElement {
         </ul>
       </section>
 
-      <Section id="compare" tone="surface" eyebrow="Compare" title="Side by side.">
-        <ComparisonTable comparison={comparison} />
-      </Section>
+      {products.length > 1 ? (
+        <Section id="compare" eyebrow="Compare" title="Side by side.">
+          <ComparisonTable comparison={comparison} />
+        </Section>
+      ) : null}
     </>
   );
 }

@@ -1,9 +1,8 @@
 import type { ReactElement, ReactNode } from 'react';
 import { cn } from '@kivori/ui/lib/utils';
 
-/** Pixel-font mint label above a headline. */
 export function Eyebrow({ children }: { children: ReactNode }): ReactElement {
-  return <p className="pixel text-xs text-mint">{children}</p>;
+  return <p className="text-sm font-semibold text-teal">{children}</p>;
 }
 
 interface SectionHeadingProps {
@@ -15,7 +14,6 @@ interface SectionHeadingProps {
   size?: 'display-2' | 'display-3';
 }
 
-/** Eyebrow, headline and intro, as one block. `id` is the heading id (sections `aria-labelledby` it). */
 export function SectionHeading({
   id,
   eyebrow,
@@ -27,11 +25,11 @@ export function SectionHeading({
   return (
     <div className={cn('max-w-3xl', align === 'center' && 'mx-auto text-center')}>
       {eyebrow ? <Eyebrow>{eyebrow}</Eyebrow> : null}
-      <h2 id={id} className={cn(size, eyebrow && 'mt-3.5')}>
+      <h2 id={id} className={cn(size, eyebrow && 'mt-3')}>
         {title}
       </h2>
       {intro ? (
-        <p className={cn('lead mt-4 max-w-[52ch]', align === 'center' && 'mx-auto')}>{intro}</p>
+        <p className={cn('lead mt-4 max-w-[60ch]', align === 'center' && 'mx-auto')}>{intro}</p>
       ) : null}
     </div>
   );
@@ -39,18 +37,13 @@ export function SectionHeading({
 
 interface SectionProps extends Omit<SectionHeadingProps, 'id'> {
   id: string;
-  /** `surface` lifts the band one step above the stage. */
-  tone?: 'plain' | 'surface';
-  /** The page renders its own `<h2 id="{id}-title">`, so the band is still labelled by it. */
   customHeading?: boolean;
   className?: string;
   children: ReactNode;
 }
 
-/** Page band: hairline on top, centred 1180 px column, optional heading block. */
 export function Section({
   id,
-  tone = 'plain',
   customHeading = false,
   className,
   children,
@@ -61,15 +54,11 @@ export function Section({
     <section
       id={id}
       aria-labelledby={hasHeading || customHeading ? `${id}-title` : undefined}
-      className={cn(
-        'scroll-mt-14 overflow-x-clip border-t border-border px-5 py-16 sm:px-8 sm:py-24',
-        tone === 'surface' && 'bg-surface',
-        className,
-      )}
+      className={cn('scroll-mt-20 overflow-x-clip px-5 py-16 sm:px-8 sm:py-24', className)}
     >
       <div className="mx-auto max-w-[1180px]">
         {hasHeading ? <SectionHeading id={`${id}-title`} {...heading} /> : null}
-        <div className={hasHeading ? 'mt-10 sm:mt-14' : ''}>{children}</div>
+        <div className={hasHeading ? 'mt-9 sm:mt-12' : ''}>{children}</div>
       </div>
     </section>
   );

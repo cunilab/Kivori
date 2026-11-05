@@ -1,19 +1,13 @@
 import type { Metadata } from 'next';
 import type { ReactElement } from 'react';
-import { FaqList } from '@/components/faq-list';
-import { Hero } from '@/components/hero';
-import {
-  CustomizeSection,
-  FinalBand,
-  LightsSection,
-  MoodsSection,
-  PrivacySection,
-  ProductLookSection,
-  ProfilesSection,
-} from '@/components/home-sections';
+import { Chapters } from '@/components/home/chapters';
+import { FaqSection } from '@/components/home/faq-section';
+import { Hero } from '@/components/home/hero';
+import { Moods } from '@/components/home/moods';
+import { OfflinePromise } from '@/components/home/promise';
+import { TryBand } from '@/components/home/try-band';
+import { WaitlistClose } from '@/components/home/waitlist-close';
 import { JsonLd } from '@/components/json-ld';
-import { Section } from '@/components/section';
-import { ScreensShowcase } from '@/components/screens-showcase';
 import { getProduct } from '@/content/products';
 import { faqJsonLd } from '@/lib/jsonld';
 import { pageMetadata } from '@/lib/metadata';
@@ -33,29 +27,13 @@ export default async function HomePage({ searchParams }: HomePageProps): Promise
 
   return (
     <>
-      <Hero initialProduct={selectedProduct} />
-      <MoodsSection />
-      <ProfilesSection />
-      <Section
-        id="screens"
-        tone="surface"
-        eyebrow="The screen"
-        title="Five screens, one double press."
-        intro="Buddy, clock, volume, media and system. Double-press the knob to flip between them."
-        align="center"
-      >
-        <ScreensShowcase />
-      </Section>
-      <LightsSection />
-      <CustomizeSection />
-      <PrivacySection />
-      <ProductLookSection />
-      <Section id="faq" tone="surface" eyebrow="Questions" title="Good to know.">
-        <div className="max-w-3xl">
-          <FaqList items={faq} />
-        </div>
-      </Section>
-      <FinalBand />
+      <Hero />
+      <Chapters />
+      <TryBand />
+      <Moods />
+      <OfflinePromise />
+      <FaqSection items={faq} />
+      <WaitlistClose initialProduct={selectedProduct} />
       <JsonLd data={faqJsonLd(faq)} />
     </>
   );

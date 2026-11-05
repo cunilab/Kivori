@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import type { ReactElement } from 'react';
-import { Eyebrow } from '@/components/section';
 import { contactEmail } from '@/lib/contact';
 import { pageMetadata } from '@/lib/metadata';
 
@@ -16,16 +15,15 @@ export const dynamic = 'force-dynamic';
 export default function PrivacyPage(): ReactElement {
   const email = contactEmail();
   return (
-    <div className="px-5 pt-20 pb-24 sm:px-8 sm:pt-28 sm:pb-32">
+    <div className="px-5 pt-14 pb-20 sm:px-8 sm:pt-20 sm:pb-28">
       <div className="mx-auto max-w-3xl">
-        <Eyebrow>Privacy</Eyebrow>
-        <h1 className="display-1 mt-3">Your data, plainly.</h1>
+        <h1 className="display-1 mt-3">Privacy</h1>
         <p className="lead mt-6">
           This page covers this website. The Kivori desktop app works offline, needs no account and
           sends no telemetry.
         </p>
 
-        <h2 className="mt-14 font-display text-2xl font-bold tracking-tight sm:text-3xl">
+        <h2 className="mt-14 font-display text-2xl font-semibold tracking-tight sm:text-3xl">
           Visiting the site
         </h2>
         <p className="mt-3 text-base text-muted-foreground sm:text-lg">
@@ -35,7 +33,11 @@ export default function PrivacyPage(): ReactElement {
           Engine as totals by operating system and version, with no personal data.
         </p>
 
-        <h2 className="mt-14 font-display text-2xl font-bold tracking-tight sm:text-3xl">
+        <p className="mt-3 text-base text-muted-foreground sm:text-lg">
+          Your appearance preference is saved in this browser and is not sent as account data.
+        </p>
+
+        <h2 className="mt-14 font-display text-2xl font-semibold tracking-tight sm:text-3xl">
           The waitlist
         </h2>
         <p className="mt-3 text-base text-muted-foreground sm:text-lg">
@@ -56,7 +58,7 @@ export default function PrivacyPage(): ReactElement {
           for advertising. It is stored in Cloudflare D1.
         </p>
 
-        <h2 className="mt-14 font-display text-2xl font-bold tracking-tight sm:text-3xl">
+        <h2 className="mt-14 font-display text-2xl font-semibold tracking-tight sm:text-3xl">
           Your IP address
         </h2>
         <p className="mt-3 text-base text-muted-foreground sm:text-lg">
@@ -65,7 +67,7 @@ export default function PrivacyPage(): ReactElement {
           the form.
         </p>
 
-        <h2 className="mt-14 font-display text-2xl font-bold tracking-tight sm:text-3xl">
+        <h2 className="mt-14 font-display text-2xl font-semibold tracking-tight sm:text-3xl">
           Deleting your data
         </h2>
         <p className="mt-3 text-base text-muted-foreground sm:text-lg">
