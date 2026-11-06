@@ -417,6 +417,15 @@ impl FlashWorkflow {
     /// shows its bootloader drive (then the port is empty); the caller must first accept its
     /// product/board recovery policy. Returns the port for the device thread only.
     pub fn request_recovery(&mut self, candidates: &[PortCandidate]) -> Result<String, String> {
+        self.request_recovery_with(candidates, uf2::bootloader_drives().len())
+    }
+
+    /// [`Self::request_recovery`] with the number of mounted bootloader drives already counted.
+    fn request_recovery_with(
+        &mut self,
+        candidates: &[PortCandidate],
+        drives: usize,
+    ) -> Result<String, String> {
         if !self.status.available {
             return Err("Firmware is unavailable in this application build.".to_string());
         }
@@ -424,11 +433,10 @@ impl FlashWorkflow {
             return Err("A firmware update is already in progress.".to_string());
         }
         let found = filter_candidates(candidates, default_allowlist());
-        let drives = uf2::bootloader_drives();
         let port = match found.as_slice() {
             [only] => only.port_name.clone(),
-            [] if drives.len() == 1 => String::new(),
-            [] if drives.len() > 1 => return Err(
+            [] if drives == 1 => String::new(),
+            [] if drives > 1 => return Err(
                 "More than one board is in firmware download mode; leave only the one to restore."
                     .to_string(),
             ),
@@ -617,7 +625,13 @@ pub fn flash_image(
     let started = Instant::now();
     let uf2 = uf2::elf_to_uf2(image.bytes()).ok_or(FlashFailure::ImageUnavailable)?;
     let drive = enter_bootloader(port, cancel)?;
-    write_image(&drive.join("kivori-firmware.uf2"), uf2, cancel, started)
+    write_image(
+        &drive.join("kivori-firmware.uf2"),
+        uf2,
+        cancel,
+        started,
+        FLASH_TIMEOUT,
+    )
 }
 
 /// The one drive in `drives` that is not in `known`. `None` while there is none yet; `Unknown` when
@@ -655,15 +669,33 @@ fn enter_bootloader(port: &str, cancel: &AtomicBool) -> Result<PathBuf, FlashFai
             Err(_) => touch_failed = true,
         }
     }
+    await_new_drive(
+        uf2::bootloader_drives,
+        &known,
+        touch_failed,
+        cancel,
+        BOOTLOADER_TIMEOUT,
+    )
+}
+
+/// Polls `drives` until exactly one drive not in `known` shows up. Gives up after `timeout` with
+/// `PortBusy` if the touch could not even open the port, else `NoDownloadMode`.
+fn await_new_drive(
+    mut drives: impl FnMut() -> Vec<PathBuf>,
+    known: &[PathBuf],
+    touch_failed: bool,
+    cancel: &AtomicBool,
+    timeout: Duration,
+) -> Result<PathBuf, FlashFailure> {
     let started = Instant::now();
     loop {
         if cancel.load(Ordering::SeqCst) {
             return Err(FlashFailure::Cancelled);
         }
-        if let Some(drive) = single_new_drive(uf2::bootloader_drives(), &known)? {
+        if let Some(drive) = single_new_drive(drives(), known)? {
             return Ok(drive);
         }
-        if started.elapsed() >= BOOTLOADER_TIMEOUT {
+        if started.elapsed() >= timeout {
             return Err(if touch_failed {
                 FlashFailure::PortBusy
             } else {
@@ -679,6 +711,7 @@ fn write_image(
     uf2: Vec<u8>,
     cancel: &AtomicBool,
     started: Instant,
+    timeout: Duration,
 ) -> Result<(), FlashFailure> {
     let target = path.to_path_buf();
     let writer = std::thread::spawn(move || {
@@ -692,7 +725,7 @@ fn write_image(
         if cancel.load(Ordering::SeqCst) {
             return Err(FlashFailure::Cancelled);
         }
-        if started.elapsed() >= FLASH_TIMEOUT {
+        if started.elapsed() >= timeout {
             return Err(FlashFailure::Timeout);
         }
         std::thread::sleep(Duration::from_millis(50));
@@ -767,7 +800,7 @@ mod tests {
         let drive = drive();
         let file = drive.path().join("kivori-firmware.uf2");
         assert_eq!(
-            write_image(&file, vec![7; 512], &cancel, Instant::now()),
+            write_image(&file, vec![7; 512], &cancel, Instant::now(), FLASH_TIMEOUT),
             Ok(())
         );
         assert_eq!(std::fs::read(&file).unwrap(), vec![7; 512]);
@@ -775,7 +808,7 @@ mod tests {
         let blocked = drive.path().join("not-a-file");
         std::fs::create_dir(&blocked).unwrap();
         assert_eq!(
-            write_image(&blocked, vec![1], &cancel, Instant::now()),
+            write_image(&blocked, vec![1], &cancel, Instant::now(), FLASH_TIMEOUT),
             Err(FlashFailure::WriteFailed)
         );
         let gone = tempfile::tempdir()
@@ -783,6 +816,377 @@ mod tests {
             .path()
             .join("RPI-RP2")
             .join("x.uf2");
-        assert_eq!(write_image(&gone, vec![1], &cancel, Instant::now()), Ok(()));
+        assert_eq!(
+            write_image(&gone, vec![1], &cancel, Instant::now(), FLASH_TIMEOUT),
+            Ok(())
+        );
+    }
+
+    const TIMEOUT: Duration = Duration::from_millis(250);
+
+    /// A drive lister that answers each poll from `script` and then repeats the last answer.
+    fn scripted(script: Vec<Vec<PathBuf>>) -> impl FnMut() -> Vec<PathBuf> {
+        let mut polls = 0;
+        move || {
+            let answer = script[polls.min(script.len() - 1)].clone();
+            polls += 1;
+            answer
+        }
+    }
+
+    fn drives(names: &[&str]) -> Vec<PathBuf> {
+        names.iter().map(PathBuf::from).collect()
+    }
+
+    #[test]
+    fn no_drive_after_the_touch_is_no_download_mode_and_a_failed_touch_is_port_busy() {
+        let cancel = AtomicBool::new(false);
+        let started = Instant::now();
+        assert_eq!(
+            await_new_drive(scripted(vec![vec![]]), &[], false, &cancel, TIMEOUT),
+            Err(FlashFailure::NoDownloadMode)
+        );
+        assert!(started.elapsed() >= TIMEOUT);
+        // A board already in BOOTSEL is not the one touched: still no download mode.
+        assert_eq!(
+            await_new_drive(
+                scripted(vec![drives(&["/a"])]),
+                &drives(&["/a"]),
+                false,
+                &cancel,
+                TIMEOUT
+            ),
+            Err(FlashFailure::NoDownloadMode)
+        );
+        assert_eq!(
+            await_new_drive(scripted(vec![vec![]]), &[], true, &cancel, TIMEOUT),
+            Err(FlashFailure::PortBusy)
+        );
+    }
+
+    #[test]
+    fn a_drive_that_appears_without_an_opened_port_still_succeeds_on_windows_style_touches() {
+        let cancel = AtomicBool::new(false);
+        // The open "failed" but the line coding already rebooted the board: the drive wins.
+        let late = scripted(vec![vec![], vec![], drives(&["/new"])]);
+        assert_eq!(
+            await_new_drive(late, &[], true, &cancel, Duration::from_secs(5)),
+            Ok(PathBuf::from("/new"))
+        );
+    }
+
+    #[test]
+    fn the_new_drive_is_picked_over_a_foreign_one_and_two_new_drives_are_refused() {
+        let cancel = AtomicBool::new(false);
+        assert_eq!(
+            await_new_drive(
+                scripted(vec![drives(&["/foreign", "/new"])]),
+                &drives(&["/foreign"]),
+                false,
+                &cancel,
+                TIMEOUT
+            ),
+            Ok(PathBuf::from("/new"))
+        );
+        assert_eq!(
+            await_new_drive(
+                scripted(vec![drives(&["/foreign", "/n1", "/n2"])]),
+                &drives(&["/foreign"]),
+                false,
+                &cancel,
+                TIMEOUT
+            ),
+            Err(FlashFailure::Unknown)
+        );
+        // A drive-only recovery (nothing known): one drive is used, two are refused.
+        assert_eq!(
+            await_new_drive(
+                scripted(vec![drives(&["/only"])]),
+                &[],
+                false,
+                &cancel,
+                TIMEOUT
+            ),
+            Ok(PathBuf::from("/only"))
+        );
+        assert_eq!(
+            await_new_drive(
+                scripted(vec![drives(&["/a", "/b"])]),
+                &[],
+                false,
+                &cancel,
+                TIMEOUT
+            ),
+            Err(FlashFailure::Unknown)
+        );
+    }
+
+    #[test]
+    fn cancelling_while_waiting_for_the_drive_returns_within_a_poll() {
+        let cancel = std::sync::Arc::new(AtomicBool::new(false));
+        let flag = cancel.clone();
+        let trigger = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(60));
+            flag.store(true, Ordering::SeqCst);
+        });
+        let started = Instant::now();
+        assert_eq!(
+            await_new_drive(
+                scripted(vec![vec![]]),
+                &[],
+                false,
+                &cancel,
+                Duration::from_secs(30)
+            ),
+            Err(FlashFailure::Cancelled)
+        );
+        assert!(started.elapsed() < Duration::from_secs(2));
+        trigger.join().unwrap();
+        // Cancelled before the first poll never lists a drive at all.
+        let listed = std::cell::Cell::new(false);
+        assert_eq!(
+            await_new_drive(
+                || {
+                    listed.set(true);
+                    vec![]
+                },
+                &[],
+                false,
+                &cancel,
+                TIMEOUT
+            ),
+            Err(FlashFailure::Cancelled)
+        );
+        assert!(!listed.get());
+    }
+
+    /// A path whose `File::create` blocks until something opens its other end: a stalled copy.
+    #[cfg(unix)]
+    fn stalled_target() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let fifo = dir.path().join("kivori-firmware.uf2");
+        assert!(std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success());
+        (dir, fifo)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_stalled_copy_times_out_or_is_cancelled_without_waiting_for_it() {
+        let (_dir, fifo) = stalled_target();
+        let cancel = AtomicBool::new(false);
+        let started = Instant::now();
+        assert_eq!(
+            write_image(&fifo, vec![1; 512], &cancel, started, TIMEOUT),
+            Err(FlashFailure::Timeout)
+        );
+        assert!(started.elapsed() < Duration::from_secs(2));
+        // The timeout counts from the start of the whole flash, not from the copy.
+        let late = Instant::now() - Duration::from_secs(10);
+        assert_eq!(
+            write_image(&fifo, vec![1; 512], &cancel, late, TIMEOUT),
+            Err(FlashFailure::Timeout)
+        );
+        cancel.store(true, Ordering::SeqCst);
+        let started = Instant::now();
+        assert_eq!(
+            write_image(
+                &fifo,
+                vec![1; 512],
+                &cancel,
+                started,
+                Duration::from_secs(60)
+            ),
+            Err(FlashFailure::Cancelled)
+        );
+        assert!(started.elapsed() < Duration::from_secs(2));
+        // The abandoned writers stay blocked in `File::create` and die with the test process.
+    }
+
+    #[test]
+    fn a_failed_write_is_write_failed_only_while_the_drive_is_still_mounted() {
+        let cancel = AtomicBool::new(false);
+        let mounted = drive();
+        // The directory the image should land in is read-only in effect: the target is a directory.
+        let blocked = mounted.path().join("kivori-firmware.uf2");
+        std::fs::create_dir(&blocked).unwrap();
+        assert_eq!(
+            write_image(
+                &blocked,
+                vec![1; 512],
+                &cancel,
+                Instant::now(),
+                FLASH_TIMEOUT
+            ),
+            Err(FlashFailure::WriteFailed)
+        );
+        // Same error, but the drive (its INFO_UF2.TXT) is gone: the board rebooted, so it counts as written.
+        std::fs::remove_file(mounted.path().join("INFO_UF2.TXT")).unwrap();
+        assert_eq!(
+            write_image(
+                &blocked,
+                vec![1; 512],
+                &cancel,
+                Instant::now(),
+                FLASH_TIMEOUT
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn a_drive_only_recovery_needs_exactly_one_drive_and_a_port_needs_exactly_one_kivori() {
+        let port = |name: &str, vid, pid| PortCandidate::new(name, Some(vid), Some(pid));
+        let (c3, rp) = (port("COM7", 0x303A, 0x1001), port("COM8", 0x2E8A, 0x000A));
+        let fresh = || FlashWorkflow::new(true, 512);
+        // No port: the single mounted drive is used (empty port), none or several are refused.
+        let mut flash = fresh();
+        assert_eq!(flash.request_recovery_with(&[], 1), Ok(String::new()));
+        assert_eq!(flash.reconnect_port(), None);
+        assert_eq!(flash.status().phase, FirmwarePhase::Preparing);
+        for drives in [0, 2, 5] {
+            let mut flash = fresh();
+            assert!(flash.request_recovery_with(&[], drives).is_err());
+            assert_eq!(flash.status().phase, FirmwarePhase::Idle);
+        }
+        // One v2 port wins whatever drives are mounted; two Kivori ports are ambiguous either way.
+        for drives in [0, 1, 2] {
+            assert_eq!(
+                fresh().request_recovery_with(std::slice::from_ref(&rp), drives),
+                Ok("COM8".to_string())
+            );
+            assert!(fresh()
+                .request_recovery_with(&[c3.clone(), rp.clone()], drives)
+                .is_err());
+        }
+        // A foreign serial port is not a candidate, so a lone drive is still a drive-only recovery.
+        let foreign = port("COM1", 0x0403, 0x6001);
+        assert_eq!(
+            fresh().request_recovery_with(&[foreign], 1),
+            Ok(String::new())
+        );
+        // Busy and unavailable are refused first.
+        let mut busy = fresh();
+        busy.request_recovery_with(&[], 1).unwrap();
+        assert!(busy.request_recovery_with(&[], 1).is_err());
+        assert!(FlashWorkflow::new(false, 0)
+            .request_recovery_with(&[], 1)
+            .is_err());
+    }
+
+    fn kinds(flash: &mut FlashWorkflow) -> Vec<ActivityEventKind> {
+        flash.drain_activity().into_iter().map(|a| a.kind).collect()
+    }
+
+    #[test]
+    fn a_drive_only_recovery_walks_the_phases_in_order_and_accepts_the_board_on_any_port() {
+        use ActivityEventKind as K;
+        let mut flash = FlashWorkflow::new(true, 512);
+        flash.drain_activity();
+        assert_eq!(flash.request_recovery_with(&[], 1), Ok(String::new()));
+        assert_eq!(flash.status().phase, FirmwarePhase::Preparing);
+        flash.mark_serial_released();
+        flash.mark_flashing();
+        assert_eq!(flash.status().phase, FirmwarePhase::Flashing);
+        assert_eq!(flash.finish(Ok(())), ResumeTarget::SamePort(String::new()));
+        assert_eq!(flash.status().phase, FirmwarePhase::Reconnecting);
+        assert_eq!(
+            flash.reconnect_port(),
+            None,
+            "discovery must find the board"
+        );
+        assert!(flash.is_busy());
+        // An incompatible device is no recovery; a compatible one on whichever port is.
+        assert!(!flash.handshake("/dev/cu.usbmodem1", "0badf00d", false));
+        assert_eq!(flash.status().phase, FirmwarePhase::Reconnecting);
+        assert!(flash.handshake("/dev/cu.usbmodem9", "0badf00d", true));
+        assert_eq!(flash.status().phase, FirmwarePhase::Succeeded);
+        assert_eq!(flash.recovered_hash(), Some("0badf00d"));
+        assert!(!flash.is_busy());
+        assert_eq!(
+            kinds(&mut flash),
+            [
+                K::FirmwareFlashRequested,
+                K::FirmwarePreparing,
+                K::FirmwareSerialReleased,
+                K::FirmwareFlasherStarted,
+                K::FirmwareFlashSucceeded,
+                K::FirmwareReconnectWaiting,
+                K::FirmwarePostFlashVerified,
+            ]
+        );
+        // The success is spent: a late second handshake, or a timeout, changes nothing.
+        assert!(!flash.handshake("/dev/cu.usbmodem9", "0badf00d", true));
+        flash.reconnect_timed_out();
+        assert_eq!(flash.status().phase, FirmwarePhase::Succeeded);
+    }
+
+    #[test]
+    fn a_cancelled_or_unreconnected_drive_only_recovery_fails_and_never_accepts_a_later_device() {
+        for end in ["cancelled", "write failed", "no reconnect"] {
+            let mut flash = FlashWorkflow::new(true, 512);
+            flash.request_recovery_with(&[], 1).unwrap();
+            flash.mark_serial_released();
+            flash.mark_flashing();
+            let expected = match end {
+                "cancelled" => {
+                    assert_eq!(
+                        flash.finish(Err(FlashFailure::Cancelled)),
+                        ResumeTarget::Discovery
+                    );
+                    FlashFailure::Cancelled
+                }
+                "write failed" => {
+                    assert_eq!(
+                        flash.finish(Err(FlashFailure::WriteFailed)),
+                        ResumeTarget::Discovery
+                    );
+                    FlashFailure::WriteFailed
+                }
+                _ => {
+                    flash.finish(Ok(()));
+                    flash.reconnect_timed_out();
+                    FlashFailure::ReconnectTimedOut
+                }
+            };
+            assert_eq!(flash.status().phase, FirmwarePhase::Failed, "{end}");
+            assert_eq!(flash.status().failure, Some(expected), "{end}");
+            assert!(!flash.is_busy());
+            assert!(
+                !flash.handshake("/dev/cu.usbmodem9", "0badf00d", true),
+                "{end}"
+            );
+            assert_eq!(flash.recovered_hash(), None);
+            assert_eq!(flash.status().phase, FirmwarePhase::Failed);
+            // The next attempt starts clean.
+            assert_eq!(flash.request_recovery_with(&[], 1), Ok(String::new()));
+            assert_eq!(flash.status().failure, None);
+        }
+    }
+
+    #[test]
+    fn a_verified_update_waits_on_its_own_port_and_a_board_swapped_on_the_way_back_fails() {
+        let mut flash = FlashWorkflow::new(true, 512);
+        flash
+            .request(true, Some("COM7"), Some("pip-rp2040"))
+            .unwrap();
+        assert_eq!(
+            flash.finish(Ok(())),
+            ResumeTarget::SamePort("COM7".to_string())
+        );
+        assert_eq!(flash.reconnect_port(), Some("COM7"));
+        // Same unit on another port, or another unit on this one: neither is the flashed board.
+        assert!(!flash.handshake("COM8", "pip-rp2040", true));
+        assert!(!flash.handshake("COM7", "other-unit", true));
+        assert_eq!(flash.status().phase, FirmwarePhase::Reconnecting);
+        flash.reconnect_timed_out();
+        assert_eq!(
+            flash.status().failure,
+            Some(FlashFailure::ReconnectTimedOut)
+        );
+        assert!(!flash.handshake("COM7", "pip-rp2040", true));
     }
 }

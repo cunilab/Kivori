@@ -257,7 +257,8 @@ try {
         'desktop',
         ['--desktop-smoke'],
         'PASS S5.4 ',
-        14,
+        // The LED cases: v1 has one (it never gets the LED), v2 two (settings, then status).
+        process.env.KIVORI_VIRTUAL_BOARD === 'rp2040-zero' ? 16 : 15,
         ['labelled firmware-session and desktop-action cases', 'ConfigStore'],
       ],
       [

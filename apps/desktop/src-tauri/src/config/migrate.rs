@@ -54,7 +54,7 @@ pub(crate) fn migrate_with(
         raw = step(raw)?;
     }
     let file: ConfigFile = serde_json::from_value(raw).map_err(|_| LoadError::Corrupt)?;
-    if file.version != current || file.display.validate().is_err() {
+    if file.version != current || file.display.validate().is_err() || file.led.validate().is_err() {
         return Err(LoadError::Corrupt);
     }
     Ok((file, (version < current).then_some(version)))

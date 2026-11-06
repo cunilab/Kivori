@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { toast } from 'sonner';
-import { LoaderCircle, MonitorSmartphone, Sparkles, Sun, LayoutGrid } from 'lucide-react';
+import {
+  Lightbulb,
+  LoaderCircle,
+  MonitorSmartphone,
+  Sparkles,
+  Sun,
+  LayoutGrid,
+} from 'lucide-react';
 import { Badge } from '@kivori/ui/components/badge';
 import { RadioGroup, RadioGroupItem } from '@kivori/ui/components/radio-group';
 import { Skeleton } from '@kivori/ui/components/skeleton';
@@ -16,6 +23,7 @@ import { cn } from '@kivori/ui/lib/utils';
 import { errorText } from '@/lib/utils';
 import { hasCapability } from '@/lib/device-support';
 import { CompanionControls } from './CompanionControls';
+import { LedControls } from './LedControls';
 import { BrightnessPicker, ViewPicker } from './ViewPicker';
 
 const t = strings.display;
@@ -288,6 +296,17 @@ export function DisplayPage({
             : []),
           { value: 'brightness', label: t.tabs.brightness, Icon: Sun, content: brightness },
           { value: 'buddy', label: t.tabs.buddy, Icon: Sparkles, content: buddy },
+          // Only a board with an LED has this tab; with no device yet it can be set up ahead.
+          ...(!known || hasCapability(connection, 'rgbLedV1')
+            ? [
+                {
+                  value: 'led',
+                  label: t.tabs.led,
+                  Icon: Lightbulb,
+                  content: <LedControls config={config} />,
+                },
+              ]
+            : []),
         ]}
       />
       <p className="text-xs text-muted-foreground">{strings.savedConfiguration}</p>

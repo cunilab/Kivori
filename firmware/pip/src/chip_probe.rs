@@ -14,7 +14,10 @@ use critical_section::Mutex;
 use kivori_model::internals::{ChipModel, DeviceInternals};
 use rp2040_hal::{pac, Adc};
 
-use crate::internals::{flash_size_from_jedec, reset_reason_from_flags, untouched_stack_bytes};
+use crate::internals::{
+    flash_size_from_jedec, reset_reason_from_flags, temperature_decicelsius_from_adc,
+    untouched_stack_bytes,
+};
 
 extern "C" {
     // Linker-provided (cortex-m-rt): the lowest and highest stack addresses (no heap, so the stack
@@ -163,20 +166,14 @@ pub fn init(adc: pac::ADC, resets: &mut pac::RESETS, asset_blob_bytes: usize, fl
 /// Set once the ADC is sampling the die temperature.
 static TEMP_SENSOR: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
-/// The die temperature in tenths of a degree (datasheet 4.9.5: 27 C at 0.706 V, -1.721 mV per C,
-/// 3.3 V reference), if it reads inside the sensor's range.
+/// The die temperature in tenths of a degree, if the sensor reads inside its range.
 fn temperature_decicelsius() -> Option<i16> {
     if !TEMP_SENSOR.load(Ordering::Acquire) {
         return None;
     }
     // SAFETY: read-only access to the ADC result register.
     let raw = unsafe { (*pac::ADC::PTR).result().read().result().bits() };
-    let millivolts = i32::from(raw) * 3300 / 4096;
-    let decicelsius = 270 - (millivolts - 706) * 581 / 100;
-    // The sensor's range is -40 to 125 degrees; anything else is a bad read, not a temperature.
-    (-400..=1250)
-        .contains(&decicelsius)
-        .then_some(decicelsius as i16)
+    temperature_decicelsius_from_adc(raw)
 }
 
 /// The [`crate::internals::ChipProbe`] the physical runtime installs.

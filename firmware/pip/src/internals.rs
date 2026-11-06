@@ -160,6 +160,20 @@ pub const fn flash_size_from_jedec(id: u32) -> Option<u32> {
     }
 }
 
+/// The die temperature in tenths of a degree from a 12-bit ADC reading of the RP2040's sensor
+/// (datasheet 4.9.5: 27 C at 0.706 V, -1.721 mV per C, 3.3 V reference), if it lies inside the
+/// sensor's range of -40 to 125 degrees; anything else is a bad read, not a temperature.
+#[must_use]
+pub const fn temperature_decicelsius_from_adc(raw: u16) -> Option<i16> {
+    let millivolts = raw as i32 * 3300 / 4096;
+    let decicelsius = 270 - (millivolts - 706) * 581 / 100;
+    if decicelsius >= -400 && decicelsius <= 1250 {
+        Some(decicelsius as i16)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,5 +311,106 @@ mod tests {
         assert_eq!(flash_size_from_jedec(0xEF_40_18), Some(16 << 20));
         assert_eq!(flash_size_from_jedec(0xEF_40_00), None);
         assert_eq!(flash_size_from_jedec(0xFF_FF_FF), None); // no chip answered
+    }
+
+    #[test]
+    fn the_sensor_reads_27_degrees_at_0_706_volts() {
+        // 0.706 V of 3.3 V over 12 bits is a raw reading of about 876.
+        let at_27 = temperature_decicelsius_from_adc(876).unwrap();
+        assert!((260..=280).contains(&at_27), "{at_27}");
+    }
+
+    #[test]
+    fn only_a_contiguous_window_of_readings_is_a_temperature_and_it_never_rises_with_the_reading() {
+        let (mut first, mut last, mut count) = (None, 0u16, 0u16);
+        let mut previous: Option<i16> = None;
+        let (mut saw_20, mut saw_60) = (false, false);
+        for raw in 0..=4095u16 {
+            let Some(t) = temperature_decicelsius_from_adc(raw) else {
+                continue;
+            };
+            assert!((-400..=1250).contains(&t), "raw {raw}: {t}");
+            // A hotter die has a lower voltage, so the temperature never rises with the reading
+            // (a millivolt is a little more than one count, so two counts can share a value).
+            assert!(previous.is_none_or(|p| t <= p), "raw {raw} rose");
+            previous = Some(t);
+            first.get_or_insert(raw);
+            last = raw;
+            count += 1;
+            saw_20 |= (195..=205).contains(&t);
+            saw_60 |= (595..=605).contains(&t);
+        }
+        let first = first.expect("some reading is a temperature");
+        assert!(
+            count > 300,
+            "the window spans the sensor's whole range: {count} counts"
+        );
+        assert_eq!(last - first + 1, count, "the window is contiguous");
+        // Just outside it on both sides is rejected, not clamped.
+        assert_eq!(temperature_decicelsius_from_adc(first - 1), None);
+        assert_eq!(temperature_decicelsius_from_adc(last + 1), None);
+        // A plausible desk (20 to 60 C) sits well inside it.
+        assert!(saw_20 && saw_60);
+    }
+
+    #[test]
+    fn a_shorted_or_saturated_sensor_is_unavailable_not_a_temperature() {
+        assert_eq!(temperature_decicelsius_from_adc(0), None); // pulled to ground
+        assert_eq!(temperature_decicelsius_from_adc(4095), None); // pulled to the reference
+        assert_eq!(temperature_decicelsius_from_adc(u16::MAX), None); // the 12-bit field is never wider
+    }
+
+    #[test]
+    fn every_reset_register_combination_maps_to_one_reason() {
+        const HAD_RUN: u32 = 1 << 16;
+        const HAD_PSM_RESTART: u32 = 1 << 20;
+        // The watchdog force bit wins over everything, then the timer, then power-on, else other.
+        for chip in [
+            0,
+            HAD_POR,
+            HAD_RUN,
+            HAD_PSM_RESTART,
+            HAD_POR | HAD_RUN | HAD_PSM_RESTART,
+        ] {
+            for (watchdog, expected) in [
+                (WATCHDOG_FORCE | WATCHDOG_TIMER, Some(ResetReason::Software)),
+                (WATCHDOG_FORCE, Some(ResetReason::Software)),
+                (WATCHDOG_TIMER, Some(ResetReason::Watchdog)),
+                (0, None),
+            ] {
+                let expected = expected.unwrap_or(if chip & HAD_POR != 0 {
+                    ResetReason::PowerOn
+                } else {
+                    ResetReason::Other
+                });
+                assert_eq!(
+                    reset_reason_from_flags(chip, watchdog),
+                    expected,
+                    "chip {chip:#x}, watchdog {watchdog:#x}"
+                );
+            }
+        }
+        // Bits no reason owns change nothing.
+        assert_eq!(
+            reset_reason_from_flags(0, !(WATCHDOG_FORCE | WATCHDOG_TIMER)),
+            ResetReason::Other
+        );
+    }
+
+    #[test]
+    fn jedec_capacity_codes_are_a_power_of_two_between_64_kib_and_16_mib() {
+        assert_eq!(flash_size_from_jedec(0x10), Some(64 << 10));
+        assert_eq!(flash_size_from_jedec(0x0F), None);
+        assert_eq!(flash_size_from_jedec(0x19), None);
+        // Only the capacity byte counts: the manufacturer and type bytes never change the size.
+        assert_eq!(flash_size_from_jedec(0x00_00_15), Some(2 << 20));
+        assert_eq!(flash_size_from_jedec(0xAB_CD_15), Some(2 << 20));
+        assert_eq!(flash_size_from_jedec(0xFF00_0015), Some(2 << 20));
+        // A high bit beyond the capacity byte must not turn an unknown code into a size.
+        assert_eq!(flash_size_from_jedec(0x1_00), None);
+        assert_eq!(flash_size_from_jedec(u32::MAX), None);
+        for code in 0x10u32..=0x18 {
+            assert_eq!(flash_size_from_jedec(code), Some(1 << code));
+        }
     }
 }

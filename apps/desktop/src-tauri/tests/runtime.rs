@@ -117,11 +117,11 @@ fn incompatible_status_carries_reason() {
 fn app_info_reports_supported_protocol_and_studio_flag() {
     let dev = dto::app_info(true);
     assert!(dev.device_studio_enabled);
-    // Protocol 0.3 adds the capability-gated pressed-rotary input.
+    // Protocol 0.4 adds the capability-gated RGB LED settings.
     assert_eq!(dev.supported_majors, vec![0]);
     assert_eq!(
         (dev.protocol_version.major, dev.protocol_version.minor),
-        (0, 3)
+        (0, 4)
     );
     // The firmware source id of this build: 12 hex digits, or unknown without git.
     assert!(dev

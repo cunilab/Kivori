@@ -438,6 +438,7 @@ mod tests {
         assert_eq!(product.short_name, "Pip");
         assert_eq!(product.model, "KV-P1");
         assert_eq!(board.id, "rp2040-zero");
+        assert_eq!(board.display_name, "RP2040-Zero");
         assert_eq!(board.flash, Some(FlashMethod::Uf2));
         // The bundled firmware speaks this app's protocol major, at a minor it has.
         let (major, minor) = board.firmware.as_ref().expect("firmware").min_protocol;

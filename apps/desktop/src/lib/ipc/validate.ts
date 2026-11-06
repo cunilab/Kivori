@@ -38,6 +38,9 @@ import {
   FIRMWARE_OFFER_KINDS,
   FIRMWARE_REQUIRED_REASONS,
   INTENSITIES,
+  LED_COLOR,
+  LED_MODES,
+  LED_SPEEDS,
   MASCOT_ACTIONS,
   MEDIA_STATUSES,
   CUSTOM_PROFILE_ID,
@@ -66,6 +69,7 @@ import type {
   StepSpec,
   DeskActionDto,
   DeskStatusDto,
+  LedSettingsDto,
   AppRefDto,
   ProfileConfigDto,
   ProfileId,
@@ -89,6 +93,35 @@ function brightness(value: unknown): number {
     return value;
   }
   throw new Error('Kivori: invalid brightness.');
+}
+
+function ledSettings(raw: unknown): LedSettingsDto {
+  const led = record('LED settings', raw);
+  const profileColors = record('LED profile colors', led.profileColors);
+  if (
+    typeof led.color !== 'string' ||
+    !LED_COLOR.test(led.color) ||
+    typeof led.brightness !== 'number' ||
+    !Number.isInteger(led.brightness) ||
+    led.brightness < 0 ||
+    led.brightness > 100
+  ) {
+    throw new Error('Kivori: invalid LED settings.');
+  }
+  const colors: Record<string, string> = {};
+  for (const [profile, color] of Object.entries(profileColors)) {
+    if (typeof color !== 'string' || !LED_COLOR.test(color)) {
+      throw new Error('Kivori: invalid LED profile color.');
+    }
+    colors[profile] = color;
+  }
+  return {
+    mode: oneOf('LED mode', LED_MODES, led.mode),
+    color: led.color,
+    brightness: led.brightness,
+    speed: oneOf('LED speed', LED_SPEEDS, led.speed),
+    profileColors: colors,
+  };
 }
 
 function percentOrNull(name: string, value: unknown): number | null {
@@ -726,6 +759,7 @@ export function parseConfig(raw: unknown): ConfigDto {
       reactions: buddy.reactions,
       intensity: oneOf('intensity', INTENSITIES, buddy.intensity),
     },
+    led: ledSettings(r.led),
   };
 }
 
