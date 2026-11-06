@@ -22,3 +22,4 @@ An architecture decision record (ADR) is one short file that captures one decisi
 | [ADR-0016](./0016-locking-a-board-to-its-firmware-in-tiers.md) | Locking a board to its firmware, in tiers | Proposed | 2026-10-12 |
 | [ADR-0017](./0017-product-contract-and-capability-driven-desktop.md) | Product contract and capability-driven Desktop | Accepted | 2026-10-15 |
 | [ADR-0018](./0018-product-owned-virtual-device-processes.md) | Product-owned virtual device processes | Proposed | 2026-10-26 |
+| [ADR-0019](./0019-rp2040-zero-replaces-esp32-c3.md) | RP2040-Zero replaces the ESP32-C3 on real hardware | Accepted | 2026-11-05 |

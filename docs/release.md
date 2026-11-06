@@ -360,26 +360,21 @@ The macOS override disables updater artifacts: automatic app updates currently s
 only, so a local Mac bundle does not need the updater signing private key. Without an Apple
 Developer ID the bundle is not Developer ID signed; notarization is not implemented.
 
-## Updating espflash
+## Firmware flashing
 
-Change `ESPFLASH_VERSION` and the SHA-256 in `scripts/fetch-espflash.sh`, `scripts/fetch-espflash.ps1`
-and `release.yml`, and `THIRD_PARTY_NOTICES.md`. Take the hashes from the official release page and
-confirm them by downloading. Refresh the classifier fixtures in `tests/firmware_flash.rs` from the new
-version's output.
-
-Per-unit flashing and QA of new units: see [provisioning.md](./provisioning.md).
+No flashing tool is bundled. The app converts the embedded ARM ELF to UF2 (`src/uf2.rs`) and copies
+it to the RP2040's `RPI-RP2` bootloader drive, so there is nothing to fetch or pin.
+There is no per-unit provisioning either; see [provisioning.md](./provisioning.md).
 
 ## Known limits
 
-- Unsigned: SmartScreen warns, and Defender may block `espflash.exe` (the app then reports the tool
-  as missing). These are different protection mechanisms; collect the exact warning and affected
+- Unsigned: SmartScreen warns, and Defender may block the app. These are different protection mechanisms; collect the exact warning and affected
   file using the [Windows validation checklist](./windows-validation.md) before choosing a remedy.
 - The WebView2 bootstrapper needs a network connection on a PC that does not have WebView2 yet.
 
 ## Catalog firmware builds and packaging
 
-`bun scripts/build-firmware.mjs` builds one selected catalog pair. `just fw-build` and `provision`
-use it. Set both `KIVORI_PRODUCT` and `KIVORI_BOARD`, or pass `--product <id> --board <id>`; no
+`bun scripts/build-firmware.mjs` builds one selected catalog pair. `just fw-build` uses it. Set both `KIVORI_PRODUCT` and `KIVORI_BOARD`, or pass `--product <id> --board <id>`; no
 selection is needed for a sole active pair. Empty, partial, unknown and ambiguous selections fail.
 Every active pair must have a valid build recipe; registry reservations without metadata are not builds.
 
@@ -416,11 +411,11 @@ bun scripts/build-firmware-set.mjs --from-dir /absolute/download --manifest-out 
 Missing/extra entries, subdirectories, symlinks and empty images are refused. Native embedding then
 validates ELF identities, versions and protocols and requires manifest mode to equal the entire
 active catalog identity set, independent of filenames or input order. An exclusive
-`KIVORI_FIRMWARE_PATH` still accepts one targeted image for development/provisioning;
+`KIVORI_FIRMWARE_PATH` still accepts one targeted image for development;
 `KIVORI_FIRMWARE_MANIFEST` is an absolute JSON file containing the complete set of absolute paths.
 Unset inputs embed no firmware. Single-pair selection never narrows a desktop package.
 
-These commands build software. Provisioning/flashing remains a separate explicit operation.
+These commands build software. Flashing remains a separate explicit operation.
 Release planning and titles/notes consume the same complete catalog. The Release button validates
 every lineage before writes, refreshes every unique lockfile, stages only planned paths, and atomically
 pushes the app tag and all new product firmware tags only after the version PR merges and its exact

@@ -1,27 +1,27 @@
 //! Native-only firmware flashing workflow.
 //!
-//! The webview can only request a flash of the fixed firmware bundled into this binary. Port names,
-//! filesystem paths, and `espflash` output remain inside the native process.
+//! The webview can only request a flash of the fixed firmware bundled into this binary. Port names
+//! and filesystem paths remain inside the native process.
 
-use std::io::Read;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use crate::activity::{ActivityEventKind, SessionActivity};
 use crate::device::discovery::{default_allowlist, filter_candidates, PortCandidate};
 use crate::firmware_bundle::{FirmwareBundle, FirmwareImage};
 use crate::identity::{RecoveryRefusal, RestoreOption, WrongProduct};
+use crate::uf2;
 use serde::Serialize;
 
-/// Maximum time allowed for one `espflash` process before it is terminated.
+/// Maximum time allowed for one flash (entering the bootloader and writing the image).
 pub const FLASH_TIMEOUT: Duration = Duration::from_secs(90);
 /// Maximum time to wait for the flashed device to reconnect and complete a handshake.
 pub const RECONNECT_TIMEOUT: Duration = Duration::from_secs(20);
-
-/// How much of `espflash`'s stderr is kept for classification (the tail, where errors are reported).
-pub const STDERR_LIMIT: usize = 8 * 1024;
+/// How long the bootloader drive may take to appear after the 1200-baud touch.
+const BOOTLOADER_TIMEOUT: Duration = Duration::from_secs(10);
+const POLL: Duration = Duration::from_millis(200);
 
 include!(concat!(env!("OUT_DIR"), "/firmware_sources.rs"));
 
@@ -33,7 +33,7 @@ pub enum FirmwarePhase {
     Idle,
     /// Native validation has accepted a queued flash request.
     Preparing,
-    /// `espflash` owns the port and is programming the fixed artifact.
+    /// The native flasher is putting the board in its bootloader and copying the fixed artifact.
     Flashing,
     /// Programming finished; the desktop is waiting for the same device to handshake again.
     Reconnecting,
@@ -47,12 +47,12 @@ pub enum FirmwarePhase {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum FlashFailure {
-    /// The flashing tool is not part of this installation (or the OS refused to run it).
-    ToolMissing,
     /// Another program holds the serial port, or the OS denied access to it.
     PortBusy,
-    /// The chip did not answer as a bootloader; it is not in download mode.
+    /// The board's bootloader drive (RPI-RP2) did not appear, so it is not in download mode.
     NoDownloadMode,
+    /// The bootloader drive appeared but the firmware could not be copied to it.
+    WriteFailed,
     /// The flash did not finish in time.
     Timeout,
     /// The user (or an application shutdown) cancelled the flash.
@@ -74,9 +74,9 @@ pub enum FlashFailure {
 impl FlashFailure {
     /// Every class, in declaration order.
     pub const ALL: [Self; 10] = [
-        Self::ToolMissing,
         Self::PortBusy,
         Self::NoDownloadMode,
+        Self::WriteFailed,
         Self::Timeout,
         Self::Cancelled,
         Self::ImageUnavailable,
@@ -90,9 +90,9 @@ impl FlashFailure {
     #[must_use]
     pub const fn token(self) -> &'static str {
         match self {
-            Self::ToolMissing => "toolMissing",
             Self::PortBusy => "portBusy",
             Self::NoDownloadMode => "noDownloadMode",
+            Self::WriteFailed => "writeFailed",
             Self::Timeout => "timeout",
             Self::Cancelled => "cancelled",
             Self::ImageUnavailable => "imageUnavailable",
@@ -107,9 +107,9 @@ impl FlashFailure {
     #[must_use]
     pub const fn message(self) -> &'static str {
         match self {
-            Self::ToolMissing => "The firmware tool is missing from this installation.",
             Self::PortBusy => "The device port is in use by another program.",
             Self::NoDownloadMode => "The device did not enter firmware download mode.",
+            Self::WriteFailed => "The firmware could not be written to the device.",
             Self::Timeout => "Firmware flashing timed out.",
             Self::Cancelled => "Firmware flashing was cancelled.",
             Self::ImageUnavailable => "Firmware is unavailable in this application build.",
@@ -120,71 +120,6 @@ impl FlashFailure {
             Self::ChooseProduct => "Choose the Kivori product and board.",
             Self::Unknown => "Firmware flashing failed.",
         }
-    }
-}
-
-/// How an `espflash` run ended, as far as the process boundary can tell.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EspflashExit {
-    /// The sidecar could not be found or started.
-    ToolMissing,
-    /// The image could not be prepared for the tool.
-    ImageUnavailable,
-    /// The process was killed after exceeding [`FLASH_TIMEOUT`].
-    TimedOut,
-    /// The process was killed on request.
-    Cancelled,
-    /// The process exited by itself; `None` when it was ended by a signal.
-    Code(Option<i32>),
-}
-
-/// Maps how `espflash` ended plus its (bounded) stderr to a failure class.
-///
-/// Pure and conservative: only well-known `espflash` 4.x / OS message fragments are recognized and
-/// anything else is [`FlashFailure::Unknown`]. The stderr text is inspected here and then dropped;
-/// it is never logged or sent anywhere.
-#[must_use]
-pub fn classify_espflash(exit: EspflashExit, stderr: &str) -> FlashFailure {
-    match exit {
-        EspflashExit::ToolMissing => return FlashFailure::ToolMissing,
-        EspflashExit::ImageUnavailable => return FlashFailure::ImageUnavailable,
-        EspflashExit::TimedOut => return FlashFailure::Timeout,
-        EspflashExit::Cancelled => return FlashFailure::Cancelled,
-        EspflashExit::Code(_) => {}
-    }
-    let text = stderr.to_ascii_lowercase();
-    let has = |needles: &[&str]| needles.iter().any(|needle| text.contains(needle));
-    // Port ownership first: a busy port also makes the connect attempt fail.
-    if has(&[
-        "access is denied",
-        "permission denied",
-        "device or resource busy",
-        "resource busy",
-        "could not open port",
-        "failed to open serial port",
-        "the serial port could not be opened",
-    ]) {
-        FlashFailure::PortBusy
-    } else if has(&[
-        "wrong boot mode",
-        "download mode",
-        "failed to connect",
-        "error while connecting",
-        "no serial data received",
-        "invalid response",
-        "serial port not found",
-    ]) {
-        FlashFailure::NoDownloadMode
-    } else if has(&["timeout while running", "timed out"]) {
-        FlashFailure::Timeout
-    } else if has(&[
-        "failed to parse elf",
-        "not a valid elf",
-        "no such file or directory",
-    ]) {
-        FlashFailure::ImageUnavailable
-    } else {
-        FlashFailure::Unknown
     }
 }
 
@@ -430,6 +365,13 @@ impl FlashWorkflow {
         self.target.as_ref().map(FlashTarget::port)
     }
 
+    /// The port to reopen for the post-flash handshake. `None` for a drive-only recovery (empty
+    /// port): that board returns on whatever port the OS gives it, so discovery must find it.
+    #[must_use]
+    pub(crate) fn reconnect_port(&self) -> Option<&str> {
+        self.target_port().filter(|port| !port.is_empty())
+    }
+
     /// The short hash of the device accepted by the last recovery. Native-only.
     #[must_use]
     pub fn recovered_hash(&self) -> Option<&str> {
@@ -471,7 +413,8 @@ impl FlashWorkflow {
     }
 
     /// Reserves recovery of a device that cannot be verified (wrong-major firmware, a unit in ROM
-    /// download mode). Requires exactly one USB-hinted port; the caller must first accept its
+    /// download mode). Requires exactly one USB-hinted port, or none while a board held in BOOTSEL
+    /// shows its bootloader drive (then the port is empty); the caller must first accept its
     /// product/board recovery policy. Returns the port for the device thread only.
     pub fn request_recovery(&mut self, candidates: &[PortCandidate]) -> Result<String, String> {
         if !self.status.available {
@@ -481,15 +424,22 @@ impl FlashWorkflow {
             return Err("A firmware update is already in progress.".to_string());
         }
         let found = filter_candidates(candidates, default_allowlist());
-        let [only] = found.as_slice() else {
-            return Err(if found.is_empty() {
-                "No Kivori device was found to restore.".to_string()
-            } else {
-                "More than one Kivori device is connected; leave only the one to restore."
-                    .to_string()
-            });
+        let drives = uf2::bootloader_drives();
+        let port = match found.as_slice() {
+            [only] => only.port_name.clone(),
+            [] if drives.len() == 1 => String::new(),
+            [] if drives.len() > 1 => return Err(
+                "More than one board is in firmware download mode; leave only the one to restore."
+                    .to_string(),
+            ),
+            [] => return Err("No Kivori device was found to restore.".to_string()),
+            _ => {
+                return Err(
+                    "More than one Kivori device is connected; leave only the one to restore."
+                        .to_string(),
+                )
+            }
         };
-        let port = only.port_name.clone();
         self.begin(FlashTarget::Recovery { port: port.clone() });
         Ok(port)
     }
@@ -597,7 +547,8 @@ impl FlashWorkflow {
         }
         match &self.target {
             Some(FlashTarget::Verified { port: p, hash }) if p == port && hash == device_hash => {}
-            Some(FlashTarget::Recovery { port: p }) if p == port => {
+            // An empty port is a board that was in its bootloader: any port it comes back on is it.
+            Some(FlashTarget::Recovery { port: p }) if p == port || p.is_empty() => {
                 self.recovered_hash = Some(device_hash.to_string());
             }
             _ => return false,
@@ -648,9 +599,13 @@ pub fn initial_status() -> FirmwareStatus {
         .clone()
 }
 
-/// Runs an explicitly selected, validated image through the native flasher.
+/// Runs an explicitly selected, validated image through the native UF2 flasher: the board is put
+/// in its ROM bootloader (or already is, for a recovery), the image is copied to its drive, and the
+/// caller then verifies the reconnect handshake. Pass an empty `port` when no serial port exists
+/// (a board held in BOOTSEL).
 ///
-/// `espflash` stderr stays in-process and bounded; cancellation kills and reaps the child.
+/// Cancellation and [`FLASH_TIMEOUT`] are polled; the copy itself cannot be interrupted, so a
+/// cancelled or timed-out write is abandoned on its own thread.
 ///
 /// # Errors
 /// The [`FlashFailure`] class describing why the image was not flashed.
@@ -659,149 +614,175 @@ pub fn flash_image(
     port: &str,
     cancel: &AtomicBool,
 ) -> Result<(), FlashFailure> {
-    let tool = find_espflash().ok_or(FlashFailure::ToolMissing)?;
-    let temp = write_temp_image(image.bytes()).ok_or(FlashFailure::ImageUnavailable)?;
-    let result = run_espflash(&tool, port, &temp, cancel);
-    let _ = std::fs::remove_file(&temp);
-    result
-}
-
-/// The sidecar's file name on this platform.
-#[must_use]
-pub const fn espflash_file_name() -> &'static str {
-    if cfg!(windows) {
-        "espflash.exe"
-    } else {
-        "espflash"
-    }
-}
-
-/// Looks for the bundled `espflash` sidecar directly inside `dir`.
-#[must_use]
-pub fn find_espflash_in(dir: &Path) -> Option<PathBuf> {
-    Some(dir.join(espflash_file_name())).filter(|path| path.is_file())
-}
-
-/// Resolves the flashing tool: the sidecar next to the application executable first (where the
-/// installer puts it). Only developer builds (`device-studio`) fall back to `PATH` and
-/// `~/.cargo/bin`; a release build never runs whatever happens to be on `PATH`.
-fn find_espflash() -> Option<PathBuf> {
-    let beside_exe = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().and_then(find_espflash_in));
-    #[cfg(feature = "device-studio")]
-    {
-        beside_exe.or_else(find_espflash_on_dev_path)
-    }
-    #[cfg(not(feature = "device-studio"))]
-    {
-        beside_exe
-    }
-}
-
-#[cfg(feature = "device-studio")]
-fn find_espflash_on_dev_path() -> Option<PathBuf> {
-    let exe = espflash_file_name();
-    let mut candidates = std::env::var_os("PATH")
-        .into_iter()
-        .flat_map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
-        .map(|dir| dir.join(exe))
-        .collect::<Vec<_>>();
-    if let Some(home) = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }) {
-        candidates.push(PathBuf::from(home).join(".cargo").join("bin").join(exe));
-    }
-    candidates.into_iter().find(|path| path.is_file())
-}
-
-fn write_temp_image(image: &[u8]) -> Option<PathBuf> {
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_nanos());
-    let path = std::env::temp_dir().join(format!(
-        "kivori-firmware-{}-{stamp}.elf",
-        std::process::id()
-    ));
-    std::fs::write(&path, image).ok()?;
-    Some(path)
-}
-
-/// Drains `reader` to the end, keeping only the last [`STDERR_LIMIT`] bytes.
-fn read_tail(mut reader: impl Read) -> Vec<u8> {
-    let mut tail: Vec<u8> = Vec::new();
-    let mut chunk = [0_u8; 1024];
-    while let Ok(read) = reader.read(&mut chunk) {
-        if read == 0 {
-            break;
-        }
-        tail.extend_from_slice(&chunk[..read]);
-        if tail.len() > STDERR_LIMIT {
-            tail.drain(..tail.len() - STDERR_LIMIT);
-        }
-    }
-    tail
-}
-
-fn run_espflash(
-    tool: &Path,
-    port: &str,
-    image: &Path,
-    cancel: &AtomicBool,
-) -> Result<(), FlashFailure> {
-    let mut command = Command::new(tool);
-    command
-        .arg("flash")
-        .arg("--port")
-        .arg(port)
-        .arg("--chip")
-        .arg("esp32c3")
-        .arg("--non-interactive")
-        .arg("--skip-update-check")
-        .arg(image)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    }
-    let mut child = command
-        .spawn()
-        .map_err(|_| classify_espflash(EspflashExit::ToolMissing, ""))?;
-    // A reader thread keeps the pipe drained so a chatty child can never block on a full buffer.
-    let stderr = child
-        .stderr
-        .take()
-        .map(|pipe| std::thread::spawn(move || read_tail(pipe)));
     let started = Instant::now();
-    let exit = loop {
-        if cancel.load(Ordering::SeqCst) {
-            let _ = child.kill();
-            break EspflashExit::Cancelled;
-        }
-        match child.try_wait() {
-            Ok(Some(status)) if status.success() => break EspflashExit::Code(Some(0)),
-            Ok(Some(status)) => break EspflashExit::Code(status.code()),
-            Ok(None) if started.elapsed() >= FLASH_TIMEOUT => {
-                let _ = child.kill();
-                break EspflashExit::TimedOut;
-            }
-            Ok(None) => std::thread::sleep(Duration::from_millis(50)),
-            Err(_) => {
-                // A failed status probe does not reap the child. Terminate it before the unconditional
-                // `wait` below so a broken process handle cannot strand the device runtime.
-                let _ = child.kill();
-                break EspflashExit::Code(None);
-            }
-        }
-    };
-    let _ = child.wait();
-    let captured = stderr
-        .and_then(|handle| handle.join().ok())
-        .unwrap_or_default();
-    if exit == EspflashExit::Code(Some(0)) {
-        return Ok(());
+    let uf2 = uf2::elf_to_uf2(image.bytes()).ok_or(FlashFailure::ImageUnavailable)?;
+    let drive = enter_bootloader(port, cancel)?;
+    write_image(&drive.join("kivori-firmware.uf2"), uf2, cancel, started)
+}
+
+/// The one drive in `drives` that is not in `known`. `None` while there is none yet; `Unknown` when
+/// several appeared at once, since which one is the board being flashed cannot be told.
+fn single_new_drive(
+    drives: Vec<PathBuf>,
+    known: &[PathBuf],
+) -> Result<Option<PathBuf>, FlashFailure> {
+    let mut fresh = drives.into_iter().filter(|drive| !known.contains(drive));
+    match (fresh.next(), fresh.next()) {
+        (only, None) => Ok(only),
+        _ => Err(FlashFailure::Unknown),
     }
-    // The text is only inspected for a class; it is dropped here and never logged or emitted.
-    Err(classify_espflash(exit, &String::from_utf8_lossy(&captured)))
+}
+
+/// Returns the bootloader drive of the board being flashed. With a `port` it is reached with the
+/// Arduino-style 1200-baud touch and must be a drive that appeared since, so another board already
+/// in BOOTSEL is never flashed by mistake. An empty `port` is a drive-only recovery: the board
+/// already shows its (single) drive.
+fn enter_bootloader(port: &str, cancel: &AtomicBool) -> Result<PathBuf, FlashFailure> {
+    let known = if port.is_empty() {
+        Vec::new()
+    } else {
+        uf2::bootloader_drives()
+    };
+    let mut touch_failed = false;
+    if !port.is_empty() {
+        // The firmware reboots into the ROM bootloader when the host sets 1200 baud and drops DTR.
+        // On Windows the 1200-baud line coding set inside `open` already triggers it, and a later
+        // call can fail although the board is rebooting, so only a missing drive means failure.
+        match serialport::new(port, 1200).open() {
+            Ok(mut serial) => {
+                let _ = serial.write_data_terminal_ready(false);
+            }
+            Err(_) => touch_failed = true,
+        }
+    }
+    let started = Instant::now();
+    loop {
+        if cancel.load(Ordering::SeqCst) {
+            return Err(FlashFailure::Cancelled);
+        }
+        if let Some(drive) = single_new_drive(uf2::bootloader_drives(), &known)? {
+            return Ok(drive);
+        }
+        if started.elapsed() >= BOOTLOADER_TIMEOUT {
+            return Err(if touch_failed {
+                FlashFailure::PortBusy
+            } else {
+                FlashFailure::NoDownloadMode
+            });
+        }
+        std::thread::sleep(POLL);
+    }
+}
+
+fn write_image(
+    path: &Path,
+    uf2: Vec<u8>,
+    cancel: &AtomicBool,
+    started: Instant,
+) -> Result<(), FlashFailure> {
+    let target = path.to_path_buf();
+    let writer = std::thread::spawn(move || {
+        let mut file = std::fs::File::create(target)?;
+        file.write_all(&uf2)?;
+        // Best effort: the ROM reboots on the last block, so the drive may vanish before the sync.
+        let _ = file.sync_all();
+        Ok::<(), std::io::Error>(())
+    });
+    while !writer.is_finished() {
+        if cancel.load(Ordering::SeqCst) {
+            return Err(FlashFailure::Cancelled);
+        }
+        if started.elapsed() >= FLASH_TIMEOUT {
+            return Err(FlashFailure::Timeout);
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    // The ROM reboots as soon as the last block lands, so the drive can vanish under the write; a
+    // gone drive therefore counts as written. The reconnect handshake is the real success check.
+    let written = matches!(writer.join(), Ok(Ok(())));
+    if written || !path.parent().is_some_and(uf2::is_bootloader_drive) {
+        Ok(())
+    } else {
+        Err(FlashFailure::WriteFailed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn drive() -> tempfile::TempDir {
+        let drive = tempfile::tempdir().unwrap();
+        std::fs::write(drive.path().join("INFO_UF2.TXT"), "Board-ID: RPI-RP2\n").unwrap();
+        drive
+    }
+
+    #[test]
+    fn a_drive_only_recovery_has_no_port_to_reopen() {
+        let mut flash = FlashWorkflow::new(true, 0);
+        flash.begin(FlashTarget::Recovery {
+            port: String::new(),
+        });
+        assert_eq!(flash.reconnect_port(), None);
+        flash.begin(FlashTarget::Recovery {
+            port: "COM7".into(),
+        });
+        assert_eq!(flash.reconnect_port(), Some("COM7"));
+    }
+
+    #[test]
+    fn only_a_drive_that_appeared_after_the_touch_qualifies() {
+        let (a, b, c) = (
+            PathBuf::from("/a"),
+            PathBuf::from("/b"),
+            PathBuf::from("/c"),
+        );
+        // Another board already in BOOTSEL (`a`) is never picked.
+        assert_eq!(
+            single_new_drive(vec![a.clone()], std::slice::from_ref(&a)),
+            Ok(None)
+        );
+        assert_eq!(
+            single_new_drive(vec![a.clone(), b.clone()], std::slice::from_ref(&a)),
+            Ok(Some(b.clone()))
+        );
+        assert_eq!(
+            single_new_drive(vec![a.clone(), b, c], &[a]),
+            Err(FlashFailure::Unknown)
+        );
+        // A drive-only recovery (nothing known) takes its single drive and refuses several.
+        assert_eq!(
+            single_new_drive(vec![PathBuf::from("/x")], &[]),
+            Ok(Some(PathBuf::from("/x")))
+        );
+        assert_eq!(
+            single_new_drive(vec![PathBuf::from("/x"), PathBuf::from("/y")], &[]),
+            Err(FlashFailure::Unknown)
+        );
+    }
+
+    #[test]
+    fn writes_the_image_and_treats_a_vanished_drive_as_written() {
+        let cancel = AtomicBool::new(false);
+        let drive = drive();
+        let file = drive.path().join("kivori-firmware.uf2");
+        assert_eq!(
+            write_image(&file, vec![7; 512], &cancel, Instant::now()),
+            Ok(())
+        );
+        assert_eq!(std::fs::read(&file).unwrap(), vec![7; 512]);
+        // A write error with the drive still mounted is a real failure; with the drive gone it is not.
+        let blocked = drive.path().join("not-a-file");
+        std::fs::create_dir(&blocked).unwrap();
+        assert_eq!(
+            write_image(&blocked, vec![1], &cancel, Instant::now()),
+            Err(FlashFailure::WriteFailed)
+        );
+        let gone = tempfile::tempdir()
+            .unwrap()
+            .path()
+            .join("RPI-RP2")
+            .join("x.uf2");
+        assert_eq!(write_image(&gone, vec![1], &cancel, Instant::now()), Ok(()));
+    }
 }

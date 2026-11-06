@@ -50,7 +50,7 @@ Each request except `exit` produces exactly one stdout JSON record with `wire`, 
 (`booting`, `idle`, `happy`, `busy`, `sleeping` or `offline`). Frames are composed by the production
 firmware renderer. The runner uses the production buffered renderer and `TxBuffered` over its pipe.
 Time advances only when requested. The process has two timings. By default it is modelled: a request
-means "run the device until `now_ms`", on a device clock that charges the ESP32-C3's compose time per
+means "run the device until `now_ms`", on a device clock that charges the board's compose time per
 tile row and SPI time per panel window, so frame time, fps, busy % and the delay before input is seen
 mid-frame resemble the unit, and Device internals are filled in from a committed resource fixture
 (see [Modelled timing and internals](../../../docs/virtual-pip.md#modelled-timing-and-internals)).
@@ -59,6 +59,12 @@ in a long host session does not simulate the time before it existed).
 With `--ideal-time` one request runs exactly one production runtime tick with the clock frozen at
 `now_ms`, so frames cost 0 ms and pending protocol input may need subsequent ticks to drain. The
 in-process scenarios (`--input-smoke`, `--io-smoke`, `--replay`) always use ideal time.
+
+The runner models one of two boards per process, chosen by the environment variable
+`KIVORI_VIRTUAL_BOARD`: unset or `c3-supermini` is v1 (ESP32-C3 SuperMini, board 1, the default);
+`rp2040-zero` is v2 (Waveshare RP2040-Zero, board 2, with estimated timing). It sets the identity the
+runner reports, the Device internals chip facts and the timing; any other value exits nonzero. See
+[Virtual boards](../../../docs/virtual-pip.md#virtual-boards-v1-and-v2).
 
 Both directions have a 400000-byte record limit excluding newline. EOF exits cleanly; malformed,
 truncated, unknown-field, oversized or invalid requests exit nonzero with diagnostics on stderr.

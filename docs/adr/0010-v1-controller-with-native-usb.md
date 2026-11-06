@@ -1,6 +1,7 @@
 # ADR-0010: v1 controller with native USB
 
 - **Status:** Proposed (decide before the production PCB)
+- **Note:** Superseded in part by [ADR-0019](./0019-rp2040-zero-replaces-esp32-c3.md) (#179): the real board is now the RP2040-Zero.
 - **Date:** 2026-10-11
 
 ## Context

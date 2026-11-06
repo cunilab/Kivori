@@ -13,7 +13,7 @@ Desktop 0.3.1 / Pip firmware 0.1.4 is now [published](https://github.com/cunilab
 
 ## Findings in the current system
 
-- The shared catalog already defines internal product `pip` (wire ID 1), model `KV-P1`, board `c3-supermini` (wire ID 1). Its customer name is currently Kivori Pip. See [registry](../products/registry.toml) and [product](../products/pip/product.toml).
+- The shared catalog already defines internal product `pip` (wire ID 1), model `KV-P1`, boards `rp2040-zero` (wire ID 2, the bundled firmware since #179) and `c3-supermini` (wire ID 1, legacy, no firmware). Its customer name is currently Kivori Pip. See [registry](../products/registry.toml) and [product](../products/pip/product.toml).
 - The website has a separate product record named simply Kivori, without a model or shared catalog reference: [product content](../apps/web/content/products/kivori.ts), [types](../apps/web/content/products/types.ts). Product cards use the common hero visual rather than product-selected art.
 - [The release loader](../apps/web/lib/releases.ts) reads GitHub at runtime. It excludes drafts, but includes prereleases and has no desktop tag-family filter. A future firmware-only GitHub Release could therefore become the website's apparent latest app version. Only the first 20 releases are requested, so future filtering and history also need pagination.
 - [Website notes](../apps/web/lib/release-notes.ts) explicitly ignore the GitHub body. Only 0.1.0 has curated notes; other versions show a generic fallback. Firmware versions are absent from the web release model, although [release tooling](../scripts/release-info.mjs) already obtains them from the shared catalog.
@@ -30,7 +30,7 @@ Use Kivori as the shared platform/app brand and KV-P1 as the first device's publ
 | --- | --- | --- |
 | Platform/app | Kivori desktop 0.3.1 | One shared download per supported OS/architecture |
 | Product model | KV-P1 | Product page, selected visual, specifications, support status |
-| Firmware target | `pip` / `c3-supermini`, 0.1.4 | Model-specific firmware information, updated through the desktop app |
+| Firmware target | `pip` / `rp2040-zero` (0.1.4 was built for `c3-supermini`) | Model-specific firmware information, updated through the desktop app |
 | Hardware revision | Catalog board identity | Compatibility information when needed; not an app version |
 | Wire protocol | 0.3 | Internal compatibility contract; not the customer-facing firmware version |
 

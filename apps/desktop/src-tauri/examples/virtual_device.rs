@@ -152,9 +152,13 @@ fn smoke(mut sandbox: Sandbox, output: PathBuf) -> Result<(), String> {
         .snapshot
         .as_ref()
         .ok_or("Device internals missing")?;
+    let chip_model = match kivori_desktop::virtual_device::virtual_board().as_str() {
+        "rp2040-zero" => "rp2040",
+        _ => "esp32c3",
+    };
     if !internals.connected
         || !internals.supported
-        || chip.chip_model != Some("esp32c3")
+        || chip.chip_model != Some(chip_model)
         || chip.busy_percent.is_none()
         || !chip.compose_ms.is_some_and(|ms| (20..=200).contains(&ms))
     {

@@ -95,10 +95,14 @@ pub fn check_firmware(
     let (_, board) = catalog
         .by_wire(record.product, record.board)
         .ok_or_else(|| CatalogError("bundled image names an unknown product/board".into()))?;
-    let manifest = root.join(&board.firmware.crate_dir).join("Cargo.toml");
+    let firmware = board
+        .firmware
+        .as_ref()
+        .ok_or_else(|| CatalogError("bundled image names a board without firmware".into()))?;
+    let manifest = root.join(&firmware.crate_dir).join("Cargo.toml");
     let expected_version = crate_version(&read(&manifest)?)
         .ok_or_else(|| CatalogError(format!("{} has no package version", manifest.display())))?;
-    if record.version != expected_version || record.min_protocol != board.firmware.min_protocol {
+    if record.version != expected_version || record.min_protocol != firmware.min_protocol {
         return Err(CatalogError(format!("bundled image differs from {} version or catalog minimum protocol; rebuild the firmware", manifest.display())));
     }
     Ok(manifest)
@@ -157,6 +161,7 @@ pub fn require_complete(
             product
                 .boards
                 .iter()
+                .filter(|board| board.firmware.is_some())
                 .map(move |board| (product.number, board.number))
         })
         .collect();
@@ -223,7 +228,7 @@ mod tests {
     fn product(id: &str) -> String {
         format!(
             "display_name = \"Test {id}\\nwith \\\"quotes\\\"\"\nshort_name = \"Test\"\nmodel = \"KV-T1\"\nrequired_capabilities = []\n\
-             [boards.test-board]\ndisplay_name = \"Test board\"\nflash = \"espflash\"\nusb = [\"1234:5678\"]\n\
+             [boards.test-board]\ndisplay_name = \"Test board\"\nflash = \"uf2\"\nusb = [\"1234:5678\"]\n\
              [boards.test-board.firmware]\ncrate = \"firmware/{id}\"\nartifact = \"target/image\"\nmin_protocol = \"0.1\"\n"
         )
     }
@@ -453,7 +458,7 @@ mod tests {
     fn image(product: u16, board: u16, version: &str, protocol: &str) -> Vec<u8> {
         let mut bytes = vec![0; 52];
         bytes[..6].copy_from_slice(b"\x7fELF\x01\x01");
-        bytes[18] = 243;
+        bytes[18] = 40;
         bytes.extend_from_slice(format!("KIVORI-FW-VERSION:{version}\0KIVORI-FW-IDENTITY:p={product};b={board};v={version};m={protocol}\0").as_bytes());
         bytes
     }

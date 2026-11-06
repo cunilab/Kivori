@@ -1,41 +1,36 @@
-//! Physical ESP32-C3 + ST7789 240x240 Kivori runtime.
+//! Physical RP2040-Zero + ST7789 240x240 Kivori runtime.
 //!
 //! All verified physical display facts live in
 //! [`crate::profile::physical_st7789`].
 //!
-//! `esp-hal` exposes GPIOs as typed fields (`peripherals.GPIO6`, etc.), so the
-//! concrete field selections remain here. Compile-time assertions below ensure
-//! they cannot silently drift from the physical profile.
+//! `rp2040-hal` exposes GPIOs as typed fields (`pins.gpio15`, etc.), so the concrete pin
+//! selections remain here. Compile-time assertions below ensure they cannot silently drift from
+//! the physical profile.
 
 use core::convert::Infallible;
+use core::fmt::Write as _;
 
 use embedded_hal::digital::{ErrorType, OutputPin};
+use embedded_hal::pwm::SetDutyCycle;
 use embedded_hal_bus::spi::ExclusiveDevice;
 
-use esp_hal::{
-    delay::Delay,
-    dma::{DmaRxBuf, DmaTxBuf},
-    dma_buffers_chunk_size, efuse,
-    gpio::{DriveMode, Input, InputConfig, Io, Level, Output, OutputConfig, Pull},
-    ledc::{
-        channel::{self, Channel, ChannelIFace},
-        timer::{self, TimerIFace},
-        LSGlobalClkSource, Ledc, LowSpeed,
-    },
-    peripherals::Peripherals,
-    spi::master::{Config, Spi},
-    time::Rate,
-};
+use rp2040_hal::fugit::RateExtU32;
+use rp2040_hal::gpio::{FunctionSpi, PinState, Pins};
+use rp2040_hal::pwm::{Channel, FreeRunning, Pwm4, Pwm5, Pwm6, Slice, Slices, A, B};
+use rp2040_hal::usb::UsbBus;
+use rp2040_hal::{Clock as _, Sio, Spi};
+use usb_device::class_prelude::UsbBusAllocator;
 
 use kivori_assets::AssetBlob;
 use kivori_model::desk::BRIGHTNESS_DEFAULT;
 use kivori_model::{Rect, Rgb565};
-use kivori_protocol::identity::{ChipRecord, RECORD_LEN};
+use kivori_protocol::identity::ChipRecordState;
 use kivori_protocol::FirmwareVersion;
 
 use mipidsi::{interface::SpiInterface, Builder};
 
 use crate::{
+    bsp::Board,
     chip_probe,
     device_id::derive_device_id,
     display::MipidsiSink,
@@ -46,7 +41,7 @@ use crate::{
     proto::DeviceIdentity,
     render::FRAME_PIXELS,
     runtime::{run_buffered, RuntimeConfig},
-    transport::{TxBuffered, UsbJtagTransport},
+    transport::{TxBuffered, UsbCdcTransport},
 };
 
 /// Parses one decimal component of the crate version at compile time. A malformed version fails
@@ -86,33 +81,48 @@ static FW_VERSION_MARKER: &[u8] =
 #[used]
 static FW_IDENTITY_MARKER: &[u8] = IMAGE_RECORD.as_bytes();
 
-/// Reads the chip identity record from the user eFuse block (BLOCK3, `BLOCK_USR_DATA`, 192 bits).
-/// Read only: this firmware never writes eFuses; the provisioning tool does (ADR-0014). Only the
-/// first [`RECORD_LEN`] bytes are the record; the rest of the block (and the custom MAC bits
-/// beyond it) are not touched.
-fn read_chip_record() -> kivori_protocol::identity::ChipRecordState {
-    let block: [u8; 24] = efuse::read_field_le(efuse::BLOCK_USR_DATA);
-    ChipRecord::decode(&block[..RECORD_LEN])
+/// The flash chip's 64-bit unique id and its JEDEC id (the RP2040 has neither). Both are read
+/// through the ROM's flash commands, which need XIP off: interrupts are disabled here, and USB, DMA
+/// and the input interrupt are not started yet.
+fn read_flash_ids() -> ([u8; 8], u32) {
+    let mut unique = [0u8; 8];
+    // SAFETY: nothing else reads flash while interrupts are off and core 1 is not started; the
+    // second-stage bootloader is restored afterwards (`use_boot2`).
+    let jedec = critical_section::with(|_| unsafe {
+        rp2040_flash::flash::flash_unique_id(&mut unique, true);
+        rp2040_flash::flash::flash_jedec_id(true)
+    });
+    (unique, jedec)
 }
 
-/// Bytes held by each DMA transfer. This fits a complete 40x40 RGB565 tile
-/// (3,200 bytes) and is also the maximum mipidsi SPI batch size.
-const SPI_DMA_BUFFER_BYTES: usize = 4_096;
-/// ESP32-C3 DMA descriptors can carry at most 4,095 bytes, so the 4 KiB
-/// transfer capacity needs two TX descriptors.
-const SPI_DMA_DESCRIPTOR_BYTES: usize = 4_095;
-/// `SpiDmaBus` owns an RX buffer even for write-only traffic. One byte and one
-/// descriptor satisfy the HAL constructor; write operations use its separate
-/// empty RX transfer and never populate this buffer.
-const SPI_DMA_RX_BUFFER_BYTES: usize = 1;
+/// The USB serial number the host shows: the derived device id as hex, never the raw flash id.
+static USB_SERIAL: static_cell::StaticCell<heapless::String<32>> = static_cell::StaticCell::new();
 
-/// Physical-mode staging memory lives in `.bss`, never on the ESP32-C3 stack.
+/// The USB bus allocator, which the CDC class and device borrow for as long as the firmware runs.
+static USB_BUS: static_cell::StaticCell<UsbBusAllocator<UsbBus>> = static_cell::StaticCell::new();
+
+/// PWM period shared by the backlight and the LED: 125 MHz / (20 * 256) = 24 kHz, above hearing,
+/// with 8-bit duty (far finer than the five backlight steps need).
+const PWM_DIV: u8 = 20;
+const PWM_TOP: u16 = 255;
+
+/// Starts one PWM slice with the shared period.
+fn start_pwm<I: rp2040_hal::pwm::SliceId>(slice: &mut Slice<I, FreeRunning>)
+where
+    FreeRunning: rp2040_hal::pwm::ValidSliceMode<I>,
+{
+    slice.set_div_int(PWM_DIV);
+    slice.set_top(PWM_TOP);
+    slice.enable();
+}
+
+/// Bytes mipidsi stages per SPI transaction. This fits a complete 40x40 RGB565 tile (3,200 bytes)
+/// and is also the maximum mipidsi SPI batch size.
+const SPI_BUFFER_BYTES: usize = 4_096;
+
+/// Physical-mode staging memory lives in `.bss`, never on the RP2040 stack.
 static FRAME_BUFFER: static_cell::ConstStaticCell<[Rgb565; FRAME_PIXELS]> =
     static_cell::ConstStaticCell::new([Rgb565::from_raw(0); FRAME_PIXELS]);
-
-/// The PWM timer behind the backlight channel, which borrows it for as long as the firmware runs.
-static BACKLIGHT_TIMER: static_cell::StaticCell<esp_hal::ledc::timer::Timer<'static, LowSpeed>> =
-    static_cell::StaticCell::new();
 
 /// The parsed asset manifest (about 31 KiB). It lives in `.bss`, not in `run_mode`'s stack frame,
 /// which stays live for the whole run.
@@ -121,17 +131,18 @@ static ASSET_BLOB: static_cell::StaticCell<AssetBlob<'static>> = static_cell::St
 /// Parses the compiled assets into [`ASSET_BLOB`]. Kept out of line so the parse temporaries (each
 /// move of the manifest is another copy on the stack) are released before the run loop starts.
 #[inline(never)]
-fn load_assets(assets: &'static [u8]) -> &'static AssetBlob<'static> {
+pub fn load_assets(assets: &'static [u8]) -> &'static AssetBlob<'static> {
     ASSET_BLOB.init_with(|| match AssetBlob::parse(assets) {
         Ok(blob) => blob,
         Err(error) => panic!("Kivori asset blob: {error:?}"),
     })
 }
 
-/// The panel sink plus its backlight PWM channel: pixels go to the panel, brightness to the pin.
+/// The panel sink plus its backlight PWM channel (GP12 = slice 6 A): pixels go to the panel,
+/// brightness to the pin.
 struct Backlit<S> {
     panel: S,
-    channel: Channel<'static, LowSpeed>,
+    channel: Channel<Slice<Pwm6, FreeRunning>, A>,
 }
 
 impl<S: DisplaySink> DisplaySink for Backlit<S> {
@@ -147,109 +158,145 @@ impl<S: DisplaySink> DisplaySink for Backlit<S> {
 
     fn set_brightness(&mut self, step: u8) {
         // A failed duty write leaves the previous brightness: harmless, and the next setting retries.
-        let _ = self.channel.set_duty(hw::backlight_duty_pct(step));
+        let _ = self
+            .channel
+            .set_duty_cycle_percent(hw::backlight_duty_pct(step));
     }
 }
 
-/// Keep the typed `esp-hal` GPIO field selections below synchronized with the
-/// numeric hardware profile.
+/// The RGB LED's three PWM channels (GP9 = slice 4 B, GP10 = slice 5 A, GP11 = slice 5 B).
+// Brightness and resistor values are pending a hardware test (issue #179).
+struct RgbLed {
+    red: Channel<Slice<Pwm4, FreeRunning>, B>,
+    green: Channel<Slice<Pwm5, FreeRunning>, A>,
+    blue: Channel<Slice<Pwm5, FreeRunning>, B>,
+}
+
+impl RgbLed {
+    /// Sets the three colour levels (0 = off, 255 = fully on; common cathode, so active high).
+    fn set_rgb(&mut self, r: u8, g: u8, b: u8) {
+        // A failed duty write leaves the previous colour: harmless on an indicator.
+        let _ = self.red.set_duty_cycle_fraction(u16::from(r), 255);
+        let _ = self.green.set_duty_cycle_fraction(u16::from(g), 255);
+        let _ = self.blue.set_duty_cycle_fraction(u16::from(b), 255);
+    }
+}
+
+/// Keep the typed `rp2040-hal` GPIO selections below synchronized with the numeric hardware
+/// profile.
 ///
-/// If somebody changes a pin in `profile.rs` without updating this file, the
-/// physical firmware build fails instead of silently using the wrong wiring.
+/// If somebody changes a pin in `profile.rs` without updating this file, the physical firmware
+/// build fails instead of silently using the wrong wiring.
 const _: () = {
-    assert!(hw::SCK == 4);
-    assert!(hw::MOSI == 3);
-    assert!(hw::DC == 1);
-    assert!(hw::RST == 2);
-    assert!(hw::BL == 0);
+    assert!(hw::SCK == 26);
+    assert!(hw::MOSI == 15);
+    assert!(hw::DC == 13);
+    assert!(hw::RST == 14);
+    assert!(hw::BL == 12);
     assert!(hw::CS.is_none());
-    assert!(hw::ROTARY.clk == 7);
-    assert!(hw::ROTARY.dt == 6);
-    assert!(hw::ROTARY.sw == 5);
-    assert!(hw::CONTEXT_BUTTONS[0] == 9);
-    assert!(hw::CONTEXT_BUTTONS[1] == 8);
-    assert!(hw::CONTEXT_BUTTONS[2] == 10);
+    assert!(hw::LED[0] == 9);
+    assert!(hw::LED[1] == 10);
+    assert!(hw::LED[2] == 11);
+    assert!(hw::ROTARY.clk == 5);
+    assert!(hw::ROTARY.dt == 4);
+    assert!(hw::ROTARY.sw == 3);
+    assert!(hw::CONTEXT_BUTTONS[0] == 6);
+    assert!(hw::CONTEXT_BUTTONS[1] == 7);
+    assert!(hw::CONTEXT_BUTTONS[2] == 8);
 };
 
-/// Runs Kivori on the verified physical ESP32-C3 + ST7789 hardware.
+/// Runs Kivori on the physical RP2040-Zero + ST7789 hardware.
 ///
-/// This function owns the USB Serial/JTAG transport, SPI peripheral, display
-/// control pins, backlight, parsed asset blob, and production runtime. It never
-/// returns.
-pub fn run_mode(
-    peripherals: Peripherals,
-    clock: crate::clock::EspClock,
-    assets: &'static [u8],
-) -> ! {
-    esp_println::println!("KIVORI physical ST7789 runtime");
+/// This function owns the USB CDC transport, SPI1, display control pins, backlight, RGB LED and the
+/// production runtime. It never returns.
+///
+/// `blob` comes from [`load_assets`], which `main` calls first: its parse needs about 110 KiB of
+/// stack, so it runs before this function's own frame (7.5 KiB) is on the stack.
+pub fn run_mode(mut board: Board, blob: &'static AssetBlob<'static>, asset_bytes: usize) -> ! {
+    // The flash ids come first: they need interrupts off and no other flash user.
+    let (flash_unique_id, flash_jedec_id) = read_flash_ids();
 
-    // Paint the unused stack now, while little of it is in use, so the device internals snapshot
-    // can report how deep it has ever gone.
-    chip_probe::paint_stack();
+    let sio = Sio::new(board.sio);
+    let pins = Pins::new(board.io, board.pads, sio.gpio_bank0, &mut board.resets);
 
     // -------------------------------------------------------------------------
-    // USB Serial/JTAG transport
-    // -------------------------------------------------------------------------
-
-    let serial = UsbJtagTransport::new(peripherals.USB_DEVICE);
-    let mut transport = TxBuffered::new(serial);
-
-    // -------------------------------------------------------------------------
-    // SPI2
+    // SPI1
     //
-    // Physical wiring (the enclosure's map, #123):
-    //   SCK  -> GPIO4
-    //   MOSI -> GPIO3
+    // Physical wiring (the v7 carrier's map, #179):
+    //   SCK  -> GP26
+    //   MOSI -> GP15
     //
-    // No MISO is needed because the display path is write-only.
+    // No MISO is needed because the display path is write-only. The CPU feeds the SPI FIFO
+    // (no DMA yet), so a window is one blocking transfer.
     // -------------------------------------------------------------------------
 
-    let spi = Spi::new(
-        peripherals.SPI2,
-        Config::default()
-            .with_frequency(Rate::from_hz(hw::SPI_CLOCK_HZ))
-            .with_mode(hw::spi_mode()),
+    let spi = Spi::<_, _, _, 8>::new(
+        board.spi1,
+        (
+            pins.gpio15.into_function::<FunctionSpi>(),
+            pins.gpio26.into_function::<FunctionSpi>(),
+        ),
     )
-    .expect("SPI config")
-    .with_sck(peripherals.GPIO4)
-    .with_mosi(peripherals.GPIO3);
-
-    // The panel is write-only, so SPI DMA needs only a transmit buffer. The
-    // 4 KiB transfer buffer replaces the previous 512-byte CPU-driven bursts;
-    // it is large enough for a whole change-driven tile in one transaction.
-    // `SpiDmaBus` retains the standard `embedded-hal` SPI bus interface that
-    // mipidsi and ExclusiveDevice expect.
-    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers_chunk_size!(
-        SPI_DMA_RX_BUFFER_BYTES,
-        SPI_DMA_BUFFER_BYTES,
-        SPI_DMA_DESCRIPTOR_BYTES
+    .init(
+        &mut board.resets,
+        board.clocks.peripheral_clock.freq(),
+        hw::SPI_CLOCK_HZ.Hz(),
+        hw::spi_mode(),
     );
-    let dma_rx_buffer = DmaRxBuf::new(rx_descriptors, rx_buffer).expect("SPI DMA RX buffer");
-    let dma_tx_buffer = DmaTxBuf::new(tx_descriptors, tx_buffer).expect("SPI DMA TX buffer");
-    let spi = spi
-        .with_dma(peripherals.DMA_CH0)
-        .with_buffers(dma_rx_buffer, dma_tx_buffer);
 
     // -------------------------------------------------------------------------
     // Display control pins
     //
-    // Physical wiring (the enclosure's map, #123):
-    //   DC  -> GPIO1
-    //   RST -> GPIO2
-    //   BL  -> GPIO0
+    // Physical wiring (the v7 carrier's map, #179):
+    //   DC  -> GP13
+    //   RST -> GP14
+    //   BL  -> GP12 (PWM slice 6, channel A)
     // -------------------------------------------------------------------------
 
-    let dc = Output::new(peripherals.GPIO1, Level::High, OutputConfig::default());
+    let dc = pins.gpio13.into_push_pull_output();
+    let rst = pins.gpio14.into_push_pull_output_in_state(PinState::High);
 
-    let rst = Output::new(peripherals.GPIO2, Level::High, OutputConfig::default());
+    // -------------------------------------------------------------------------
+    // PWM: backlight and RGB LED
+    //
+    // The backlight is plainly on while the panel initialises (full duty) and follows the desktop's
+    // brightness setting once it is up. The LED starts off.
+    // -------------------------------------------------------------------------
 
-    // The backlight is plainly on while the panel initialises, and handed to the LEDC PWM below
-    // once the panel is up.
-    let backlight = Output::new(
-        peripherals.GPIO0,
-        hw::backlight_level(),
-        OutputConfig::default(),
-    );
+    let mut slices = Slices::new(board.pwm, &mut board.resets);
+    start_pwm(&mut slices.pwm4);
+    start_pwm(&mut slices.pwm5);
+    start_pwm(&mut slices.pwm6);
+    let mut backlight_channel = slices.pwm6.channel_a;
+    backlight_channel.output_to(pins.gpio12);
+    let _ = backlight_channel.set_duty_cycle_percent(100);
+    let mut led = RgbLed {
+        red: slices.pwm4.channel_b,
+        green: slices.pwm5.channel_a,
+        blue: slices.pwm5.channel_b,
+    };
+    led.red.output_to(pins.gpio9);
+    led.green.output_to(pins.gpio10);
+    led.blue.output_to(pins.gpio11);
+    led.set_rgb(0, 0, 0);
+
+    // DEVELOPMENT ONLY: the payload trace goes out of UART0 (GP0 TX, GP1 RX).
+    #[cfg(feature = "debug-payloads")]
+    {
+        use rp2040_hal::gpio::FunctionUart;
+        use rp2040_hal::uart::{DataBits, StopBits, UartConfig, UartPeripheral};
+        let uart_pins = (
+            pins.gpio0.into_function::<FunctionUart>(),
+            pins.gpio1.into_function::<FunctionUart>(),
+        );
+        let uart = UartPeripheral::new(board.uart0, uart_pins, &mut board.resets)
+            .enable(
+                UartConfig::new(115_200.Hz(), DataBits::Eight, None, StopBits::One),
+                board.clocks.peripheral_clock.freq(),
+            )
+            .expect("debug UART");
+        crate::debug_payloads::init(uart);
+    }
 
     // -------------------------------------------------------------------------
     // SPI device
@@ -259,9 +306,9 @@ pub fn run_mode(
     // another GPIO.
     // -------------------------------------------------------------------------
 
-    let spi_dev = ExclusiveDevice::new(spi, NoChipSelect, Delay::new()).expect("SPI device");
+    let spi_dev = ExclusiveDevice::new(spi, NoChipSelect, board.timer).expect("SPI device");
 
-    let mut interface_buffer = [0u8; SPI_DMA_BUFFER_BYTES];
+    let mut interface_buffer = [0u8; SPI_BUFFER_BYTES];
 
     let interface = SpiInterface::new(spi_dev, dc, &mut interface_buffer);
 
@@ -279,10 +326,8 @@ pub fn run_mode(
         .orientation(hw::orientation())
         .color_order(hw::color_order())
         .invert_colors(hw::color_inversion())
-        .init(&mut Delay::new())
+        .init(&mut board.timer)
         .expect("ST7789 init");
-
-    esp_println::println!("KIVORI display initialized");
 
     // -------------------------------------------------------------------------
     // Kivori display sink
@@ -292,36 +337,7 @@ pub fn run_mode(
     // -------------------------------------------------------------------------
 
     let display = MipidsiSink::new(display, hw::geometry());
-
-    // -------------------------------------------------------------------------
-    // Backlight PWM (GPIO0, LEDC low-speed channel 0)
-    //
-    // Starts at full brightness, exactly what the plain output gave, and follows the desktop's
-    // brightness setting from then on. 24 kHz is above hearing; 8-bit duty is far finer than the
-    // five steps need.
-    // -------------------------------------------------------------------------
-
-    let mut ledc = Ledc::new(peripherals.LEDC);
-    ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
-    let backlight_timer = BACKLIGHT_TIMER.init(ledc.timer::<LowSpeed>(timer::Number::Timer0));
-    backlight_timer
-        .configure(timer::config::Config {
-            duty: timer::config::Duty::Duty8Bit,
-            clock_source: timer::LSClockSource::APBClk,
-            frequency: Rate::from_khz(24),
-        })
-        .expect("backlight PWM timer");
-    let mut backlight_channel = ledc.channel::<LowSpeed>(
-        channel::Number::Channel0,
-        backlight.into_peripheral_output(),
-    );
-    backlight_channel
-        .configure(channel::config::Config {
-            timer: &*backlight_timer,
-            duty_pct: hw::backlight_duty_pct(BRIGHTNESS_DEFAULT),
-            drive_mode: DriveMode::PushPull,
-        })
-        .expect("backlight PWM channel");
+    let _ = backlight_channel.set_duty_cycle_percent(hw::backlight_duty_pct(BRIGHTNESS_DEFAULT));
     let mut display = Backlit {
         panel: display,
         channel: backlight_channel,
@@ -332,52 +348,41 @@ pub fn run_mode(
     //
     // Wiring specification (unverified on physical hardware; see
     // `profile::physical_st7789::ROTARY`):
-    //   CLK -> GPIO7
-    //   DT  -> GPIO6
-    //   SW  -> GPIO5
+    //   SW  -> GP3
+    //   DT  -> GP4
+    //   CLK -> GP5
     //
-    // All three lines are active-low (HW-040 COM to GND), so they are read with
-    // internal pull-ups. `PhysicalRotary` only reads and inverts pin levels; all
-    // conditioning and semantics live above the port.
+    // All lines are active-low (HW-040 COM to GND, its own pull-ups to 3V3), read with the
+    // internal pull-up too. `PhysicalRotary` only reads and inverts pin levels; all conditioning
+    // and semantics live above the port.
     // -------------------------------------------------------------------------
 
-    let rotary_pull = InputConfig::default().with_pull(Pull::Up);
-    let rotary_clk = Input::new(peripherals.GPIO7, rotary_pull);
-    let rotary_dt = Input::new(peripherals.GPIO6, rotary_pull);
-    let rotary_sw = Input::new(peripherals.GPIO5, rotary_pull);
-    // Contextual buttons: GPIO9 / GPIO8 / GPIO10 to GND, same pull-up active-low reading
+    let rotary_clk = pins.gpio5.into_pull_up_input().into_dyn_pin();
+    let rotary_dt = pins.gpio4.into_pull_up_input().into_dyn_pin();
+    let rotary_sw = pins.gpio3.into_pull_up_input().into_dyn_pin();
+    // Contextual buttons: GP6 / GP7 / GP8 to GND, same pull-up active-low reading
     // (`profile::physical_st7789::CONTEXT_BUTTONS`).
     let keys = [
-        Input::new(peripherals.GPIO9, rotary_pull),
-        Input::new(peripherals.GPIO8, rotary_pull),
-        Input::new(peripherals.GPIO10, rotary_pull),
+        pins.gpio6.into_pull_up_input().into_dyn_pin(),
+        pins.gpio7.into_pull_up_input().into_dyn_pin(),
+        pins.gpio8.into_pull_up_input().into_dyn_pin(),
     ];
-    let mut io = Io::new(peripherals.IO_MUX);
-    let mut rotary = PhysicalRotary::new(&mut io, rotary_clk, rotary_dt, rotary_sw, keys);
+    let mut rotary = PhysicalRotary::new(rotary_clk, rotary_dt, rotary_sw, keys);
 
     // -------------------------------------------------------------------------
     // Compiled Kivori assets
     // -------------------------------------------------------------------------
 
-    let blob = load_assets(assets);
-    chip_probe::init(peripherals.TSENS, assets.len());
-
-    esp_println::println!("KIVORI assets loaded");
+    chip_probe::init(board.adc, &mut board.resets, asset_bytes, flash_jedec_id);
 
     // -------------------------------------------------------------------------
     // Device identity
     // -------------------------------------------------------------------------
 
     let identity = DeviceIdentity {
-        // Stable per-unit ID: hash of the factory eFuse unique ID (base MAC fallback). The raw
-        // eFuse bytes never go on the wire.
-        device_id: derive_device_id(
-            &efuse::read_field_le::<[u8; 16]>(efuse::OPTIONAL_UNIQUE_ID),
-            &efuse::base_mac_address()
-                .as_bytes()
-                .try_into()
-                .expect("6-byte base MAC"),
-        ),
+        // Stable per-unit ID: hash of the flash chip's unique ID (the RP2040 has none of its own).
+        // The raw ID never goes on the wire.
+        device_id: derive_device_id(&flash_unique_id),
 
         firmware_version: FIRMWARE_VERSION,
 
@@ -385,8 +390,9 @@ pub fn run_mode(
     };
 
     // Tier A (ADR-0016): a valid chip record for another product or board means this image must
-    // not run the product. The check result also sets what the handshake reports.
-    let boot = check_boot(ProductIdentity::BUILD, read_chip_record());
+    // not run the product. The RP2040 has no one-time memory to burn a record into, so there is
+    // never one and the build identity applies.
+    let boot = check_boot(ProductIdentity::BUILD, ChipRecordState::NotProvisioned);
 
     // Keeps `FW_VERSION_MARKER` (and so the version text) in the linked image.
     // SAFETY: a valid, aligned read of the first byte of a live static.
@@ -394,7 +400,26 @@ pub fn run_mode(
     // SAFETY: as above, for the identity record.
     let _ = unsafe { core::ptr::read_volatile(FW_IDENTITY_MARKER.as_ptr()) };
 
-    esp_println::println!("KIVORI runtime starting");
+    // -------------------------------------------------------------------------
+    // USB CDC transport
+    //
+    // Started last, after the flash-id reads that need interrupts off. From here the USB interrupt
+    // services the stack, so enumeration proceeds even while a display flush occupies the loop.
+    // -------------------------------------------------------------------------
+
+    let serial_number = USB_SERIAL.init(heapless::String::new());
+    for byte in identity.device_id {
+        let _ = write!(serial_number, "{byte:02X}");
+    }
+    let usb_bus = UsbBus::new(
+        board.usb.0,
+        board.usb.1,
+        board.clocks.usb_clock,
+        true,
+        &mut board.resets,
+    );
+    let usb_bus = USB_BUS.init(UsbBusAllocator::new(usb_bus));
+    let mut transport = TxBuffered::new(UsbCdcTransport::new(usb_bus, serial_number.as_str()));
 
     // -------------------------------------------------------------------------
     // Production runtime
@@ -415,8 +440,9 @@ pub fn run_mode(
     // Keeping a complete RGB565 frame in static storage lets the renderer
     // compose all changed pixels before it sends the first window to ST7789.
     // This avoids exposing a mixture of old and new mascot rows while a pose
-    // is being composed. The frame costs 115,200 bytes of ESP32-C3 SRAM.
+    // is being composed. The frame costs 115,200 bytes of RP2040 SRAM.
     let frame_buffer = FRAME_BUFFER.take();
+    let clock = board.clock;
 
     run_buffered(
         identity,
@@ -437,7 +463,9 @@ pub fn run_mode(
                 while transport.pending() > 0 && clock.now_ms() < deadline {
                     let _ = transport.pump();
                 }
-                esp_hal::system::software_reset();
+                // The HAL's full-chip reset (watchdog + PSM): it also resets USB, so the host sees
+                // the device re-enumerate, and the next boot reads the reason as a forced reset.
+                rp2040_hal::reset();
             }
         },
     );

@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 pub enum ChipModel {
     /// Espressif ESP32-C3.
     Esp32C3,
+    /// Raspberry Pi RP2040.
+    Rp2040,
 }
 
 /// Why the chip last reset, reduced to what a person can act on. Wire-significant, append-only.

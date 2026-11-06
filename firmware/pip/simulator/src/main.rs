@@ -1,3 +1,4 @@
+mod board;
 mod input_scenarios;
 mod io_scenarios;
 mod modelled;
@@ -11,9 +12,10 @@ use std::{
     rc::Rc,
 };
 
+use board::Board;
 use kivori_assets::AssetBlob;
 use kivori_firmware::{
-    identity::{BootCheck, ProductIdentity},
+    identity::BootCheck,
     ports::{InputSource, Transport},
     profile::physical_st7789::CAPABILITIES as CAPS,
     proto::DeviceIdentity,
@@ -203,8 +205,8 @@ fn finish(fault: Fault, report: Report) -> Result<Response, String> {
 
 /// How the runner models time: `Ideal` freezes the clock at the request's time for the whole tick
 /// (every frame costs 0 ms, one request is one tick, as the deterministic scenarios and goldens
-/// need); `Modelled` runs the device on its own clock and charges the ESP32-C3's compose and flush
-/// time (docs/virtual-pip.md).
+/// need); `Modelled` runs the device on its own clock and charges the board's compose and flush
+/// time: the ESP32-C3's for v1, an estimate for the RP2040-Zero's v2 (docs/virtual-pip.md).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Timing {
     Ideal,
@@ -220,19 +222,21 @@ struct Simulator {
     blob: AssetBlob<'static>,
     now: u32,
     rebooted: bool,
+    board: Board,
 }
 
 impl Simulator {
-    /// The zero-time simulator: one request is one runtime tick at the request's time.
+    /// The zero-time v1 simulator: one request is one runtime tick at the request's time.
+    #[cfg(test)]
     fn new() -> Self {
-        Self::assemble(Timing::Ideal)
+        Self::assemble(Timing::Ideal, Board::C3Supermini)
     }
 
-    fn assemble(timing: Timing) -> Self {
+    fn assemble(timing: Timing, board: Board) -> Self {
         let shared = Shared {
             clock: Rc::new(match timing {
                 Timing::Ideal => SimClock::ideal(),
-                Timing::Modelled => SimClock::modelled(),
+                Timing::Modelled => SimClock::modelled(board),
             }),
             link: Rc::new(RefCell::new(SimPipe::new())),
             capture: Rc::new(RefCell::new(CaptureDisplay::new())),
@@ -249,7 +253,7 @@ impl Simulator {
                 [kivori_model::Rgb565::from_raw(0); kivori_firmware::render::FRAME_PIXELS],
             )),
         );
-        runtime.set_chip_probe(probe::probe);
+        runtime.set_chip_probe(board.probe());
         Self {
             runtime,
             pipe: TxBuffered::new(SharedPipe(shared.link.clone())),
@@ -260,12 +264,13 @@ impl Simulator {
                 .expect("build-time asset compiler produces a valid blob"),
             now: 0,
             rebooted: false,
+            board,
         }
     }
 
     /// One production runtime tick at the clock's current time, with `fault`'s boot identity.
     fn run_tick(&mut self, fault: Fault) -> Tick {
-        let mut identity = ProductIdentity::BUILD;
+        let mut identity = self.board.identity();
         match fault {
             Fault::UnknownProduct => identity.product = u16::MAX,
             Fault::UnknownBoard => identity.board = u16::MAX,
@@ -384,10 +389,10 @@ enum Device {
 }
 
 impl Device {
-    fn new(timing: Timing) -> Self {
+    fn new(timing: Timing, board: Board) -> Self {
         match timing {
-            Timing::Ideal => Self::Ideal(Box::new(Simulator::new())),
-            Timing::Modelled => Self::Modelled(ModelledSimulator::spawn()),
+            Timing::Ideal => Self::Ideal(Box::new(Simulator::assemble(Timing::Ideal, board))),
+            Timing::Modelled => Self::Modelled(ModelledSimulator::spawn(board)),
         }
     }
 
@@ -399,8 +404,13 @@ impl Device {
     }
 }
 
-fn run(reader: &mut impl BufRead, writer: &mut impl Write, timing: Timing) -> Result<(), String> {
-    let mut sim = Device::new(timing);
+fn run(
+    reader: &mut impl BufRead,
+    writer: &mut impl Write,
+    timing: Timing,
+    board: Board,
+) -> Result<(), String> {
+    let mut sim = Device::new(timing, board);
     while let Some(record) = read_record(reader)? {
         let request: Request = serde_json::from_slice(&record).map_err(|e| e.to_string())?;
         if request.fault == Fault::Exit {
@@ -421,19 +431,19 @@ fn run(reader: &mut impl BufRead, writer: &mut impl Write, timing: Timing) -> Re
 }
 
 fn main() {
-    let result = match std::env::args().skip(1).collect::<Vec<_>>().as_slice() {
-        [] => run(&mut io::stdin().lock(), &mut io::stdout().lock(), Timing::Modelled),
+    let result = Board::selected().and_then(|board| match std::env::args().skip(1).collect::<Vec<_>>().as_slice() {
+        [] => run(&mut io::stdin().lock(), &mut io::stdout().lock(), Timing::Modelled, board),
         [flag] if flag == "--ideal-time" => {
-            run(&mut io::stdin().lock(), &mut io::stdout().lock(), Timing::Ideal)
+            run(&mut io::stdin().lock(), &mut io::stdout().lock(), Timing::Ideal, board)
         }
         [flag] if flag == "--input-smoke" => input_scenarios::run(),
         [flag] if flag == "--io-smoke" => io_scenarios::run(),
         [flag, seed] if flag == "--replay" => input_scenarios::replay(seed),
         _ => Err(
-            "usage: kivori-pip-simulator [--ideal-time | --input-smoke | --io-smoke | --replay <17|29>]"
+            "usage: [KIVORI_VIRTUAL_BOARD=c3-supermini|rp2040-zero] kivori-pip-simulator [--ideal-time | --input-smoke | --io-smoke | --replay <17|29>]"
                 .into(),
         ),
-    };
+    });
     if let Err(error) = result {
         eprintln!("Pip simulator: {error}");
         std::process::exit(1);
@@ -518,13 +528,20 @@ mod tests {
     #[test]
     fn identity_faults_use_runtime_identity_and_normal_restores_build() {
         use kivori_protocol::{decode_message, Message, PROTOCOL_MAJOR};
-        for fault in [Fault::UnknownProduct, Fault::UnknownBoard, Fault::Normal] {
+        // v1 reports the C3 SuperMini (1), v2 the RP2040-Zero (2), whatever the firmware library
+        // itself was built for.
+        for (board, fault) in [Board::C3Supermini, Board::Rp2040Zero]
+            .into_iter()
+            .flat_map(|b| {
+                [Fault::UnknownProduct, Fault::UnknownBoard, Fault::Normal].map(|f| (b, f))
+            })
+        {
             let expected = match fault {
-                Fault::UnknownProduct => (u16::MAX, ProductIdentity::BUILD.board),
-                Fault::UnknownBoard => (ProductIdentity::BUILD.product, u16::MAX),
-                _ => (ProductIdentity::BUILD.product, ProductIdentity::BUILD.board),
+                Fault::UnknownProduct => (u16::MAX, board.number()),
+                Fault::UnknownBoard => (kivori_firmware::identity::BUILD_PRODUCT, u16::MAX),
+                _ => (kivori_firmware::identity::BUILD_PRODUCT, board.number()),
             };
-            let mut sim = Simulator::new();
+            let mut sim = Simulator::assemble(Timing::Ideal, board);
             // Exercise restoration too: a normal tick must replace a previous injected identity.
             let mut initial = request(0);
             initial.fault = Fault::UnknownProduct;
@@ -648,7 +665,7 @@ mod tests {
     fn exit_ends_process_loop_without_response_or_consuming_next_record() {
         let mut input = Cursor::new(b"{\"now_ms\":0,\"wire\":[],\"edges\":[],\"capture\":false,\"fault\":\"exit\"}\ninvalid\n");
         let mut output = Vec::new();
-        run(&mut input, &mut output, Timing::Ideal).unwrap();
+        run(&mut input, &mut output, Timing::Ideal, Board::C3Supermini).unwrap();
         assert!(output.is_empty());
         assert_eq!(read_record(&mut input).unwrap().unwrap(), b"invalid");
         let mut req = request(0);
@@ -749,7 +766,13 @@ mod tests {
     #[test]
     fn malformed_json_fails_without_stdout() {
         let mut output = vec![];
-        assert!(run(&mut Cursor::new(b"{}\n"), &mut output, Timing::Ideal).is_err());
+        assert!(run(
+            &mut Cursor::new(b"{}\n"),
+            &mut output,
+            Timing::Ideal,
+            Board::C3Supermini
+        )
+        .is_err());
         assert!(output.is_empty());
     }
 
@@ -916,10 +939,8 @@ mod tests {
             .expect("Ready returns the actual product identity");
         assert_eq!(
             (identity.product, identity.board),
-            (
-                kivori_firmware::identity::BUILD_PRODUCT,
-                kivori_firmware::identity::BUILD_BOARD
-            )
+            // v1: the C3 SuperMini, whatever board the firmware library is built for.
+            (kivori_firmware::identity::BUILD_PRODUCT, 1)
         );
         assert_eq!(identity.source, kivori_protocol::IdentitySource::Build);
         assert_eq!(identity.hw_rev, None);

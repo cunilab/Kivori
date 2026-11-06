@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Hardware-free resource check of the catalog firmware: reads the release ELF and checks it against
 // the committed budget (`resource-budget.json` in the firmware crate). No board is needed, so CI can catch a stack,
-// RAM, size or 64-bit-division regression that used to surface only on the ESP32-C3 itself.
+// RAM, size or 64-bit-division regression that used to surface only on the board itself.
 //
 //   bun scripts/firmware-budget.mjs [--elf PATH] [--budget PATH] [--json] [--disasm FILE]
 //
@@ -12,12 +12,12 @@
 // What it measures, all from the ELF:
 //   * app image bytes (loadable sections) and the asset blob inside it (vs its cap in internals.rs)
 //   * static RAM (`_stack_end` - start of data RAM) and the stack region (`_stack_start` - `_stack_end`)
-//   * the stack frame of every function, summed over the whole prologue (a big frame is
-//     `lui; addi; sub sp, sp, rX`, not just `addi sp, sp, -N`)
+//   * the stack frame of every function, summed over the whole prologue (`push {..}`, `sub sp, #N`,
+//     and a big frame is `ldr rX, [pc, ..]` of a negative constant then `add sp, rX`)
 //   * the worst stack depth over the direct call graph from the entry function. Calls through a
 //     register (trait objects, fn pointers) and interrupts cannot be followed; they are reported and
 //     covered by documented allowances in the budget.
-//   * which functions call the 64-bit division libcalls (a software loop on the RV32IMC core).
+//   * which functions call the 64-bit division libcalls (a software loop on the Cortex-M0+ core).
 // Exit status 1 when the budget is violated, 2 when the ELF cannot be analysed.
 
 import { execFileSync } from 'node:child_process';
@@ -26,11 +26,11 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const DATA_RAM_START = 0x3fc80000;
+const DATA_RAM_START = 0x20000000;
 // The prologue is straight-line code before the first call; this bounds the scan for a function that
 // has none.
 const PROLOGUE_SCAN_LIMIT = 80;
-const DIV64_LIBCALLS = new Set(['__udivdi3', '__divdi3', '__umoddi3', '__moddi3']);
+const DIV64_LIBCALLS = new Set(['__aeabi_uldivmod', '__aeabi_ldivmod']);
 
 // ---------------------------------------------------------------------------------------------
 // Disassembly parsing
@@ -44,46 +44,64 @@ export function num(text) {
   return m[1] ? -v : v;
 }
 
-const BRANCHES = new Set([
-  'beq', 'bne', 'blt', 'bge', 'bltu', 'bgeu', 'bgt', 'ble', 'bgtu', 'bleu',
-  'beqz', 'bnez', 'bltz', 'bgez', 'blez', 'bgtz',
-]); // prettier-ignore
+// Conditional branches (Thumb-1 has no wide conditional form on this core).
+const BRANCHES = new Set(
+  [
+    'eq',
+    'ne',
+    'cs',
+    'hs',
+    'cc',
+    'lo',
+    'mi',
+    'pl',
+    'vs',
+    'vc',
+    'hi',
+    'ls',
+    'ge',
+    'lt',
+    'gt',
+    'le',
+  ].map((c) => `b${c}`),
+);
 // Instructions whose first operand is not a destination register.
 const NO_REGISTER_WRITE = new Set([
-  'sw',
-  'sh',
-  'sb',
-  'swsp',
-  'ret',
-  'mret',
-  'nop',
-  'ecall',
-  'ebreak',
-  'fence',
-  'wfi',
-]);
-/** A call clobbers the caller-saved registers; the `s` registers survive it. */
+  'str', 'strh', 'strb', 'stm', 'stmia', 'push', 'cmp', 'cmn', 'tst', 'b', 'bl', 'blx', 'bx',
+  'nop', 'wfi', 'wfe', 'sev', 'yield', 'dsb', 'dmb', 'isb', 'msr', 'svc', 'bkpt', 'udf',
+  ...BRANCHES,
+]); // prettier-ignore
+/** A call clobbers the caller-saved registers; r4 and up survive it. */
 function forgetCallClobbered(known) {
-  for (const r of Object.keys(known)) if (!/^s\d+$/.test(r)) delete known[r];
+  for (const r of ['r0', 'r1', 'r2', 'r3', 'r12']) delete known[r];
 }
+/** An immediate operand: `#0x18`, `#-0x4` or `#12`. */
+const imm = (text) => num(String(text).replace(/^#/, ''));
 
 /**
- * Parses `llvm-objdump -d --no-show-raw-insn -C` text into functions: start address, name, stack
- * frame, and the control transfers that leave the function (direct calls, tail jumps, indirect
- * calls). Tail jumps are resolved against function ranges once the whole text is read.
+ * Parses `llvm-objdump -d --no-show-raw-insn -C` text of a Thumb-1 (thumbv6m) image into functions:
+ * start address, name, stack frame, and the control transfers that leave the function (direct calls,
+ * tail jumps, indirect calls). Tail jumps are resolved against function ranges once the whole text is
+ * read. Literal pools (`.word` lines) are read first: a large frame is `ldr rX, [pc, ..]` of a
+ * negative constant followed by `add sp, rX`, and a call through a hoisted address is `blx rX`.
  * @returns {{functions: Array<object>}}
  */
 export function parseDisassembly(text) {
   const functions = [];
+  const lines = text.split('\n');
+  const words = new Map(); // literal pool: address -> 32-bit value
+  for (const line of lines) {
+    const w = /^\s*([0-9a-f]+):\s+(?:[0-9a-f]{2}\s+)+\.word\s+(0x[0-9a-f]+)/.exec(line);
+    if (w) words.set(parseInt(w[1], 16), Number(w[2]) >>> 0);
+  }
   let cur = null;
   let scanned = 0;
   let prologueDone = false;
-  let regs = {};
-  let known = {}; // registers holding a constant, for resolving `jalr`/`jr` targets
+  let known = {}; // registers holding a constant, for frames and for resolving `blx` targets
   const pending = []; // jumps whose target is resolved after all functions are known
-  for (const line of text.split('\n')) {
+  for (const line of lines) {
     const header = /^([0-9a-f]+) <(.+)>:$/.exec(line);
-    // `.L` labels (e.g. `.Lpcrel_hi0`) sit inside a function; they are not functions.
+    // `.L` labels sit inside a function; they are not functions.
     if (header && header[2].startsWith('.L')) continue;
     if (header) {
       cur = {
@@ -94,92 +112,92 @@ export function parseDisassembly(text) {
         calls: [], // direct calls: {addr, name}
         tails: [], // jumps out of the function: {addr}
         indirect: 0, // calls through a register whose value is not a known constant
-        indirectJumps: 0, // `jr rX` that is not a return (jump tables, indirect tail calls)
+        indirectJumps: 0, // `bx rX` that is not a return (jump tables, indirect tail calls)
         div64: new Set(),
       };
       functions.push(cur);
       scanned = 0;
       prologueDone = false;
-      regs = {};
       known = {};
       continue;
     }
     if (!cur) continue;
+    if (/^\s*[0-9a-f]+:\s+(?:[0-9a-f]{2}\s+)+\.word/.test(line)) {
+      // A literal pool word belongs to the function it follows.
+      cur.end = parseInt(line, 16) + 4;
+      continue;
+    }
     const ins = /^\s*([0-9a-f]+):\s+([\w.]+)\s*(.*)$/.exec(line);
     if (!ins) continue;
     const pc = parseInt(ins[1], 16);
     cur.end = pc + 2;
-    let op = ins[2];
-    if (op.startsWith('c.')) op = op.slice(2);
-    let rest = ins[3].trim();
+    const op = ins[2];
+    let rest = ins[3].trim().replace(/\s*@\s*imm\s*=.*$/, '');
+    // `ldr rX, [pc, #n] @ 0xADDR <sym+off>`: the literal's address.
+    const literal = /@\s*(0x[0-9a-f]+)/.exec(rest);
+    rest = rest.replace(/\s*@.*$/, '');
     let sym = null;
     const symMatch = /\s*<(.+)>$/.exec(rest);
     if (symMatch) {
       sym = symMatch[1].replace(/\+0x[0-9a-f]+$/, '');
       rest = rest.slice(0, symMatch.index).trim();
     }
-    const a = rest.split(',').map((s) => s.trim());
+    const a = rest.split(/,(?![^{]*})/).map((x) => x.trim());
     scanned += 1;
 
-    // Prologue frame: every negative sp adjustment before the first call.
+    // Prologue frame: pushes and every stack allocation before the first call.
     if (!prologueDone) {
-      if (op === 'lui') regs[a[0]] = num(a[1]) * 4096;
-      else if (op === 'li') regs[a[0]] = num(a[1]);
-      else if (op === 'addi16sp') cur.frame += Math.max(0, -num(a[a.length - 1]));
-      else if (op === 'addi') {
-        const imm = num(a[2]);
-        if (a[0] === 'sp' && a[1] === 'sp') cur.frame += Math.max(0, -imm);
-        else if (a[1] in regs && imm !== null) regs[a[0]] = regs[a[1]] + imm;
-      } else if (op === 'sub' && a[0] === 'sp' && a[1] === 'sp' && a[2] in regs) {
-        cur.frame += Math.max(0, regs[a[2]]);
-      } else if (op === 'add' && a[0] === 'sp' && a[1] === 'sp' && a[2] in regs) {
-        cur.frame += Math.max(0, -regs[a[2]]);
-      }
+      if (op === 'push') cur.frame += 4 * rest.replace(/[{}]/g, '').split(',').length;
+      else if (op === 'sub' && a[0] === 'sp' && a.length === 2) cur.frame += Math.max(0, imm(a[1]));
+      else if (op === 'add' && a[0] === 'sp' && known[a[1]] !== undefined)
+        cur.frame += Math.max(0, -(known[a[1]] | 0));
     }
 
-    const target = (text) => num(text.replace(/\s.*/, ''));
-    const memOperand = /^(?:(\w+),\s*)?(-?(?:0x[0-9a-fA-F]+|\d+))\((\w+)\)$/.exec(rest);
-    if (op === 'jal') {
-      // `jal ra, target` / `jal target` link into ra; `jal zero, ..` is a plain jump.
+    const target = (t) => num(t.replace(/\s.*/, ''));
+    if (op === 'bl') {
       prologueDone = true;
-      if (a.length > 1 && a[0] === 'zero') pending.push({ from: cur, target: target(a[1]) });
-      else call(cur, target(a.length > 1 ? a[1] : a[0]), sym);
+      call(cur, target(a[0]), sym);
       forgetCallClobbered(known);
-    } else if (op === 'jalr') {
+    } else if (op === 'blx') {
       prologueDone = true;
-      // The target is known when the base register holds a constant (`auipc; jalr`, or an address
-      // hoisted into a register by `lui; addi`). Otherwise the call goes through a register.
-      const reg = memOperand ? memOperand[3] : a[a.length - 1];
-      const off = memOperand ? num(memOperand[2]) : 0;
-      if (known[reg] === undefined) cur.indirect += 1;
-      else call(cur, (known[reg] + off) >>> 0, sym);
+      // The target is known when the register holds a constant (an address loaded from a literal pool).
+      if (known[a[0]] === undefined) cur.indirect += 1;
+      else call(cur, known[a[0]] & ~1, sym);
       forgetCallClobbered(known);
-    } else if (op === 'j') {
+    } else if (op === 'b' || BRANCHES.has(op)) {
       pending.push({ from: cur, target: target(a[0]) });
-    } else if (op === 'jr') {
-      const reg = memOperand ? memOperand[3] : a[0];
-      if (known[reg] !== undefined)
-        pending.push({
-          from: cur,
-          target: (known[reg] + (memOperand ? num(memOperand[2]) : 0)) >>> 0,
-        });
-      else if (reg !== 'ra') cur.indirectJumps += 1;
-    } else if (BRANCHES.has(op)) {
-      pending.push({ from: cur, target: target(a[a.length - 1]) });
-    } else if (op === 'auipc') {
-      known[a[0]] = (pc + (num(a[1]) << 12)) >>> 0;
-    } else if (op === 'lui') {
-      known[a[0]] = (num(a[1]) << 12) >>> 0;
-    } else if (op === 'li') {
-      known[a[0]] = num(a[1]) >>> 0;
-    } else if (op === 'addi' && known[a[1]] !== undefined && num(a[2]) !== null) {
-      known[a[0]] = (known[a[1]] + num(a[2])) >>> 0;
+    } else if (op === 'bx') {
+      if (known[a[0]] !== undefined) pending.push({ from: cur, target: known[a[0]] & ~1 });
+      else if (a[0] !== 'lr') cur.indirectJumps += 1;
+    } else if (op === 'ldr' && literal && /^\[pc/.test(a[1] ?? '')) {
+      const value = words.get(parseInt(literal[1], 16));
+      if (value === undefined) delete known[a[0]];
+      else known[a[0]] = value;
+    } else if ((op === 'movs' || op === 'mov') && a[1]?.startsWith('#')) {
+      known[a[0]] = imm(a[1]) >>> 0;
+    } else if (op === 'mov' && known[a[1]] !== undefined) {
+      known[a[0]] = known[a[1]];
+    } else if (op === 'lsls' && a.length === 3 && known[a[1]] !== undefined) {
+      known[a[0]] = (known[a[1]] << imm(a[2])) >>> 0;
+    } else if ((op === 'adds' || op === 'subs') && known[a[a.length === 3 ? 1 : 0]] !== undefined) {
+      const v = a.length === 3 ? imm(a[2]) : imm(a[1]);
+      known[a[0]] = (known[a[a.length === 3 ? 1 : 0]] + (op === 'adds' ? v : -v)) >>> 0;
+    } else if (op === 'mvns' && known[a[1]] !== undefined) {
+      known[a[0]] = ~known[a[1]] >>> 0;
+    } else if (
+      (op === 'negs' && known[a[1]] !== undefined) ||
+      (op === 'rsbs' && known[a[1]] !== undefined && imm(a[2]) === 0)
+    ) {
+      known[a[0]] = -known[a[1]] >>> 0;
     } else if (!NO_REGISTER_WRITE.has(op)) {
       delete known[a[0]];
     }
     if (scanned >= PROLOGUE_SCAN_LIMIT) prologueDone = true;
   }
 
+  // Thumb-1 reaches a far block of the same function with `bl` (a conditional branch cannot): that is
+  // a jump inside the function, not a recursive call.
+  for (const f of functions) f.calls = f.calls.filter((c) => !(c.addr > f.addr && c.addr < f.end));
   const byAddr = new Map(functions.map((f) => [f.addr, f]));
   const sorted = [...functions].sort((x, y) => x.addr - y.addr);
   const containing = (addr) => {
@@ -356,7 +374,7 @@ export function parseElf(buf) {
   }
   const SHT_PROGBITS = 1;
   const SHF_ALLOC = 2;
-  // What espflash writes: the sections that are both loaded and have bytes in the file.
+  // What the flash image holds: the sections that are both loaded and have bytes in the file.
   const imageBytes = sections
     .filter((s) => s.type === SHT_PROGBITS && s.flags & SHF_ALLOC)
     .reduce((n, s) => n + s.size, 0);
@@ -440,12 +458,19 @@ export function evaluate({ measured, parsed, budget }) {
       warnings.push(`large_frames entry no longer needed: ${rule.fn}`);
 
   // Stack estimate.
-  const entry = worstStack(parsed, budget.entry ?? '_start_rust');
+  const entry = worstStack(parsed, budget.entry ?? 'main');
   let stack = null;
   if (!entry)
-    violations.push(`entry function ${budget.entry ?? '_start_rust'} not found in the disassembly`);
+    violations.push(`entry function ${budget.entry ?? 'main'} not found in the disassembly`);
   else {
-    const isr = interruptStack(parsed, budget.interrupt_path ?? []);
+    // Handlers at one priority do not nest, so the deepest single path is the allowance.
+    const isrs = (budget.interrupt_paths ?? [budget.interrupt_path ?? []]).map((path) =>
+      interruptStack(parsed, path),
+    );
+    const isr = {
+      bytes: Math.max(0, ...isrs.map((x) => x.bytes)),
+      missing: isrs.flatMap((x) => x.missing),
+    };
     if (isr.missing.length)
       violations.push(`interrupt_path function not found in the ELF: ${isr.missing.join(', ')}`);
     const interruptBytes = isr.bytes + limits.interrupt_margin_bytes.value;

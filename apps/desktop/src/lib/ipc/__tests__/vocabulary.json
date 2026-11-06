@@ -31,7 +31,7 @@
     "buildInfoV1",
     "heldRotationV1"
   ],
-  "chipModels": ["esp32c3"],
+  "chipModels": ["esp32c3", "rp2040"],
   "controlLayouts": ["rotary-three-button"],
   "controls": [
     "press",
@@ -58,9 +58,9 @@
   "firmwareOfferKinds": ["none", "offerOptional", "required", "updateApp", "deferredForAppUpdate"],
   "firmwareRequiredReasons": ["protocolTooOld", "missingCapabilities"],
   "flashFailures": [
-    "toolMissing",
     "portBusy",
     "noDownloadMode",
+    "writeFailed",
     "timeout",
     "cancelled",
     "imageUnavailable",

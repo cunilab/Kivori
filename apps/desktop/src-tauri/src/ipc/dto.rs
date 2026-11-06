@@ -2105,7 +2105,7 @@ pub fn diagnostics_dto(
     }
 }
 
-pub const CHIP_MODEL_TOKENS: [&str; 1] = ["esp32c3"];
+pub const CHIP_MODEL_TOKENS: [&str; 2] = ["esp32c3", "rp2040"];
 pub const RESET_REASON_TOKENS: [&str; 6] = [
     "powerOn",
     "software",
@@ -2118,6 +2118,7 @@ pub const RESET_REASON_TOKENS: [&str; 6] = [
 const fn chip_model_token(model: ChipModel) -> &'static str {
     match model {
         ChipModel::Esp32C3 => CHIP_MODEL_TOKENS[0],
+        ChipModel::Rp2040 => CHIP_MODEL_TOKENS[1],
     }
 }
 

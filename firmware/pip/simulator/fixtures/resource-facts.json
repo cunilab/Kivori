@@ -1,6 +1,6 @@
 {
-  "_about": "Resource facts the virtual Pip reports in its Device internals, for the catalog product firmware (physical-st7789 release ELF). The `elf` block is generated from `bun scripts/firmware-budget.mjs --json` and checked against the current ELF by `bun scripts/virtual-resource-facts.mjs --check` (just fw-budget, firmware CI); refresh with `--write`. The `board` block is not in the ELF: it is the unit's flash layout (4 MiB module, espflash default partition table, factory app 0x3F0000 B), as the unit's internals panel shows it. See docs/virtual-pip.md (Modelled timing and internals).",
-  "source": "bun scripts/firmware-budget.mjs --json",
+  "_about": "HISTORICAL, frozen: the resource facts of the last ESP32-C3 SuperMini firmware build (physical-st7789 release ELF), which the v1 virtual Pip (`KIVORI_VIRTUAL_BOARD` unset or c3-supermini) reports in its Device internals. No firmware is built for that board any more, so this file is no longer checked against the product ELF; v2 has resource-facts-rp2040.json, which is. The `board` block is the unit's flash layout (4 MiB module, espflash default partition table, factory app 0x3F0000 B), as the unit's internals panel showed it. See docs/virtual-pip.md (Virtual boards, Modelled timing and internals).",
+  "source": "the ESP32-C3 build's `bun scripts/firmware-budget.mjs --json` (frozen)",
   "elf": {
     "app_image_bytes": 343794,
     "asset_blob_bytes": 127253,

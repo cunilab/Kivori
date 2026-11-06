@@ -11,16 +11,19 @@ import {
   worstStack,
 } from './firmware-budget.mjs';
 
-// Builds `llvm-objdump -d --no-show-raw-insn` text. Each function is [name, [instruction, ...]]
-// and an instruction is "mnemonic operands" (2 bytes apart, which is enough for the parser).
+// Builds `llvm-objdump -d --no-show-raw-insn` text of a Thumb image. Each function is
+// [name, [instruction, ...]] and an instruction is "mnemonic operands" (4 bytes apart, which is
+// enough for the parser). `.word 0xVALUE` makes a literal-pool word (llvm-objdump prints its bytes).
 function dis(...fns) {
-  let addr = 0x42000000;
+  let addr = 0x10000000;
   const lines = [];
   for (const [name, body] of fns) {
     lines.push('', `${addr.toString(16)} <${name}>:`);
     for (const text of body) {
       const [op, ...rest] = text.split(' ');
-      lines.push(`${addr.toString(16)}:      \t${op}${rest.length ? `\t${rest.join(' ')}` : ''}`);
+      if (op === '.word') lines.push(`${addr.toString(16)}: 00 00 00 00  \t.word\t${rest[0]}`);
+      else
+        lines.push(`${addr.toString(16)}:      \t${op}${rest.length ? `\t${rest.join(' ')}` : ''}`);
       addr += 4;
     }
   }
@@ -28,7 +31,7 @@ function dis(...fns) {
 }
 
 // The address `dis` gives the function at `index` when every function has `size` instructions.
-const addrOf = (index, size) => 0x42000000 + index * size * 4;
+const addrOf = (index, size) => 0x10000000 + index * size * 4;
 const hex = (n) => `0x${n.toString(16)}`;
 
 const find = (parsed, name) => parsed.functions.find((f) => f.name === name);
@@ -40,43 +43,39 @@ test('num reads hex, negative hex and decimal operands', () => {
   assert.equal(num('sp'), null);
 });
 
-test('frame is the sum of every sp adjustment in the prologue, including lui/addi/sub', () => {
+test('frame is the pushed registers plus every sp allocation in the prologue, including a literal-pool constant', () => {
   const parsed = parseDisassembly(
     dis(
-      ['small', ['addi sp, sp, -0x10', 'sw ra, 0xc(sp)', 'addi sp, sp, 0x10', 'ret']],
+      ['small', ['push {r4, r7, lr}', 'sub sp, #0x10', 'add sp, #0x10', 'pop {r4, r7, pc}']],
       [
         'big',
         [
-          'lui a0, 0x2',
-          'addi a0, a0, -0x730',
-          'sub sp, sp, a0',
-          'sw ra, 0x0(sp)',
-          'lui a0, 0x2',
-          'addi a0, a0, -0x730',
-          'add sp, sp, a0',
-          'ret',
+          'push {r4, r5, r6, r7, lr}',
+          // pc-relative load of -0x1000 from the literal below (at 0x10000020)
+          'ldr r6, [pc, #0xc] @ 0x10000020 <big+0x10>',
+          'add sp, r6',
+          'ldr r0, [sp, #0x4]',
+          '.word 0xfffff000',
+          'pop {r4, r5, r6, r7, pc}',
         ],
       ],
-      ['split', ['addi sp, sp, -0x40', 'addi sp, sp, -0x20', 'ret']],
-      ['negative-li', ['li t0, -0x1000', 'add sp, sp, t0', 'ret']],
-      ['leaf', ['mv a0, a1', 'ret']],
+      ['split', ['sub sp, #0x40', 'sub sp, #0x20', 'bx lr']],
+      ['shifted', ['movs r3, #0x10', 'lsls r3, r3, #0x8', 'negs r3, r3', 'add sp, r3', 'bx lr']],
+      ['leaf', ['mov r0, r1', 'bx lr']],
     ),
   );
-  assert.equal(find(parsed, 'small').frame, 16);
-  assert.equal(find(parsed, 'big').frame, 0x2000 - 0x730);
+  assert.equal(find(parsed, 'small').frame, 12 + 16);
+  assert.equal(find(parsed, 'big').frame, 20 + 0x1000);
   assert.equal(find(parsed, 'split').frame, 0x60);
-  assert.equal(find(parsed, 'negative-li').frame, 0x1000);
+  assert.equal(find(parsed, 'shifted').frame, 0x1000);
   assert.equal(find(parsed, 'leaf').frame, 0);
 });
 
 test('an sp adjustment after the first call is not part of the prologue', () => {
   const parsed = parseDisassembly(
     dis(
-      ['callee', ['ret']],
-      [
-        'f',
-        ['addi sp, sp, -0x10', `jal ${hex(addrOf(0, 1))} <callee>`, 'addi sp, sp, -0x500', 'ret'],
-      ],
+      ['callee', ['bx lr']],
+      ['f', ['sub sp, #0x10', `bl ${hex(addrOf(0, 1))} <callee>`, 'sub sp, #0x50', 'bx lr']],
     ),
   );
   assert.equal(find(parsed, 'f').frame, 16);
@@ -84,30 +83,26 @@ test('an sp adjustment after the first call is not part of the prologue', () => 
 
 test('local .L labels do not split a function', () => {
   const parsed = parseDisassembly(
-    dis(
-      ['trap', ['addi sp, sp, -0x40', 'sw a0, 0x20(sp)']],
-      ['.Lpcrel_hi0', ['auipc a0, 0x0', 'ret']],
-    ),
+    dis(['trap', ['sub sp, #0x40', 'str r0, [sp, #0x20]']], ['.Lpcrel_hi0', ['nop', 'bx lr']]),
   );
   assert.equal(parsed.functions.length, 1);
 });
 
-test('auipc+jalr is a direct call, a hoisted ROM address is external, a bare register is indirect', () => {
+test('bl is a direct call; blx of a loaded constant is external; blx of a bare register is indirect', () => {
   const parsed = parseDisassembly(
     dis(
-      ['callee', ['ret', 'ret']],
+      ['callee', ['bx lr', 'bx lr']],
       [
         'caller',
         [
-          'addi sp, sp, -0x20',
-          // pc of this auipc is 0x42000008 + 4; target = pc + 0 + off lands on callee at 0x42000000
-          'auipc ra, 0x0',
-          'jalr -0xc(ra) <callee>',
-          'lui s3, 0x40000',
-          'addi s1, s3, 0x68',
-          'jalr s1',
-          'jalr a0',
-          'ret',
+          'sub sp, #0x20',
+          `bl ${hex(addrOf(0, 1))} <callee>`,
+          // pc of the ldr is 0x10000010; the literal below sits at 0x10000018
+          'ldr r3, [pc, #0x4] @ 0x10000018 <caller+0x10>',
+          'blx r3',
+          '.word 0x00000d1c',
+          'blx r2',
+          'bx lr',
         ],
       ],
     ),
@@ -119,9 +114,28 @@ test('auipc+jalr is a direct call, a hoisted ROM address is external, a bare reg
   assert.equal(caller.indirect, 1);
 });
 
+test('a bl into a far block of the same function is a jump, not a recursive call', () => {
+  const parsed = parseDisassembly(
+    dis([
+      'f',
+      ['sub sp, #0x10', `bl ${hex(0x10000010)} <f+0x10>`, 'bx lr', 'bx lr', 'nop', 'bx lr'],
+    ]),
+  );
+  assert.equal(find(parsed, 'f').calls.length, 0);
+});
+
 test('a hoisted register is forgotten once something else writes it', () => {
   const parsed = parseDisassembly(
-    dis(['f', ['lui s1, 0x40000', 'lw s1, 0x0(a0)', 'jalr s1', 'ret']]),
+    dis([
+      'f',
+      [
+        'ldr r4, [pc, #0x8] @ 0x1000000c <f+0xc>',
+        'ldr r4, [r0]',
+        'blx r4',
+        '.word 0x00000d1c',
+        'bx lr',
+      ],
+    ]),
   );
   assert.equal(find(parsed, 'f').indirect, 1);
 });
@@ -129,18 +143,13 @@ test('a hoisted register is forgotten once something else writes it', () => {
 test('a jump out of the function is a tail edge; a jump inside it is not', () => {
   const parsed = parseDisassembly(
     dis(
-      ['target', ['addi sp, sp, -0x30', 'ret']],
-      ['tailer', ['beqz a0, 0x42000010 <tailer+0x8>', `j ${hex(addrOf(0, 2))} <target>`, 'ret']],
-      ['viareg', ['auipc t1, 0x0', `jr -0x14(t1) <target>`]],
-      ['dispatch', ['jr a5']],
+      ['target', ['sub sp, #0x30', 'bx lr']],
+      ['tailer', [`beq 0x10000018 <tailer+0x8>`, `b ${hex(addrOf(0, 2))} <target>`, 'bx lr']],
+      ['dispatch', ['bx r5']],
     ),
   );
   assert.deepEqual(
     find(parsed, 'tailer').tails.map((t) => t.name),
-    ['target'],
-  );
-  assert.deepEqual(
-    find(parsed, 'viareg').tails.map((t) => t.name),
     ['target'],
   );
   assert.equal(find(parsed, 'dispatch').indirectJumps, 1);
@@ -150,27 +159,27 @@ test('a jump out of the function is a tail edge; a jump inside it is not', () =>
 test('64-bit division libcalls are recorded per calling function', () => {
   const parsed = parseDisassembly(
     dis(
-      ['__udivdi3', ['ret', 'ret']],
-      ['uses', ['auipc ra, 0x0', 'jalr -0x8(ra) <__udivdi3>', 'ret']],
-      ['clean', ['ret']],
+      ['__aeabi_uldivmod', ['bx lr', 'bx lr']],
+      ['uses', [`bl ${hex(addrOf(0, 2))} <__aeabi_uldivmod>`, 'bx lr']],
+      ['clean', ['bx lr']],
     ),
   );
-  assert.deepEqual([...find(parsed, 'uses').div64], ['__udivdi3']);
+  assert.deepEqual([...find(parsed, 'uses').div64], ['__aeabi_uldivmod']);
   assert.equal(find(parsed, 'clean').div64.size, 0);
 });
 
 // A small graph with real addresses: a -> b (frame 32) -> c (frame 100); a -> d (frame 50).
 // c tail-jumps to e (frame 1000): the tail edge adds e but not c's own frame.
 function graph() {
-  const pad = ['ret', 'ret', 'ret', 'ret'];
-  const at = (i) => hex(0x42000000 + i * 16);
+  const pad = ['bx lr', 'bx lr', 'bx lr', 'bx lr'];
+  const at = (i) => hex(0x10000000 + i * 16);
   return parseDisassembly(
     dis(
-      ['e', ['addi sp, sp, -0x3e8', 'ret', 'ret', 'ret']],
-      ['c', ['addi sp, sp, -0x64', 'addi sp, sp, 0x64', `j ${at(0)} <e>`, 'ret']],
-      ['b', ['addi sp, sp, -0x20', `jal ${at(1)} <c>`, 'ret', 'ret']],
-      ['d', ['addi sp, sp, -0x32', ...pad.slice(1)]],
-      ['a', ['addi sp, sp, -0x10', `jal ${at(2)} <b>`, `jal ${at(3)} <d>`, 'ret']],
+      ['e', ['sub sp, #0x1f4', 'sub sp, #0x1f4', 'bx lr', 'bx lr']],
+      ['c', ['sub sp, #0x64', 'add sp, #0x64', `b ${at(0)} <e>`, 'bx lr']],
+      ['b', ['sub sp, #0x20', `bl ${at(1)} <c>`, 'bx lr', 'bx lr']],
+      ['d', ['sub sp, #0x32', ...pad.slice(1)]],
+      ['a', ['sub sp, #0x10', `bl ${at(2)} <b>`, `bl ${at(3)} <d>`, 'bx lr']],
     ),
   );
 }
@@ -189,8 +198,8 @@ test('worstStack follows calls by summed frames and tail jumps without the calle
 test('worstStack cuts recursion and reports it', () => {
   const parsed = parseDisassembly(
     dis(
-      ['x', ['addi sp, sp, -0x10', `jal ${hex(0x42000010)} <y>`, 'ret', 'ret']],
-      ['y', ['addi sp, sp, -0x20', `jal ${hex(0x42000000)} <x>`, 'ret', 'ret']],
+      ['x', ['sub sp, #0x10', `bl ${hex(0x10000010)} <y>`, 'bx lr', 'bx lr']],
+      ['y', ['sub sp, #0x20', `bl ${hex(0x10000000)} <x>`, 'bx lr', 'bx lr']],
     ),
   );
   const r = worstStack(parsed, 'x');
@@ -278,13 +287,23 @@ test('a missing interrupt path function is a violation', () => {
   assert.match(r.violations.join('\n'), /interrupt_path function not found.*gone/);
 });
 
+test('the deepest of several interrupt paths sets the interrupt allowance', () => {
+  const one = evaluate({ measured: MEASURED, parsed: graph(), budget: BUDGET });
+  const budget = { ...BUDGET, interrupt_path: undefined, interrupt_paths: [['d'], ['a', 'b']] };
+  const r = evaluate({ measured: MEASURED, parsed: graph(), budget });
+  assert.equal(
+    r.stack.interruptPathBytes,
+    Math.max(one.stack.interruptPathBytes, interruptStack(graph(), ['a', 'b']).bytes),
+  );
+});
+
 test('a new 64-bit division caller fails; an allowlisted one passes; a stale entry warns', () => {
   const parsed = parseDisassembly(
     dis(
-      ['__udivdi3', ['ret', 'ret', 'ret']],
-      ['old_user', ['auipc ra, 0x0', 'jalr -0x4(ra) <__udivdi3>', 'ret']],
-      ['new_user', ['auipc ra, 0x0', 'jalr -0x10(ra) <__udivdi3>', 'ret']],
-      ['a', ['addi sp, sp, -0x10', 'ret']],
+      ['__aeabi_uldivmod', ['bx lr', 'bx lr', 'bx lr']],
+      ['old_user', [`bl ${hex(0x10000000)} <__aeabi_uldivmod>`, 'bx lr']],
+      ['new_user', [`bl ${hex(0x10000000)} <__aeabi_uldivmod>`, 'bx lr']],
+      ['a', ['sub sp, #0x10', 'bx lr']],
     ),
   );
   const budget = {
@@ -295,7 +314,7 @@ test('a new 64-bit division caller fails; an allowlisted one passes; a stale ent
   };
   const r = evaluate({ measured: MEASURED, parsed, budget });
   assert.equal(r.violations.length, 1);
-  assert.match(r.violations[0], /64-bit division: new_user calls __udivdi3/);
+  assert.match(r.violations[0], /64-bit division: new_user calls __aeabi_uldivmod/);
   assert.match(r.warnings.join('\n'), /long_gone/);
 });
 
@@ -366,11 +385,11 @@ function tinyElf({ stackStart, stackEnd, blobPayload }) {
 }
 
 test('parseElf and measureElf read the image, asset blob, static RAM and stack region', () => {
-  const elf = parseElf(tinyElf({ stackStart: 0x3fcce400, stackEnd: 0x3fca6a7c, blobPayload: 100 }));
+  const elf = parseElf(tinyElf({ stackStart: 0x20040000, stackEnd: 0x20024000, blobPayload: 100 }));
   const m = measureElf(elf);
   assert.equal(m.assetBlobBytes, 16 + 8 + 100);
-  assert.equal(m.staticRamBytes, 0x3fca6a7c - 0x3fc80000);
-  assert.equal(m.stackRegionBytes, 0x3fcce400 - 0x3fca6a7c);
+  assert.equal(m.staticRamBytes, 0x20024000 - 0x20000000);
+  assert.equal(m.stackRegionBytes, 0x20040000 - 0x20024000);
   assert.equal(m.appImageBytes, 8 + 16 + 8 + 100);
 });
 
