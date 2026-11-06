@@ -1758,7 +1758,7 @@ fn render_with_overlay_composites_the_bar_into_the_flushed_pixels() {
 
 #[test]
 fn the_rotary_profile_does_not_collide_with_the_display_profile() {
-    use kivori_firmware::profile::physical_st7789::{BL, DC, MOSI, ROTARY, RST, SCK};
+    use kivori_firmware::profile::physical_st7789::{BL, DC, LED, MOSI, ROTARY, RST, SCK};
 
     let display_pins = [SCK, MOSI, DC, RST, BL];
     for pin in [ROTARY.clk, ROTARY.dt, ROTARY.sw] {
@@ -1766,45 +1766,36 @@ fn the_rotary_profile_does_not_collide_with_the_display_profile() {
             !display_pins.contains(&pin),
             "rotary pin {pin} collides with the verified display profile"
         );
-        // GPIO18/19 are the native USB Serial/JTAG pair.
         assert!(
-            pin != 18 && pin != 19,
-            "rotary pin {pin} collides with native USB"
+            !LED.contains(&pin),
+            "rotary pin {pin} collides with the RGB LED"
         );
+        // GP16 is the board's onboard WS2812.
+        assert_ne!(pin, 16, "rotary pin {pin} is the onboard LED");
     }
 
     assert_ne!(ROTARY.clk, ROTARY.dt);
     assert_ne!(ROTARY.clk, ROTARY.sw);
     assert_ne!(ROTARY.dt, ROTARY.sw);
-
-    // GPIO9 low at reset enters ROM download mode, so the recovery switch must never sit on it.
-    assert_ne!(
-        ROTARY.sw, 9,
-        "the recovery switch must not be the BOOT strap"
-    );
 }
 
 #[test]
 fn the_context_buttons_are_free_pins() {
     use kivori_firmware::profile::physical_st7789::{
-        BL, CONTEXT_BUTTONS, DC, MOSI, ROTARY, RST, SCK,
+        BL, CONTEXT_BUTTONS, DC, LED, MOSI, ROTARY, RST, SCK,
     };
 
-    let taken = [SCK, MOSI, DC, RST, BL, ROTARY.clk, ROTARY.dt, ROTARY.sw];
+    let taken = [
+        SCK, MOSI, DC, RST, BL, ROTARY.clk, ROTARY.dt, ROTARY.sw, LED[0], LED[1], LED[2],
+    ];
     for (i, pin) in CONTEXT_BUTTONS.into_iter().enumerate() {
         assert!(!taken.contains(&pin), "button pin {pin} is already taken");
         assert!(
             !CONTEXT_BUTTONS[..i].contains(&pin),
             "button pin {pin} is used twice"
         );
-        // GPIO2 is a strapping pin that must not be pulled low at reset. GPIO8/9 are allowed on
-        // purpose: B1 on GPIO9 doubles as BOOT, and GPIO8 only matters in download mode.
-        assert_ne!(pin, 2, "button pin {pin} is a strapping pin");
-        // GPIO18/19 are native USB, GPIO21 the UART0 boot log.
-        assert!(
-            ![18, 19, 21].contains(&pin),
-            "button pin {pin} collides with USB or the log"
-        );
+        // GP16 is the board's onboard WS2812.
+        assert_ne!(pin, 16, "button pin {pin} is the onboard LED");
     }
 }
 

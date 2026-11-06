@@ -1519,7 +1519,7 @@ fn runtime_display_and_flash_admission_follow_current_session_support() {
 
     let mut bytes = vec![0; 52];
     bytes[..6].copy_from_slice(b"\x7fELF\x01\x01");
-    bytes[18] = 243;
+    bytes[18] = 40;
     bytes.extend_from_slice(b"KIVORI-FW-VERSION:0.1.0\0KIVORI-FW-IDENTITY:p=1;b=1;v=0.1.0;m=0.1\0");
     let images = FirmwareBundle::parse(&[&bytes]).unwrap();
     let empty = FirmwareBundle::parse(&[]).unwrap();

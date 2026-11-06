@@ -1,0 +1,7 @@
+# The bench models the v1 virtual device (ESP32-C3), so it keeps the riscv32imc target the firmware
+# crate's own config (now thumbv6m, for the RP2040-Zero) no longer provides.
+[build]
+target = "riscv32imc-unknown-none-elf"
+
+[target.riscv32imc-unknown-none-elf]
+rustflags = ["-C", "link-arg=-Tlinkall.x"]

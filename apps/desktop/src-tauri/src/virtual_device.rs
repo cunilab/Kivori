@@ -43,6 +43,13 @@ pub use presence_scenarios::presence_smoke;
 mod endurance_scenarios;
 pub use endurance_scenarios::endurance_smoke;
 
+/// The board the runner models, from `KIVORI_VIRTUAL_BOARD` (the child inherits it, so this is also
+/// what it was started with): v1 `c3-supermini` by default, v2 `rp2040-zero`. The runner rejects any
+/// other value, so a bad one never gets as far as a connected session.
+pub fn virtual_board() -> String {
+    std::env::var("KIVORI_VIRTUAL_BOARD").unwrap_or_else(|_| "c3-supermini".into())
+}
+
 const MAX_LINE: usize = 400_000;
 const WIRE_CAPACITY: usize = 8192;
 const EDGE_CAPACITY: usize = 128;

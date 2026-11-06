@@ -1,50 +1,45 @@
 {
-  "_about": "Resource budget for the Pip product firmware (--features physical-st7789, release). Checked without hardware by `just fw-budget` (scripts/firmware-budget.mjs) and in the firmware CI job. Set on 2026-10-31 from the build after PR #150 and cross-checked against the unit: device-measured peak stack use 115,740 B vs the 115,744 B this check derives. To change a limit on purpose, edit it here with the reason; see docs/virtual-pip.md (Hardware parity).",
-  "entry": "_start_rust",
+  "_about": "Resource budget for the Pip product firmware (--features physical-st7789, release, thumbv6m RP2040-Zero). Checked without hardware by `just fw-budget` (scripts/firmware-budget.mjs) and in the firmware CI job. Rebaselined on 2026-11-05 for the RP2040-Zero build (#179) from the ELF the build produced. The stack figures are the static estimate only: the RISC-V version of this check matched a unit within 4 B, but the ARM estimate has NOT been cross-checked on a board yet (pending the hardware test in #179). To change a limit on purpose, edit it here with the reason; see docs/virtual-pip.md (Hardware parity).",
+  "entry": "main",
   "limits": {
     "app_image_bytes": {
-      "max": 360448,
-      "why": "Loadable sections (text, rodata, data) were 343,686 B. About 5% headroom; the app partition is far larger, so this is a regression tripwire, not the physical limit."
+      "max": 305000,
+      "why": "Loadable sections (vector table, boot2, text, rodata, data) were 290,040 B. About 5% headroom; flash is 2 MB, so this is a regression tripwire, not the physical limit."
     },
     "asset_blob_bytes": {
       "max": 129024,
       "why": "The compiled asset blob was 127,253 B. The hard cap (ASSET_BLOB_CAP_BYTES, 131,072 B) is read from firmware/pip/src/internals.rs and checked too; this is a tighter early warning."
     },
     "static_ram_bytes": {
-      "max": 160000,
-      "why": "Static RAM (data + bss) was 158,332 B. Everything above it comes out of the stack region, which is the rest of data RAM."
+      "max": 156000,
+      "why": "Static RAM (data + bss) was 150,000 B (the interrupt-shared USB device is about 1 KiB of that), of which the frame buffer is 115,200 B. Everything above it comes out of the stack region, which is the rest of the 264 KB of SRAM."
     },
     "stack_region_bytes": {
-      "min": 160000,
-      "why": "The stack region (_stack_start - _stack_end) was 162,180 B. It must not shrink: the peak below leaves about 46 KiB free on the unit."
+      "min": 120000,
+      "why": "The stack region (_stack_start - _stack_end) was 120,336 B. It must not shrink: the boot peak below leaves about 10 KiB free."
     },
     "default_frame_bytes": {
       "max": 1024,
       "why": "Any function with a bigger frame must be listed in large_frames with its own ceiling, so a new large frame is a decision, not an accident."
     },
     "worst_stack_bytes": {
-      "max": 120000,
-      "why": "Direct call chain from the entry was 115,744 B (boot, load_assets with the inlined AssetBlob::parse and the postcard Vec<SceneDef,8> visitor). The unit measured 115,740 B. About 4% headroom for the regression gate."
+      "max": 114000,
+      "why": "Direct call chain from main was 109,260 B (the boot parse: load_assets with the inlined AssetBlob::parse and the postcard Vec<SceneDef,8> visitor, which `main` runs before run_mode so its 7.5 KiB frame is not stacked under it). Once the loop runs the chain is about 25 KiB. About 4% headroom for the regression gate. Static estimate, not yet measured on a unit."
     },
     "indirect_allowance_bytes": {
       "value": 1024,
-      "why": "Calls through a register (trait objects, fn pointers) cannot be followed. The deepest chain under any function that no direct call reaches (not the entry or the trap vectors) was 384 B; this allows a hop of that kind with a 2.5x margin. Re-derive if an indirect callee grows a big frame."
+      "why": "Calls through a register (trait objects, fn pointers) cannot be followed. Carried over from the RISC-V build (deepest chain 384 B, 2.5x margin), not re-derived for ARM yet."
     },
     "interrupt_margin_bytes": {
       "value": 256,
-      "why": "Added on top of the traced interrupt path (interrupt_path) for the parts of an interrupt that are not followed."
+      "why": "Added on top of the deepest traced interrupt path (interrupt_paths: the rotary GPIO and USBCTRL_IRQ handlers, which share a priority and so do not nest) for the parts of an interrupt that are not followed, including the 32 B exception frame the core stacks."
     },
     "stack_margin_bytes": {
-      "value": 16384,
-      "why": "The estimated peak plus the allowances plus this margin must fit the stack region. 16 KiB is slack for what the static estimate cannot see (compiler changes between toolchain versions)."
+      "value": 8192,
+      "why": "The estimated peak plus the allowances plus this margin must fit the stack region. 8 KiB (down from 16 KiB on the C3, which had 162 KiB of stack): the 264 KB SRAM leaves 10.8 KiB over the boot peak, and at that peak no interrupt is live and no indirect call runs. Raise the margin again once the ARM estimate is checked against a unit."
     }
   },
-  "interrupt_path": [
-    "_pre_default_start_trap_ret",
-    "_start_trap_rust",
-    "esp_hal::gpio::interrupt::user_gpio_interrupt_handler",
-    "kivori_firmware::physical_rotary::__esp_hal_internal_on_edge"
-  ],
+  "interrupt_paths": [["IO_IRQ_BANK0"], ["USBCTRL_IRQ"]],
   "large_frames": [
     {
       "fn": "kivori_firmware::physical_st7789::load_assets",
@@ -52,38 +47,43 @@
       "why": "Boot only: the inlined AssetBlob::parse holds the manifest (Vec<SceneDef,8> and the bitmap table). It sets the stack peak."
     },
     {
-      "fn": "<heapless::vec::VecInner<kivori_assets::manifest::SceneDef,*>::deserialize::*",
-      "max": 46000,
+      "fn": "<heapless::vec::VecInner<kivori_assets::manifest::SceneDef,*Deserialize>::deserialize::*",
+      "max": 46500,
       "why": "Boot only: postcard builds the Vec<SceneDef,8> by value, below load_assets."
     },
     {
+      "fn": "<kivori_firmware::transport::UsbCdcTransport>::new",
+      "max": 1100,
+      "why": "Boot only: builds the UsbDevice by value before it moves into the interrupt-shared static. Called from run_mode, below the boot peak."
+    },
+    {
       "fn": "kivori_firmware::runtime::run_buffered::*",
-      "max": 7200,
+      "max": 7600,
       "why": "The run loop's locals; lives for the whole session."
     },
     {
       "fn": "kivori_firmware::physical_st7789::run_mode",
-      "max": 6800,
-      "why": "Owns the peripherals and the display buffers' setup; lives for the whole session."
+      "max": 8000,
+      "why": "Owns the peripherals and the display buffers' setup (including the 4 KiB mipidsi staging buffer); lives for the whole session."
     },
     {
       "fn": "<kivori_firmware::runtime::Runtime>::pump_input::*",
-      "max": 3600,
+      "max": 3800,
       "why": "Input handling with the inlined scene transitions."
     },
     {
       "fn": "<kivori_firmware::proto::Dispatcher>::poll::*",
-      "max": 3100,
+      "max": 3400,
       "why": "Frame decode and dispatch with the inlined handlers."
     },
     {
-      "fn": "<heapless::vec::VecInner<kivori_assets::manifest::BitmapEntry,*>::deserialize::*",
-      "max": 1900,
+      "fn": "<heapless::vec::VecInner<kivori_assets::manifest::BitmapEntry,*Deserialize>::deserialize::*",
+      "max": 2000,
       "why": "Boot only: postcard builds the bitmap table."
     },
     {
       "fn": "<kivori_firmware::proto::Dispatcher>::send_within::*",
-      "max": 1700,
+      "max": 1800,
       "why": "Frame encode with the inlined senders."
     },
     {
@@ -94,20 +94,8 @@
   ],
   "int64_division_allowlist": [
     {
-      "fn": "esp_hal::init",
-      "why": "Once at boot: clock setup in esp-hal."
-    },
-    {
-      "fn": "<esp_hal::delay::Delay>::delay",
-      "why": "esp-hal's blocking delay (panel init); not in the frame path."
-    },
-    {
-      "fn": "<esp_hal::ledc::timer::Timer<*>::configure",
-      "why": "Backlight PWM setup, once."
-    },
-    {
-      "fn": "kivori_firmware::physical_rotary::__esp_hal_internal_on_edge",
-      "why": "Rotary interrupt: scales the edge timestamp. Known debt; keep it cheap."
+      "fn": "IO_IRQ_BANK0",
+      "why": "Rotary interrupt: the clock turns the 64-bit microsecond counter into milliseconds (a software loop on the M0+). Known debt; keep it cheap."
     },
     {
       "fn": "kivori_firmware::runtime::run_buffered::*",
@@ -127,11 +115,11 @@
     },
     {
       "fn": "kivori_renderer::compositor::draw_sprite",
-      "why": "Per-sprite setup (4 call sites), not per pixel. Known debt; before PR #150 the same class of call in the pixel path made frames 4x slower."
+      "why": "Per-sprite setup, not per pixel. Known debt; before PR #150 the same class of call in the pixel path made frames 4x slower."
     },
     {
       "fn": "kivori_renderer::compositor::render_scene",
-      "why": "The scene loop length (`frame_count * 1000 * fps.den / fps.num`, compositor.rs), once per frame, not per pixel. Unchanged source: the BuildInfo message (build id) changed which function LTO inlines it into, so it now shows here. The frame-cost fixture is unchanged and passes."
+      "why": "The scene loop length (`frame_count * 1000 * fps.den / fps.num`, compositor.rs), once per frame, not per pixel."
     }
   ]
 }

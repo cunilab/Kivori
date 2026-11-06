@@ -92,7 +92,7 @@ fn run(sandbox: &mut Sandbox, limit: Duration) -> Result<(Duration, Wraps, usize
 
 /// Opt-in long session: `virtual_device <runner> --endurance-smoke`.
 pub fn endurance_smoke(executable: &Path) -> Result<(), String> {
-    // Modelled ESP32-C3 time, as the unit runs. The flood is 250 detents a second (4 ms edge spacing)
+    // Modelled time, as the unit runs (the v1 ESP32-C3's; the RP2040 estimate has not been through this run). The flood is 250 detents a second (4 ms edge spacing)
     // with presentation traffic back, well under what the runtime takes inbound (512 bytes per
     // frame, about 6 KB/s): the heartbeat round trip stays near 0.1 s against the host's 2 s
     // allowance (virtual device docs, Endurance run).

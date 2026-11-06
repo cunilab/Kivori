@@ -34,17 +34,14 @@ fn main() {
     // The firmware source id of this checkout (the same hash the firmware stamps into itself, from
     // the input list beside the catalog's firmware crate), compared with the device's in developer
     // mode (`BUILD_INFO_V1`). Only the id is used.
-    match catalog
-        .products()
-        .first()
-        .and_then(|product| product.boards.first())
-    {
-        Some(board) => {
-            let crate_dir = board
-                .firmware
-                .crate_dir
-                .to_string_lossy()
-                .replace('\\', "/");
+    match catalog.products().first().and_then(|product| {
+        product
+            .boards
+            .iter()
+            .find_map(|board| board.firmware.as_ref())
+    }) {
+        Some(firmware) => {
+            let crate_dir = firmware.crate_dir.to_string_lossy().replace('\\', "/");
             kivori_asset_compiler::build_id::emit(
                 "KIVORI_APP",
                 &root,

@@ -79,9 +79,9 @@ export const FIRMWARE_PHASES = [
 ] as const;
 /** Why the last firmware attempt failed; the UI owns the wording. */
 export const FLASH_FAILURES = [
-  'toolMissing',
   'portBusy',
   'noDownloadMode',
+  'writeFailed',
   'timeout',
   'cancelled',
   'imageUnavailable',
@@ -280,7 +280,7 @@ export interface DiagnosticsDto {
   };
 }
 
-export const CHIP_MODELS = ['esp32c3'] as const;
+export const CHIP_MODELS = ['esp32c3', 'rp2040'] as const;
 export const RESET_REASONS = [
   'powerOn',
   'software',

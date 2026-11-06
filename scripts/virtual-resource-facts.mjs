@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 // Freshness check for the resource facts the virtual device reports in its Device internals
-// (`simulator/fixtures/resource-facts.json` in the catalog firmware crate). The `elf` block of that fixture is a
-// copy of what `bun scripts/firmware-budget.mjs --json` measures on the catalog product ELF, so
+// (`simulator/fixtures/resource-facts-rp2040.json` in the catalog firmware crate, the v2 virtual
+// board; the v1 ESP32-C3 `resource-facts.json` is frozen history and never checked). The `elf` block
+// of that fixture is a copy of what `bun scripts/firmware-budget.mjs --json` measures on the catalog product ELF, so
 // it must not drift from the firmware it models.
 //
 //   bun scripts/virtual-resource-facts.mjs [--check | --write]
@@ -21,7 +22,7 @@ const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 /** The fixture of the catalog product (KIVORI_PRODUCT/KIVORI_BOARD select one when several exist). */
 export function fixturePath() {
   const plan = resolveFirmware(repo, process.env.KIVORI_PRODUCT, process.env.KIVORI_BOARD);
-  return join(plan.cwd, 'simulator/fixtures/resource-facts.json');
+  return join(plan.cwd, 'simulator/fixtures/resource-facts-rp2040.json');
 }
 /** Largest relative difference between the fixture and a fresh measurement still accepted. */
 export const TOLERANCE = 0.02;

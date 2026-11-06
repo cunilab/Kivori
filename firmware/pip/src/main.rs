@@ -1,20 +1,19 @@
 #![no_std]
 #![no_main]
 
-//! Kivori ESP32-C3 firmware entry point.
+//! Kivori RP2040-Zero firmware entry point.
 //!
 //! The binary selects its firmware mode through Cargo features:
 //!
-//! - `physical-st7789` — production Kivori runtime on the hardware-validated
-//!   ESP32-C3 + ST7789 240x240 physical profile.
-//! - `embedded` only — brings up the ESP32-C3 clock and native USB
-//!   Serial/JTAG transport without selecting a display profile.
+//! - `physical-st7789` — production Kivori runtime on the RP2040-Zero + ST7789 240x240 physical
+//!   profile.
+//! - `embedded` only — brings up the RP2040 clocks and timer without selecting a display profile.
 //!
 //! Building this binary requires the `embedded` feature. `physical-st7789`
 //! enables `embedded` through `Cargo.toml`.
 
 #[cfg(feature = "embedded")]
-use esp_backtrace as _;
+use rp2040_hal::pac;
 
 /// Canonical Kivori asset blob compiled at build time.
 ///
@@ -23,29 +22,41 @@ use esp_backtrace as _;
 #[cfg(feature = "embedded")]
 static ASSETS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/kivori.assets"));
 
-// ESP-IDF-compatible application descriptor required by the ESP32-C3
-// bootloader/flash tooling. (A plain comment: rustdoc cannot attach a doc comment to a macro call.)
+/// The second-stage bootloader the RP2040 ROM runs from the first 256 bytes of flash. It sets up
+/// quad-SPI XIP for the Zero's Winbond W25Q16 flash.
 #[cfg(feature = "embedded")]
-esp_bootloader_esp_idf::esp_app_desc!();
+#[link_section = ".boot2"]
+#[used]
+static BOOT2: [u8; 256] = rp2040_boot2::BOOT_LOADER_W25Q080;
+
+/// A panic parks the core: there is no console to report to (the USB link carries the protocol),
+/// and the BOOTSEL button recovers the board.
+#[cfg(feature = "embedded")]
+#[panic_handler]
+fn panic(_: &core::panic::PanicInfo) -> ! {
+    loop {
+        cortex_m::asm::wfi();
+    }
+}
 
 /// Firmware entry point.
 ///
-/// `esp_hal::main` installs the ESP32-C3 vector table. This function never
+/// `rp2040_hal::entry` installs the reset handler (and clears stale spinlocks). This function never
 /// returns.
 #[cfg(feature = "embedded")]
-#[esp_hal::main]
+#[rp2040_hal::entry]
 fn main() -> ! {
-    let peripherals = esp_hal::init(esp_hal::Config::default());
-    let clock = kivori_firmware::bsp::clock();
+    let peripherals = pac::Peripherals::take().expect("peripherals are taken once");
+    let board = kivori_firmware::bsp::init(peripherals);
 
     // -------------------------------------------------------------------------
     // Physical production runtime
     //
-    // Hardware-validated ESP32-C3 + ST7789 240x240 profile.
+    // RP2040-Zero + ST7789 240x240 profile.
     //
     // Owns:
-    // - native USB Serial/JTAG
-    // - SPI2
+    // - USB CDC serial
+    // - SPI1
     // - physical display GPIOs
     // - ST7789
     // - Kivori asset blob
@@ -56,7 +67,12 @@ fn main() -> ! {
 
     #[cfg(feature = "physical-st7789")]
     {
-        kivori_firmware::physical_st7789::run_mode(peripherals, clock, ASSETS);
+        // Paint the unused stack now, while little of it is in use, so the device internals snapshot
+        // can report how deep it has ever gone (the asset parse below is the deepest it goes).
+        kivori_firmware::chip_probe::paint_stack();
+        // Parsed first, while the stack is empty: it is the deepest call chain in the firmware.
+        let blob = kivori_firmware::physical_st7789::load_assets(ASSETS);
+        kivori_firmware::physical_st7789::run_mode(board, blob, ASSETS.len());
     }
 
     // -------------------------------------------------------------------------
@@ -69,22 +85,11 @@ fn main() -> ! {
 
     #[cfg(not(feature = "physical-st7789"))]
     {
-        use kivori_firmware::ports::Clock;
-
-        let mut serial = kivori_firmware::bsp::serial(peripherals.USB_DEVICE);
-
-        let boot_ms = clock.now_ms();
-
-        esp_println::println!(
-            "KIVORI boot: clock+serial up at {boot_ms}ms; \
-             no display runtime selected"
-        );
-
-        let _ = (&mut serial, ASSETS);
+        let _ = (&board, ASSETS);
 
         // Nothing else runs in this mode, so it parks here.
         loop {
-            esp_hal::delay::Delay::new().delay_millis(1000);
+            cortex_m::asm::wfi();
         }
     }
 }

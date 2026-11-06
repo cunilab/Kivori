@@ -6,12 +6,6 @@
     "reason": "Existing board-specific development/CI feature matrix; generalizing hardware test matrices is separate work."
   },
   {
-    "path": "apps/desktop/src-tauri/examples/provision.rs",
-    "text": "\"espefuse not found: install it with `pip install esptool==4.7.0` (docs/provisioning.md).\",",
-    "count": 1,
-    "reason": "Python package-manager installation guidance, unrelated to the product name."
-  },
-  {
     "path": "apps/desktop/src-tauri/src/identity.rs",
     "text": "const LEGACY_BOARD: &str = \"c3-supermini\";",
     "count": 1,
@@ -22,12 +16,6 @@
     "text": "const LEGACY_PRODUCT: &str = \"pip\";",
     "count": 1,
     "reason": "Fixed legacy identity mapping required by ADR-0014; never a default for devices reporting identity."
-  },
-  {
-    "path": "apps/desktop/src-tauri/src/provision.rs",
-    "text": "\"c3-supermini\" => Ok(()),",
-    "count": 1,
-    "reason": "The implemented eFuse burn backend is tied to this board; unknown boards must remain refused."
   },
   {
     "path": "apps/desktop/src/lib/ipc/mock.ts",
@@ -115,7 +103,7 @@
   },
   {
     "path": "scripts/check-release-surface.sh",
-    "text": "FIRMWARE_LIB=\"firmware/pip/target/riscv32imc-unknown-none-elf/debug/libkivori_firmware.rlib\"",
+    "text": "FIRMWARE_LIB=\"firmware/pip/target/thumbv6m-none-eabi/debug/libkivori_firmware.rlib\"",
     "count": 1,
     "reason": "Existing board-specific development/CI feature matrix; generalizing hardware test matrices is separate work."
   },
@@ -152,7 +140,7 @@
   {
     "path": ".github/workflows/host.yml",
     "text": "run: node firmware/pip/simulator/run.mjs --smoke",
-    "count": 1,
+    "count": 2,
     "reason": "Explicit product-owned simulator integration smoke; shipping build recipes remain catalog-driven."
   },
   {
@@ -184,5 +172,59 @@
     "text": "cd firmware/pip/frame-cost",
     "count": 1,
     "reason": "Pip-owned frame-cost model (real renderer in an ESP32-C3 instruction-set simulator); product-owned virtual-device tooling per ADR-0018, like the board-specific firmware matrix."
+  },
+  {
+    "path": ".github/workflows/host.yml",
+    "text": "# v2 (RP2040-Zero): same stages on the second board's identity, chip facts and estimated timing.",
+    "count": 1,
+    "reason": "Virtual board selection, v1 c3-supermini / v2 rp2040-zero (#179, ADR-0019); development and CI only."
+  },
+  {
+    "path": ".github/workflows/host.yml",
+    "text": "KIVORI_VIRTUAL_BOARD: rp2040-zero",
+    "count": 1,
+    "reason": "Virtual board selection, v1 c3-supermini / v2 rp2040-zero (#179, ADR-0019); development and CI only."
+  },
+  {
+    "path": "apps/desktop/src-tauri/examples/virtual_device.rs",
+    "text": "\"rp2040-zero\" => \"rp2040\",",
+    "count": 1,
+    "reason": "Virtual board selection, v1 c3-supermini / v2 rp2040-zero (#179, ADR-0019); development and CI only."
+  },
+  {
+    "path": "apps/desktop/src-tauri/src/virtual_device.rs",
+    "text": "/// what it was started with): v1 `c3-supermini` by default, v2 `rp2040-zero`. The runner rejects any",
+    "count": 1,
+    "reason": "Virtual board selection, v1 c3-supermini / v2 rp2040-zero (#179, ADR-0019); development and CI only."
+  },
+  {
+    "path": "apps/desktop/src-tauri/src/virtual_device.rs",
+    "text": "std::env::var(\"KIVORI_VIRTUAL_BOARD\").unwrap_or_else(|_| \"c3-supermini\".into())",
+    "count": 1,
+    "reason": "Virtual board selection, v1 c3-supermini / v2 rp2040-zero (#179, ADR-0019); development and CI only."
+  },
+  {
+    "path": "justfile",
+    "text": "# Refresh the resource facts the v2 (RP2040-Zero) virtual device reports",
+    "count": 1,
+    "reason": "Virtual board selection, v1 c3-supermini / v2 rp2040-zero (#179, ADR-0019); development and CI only."
+  },
+  {
+    "path": "justfile",
+    "text": "# DEV ONLY: the v2 virtual device (Waveshare RP2040-Zero; timing is an estimate, not measured).",
+    "count": 1,
+    "reason": "Virtual board selection, v1 c3-supermini / v2 rp2040-zero (#179, ADR-0019); development and CI only."
+  },
+  {
+    "path": "justfile",
+    "text": "KIVORI_VIRTUAL_BOARD=rp2040-zero bun firmware/pip/simulator/run.mjs",
+    "count": 1,
+    "reason": "Virtual board selection, v1 c3-supermini / v2 rp2040-zero (#179, ADR-0019); development and CI only."
+  },
+  {
+    "path": "justfile",
+    "text": "KIVORI_VIRTUAL_BOARD=rp2040-zero node firmware/pip/simulator/run.mjs --smoke",
+    "count": 1,
+    "reason": "Virtual board selection, v1 c3-supermini / v2 rp2040-zero (#179, ADR-0019); development and CI only."
   }
 ]

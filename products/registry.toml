@@ -20,3 +20,4 @@ pip = 1 # Kivori Pip, model KV-P1
 
 [boards]
 c3-supermini = 1
+rp2040-zero = 2 # Waveshare RP2040-Zero, the Pip's hardware board since #179

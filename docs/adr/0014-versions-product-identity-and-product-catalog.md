@@ -1,6 +1,7 @@
 # ADR-0014: Versions, product identity and the product catalog
 
 - **Status:** Proposed
+- **Note:** Superseded in part by [ADR-0019](./0019-rp2040-zero-replaces-esp32-c3.md) (#179): the C3 eFuse record and its provisioning tool were removed; identity on the RP2040-Zero comes from the build.
 - **Date:** 2026-10-12
 - **Milestone:** M2.7
 - **Related:** [ADR-0002](./0002-one-wire-protocol-crate.md), [ADR-0015](./0015-app-updates-through-github-releases.md), [ADR-0016](./0016-locking-a-board-to-its-firmware-in-tiers.md)

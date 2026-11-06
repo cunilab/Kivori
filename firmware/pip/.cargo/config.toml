@@ -1,9 +1,10 @@
-# ESP32-C3 is RISC-V (riscv32imc): standard Rust + the riscv target (NOT the xtensa esp fork).
 [build]
-target = "riscv32imc-unknown-none-elf"
+target = "thumbv6m-none-eabi"
 
-[target.riscv32imc-unknown-none-elf]
-runner = "espflash flash --monitor"
-# esp-hal supplies the memory layout + vector table through `linkall.x`. Only the device target needs
-# it; host builds pass an explicit --target and never see these flags.
-rustflags = ["-C", "link-arg=-Tlinkall.x"]
+[target.thumbv6m-none-eabi]
+# Flashes over USB: needs the board in BOOTSEL mode (hold BOOT while plugging in, or the 1200-baud
+# touch `just fw-flash` relies on) and `cargo install elf2uf2-rs`.
+runner = "elf2uf2-rs -d"
+# cortex-m-rt supplies the vector table through `link.x` (memory layout from `memory.x`). Only the
+# device target needs it; host builds pass an explicit --target and never see these flags.
+rustflags = ["-C", "link-arg=--nmagic", "-C", "link-arg=-Tlink.x"]

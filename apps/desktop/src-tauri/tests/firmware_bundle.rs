@@ -4,7 +4,7 @@ use kivori_desktop::firmware_bundle::{FirmwareBundle, FirmwareImage};
 fn elf(markers: &[u8]) -> Vec<u8> {
     let mut bytes = vec![0; 52];
     bytes[..6].copy_from_slice(b"\x7fELF\x01\x01");
-    bytes[18] = 243;
+    bytes[18] = 40;
     bytes.extend_from_slice(markers);
     bytes
 }
@@ -52,7 +52,7 @@ fn only_a_single_image_can_use_the_compatibility_bridge() {
 #[test]
 fn wrong_elf_formats_fail_at_the_shared_boundary() {
     let valid = image(41, 9, "0.1.0", "0.1");
-    for (position, value) in [(0, 0), (4, 2), (5, 2), (18, 1), (19, 1)] {
+    for (position, value) in [(0, 0), (4, 2), (5, 2), (18, 243), (18, 1), (19, 1)] {
         let mut invalid = valid.clone();
         invalid[position] = value;
         assert!(FirmwareImage::parse(&invalid)

@@ -4,9 +4,10 @@
 //! the port in `input::quadrature` and `input::gesture`, which is exactly what makes them
 //! provable without hardware.
 //!
-//! HW-040 modules are open-collector with the common pin to ground, so inputs use internal
-//! pull-ups and read ACTIVE-LOW. `sample()` inverts to logical levels. The concrete GPIO
-//! assignments live in [`crate::profile::physical_st7789::RotaryProfile`], not here.
+//! HW-040 modules switch the common pin to ground, so the lines read ACTIVE-LOW (the module has
+//! its own pull-ups; the internal ones are enabled too, which is harmless). `sample()` inverts to
+//! logical levels. The concrete GPIO assignments live in
+//! [`crate::profile::physical_st7789::RotaryProfile`], not here.
 //!
 //! The run loop only gets back to input between display windows and render passes, and composing
 //! plus flushing a frame takes tens of milliseconds — longer than the quarter-steps of one detent. So every edge
@@ -17,12 +18,14 @@
 use core::cell::{Cell, RefCell};
 
 use critical_section::Mutex;
-use esp_hal::gpio::{Event, Input, Io};
+use embedded_hal::digital::InputPin;
 use heapless::Deque;
 use kivori_model::input::InputLevels;
 use kivori_model::ElapsedMs;
+use rp2040_hal::gpio::{DynPinId, FunctionSio, Interrupt, Pin, PullUp, SioInput};
+use rp2040_hal::pac::{self, interrupt};
 
-use crate::clock::EspClock;
+use crate::clock::TimerClock;
 use crate::ports::{Clock, InputSource};
 
 /// Edge snapshots buffered between two drains. One detent is four edges; 128 covers a fast spin
@@ -31,12 +34,10 @@ use crate::ports::{Clock, InputSource};
 /// suppresses rotary decoding for the affected drain instead of joining phases across a gap.
 const EDGE_QUEUE: usize = 128;
 
-type Pins = (
-    Input<'static>,
-    Input<'static>,
-    Input<'static>,
-    [Input<'static>; 3],
-);
+/// An encoder or button line: an input with the internal pull-up, its pin number erased so the
+/// six lines share one type.
+pub type In = Pin<DynPinId, FunctionSio<SioInput>, PullUp>;
+type Pins = (In, In, In, [In; 3]);
 
 static PINS: Mutex<RefCell<Option<Pins>>> = Mutex::new(RefCell::new(None));
 static EDGES: Mutex<RefCell<Deque<(InputLevels, ElapsedMs), EDGE_QUEUE>>> =
@@ -48,28 +49,44 @@ static DROPPED: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
 /// The most edges `EDGES` has held at once (since boot).
 static HIGH_WATER: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
 
-fn read(pins: &Pins) -> InputLevels {
+/// Pin reads cannot fail on the RP2040 (`Error = Infallible`), so a failed read counts as released.
+fn low(pin: &mut In) -> bool {
+    pin.is_low().unwrap_or(false)
+}
+
+fn read(pins: &mut Pins) -> InputLevels {
     // (clk, dt, sw); `input::hw040` decides which pin is which quadrature channel.
+    let [b0, b1, b2] = &mut pins.3;
     crate::input::hw040::levels(
-        pins.0.is_low(),
-        pins.1.is_low(),
-        pins.2.is_low(),
-        [pins.3[0].is_low(), pins.3[1].is_low(), pins.3[2].is_low()],
+        low(&mut pins.0),
+        low(&mut pins.1),
+        low(&mut pins.2),
+        [low(b0), low(b1), low(b2)],
     )
 }
 
-#[esp_hal::handler]
-fn on_edge() {
+fn clear_edges(pin: &mut In) {
+    pin.clear_interrupt(Interrupt::EdgeLow);
+    pin.clear_interrupt(Interrupt::EdgeHigh);
+}
+
+fn listen(pin: &mut In) {
+    pin.set_interrupt_enabled(Interrupt::EdgeLow, true);
+    pin.set_interrupt_enabled(Interrupt::EdgeHigh, true);
+}
+
+#[interrupt]
+fn IO_IRQ_BANK0() {
     critical_section::with(|cs| {
         let mut pins = PINS.borrow_ref_mut(cs);
         let Some(pins) = pins.as_mut() else {
             return;
         };
-        pins.0.clear_interrupt();
-        pins.1.clear_interrupt();
-        pins.2.clear_interrupt();
+        clear_edges(&mut pins.0);
+        clear_edges(&mut pins.1);
+        clear_edges(&mut pins.2);
         for key in &mut pins.3 {
-            key.clear_interrupt();
+            clear_edges(key);
         }
         let mut edges = EDGES.borrow_ref_mut(cs);
         if edges.is_full() {
@@ -77,7 +94,7 @@ fn on_edge() {
             let dropped = DROPPED.borrow(cs);
             dropped.set(dropped.get().saturating_add(1));
         }
-        let _ = edges.push_back((read(pins), EspClock::new().now_ms()));
+        let _ = edges.push_back((read(pins), TimerClock::new().now_ms()));
         let high_water = HIGH_WATER.borrow(cs);
         high_water.set(high_water.get().max(edges.len() as u32));
     });
@@ -93,26 +110,20 @@ impl PhysicalRotary {
     /// Takes ownership of already-configured `clk`/`dt`/`sw` and contextual-button inputs and
     /// starts capturing edges.
     ///
-    /// Callers are expected to have configured each pin with an internal pull-up (the HW-040
-    /// lines are active-low), matching [`crate::profile::physical_st7789::ROTARY`].
+    /// The pins are active-low inputs, matching [`crate::profile::physical_st7789::ROTARY`].
     #[must_use]
-    pub fn new(
-        io: &mut Io<'_>,
-        mut clk: Input<'static>,
-        mut dt: Input<'static>,
-        mut sw: Input<'static>,
-        mut keys: [Input<'static>; 3],
-    ) -> Self {
-        io.set_interrupt_handler(on_edge);
+    pub fn new(mut clk: In, mut dt: In, mut sw: In, mut keys: [In; 3]) -> Self {
         critical_section::with(|cs| {
-            clk.listen(Event::AnyEdge);
-            dt.listen(Event::AnyEdge);
-            sw.listen(Event::AnyEdge);
+            listen(&mut clk);
+            listen(&mut dt);
+            listen(&mut sw);
             for key in &mut keys {
-                key.listen(Event::AnyEdge);
+                listen(key);
             }
             PINS.borrow_ref_mut(cs).replace((clk, dt, sw, keys));
         });
+        // SAFETY: the handler only touches state behind critical-section mutexes, which are set up.
+        unsafe { pac::NVIC::unmask(pac::Interrupt::IO_IRQ_BANK0) };
         Self
     }
 }
@@ -120,8 +131,8 @@ impl PhysicalRotary {
 impl InputSource for PhysicalRotary {
     fn sample(&mut self) -> InputLevels {
         critical_section::with(|cs| {
-            PINS.borrow_ref(cs)
-                .as_ref()
+            PINS.borrow_ref_mut(cs)
+                .as_mut()
                 .map_or(InputLevels::default(), read)
         })
     }
