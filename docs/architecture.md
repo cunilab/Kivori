@@ -8,7 +8,7 @@ Kivori is a small desk companion. A keycap-shaped mascot lives on a 240x240 scre
 
 | Component | What it is |
 |---|---|
-| Firmware | RP2040-Zero (Cortex-M0+), ST7789 240x240 panel, HW-040 rotary encoder, three buttons, RGB LED. Version 0.1.0, protocol 0.2. `no_std`, no heap, `thumbv6m-none-eabi`. (The beta units were ESP32-C3 SuperMini boards, `riscv32imc`; ADR-0019.) |
+| Firmware | RP2040-Zero (Cortex-M0+), ST7789 240x240 panel, HW-040 rotary encoder, three buttons, RGB LED. Version 0.1.4, protocol 0.4. `no_std`, no heap, `thumbv6m-none-eabi`. (The beta units were ESP32-C3 SuperMini boards, `riscv32imc`; ADR-0019.) |
 | Desktop native core | Tauri 2.12 Rust process. Owns the serial port, the connection, OS integration, preview rendering, flashing. |
 | Desktop webview | React UI. Only calls a fixed set of typed commands. No serial, filesystem or shell access. |
 | Shared crates | One copy of the model, protocol, renderer and asset reader, used by both firmware and desktop. |
@@ -122,7 +122,7 @@ Desktop state is in memory only. `desired` defaults to `idle` and is re-sent aft
 
 ### Chosen platform APIs
 
-- Transport: RP2040 native USB CDC (VID:PID `0x2E8A:0x000A`; the ESP32-C3's Serial/JTAG, `0x303A:0x1001`, is the legacy board's). Its 64-byte FIFO can stall TX if the host does not drain, so frames are small and writes are bounded. The run loop writes through a whole-frame outbound queue (`TxBuffered`, about 1 KB over the FIFO). When the host stops draining, input events wait instead of ending the session: rotation as a bounded net count, presses in order, always leaving room for heartbeat replies (see [virtual-pip.md](virtual-pip.md#host-read-stall)).
+- Transport: RP2040 native USB CDC (VID:PID `0x2E8A:0x000A`; the ESP32-C3's Serial/JTAG, `0x303A:0x1001`, is the legacy board's). `USBCTRL_IRQ` services the stack and must read the OUT packets itself, into a 1 KiB queue the loop drains: the RP2040 keeps its OUT buffer flag raised until the packet is read, so a poll-only handler re-fires forever and the unit enumerates but never answers (found on the first unit, #179). Its 64-byte FIFO can stall TX if the host does not drain, so frames are small and writes are bounded. The run loop writes through a whole-frame outbound queue (`TxBuffered`, about 1 KB over the FIFO). When the host stops draining, input events wait instead of ending the session: rotation as a bounded net count, presses in order, always leaving room for heartbeat replies (see [virtual-pip.md](virtual-pip.md#host-read-stall)).
 - Firmware HAL: `esp-hal`, bare metal. Display: `mipidsi` with windowed writes.
 - Desktop serial: blocking `serialport` on a dedicated device thread.
 - Windows volume and mute: Core Audio `IAudioEndpointVolume` with callbacks, on its own COM thread.

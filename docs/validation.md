@@ -603,6 +603,31 @@ behavior and measured timings still need these rows. See [virtual-pip.md](./virt
 - [ ] 7.11 macOS: Apple menu, Sleep, then wake | Sleeping before the screen goes dark, then reconnect
 - [ ] 7.12 macOS: close the lid on battery, then open | same as 7.11
 
+## RP2040-Zero bring-up (#179)
+
+Run on a bare RP2040-Zero (USB only, no carrier) with firmware source `cd84f7e0d806` (clean). Rows needing the screen, knob, keys or LED wait for the v7 carrier.
+
+- [x] R.1 2026-11-06 Copy the app's UF2 (`kivori_desktop::uf2::elf_to_uf2`) onto `RPI-RP2` | accepted; `INFO_UF2.TXT` reads `Board-ID: RPI-RP2`, matching the app's drive check
+- [x] R.2 2026-11-06 Enumeration | `Kivori` / `Kivori Pip`, `2E8A:000A`, serial = 32 hex digits of the derived device id
+- [x] R.3 2026-11-06 Handshake (`device_probe PORT 1000`) | `HelloAck` in 54 to 75 ms, firmware 0.1.4
+- [x] R.4 2026-11-06 Internals (`KIVORI_PROBE_SECS=8 device_probe PORT internals`) | compose 110 ms, 9 fps, flush 0 to 5 ms, busy 100 %, stack min free 9,976 to 9,988 B, static RAM 151,088 B of 270,336 B
+- [x] R.5 2026-11-06 1200-baud touch on the running unit | `RPI-RP2` appears in about 2 s, no button
+- [x] R.6 2026-11-06 Reflash after the touch | back as `Kivori Pip` in about 2 s without a replug, handshake OK
+- [ ] R.7 On the v7 carrier: panel shows the buddy, knob, press and the three keys act, RGB LED modes and brightness look right (pick the resistor values)
+- [ ] R.8 On the v7 carrier: the app's own Update and Restore (BOOT) flows against this board (Phase 8)
+
+Found on the first unit: it enumerated but never answered (0 bytes in 2 minutes). On-device counters read 0 bytes received, 36 queued but never delivered, and a 750 ms loop: the USB interrupt only polled, and the RP2040 re-raises it until an OUT packet is read. Fixed by reading OUT data in the interrupt (architecture, Transport).
+
+### Flashing and checking a unit by hand (macOS)
+
+1. Bootloader: hold BOOT while plugging in, or touch the running unit at 1200 baud (open the port at 1200, drop DTR, close). `/Volumes/RPI-RP2` appears.
+2. `cp -X kivori-firmware.uf2 /Volumes/RPI-RP2/`. The drive disappearing is success; the unit returns as a `usbmodem` serial port.
+3. Quit the Kivori app (it holds the port), then run `device_probe` as in R.3 and R.4.
+
+### Finding a stall or crash without a probe
+
+With no SWD probe and no screen, a temporary `src/bin/` diagnostic (not committed; examples pull `std` dev-dependencies) can run the real boot and write what it learns into the watchdog scratch registers (`0x4005800C + 4n`, they survive a `SYSRESETREQ`): the panic location, the HardFault PC, or a `TIMER_IRQ_1` sampler's PCs and counters. It then resets and, on the next boot, brings up only a minimal USB CDC that prints the record; map PCs to functions through the ELF symbol table. On `thumbv6m` there is no atomic `fetch_add`, so counters use load and store.
+
 ## Phase 8: Firmware update and recovery (M3 S3)
 
 Automated image-set checks compile a generated two-product index outside shipping catalog roots and

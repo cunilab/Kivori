@@ -22,6 +22,11 @@ The v7 enclosure (`hardware/enclosure-v7`) is built around the Waveshare RP2040-
 - The v2 timing and resource-budget figures are estimates until measured on a real RP2040-Zero (issue #179, hardware step).
 - The RP2040 has no secure boot, so tier B of ADR-0016 needs the RP2350, as ADR-0010 already proposes; until then only tier A applies.
 
+## Validation (2026-11-06, bare RP2040-Zero over USB)
+
+- The app's UF2 output is accepted by the ROM bootloader, the real `INFO_UF2.TXT` matches the drive check, the unit enumerates as `Kivori Pip` `2E8A:000A`, answers the handshake in 54 to 75 ms and reports compose 110 ms (9 fps) and about 9,980 B of never-used stack. The 1200-baud touch reaches the bootloader in about 2 s and a reflash reconnects without a replug.
+- The first unit found one bug no host test could: the USB interrupt must read OUT data itself (see architecture, Transport). Screen, knob, keys and LED are still to be checked on the v7 carrier ([validation](../validation.md#rp2040-zero-bring-up-179)).
+
 ## Alternatives considered
 
 - Keep the ESP32-C3 as the real board: rejected, the v7 enclosure is built around the RP2040-Zero.

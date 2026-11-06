@@ -99,7 +99,10 @@ Testing before closing means a fault is still easy to reach.
 17. Hold the **BOOT** button and plug the bare assembly into the computer with the data cable. Unplug
     any other Kivori. A drive named `RPI-RP2` appears.
 18. Flash the firmware: open the Kivori app and use **Restore with the BOOT button** on the Device page, or
-    run `just fw-flash` from a checkout. The board restarts on its own.
+    run `just fw-flash` from a checkout, or copy a `.uf2` onto the drive (on macOS `cp -X`; plain `cp`
+    complains about extended attributes but still writes the file). The board restarts on its own and
+    the `RPI-RP2` drive disappears: that is success. The drive is only the bootloader; a running
+    firmware shows up as a serial port instead.
 19. **Check:** the display lights and shows the buddy and the app shows the unit as connected. If not, fix what is wrong (step 15 is the
     usual suspect) and flash again.
 20. Note the short hash the app shows (Diagnostics) on a label for the inside of the plinth.
