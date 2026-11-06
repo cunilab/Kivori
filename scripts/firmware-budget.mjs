@@ -18,6 +18,8 @@
 //     register (trait objects, fn pointers) and interrupts cannot be followed; they are reported and
 //     covered by documented allowances in the budget.
 //   * which functions call the 64-bit division libcalls (a software loop on the Cortex-M0+ core).
+//   * the image layout the RP2040 boot ROM needs: boot2 at the start of flash with a valid CRC, the
+//     vector table right after it, the entry point and `.data` load address inside flash.
 // Exit status 1 when the budget is violated, 2 when the ELF cannot be analysed.
 
 import { execFileSync } from 'node:child_process';
@@ -27,6 +29,12 @@ import { fileURLToPath } from 'node:url';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DATA_RAM_START = 0x20000000;
+// The firmware board's address map (memory.x): XIP flash is 2 MB, with the 256-byte second-stage
+// bootloader first and the vector table right after it; RAM is 264 KB.
+const FLASH_START = 0x10000000;
+const FLASH_END = FLASH_START + 2 * 1024 * 1024;
+const BOOT2_BYTES = 256;
+const RAM_END = DATA_RAM_START + 264 * 1024;
 // The prologue is straight-line code before the first call; this bounds the scan for a function that
 // has none.
 const PROLOGUE_SCAN_LIMIT = 80;
@@ -407,6 +415,128 @@ export function measureElf(elf) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Image layout
+
+/** CRC-32/MPEG-2 (poly 0x04C11DB7, init 0xFFFFFFFF, no reflection, no final xor): what the RP2040 boot ROM checks boot2 with. */
+export function crc32Mpeg2(bytes) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte << 24;
+    for (let i = 0; i < 8; i++) crc = crc & 0x80000000 ? (crc << 1) ^ 0x04c11db7 : crc << 1;
+  }
+  return crc >>> 0;
+}
+
+const hex8 = (n) => `0x${n.toString(16).padStart(8, '0')}`;
+
+/**
+ * Checks, from the ELF alone, what the RP2040 boot ROM and the reset handler rely on: the 256-byte
+ * second-stage bootloader at the start of flash whose last word is the CRC of the other 252 bytes,
+ * the vector table at the next address with a stack pointer at `_stack_start` and a reset vector in
+ * flash, an entry point in flash, and `.data` loaded (LMA) from flash. A wrong one gives a board
+ * that does not boot, with nothing to look at.
+ * @returns {{facts: object, violations: string[]}}
+ */
+export function checkImageLayout(buf) {
+  const elf = parseElf(buf);
+  const violations = [];
+  const inFlash = (addr) => addr >= FLASH_START && addr < FLASH_END;
+  const section = (name) => elf.sections.find((s) => s.name === name);
+  const facts = {};
+
+  const boot2 = section('.boot2');
+  if (!boot2)
+    violations.push(
+      'image layout: no .boot2 section (the ROM would find no second-stage bootloader)',
+    );
+  else {
+    facts.boot2Addr = boot2.addr;
+    if (boot2.addr !== FLASH_START || boot2.size !== BOOT2_BYTES)
+      violations.push(
+        `image layout: .boot2 is ${boot2.size} B at ${hex8(boot2.addr)}, must be ${BOOT2_BYTES} B at ${hex8(FLASH_START)}`,
+      );
+    else {
+      const bytes = buf.subarray(boot2.offset, boot2.offset + BOOT2_BYTES);
+      const stored = bytes.readUInt32LE(BOOT2_BYTES - 4);
+      const computed = crc32Mpeg2(bytes.subarray(0, BOOT2_BYTES - 4));
+      if (stored !== computed)
+        violations.push(
+          `image layout: boot2 CRC is ${hex8(stored)}, the first 252 bytes give ${hex8(computed)} (the ROM refuses to run it)`,
+        );
+    }
+  }
+
+  const vectors = section('.vector_table');
+  const stackStart = elf.symbols.get('_stack_start');
+  if (!vectors || vectors.size < 8)
+    violations.push('image layout: no .vector_table section of at least two words');
+  else {
+    facts.vectorTableAddr = vectors.addr;
+    if (vectors.addr !== FLASH_START + BOOT2_BYTES)
+      violations.push(
+        `image layout: the vector table is at ${hex8(vectors.addr)}, must follow boot2 at ${hex8(FLASH_START + BOOT2_BYTES)}`,
+      );
+    const sp = buf.readUInt32LE(vectors.offset);
+    const reset = buf.readUInt32LE(vectors.offset + 4);
+    facts.resetVector = reset;
+    if (sp !== stackStart)
+      violations.push(
+        `image layout: initial stack pointer ${hex8(sp)} is not _stack_start (${stackStart === undefined ? 'missing' : hex8(stackStart)})`,
+      );
+    if (sp <= DATA_RAM_START || sp > RAM_END)
+      violations.push(`image layout: initial stack pointer ${hex8(sp)} is outside RAM`);
+    if (!(reset & 1))
+      violations.push(`image layout: reset vector ${hex8(reset)} lacks the Thumb bit`);
+    if (!inFlash(reset & ~1))
+      violations.push(`image layout: reset vector ${hex8(reset)} is not in flash`);
+    if (buf.readUInt32LE(24) !== reset)
+      violations.push(
+        `image layout: ELF entry ${hex8(buf.readUInt32LE(24))} is not the reset vector ${hex8(reset)}`,
+      );
+  }
+  facts.entry = buf.readUInt32LE(24);
+  if (!inFlash(facts.entry & ~1))
+    violations.push(`image layout: entry point ${hex8(facts.entry)} is not in flash`);
+
+  // Program headers: where each loadable segment is stored (p_paddr) as against where it runs.
+  const phoff = buf.readUInt32LE(28);
+  const phentsize = buf.readUInt16LE(42);
+  const phnum = buf.readUInt16LE(44);
+  const loads = [];
+  for (let i = 0; i < phnum; i++) {
+    const o = phoff + i * phentsize;
+    if (buf.readUInt32LE(o) !== 1) continue; // PT_LOAD
+    loads.push({
+      vaddr: buf.readUInt32LE(o + 8),
+      paddr: buf.readUInt32LE(o + 12),
+      filesz: buf.readUInt32LE(o + 16),
+      memsz: buf.readUInt32LE(o + 20),
+    });
+  }
+  for (const l of loads.filter((x) => x.filesz > 0))
+    if (!inFlash(l.paddr) || l.paddr + l.filesz > FLASH_END)
+      violations.push(
+        `image layout: a segment with ${l.filesz} B of content is stored at ${hex8(l.paddr)}, outside the 2 MB flash`,
+      );
+  const data = section('.data');
+  if (data && data.size > 0) {
+    const seg = loads.find((l) => data.addr >= l.vaddr && data.addr < l.vaddr + l.memsz);
+    const lma = seg ? seg.paddr + (data.addr - seg.vaddr) : undefined;
+    facts.dataLma = lma;
+    if (lma === undefined || !inFlash(lma) || lma + data.size > FLASH_END)
+      violations.push(
+        `image layout: .data (${data.size} B at ${hex8(data.addr)}) is not loaded from flash (load address ${lma === undefined ? 'missing' : hex8(lma)})`,
+      );
+    const sidata = elf.symbols.get('__sidata');
+    if (sidata !== undefined && sidata !== lma)
+      violations.push(
+        `image layout: __sidata ${hex8(sidata)} is not .data's load address ${lma === undefined ? 'missing' : hex8(lma)}`,
+      );
+  }
+  return { facts, violations };
+}
+
+// ---------------------------------------------------------------------------------------------
 // Budget check
 
 /**
@@ -590,6 +720,11 @@ export function renderReport(r, budget, elfPath) {
     `functions calling 64-bit division (${r.int64Callers.length}, allowlisted unless listed below)`,
   );
   for (const c of r.int64Callers) out.push(`  ${short(c.name, 110)}  -> ${c.calls.join(', ')}`);
+  if (r.layout)
+    out.push(
+      '',
+      `image layout: boot2 at ${hex8(r.layout.boot2Addr ?? 0)}, vector table at ${hex8(r.layout.vectorTableAddr ?? 0)}, entry ${hex8(r.layout.entry ?? 0)}, .data loaded from ${hex8(r.layout.dataLma ?? 0)}`,
+    );
   if (r.warnings.length) out.push('', ...r.warnings.map((w) => `warning: ${w}`));
   out.push('');
   if (r.violations.length)
@@ -671,6 +806,9 @@ export async function main(argv) {
         maxBuffer: 1 << 30,
       });
   const result = evaluate({ measured, parsed: parseDisassembly(text), budget });
+  const layout = checkImageLayout(readFileSync(opt.elf));
+  result.layout = layout.facts;
+  result.violations.push(...layout.violations);
   if (opt.json) {
     console.log(JSON.stringify(result, null, 2));
   } else console.log(renderReport(result, budget, opt.elf));

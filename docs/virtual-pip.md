@@ -235,7 +235,9 @@ firmware behaviour is the one `Runtime` both run.
   `device_probe PORT internals` (issue #179, hardware step), set the scale so the connected desk's
   compose matches, and the CPU time per pixel so a full redraw's flush matches. Until then do not
   quote v2's frame rate or latency as a fact about the unit.
-- The endurance run (`just virtual-device-endurance`) is v1's; v2 has not been through it.
+- The endurance run (`just virtual-device-endurance`) also passes on v2 (`KIVORI_VIRTUAL_BOARD=rp2040-zero`, 2026-11-06): one session, 305,058 detents in 1,248 s, both sequence counters wrapped with no gap, slowest heartbeat round trip 814 ms.
+
+- The RGB LED is v2's only: v2 advertises `RGB_LED_V1` and reports the LED's colour, and v1 (the C3 has no LED) never negotiates it. `--desktop-smoke` checks both (`S5.4 led`).
 
 ## Connection and fault controls (S5.2)
 

@@ -187,7 +187,7 @@
   },
   {
     "path": "apps/desktop/src-tauri/examples/virtual_device.rs",
-    "text": "\"rp2040-zero\" => \"rp2040\",",
+    "text": "\"rp2040-zero\" => (\"rp2040\", 2 << 20, None),",
     "count": 1,
     "reason": "Virtual board selection, v1 c3-supermini / v2 rp2040-zero (#179, ADR-0019); development and CI only."
   },
@@ -224,6 +224,24 @@
   {
     "path": "justfile",
     "text": "KIVORI_VIRTUAL_BOARD=rp2040-zero node firmware/pip/simulator/run.mjs --smoke",
+    "count": 1,
+    "reason": "Virtual board selection, v1 c3-supermini / v2 rp2040-zero (#179, ADR-0019); development and CI only."
+  },
+  {
+    "path": "apps/desktop/src-tauri/src/virtual_device/desktop_scenarios.rs",
+    "text": "/// The RGB LED through the real session and firmware runner. The v2 board (RP2040-Zero) has one: it",
+    "count": 1,
+    "reason": "Virtual board selection, v1 c3-supermini / v2 rp2040-zero (#179, ADR-0019); development and CI only."
+  },
+  {
+    "path": "apps/desktop/src-tauri/src/virtual_device/desktop_scenarios.rs",
+    "text": "if virtual_board() != \"rp2040-zero\" {",
+    "count": 1,
+    "reason": "Virtual board selection, v1 c3-supermini / v2 rp2040-zero (#179, ADR-0019); development and CI only."
+  },
+  {
+    "path": "apps/desktop/src-tauri/src/virtual_device/desktop_scenarios.rs",
+    "text": "\"the RP2040-Zero did not negotiate the LED\",",
     "count": 1,
     "reason": "Virtual board selection, v1 c3-supermini / v2 rp2040-zero (#179, ADR-0019); development and CI only."
   }

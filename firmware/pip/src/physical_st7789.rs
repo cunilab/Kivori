@@ -8,7 +8,6 @@
 //! the physical profile.
 
 use core::convert::Infallible;
-use core::fmt::Write as _;
 
 use embedded_hal::digital::{ErrorType, OutputPin};
 use embedded_hal::pwm::SetDutyCycle;
@@ -16,7 +15,7 @@ use embedded_hal_bus::spi::ExclusiveDevice;
 
 use rp2040_hal::fugit::RateExtU32;
 use rp2040_hal::gpio::{FunctionSpi, PinState, Pins};
-use rp2040_hal::pwm::{Channel, FreeRunning, Pwm4, Pwm5, Pwm6, Slice, Slices, A, B};
+use rp2040_hal::pwm::{Channel, FreeRunning, Pwm6, Slice, Slices, A};
 use rp2040_hal::usb::UsbBus;
 use rp2040_hal::{Clock as _, Sio, Spi};
 use usb_device::class_prelude::UsbBusAllocator;
@@ -32,11 +31,12 @@ use mipidsi::{interface::SpiInterface, Builder};
 use crate::{
     bsp::Board,
     chip_probe,
-    device_id::derive_device_id,
+    device_id::{derive_device_id, usb_serial_number},
     display::MipidsiSink,
     identity::{check_boot, ProductIdentity, IMAGE_RECORD},
+    physical_led::{self, RgbLed},
     physical_rotary::PhysicalRotary,
-    ports::{Clock, DisplaySink},
+    ports::{Clock, DisplaySink, LedSink},
     profile::physical_st7789 as hw,
     proto::DeviceIdentity,
     render::FRAME_PIXELS,
@@ -164,24 +164,6 @@ impl<S: DisplaySink> DisplaySink for Backlit<S> {
     }
 }
 
-/// The RGB LED's three PWM channels (GP9 = slice 4 B, GP10 = slice 5 A, GP11 = slice 5 B).
-// Brightness and resistor values are pending a hardware test (issue #179).
-struct RgbLed {
-    red: Channel<Slice<Pwm4, FreeRunning>, B>,
-    green: Channel<Slice<Pwm5, FreeRunning>, A>,
-    blue: Channel<Slice<Pwm5, FreeRunning>, B>,
-}
-
-impl RgbLed {
-    /// Sets the three colour levels (0 = off, 255 = fully on; common cathode, so active high).
-    fn set_rgb(&mut self, r: u8, g: u8, b: u8) {
-        // A failed duty write leaves the previous colour: harmless on an indicator.
-        let _ = self.red.set_duty_cycle_fraction(u16::from(r), 255);
-        let _ = self.green.set_duty_cycle_fraction(u16::from(g), 255);
-        let _ = self.blue.set_duty_cycle_fraction(u16::from(b), 255);
-    }
-}
-
 /// Keep the typed `rp2040-hal` GPIO selections below synchronized with the numeric hardware
 /// profile.
 ///
@@ -260,7 +242,7 @@ pub fn run_mode(mut board: Board, blob: &'static AssetBlob<'static>, asset_bytes
     // PWM: backlight and RGB LED
     //
     // The backlight is plainly on while the panel initialises (full duty) and follows the desktop's
-    // brightness setting once it is up. The LED starts off.
+    // brightness setting once it is up. The LED starts off, and stays off until the app sends settings.
     // -------------------------------------------------------------------------
 
     let mut slices = Slices::new(board.pwm, &mut board.resets);
@@ -278,7 +260,9 @@ pub fn run_mode(mut board: Board, blob: &'static AssetBlob<'static>, asset_bytes
     led.red.output_to(pins.gpio9);
     led.green.output_to(pins.gpio10);
     led.blue.output_to(pins.gpio11);
-    led.set_rgb(0, 0, 0);
+    led.set_rgb([0; 3]);
+    // From here a 50 Hz timer interrupt drives the LED from the engine the run loop publishes.
+    physical_led::start(board.timer.alarm_0().expect("alarm 0 is free"), led);
 
     // DEVELOPMENT ONLY: the payload trace goes out of UART0 (GP0 TX, GP1 RX).
     #[cfg(feature = "debug-payloads")]
@@ -407,10 +391,7 @@ pub fn run_mode(mut board: Board, blob: &'static AssetBlob<'static>, asset_bytes
     // services the stack, so enumeration proceeds even while a display flush occupies the loop.
     // -------------------------------------------------------------------------
 
-    let serial_number = USB_SERIAL.init(heapless::String::new());
-    for byte in identity.device_id {
-        let _ = write!(serial_number, "{byte:02X}");
-    }
+    let serial_number = USB_SERIAL.init(usb_serial_number(&identity.device_id));
     let usb_bus = UsbBus::new(
         board.usb.0,
         board.usb.1,
@@ -454,6 +435,7 @@ pub fn run_mode(mut board: Board, blob: &'static AssetBlob<'static>, asset_bytes
         blob,
         frame_buffer,
         chip_probe::probe,
+        physical_led::publish,
         boot,
         |tick, transport| {
             if tick.reboot {

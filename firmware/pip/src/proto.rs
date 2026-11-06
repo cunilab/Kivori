@@ -14,7 +14,7 @@ use kivori_model::{Capabilities, ProtocolVersion};
 use kivori_protocol::{
     decode_message, encode_message, BuddySettings, BuildInfo, ByeReason, ControlId,
     ControlLabelsUpdate, DeviceId, Feedback, FirmwareVersion, HelloAck, Identity, InputEvent,
-    InputKind, MascotActionApplied, MediaInfoUpdate, Message, MicStateUpdate, Nonce,
+    InputKind, LedSettings, MascotActionApplied, MediaInfoUpdate, Message, MicStateUpdate, Nonce,
     PlayMascotAction, Presentation, ProtoError, SeqClass, SequenceTracker, StateReport, Status,
     MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
@@ -142,6 +142,8 @@ pub struct Dispatcher {
     pending_buddy: Option<BuddySettings>,
     /// The latest accepted `MicState`, awaiting [`Self::take_mic_state`].
     pending_mic: Option<MicStateUpdate>,
+    /// The latest accepted `LedSettings`, awaiting [`Self::take_led_settings`].
+    pending_led: Option<LedSettings>,
     /// The latest takeover announced by a negotiated `Bye`, awaiting [`Self::take_host_takeover`].
     pending_takeover: Option<HostTakeover>,
     /// Frames decoded since boot (wrapping): the runtime watches it move to notice a silent host.
@@ -181,6 +183,7 @@ impl Dispatcher {
             pending_controls: None,
             pending_buddy: None,
             pending_mic: None,
+            pending_led: None,
             pending_takeover: None,
             inbound_frames: 0,
             outbound_frames: 0,
@@ -535,6 +538,11 @@ impl Dispatcher {
         self.pending_buddy.take()
     }
 
+    /// Takes the pending accepted `LedSettings`, if any.
+    pub fn take_led_settings(&mut self) -> Option<LedSettings> {
+        self.pending_led.take()
+    }
+
     /// Whether the session negotiated double-press detection.
     #[must_use]
     pub const fn double_press_enabled(&self) -> bool {
@@ -825,6 +833,13 @@ impl Dispatcher {
                     && self.accepted_session == Some(settings.session) =>
             {
                 self.pending_buddy = Some(settings);
+            }
+            // Same rule as `BuddySettings`: the accepted session, with the capability negotiated.
+            Message::LedSettings(settings)
+                if self.negotiated_caps.contains(Capabilities::RGB_LED_V1)
+                    && self.accepted_session == Some(settings.session) =>
+            {
+                self.pending_led = Some(settings);
             }
             // Same inertness rule as `Status`: unnegotiated means dropped, unseen.
             Message::MicState(update)

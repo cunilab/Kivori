@@ -23,7 +23,8 @@ pub mod physical_st7789 {
         options::{ColorInversion, ColorOrder, Orientation, Rotation},
     };
 
-    /// Capabilities advertised by the shipping Pip runtime and its host simulator.
+    /// Capabilities advertised by the shipping Pip runtime and its host simulator. The simulator
+    /// removes `RGB_LED_V1` for the v1 board (ESP32-C3), which has no LED.
     pub const CAPABILITIES: kivori_model::Capabilities =
         kivori_model::Capabilities::MASCOT_INTERACTION
             .union(kivori_model::Capabilities::PHYSICAL_INPUT_V1)
@@ -42,7 +43,8 @@ pub mod physical_st7789 {
             .union(kivori_model::Capabilities::MIC_STATE_V1)
             .union(kivori_model::Capabilities::PRODUCT_IDENTITY_V1)
             .union(kivori_model::Capabilities::BUILD_INFO_V1)
-            .union(kivori_model::Capabilities::HELD_ROTATION_V1);
+            .union(kivori_model::Capabilities::HELD_ROTATION_V1)
+            .union(kivori_model::Capabilities::RGB_LED_V1);
 
     /// SPI1 clock pin (display SCL).
     pub const SCK: u8 = 26;
@@ -215,6 +217,85 @@ pub mod physical_st7789 {
         fn out_of_range_steps_clamp() {
             assert_eq!(backlight_duty_pct(0), backlight_duty_pct(1));
             assert_eq!(backlight_duty_pct(99), backlight_duty_pct(BRIGHTNESS_STEPS));
+        }
+
+        /// Every pin the firmware drives or reads, with what it is for.
+        const PINS: [(&str, u8); 14] = [
+            ("SCK", SCK),
+            ("MOSI", MOSI),
+            ("DC", DC),
+            ("RST", RST),
+            ("BL", BL),
+            ("LED R", LED[0]),
+            ("LED G", LED[1]),
+            ("LED B", LED[2]),
+            ("ENC CLK", ROTARY.clk),
+            ("ENC DT", ROTARY.dt),
+            ("ENC SW", ROTARY.sw),
+            ("KEY 1", CONTEXT_BUTTONS[0]),
+            ("KEY 2", CONTEXT_BUTTONS[1]),
+            ("KEY 3", CONTEXT_BUTTONS[2]),
+        ];
+
+        #[test]
+        fn no_pin_is_used_for_two_things() {
+            for (i, (name, pin)) in PINS.iter().enumerate() {
+                for (other, other_pin) in &PINS[i + 1..] {
+                    assert_ne!(pin, other_pin, "GP{pin} is both {name} and {other}");
+                }
+            }
+        }
+
+        #[test]
+        fn only_pins_the_rp2040_zero_brings_out_are_used_and_never_the_reserved_ones() {
+            for (name, pin) in PINS {
+                // The Zero breaks out GP0 to GP15 and GP26 to GP29; GP16 is its WS2812. All of them
+                // are bank 0 pins, which the one edge handler (IO_IRQ_BANK0) serves.
+                assert!(
+                    pin <= 15 || (26..=29).contains(&pin),
+                    "{name} on GP{pin} is not a header pin of the RP2040-Zero"
+                );
+                assert!(
+                    pin > 1,
+                    "{name} on GP{pin} is the debug UART (GP0 TX, GP1 RX)"
+                );
+                assert!(
+                    !(27..=29).contains(&pin),
+                    "{name} on GP{pin}: GP27 to GP29 are kept free on the v7 carrier"
+                );
+            }
+        }
+
+        #[test]
+        fn the_display_pins_are_spi1_clock_and_data_out() {
+            // RP2040 GPIO function table: SPI1 SCK is GP10/14/26, SPI1 TX is GP11/15/27 (SPI0 is
+            // GP2/6/18 and GP3/7/19). One bus must carry both signals.
+            assert!(
+                [10, 14, 26].contains(&SCK),
+                "GP{SCK} is not an SPI1 SCK pin"
+            );
+            assert!(
+                [11, 15, 27].contains(&MOSI),
+                "GP{MOSI} is not an SPI1 TX pin"
+            );
+            // The panel is write-only and has no chip select.
+            assert_eq!(CS, None);
+        }
+
+        /// The PWM slice and channel (`false` = A, `true` = B) an RP2040 GPIO is wired to.
+        const fn pwm(pin: u8) -> (u8, bool) {
+            ((pin / 2) % 8, pin % 2 == 1)
+        }
+
+        #[test]
+        fn the_backlight_and_led_sit_on_the_pwm_channels_the_driver_code_names() {
+            // `physical_st7789.rs` types these as Pwm6/A, then Pwm4/B, Pwm5/A and Pwm5/B.
+            assert_eq!(pwm(BL), (6, false));
+            assert_eq!(
+                LED.map(pwm),
+                [(4, true), (5, false), (5, true)],
+                "LED pins moved: the driver's channel types no longer match"
+            );
         }
     }
 }

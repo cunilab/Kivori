@@ -35,6 +35,7 @@ import type {
   DeskStatusDto,
   DisplayMode,
   Intensity,
+  LedSettingsDto,
 } from './types';
 import {
   isActivityEvent,
@@ -408,6 +409,27 @@ export async function setDisplaySettings(
 export async function setBrightness(step: number): Promise<ConfigDto> {
   if (isTauri()) return parseConfig(await invoke<unknown>('set_brightness', { step }));
   if (import.meta.env.DEV) return (await devMock()).mockSetBrightness(step);
+  return unavailable();
+}
+
+/**
+ * Saves the RGB LED settings (mode, `#RRGGBB` colour, brightness percent, speed, and Status mode's
+ * colour per profile id); the device follows at once and nothing is written to it. Rejects with
+ * the native error string.
+ */
+export async function setLedSettings(led: LedSettingsDto): Promise<ConfigDto> {
+  if (isTauri()) {
+    return parseConfig(
+      await invoke<unknown>('set_led_settings', {
+        mode: led.mode,
+        color: led.color,
+        brightness: led.brightness,
+        speed: led.speed,
+        profileColors: led.profileColors,
+      }),
+    );
+  }
+  if (import.meta.env.DEV) return (await devMock()).mockSetLedSettings(led);
   return unavailable();
 }
 

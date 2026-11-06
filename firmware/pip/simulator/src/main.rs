@@ -16,11 +16,11 @@ use board::Board;
 use kivori_assets::AssetBlob;
 use kivori_firmware::{
     identity::BootCheck,
-    ports::{InputSource, Transport},
+    ports::{Clock, InputSource, Transport},
     profile::physical_st7789::CAPABILITIES as CAPS,
     proto::DeviceIdentity,
     runtime::{Runtime, RuntimeConfig, Tick},
-    sim::{CaptureDisplay, SimPipe, PIPE_CAPACITY},
+    sim::{CaptureDisplay, CaptureLed, SimPipe, PIPE_CAPACITY},
     tx_buffer::TxBuffered,
 };
 use kivori_model::input::InputLevels;
@@ -65,11 +65,21 @@ struct Request {
     fault: Fault,
 }
 
+/// What the LED shows and which mode the app set. Development-only; not a wire-schema field.
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+struct LedReport {
+    rgb: [u8; 3],
+    /// `off`, `solid`, `breathe`, `cycle`, `status` or `mood`.
+    mode: &'static str,
+}
+
 #[derive(Serialize)]
 struct Response {
     wire: Vec<u8>,
     frame: Option<Vec<u16>>,
     brightness: Option<u8>,
+    /// The RGB LED, `None` on a board that has none (v1).
+    led: Option<LedReport>,
     reboot: bool,
     /// The firmware companion state after this tick, so harnesses can tell Sleeping from Offline
     /// without inferring it from pixels. Development-only; not a wire-schema field.
@@ -138,6 +148,8 @@ struct Shared {
     clock: Rc<SimClock>,
     link: Rc<RefCell<SimPipe>>,
     capture: Rc<RefCell<CaptureDisplay>>,
+    led: Rc<RefCell<(CaptureLed, &'static str)>>,
+    has_led: bool,
 }
 
 /// What one request returns before faults are applied.
@@ -145,6 +157,7 @@ struct Report {
     wire: Vec<u8>,
     frame: Option<Vec<u16>>,
     brightness: Option<u8>,
+    led: Option<LedReport>,
     reboot: bool,
     state: &'static str,
 }
@@ -156,6 +169,13 @@ impl Shared {
             wire: self.link.borrow_mut().host_recv().to_vec(),
             frame: capture.then(|| display.frame().iter().map(|p| p.raw()).collect()),
             brightness: display.brightness,
+            led: self.has_led.then(|| {
+                let led = self.led.borrow();
+                LedReport {
+                    rgb: led.0.rgb,
+                    mode: led.1,
+                }
+            }),
             reboot,
             state,
         }
@@ -198,6 +218,7 @@ fn finish(fault: Fault, report: Report) -> Result<Response, String> {
         wire,
         frame: report.frame,
         brightness: report.brightness,
+        led: report.led,
         reboot: report.reboot,
         state: report.state,
     })
@@ -240,13 +261,15 @@ impl Simulator {
             }),
             link: Rc::new(RefCell::new(SimPipe::new())),
             capture: Rc::new(RefCell::new(CaptureDisplay::new())),
+            led: Rc::new(RefCell::new((CaptureLed::new(), "off"))),
+            has_led: board.has_led(),
         };
         let mut runtime = Runtime::with_frame_buffer(
             DeviceIdentity {
                 // Deliberately recognizable, deterministic virtual identity; never a chip identity.
                 device_id: *b"VIRTUAL-PIP-0001",
                 firmware_version: VERSION,
-                capabilities: CAPS,
+                capabilities: board.capabilities(),
             },
             RuntimeConfig::default(),
             Box::leak(Box::new(
@@ -277,13 +300,18 @@ impl Simulator {
             _ => {}
         }
         self.runtime.set_boot_check(BootCheck::Run(identity));
-        self.runtime.step(
+        let tick = self.runtime.step(
             &*self.shared.clock,
             &mut self.pipe,
             &mut self.input,
             &mut self.display,
             &self.blob,
-        )
+        );
+        // The board's timer interrupt, once per tick: what the LED shows at the tick's end.
+        let mut led = self.shared.led.borrow_mut();
+        led.0.tick(self.runtime.led(), self.shared.clock.now_ms());
+        led.1 = led_mode_token(self.runtime.led().mode());
+        tick
     }
 
     fn step(&mut self, request: Request) -> Result<Response, String> {
@@ -311,6 +339,18 @@ impl Simulator {
                 request.capture,
             ),
         )
+    }
+}
+
+const fn led_mode_token(mode: kivori_model::led::LedMode) -> &'static str {
+    use kivori_model::led::LedMode as M;
+    match mode {
+        M::Off => "off",
+        M::Solid => "solid",
+        M::Breathe => "breathe",
+        M::Cycle => "cycle",
+        M::Status => "status",
+        M::Mood => "mood",
     }
 }
 
@@ -893,7 +933,7 @@ mod tests {
                     .map(|(_, message)| message)
             })
             .collect();
-        assert!(messages.iter().any(|message| matches!(message, Message::HelloAck(ack) if ack.nonce_echo == 42 && ack.device_caps == CAPS)));
+        assert!(messages.iter().any(|message| matches!(message, Message::HelloAck(ack) if ack.nonce_echo == 42 && ack.device_caps == Board::C3Supermini.capabilities())));
         wire.clear();
         encode_message(
             &Message::Ready(kivori_protocol::Ready {
@@ -952,6 +992,10 @@ mod tests {
                 wire: vec![255; PIPE_CAPACITY],
                 frame: Some(vec![65535; 240 * 240]),
                 brightness: Some(5),
+                led: Some(LedReport {
+                    rgb: [255; 3],
+                    mode: "breathe"
+                }),
                 reboot: false,
                 state: "offline",
             })
@@ -959,5 +1003,122 @@ mod tests {
             .len()
                 <= MAX_LINE
         );
+    }
+
+    /// Hello and Ready at the start of a session with every capability the desktop has (nonce 42).
+    fn connected(board: Board) -> Box<Simulator> {
+        let mut sim = Box::new(Simulator::assemble(Timing::Ideal, board));
+        sim.step(hello()).unwrap();
+        sim.step(ready(10)).unwrap();
+        sim
+    }
+
+    fn led_settings(
+        mode: kivori_model::led::LedMode,
+        color: [u8; 3],
+        brightness: u8,
+        now: u32,
+    ) -> Request {
+        message_request(
+            kivori_protocol::Message::LedSettings(kivori_protocol::LedSettings {
+                session: 42,
+                mode,
+                color,
+                brightness,
+                speed: kivori_model::led::LedSpeed::Medium,
+            }),
+            now,
+        )
+    }
+
+    #[test]
+    fn v2_has_an_led_that_follows_the_settings_and_the_buddy() {
+        use kivori_model::led::LedMode;
+        let mut sim = connected(Board::Rp2040Zero);
+        let at = |sim: &mut Simulator, now| sim.step(request(now)).unwrap().led.unwrap();
+        // Dark until the app sends settings.
+        assert_eq!(
+            at(&mut sim, 20),
+            LedReport {
+                rgb: [0; 3],
+                mode: "off"
+            }
+        );
+        let response = sim
+            .step(led_settings(LedMode::Solid, [255, 0, 128], 100, 30))
+            .unwrap();
+        assert_eq!(
+            response.led,
+            Some(LedReport {
+                rgb: [255, 0, 65],
+                mode: "solid"
+            })
+        );
+        sim.step(led_settings(LedMode::Solid, [255, 0, 128], 0, 40))
+            .unwrap();
+        assert_eq!(at(&mut sim, 50).rgb, [0; 3], "brightness 0 is dark");
+        sim.step(led_settings(LedMode::Off, [255, 0, 128], 100, 60))
+            .unwrap();
+        assert_eq!(
+            at(&mut sim, 70),
+            LedReport {
+                rgb: [0; 3],
+                mode: "off"
+            }
+        );
+
+        // Mood follows the buddy: a dim glow while it is offline, a bright teal once it is idle.
+        sim.step(led_settings(LedMode::Mood, [0; 3], 100, 80))
+            .unwrap();
+        let offline = at(&mut sim, 100);
+        assert_eq!(offline.mode, "mood");
+        assert!(offline.rgb.into_iter().max().unwrap() < 10, "{offline:?}");
+        let set_idle = message_request(
+            kivori_protocol::Message::SetState(kivori_protocol::SetState {
+                desired: kivori_model::SendableState::Idle,
+                at_ms: None,
+            }),
+            110,
+        );
+        sim.step(set_idle).unwrap();
+        let mut brightest = [0u8; 3];
+        for now in (2_000..8_000).step_by(100) {
+            let rgb = at(&mut sim, now).rgb;
+            brightest = [0, 1, 2].map(|i| brightest[i].max(rgb[i]));
+        }
+        assert!(
+            brightest[1] > 100 && brightest[2] > 100 && brightest[0] < 30,
+            "{brightest:?}"
+        );
+    }
+
+    #[test]
+    fn v1_has_no_led_and_never_acts_on_led_settings() {
+        use kivori_model::led::LedMode;
+        let mut sim = connected(Board::C3Supermini);
+        // The C3 SuperMini advertises no LED, so the reply carries none.
+        assert_eq!(sim.step(request(20)).unwrap().led, None);
+        assert!(!sim.runtime.led().frame(20).iter().any(|&duty| duty != 0));
+        // Even a desktop that sends the message anyway changes nothing.
+        let response = sim
+            .step(led_settings(LedMode::Solid, [255, 255, 255], 100, 30))
+            .unwrap();
+        assert_eq!(response.led, None);
+        assert_eq!(sim.runtime.led().mode(), LedMode::Off);
+        assert_eq!(sim.runtime.led().frame(40), [0; 3]);
+    }
+
+    #[test]
+    fn the_led_rides_the_response_line_only_on_a_board_with_one() {
+        for (board, has_led) in [(Board::C3Supermini, false), (Board::Rp2040Zero, true)] {
+            let mut sim = connected(board);
+            let response = sim.step(request(20)).unwrap();
+            let line = serde_json::to_value(&response).unwrap();
+            assert_eq!(line["led"].is_object(), has_led, "{board:?}");
+            if has_led {
+                assert_eq!(line["led"]["mode"], "off");
+                assert_eq!(line["led"]["rgb"], serde_json::json!([0, 0, 0]));
+            }
+        }
     }
 }

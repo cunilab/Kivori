@@ -512,11 +512,89 @@ fn macros(executable: &Path, config_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// The RGB LED through the real session and firmware runner. The v2 board (RP2040-Zero) has one: it
+/// follows what the app sends, in the active profile's colour in Status mode, and reacts to a
+/// muted microphone itself. The v1 board (ESP32-C3) has none, so nothing is ever sent to it.
+fn led(executable: &Path) -> Result<(), String> {
+    use crate::config::LedMode;
+    let mut rig = Rig::new(executable, FakeVolumeBackend::new(50), Ok(()))?;
+    let settings = |mode, color: &str, brightness| crate::config::LedSettings {
+        mode,
+        color: color.into(),
+        brightness,
+        ..crate::config::LedSettings::default()
+    };
+    let shows = |mode: &'static str, rgb: [u8; 3]| {
+        move |s: &Sandbox| s.snapshot.led == Some(LedSnapshot { mode, rgb })
+    };
+    if virtual_board() != "rp2040-zero" {
+        rig.sandbox
+            .set_led(settings(LedMode::Solid, "#FF0000", 100));
+        let until = Instant::now() + Duration::from_millis(600);
+        while Instant::now() < until {
+            rig.sandbox.tick();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        check(
+            !rig.sandbox.session.supports_rgb_led()
+                && rig.sandbox.led_sent.is_none()
+                && rig.sandbox.snapshot.led.is_none(),
+            "a board without an LED was offered LED settings",
+        )?;
+        println!("PASS S5.4 led: the board without an LED never negotiates it, is never sent LedSettings and reports none");
+        return Ok(());
+    }
+    rig.until("default LED settings", |s| {
+        s.led_sent.is_some() && s.snapshot.led.is_some_and(|led| led.mode == "mood")
+    })?;
+    check(
+        rig.sandbox.session.supports_rgb_led(),
+        "the RP2040-Zero did not negotiate the LED",
+    )?;
+    rig.sandbox
+        .set_led(settings(LedMode::Solid, "#FF0000", 100));
+    rig.until("solid red", shows("solid", [255, 0, 0]))?;
+    rig.sandbox.set_led(settings(LedMode::Solid, "#FF0000", 0));
+    rig.until("brightness 0 is dark", shows("solid", [0, 0, 0]))?;
+    rig.sandbox.set_led(settings(LedMode::Off, "#FF0000", 100));
+    rig.until("off", shows("off", [0, 0, 0]))?;
+    println!("PASS S5.4 led (v2): the default mood is sent on connect; solid, brightness 0 and off follow the settings");
+
+    // Status: the chosen colour, in Zoom's own colour while Zoom has focus, red while muted.
+    let mut status = settings(LedMode::Status, "#0000FF", 100);
+    status
+        .profile_colors
+        .insert("zoom".into(), "#00FF00".into());
+    rig.sandbox.set_led(status);
+    rig.until("status base colour", shows("status", [0, 0, 255]))?;
+    rig.focus("zoom.exe");
+    rig.until("Zoom colour", shows("status", [0, 255, 0]))?;
+    rig.focus("code.exe");
+    rig.until("back to the base colour", shows("status", [0, 0, 255]))?;
+    rig.mic
+        .add_device("simulated microphone", FakeMicQuirk::Works);
+    rig.mic.set_in_use(Some(true));
+    rig.until("observed live microphone", |s| s.desk.mic().0.is_live())?;
+    check(
+        rig.action(Action::ToggleMicMute)?.kind == FeedbackKind::StateConfirmed,
+        "mic mute did not confirm",
+    )?;
+    rig.until("muted mic is solid red", shows("status", [255, 0, 0]))?;
+    check(
+        rig.action(Action::ToggleMicMute)?.kind == FeedbackKind::StateConfirmed,
+        "mic unmute did not confirm",
+    )?;
+    rig.until("unmuted again", shows("status", [0, 0, 255]))?;
+    println!("PASS S5.4 led (v2): status shows the profile's colour, follows a profile change, and the device itself turns red while the mic is muted");
+    Ok(())
+}
+
 /// Requires an explicit temporary directory supplied by the native CLI, never app-managed settings.
 pub fn desktop_smoke(executable: &Path, config_dir: &Path) -> Result<(), String> {
     persistence_and_profiles(executable, config_dir)?;
     microphones(executable)?;
     volume_and_media(executable)?;
     macros(executable, config_dir)?;
+    led(executable)?;
     Ok(())
 }

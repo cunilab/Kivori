@@ -28,6 +28,10 @@ fn u32_at(bytes: &[u8], at: usize) -> Option<u32> {
 /// `None` for a malformed ELF, a loadable segment outside flash, or an image with no flash segment.
 #[must_use]
 pub fn elf_to_uf2(elf: &[u8]) -> Option<Vec<u8>> {
+    // ELF magic, 32-bit class, little-endian data, machine ARM: anything else is not this image.
+    if elf.get(..6)? != b"\x7fELF\x01\x01" || u16_at(elf, 18)? != 40 {
+        return None;
+    }
     let (phoff, phentsize, phnum) = (
         u32_at(elf, 0x1C)? as usize,
         u16_at(elf, 0x2A)?,
@@ -81,11 +85,13 @@ pub fn elf_to_uf2(elf: &[u8]) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// Whether `dir` is the RP2040 ROM bootloader drive (its `INFO_UF2.TXT` names the board id).
+/// Whether `dir` is the RP2040 ROM bootloader drive: its `INFO_UF2.TXT` names exactly the board id
+/// `RPI-RP2`. The RP2350's is `RP2350` (another family), and a prefix match would also take a
+/// hypothetical `RPI-RP2350`.
 #[must_use]
 pub fn is_bootloader_drive(dir: &Path) -> bool {
     std::fs::read_to_string(dir.join("INFO_UF2.TXT"))
-        .is_ok_and(|text| text.contains("Board-ID: RPI-RP2"))
+        .is_ok_and(|text| text.lines().any(|line| line.trim() == "Board-ID: RPI-RP2"))
 }
 
 /// Every bootloader drive among the direct children of `roots`. Off Windows only entries named
@@ -227,5 +233,250 @@ mod tests {
         std::fs::create_dir(&other).unwrap();
         std::fs::copy(drive.join("INFO_UF2.TXT"), other.join("INFO_UF2.TXT")).unwrap();
         assert_eq!(find_in(&[root.path().into()]), vec![drive]);
+    }
+
+    /// `(paddr, bytes)` of every `PT_LOAD` segment with file bytes, read independently of the converter.
+    fn load_segments(elf: &[u8]) -> Vec<(u32, Vec<u8>)> {
+        let phoff = u32_at(elf, 0x1C).unwrap() as usize;
+        let (entsize, num) = (u16_at(elf, 0x2A).unwrap(), u16_at(elf, 0x2C).unwrap());
+        (0..num)
+            .filter_map(|i| {
+                let h = phoff + i * entsize;
+                let (kind, offset, paddr, filesz) = (
+                    u32_at(elf, h).unwrap(),
+                    u32_at(elf, h + 4).unwrap() as usize,
+                    u32_at(elf, h + 12).unwrap(),
+                    u32_at(elf, h + 16).unwrap() as usize,
+                );
+                (kind == 1 && filesz > 0).then(|| (paddr, elf[offset..offset + filesz].to_vec()))
+            })
+            .collect()
+    }
+
+    /// The release ELF the product ships, when it has been built in this checkout.
+    fn release_elf() -> Option<Vec<u8>> {
+        std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../firmware/pip/target/thumbv6m-none-eabi/release/kivori-firmware"
+        ))
+        .ok()
+    }
+
+    /// Checks every block of `uf2` and returns `(address, payload)` per block.
+    fn blocks(uf2: &[u8]) -> Vec<(u32, &[u8])> {
+        assert!(!uf2.is_empty() && uf2.len().is_multiple_of(512));
+        let total = (uf2.len() / 512) as u32;
+        let mut previous = None;
+        uf2.chunks(512)
+            .enumerate()
+            .map(|(number, block)| {
+                assert_eq!(
+                    [word(block, 0), word(block, 1), word(block, 127)],
+                    [MAGIC_START0, MAGIC_START1, MAGIC_END]
+                );
+                assert_eq!(word(block, 2), FLAG_FAMILY);
+                assert_eq!(word(block, 4), 256);
+                assert_eq!(word(block, 5), number as u32);
+                assert_eq!(word(block, 6), total);
+                assert_eq!(word(block, 7), FAMILY_RP2040);
+                let address = word(block, 3);
+                assert!(
+                    address.is_multiple_of(256) && FLASH.contains(&address),
+                    "{address:#x}"
+                );
+                assert!(
+                    previous.is_none_or(|p| address > p),
+                    "ascending, no repeats"
+                );
+                previous = Some(address);
+                (address, &block[32..288])
+            })
+            .collect()
+    }
+
+    /// The bytes the blocks would program, as a flash image keyed by address.
+    fn flashed(uf2: &[u8]) -> BTreeMap<u32, u8> {
+        blocks(uf2)
+            .into_iter()
+            .flat_map(|(address, payload)| (address..).zip(payload.iter().copied()))
+            .collect()
+    }
+
+    #[test]
+    fn the_release_elf_becomes_a_valid_uf2_that_reproduces_every_segment() {
+        let Some(image) = release_elf() else {
+            eprintln!("skipped: firmware/pip release ELF is not built");
+            return;
+        };
+        let uf2 = elf_to_uf2(&image).expect("release ELF converts");
+        let blocks = blocks(&uf2);
+        // The first block is the second-stage bootloader at the start of flash.
+        assert_eq!(blocks[0].0, 0x1000_0000);
+        let flash = flashed(&uf2);
+        let segments = load_segments(&image);
+        assert!(!segments.is_empty());
+        for (paddr, data) in &segments {
+            for (address, byte) in (*paddr..).zip(data) {
+                assert_eq!(flash[&address], *byte, "byte at {address:#x}");
+            }
+        }
+        // Nothing but zero padding is programmed outside the segments' bytes.
+        let covered: usize = segments.iter().map(|(_, data)| data.len()).sum();
+        let pages = blocks.len() * PAYLOAD;
+        assert!(pages >= covered && pages - covered < blocks.len() * PAYLOAD);
+        let in_segment = |a: u32| {
+            segments
+                .iter()
+                .any(|(p, d)| (*p..*p + d.len() as u32).contains(&a))
+        };
+        assert!(flash
+            .iter()
+            .filter(|(a, _)| !in_segment(**a))
+            .all(|(_, b)| *b == 0));
+    }
+
+    #[test]
+    fn a_segment_straddling_a_page_and_one_ending_at_the_end_of_flash_are_placed_exactly() {
+        let straddle: Vec<u8> = (0..20).collect();
+        let tail = [9u8; 4];
+        let uf2 = elf_to_uf2(&elf(&[(0x1000_00F8, &straddle), (0x101F_FFFC, &tail)])).unwrap();
+        let blocks = blocks(&uf2);
+        assert_eq!(
+            blocks.iter().map(|b| b.0).collect::<Vec<_>>(),
+            [0x1000_0000, 0x1000_0100, 0x101F_FF00]
+        );
+        let flash = flashed(&uf2);
+        for (i, byte) in straddle.iter().enumerate() {
+            assert_eq!(flash[&(0x1000_00F8 + i as u32)], *byte);
+        }
+        assert_eq!(blocks[2].1[252..], tail);
+        // One byte past the end, or starting at the end, is not flash.
+        assert_eq!(elf_to_uf2(&elf(&[(0x101F_FFFD, &tail)])), None);
+        assert_eq!(elf_to_uf2(&elf(&[(0x1020_0000, &tail)])), None);
+        assert_eq!(elf_to_uf2(&elf(&[(0x0FFF_FFFC, &tail)])), None);
+    }
+
+    #[test]
+    fn adjacent_and_overlapping_segments_share_pages_without_duplicate_blocks() {
+        // Adjacent: both halves of one page. Overlapping: the later segment wins its bytes.
+        let adjacent =
+            elf_to_uf2(&elf(&[(0x1000_0000, &[1; 128]), (0x1000_0080, &[2; 128])])).unwrap();
+        let flash = flashed(&adjacent);
+        assert_eq!(adjacent.len(), 512);
+        assert!((0..128).all(|i| flash[&(0x1000_0000 + i)] == 1));
+        assert!((128..256).all(|i| flash[&(0x1000_0000 + i)] == 2));
+        let overlap =
+            elf_to_uf2(&elf(&[(0x1000_0000, &[1; 16]), (0x1000_0008, &[2; 16])])).unwrap();
+        let flash = flashed(&overlap);
+        assert_eq!(overlap.len(), 512);
+        assert_eq!((flash[&0x1000_0007], flash[&0x1000_0008]), (1, 2));
+    }
+
+    #[test]
+    fn zero_size_and_non_load_segments_are_skipped_and_do_not_leave_flash() {
+        let mut image = elf(&[(0x1000_0000, &[5; 4]), (0x2000_0000, &[])]);
+        // A PT_NOTE with file bytes at an address outside flash must be ignored, not rejected.
+        let note = 52 + 32;
+        image[note..note + 4].copy_from_slice(&4u32.to_le_bytes());
+        image[note + 16..note + 20].copy_from_slice(&4u32.to_le_bytes());
+        image[note + 4..note + 8].copy_from_slice(&52u32.to_le_bytes());
+        let uf2 = elf_to_uf2(&image).unwrap();
+        assert_eq!(blocks(&uf2).len(), 1);
+    }
+
+    #[test]
+    fn malformed_elves_are_refused_without_panicking() {
+        let good = elf(&[(0x1000_0000, &[1; 300]), (0x1000_0400, &[2; 8])]);
+        assert!(elf_to_uf2(&good).is_some());
+        // Every truncation, including ones inside the program headers and the segment data.
+        for len in 0..good.len() {
+            let _ = elf_to_uf2(&good[..len]);
+        }
+        assert_eq!(elf_to_uf2(&good[..good.len() - 1]), None);
+        assert_eq!(elf_to_uf2(&good[..52]), None);
+        assert_eq!(elf_to_uf2(&[]), None);
+        // Program-header table at a huge offset, with a huge entry size, or an overflowing index.
+        for (offset, value) in [
+            (0x1C, u32::MAX),
+            (0x1C, 0x8000_0000),
+            (0x1C, good.len() as u32),
+        ] {
+            let mut bad = good.clone();
+            bad[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+            assert_eq!(elf_to_uf2(&bad), None);
+        }
+        let mut bad = good.clone();
+        bad[0x2A..0x2C].copy_from_slice(&u16::MAX.to_le_bytes());
+        assert_eq!(elf_to_uf2(&bad), None);
+        // Segment offset or size reaching past the file, or past a 32-bit address.
+        for (field, value) in [(4usize, u32::MAX), (16, u32::MAX), (12, u32::MAX)] {
+            let mut bad = good.clone();
+            let at = 52 + field;
+            bad[at..at + 4].copy_from_slice(&value.to_le_bytes());
+            assert_eq!(elf_to_uf2(&bad), None, "field {field}");
+        }
+        // Not this kind of ELF: magic, class, byte order, machine.
+        for (at, value) in [(0usize, 0u8), (4, 2), (5, 2), (18, 243)] {
+            let mut bad = good.clone();
+            bad[at] = value;
+            assert_eq!(elf_to_uf2(&bad), None, "header byte {at}");
+        }
+    }
+
+    #[test]
+    fn the_bootloader_id_must_be_exactly_rpi_rp2_on_a_line_of_its_own() {
+        let root = tempfile::tempdir().unwrap();
+        let drive = root.path().join("RPI-RP2");
+        std::fs::create_dir(&drive).unwrap();
+        let reads = |text: &str| {
+            std::fs::write(drive.join("INFO_UF2.TXT"), text).unwrap();
+            is_bootloader_drive(&drive)
+        };
+        // The RP2040 ROM's own file, with Windows line endings too.
+        assert!(reads(
+            "UF2 Bootloader v3.0\nModel: Raspberry Pi RP2\nBoard-ID: RPI-RP2\n"
+        ));
+        assert!(reads(
+            "UF2 Bootloader v3.0\r\nModel: Raspberry Pi RP2\r\nBoard-ID: RPI-RP2\r\n"
+        ));
+        assert!(reads("Board-ID: RPI-RP2"));
+        // The RP2350 ROM writes `Board-ID: RP2350`: another family, never given an RP2040 image.
+        assert!(!reads(
+            "UF2 Bootloader v1.0\nModel: Raspberry Pi RP2350\nBoard-ID: RP2350\n"
+        ));
+        assert!(!reads("Board-ID: RPI-RP2350\n"));
+        assert!(!reads("Board-ID: RPI-RP2-FAKE\n"));
+        assert!(!reads("Model: Board-ID: RPI-RP2\n"));
+        assert!(!reads(""));
+        // The id without the drive file, or the file as a directory, is not a drive.
+        std::fs::remove_file(drive.join("INFO_UF2.TXT")).unwrap();
+        assert!(!is_bootloader_drive(&drive));
+        std::fs::create_dir(drive.join("INFO_UF2.TXT")).unwrap();
+        assert!(!is_bootloader_drive(&drive));
+    }
+
+    #[test]
+    fn only_rpi_rp2_named_volumes_are_read_and_macos_numbered_duplicates_count() {
+        let root = tempfile::tempdir().unwrap();
+        let info = "Model: Raspberry Pi RP2\nBoard-ID: RPI-RP2\n";
+        for name in ["RPI-RP2", "RPI-RP2 1", "RP2350", "NO_NAME"] {
+            let dir = root.path().join(name);
+            std::fs::create_dir(&dir).unwrap();
+            // The RP2350's own volume carries its own id; the others carry the RP2040's.
+            let text = if name == "RP2350" {
+                "Board-ID: RP2350\n"
+            } else {
+                info
+            };
+            std::fs::write(dir.join("INFO_UF2.TXT"), text).unwrap();
+        }
+        // A stray file named like a drive is skipped, not an error.
+        std::fs::write(root.path().join("RPI-RP2 file"), "x").unwrap();
+        let mut found = find_in(&[root.path().into()]);
+        found.sort();
+        assert_eq!(
+            found,
+            vec![root.path().join("RPI-RP2"), root.path().join("RPI-RP2 1")]
+        );
     }
 }

@@ -3,6 +3,42 @@
 /* Tailwind scans the shared components for utility classes. */
 @source '../../../packages/ui/src';
 
+/* LED previews (Display > LED): the same motions the device runs, drawn in the app. */
+@keyframes led-breathe {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes led-cycle {
+  to {
+    filter: hue-rotate(360deg);
+  }
+}
+@keyframes led-mood {
+  0%,
+  100% {
+    background-color: #2ec4b6;
+  }
+  25% {
+    background-color: #ffc828;
+  }
+  50% {
+    background-color: #ff64aa;
+  }
+  75% {
+    background-color: #141ea0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-led-motion] {
+    animation: none !important;
+  }
+}
+
 @layer base {
   #root {
     min-height: 100vh;
