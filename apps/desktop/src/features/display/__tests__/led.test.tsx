@@ -133,6 +133,22 @@ describe('LedControls', () => {
     ).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['Custom color', { mode: 'solid' }],
+    ['Color for Zoom', { mode: 'status' }],
+  ] as const)('keeps what was dragged in the %s picker and saves it on commit', (label, led) => {
+    render(<LedControls config={configWith(led)} />);
+    const picker = screen.getByLabelText(label);
+    // A real picker sends input events while dragging, then one change with the same value.
+    fireEvent.input(picker, { target: { value: '#ff8a00' } });
+    expect(picker).toHaveValue('#ff8a00');
+    expect(h.setLed).not.toHaveBeenCalled();
+    fireEvent.change(picker);
+    expect(h.setLed).toHaveBeenCalledTimes(1);
+    const saved = lastSaved();
+    expect(label === 'Custom color' ? saved.color : saved.profileColors.zoom).toBe('#FF8A00');
+  });
+
   it('reverts a failed save and says so', async () => {
     const user = userEvent.setup();
     h.setLed.mockRejectedValueOnce(new Error('the LED colour must be #RRGGBB'));

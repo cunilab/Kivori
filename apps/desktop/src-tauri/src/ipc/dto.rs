@@ -1810,10 +1810,16 @@ pub fn config_dto(store: &crate::config::ConfigStore) -> ConfigDto {
         },
         led: LedSettingsDto {
             mode: file.led.mode.token(),
-            color: file.led.color.clone(),
+            // Saves store upper case; a hand-edited file may not, and the webview compares exactly.
+            color: file.led.color.to_ascii_uppercase(),
             brightness: file.led.brightness,
             speed: file.led.speed.token(),
-            profile_colors: file.led.profile_colors.clone(),
+            profile_colors: file
+                .led
+                .profile_colors
+                .iter()
+                .map(|(profile, color)| (profile.clone(), color.to_ascii_uppercase()))
+                .collect(),
         },
     }
 }

@@ -81,8 +81,9 @@ function LedDot({
 }
 
 /**
- * The native color input. React's `onChange` fires on every drag step inside the picker; this
- * previews those (`onPreview`) and saves only on the DOM `change` event, when the picker commits.
+ * The native color input. React's `onChange` fires on every drag step inside the picker; the input
+ * keeps that step as its own draft (a controlled input would otherwise snap back to `value`), shows
+ * it through `onPreview`, and saves only on the DOM `change` event, when the picker commits.
  */
 function NativeColor({
   label,
@@ -92,16 +93,22 @@ function NativeColor({
 }: {
   label: string;
   value: string;
-  onPreview: (hex: string | null) => void;
+  onPreview?: (hex: string | null) => void;
   onCommit: (hex: string) => void;
 }): ReactElement {
+  const [draft, setDraft] = useState<string | null>(null);
   const ref = useRef<HTMLInputElement>(null);
-  const commit = useRef(onCommit);
-  commit.current = onCommit;
+  const latest = useRef({ onCommit, onPreview });
+  latest.current = { onCommit, onPreview };
   useEffect(() => {
     const input = ref.current;
     if (!input) return;
-    const changed = (): void => commit.current(input.value.toUpperCase());
+    const changed = (): void => {
+      const hex = input.value.toUpperCase();
+      setDraft(null);
+      latest.current.onPreview?.(null);
+      latest.current.onCommit(hex);
+    };
     input.addEventListener('change', changed);
     return () => input.removeEventListener('change', changed);
   }, []);
@@ -110,9 +117,12 @@ function NativeColor({
       ref={ref}
       type="color"
       aria-label={label}
-      value={value.toLowerCase()}
-      onChange={(event) => onPreview(event.target.value.toUpperCase())}
-      onBlur={() => onPreview(null)}
+      value={(draft ?? value).toLowerCase()}
+      onChange={(event) => {
+        const hex = event.target.value.toUpperCase();
+        setDraft(hex);
+        onPreview?.(hex);
+      }}
       className="absolute inset-0 cursor-pointer opacity-0"
     />
   );
@@ -168,15 +178,7 @@ function ColorPicker({
             custom ? 'text-white mix-blend-difference' : 'text-muted-foreground',
           )}
         />
-        <NativeColor
-          label={t.custom}
-          value={shown}
-          onPreview={setDraft}
-          onCommit={(hex) => {
-            setDraft(null);
-            onChange(hex);
-          }}
-        />
+        <NativeColor label={t.custom} value={shown} onPreview={setDraft} onCommit={onChange} />
       </label>
     </div>
   );
@@ -404,7 +406,6 @@ export function LedControls({ config }: { config: ConfigDto | null }): ReactElem
                       <NativeColor
                         label={t.profileColor(profile.name)}
                         value={shown}
-                        onPreview={() => undefined}
                         onCommit={(hex) => setProfileColor(profile.id, hex)}
                       />
                     </label>
