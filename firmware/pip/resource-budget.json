@@ -15,8 +15,8 @@
       "why": "Static RAM (data + bss) was 150,044 B (the interrupt-shared USB device is about 1 KiB of that, the LED driver 44 B), of which the frame buffer is 115,200 B. Everything above it comes out of the stack region, which is the rest of the 264 KB of SRAM."
     },
     "stack_region_bytes": {
-      "min": 120000,
-      "why": "The stack region (_stack_start - _stack_end) was 120,336 B. It must not shrink: the boot peak below leaves about 10 KiB free."
+      "min": 119000,
+      "why": "The stack region (_stack_start - _stack_end) was 119,248 B after the 1 KiB USB receive queue (#179 hardware fix). It must not shrink further: on the first RP2040-Zero (2026-11-06) the painted stack showed 9,976 B never used since boot, matching the static estimate."
     },
     "default_frame_bytes": {
       "max": 1024,
@@ -77,9 +77,9 @@
       "why": "Boot only: postcard builds the bitmap table."
     },
     {
-      "fn": "kivori_protocol::codec::encode_message",
-      "max": 1200,
-      "why": "Postcard encode of the whole `Message` enum (1,112 B). With the LedSettings variant the compiler no longer inlines it into `send_within`, which dropped from 1,664 B to 616 B."
+      "fn": "<kivori_firmware::proto::Dispatcher>::send_within::*",
+      "max": 1700,
+      "why": "Postcard encode of the whole `Message` enum inlined into the send path (1,664 B). Whether the compiler inlines `encode_message` here changes with unrelated edits (it was out of line, 1,112 B, before the USB receive-queue fix); either way this frame sits only on the loop's send path, not under the boot peak."
     },
     {
       "fn": "kivori_renderer::compositor::draw_sprite",

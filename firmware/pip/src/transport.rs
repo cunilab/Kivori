@@ -11,8 +11,10 @@
 //! for tens of milliseconds (a full frame is about 59 ms over SPI), so polling from `read`/`write`
 //! alone could miss enumeration. The `USBCTRL_IRQ` handler therefore services the stack (and acts
 //! on the bootloader touch) whenever the controller raises an event; the device and class live in a
-//! critical-section mutex shared with [`Transport::read`] and [`Transport::write`], which also poll
-//! (harmless, and it moves a packet out right away). The handler does nothing but poll.
+//! critical-section mutex shared with [`Transport::write`], which also polls (harmless, and it moves
+//! a packet out right away). The handler also moves what the host sent into a 1 KiB queue that
+//! [`Transport::read`] drains: the controller re-raises the interrupt until an OUT packet is read,
+//! so data left in the endpoint starved the loop on the first real unit (no reply, a 750 ms loop).
 //!
 //! # Why bounded and non-blocking matters
 //!
@@ -22,8 +24,9 @@
 //! wraps this adapter for the run loop: the dispatcher writes whole frames into a queue that
 //! comfortably exceeds `MAX_WIRE`, and the loop pumps the queue toward the hardware every tick.
 //!
-//! Physical USB behaviour (host enumeration as `0x2E8A:0x000A`, real throughput, the bootloader
-//! touch) is not covered by the host tests and remains a hardware task (issue #179).
+//! Physical USB behaviour is not covered by the host tests. Checked on an RP2040-Zero (#179,
+//! 2026-11-06): enumeration as `0x2E8A:0x000A`, the handshake (HelloAck in ~60 ms), internals, and
+//! the 1200-baud touch into the UF2 bootloader and back without a replug.
 
 use core::cell::RefCell;
 
@@ -48,9 +51,27 @@ type Usb = (UsbDevice<'static, UsbBus>, SerialPort<'static, UsbBus>);
 /// The USB stack, shared between the `USBCTRL_IRQ` handler and the transport methods.
 static USB: Mutex<RefCell<Option<Usb>>> = Mutex::new(RefCell::new(None));
 
-/// Services the USB stack, then acts on a bootloader touch. Cheap when idle.
-fn poll((device, serial): &mut Usb) {
+/// Bytes received from the host, moved out of the endpoint by [`poll`]; the run loop drains them.
+const RX_BYTES_BUFFERED: usize = 1024;
+static RX: Mutex<RefCell<heapless::Deque<u8, RX_BYTES_BUFFERED>>> =
+    Mutex::new(RefCell::new(heapless::Deque::new()));
+
+/// Services the USB stack, moves what the host sent into [`RX`], then acts on a bootloader touch.
+///
+/// The OUT data must be read here, in the interrupt: the RP2040 controller keeps its OUT buffer
+/// flag set until the packet is read, so leaving it for the run loop re-raises `USBCTRL_IRQ`
+/// at once, forever, and starves the loop (the rp-hal interrupt-driven serial example reads in
+/// the handler for the same reason). When the run loop falls behind, the overflow is dropped; the
+/// framing's CRC and delimiters resynchronise the protocol.
+fn poll(cs: critical_section::CriticalSection<'_>, (device, serial): &mut Usb) {
     device.poll(&mut [serial]);
+    let mut rx = RX.borrow_ref_mut(cs);
+    let mut packet = [0u8; 64];
+    while let Ok(n) = serial.read(&mut packet) {
+        for &byte in &packet[..n] {
+            let _ = rx.push_back(byte);
+        }
+    }
     if is_touch(serial.line_coding().data_rate(), serial.dtr()) {
         // Mass storage + PICOBOOT, no activity LED, nothing disabled. Does not return.
         rp2040_hal::rom_data::reset_to_usb_boot(0, 0);
@@ -61,7 +82,7 @@ fn poll((device, serial): &mut Usb) {
 fn USBCTRL_IRQ() {
     critical_section::with(|cs| {
         if let Some(usb) = USB.borrow_ref_mut(cs).as_mut() {
-            poll(usb);
+            poll(cs, usb);
         }
     });
 }
@@ -96,22 +117,20 @@ impl Transport for UsbCdcTransport {
     type Error = ();
 
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        // Returns what the receive buffer holds right now; `WouldBlock` means nothing yet.
-        let read = critical_section::with(|cs| {
-            let mut usb = USB.borrow_ref_mut(cs);
-            let usb = usb.as_mut().ok_or(UsbError::InvalidState)?;
-            poll(usb);
-            usb.1.read(buf)
-        });
-        match read {
-            Ok(n) => {
-                #[cfg(feature = "debug-payloads")]
-                crate::debug_payloads::dump("rx", &buf[..n]);
-                Ok(n)
+        // What the USB interrupt has already moved out of the endpoint (see `poll`).
+        let n = critical_section::with(|cs| {
+            let mut rx = RX.borrow_ref_mut(cs);
+            let mut n = 0;
+            while n < buf.len() {
+                let Some(byte) = rx.pop_front() else { break };
+                buf[n] = byte;
+                n += 1;
             }
-            Err(UsbError::WouldBlock) => Ok(0),
-            Err(_) => Err(()),
-        }
+            n
+        });
+        #[cfg(feature = "debug-payloads")]
+        crate::debug_payloads::dump("rx", &buf[..n]);
+        Ok(n)
     }
 
     fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
@@ -120,10 +139,10 @@ impl Transport for UsbCdcTransport {
         let written = critical_section::with(|cs| {
             let mut usb = USB.borrow_ref_mut(cs);
             let usb = usb.as_mut().ok_or(UsbError::InvalidState)?;
-            poll(usb);
+            poll(cs, usb);
             let written = usb.1.write(&buf[..limit]);
             // Moves the packet toward the endpoint right away instead of waiting for the next poll.
-            poll(usb);
+            poll(cs, usb);
             written
         });
         let accepted = match written {
