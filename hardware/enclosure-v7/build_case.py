@@ -17,7 +17,6 @@ Values marked NOMINAL come from datasheets, KiCad footprints or seller listings,
 measured part. Fix them here after the fit-test print.
 """
 
-import itertools
 import math
 import os
 
@@ -442,6 +441,14 @@ disp_hdr_y = dpcb_c[1] + DISP_HDR_V
 disp_pins = {n: (disp_hdr_x, disp_hdr_y + (3 - i) * 2.54) for i, n in enumerate(DISP_PINS)}
 disp_vias = {n: (x - DISP_VIA_DX, y) for n, (x, y) in disp_pins.items()}
 disp_vias['BLK'] = (disp_vias['BLK'][0], 68.9)  # below the DC wrap, which runs under IO14 and up past it
+# Power. A channel cannot pass between two RP pin holes (0.445 mm of plastic each side at 2.54 mm pitch), so GND and 3V3
+# leave the right column to the east, go round the display header and the bottom end of the pin rows, and come up on
+# the encoder side. GND runs on the front (through the display GND hole, GND_X); 3V3 hops to the rear next to its pin,
+# runs east on the rear (V33_X), feeds the display VCC pin from the east and drops to the front south of GND (V33_Y).
+GND_X, GND_Y = 62.6, 62.6
+V33_X, V33_Y = 64.3, 60.8
+del disp_vias['VCC']        # VCC is fed on the rear straight to its pin
+disp_vias['GND'] = (GND_X, disp_vias['GND'][1])
 disp_holes = [(dpcb_c[0] + su * (DISP_PCB[0] / 2 - DISP_HOLE_INSET), dpcb_c[1] + sv * (DISP_PCB[1] / 2 - DISP_HOLE_INSET))
               for su in (-1, 1) for sv in (-1, 1)]
 
@@ -483,16 +490,17 @@ RP_NETS = {'IO3':'SW', 'IO4':'DT', 'IO5':'CLK', 'IO6':'B1', 'IO7':'B2', 'IO8':'B
            'IO9':'R_PWM', 'IO10':'G_PWM', 'IO11':'B_PWM',
            'IO26':'SCL', 'IO15':'SDA', 'IO14':'RES', 'IO13':'DC', 'IO12':'BLK',
            '3V3':'3V3', 'GND':'GND'}
-# Only fitted pins need interference holes. Removed pins allow the rear power buses through.
-INSTALLED_RP = set(RP_NETS)
 rp_vias = {'SW':(24.2,sm_pins['IO3'][1]), 'DT':(22.5,sm_pins['IO4'][1]),
            'CLK':(20.8,sm_pins['IO5'][1]), 'B1':(11.0,sm_pins['IO6'][1]),
            'B2':(12.9,sm_pins['IO7'][1]), 'B3':(19.1,sm_pins['IO8'][1]),
            'R_PWM':(sm_pins['IO9'][0],sm_bottom_y-2.4),
            'G_PWM':(sm_pins['IO10'][0],sm_bottom_y-2.4),
            'B_PWM':(sm_pins['IO11'][0],sm_bottom_y-2.4),
-           'GND':(SM_X+5.22,sm_pins['GND'][1]),
-           '3V3':(25.9,sm_pins['3V3'][1])}
+           'GND':(27.6,GND_Y),
+           '3V3':(25.9,V33_Y)}
+# transfer holes of the power runs that are not at a pin or a header: (net, position)
+power_vias = [('3V3',(sm_pins['3V3'][0]+1.78,sm_pins['3V3'][1])),('3V3',(V33_X,V33_Y)),('GND',(9.1,GND_Y))]
+v33_join = (V33_X,disp_pins['VCC'][1])
 LED_TERM_Y = LED_C[1] + 8.0
 led_terminals = {n:(x, LED_TERM_Y) for n,(x,y) in led_pins.items()}
 led_native_pins = {n:(LED_C[0]+(i-1.5)*1.27,LED_C[1]) for i,n in enumerate(('R','C','G','B'))}
@@ -864,8 +872,8 @@ def carrier_through_cuts(pcb=False):
     cuts.append(cyl(EC11_BUSH_D + 2 * EC11_HOLE_CLR, KNOB_C[0], KNOB_C[1], z0, z1))
     pins = list(enc_pins.values()) + list(res_pins.values()) + list(disp_pins.values())
     cuts += [cyl(DISP_VIA_D, x, y, z0, z1) for x, y in disp_vias.values()]
-    cuts += [cyl(RP_PIN_FIT_D, x, y, z0, z1) for n, (x, y) in sm_pins.items() if n in INSTALLED_RP]
-    cuts += [cyl(1.2, x, y, z0, z1) for x, y in rp_vias.values()]
+    cuts += [cyl(RP_PIN_FIT_D, x, y, z0, z1) for x, y in sm_pins.values()]
+    cuts += [cyl(1.2, x, y, z0, z1) for x, y in list(rp_vias.values()) + [p for _, p in power_vias]]
     cuts += [cyl(LED_LEAD_HOLE_D,x,y,z0,z1) for x,y in led_native_pins.values()]
     cuts += [cyl(1.2,x,y,z0,z1) for x,y in led_ground_vias]
     cuts += [cyl(HOLE_D, x, y, z0, z1) for (x, y) in pins]
@@ -876,17 +884,18 @@ def carrier_through_cuts(pcb=False):
 def front_layout():
     """Direct LCD links plus short, supported GPIO transfers into rear vias."""
     sm,dv=lambda n:sm_pins[n],lambda n:disp_vias[n]
-    runs=[('GND',[sm('GND'),(dv('GND')[0],sm('GND')[1]),dv('GND')]),
-          ('3V3',[sm('3V3'),(54.98,sm('3V3')[1]),(54.98,dv('VCC')[1]),dv('VCC')]),
-          ('SCL',[sm('IO26'),dv('SCL')]),('SDA',[sm('IO15'),dv('SDA')]),
+    runs=[('SCL',[sm('IO26'),dv('SCL')]),('SDA',[sm('IO15'),dv('SDA')]),
           ('RES',[sm('IO14'),dv('RES')]),
           ('DC',[sm('IO13'),(sm('IO13')[0],70.4),(55.95,70.4),(55.95,72.0),dv('DC')]),
           ('BLK',[sm('IO12'),(sm('IO12')[0],dv('BLK')[1]),dv('BLK')])]
     for pin,net in [('IO3','SW'),('IO4','DT'),('IO5','CLK'),('IO6','B1'),('IO7','B2'),('IO8','B3'),
-                    ('IO9','R_PWM'),('IO10','G_PWM'),('IO11','B_PWM'),('GND','GND'),('3V3','3V3')]:
+                    ('IO9','R_PWM'),('IO10','G_PWM'),('IO11','B_PWM')]:
         runs.append((net,[sm(pin),rp_vias[net]]))
     runs.append(('GND',[led_ground_vias[0],(led_ground_vias[1][0],led_ground_vias[0][1]),led_ground_vias[1]]))
-    return runs
+    a,b,gw=power_vias[0][1],power_vias[1][1],power_vias[2][1]
+    return runs + [('3V3',[sm('3V3'),a]),('3V3',[b,rp_vias['3V3']]),
+                   ('GND',[sm('GND'),(dv('GND')[0],sm('GND')[1]),dv('GND')]),
+                   ('GND',[dv('GND'),(dv('GND')[0],GND_Y),rp_vias['GND']]),('GND',[rp_vias['GND'],gw])]
 
 
 def wire_layout():
@@ -894,8 +903,8 @@ def wire_layout():
     ep,leg=lambda n:enc_pins[n],btn_pin
     v=rp_vias
     return [
-      ('GND',[v['GND'],(9.1,v['GND'][1]),(9.1,leg(0,0)[1]),leg(0,0)]),
-      ('GND',[v['GND'],(27.6,v['GND'][1]),(27.6,ep('GND')[1]),ep('GND')]),
+      ('GND',[power_vias[2][1],(9.1,leg(0,0)[1]),leg(0,0)]),
+      ('GND',[v['GND'],(27.6,ep('GND')[1]),ep('GND')]),
       ('3V3',[v['3V3'],(v['3V3'][0],ep('+')[1]),ep('+')]),
       ('SW',[v['SW'],(v['SW'][0],ep('SW')[1]),ep('SW')]),
       ('DT',[v['DT'],(v['DT'][0],ep('DT')[1]),ep('DT')]),
@@ -911,19 +920,16 @@ def wire_layout():
       ('LED_R',[res_pins['R_OUT'],led_terminals['R']]),
       ('LED_G',[res_pins['G_OUT'],led_terminals['G']]),
       ('LED_B',[res_pins['B_OUT'],led_terminals['B']]),
-    ] + [({'VCC':'3V3'}.get(n,n),[disp_vias[n],disp_pins[n]]) for n in DISP_PINS]
+    ] + [(n,[disp_vias[n],disp_pins[n]]) for n in DISP_PINS if n in disp_vias] + [
+      ('3V3',[power_vias[0][1],(V33_X,power_vias[0][1][1]),v33_join]),
+      ('3V3',[v33_join,disp_pins['VCC']]),
+      ('3V3',[v33_join,power_vias[1][1]])]
 
 def header_rows(front=False):
-    """Wrapped strips of the fitted pins: (x, y, pin count, horizontal)."""
+    """Header strips, every pin fitted: (x, y, pin count, horizontal)."""
     if not front:
         return []
-    rows = [(SM_X, sm_bottom_y, 5, True), (disp_hdr_x, disp_hdr_y, 7, False)]
-    for x, col in ((sm_rows[0], SM_COL_A), (sm_rows[1], SM_COL_B)):
-        for fitted, g in itertools.groupby(col, lambda n: n in INSTALLED_RP):
-            g = list(g)
-            if fitted:
-                rows.append((x, (sm_pins[g[0]][1] + sm_pins[g[-1]][1]) / 2, len(g), False))
-    return rows
+    return [(SM_X, sm_bottom_y, 5, True), (disp_hdr_x, disp_hdr_y, 7, False)] + [(x, sm_hdr_y, 9, False) for x in sm_rows]
 
 def row_len(n):
     return (n - 1) * 2.54 + 2 * PIN_ROW[1]
@@ -1044,8 +1050,8 @@ def check_wires(runs=None, front=False):
     crossed = {(min(a, b), max(a, b)) for (_, _, a, b, _) in wire_crossings(runs)}
     holes = [((x, y), HOLE_D) for d in (enc_pins, res_pins, disp_pins) for (x, y) in d.values()]
     holes += [(p, DISP_VIA_D) for p in disp_vias.values()]
-    holes += [(sm_pins[n], RP_PIN_FIT_D) for n in INSTALLED_RP]
-    holes += [(p,1.2) for p in rp_vias.values()]
+    holes += [(p, RP_PIN_FIT_D) for p in sm_pins.values()]
+    holes += [(p,1.2) for p in list(rp_vias.values())+[q for _,q in power_vias]]
     holes += [(p,LED_LEAD_HOLE_D) for p in led_native_pins.values()]
     holes += [(p,1.2) for p in led_ground_vias]
     holes += [(btn_pin(i, k), SW_HOLE_D) for i in range(3) for k in range(4)]
@@ -1273,7 +1279,7 @@ def dummy_rp2040_zero():
     led = cbox(SM_X, SM_USB_END - 16, 2.4, 2.4, hi, hi + 1.6)
     hdr = [cbox(x, sm_hdr_y, SM_HDR[0], SM_HDR[1], C_FRONT, lo) for x in sm_rows]
     hdr.append(cbox(SM_X, sm_bottom_y, 5 * 2.54, SM_HDR[0], C_FRONT, lo))
-    pins = [cbox(x, y, 0.64, 0.64, C_FRONT - SM_HDR[3], hi + 0.5) for n,(x,y) in sm_native_pins.items() if n in INSTALLED_RP]
+    pins = [cbox(x, y, 0.64, 0.64, C_FRONT - SM_HDR[3], hi + 0.5) for n,(x,y) in sm_native_pins.items()]
     board = fuse_all([pcb, usb, chip, crystal, regulator, led] + btns + hdr + pins)
     board.rotate(V(SM_X, 0, RP_FLIP_Z), V(0, 1, 0), 180)
     return board
@@ -1386,15 +1392,16 @@ def dummy_wire():
     front_z=C_FRONT-WIRE_CH[1]+r
     for net,(x,y) in rp_vias.items():
         add(net,cyl(WIRE_D,x,y,rear_z,front_z))
+    for net,(x,y) in power_vias:add(net,cyl(WIRE_D,x,y,rear_z,front_z))
     for i,(x,y) in enumerate(led_ground_vias):
         add('GND',cyl(WIRE_D,x,y,rear_z if i==0 else C_BACK-0.8,front_z))
     ring=lambda x,y,z0,z1:cyl(WRAP_OD,x,y,z0,z1).cut(cyl(0.95,x,y,z0-1,z1+1))
     tall=WRAP_TURNS*WIRE_D
     for name,(x,y) in sm_pins.items():
-        if name in INSTALLED_RP:add(RP_NETS[name],ring(x,y,C_FRONT+0.3,C_FRONT+0.3+tall))
+        if name in RP_NETS:add(RP_NETS[name],ring(x,y,C_FRONT+0.3,C_FRONT+0.3+tall))
     for name,(x,y) in disp_pins.items():
         net={'GND':'GND','VCC':'3V3'}.get(name,name)
-        add(net,cyl(WIRE_D,*disp_vias[name],rear_z,front_z))
+        if name in disp_vias:add(net,cyl(WIRE_D,*disp_vias[name],rear_z,front_z))
         add(net,ring(x,y,C_BACK-0.3-tall,C_BACK-0.3))
     for name,(x,y) in enc_pins.items():
         add({'CLK':'CLK','DT':'DT','SW':'SW','+':'3V3','GND':'GND'}[name],
@@ -1449,10 +1456,10 @@ def check_led_fan():
                 gap=fans[i].distToShape(channels[j])[0]
                 if gap < WIRE_RIDGE_MIN-1e-6:issues.append(('wire',name,net,gap))
         holes=[(q,LED_LEAD_HOLE_D,0.4,'LED_'+n) for n,q in led_native_pins.items() if n!=name]
-        holes += [(q,1.2,WIRE_RIDGE_MIN,'via') for q in list(rp_vias.values())+led_ground_vias if q!=led_terminals[name]]
+        holes += [(q,1.2,WIRE_RIDGE_MIN,'via') for q in list(rp_vias.values())+led_ground_vias+[p for _,p in power_vias] if q!=led_terminals[name]]
         holes += [(q,HOLE_D,WIRE_RIDGE_MIN,'pin') for group in (enc_pins,res_pins,disp_pins) for q in group.values()]
         holes += [(q,DISP_VIA_D,WIRE_RIDGE_MIN,'display via') for q in disp_vias.values()]
-        holes += [(sm_pins[n],RP_PIN_FIT_D,WIRE_RIDGE_MIN,'RP') for n in INSTALLED_RP]
+        holes += [(p,RP_PIN_FIT_D,WIRE_RIDGE_MIN,'RP') for p in sm_pins.values()]
         holes += [(q,SPIGOT_HOLE_D,WIRE_RIDGE_MIN,'post') for q in POSTS]
         holes += [(KNOB_C,EC11_BUSH_D+2*EC11_HOLE_CLR,WIRE_RIDGE_MIN,'shaft')]
         for (x,y),dia,limit,label in holes:
@@ -1886,6 +1893,11 @@ def main():
         raise ValueError("rotated HW-040 header must preserve its physical pin order")
     if len(sm_pins) != 23 or len(set(sm_pins.values())) != 23:
         raise ValueError("RP2040-Zero header must have 23 distinct physical pins")
+    blocked = [n for n, (x, y) in sm_pins.items()  # a line down each pin centre must clear the carrier solid
+               if Part.makeLine(V(x, y, C_BACK - 1), V(x, y, C_FRONT + 1)).common(PRINTED["Carrier"]).Length > 1e-6]
+    print("carrier through-holes at all %d RP2040-Zero pins: %s" % (len(sm_pins), "yes" if not blocked else "NO " + ", ".join(blocked)))
+    if blocked:
+        raise ValueError("carrier has no through-hole for RP2040-Zero pin(s): %s" % ", ".join(blocked))
     if sum(n.startswith("Dummy_RGB_LED") for n in DUMMIES) != 1 or len(led_terminals) != 4 or len(RES_C) != 3:
         raise ValueError("exactly one external RGB LED and three series resistors required")
     if max_terminal_hop() > 3.0:
