@@ -19,7 +19,7 @@ version, and build source with the results.
 Record the exact warning and its source: SmartScreen, Microsoft Defender Antivirus (see Windows
 Security → Protection history), or Smart App Control. Include the detection name if present, the
 affected file name, app version, and steps to reproduce. Avoid sharing personal file paths.
-Check whether the file is `Kivori.exe`, `espflash.exe`, the installer, or another component;
+Check whether the file is `Kivori.exe`, the installer, or another component;
 the current report has not established which one is affected.
 
 Calculate the affected file's SHA-256 with PowerShell's `Get-FileHash -Algorithm SHA256` and

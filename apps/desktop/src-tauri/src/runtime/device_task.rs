@@ -38,7 +38,8 @@ use crate::firmware::{self, FirmwareStatus, FlashFailure, FlashWorkflow, ResumeT
 use crate::firmware_bundle::{FirmwareBundle, FirmwareImage};
 use crate::firmware_offer::{OfferDevice, OfferInputs, OfferTracker};
 use crate::identity::{
-    decide_recovery_for_port, missing_required_capabilities, DeviceIdentity, RecoveryDecision,
+    decide_recovery, decide_recovery_for_port, missing_required_capabilities, DeviceIdentity,
+    RecoveryDecision,
 };
 use crate::input::{Freshness, InputIngress, LogicalInput, RejectReason};
 use crate::ipc::dto::{
@@ -219,6 +220,9 @@ fn device_loop(
     // The brightness step to show, and the last buddy settings the device was sent (per session).
     let mut brightness = config.display.brightness;
     let mut buddy_sent: Option<(u32, u32, MascotPersonality, bool, u8)> = None;
+    // The LED settings, and the last ones the device was sent (per session).
+    let mut led = config.led.clone();
+    let mut led_sent: Option<(u32, u32, crate::config::LedWire)> = None;
     let mut flash = FlashWorkflow::new(!firmware::bundled_images().images().is_empty(), 0);
     // Setup initialized the shared status; publishing Idle here could erase a queued reservation.
     drain_firmware_activity(&app, &activity_log, &mut flash);
@@ -305,6 +309,7 @@ fn device_loop(
                         (config.buddy.intensity.personality(), config.buddy.reactions);
                     self_play_wanted = self_play;
                     brightness = config.display.brightness;
+                    led = config.led.clone();
                     let running = self_play && !self_play_paused;
                     // Restarting the cadence on an unrelated save would delay the next reaction.
                     if (personality, running) != (companion.personality(), companion.self_play()) {
@@ -421,8 +426,12 @@ fn device_loop(
                     let bundled = if recovery {
                         let candidates = enumerate();
                         let found = filter_candidates(&candidates, default_allowlist());
-                        let [_] = found.as_slice() else {
-                            refusal = if found.is_empty() {
+                        // A board held in BOOTSEL has no serial port, only its bootloader drive.
+                        // With several drives and no port there is no telling which board to restore.
+                        let drives = crate::uf2::bootloader_drives();
+                        let drive_only = found.is_empty() && drives.len() == 1;
+                        if !drive_only && found.len() != 1 {
+                            refusal = if found.is_empty() && drives.is_empty() {
                                 firmware::FlashFailure::NoDownloadMode
                             } else {
                                 firmware::FlashFailure::Unknown
@@ -431,16 +440,26 @@ fn device_loop(
                             drain_firmware_activity(&app, &activity_log, &mut flash);
                             publish_firmware_status(&firmware_status, &flash);
                             continue;
+                        }
+                        let target = if drive_only {
+                            decide_recovery(
+                                Catalog::embedded(),
+                                None,
+                                chosen.as_deref(),
+                                chosen_board.as_deref(),
+                                None,
+                            )
+                        } else {
+                            decide_recovery_for_port(
+                                Catalog::embedded(),
+                                &found,
+                                chosen.as_deref(),
+                                chosen_board.as_deref(),
+                                connected_port.as_deref(),
+                                session.identity().as_ref(),
+                                manager.state(),
+                            )
                         };
-                        let target = decide_recovery_for_port(
-                            Catalog::embedded(),
-                            &found,
-                            chosen.as_deref(),
-                            chosen_board.as_deref(),
-                            connected_port.as_deref(),
-                            session.identity().as_ref(),
-                            manager.state(),
-                        );
                         let (product, board) = match target {
                             RecoveryDecision::Proceed { product, board } => (product, board),
                             RecoveryDecision::Choose(options) => {
@@ -509,7 +528,7 @@ fn device_loop(
                             let _ = session.close(open_link, ByeReason::FirmwareUpdate);
                         }
                     }
-                    // This drop closes the serial handle before `espflash` opens the same port.
+                    // This drop closes the serial handle before the flasher opens the same port.
                     link = None;
                     connected_port = None;
                     deadlines.on_link_lost();
@@ -612,8 +631,11 @@ fn device_loop(
                         manager.apply(ManagerEvent::BackoffElapsed);
                     }
                     let candidate = match flash.status().phase {
+                        // A drive-only recovery has no port to reopen; discovery finds the board.
                         crate::firmware::FirmwarePhase::Reconnecting => {
-                            flash_target(&flash).map(str::to_string)
+                            flash.reconnect_port().map(str::to_string).or_else(|| {
+                                rotator.next(&enumerate(), default_allowlist(), started.elapsed())
+                            })
                         }
                         _ => rotator.next(&enumerate(), default_allowlist(), started.elapsed()),
                     };
@@ -886,6 +908,46 @@ fn device_loop(
                     buddy_sent = Some(key);
                     let write_failed = session
                         .send_buddy_settings(open_link, key.2, key.3, key.4)
+                        .is_err();
+                    if write_failed {
+                        recover_link(
+                            &mut activity_planner,
+                            &mut manager,
+                            ManagerEvent::IoError,
+                            LinkRecovery::new(
+                                &mut link,
+                                &mut connected_port,
+                                &mut retry_at,
+                                &mut deadlines,
+                                &flash,
+                            )
+                            .with_rotator(&mut rotator, started.elapsed()),
+                            |observation| {
+                                record_observations(&app, &activity_log, [observation]);
+                            },
+                        );
+                    }
+                }
+            }
+        }
+
+        // A device with an RGB LED runs it itself and is sent the settings once per session and again
+        // on any change. In Status mode the colour is the active profile's, so a profile change
+        // sends them again; the device knows nothing of profiles.
+        if !flash.is_busy() && manager.state().can_drive_device() && session.supports_rgb_led() {
+            if let (Some(nonce), Some(open_link)) = (session.current_session(), link.as_mut()) {
+                let wire = led.wire(desk.context().profile().id.token());
+                let key = (session.connection_generation(), nonce, wire);
+                if led_sent != Some(key) {
+                    led_sent = Some(key);
+                    let write_failed = session
+                        .send_led_settings(
+                            open_link,
+                            wire.mode,
+                            wire.color,
+                            wire.brightness,
+                            wire.speed,
+                        )
                         .is_err();
                     if write_failed {
                         recover_link(
@@ -1794,12 +1856,6 @@ fn offer_device(manager: &ConnectionManager, session: &Session) -> OfferDevice {
 
 fn publish_firmware_status(status: &Mutex<FirmwareStatus>, workflow: &FlashWorkflow) {
     *status.lock().expect("firmware status lock") = workflow.status().clone();
-}
-
-fn flash_target(workflow: &FlashWorkflow) -> Option<&str> {
-    // The workflow's status deliberately hides the port from IPC. The device task needs it to reopen
-    // exactly the same native-owned port after programming.
-    workflow.target_port()
 }
 
 /// Records the manager's lifecycle transition as typed activity and emits it to the webview.

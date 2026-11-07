@@ -140,7 +140,7 @@ identity pending/unknown/recovery, offline preview, binding retention and focus 
 sessions. Native session tests cover control-specific input refusal and Mirror refusing to stage
 state while pending or disconnected. Fake devices are injected in tests, never registered for shipping.
 
-Catalog artwork delivery, capability-aware setup, product acceptance, provisioning/tool selection,
+Catalog artwork delivery, capability-aware setup, product acceptance,
 multi-image packaging and the identifier guard are implemented. The
 [software closure audit](./validation.md#m28-software-closure-audit) maps the product-contract and
 capability-UI criteria to their evidence. Hardware acceptance and PR review/merging remain separate.

@@ -9,13 +9,13 @@ pub struct FirmwareImage<'a> {
 }
 
 impl<'a> FirmwareImage<'a> {
-    /// Parses an ELF32 RISC-V image with exactly one matching version and identity record.
+    /// Parses an ELF32 ARM image with exactly one matching version and identity record.
     ///
     /// # Errors
     /// Invalid ELF header, absent/ambiguous markers or differing version records.
     pub fn parse(bytes: &'a [u8]) -> Result<Self, &'static str> {
-        if bytes.len() < 52 || !bytes.starts_with(b"\x7fELF\x01\x01") || bytes[18..20] != [243, 0] {
-            return Err("firmware must be a little-endian ELF32 RISC-V image");
+        if bytes.len() < 52 || !bytes.starts_with(b"\x7fELF\x01\x01") || bytes[18..20] != [40, 0] {
+            return Err("firmware must be a little-endian ELF32 ARM image");
         }
         let mut identities = scan_image_identities(bytes);
         let identity = identities.next().ok_or("firmware has no identity record")?;

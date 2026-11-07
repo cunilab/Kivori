@@ -3,7 +3,7 @@ use super::*;
 use crate::activity::{ActivityEventKind, ActivityLog};
 use crate::catalog::Catalog;
 use crate::config::UpdateSettings;
-use crate::device::discovery::{default_allowlist, PortCandidate};
+use crate::device::discovery::PortCandidate;
 use crate::firmware::{FirmwarePhase, FlashFailure, FlashWorkflow, ResumeTarget};
 use crate::firmware_bundle::FirmwareBundle;
 use crate::firmware_marker::ImageIdentity;
@@ -184,10 +184,16 @@ fn flash_reconnect(executable: &Path) -> Result<(), String> {
     })?;
     println!("PASS S5.5 fake-flash + real virtual session: process success waits for matching compatible handshake; fresh input works");
 
-    let (vid, pid) = default_allowlist()
-        .first()
-        .copied()
-        .ok_or("empty recovery allowlist")?;
+    // The port the selected virtual board would show up as: its own USB hint (v1 303A:1001, v2
+    // 2E8A:000A), not whichever id the catalog lists first.
+    let board = virtual_board();
+    let (vid, pid) = Catalog::embedded()
+        .products()
+        .iter()
+        .flat_map(|p| &p.boards)
+        .find(|b| b.id == board)
+        .and_then(|b| b.usb.first().copied())
+        .ok_or_else(|| format!("no USB id for virtual board {board}"))?;
     let port = PortCandidate::new("virtual-recovery-pipe", Some(vid), Some(pid));
     flash.request_recovery(std::slice::from_ref(&port))?;
     run_fake(&mut flash, Ok(()), &mut calls);
@@ -210,13 +216,13 @@ fn flash_reconnect(executable: &Path) -> Result<(), String> {
 }
 
 fn fixture_board(id: &str) -> String {
-    format!("[boards.{id}]\ndisplay_name = '{id}'\nflash = 'espflash'\nusb = ['1234:0001']\n[boards.{id}.firmware]\ncrate = 'firmware/fixture'\nartifact = 'image'\nmin_protocol = '0.1'\n")
+    format!("[boards.{id}]\ndisplay_name = '{id}'\nflash = 'uf2'\nusb = ['1234:0001']\n[boards.{id}.firmware]\ncrate = 'firmware/fixture'\nartifact = 'image'\nmin_protocol = '0.1'\n")
 }
 
 fn fixture_image(product: u16, board: u16) -> Vec<u8> {
     let mut bytes = vec![0; 52];
     bytes[..6].copy_from_slice(b"\x7fELF\x01\x01");
-    bytes[18] = 243;
+    bytes[18] = 40;
     bytes.extend_from_slice(
         format!(
             "KIVORI-FW-VERSION:0.1.0\0KIVORI-FW-IDENTITY:p={product};b={board};v=0.1.0;m=0.1\0"

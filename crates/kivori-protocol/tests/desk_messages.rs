@@ -268,6 +268,24 @@ fn internals_messages_are_appended_as_tags_19_and_20() {
     assert_eq!(roundtrip(&report), report);
 }
 
+/// Append-only: `Rp2040` follows `Esp32C3`, so its wire index is 1 and shipped C3 reports still decode.
+#[test]
+fn the_rp2040_chip_model_is_appended_after_the_c3() {
+    for (model, index) in [(ChipModel::Esp32C3, 0u8), (ChipModel::Rp2040, 1)] {
+        let internals = DeviceInternals {
+            chip_model: Some(model),
+            ..DeviceInternals::default()
+        };
+        let report = Message::Internals(InternalsReport {
+            session: 0,
+            internals,
+        });
+        assert_eq!(roundtrip(&report), report);
+        // Tag, session, then 13 `None` bytes (fields before `chip_model`), `Some`, the model index.
+        assert_eq!(payload(&report)[15..17], [1, index]);
+    }
+}
+
 /// Every field optional: a device that measures nothing still sends a valid, small snapshot, and
 /// `None` stays `None` (never 0) across the wire.
 #[test]

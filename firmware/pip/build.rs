@@ -4,7 +4,7 @@ use std::path::Path;
 /// minimum protocol are read from `products/`, so no number is typed twice. A second product's
 /// firmware crate names its own pair here.
 const PRODUCT: &str = "pip";
-const BOARD: &str = "c3-supermini";
+const BOARD: &str = "rp2040-zero";
 
 /// Looks up `key = <value>` inside the `[section]` of a (simple, flat) TOML file. Only the shapes
 /// `products/` uses are understood: bare keys, integer or quoted-string values, `#` comments.
@@ -63,12 +63,17 @@ fn main() {
     // The flashable binary (`embedded`, and so `physical-st7789`) renders real scenes, so it needs the
     // canonical compiled asset blob. Compile it here (host-side, build-time only) and hand it to the
     // firmware via OUT_DIR — the device never parses SVG at runtime (Constitution XI). Skipped for every
-    // other build so the ordinary RISC-V library build stays fast.
+    // other build so the ordinary library build stays fast.
     if std::env::var("CARGO_FEATURE_EMBEDDED").is_ok() {
         let blob = kivori_asset_compiler::compile_default_blob();
         let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR is set by cargo");
         std::fs::write(std::path::Path::new(&out_dir).join("kivori.assets"), &blob)
             .expect("write compiled asset blob");
+        // cortex-m-rt's `link.x` includes `memory.x` from the linker search path.
+        std::fs::copy("memory.x", std::path::Path::new(&out_dir).join("memory.x"))
+            .expect("copy memory.x");
+        println!("cargo:rustc-link-search={out_dir}");
+        println!("cargo:rerun-if-changed=memory.x");
     }
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=../../assets/mascot.svg");

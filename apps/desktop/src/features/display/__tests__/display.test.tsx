@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Toaster } from '@kivori/ui/components/sonner';
 import { resetPageTabs } from '../../../components/kivori/page-tabs';
 import type { ConfigDto, DeskStatusDto } from '../../../lib/ipc/types';
+import { DEFAULT_LED_SETTINGS } from '../../../lib/ipc/types';
 
 const h = vi.hoisted(() => ({
   setMode: vi.fn<(mode: string) => Promise<void>>(() => Promise.resolve()),
@@ -57,6 +58,7 @@ const config: ConfigDto = {
   macros: [],
   display: { defaultView: 'buddy', secondaryView: 'system', brightness: 5 },
   buddy: { reactions: true, intensity: 'normal' },
+  led: DEFAULT_LED_SETTINGS,
 };
 
 const connection = connectionFixture(['deskStatusV1']);

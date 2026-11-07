@@ -1056,6 +1056,53 @@ fn buddy_settings_go_only_to_a_device_that_runs_idle_life() {
 }
 
 #[test]
+fn led_settings_go_only_to_a_device_that_negotiated_the_led() {
+    use kivori_model::led::{LedMode, LedSpeed};
+    let (mut link, mut session, _manager, _orch) = connect(SendableState::Idle);
+    let _ = desktop_drain(&mut link);
+    // A board without an LED (the v1 ESP32-C3) never advertises it.
+    assert!(!session.supports_rgb_led());
+    assert!(!session
+        .send_led_settings(&mut link, LedMode::Solid, [1, 2, 3], 50, LedSpeed::Fast)
+        .expect("send"));
+    assert!(desktop_drain(&mut link).is_empty(), "nothing sent");
+
+    let (mut link, mut session, _manager, _orch) = connect_with_caps(
+        SendableState::Idle,
+        Capabilities::MASCOT_INTERACTION.union(Capabilities::RGB_LED_V1),
+    );
+    let _ = desktop_drain(&mut link);
+    assert!(session.supports_rgb_led());
+    assert!(session
+        .send_led_settings(
+            &mut link,
+            LedMode::Status,
+            [0x2E, 0xC4, 0xB6],
+            60,
+            LedSpeed::Slow
+        )
+        .expect("send"));
+    let sent: Vec<_> = desktop_drain(&mut link)
+        .into_iter()
+        .filter_map(|m| match m {
+            Message::LedSettings(settings) => Some(settings),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].session, session.current_session().unwrap());
+    assert_eq!(
+        (
+            sent[0].mode,
+            sent[0].color,
+            sent[0].brightness,
+            sent[0].speed
+        ),
+        (LedMode::Status, [0x2E, 0xC4, 0xB6], 60, LedSpeed::Slow)
+    );
+}
+
+#[test]
 fn mic_state_goes_only_to_a_device_that_negotiated_it() {
     use kivori_model::desk::MicState;
     let state = MicState {
@@ -1519,7 +1566,7 @@ fn runtime_display_and_flash_admission_follow_current_session_support() {
 
     let mut bytes = vec![0; 52];
     bytes[..6].copy_from_slice(b"\x7fELF\x01\x01");
-    bytes[18] = 243;
+    bytes[18] = 40;
     bytes.extend_from_slice(b"KIVORI-FW-VERSION:0.1.0\0KIVORI-FW-IDENTITY:p=1;b=1;v=0.1.0;m=0.1\0");
     let images = FirmwareBundle::parse(&[&bytes]).unwrap();
     let empty = FirmwareBundle::parse(&[]).unwrap();

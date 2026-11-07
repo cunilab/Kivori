@@ -323,3 +323,150 @@ fn a_wrong_board_unit_offers_only_identity_so_no_build_info() {
     assert_eq!(identities(&messages).len(), 1);
     assert!(builds(&messages).is_empty());
 }
+
+/// The numeric value of `key = <n>` inside `[section]` of the products registry.
+fn registry_number(section: &str, key: &str) -> u16 {
+    let registry = include_str!("../../../products/registry.toml");
+    let mut current = "";
+    for line in registry.lines() {
+        let line = line.split('#').next().unwrap().trim();
+        if let Some(header) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+            current = header;
+        } else if let (true, Some((k, v))) = (current == section, line.split_once('=')) {
+            if k.trim() == key {
+                return v.trim().parse().expect("registry number");
+            }
+        }
+    }
+    panic!("{key} is not in [{section}] of products/registry.toml");
+}
+
+#[test]
+fn this_build_is_pip_on_the_rp2040_zero_in_the_registry_and_in_its_image_record() {
+    use kivori_firmware::identity::{BUILD_BOARD, BUILD_PRODUCT, IMAGE_RECORD};
+
+    let (pip, zero) = (
+        registry_number("products", "pip"),
+        registry_number("boards", "rp2040-zero"),
+    );
+    assert_eq!((BUILD_PRODUCT, BUILD_BOARD), (pip, zero));
+    let build = ProductIdentity::BUILD;
+    assert_eq!(
+        (build.product, build.board, build.hw_rev),
+        (pip, zero, None)
+    );
+    assert_eq!(build.source, IdentitySource::Build);
+
+    // `KIVORI-FW-IDENTITY:p=<product>;b=<board>;v=<x.y.z>;m=<major.minor>\0`, one NUL at the very end:
+    // the updater searches the image for it, and a second NUL would cut the text short.
+    let text = IMAGE_RECORD.strip_suffix('\0').expect("NUL-terminated");
+    assert!(text.is_ascii() && !text.contains('\0'));
+    let fields: Vec<&str> = text
+        .strip_prefix("KIVORI-FW-IDENTITY:")
+        .expect("marker prefix")
+        .split(';')
+        .collect();
+    assert_eq!(
+        fields,
+        [
+            format!("p={pip}"),
+            format!("b={zero}"),
+            format!("v={}", env!("CARGO_PKG_VERSION")),
+            format!("m={}", env!("KIVORI_MIN_PROTOCOL")),
+        ]
+    );
+}
+
+#[test]
+fn the_rp2040_chip_is_never_provisioned_so_the_unit_runs_and_reports_the_build() {
+    use kivori_firmware::identity::check_boot;
+    use kivori_protocol::identity::ChipRecordState;
+
+    // What `physical_st7789::run_mode` passes: the RP2040 has no one-time memory for a record.
+    assert_eq!(
+        check_boot(ProductIdentity::BUILD, ChipRecordState::NotProvisioned),
+        BootCheck::Run(ProductIdentity::BUILD)
+    );
+    // A chip record naming the other registered board is the wrong-board path, reporting the
+    // chip's own numbers (not the build's), so the app can offer the right firmware.
+    let other = registry_number("boards", "c3-supermini");
+    assert_ne!(other, ProductIdentity::BUILD.board);
+    let record = kivori_protocol::identity::ChipRecord {
+        product: ProductIdentity::BUILD.product,
+        board: other,
+        hw_rev: Some(1),
+    };
+    let BootCheck::WrongBoard(reported) =
+        check_boot(ProductIdentity::BUILD, ChipRecordState::Valid(record))
+    else {
+        panic!("another board's record must stop the product");
+    };
+    assert_eq!(
+        (reported.board, reported.source),
+        (other, IdentitySource::Chip)
+    );
+}
+
+/// The text inside the first `"..."` after `needle` in `source`.
+fn quoted_after<'a>(source: &'a str, needle: &str) -> &'a str {
+    let rest = &source[source
+        .find(needle)
+        .unwrap_or_else(|| panic!("`{needle}` not found"))..];
+    let start = rest.find('"').expect("opening quote") + 1;
+    &rest[start..start + rest[start..].find('"').expect("closing quote")]
+}
+
+#[test]
+fn the_usb_ids_and_names_the_transport_enumerates_with_are_the_catalogs() {
+    // `transport.rs` only builds for the device, so read it as text, like the pin-map test reads
+    // `profile.rs`. The catalog's `usb` hint is what the app nominates serial ports with.
+    let transport = include_str!("../src/transport.rs");
+    let ids = transport
+        .split("UsbVidPid(")
+        .nth(1)
+        .and_then(|rest| rest.split(')').next())
+        .expect("UsbVidPid in transport.rs");
+    let (vid, pid) = ids.split_once(',').expect("vid, pid");
+    let from_source = format!(
+        "{}:{}",
+        vid.trim().trim_start_matches("0x").to_uppercase(),
+        pid.trim().trim_start_matches("0x").to_uppercase()
+    );
+    let catalog = include_str!("../../../products/pip/product.toml");
+    let board = &catalog[catalog.find("[boards.rp2040-zero]").expect("board table")..];
+    assert_eq!(quoted_after(board, "usb = ["), from_source);
+    // The product string a person sees in the OS serial-port list.
+    assert_eq!(
+        quoted_after(transport, ".product("),
+        quoted_after(catalog, "display_name = ")
+    );
+}
+
+#[test]
+fn the_firmware_advertises_every_capability_the_catalog_requires_of_a_pip() {
+    use kivori_firmware::profile::physical_st7789::CAPABILITIES;
+
+    let catalog = include_str!("../../../products/pip/product.toml");
+    let list = &catalog[catalog.find("required_capabilities = [").expect("list")..];
+    let list = &list[..list.find(']').expect("end of list")];
+    let mut count = 0;
+    for name in list.split('"').skip(1).step_by(2) {
+        let flag = match name {
+            "MASCOT_INTERACTION" => Capabilities::MASCOT_INTERACTION,
+            "PHYSICAL_INPUT_V1" => Capabilities::PHYSICAL_INPUT_V1,
+            "PRESENTATION_V1" => Capabilities::PRESENTATION_V1,
+            "BUTTON_INPUT_V1" => Capabilities::BUTTON_INPUT_V1,
+            "DESK_STATUS_V1" => Capabilities::DESK_STATUS_V1,
+            "ACTION_FEEDBACK_V1" => Capabilities::ACTION_FEEDBACK_V1,
+            "DOUBLE_PRESS_V1" => Capabilities::DOUBLE_PRESS_V1,
+            "MEDIA_INFO_V1" => Capabilities::MEDIA_INFO_V1,
+            "CONTROL_LABELS_V1" => Capabilities::CONTROL_LABELS_V1,
+            "CONTEXT_BUTTONS_V1" => Capabilities::CONTEXT_BUTTONS_V1,
+            "HOST_TAKEOVERS_V1" => Capabilities::HOST_TAKEOVERS_V1,
+            other => panic!("catalog requires {other}: add it to this test"),
+        };
+        assert!(CAPABILITIES.contains(flag), "the firmware lacks {name}");
+        count += 1;
+    }
+    assert_eq!(count, 11);
+}

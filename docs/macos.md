@@ -16,7 +16,7 @@ native support, not Windows emulation. Intel Mac builds have not been verified.
 | Profiles / app launch / macros | Native bundle identifiers and foreground app checks; queued input retains cancellation guards |
 | CPU / RAM / clock | Native system observations |
 | Sleep / wake / lock / reconnect | Native handlers exist; physical acceptance is recorded separately below |
-| Firmware update / BOOT recovery | Bundled espflash and product firmware; physical recovery still requires a device |
+| Firmware update / BOOT recovery | Bundled product firmware (UF2, written by the app); physical recovery still requires a device |
 | App volume / app mute | Unavailable; never substitutes system volume or system mute |
 | App update | Manual replacement from a newer DMG; automatic updates are not enabled on macOS |
 

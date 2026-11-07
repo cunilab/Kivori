@@ -40,7 +40,7 @@ fn request(now_ms: u32, edges: &[(u32, u8)]) -> Request {
 impl Rig {
     fn new(double: bool) -> Result<Box<Self>, String> {
         let mut rig = Box::new(Self {
-            sim: Simulator::new(),
+            sim: Simulator::assemble(Timing::Ideal, Board::selected()?),
             seq: 0,
             nonce: 42,
             events: vec![],
@@ -386,6 +386,7 @@ fn capacity_and_overflow() -> Result<(), String> {
                 .collect(),
         ),
         brightness: rig.sim.shared.capture.borrow().brightness,
+        led: None,
         reboot: tick.reboot,
         state: super::state_token(rig.sim.runtime.state()),
     };

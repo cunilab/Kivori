@@ -34,6 +34,7 @@ impl Capabilities {
     //   bit 15 PRODUCT_IDENTITY_V1 `Identity`: the device reports its product, board, hardware revision and where they came from
     //   bit 16 BUILD_INFO_V1       `BuildInfo`: the device reports its firmware source id and whether the tree had uncommitted changes
     //   bit 17 HELD_ROTATION_V1   rotary detents while its push switch is held
+    //   bit 18 RGB_LED_V1         `LedSettings`: the device drives its RGB LED itself (mode, colour, brightness, speed)
 
     /// Bit 0 — device accepts deterministic social mascot actions and returns applied-time
     /// acknowledgments.
@@ -101,6 +102,11 @@ impl Capabilities {
 
     /// Bit 17 — the device emits rotary gestures made while its switch is held.
     pub const HELD_ROTATION_V1: Capabilities = Capabilities(1 << 17);
+
+    /// Bit 18 — the device has an RGB LED and accepts `LedSettings`: it runs the animation (and, in
+    /// Status and Mood mode, the reaction to its own state) itself. Boards without an LED never
+    /// advertise it, so the desktop sends nothing to them.
+    pub const RGB_LED_V1: Capabilities = Capabilities(1 << 18);
 
     /// Creates a capability set from a raw bitmask.
     #[must_use]

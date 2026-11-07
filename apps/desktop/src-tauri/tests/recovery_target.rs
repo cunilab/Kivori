@@ -15,7 +15,7 @@ const USB_A: (u16, u16) = (0x1234, 1);
 const USB_B: (u16, u16) = (0x1234, 2);
 
 fn board(id: &str, usb: &str) -> String {
-    format!("[boards.{id}]\ndisplay_name = '{id}'\nflash = 'espflash'\nusb = ['{usb}']\n[boards.{id}.firmware]\ncrate = 'firmware/fixture'\nartifact = 'image'\nmin_protocol = '0.1'\n")
+    format!("[boards.{id}]\ndisplay_name = '{id}'\nflash = 'uf2'\nusb = ['{usb}']\n[boards.{id}.firmware]\ncrate = 'firmware/fixture'\nartifact = 'image'\nmin_protocol = '0.1'\n")
 }
 
 fn product(name: &str, boards: &str) -> String {
@@ -86,7 +86,7 @@ fn device(product: u16, board: u16) -> DeviceIdentity {
 fn image(product: u16, board: u16) -> Vec<u8> {
     let mut bytes = vec![0; 52];
     bytes[..6].copy_from_slice(b"\x7fELF\x01\x01");
-    bytes[18] = 243;
+    bytes[18] = 40;
     bytes.extend_from_slice(
         format!(
             "KIVORI-FW-VERSION:0.1.0\0KIVORI-FW-IDENTITY:p={product};b={board};v=0.1.0;m=0.1\0"

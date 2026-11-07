@@ -4,7 +4,8 @@
 
 use crate::input::gesture::{RotaryEvent, RotaryGesture};
 use crate::input::quadrature::QuadratureDecoder;
-use crate::ports::{Clock, DisplaySink, InputSource, Transport};
+use crate::led::LedEngine;
+use crate::ports::{Clock, DisplaySink, InputSource, LedSink, Transport};
 use crate::proto::{DeviceIdentity, Dispatcher};
 use crate::render::{TILE_H, TILE_PIXELS, TILE_W};
 use crate::runtime::GESTURE_END_MS;
@@ -206,6 +207,41 @@ impl DisplaySink for CaptureDisplay {
 
     fn set_brightness(&mut self, step: u8) {
         self.brightness = Some(step);
+    }
+}
+
+/// A [`LedSink`] that remembers what the LED was last driven to. The host calls [`Self::tick`]
+/// where the board's timer interrupt would run.
+#[derive(Debug, Default)]
+pub struct CaptureLed {
+    /// The duty last driven, red, green, blue (all zero until the first tick).
+    pub rgb: [u8; 3],
+    /// How many times the colour changed.
+    pub changes: u32,
+}
+
+impl CaptureLed {
+    /// A dark LED.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            rgb: [0; 3],
+            changes: 0,
+        }
+    }
+
+    /// Drives the LED to what `engine` shows at `now_ms`.
+    pub fn tick(&mut self, engine: &LedEngine, now_ms: ElapsedMs) {
+        self.set_rgb(engine.frame(now_ms));
+    }
+}
+
+impl LedSink for CaptureLed {
+    fn set_rgb(&mut self, rgb: [u8; 3]) {
+        if rgb != self.rgb {
+            self.rgb = rgb;
+            self.changes += 1;
+        }
     }
 }
 

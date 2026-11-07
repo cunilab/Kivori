@@ -104,6 +104,8 @@ try {
         : `node ${process.version}`,
       node: execFileSync('node', ['--version'], { cwd: root, encoding: 'utf8' }).trim(),
       platform: process.platform,
+      // The virtual board (docs/virtual-pip.md, "Virtual boards"): v1 unless the environment says v2.
+      board: process.env.KIVORI_VIRTUAL_BOARD ?? 'c3-supermini',
     };
     report.data.inputSha256 = Object.fromEntries(
       [
@@ -255,7 +257,8 @@ try {
         'desktop',
         ['--desktop-smoke'],
         'PASS S5.4 ',
-        14,
+        // The LED cases: v1 has one (it never gets the LED), v2 two (settings, then status).
+        process.env.KIVORI_VIRTUAL_BOARD === 'rp2040-zero' ? 16 : 15,
         ['labelled firmware-session and desktop-action cases', 'ConfigStore'],
       ],
       [

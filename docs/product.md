@@ -7,7 +7,7 @@ What Kivori is, what the beta must do, and the rules every build keeps. See also
 Kivori is a desk buddy you control your computer with. Two pillars carry equal weight: the
 buddy is why people want one, the controller is why they keep using it. You control your computer
 with a physical knob and button; the buddy is always on screen, shows important desktop state and
-says what the controls do; simple system signals support it and never take its place. Hardware: ESP32-C3, ST7789
+says what the controls do; simple system signals support it and never take its place. Hardware: RP2040-Zero, ST7789
 240x240 display, HW-040 rotary encoder with push button, three contextual buttons; no buzzer,
 haptics or light sensor. A Tauri
 app, Kivori Desktop, drives it and is the configuration center. The buddy has personality but only

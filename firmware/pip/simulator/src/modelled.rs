@@ -148,14 +148,14 @@ pub struct ModelledSimulator {
 }
 
 impl ModelledSimulator {
-    pub fn spawn() -> Self {
+    pub fn spawn(board: Board) -> Self {
         let (advances, advance_rx) = channel();
         let (report_tx, reports) = channel();
         // The runtime keeps big frames on the stack; give the device the main thread's headroom.
         let thread = std::thread::Builder::new()
             .name("virtual-pip".into())
             .stack_size(16 * 1024 * 1024)
-            .spawn(move || device(advance_rx, report_tx))
+            .spawn(move || device(advance_rx, report_tx, board))
             .expect("spawn the virtual Pip thread");
         Self {
             advances: Some(advances),
@@ -202,8 +202,8 @@ impl Drop for ModelledSimulator {
 }
 
 /// The device loop: what `run_buffered` does on the board, with time supplied by the model.
-fn device(advances: Receiver<Advance>, reports: Sender<Report>) {
-    let mut sim = Simulator::assemble(Timing::Modelled);
+fn device(advances: Receiver<Advance>, reports: Sender<Report>, board: Board) {
+    let mut sim = Simulator::assemble(Timing::Modelled, board);
     let gate = Rc::new(RefCell::new(Gate::new(
         advances,
         reports,
@@ -244,7 +244,7 @@ mod tests {
     use kivori_model::{
         desk::{ClockTime, ControlLabels, DeskStatus, DisplayMode, MediaStatus, MediaText},
         input::Direction,
-        internals::DeviceInternals,
+        internals::{ChipModel, DeviceInternals},
         presentation::{PrimaryState, ValueConfidence, ValueDisplay, ValueKind},
         ProtocolVersion,
     };
@@ -308,8 +308,12 @@ mod tests {
 
         /// A rig whose first request is stamped `start_ms`, like a child spawned late in a session.
         fn new_at(start_ms: u32) -> Self {
+            Self::on(Board::C3Supermini, start_ms)
+        }
+
+        fn on(board: Board, start_ms: u32) -> Self {
             let mut rig = Self {
-                sim: ModelledSimulator::spawn(),
+                sim: ModelledSimulator::spawn(board),
                 seq: 0,
                 now: start_ms,
                 next_ping: start_ms + 1_000,
@@ -447,6 +451,22 @@ mod tests {
         assert_eq!(internals.stack_free_min_bytes, Some(162_180 - 115_744));
         assert_eq!(internals.asset_blob_cap_bytes, Some(131_072));
         assert_eq!(internals.temperature_decicelsius, None);
+    }
+
+    #[test]
+    fn the_rp2040_estimate_is_slower_and_reports_the_rp2040() {
+        let mut rig = Rig::on(Board::Rp2040Zero, 0);
+        rig.connect_desk();
+        rig.run_to(5_000, 5);
+        let internals = rig.snapshot();
+        // ESTIMATE (`Board::compose_scale_permille`): the C3's 79 ms x 1.7, until hardware says.
+        let compose = i32::from(internals.compose_ms.expect("compose"));
+        assert!((compose - 134).abs() <= 2, "compose {compose} ms");
+        assert_eq!(internals.fps, Some(7), "fps");
+        assert!(internals.busy_percent.expect("busy") >= 99);
+        assert_eq!(internals.chip_model, Some(ChipModel::Rp2040));
+        assert_eq!(internals.chip_revision, None);
+        assert_eq!(internals.app_partition_bytes, Some(2 * 1024 * 1024));
     }
 
     /// Turns the knob one detent clockwise, its level changes stamped `offset` to `offset + 3` ms
@@ -693,7 +713,7 @@ mod tests {
 
     #[test]
     fn the_first_request_is_the_device_power_up_not_a_catch_up_from_zero() {
-        let sim = Simulator::assemble(Timing::Modelled);
+        let sim = Simulator::assemble(Timing::Modelled, Board::C3Supermini);
         let (_advances, advance_rx) = channel();
         let (report_tx, _reports) = channel();
         let mut gate = Gate::new(advance_rx, report_tx, sim.shared.clone());

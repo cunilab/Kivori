@@ -247,7 +247,7 @@ test('Unix desktop recipe isolates firmware inputs, checks helper output and cle
     const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
     const recipe = readFileSync(join(repo, 'justfile'), 'utf8')
       .split('\napp:\n')[1]
-      .split('\n# DEV ONLY')[0]
+      .split('\n# ---- website')[0]
       .replace(/^ {4}/gm, '')
       .trim();
     const bin = join(root, 'bin');

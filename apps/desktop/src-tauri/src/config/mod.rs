@@ -14,15 +14,16 @@ use crate::desk::actions::Macros;
 use crate::desk::profile::{builtins, Profile};
 
 pub use schema::{
-    ActionSpec, BuddySettings, ButtonOverride, ConfigFile, CustomProfile, DisplaySettings,
-    Intensity, MacroSpec, ProfileId, ProfileOverride, ProfileRef, RotateSpec, SecondaryView,
-    SlotSpec, StepSpec, UpdateSettings, UpdateSnooze, View, CONFIG_VERSION, MAX_CUSTOM_PROFILES,
-    MAX_PROFILE_APPS, PROFILE_NAME_MAX,
+    hex_color, parse_hex_color, ActionSpec, BuddySettings, ButtonOverride, ConfigFile,
+    CustomProfile, DisplaySettings, Intensity, LedMode, LedSettings, LedSpeed, LedWire, MacroSpec,
+    ProfileId, ProfileOverride, ProfileRef, RotateSpec, SecondaryView, SlotSpec, StepSpec,
+    UpdateSettings, UpdateSnooze, View, CONFIG_VERSION, LED_DEFAULT_BRIGHTNESS, LED_DEFAULT_COLOR,
+    MAX_CUSTOM_PROFILES, MAX_PROFILE_APPS, PROFILE_NAME_MAX,
 };
 pub use store::{adopt_earlier_config, ConfigError, ConfigNotice, ConfigStore};
 
 /// The config as the device thread applies it: the built-in profiles with the user's overrides
-/// layered on, and the display and buddy settings.
+/// layered on, and the display, buddy and LED settings.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedConfig {
     pub profiles: Vec<Profile>,
@@ -30,6 +31,7 @@ pub struct ResolvedConfig {
     pub macros: Macros,
     pub display: DisplaySettings,
     pub buddy: BuddySettings,
+    pub led: LedSettings,
 }
 
 impl Default for ResolvedConfig {
@@ -40,6 +42,7 @@ impl Default for ResolvedConfig {
             macros: Macros::new(),
             display: DisplaySettings::default(),
             buddy: BuddySettings::default(),
+            led: LedSettings::default(),
         }
     }
 }

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConfigDto } from '../../../lib/ipc/types';
+import { DEFAULT_LED_SETTINGS } from '../../../lib/ipc/types';
 
 const h = vi.hoisted(() => ({
   setBuddy: vi.fn<(...args: unknown[]) => Promise<void>>(() => Promise.resolve()),
@@ -24,6 +25,7 @@ const config: ConfigDto = {
   macros: [],
   display: { defaultView: 'buddy', secondaryView: 'system', brightness: 5 },
   buddy: { reactions: true, intensity: 'normal' },
+  led: DEFAULT_LED_SETTINGS,
 };
 
 beforeEach(() => {

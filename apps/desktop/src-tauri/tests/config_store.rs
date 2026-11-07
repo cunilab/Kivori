@@ -298,6 +298,13 @@ fn the_file_uses_the_documented_shape() {
             "macros": [],
             "display": { "defaultView": "clock", "secondaryView": "cycle", "brightness": 2 },
             "buddy": { "reactions": false, "intensity": "high" },
+            "led": {
+                "mode": "mood",
+                "color": "#2EC4B6",
+                "brightness": 60,
+                "speed": "medium",
+                "profileColors": {}
+            },
             "onboarding": { "completed": false, "accessibilityAsked": false },
             "updates": { "autoCheck": true, "skippedVersion": null, "snoozed": null }
         })
@@ -1099,5 +1106,131 @@ mod profiles {
         );
         assert_eq!(mine.apps, ["figma.exe"]);
         assert!(!mine.press.overridden);
+    }
+}
+
+/// A file written before the LED setting existed loads with the defaults, and the setting survives
+/// a reopen.
+#[test]
+fn a_file_without_led_loads_the_defaults_and_the_setting_survives_a_reopen() {
+    use kivori_desktop::config::{LedMode, LedSettings, LedSpeed};
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("config.json"),
+        br#"{"version":2,"display":{"defaultView":"buddy","secondaryView":"system","brightness":3}}"#,
+    )
+    .unwrap();
+    let mut store = ConfigStore::open(dir.path());
+    assert_eq!(store.notice(), None);
+    let led = &store.file().led;
+    assert_eq!(led, &LedSettings::default());
+    assert_eq!(
+        (led.mode, led.color.as_str(), led.brightness, led.speed),
+        (LedMode::Mood, "#2EC4B6", 60, LedSpeed::Medium)
+    );
+    assert!(led.profile_colors.is_empty());
+
+    let next = store.edited(|file| {
+        file.led = LedSettings {
+            mode: LedMode::Status,
+            color: "#FF8800".into(),
+            brightness: 0,
+            speed: LedSpeed::Fast,
+            profile_colors: [("zoom".to_string(), "#00ff00".to_string())].into(),
+        }
+    });
+    store.save(next).unwrap();
+    let reopened = ConfigStore::open(dir.path());
+    assert_eq!(reopened.file().led, store.file().led);
+    assert_eq!(reopened.resolved().led, store.file().led);
+}
+
+#[test]
+fn invalid_led_settings_are_refused_and_corrupt_on_load() {
+    use kivori_desktop::config::LedSettings;
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = ConfigStore::open(dir.path());
+    let bad: [fn(&mut LedSettings); 6] = [
+        |led| led.color = "teal".into(),
+        |led| led.color = "#12345".into(),
+        |led| led.color = "#12345G".into(),
+        |led| led.brightness = 101,
+        |led| {
+            led.profile_colors.insert("zoom".into(), "green".into());
+        },
+        |led| {
+            led.profile_colors.insert("nobody".into(), "#00FF00".into());
+        },
+    ];
+    for edit in bad {
+        let next = store.edited(|file| edit(&mut file.led));
+        assert!(store.save(next).is_err());
+    }
+    assert_eq!(store.file().led, LedSettings::default());
+    assert_eq!(store.revision(), 0);
+
+    // The same on disk is corrupt: backed up and reset, never half applied.
+    fs::write(
+        dir.path().join("config.json"),
+        br##"{"version":2,"led":{"color":"#12345"}}"##,
+    )
+    .unwrap();
+    let store = ConfigStore::open(dir.path());
+    assert_eq!(store.notice(), Some(ConfigNotice::RecoveredCorrupt));
+    assert_eq!(store.file().led, LedSettings::default());
+    // An unknown field is corrupt too (the file is strict).
+    fs::write(
+        dir.path().join("config.json"),
+        br#"{"version":2,"led":{"glow":1}}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        ConfigStore::open(dir.path()).notice(),
+        Some(ConfigNotice::RecoveredCorrupt)
+    );
+}
+
+#[test]
+fn status_mode_sends_the_active_profiles_colour_and_every_other_mode_the_chosen_one() {
+    use kivori_desktop::config::{LedMode, LedSettings, LedSpeed};
+    let mut led = LedSettings {
+        mode: LedMode::Status,
+        color: "#0000FF".into(),
+        brightness: 40,
+        speed: LedSpeed::Slow,
+        profile_colors: [
+            ("zoom".to_string(), "#00FF00".to_string()),
+            ("custom-1".to_string(), "#FF00FF".to_string()),
+        ]
+        .into(),
+    };
+    assert!(led.validate().is_ok());
+    let wire = |led: &LedSettings, profile| led.wire(profile).color;
+    assert_eq!(wire(&led, "zoom"), [0, 255, 0]);
+    assert_eq!(wire(&led, "custom-1"), [255, 0, 255]);
+    assert_eq!(
+        wire(&led, "code"),
+        [0, 0, 255],
+        "no entry: the chosen colour"
+    );
+    let sent = led.wire("zoom");
+    assert_eq!(
+        (sent.mode, sent.brightness, sent.speed),
+        (
+            kivori_model::led::LedMode::Status,
+            40,
+            kivori_model::led::LedSpeed::Slow
+        )
+    );
+    // Only Status uses the per-profile colour.
+    for mode in [
+        LedMode::Solid,
+        LedMode::Breathe,
+        LedMode::Cycle,
+        LedMode::Mood,
+        LedMode::Off,
+    ] {
+        led.mode = mode;
+        assert_eq!(wire(&led, "zoom"), [0, 0, 255], "{mode:?}");
     }
 }

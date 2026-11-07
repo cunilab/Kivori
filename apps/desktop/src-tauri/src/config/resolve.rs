@@ -527,6 +527,7 @@ pub fn resolve(
         macros,
         display: file.display,
         buddy: file.buddy,
+        led: file.led.clone(),
     })
 }
 

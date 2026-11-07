@@ -9,7 +9,7 @@ version = "0.1.4"
 edition = "2021"
 rust-version = "1.90"
 license = "UNLICENSED"
-description = "Kivori ESP32-C3 firmware (no_std). Device core, board runtime and hardware adapters."
+description = "Kivori RP2040-Zero firmware (no_std). Device core, board runtime and hardware adapters."
 
 # Hardware-neutral device core lives in the library so it is testable on the host (constraint 4).
 [lib]
@@ -19,25 +19,29 @@ path = "src/lib.rs"
 [[bin]]
 name = "kivori-firmware"
 path = "src/main.rs"
-# The flashable binary needs the esp-hal entry point; gate it behind `embedded` so host
+# The flashable binary needs the cortex-m-rt entry point; gate it behind `embedded` so host
 # `cargo test` skips it and builds only the hardware-neutral library + host-sim tests.
 required-features = ["embedded"]
 
 [features]
 default = []
-# esp-hal runtime + flashable entry point: boot, the monotonic clock and serial output. The board
-# peripherals (USB Serial/JTAG transport, SPI display, rotary and buttons) come from `physical-st7789`.
+# rp2040-hal runtime + flashable entry point: boot, clocks, the monotonic timer and the USB CDC
+# transport. The board peripherals (SPI display, rotary and buttons) come from `physical-st7789`.
 embedded = [
-  "dep:esp-hal",
-  "dep:esp-println",
-  "dep:esp-backtrace",
+  "dep:rp2040-hal",
+  "dep:rp2040-boot2",
+  "dep:cortex-m",
+  "dep:cortex-m-rt",
   "dep:critical-section",
+  "dep:usb-device",
+  "dep:usbd-serial",
+  "dep:rp2040-flash",
 ]
 # Host simulation adapters (in-memory transport, capture display, virtual clock) for testing the
 # device core with no hardware.
 host-sim = []
-# The shipping product firmware: the verified ESP32-C3 + ST7789 240x240 board, rotary and buttons.
-physical-st7789 = ["embedded", "dep:static_cell", "dep:embedded-hal-bus"]
+# The shipping product firmware: the RP2040-Zero + ST7789 240x240 board, rotary and buttons.
+physical-st7789 = ["embedded", "dep:static_cell", "dep:portable-atomic", "dep:embedded-hal-bus"]
 # DEVELOPMENT ONLY (T102; ADR-0005 §3): raw wire-byte tracing. Compiled out of every release artifact;
 # `scripts/check-release-surface.sh` proves both its absence and, with the feature on, its presence.
 debug-payloads = []
@@ -54,26 +58,34 @@ kivori-framebuffer = { path = "../../crates/kivori-framebuffer" }
 kivori-renderer = { path = "../../crates/kivori-renderer" }
 kivori-assets = { path = "../../crates/kivori-assets" }
 heapless = "0.9"
-# Domain-separated hash of the factory eFuse ID (`device_id`); no_std, no alloc, pure software.
+# Domain-separated hash of the flash unique ID (`device_id`); no_std, no alloc, pure software.
 sha2 = { version = "0.10", default-features = false }
 static_cell = { version = "2.1", optional = true }
+# The Cortex-M0+ has no compare-and-swap; this turns on the critical-section fallback `static_cell` needs.
+portable-atomic = { version = "1", default-features = false, features = ["critical-section"], optional = true }
 # Shares the edge-capture queue between the GPIO interrupt and the run loop (`physical_rotary`).
 critical-section = { version = "1", optional = true }
-# `rt` provides the runtime entry point (`#[esp_hal::main]`) and `init()`; `unstable` is required by
-# the peripheral drivers the hardware adapters use.
-esp-hal = { version = "1.1.1", default-features = false, features = ["esp32c3", "rt", "unstable"], optional = true }
-esp-println = { version = "0.17", default-features = false, features = ["esp32c3", "uart"], optional = true }
-esp-backtrace = { version = "0.19", default-features = false, features = ["esp32c3", "panic-handler", "println"], optional = true }
+# `rt` provides the vector table and `#[entry]` glue; `critical-section-impl` is the spinlock the
+# edge queue relies on. The RP2040 ROM has the bootloader entry and flash commands used by `transport`.
+rp2040-hal = { version = "0.11", default-features = false, features = ["rt", "critical-section-impl"], optional = true }
+# Second-stage bootloader for the Zero's W25Q16 flash (placed at 0x10000000 by `memory.x`).
+rp2040-boot2 = { version = "0.3", optional = true }
+cortex-m = { version = "0.7", optional = true }
+cortex-m-rt = { version = "0.7", optional = true }
+# USB CDC-ACM serial, serviced from the USBCTRL_IRQ interrupt (see `transport`).
+usb-device = { version = "0.3", optional = true }
+usbd-serial = { version = "0.2", optional = true }
+# Reads the flash chip's 64-bit unique ID (ROM flash commands run from RAM) for `device_id`.
+rp2040-flash = { version = "0.6", optional = true }
 # T072 display adapter. These are PRODUCTION dependencies and are deliberately
 # hardware-neutral: `display.rs` speaks only embedded-hal + mipidsi, so it compiles for the host as well
-# as riscv and is unit-testable with a recording SPI device. `batch` (default) is dropped — it is not
+# as thumbv6m and is unit-testable with a recording SPI device. `batch` (default) is dropped — it is not
 # needed for windowed writes and pulls in `heapless` inside mipidsi.
 mipidsi = { version = "0.10", default-features = false }
 embedded-hal = "1.0"
 embedded-graphics-core = "0.4"
 # Only the physical board wiring needs the bus/CS wrapper, so it rides on `physical-st7789`.
 embedded-hal-bus = { version = "0.3", default-features = false, optional = true }
-esp-bootloader-esp-idf = { version = "0.5", features = ["esp32c3"] }
 
 [build-dependencies]
 # Host-side, build-time only: compiles the canonical asset blob every `embedded` build renders (see build.rs).
@@ -81,7 +93,7 @@ esp-bootloader-esp-idf = { version = "0.5", features = ["esp32c3"] }
 kivori-asset-compiler = { path = "../../tools/asset-compiler" }
 
 [dev-dependencies]
-# Host-only: compiles the canonical asset blob for the render-parity test. Never in the riscv build.
+# Host-only: compiles the canonical asset blob for the render-parity test. Never in the device build.
 kivori-asset-compiler = { path = "../../tools/asset-compiler" }
 
 [profile.release]

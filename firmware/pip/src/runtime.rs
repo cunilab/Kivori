@@ -33,6 +33,7 @@ use crate::input::button::{ButtonEvent, ButtonGesture};
 use crate::input::gesture::{RotaryEvent, RotaryGesture};
 use crate::input::quadrature::QuadratureDecoder;
 use crate::internals::{ChipProbe, LoadMeter, ASSET_BLOB_CAP_BYTES};
+use crate::led::LedEngine;
 use crate::ports::{Clock, DisplaySink, InputSource, Transport};
 use crate::proto::{DeviceIdentity, Dispatcher, HostTakeover};
 use crate::render::{TileRenderer, TILE_ROWS};
@@ -74,6 +75,10 @@ const INPUT_SAMPLES: usize = 129;
 /// device's own instant acknowledgement, shallower than Happy's 16 px press so it never reads as
 /// that state (Q8 pixels).
 const PRESS_ACK_Q8: i32 = 8 * 256;
+
+/// Hands the LED engine to whatever drives the LED outside the run loop (the physical board's timer
+/// interrupt), each time it changed. Hosts that read [`Runtime::led`] directly need none.
+pub type LedPublish = fn(&LedEngine);
 
 /// Loop timings. Both are integer milliseconds, so behaviour is deterministic (ADR-0003).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -458,6 +463,12 @@ pub struct Runtime<'a> {
     load: LoadMeter,
     /// The board's contribution to the internals snapshot, if it has one.
     chip_probe: Option<ChipProbe>,
+    /// The RGB LED: the desktop's settings and the device's own state, turned into a colour by
+    /// whoever drives the LED (see [`LedPublish`]).
+    led: LedEngine,
+    led_publish: Option<LedPublish>,
+    /// [`LedEngine::revision`] as of the last publish.
+    led_published: u32,
     #[cfg(feature = "latency-probe")]
     latency: crate::latency_probe::LatencyProbe,
 }
@@ -503,6 +514,9 @@ impl<'a> Runtime<'a> {
             last_inbound_ms: 0,
             load: LoadMeter::new(),
             chip_probe: None,
+            led: LedEngine::new(),
+            led_publish: None,
+            led_published: 0,
             #[cfg(feature = "latency-probe")]
             latency: crate::latency_probe::LatencyProbe::new(),
         }
@@ -523,6 +537,29 @@ impl<'a> Runtime<'a> {
     /// Lets the board fill the device internals snapshot fields only it can measure.
     pub fn set_chip_probe(&mut self, probe: ChipProbe) {
         self.chip_probe = Some(probe);
+    }
+
+    /// Has the board's LED driver follow the engine: `publish` gets it now and after every change.
+    pub fn set_led_publisher(&mut self, publish: LedPublish) {
+        self.led_publish = Some(publish);
+        self.led_published = self.led.revision();
+        publish(&self.led);
+    }
+
+    /// The LED engine, for a host that samples [`LedEngine::frame`] itself (the simulator).
+    #[must_use]
+    pub const fn led(&self) -> &LedEngine {
+        &self.led
+    }
+
+    /// Publishes the engine if it changed since the last publish.
+    fn led_sync(&mut self) {
+        if let Some(publish) = self.led_publish {
+            if self.led.revision() != self.led_published {
+                self.led_published = self.led.revision();
+                publish(&self.led);
+            }
+        }
     }
 
     /// Applies the boot identity check (tier A). A wrong board runs no product: the panel shows
@@ -652,6 +689,10 @@ impl<'a> Runtime<'a> {
                 .configure(settings.personality, settings.self_play, now);
             display.set_brightness(settings.brightness.clamp(1, BRIGHTNESS_STEPS));
         }
+        if let Some(settings) = self.dispatcher.take_led_settings() {
+            self.led.configure(&settings);
+            self.led_sync();
+        }
 
         // Apply any `Presentation` the dispatcher accepted this poll. Capability negotiation and
         // session/revision freshness are already enforced by the dispatcher and `PresentationState`
@@ -742,6 +783,13 @@ impl<'a> Runtime<'a> {
                     pose.press_q8 = pose.press_q8.max(face.press_q8);
                 }
             }
+            // The LED follows the face being drawn, and the facts it reacts to itself.
+            self.led.set_inputs(
+                pose.expression,
+                view.mic.muted == Some(true),
+                self.dispatcher.accepted_session().is_some(),
+            );
+            self.led_sync();
             // The transient overlay, if still in force, is composited on top of the mascot pose;
             // it expires locally back to `None` so the panel shows the plain pose once it lapses,
             // with no host timer or round trip needed.
@@ -1150,6 +1198,8 @@ impl<'a> Runtime<'a> {
         self.redraw = true;
         if event == ButtonEvent::Down {
             self.animator.look_at(LookTarget::Knob, at_ms);
+            self.led.note_input(at_ms);
+            self.led_sync();
         }
         let kind = match event {
             ButtonEvent::Press => InputKind::Press,
@@ -1194,6 +1244,8 @@ impl<'a> Runtime<'a> {
         if event == ButtonEvent::Down {
             self.animator
                 .look_at(LookTarget::Button(index as u8), at_ms);
+            self.led.note_input(at_ms);
+            self.led_sync();
         }
         let kind = match event {
             ButtonEvent::Press => InputKind::Press,
@@ -1254,6 +1306,7 @@ pub fn run_buffered<C, T, I, D>(
     blob: &AssetBlob,
     frame_buffer: &mut [kivori_model::Rgb565; crate::render::FRAME_PIXELS],
     chip_probe: ChipProbe,
+    led_publish: LedPublish,
     boot: BootCheck,
     mut observe: impl FnMut(&Tick, &mut T),
 ) -> !
@@ -1265,6 +1318,7 @@ where
 {
     let mut runtime = Runtime::with_frame_buffer(identity, config, frame_buffer);
     runtime.set_chip_probe(chip_probe);
+    runtime.set_led_publisher(led_publish);
     runtime.set_boot_check(boot);
     loop {
         let tick = runtime.step(clock, transport, input, display, blob);

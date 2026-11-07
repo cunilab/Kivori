@@ -1,10 +1,9 @@
-//! Firmware flashing state-machine coverage without hardware or a real `espflash` process.
+//! Firmware flashing state-machine coverage without hardware or a real bootloader drive.
 
 use kivori_desktop::activity::ActivityEventKind;
 use kivori_desktop::device::discovery::PortCandidate;
 use kivori_desktop::firmware::{
-    classify_espflash, find_espflash_in, update_advice, EspflashExit, FirmwarePhase, FlashFailure,
-    FlashWorkflow, ResumeTarget, UpdateAdvice,
+    update_advice, FirmwarePhase, FlashFailure, FlashWorkflow, ResumeTarget, UpdateAdvice,
 };
 use kivori_desktop::runtime::device_task::run_accepted_firmware_flash;
 use kivori_desktop::runtime::state::{AppState, DeviceCommand};
@@ -446,111 +445,16 @@ fn failure_tokens_ride_the_status_and_clear_on_the_next_attempt() {
 }
 
 #[test]
-fn classifier_fixtures_cover_every_class() {
-    use EspflashExit::{Cancelled, Code, ImageUnavailable, TimedOut, ToolMissing};
-    let fixtures: &[(EspflashExit, &str, FlashFailure)] = &[
-        (ToolMissing, "", FlashFailure::ToolMissing),
-        (ImageUnavailable, "", FlashFailure::ImageUnavailable),
-        (TimedOut, "", FlashFailure::Timeout),
-        (Cancelled, "", FlashFailure::Cancelled),
-        (
-            Code(Some(1)),
-            "Error:   x Error while connecting to device\n  `-> Failed to open serial port COM7\n  `-> Access is denied. (os error 5)",
-            FlashFailure::PortBusy,
-        ),
-        (
-            Code(Some(1)),
-            "Error: serialport::Error { kind: Io(PermissionDenied), description: \"Permission denied\" }",
-            FlashFailure::PortBusy,
-        ),
-        (
-            Code(Some(1)),
-            "Error: Device or resource busy",
-            FlashFailure::PortBusy,
-        ),
-        (
-            Code(Some(1)),
-            "Error:   x Error while connecting to device\n  `-> Failed to connect to Espressif device: No serial data received.",
-            FlashFailure::NoDownloadMode,
-        ),
-        (
-            Code(Some(1)),
-            "Error: Wrong boot mode detected (0x13)! The chip needs to be in download mode.",
-            FlashFailure::NoDownloadMode,
-        ),
-        (
-            Code(Some(1)),
-            "Error: Failed to connect to Espressif device: Invalid response",
-            FlashFailure::NoDownloadMode,
-        ),
-        (
-            Code(Some(1)),
-            "Error:   x Timeout while running command\n",
-            FlashFailure::Timeout,
-        ),
-        (
-            Code(Some(1)),
-            "Error: Failed to parse ELF file",
-            FlashFailure::ImageUnavailable,
-        ),
-        (Code(Some(1)), "something nobody has seen", FlashFailure::Unknown),
-        (Code(Some(2)), "", FlashFailure::Unknown),
-        (Code(None), "", FlashFailure::Unknown),
-    ];
-    for (exit, stderr, expected) in fixtures {
-        assert_eq!(classify_espflash(*exit, stderr), *expected, "{stderr}");
-    }
-    // The fixtures reach every class except the workflow-assigned ones.
-    for class in FlashFailure::ALL {
-        assert!(
-            matches!(
-                class,
-                FlashFailure::ReconnectTimedOut
-                    | FlashFailure::WrongProduct
-                    | FlashFailure::ChooseProduct
-            ) || fixtures.iter().any(|(_, _, expected)| *expected == class),
-            "{class:?} has no fixture"
-        );
-    }
-}
-
-#[test]
-fn classifier_is_case_insensitive_and_conservative_about_exit_kind() {
-    assert_eq!(
-        classify_espflash(EspflashExit::Code(Some(1)), "ACCESS IS DENIED"),
-        FlashFailure::PortBusy
-    );
-    // A kill reason beats whatever the dying process printed.
-    assert_eq!(
-        classify_espflash(EspflashExit::Cancelled, "Access is denied"),
-        FlashFailure::Cancelled
-    );
-}
-
-#[test]
-fn sidecar_lookup_prefers_the_file_beside_the_executable() {
-    let dir = tempfile::tempdir().unwrap();
-    assert_eq!(find_espflash_in(dir.path()), None);
-    std::fs::create_dir(
-        dir.path()
-            .join(kivori_desktop::firmware::espflash_file_name()),
-    )
-    .unwrap();
-    assert_eq!(
-        find_espflash_in(dir.path()),
-        None,
-        "a directory is not a tool"
-    );
-    std::fs::remove_dir(
-        dir.path()
-            .join(kivori_desktop::firmware::espflash_file_name()),
-    )
-    .unwrap();
-    let tool = dir
-        .path()
-        .join(kivori_desktop::firmware::espflash_file_name());
-    std::fs::write(&tool, b"x").unwrap();
-    assert_eq!(find_espflash_in(dir.path()), Some(tool));
+fn failure_tokens_are_unique_and_every_class_has_user_text() {
+    let tokens: std::collections::BTreeSet<_> = FlashFailure::ALL
+        .iter()
+        .map(|class| class.token())
+        .collect();
+    assert_eq!(tokens.len(), FlashFailure::ALL.len());
+    assert!(tokens.contains("writeFailed") && !tokens.contains("toolMissing"));
+    assert!(FlashFailure::ALL
+        .iter()
+        .all(|class| !class.message().is_empty()));
 }
 
 #[test]
@@ -602,7 +506,7 @@ fn firmware_status_exposes_no_port_or_path() {
             ]
         );
         let text = json.to_string();
-        for forbidden in ["COM7", "deadbeef", "/dev/", "\\\\", ".elf", "espflash"] {
+        for forbidden in ["COM7", "deadbeef", "/dev/", "\\\\", ".elf", ".uf2"] {
             assert!(!text.contains(forbidden), "{forbidden} leaked into {text}");
         }
         flash.finish(Err(FlashFailure::Unknown));

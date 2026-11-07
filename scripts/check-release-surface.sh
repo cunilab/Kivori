@@ -7,7 +7,7 @@
 #   1. desktop, production features (`--no-default-features`): the dev-only IPC commands
 #      (render_preview_frame, mirror_state, the preview-stream commands) and the raw-payload logging
 #      helper must not appear in the binary at all.
-#   2. firmware, production features (default, riscv target): the host-simulation adapters must not
+#   2. firmware, production features (default, thumbv6m target): the host-simulation adapters must not
 #      appear in the device library — while the T072 production display adapter MUST.
 #
 # Each check is paired with a POSITIVE CONTROL that rebuilds with the dev feature enabled and asserts
@@ -49,7 +49,7 @@ present() {
 }
 
 DESKTOP_DEV_SURFACE=(render_preview_frame mirror_state open_preview_stream close_preview_stream
-  ack_preview_frame debug_payload_hex KIVORI-PROVISION virtual_snapshot virtual_input virtual_connection new_simulated KIVORI-VIRTUAL-DEVICE "PASS S5.4" "PASS S5.5" "PASS PRESENCE" "PASS ENDURANCE")
+  ack_preview_frame debug_payload_hex virtual_snapshot virtual_input virtual_connection new_simulated KIVORI-VIRTUAL-DEVICE "PASS S5.4" "PASS S5.5" "PASS PRESENCE" "PASS ENDURANCE")
 # The host-sim adapters are development-only surface.
 FIRMWARE_SIM_SURFACE=(SimPipe CaptureDisplay VirtualClock)
 # Raw-payload tracing is DEVELOPMENT-ONLY surface (T102): the marker and the dump helper must not exist in
@@ -84,7 +84,7 @@ if [ "${1:-}" = "--desktop-artifact" ]; then
 fi
 
 DESKTOP_BIN="target/debug/kivori-desktop"
-FIRMWARE_LIB="firmware/pip/target/riscv32imc-unknown-none-elf/debug/libkivori_firmware.rlib"
+FIRMWARE_LIB="firmware/pip/target/thumbv6m-none-eabi/debug/libkivori_firmware.rlib"
 
 echo "[1/6] desktop, production features (Device Studio + debug-payloads OFF)…"
 cargo build -q -p kivori-desktop --no-default-features
@@ -96,16 +96,13 @@ present "the production desktop binary" "$DESKTOP_BIN" test_action list_action_c
 echo "[2/6] desktop positive control (Device Studio ON)…"
 cargo build -q -p kivori-desktop
 present "the dev desktop binary" "$DESKTOP_BIN" render_preview_frame mirror_state open_preview_stream
-# The per-unit QA helper (M3 S7) is its own example binary: its marker must be observable there.
-cargo build -q -p kivori-desktop --example provision
-present "the provision example" "target/debug/examples/provision" KIVORI-PROVISION
 # The virtual connection exists only in its explicitly enabled development executable.
 cargo build -q -p kivori-desktop --features virtual-device --example virtual_device
 present "the virtual device example" "target/debug/examples/virtual_device" \
   virtual_snapshot virtual_input virtual_connection new_simulated KIVORI-VIRTUAL-DEVICE "PASS S5.4" "PASS S5.5" "PASS PRESENCE" \
   "PASS ENDURANCE"
 
-echo "[3/6] firmware, production features (host-sim OFF, riscv target)…"
+echo "[3/6] firmware, production features (host-sim OFF, thumbv6m target)…"
 (cd firmware/pip && cargo build -q --lib)
 [ -f "$FIRMWARE_LIB" ] || { echo "error: $FIRMWARE_LIB not found" >&2; exit 2; }
 absent "the production firmware library" "$FIRMWARE_LIB" "${FIRMWARE_SIM_SURFACE[@]}"

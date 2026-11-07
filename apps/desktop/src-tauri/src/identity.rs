@@ -300,7 +300,7 @@ pub fn decide_recovery(
         .products()
         .iter()
         .flat_map(|p| p.boards.iter().map(move |b| (p, b)))
-        .filter(|(_, b)| usb.is_none_or(|id| b.usb.contains(&id)))
+        .filter(|(_, b)| b.firmware.is_some() && usb.is_none_or(|id| b.usb.contains(&id)))
         .collect();
     if let Some(id) = chosen {
         candidates.retain(|(product, _)| product.id == id);
@@ -359,7 +359,7 @@ mod tests {
             format!(
                 "display_name = \"{name}\"\nshort_name = \"{name}\"\nmodel = \"KV-X1\"\n\
                  required_capabilities = []\n[boards.{board}]\n\
-                 display_name = \"B\"\nflash = \"espflash\"\nusb = [\"{usb}\"]\n\
+                 display_name = \"B\"\nflash = \"uf2\"\nusb = [\"{usb}\"]\n\
                  [boards.{board}.firmware]\ncrate = \"fw\"\nartifact = \"a\"\nmin_protocol = \"0.1\"\n"
             )
         };
@@ -425,7 +425,7 @@ mod tests {
     fn the_guard_refuses_another_product_board_or_unknown_device_naming_both() {
         for (other, device_label) in [
             (device(2, 1), "Unknown product (2) on Unknown board (1)"),
-            (device(1, 2), "Kivori Pip on Unknown board (2)"),
+            (device(1, 3), "Kivori Pip on Unknown board (3)"),
         ] {
             assert_eq!(
                 check_image_for_device(&image(1, 1), &other),
@@ -441,8 +441,15 @@ mod tests {
     fn recovery_uses_the_only_catalog_pair_not_a_bundled_image() {
         let expected = RecoveryDecision::Proceed {
             product: 1,
-            board: 1,
+            board: 2,
         };
+        for usb in [Some((0x2E8A, 0x000A)), None] {
+            assert_eq!(
+                decide_recovery(Catalog::embedded(), usb, None, None, None),
+                expected
+            );
+        }
+        // The C3 board has no firmware, so its USB id never nominates a restore target.
         assert_eq!(
             decide_recovery(
                 Catalog::embedded(),
@@ -451,7 +458,7 @@ mod tests {
                 None,
                 None
             ),
-            expected
+            RecoveryDecision::Refuse(RecoveryRefusal::NoCandidate)
         );
         assert_eq!(
             decide_recovery(
@@ -461,7 +468,10 @@ mod tests {
                 None,
                 Some(&DeviceIdentity::legacy())
             ),
-            expected
+            RecoveryDecision::Proceed {
+                product: 1,
+                board: 1,
+            }
         );
     }
 

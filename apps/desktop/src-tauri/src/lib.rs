@@ -28,11 +28,10 @@ pub mod ipc;
 pub mod orchestrator;
 pub mod platform;
 pub mod presentation;
-#[cfg(feature = "device-studio")]
-pub mod provision;
 pub mod render;
 pub mod runtime;
 pub mod startup;
+pub mod uf2;
 pub mod updater;
 #[cfg(feature = "virtual-device")]
 pub mod virtual_device;
@@ -184,6 +183,7 @@ pub fn run() {
         ipc::commands::set_display_settings,
         ipc::commands::set_brightness,
         ipc::commands::set_buddy_settings,
+        ipc::commands::set_led_settings,
         ipc::commands::set_binding,
         ipc::commands::set_rotate,
         ipc::commands::set_held_rotate,
@@ -249,6 +249,7 @@ pub fn run() {
         ipc::commands::set_display_settings,
         ipc::commands::set_brightness,
         ipc::commands::set_buddy_settings,
+        ipc::commands::set_led_settings,
         ipc::commands::set_binding,
         ipc::commands::set_rotate,
         ipc::commands::set_held_rotate,

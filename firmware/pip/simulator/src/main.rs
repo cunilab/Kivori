@@ -1,3 +1,4 @@
+mod board;
 mod input_scenarios;
 mod io_scenarios;
 mod modelled;
@@ -11,14 +12,15 @@ use std::{
     rc::Rc,
 };
 
+use board::Board;
 use kivori_assets::AssetBlob;
 use kivori_firmware::{
-    identity::{BootCheck, ProductIdentity},
-    ports::{InputSource, Transport},
+    identity::BootCheck,
+    ports::{Clock, InputSource, Transport},
     profile::physical_st7789::CAPABILITIES as CAPS,
     proto::DeviceIdentity,
     runtime::{Runtime, RuntimeConfig, Tick},
-    sim::{CaptureDisplay, SimPipe, PIPE_CAPACITY},
+    sim::{CaptureDisplay, CaptureLed, SimPipe, PIPE_CAPACITY},
     tx_buffer::TxBuffered,
 };
 use kivori_model::input::InputLevels;
@@ -63,11 +65,21 @@ struct Request {
     fault: Fault,
 }
 
+/// What the LED shows and which mode the app set. Development-only; not a wire-schema field.
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+struct LedReport {
+    rgb: [u8; 3],
+    /// `off`, `solid`, `breathe`, `cycle`, `status` or `mood`.
+    mode: &'static str,
+}
+
 #[derive(Serialize)]
 struct Response {
     wire: Vec<u8>,
     frame: Option<Vec<u16>>,
     brightness: Option<u8>,
+    /// The RGB LED, `None` on a board that has none (v1).
+    led: Option<LedReport>,
     reboot: bool,
     /// The firmware companion state after this tick, so harnesses can tell Sleeping from Offline
     /// without inferring it from pixels. Development-only; not a wire-schema field.
@@ -136,6 +148,8 @@ struct Shared {
     clock: Rc<SimClock>,
     link: Rc<RefCell<SimPipe>>,
     capture: Rc<RefCell<CaptureDisplay>>,
+    led: Rc<RefCell<(CaptureLed, &'static str)>>,
+    has_led: bool,
 }
 
 /// What one request returns before faults are applied.
@@ -143,6 +157,7 @@ struct Report {
     wire: Vec<u8>,
     frame: Option<Vec<u16>>,
     brightness: Option<u8>,
+    led: Option<LedReport>,
     reboot: bool,
     state: &'static str,
 }
@@ -154,6 +169,13 @@ impl Shared {
             wire: self.link.borrow_mut().host_recv().to_vec(),
             frame: capture.then(|| display.frame().iter().map(|p| p.raw()).collect()),
             brightness: display.brightness,
+            led: self.has_led.then(|| {
+                let led = self.led.borrow();
+                LedReport {
+                    rgb: led.0.rgb,
+                    mode: led.1,
+                }
+            }),
             reboot,
             state,
         }
@@ -196,6 +218,7 @@ fn finish(fault: Fault, report: Report) -> Result<Response, String> {
         wire,
         frame: report.frame,
         brightness: report.brightness,
+        led: report.led,
         reboot: report.reboot,
         state: report.state,
     })
@@ -203,8 +226,8 @@ fn finish(fault: Fault, report: Report) -> Result<Response, String> {
 
 /// How the runner models time: `Ideal` freezes the clock at the request's time for the whole tick
 /// (every frame costs 0 ms, one request is one tick, as the deterministic scenarios and goldens
-/// need); `Modelled` runs the device on its own clock and charges the ESP32-C3's compose and flush
-/// time (docs/virtual-pip.md).
+/// need); `Modelled` runs the device on its own clock and charges the board's compose and flush
+/// time: the ESP32-C3's for v1, an estimate for the RP2040-Zero's v2 (docs/virtual-pip.md).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Timing {
     Ideal,
@@ -220,36 +243,40 @@ struct Simulator {
     blob: AssetBlob<'static>,
     now: u32,
     rebooted: bool,
+    board: Board,
 }
 
 impl Simulator {
-    /// The zero-time simulator: one request is one runtime tick at the request's time.
+    /// The zero-time v1 simulator: one request is one runtime tick at the request's time.
+    #[cfg(test)]
     fn new() -> Self {
-        Self::assemble(Timing::Ideal)
+        Self::assemble(Timing::Ideal, Board::C3Supermini)
     }
 
-    fn assemble(timing: Timing) -> Self {
+    fn assemble(timing: Timing, board: Board) -> Self {
         let shared = Shared {
             clock: Rc::new(match timing {
                 Timing::Ideal => SimClock::ideal(),
-                Timing::Modelled => SimClock::modelled(),
+                Timing::Modelled => SimClock::modelled(board),
             }),
             link: Rc::new(RefCell::new(SimPipe::new())),
             capture: Rc::new(RefCell::new(CaptureDisplay::new())),
+            led: Rc::new(RefCell::new((CaptureLed::new(), "off"))),
+            has_led: board.has_led(),
         };
         let mut runtime = Runtime::with_frame_buffer(
             DeviceIdentity {
                 // Deliberately recognizable, deterministic virtual identity; never a chip identity.
                 device_id: *b"VIRTUAL-PIP-0001",
                 firmware_version: VERSION,
-                capabilities: CAPS,
+                capabilities: board.capabilities(),
             },
             RuntimeConfig::default(),
             Box::leak(Box::new(
                 [kivori_model::Rgb565::from_raw(0); kivori_firmware::render::FRAME_PIXELS],
             )),
         );
-        runtime.set_chip_probe(probe::probe);
+        runtime.set_chip_probe(board.probe());
         Self {
             runtime,
             pipe: TxBuffered::new(SharedPipe(shared.link.clone())),
@@ -260,25 +287,31 @@ impl Simulator {
                 .expect("build-time asset compiler produces a valid blob"),
             now: 0,
             rebooted: false,
+            board,
         }
     }
 
     /// One production runtime tick at the clock's current time, with `fault`'s boot identity.
     fn run_tick(&mut self, fault: Fault) -> Tick {
-        let mut identity = ProductIdentity::BUILD;
+        let mut identity = self.board.identity();
         match fault {
             Fault::UnknownProduct => identity.product = u16::MAX,
             Fault::UnknownBoard => identity.board = u16::MAX,
             _ => {}
         }
         self.runtime.set_boot_check(BootCheck::Run(identity));
-        self.runtime.step(
+        let tick = self.runtime.step(
             &*self.shared.clock,
             &mut self.pipe,
             &mut self.input,
             &mut self.display,
             &self.blob,
-        )
+        );
+        // The board's timer interrupt, once per tick: what the LED shows at the tick's end.
+        let mut led = self.shared.led.borrow_mut();
+        led.0.tick(self.runtime.led(), self.shared.clock.now_ms());
+        led.1 = led_mode_token(self.runtime.led().mode());
+        tick
     }
 
     fn step(&mut self, request: Request) -> Result<Response, String> {
@@ -306,6 +339,18 @@ impl Simulator {
                 request.capture,
             ),
         )
+    }
+}
+
+const fn led_mode_token(mode: kivori_model::led::LedMode) -> &'static str {
+    use kivori_model::led::LedMode as M;
+    match mode {
+        M::Off => "off",
+        M::Solid => "solid",
+        M::Breathe => "breathe",
+        M::Cycle => "cycle",
+        M::Status => "status",
+        M::Mood => "mood",
     }
 }
 
@@ -384,10 +429,10 @@ enum Device {
 }
 
 impl Device {
-    fn new(timing: Timing) -> Self {
+    fn new(timing: Timing, board: Board) -> Self {
         match timing {
-            Timing::Ideal => Self::Ideal(Box::new(Simulator::new())),
-            Timing::Modelled => Self::Modelled(ModelledSimulator::spawn()),
+            Timing::Ideal => Self::Ideal(Box::new(Simulator::assemble(Timing::Ideal, board))),
+            Timing::Modelled => Self::Modelled(ModelledSimulator::spawn(board)),
         }
     }
 
@@ -399,8 +444,13 @@ impl Device {
     }
 }
 
-fn run(reader: &mut impl BufRead, writer: &mut impl Write, timing: Timing) -> Result<(), String> {
-    let mut sim = Device::new(timing);
+fn run(
+    reader: &mut impl BufRead,
+    writer: &mut impl Write,
+    timing: Timing,
+    board: Board,
+) -> Result<(), String> {
+    let mut sim = Device::new(timing, board);
     while let Some(record) = read_record(reader)? {
         let request: Request = serde_json::from_slice(&record).map_err(|e| e.to_string())?;
         if request.fault == Fault::Exit {
@@ -421,19 +471,19 @@ fn run(reader: &mut impl BufRead, writer: &mut impl Write, timing: Timing) -> Re
 }
 
 fn main() {
-    let result = match std::env::args().skip(1).collect::<Vec<_>>().as_slice() {
-        [] => run(&mut io::stdin().lock(), &mut io::stdout().lock(), Timing::Modelled),
+    let result = Board::selected().and_then(|board| match std::env::args().skip(1).collect::<Vec<_>>().as_slice() {
+        [] => run(&mut io::stdin().lock(), &mut io::stdout().lock(), Timing::Modelled, board),
         [flag] if flag == "--ideal-time" => {
-            run(&mut io::stdin().lock(), &mut io::stdout().lock(), Timing::Ideal)
+            run(&mut io::stdin().lock(), &mut io::stdout().lock(), Timing::Ideal, board)
         }
         [flag] if flag == "--input-smoke" => input_scenarios::run(),
         [flag] if flag == "--io-smoke" => io_scenarios::run(),
         [flag, seed] if flag == "--replay" => input_scenarios::replay(seed),
         _ => Err(
-            "usage: kivori-pip-simulator [--ideal-time | --input-smoke | --io-smoke | --replay <17|29>]"
+            "usage: [KIVORI_VIRTUAL_BOARD=c3-supermini|rp2040-zero] kivori-pip-simulator [--ideal-time | --input-smoke | --io-smoke | --replay <17|29>]"
                 .into(),
         ),
-    };
+    });
     if let Err(error) = result {
         eprintln!("Pip simulator: {error}");
         std::process::exit(1);
@@ -518,13 +568,20 @@ mod tests {
     #[test]
     fn identity_faults_use_runtime_identity_and_normal_restores_build() {
         use kivori_protocol::{decode_message, Message, PROTOCOL_MAJOR};
-        for fault in [Fault::UnknownProduct, Fault::UnknownBoard, Fault::Normal] {
+        // v1 reports the C3 SuperMini (1), v2 the RP2040-Zero (2), whatever the firmware library
+        // itself was built for.
+        for (board, fault) in [Board::C3Supermini, Board::Rp2040Zero]
+            .into_iter()
+            .flat_map(|b| {
+                [Fault::UnknownProduct, Fault::UnknownBoard, Fault::Normal].map(|f| (b, f))
+            })
+        {
             let expected = match fault {
-                Fault::UnknownProduct => (u16::MAX, ProductIdentity::BUILD.board),
-                Fault::UnknownBoard => (ProductIdentity::BUILD.product, u16::MAX),
-                _ => (ProductIdentity::BUILD.product, ProductIdentity::BUILD.board),
+                Fault::UnknownProduct => (u16::MAX, board.number()),
+                Fault::UnknownBoard => (kivori_firmware::identity::BUILD_PRODUCT, u16::MAX),
+                _ => (kivori_firmware::identity::BUILD_PRODUCT, board.number()),
             };
-            let mut sim = Simulator::new();
+            let mut sim = Simulator::assemble(Timing::Ideal, board);
             // Exercise restoration too: a normal tick must replace a previous injected identity.
             let mut initial = request(0);
             initial.fault = Fault::UnknownProduct;
@@ -648,7 +705,7 @@ mod tests {
     fn exit_ends_process_loop_without_response_or_consuming_next_record() {
         let mut input = Cursor::new(b"{\"now_ms\":0,\"wire\":[],\"edges\":[],\"capture\":false,\"fault\":\"exit\"}\ninvalid\n");
         let mut output = Vec::new();
-        run(&mut input, &mut output, Timing::Ideal).unwrap();
+        run(&mut input, &mut output, Timing::Ideal, Board::C3Supermini).unwrap();
         assert!(output.is_empty());
         assert_eq!(read_record(&mut input).unwrap().unwrap(), b"invalid");
         let mut req = request(0);
@@ -749,7 +806,13 @@ mod tests {
     #[test]
     fn malformed_json_fails_without_stdout() {
         let mut output = vec![];
-        assert!(run(&mut Cursor::new(b"{}\n"), &mut output, Timing::Ideal).is_err());
+        assert!(run(
+            &mut Cursor::new(b"{}\n"),
+            &mut output,
+            Timing::Ideal,
+            Board::C3Supermini
+        )
+        .is_err());
         assert!(output.is_empty());
     }
 
@@ -870,7 +933,7 @@ mod tests {
                     .map(|(_, message)| message)
             })
             .collect();
-        assert!(messages.iter().any(|message| matches!(message, Message::HelloAck(ack) if ack.nonce_echo == 42 && ack.device_caps == CAPS)));
+        assert!(messages.iter().any(|message| matches!(message, Message::HelloAck(ack) if ack.nonce_echo == 42 && ack.device_caps == Board::C3Supermini.capabilities())));
         wire.clear();
         encode_message(
             &Message::Ready(kivori_protocol::Ready {
@@ -916,10 +979,8 @@ mod tests {
             .expect("Ready returns the actual product identity");
         assert_eq!(
             (identity.product, identity.board),
-            (
-                kivori_firmware::identity::BUILD_PRODUCT,
-                kivori_firmware::identity::BUILD_BOARD
-            )
+            // v1: the C3 SuperMini, whatever board the firmware library is built for.
+            (kivori_firmware::identity::BUILD_PRODUCT, 1)
         );
         assert_eq!(identity.source, kivori_protocol::IdentitySource::Build);
         assert_eq!(identity.hw_rev, None);
@@ -931,6 +992,10 @@ mod tests {
                 wire: vec![255; PIPE_CAPACITY],
                 frame: Some(vec![65535; 240 * 240]),
                 brightness: Some(5),
+                led: Some(LedReport {
+                    rgb: [255; 3],
+                    mode: "breathe"
+                }),
                 reboot: false,
                 state: "offline",
             })
@@ -938,5 +1003,122 @@ mod tests {
             .len()
                 <= MAX_LINE
         );
+    }
+
+    /// Hello and Ready at the start of a session with every capability the desktop has (nonce 42).
+    fn connected(board: Board) -> Box<Simulator> {
+        let mut sim = Box::new(Simulator::assemble(Timing::Ideal, board));
+        sim.step(hello()).unwrap();
+        sim.step(ready(10)).unwrap();
+        sim
+    }
+
+    fn led_settings(
+        mode: kivori_model::led::LedMode,
+        color: [u8; 3],
+        brightness: u8,
+        now: u32,
+    ) -> Request {
+        message_request(
+            kivori_protocol::Message::LedSettings(kivori_protocol::LedSettings {
+                session: 42,
+                mode,
+                color,
+                brightness,
+                speed: kivori_model::led::LedSpeed::Medium,
+            }),
+            now,
+        )
+    }
+
+    #[test]
+    fn v2_has_an_led_that_follows_the_settings_and_the_buddy() {
+        use kivori_model::led::LedMode;
+        let mut sim = connected(Board::Rp2040Zero);
+        let at = |sim: &mut Simulator, now| sim.step(request(now)).unwrap().led.unwrap();
+        // Dark until the app sends settings.
+        assert_eq!(
+            at(&mut sim, 20),
+            LedReport {
+                rgb: [0; 3],
+                mode: "off"
+            }
+        );
+        let response = sim
+            .step(led_settings(LedMode::Solid, [255, 0, 128], 100, 30))
+            .unwrap();
+        assert_eq!(
+            response.led,
+            Some(LedReport {
+                rgb: [255, 0, 65],
+                mode: "solid"
+            })
+        );
+        sim.step(led_settings(LedMode::Solid, [255, 0, 128], 0, 40))
+            .unwrap();
+        assert_eq!(at(&mut sim, 50).rgb, [0; 3], "brightness 0 is dark");
+        sim.step(led_settings(LedMode::Off, [255, 0, 128], 100, 60))
+            .unwrap();
+        assert_eq!(
+            at(&mut sim, 70),
+            LedReport {
+                rgb: [0; 3],
+                mode: "off"
+            }
+        );
+
+        // Mood follows the buddy: a dim glow while it is offline, a bright teal once it is idle.
+        sim.step(led_settings(LedMode::Mood, [0; 3], 100, 80))
+            .unwrap();
+        let offline = at(&mut sim, 100);
+        assert_eq!(offline.mode, "mood");
+        assert!(offline.rgb.into_iter().max().unwrap() < 10, "{offline:?}");
+        let set_idle = message_request(
+            kivori_protocol::Message::SetState(kivori_protocol::SetState {
+                desired: kivori_model::SendableState::Idle,
+                at_ms: None,
+            }),
+            110,
+        );
+        sim.step(set_idle).unwrap();
+        let mut brightest = [0u8; 3];
+        for now in (2_000..8_000).step_by(100) {
+            let rgb = at(&mut sim, now).rgb;
+            brightest = [0, 1, 2].map(|i| brightest[i].max(rgb[i]));
+        }
+        assert!(
+            brightest[1] > 100 && brightest[2] > 100 && brightest[0] < 30,
+            "{brightest:?}"
+        );
+    }
+
+    #[test]
+    fn v1_has_no_led_and_never_acts_on_led_settings() {
+        use kivori_model::led::LedMode;
+        let mut sim = connected(Board::C3Supermini);
+        // The C3 SuperMini advertises no LED, so the reply carries none.
+        assert_eq!(sim.step(request(20)).unwrap().led, None);
+        assert!(!sim.runtime.led().frame(20).iter().any(|&duty| duty != 0));
+        // Even a desktop that sends the message anyway changes nothing.
+        let response = sim
+            .step(led_settings(LedMode::Solid, [255, 255, 255], 100, 30))
+            .unwrap();
+        assert_eq!(response.led, None);
+        assert_eq!(sim.runtime.led().mode(), LedMode::Off);
+        assert_eq!(sim.runtime.led().frame(40), [0; 3]);
+    }
+
+    #[test]
+    fn the_led_rides_the_response_line_only_on_a_board_with_one() {
+        for (board, has_led) in [(Board::C3Supermini, false), (Board::Rp2040Zero, true)] {
+            let mut sim = connected(board);
+            let response = sim.step(request(20)).unwrap();
+            let line = serde_json::to_value(&response).unwrap();
+            assert_eq!(line["led"].is_object(), has_led, "{board:?}");
+            if has_led {
+                assert_eq!(line["led"]["mode"], "off");
+                assert_eq!(line["led"]["rgb"], serde_json::json!([0, 0, 0]));
+            }
+        }
     }
 }

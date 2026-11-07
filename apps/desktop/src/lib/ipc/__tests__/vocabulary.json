@@ -29,9 +29,10 @@
     "micStateV1",
     "productIdentityV1",
     "buildInfoV1",
-    "heldRotationV1"
+    "heldRotationV1",
+    "rgbLedV1"
   ],
-  "chipModels": ["esp32c3"],
+  "chipModels": ["esp32c3", "rp2040"],
   "controlLayouts": ["rotary-three-button"],
   "controls": [
     "press",
@@ -58,9 +59,9 @@
   "firmwareOfferKinds": ["none", "offerOptional", "required", "updateApp", "deferredForAppUpdate"],
   "firmwareRequiredReasons": ["protocolTooOld", "missingCapabilities"],
   "flashFailures": [
-    "toolMissing",
     "portBusy",
     "noDownloadMode",
+    "writeFailed",
     "timeout",
     "cancelled",
     "imageUnavailable",
@@ -75,6 +76,8 @@
   "hostMedia": ["observable", "notObservable"],
   "hostPresence": ["active", "locked", "sleeping"],
   "identitySources": ["legacy", "build", "chip"],
+  "ledModes": ["off", "solid", "breathe", "cycle", "status", "mood"],
+  "ledSpeeds": ["slow", "medium", "fast"],
   "profileIds": [
     "general",
     "browser",
