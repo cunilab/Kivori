@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1050" viewBox="0 0 1500 1050" role="img" aria-labelledby="title desc">
+  <title id="title">Hidden single-LED ring-light mixing concept</title>
+  <desc id="desc">A top view and a cross-section show one 5 mm LED mounted on the carrier under the black knob, offset from the occupied shaft center, with an enlarged white mixing cavity and the existing visible outer diffuser ring. Concept only, not mechanically or optically tested.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#247b82"/></marker>
+    <marker id="dim" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#35434a"/></marker>
+  </defs>
+  <rect width="1500" height="1050" fill="#f4f6f7"/>
+  <text x="65" y="62" fill="#151b1e" font-family="Arial,sans-serif" font-size="36" font-weight="700">A hidden single-LED mixing cavity</text>
+  <text x="65" y="99" fill="#53636b" font-family="Arial,sans-serif" font-size="20">A proposal for the existing 5 mm RGB LED and black / white PETG</text>
+  <rect x="980" y="38" width="454" height="55" rx="12" fill="#fff3d8" stroke="#bd7b08" stroke-width="2"/>
+  <text x="1207" y="73" text-anchor="middle" fill="#714600" font-family="Arial,sans-serif" font-size="17" font-weight="700">CONCEPT — NOT FIT OR LIGHTING TESTED</text>
+  <rect x="55" y="137" width="660" height="720" rx="20" fill="#ffffff" stroke="#d6dfe2" stroke-width="2"/>
+  <rect x="735" y="137" width="710" height="720" rx="20" fill="#ffffff" stroke="#d6dfe2" stroke-width="2"/>
+  <text x="90" y="182" fill="#17252b" font-family="Arial,sans-serif" font-size="26" font-weight="700">TOP VIEW · knob shown as cutaway</text>
+  <text x="90" y="211" fill="#596c74" font-family="Arial,sans-serif" font-size="17">The LED stays out of sight beneath the knob.</text>
+  <!-- Scale 9 px/mm: radii 21, 20, 18 and 6 mm. -->
+  <circle cx="385" cy="425" r="189" fill="#ffffff" stroke="#17252b" stroke-width="3"/>
+  <circle cx="385" cy="425" r="180" fill="#e8eef0" stroke="#94a5ab" stroke-width="1.5"/>
+  <circle cx="385" cy="425" r="162" fill="none" stroke="#1b272c" stroke-width="3" stroke-dasharray="10 7"/>
+  <circle cx="385" cy="425" r="54" fill="#ffffff" stroke="#b2bec1" stroke-width="1.5"/>
+  <path d="M385 377L426 401L426 449L385 473L344 449L344 401Z" fill="#c3cdd0" stroke="#44545a" stroke-width="2.5"/>
+  <circle cx="385" cy="425" r="28" fill="#6c7b80" stroke="#35434a" stroke-width="2"/>
+  <!-- LED is a component symbol, not an illuminated region. -->
+  <circle cx="475" cy="425" r="26" fill="#ffffff" stroke="#2d4148" stroke-width="2"/>
+  <circle cx="475" cy="425" r="22.5" fill="#dcebf0" stroke="#34505a" stroke-width="2"/>
+  <circle cx="468" cy="425" r="2.4" fill="#34505a"/><circle cx="473" cy="425" r="2.4" fill="#34505a"/><circle cx="478" cy="425" r="2.4" fill="#34505a"/><circle cx="483" cy="425" r="2.4" fill="#34505a"/>
+  <!-- Conceptual paths travel around the shaft, not through it. -->
+  <path d="M469 392C445 335 345 324 306 377" fill="none" stroke="#247b82" stroke-width="3" stroke-dasharray="7 6" marker-end="url(#arrow)"/>
+  <path d="M469 458C445 515 345 526 306 473" fill="none" stroke="#247b82" stroke-width="3" stroke-dasharray="7 6" marker-end="url(#arrow)"/>
+  <path d="M385 485V505M475 456V505M385 499H475" fill="none" stroke="#35434a" stroke-width="1.8" marker-end="url(#dim)" marker-start="url(#dim)"/>
+  <rect x="395" y="484" width="69" height="25" rx="4" fill="#ffffff"/>
+  <text x="430" y="502" text-anchor="middle" fill="#35434a" font-family="Arial,sans-serif" font-size="16" font-weight="700">~10 mm</text>
+  <text x="92" y="652" fill="#17252b" font-family="Arial,sans-serif" font-size="19"><tspan font-weight="700">Shaft + nut:</tspan> the exact centre is occupied.</text>
+  <text x="92" y="685" fill="#17252b" font-family="Arial,sans-serif" font-size="19"><tspan font-weight="700">Dashed circle:</tspan> black knob footprint, Ø36 mm.</text>
+  <text x="92" y="718" fill="#17252b" font-family="Arial,sans-serif" font-size="19"><tspan font-weight="700">White outer band:</tspan> the visible diffuser ring.</text>
+  <text x="92" y="751" fill="#53636b" font-family="Arial,sans-serif" font-size="17">Blue dashed arrows are possible light paths, not a simulation.</text>
+  <text x="770" y="182" fill="#17252b" font-family="Arial,sans-serif" font-size="26" font-weight="700">SECTION · illustrative, not to scale</text>
+  <text x="770" y="211" fill="#596c74" font-family="Arial,sans-serif" font-size="17">A fixed white cavity surrounds the shaft beneath the knob.</text>
+  <!-- Cavity and carrier: vertical proportions intentionally schematic. -->
+  <rect x="840" y="407" width="470" height="214" rx="5" fill="#e8eef0" stroke="#60747a" stroke-width="2"/>
+  <!-- Sloped floor is a proposed FDM profile; LED clearance is schematic. -->
+  <path d="M855 450L1015 609H855Z M1135 609H1295V450Z" fill="#f9fbfb" stroke="#60747a" stroke-width="2"/>
+  <rect x="840" y="407" width="15" height="214" fill="#f1f4f4" stroke="#60747a" stroke-width="1.5"/>
+  <rect x="1295" y="407" width="15" height="214" fill="#f1f4f4" stroke="#60747a" stroke-width="1.5"/>
+  <rect x="840" y="609" width="470" height="12" fill="#f1f4f4" stroke="#60747a" stroke-width="1.5"/>
+  <rect x="830" y="621" width="490" height="38" rx="4" fill="#59666a" stroke="#26383e" stroke-width="2"/>
+  <!-- Knob and fixed shield. -->
+  <rect x="875" y="287" width="400" height="81" rx="15" fill="#1c2529"/>
+  <rect x="901" y="274" width="348" height="17" rx="6" fill="#e9edef" stroke="#687a80" stroke-width="2"/>
+  <rect x="875" y="407" width="140" height="15" fill="#202b2f"/>
+  <rect x="1135" y="407" width="140" height="15" fill="#202b2f"/>
+  <!-- Outer ring is the only part visible outside the knob footprint. -->
+  <rect x="840" y="407" width="35" height="15" fill="#ffffff" stroke="#677a80" stroke-width="2"/>
+  <rect x="1275" y="407" width="35" height="15" fill="#ffffff" stroke="#677a80" stroke-width="2"/>
+  <!-- Shaft and nut interrupt the centre. -->
+  <rect x="1040" y="325" width="70" height="296" fill="#a7b2b5" stroke="#53666c" stroke-width="2"/>
+  <rect x="1029" y="454" width="92" height="30" rx="5" fill="#849398" stroke="#475a60" stroke-width="2"/>
+  <!-- LED offset toward the right, flange seated on carrier. -->
+  <path d="M1160 610V522A25 25 0 0 1 1210 522V610Z" fill="#dcebf0" stroke="#34505a" stroke-width="2.5"/>
+  <rect x="1155" y="606" width="60" height="10" fill="#dcebf0" stroke="#34505a" stroke-width="2"/>
+  <path d="M1165 616V697M1177 616V697M1189 616V697M1201 616V697" stroke="#977b44" stroke-width="4"/>
+  <!-- Two indicative paths from LED toward the shield and output. -->
+  <path d="M1185 499L1185 445Q1185 432 1200 432L1287 432" fill="none" stroke="#247b82" stroke-width="3" stroke-dasharray="7 6" marker-end="url(#arrow)"/>
+  <text x="1075" y="745" text-anchor="middle" fill="#17252b" font-family="Arial,sans-serif" font-size="19"><tspan font-weight="700">Carrier:</tspan> LED leads pass directly through its holes.</text>
+  <text x="1075" y="778" text-anchor="middle" fill="#17252b" font-family="Arial,sans-serif" font-size="19"><tspan font-weight="700">Dark shield:</tspan> blocks a direct view of the LED.</text>
+  <text x="1075" y="811" text-anchor="middle" fill="#53636b" font-family="Arial,sans-serif" font-size="17">Sloped floor is a proposal; printability and clearances need checks.</text>
+  <!-- Labels and leaders -->
+  <path d="M1276 324H1360" stroke="#394c53" stroke-width="2"/><text x="1365" y="329" fill="#26383e" font-family="Arial,sans-serif" font-size="16">Knob</text>
+  <path d="M1309 414H1360" stroke="#394c53" stroke-width="2"/><text x="1365" y="419" fill="#26383e" font-family="Arial,sans-serif" font-size="16">Ring</text>
+  <path d="M1210 520H1290" stroke="#394c53" stroke-width="2"/><text x="1297" y="525" fill="#26383e" font-family="Arial,sans-serif" font-size="16">5 mm LED</text>
+  <path d="M855 550H790" stroke="#394c53" stroke-width="2"/><text x="774" y="545" fill="#26383e" font-family="Arial,sans-serif" font-size="15">White</text><text x="774" y="564" fill="#26383e" font-family="Arial,sans-serif" font-size="15">cavity</text>
+  <rect x="55" y="883" width="1390" height="112" rx="16" fill="#e7f1f0" stroke="#b8d3d1" stroke-width="2"/>
+  <text x="82" y="920" fill="#153b3d" font-family="Arial,sans-serif" font-size="20" font-weight="700">Physical test first</text>
+  <text x="82" y="950" fill="#284c4e" font-family="Arial,sans-serif" font-size="18">Print a small cavity sample and try the actual LED. White PETG and one LED may still produce a hotspot or a dim ring.</text>
+  <text x="82" y="978" fill="#284c4e" font-family="Arial,sans-serif" font-size="18">Verify LED body, flange, pin spacing, shaft clearance and press travel before changing the 3D model.</text>
+</svg>
