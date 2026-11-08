@@ -454,15 +454,32 @@ mod tests {
     }
 
     #[test]
-    fn the_rp2040_estimate_is_slower_and_reports_the_rp2040() {
+    fn the_rp2040_idle_session_reports_the_measured_unit_figures() {
+        let mut rig = Rig::on(Board::Rp2040Zero, 0);
+        rig.run_to(5_000, 5);
+        let internals = rig.snapshot();
+        // MEASURED on an RP2040-Zero (2026-11-06, `device_probe PORT internals`: a session with
+        // Ping and InternalsRequest, no DeskStatus, the default buddy view): compose 109 to 110 ms,
+        // fps 9, flush 0 to 5 ms, busy 100%.
+        let compose = i32::from(internals.compose_ms.expect("compose"));
+        assert!((109..=110).contains(&compose), "compose {compose} ms");
+        assert_eq!(internals.fps, Some(9), "fps");
+        assert!(internals.busy_percent.expect("busy") >= 99);
+        let flush = internals.flush_ms.expect("flush");
+        assert!(flush <= 5, "flush {flush} ms (the unit: 0 to 5 ms)");
+    }
+
+    #[test]
+    fn the_rp2040_connected_desk_is_an_estimate_and_it_reports_the_rp2040() {
         let mut rig = Rig::on(Board::Rp2040Zero, 0);
         rig.connect_desk();
         rig.run_to(5_000, 5);
         let internals = rig.snapshot();
-        // ESTIMATE (`Board::compose_scale_permille`): the C3's 79 ms x 1.7, until hardware says.
+        // ESTIMATE: the connected desk (DeskStatus, clock, legend) is not measured on the unit; this
+        // is the C3's 79 ms through the scale fitted to the idle session (x1.5).
         let compose = i32::from(internals.compose_ms.expect("compose"));
-        assert!((compose - 134).abs() <= 2, "compose {compose} ms");
-        assert_eq!(internals.fps, Some(7), "fps");
+        assert!((compose - 118).abs() <= 2, "compose {compose} ms");
+        assert_eq!(internals.fps, Some(8), "fps");
         assert!(internals.busy_percent.expect("busy") >= 99);
         assert_eq!(internals.chip_model, Some(ChipModel::Rp2040));
         assert_eq!(internals.chip_revision, None);

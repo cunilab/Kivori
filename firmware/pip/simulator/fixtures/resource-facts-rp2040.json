@@ -1,11 +1,11 @@
 {
-  "_about": "Resource facts the v2 virtual Pip (KIVORI_VIRTUAL_BOARD=rp2040-zero) reports in its Device internals, for the catalog product firmware (physical-st7789 release ELF, thumbv6m). The `elf` block is generated from `bun scripts/firmware-budget.mjs --json` and checked against the current ELF by `bun scripts/virtual-resource-facts.mjs --check` (just fw-budget, firmware CI); refresh with `--write`. The `board` block is not in the ELF: it is the RP2040-Zero's flash (one 2 MiB W25Q16, no partition table, so the whole flash is the application's, as `chip_probe.rs` reports it). See docs/virtual-pip.md (Virtual boards, Modelled timing and internals).",
+  "_about": "Resource facts the v2 virtual Pip (KIVORI_VIRTUAL_BOARD=rp2040-zero) reports in its Device internals, for the catalog product firmware (physical-st7789 release ELF, thumbv6m). The `elf` block is generated from `bun scripts/firmware-budget.mjs --json` and checked against the current ELF by `bun scripts/virtual-resource-facts.mjs --check` (just fw-budget, firmware CI); refresh with `--write`. The `board` block is not in the ELF: it is the RP2040-Zero's flash (one 2 MiB W25Q16, no partition table, so the whole flash is the application's, as `chip_probe.rs` reports it). The first RP2040-Zero read these back (device_probe internals, 2026-11-06): static RAM 151,088 B, total 270,336 B, stack never used 9,976 to 9,988 B, the same as this block (stack region less the estimated peak: 9,988 B). See docs/virtual-pip.md (Virtual boards, Modelled timing and internals).",
   "source": "bun scripts/firmware-budget.mjs --json",
   "elf": {
-    "app_image_bytes": 300120,
+    "app_image_bytes": 295892,
     "asset_blob_bytes": 127253,
-    "static_ram_bytes": 150044,
-    "stack_region_bytes": 120292,
+    "static_ram_bytes": 151088,
+    "stack_region_bytes": 119248,
     "stack_peak_bytes": 109260
   },
   "board": {

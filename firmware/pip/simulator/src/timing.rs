@@ -385,11 +385,12 @@ mod tests {
     }
 
     #[test]
-    fn the_rp2040_estimate_scales_compose_and_adds_cpu_staging() {
+    fn the_rp2040_scales_compose_and_estimates_cpu_staging() {
         let desk = |board| FrameCosts::committed(board).total_us(Scenario::ConnectedDesk);
         let scale = desk(Board::Rp2040Zero) as f64 / desk(Board::C3Supermini) as f64;
-        assert!((1.699..1.701).contains(&scale), "{scale}");
-        // A tile row (240 x 40 = 9,600 pixels) at 15.625 MHz against 20 MHz (9,837 us against 7,685 us),
+        // x1.5, fitted to the unit's idle session (`Board::compose_scale_permille`).
+        assert!((1.499..1.501).contains(&scale), "{scale}");
+        // ESTIMATE (unmeasured): a tile row (240 x 40 = 9,600 pixels) at 15.625 MHz against 20 MHz (9,837 us against 7,685 us),
         // plus 100 ns a pixel of CPU staging.
         let flush = |board| {
             let clock = Rc::new(SimClock::modelled(board));

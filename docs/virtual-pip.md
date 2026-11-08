@@ -193,8 +193,8 @@ v2 is the Waveshare RP2040-Zero the product is built for since #179 and is opt-i
 | Identity it reports | product `pip` (1), board 1 | product `pip` (1), board 2 |
 | Chip in Device internals | ESP32-C3 rev v0.4, 4 MiB flash | RP2040, no revision (the firmware reads none), 2 MiB flash |
 | USB id of its port (recovery scenario) | `303A:1001` | `2E8A:000A` |
-| Compose time | the frame-cost model fitted to the unit | the same model x1.7, an ESTIMATE |
-| Flush time | SPI wire time | SPI wire time plus 100 ns a pixel of CPU, an ESTIMATE |
+| Compose time | the frame-cost model fitted to the unit | the same model x1.5, fitted to one measurement on an RP2040-Zero (idle session) |
+| Flush time | SPI wire time | SPI wire time plus 100 ns a pixel of CPU, an ESTIMATE (the idle session's small flushes agree, but do not test it) |
 | Resource facts | `fixtures/resource-facts.json`, frozen C3 history | `fixtures/resource-facts-rp2040.json`, checked against the product ELF |
 
 The selection is the environment variable `KIVORI_VIRTUAL_BOARD`, read once by the runner
@@ -218,12 +218,15 @@ firmware behaviour is the one `Runtime` both run.
 
 - `frame-cost/` stays the RV32IMC model of the ESP32-C3 and is v1's compose model. There is no
   instruction-set model of the Cortex-M0+ and none was built; v2 scales v1's per-row costs instead.
-- v2 compose is x1.7 (`Board::compose_scale_permille`). Reasoning, not a fit: the RP2040 runs at
-  125 MHz against the C3's 160 MHz (x1.28), and Thumb code for ARMv6-M takes about 1.3 times the
-  instructions of RV32IMC (two-operand ALU, eight low registers, no 64-bit support): 1.28 x 1.3 =
-  1.66, rounded to 1.7. It assumes the C3 fit's flash-cache stalls carry over (both run from
-  16 KiB-cached XIP flash) and ignores the RP2040's faster hardware divider. The connected desk
-  composes in about 134 ms (79 ms on v1) and runs at about 7 fps.
+- v2 compose is x1.5 (`Board::compose_scale_permille`), MEASURED on an RP2040-Zero on 2026-11-06
+  (`device_probe PORT internals` in a plain session: Hello, then Ping and InternalsRequest, no
+  DeskStatus, the default buddy view with its idle life running): compose 109 to 110 ms, 9 fps. The
+  v2 simulator in the same scenario (`modelled::tests`, a session opened and left idle) composed in
+  125 ms at the first estimate of x1.7 (reasoned: 125 MHz against 160 MHz is x1.28, times about 1.3x
+  the instructions for ARMv6-M against RV32IMC, 1.66), so the unit is 13% faster than that guess.
+  x1.5 gives 110 ms and 9 fps. It is one point of one scenario: a connected desk (DeskStatus, clock,
+  volume, legend) is not measured, so its modelled 118 ms (79 ms on v1) and 8 fps stay an estimate.
+  v1 is untouched.
 - v2 flush adds 100 ns a pixel (`Board::staging_ns_per_pixel`) to the SPI time: the RP2040 build has
   no DMA, so `mipidsi` converts each RGB565 pixel into its 4096-byte staging buffer before a blocking
   SPI1 write, about 12 cycles at 125 MHz. v2's SPI clock is an estimate too (`Board::spi_hz`): the
@@ -231,10 +234,12 @@ firmware behaviour is the one `Runtime` both run.
   which at 125 MHz is 15.625 MHz. A full frame is then about 65 ms (59 ms of wire time plus 5.8 ms).
   Feeding the SPI FIFO adds nothing: the CPU needs about 15 cycles a byte and the wire 64. The 150
   microsecond service point and the 1 ms idle pass are v1's, unscaled.
-- Both constants are estimates to be replaced by a measurement: on the RP2040-Zero, read
-  `device_probe PORT internals` (issue #179, hardware step), set the scale so the connected desk's
-  compose matches, and the CPU time per pixel so a full redraw's flush matches. Until then do not
-  quote v2's frame rate or latency as a fact about the unit.
+- The SPI clock and the 100 ns a pixel are still estimates. The measured idle session flushes 0 to
+  5 ms a frame (the buddy redraws only the tiles that changed) and the model gives 0 to 2 ms: the
+  right size, but those flushes are a few small windows, so they cannot fit either constant. To
+  measure them, read `device_probe PORT internals` while the whole screen is redrawn (a mode or
+  profile change) and set the CPU time per pixel so a full redraw's flush matches. Do not quote
+  v2's connected-desk frame rate or a full-redraw flush as a fact about the unit.
 - The endurance run (`just virtual-device-endurance`) also passes on v2 (`KIVORI_VIRTUAL_BOARD=rp2040-zero`, 2026-11-06): one session, 305,058 detents in 1,248 s, both sequence counters wrapped with no gap, slowest heartbeat round trip 814 ms.
 
 - The RGB LED is v2's only: v2 advertises `RGB_LED_V1` and reports the LED's colour, and v1 (the C3 has no LED) never negotiates it. `--desktop-smoke` checks both (`S5.4 led`).
@@ -407,6 +412,14 @@ Facts measured on hardware and pinned in host tests:
 - Panel orientation (2026-10-31): the picture was upside down at `Rotation::Deg90`, so the ST7789 runs
   at `Deg270`, unmirrored (`profile::physical_st7789::orientation`). Test:
   `panel_orientation_is_deg270_unmirrored`. The simulator cannot show this, so a change needs the unit.
+- USB receive (RP2040-Zero, 2026-11-06): the controller keeps its OUT buffer flag set until the packet
+  is read, so an interrupt handler that only polls `usb-device` is re-raised forever and starves the
+  run loop (the first unit enumerated and answered nothing). `usb_service::service` polls and reads
+  every pending OUT packet into the 1 KiB receive queue (overflow dropped), and `transport.rs` calls it
+  from `USBCTRL_IRQ`. `firmware/pip/tests/usb_service.rs` models that controller: the service clears
+  the flag, keeps byte order, drops overflow without blocking, a poll-only service stays raised (the
+  old bug), and the production runtime completes its handshake over a link fed only by the service.
+  The model is the documented behaviour, not the silicon: a change to the USB path still needs the unit.
 
 Comparing a real unit with the virtual one, using the production session (`device_probe`):
 
@@ -425,7 +438,7 @@ predict the ESP32-C3 (no 64-bit divide, flash-resident assets). Without a unit,
 [Frame cost without hardware](#frame-cost-without-hardware) predicts the compose time.
 
 Not covered by the simulator: pin wiring and electrical bounce, the USB CDC transport and its
-buffering, SPI/panel orientation and measured frame timing (it is modelled, see
+buffering (only the receive service step is modelled, above), SPI/panel orientation and measured frame timing (it is modelled, see
 [Modelled timing and internals](#modelled-timing-and-internals)).
 
 ### Resource budget without hardware
@@ -664,8 +677,7 @@ capture can lead the host's time by up to one row or window.
 
 #### Virtual figures against the unit
 
-These are v1's, against the ESP32-C3 unit. v2 has no unit figures yet: its compose and flush are the
-estimates above. Connected desk (buddy with clock, volume, media and legend), as in `device_probe PORT internals`:
+The first table is v1's, against the ESP32-C3 unit. Connected desk (buddy with clock, volume, media and legend), as in `device_probe PORT internals`:
 
 | Figure | Unit | Virtual Pip |
 |---|---:|---:|
@@ -675,7 +687,20 @@ estimates above. Connected desk (buddy with clock, volume, media and legend), as
 | busy | about 100% | 99% |
 | input serviced while composing | about every 13 ms | 2 to 22 ms after the edge across 12 frame phases (a row is 4 to 24 ms) |
 
-The unit's figures are the ones recorded with the frame-cost fit; the virtual row is what the tests
+v2 against the RP2040-Zero (measured 2026-11-06, idle session: handshake, then Ping and
+InternalsRequest, no DeskStatus, default buddy view; `modelled::tests`
+`the_rp2040_idle_session_reports_the_measured_unit_figures`):
+
+| Figure | Unit | v2 model |
+|---|---:|---:|
+| compose | 109 to 110 ms | 110 ms |
+| fps | 9 | 9 |
+| flush | 0 to 5 ms | 0 to 2 ms |
+| busy | 100% | 99% |
+| static RAM | 151,088 B | 151,088 B (fixture) |
+| stack never used | 9,976 to 9,988 B | 9,988 B (fixture: region less estimated peak) |
+
+v1's unit figures are the ones recorded with the frame-cost fit; its virtual column is what the tests
 below assert (`modelled::tests`: compose within 1 ms of 79, fps 12, busy 99 or 100, flush at most 5 ms,
 worst service delay at most 25 ms against 79 ms for a frame).
 
