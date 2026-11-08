@@ -1,57 +1,39 @@
 # Kivori enclosure v7 — Terrace prototype
 
-V7 uses the black and white Terrace exterior, six pillars and curved snap-on display cowl. It places the RP2040-Zero on the **underside of the carrier** with its components facing the bottom cover. The sole external 5 mm common-cathode RGB LED sits directly on the carrier, hidden beneath the knob and offset 10 mm from the shaft. The shaft and nut occupy the exact center. A sloped white mixing insert and a hidden white roof sit beneath the visible outer diffuser ring.
+V7 uses the black and white Terrace exterior, six pillars and a separate display cowl held by four pegs. The RP2040-Zero sits on the **underside of the carrier** with its components facing the bottom cover, its USB-C port in the far wall. There is no RGB LED in this revision: the white halo ring on the face is trim only.
+
+## Before you print
+
+Every assumption that changes the physical build:
+
+1. **Wire**: 0.3 mm copper wire, treated as possibly bare. It is **wire-wrapped** on every pin (about 3 turns, 0.9 mm of pin) and lies in its **own groove** (0.6 wide x 0.5 deep). A wire changes face only through its **own 0.8 mm hole** (9 holes). No two wires cross or share a groove or hole, and different nets keep at least **0.7 mm** of plastic between them (pin holes included; the tightest spot is exactly 0.70). The wires are 18 runs, 809 mm of groove, the longest 114 mm: cut each 10 mm over.
+2. **RP2040-Zero** is back at its original height, header plastic against the carrier back (no spacer, no recess). The pins stand **4.0 mm** out of the carrier front, room for two 0.9 mm wraps. The carrier holes grip them (`RP_PIN_FIT_D` 0.90, not a verified fit: print `PinFitCoupon` first). The board is now **centred on the case** (x 43.0, it was 46.0); its USB hole moves with it.
+3. **USB-C hole is 1.5 mm lower than the model first had it** (`USB_HOLE_DZ = -1.5`, relative to the modelled receptacle: hole centre z -18.47 instead of -16.97). On the print of the first v7 the hole came out 1.5 mm too high against the real connector, so the real connector is taken to sit 1.5 mm lower than modelled. The board did **not** move; the build check clears the hole against the connector shifted down by the same 1.5 mm (margin 0.32 mm). The pocket inside the wall is lowered to match. The back plate's reset guide is back at its original length. Verify with the real board before fitting the cover.
+4. **Display header**: standard 2.54 mm header, pins 6 mm below the plastic (`DISP_PIN_L`). The pin tips stop 0.8 mm above the carrier. **Bench step before mounting the display**: wrap each display wire at the root of its header pin (just under the plastic) and leave a 15 mm tail; GND takes three wires, 3V3 two. Each tail then runs down its pin into the **1.2 mm x 1.0 mm deep pocket** under that pin, which leads into that wire's groove. Check the real module's pin length. The display has all **four standoffs** again; the GND and 3V3 grooves pass below the header-end one.
+5. **Pin map is the original one** (GPIO3 / GPIO4 / GPIO5 encoder SW / DT / CLK, GPIO6 / GPIO7 / GPIO8 left / middle / right key), as the firmware uses it. The routes need no change: every left-column wire has a groove on the front to a hole at the top of its own column, and the columns run side by side on the back.
+6. **Encoder and key power come from the display header**: the display's GND and VCC wires go straight from the RP2040's GND and 3V3 pins (short, no detour), and the encoder 3V3, encoder GND and key GND wires are wrapped on the display's VCC and GND pins as well. The RP2040's pin fence cannot be crossed (0.7 mm rule) and the display wires are in the way on the other side.
+7. **Cowl pegs**: four round pegs, Ø3.0 x 3.0 mm, on the cowl underside; Ø3.5 through holes (0.25 per side) in the shell face. The tips come out 0.5 mm behind the face. Glue them or friction-fit; print one cowl and test the fit. The cowl has a 0.4 mm 45° chamfer on its seating edge and sits flat on the face.
+8. **Knob raised 2.5 mm** (`KNOB_GAP` 4.3), same 11.0 mm height, so the shaft enters it only **3.0 mm** (was 5.5), all of it D-flat. Check the grip on the real shaft; add glue or a set screw if it slips. The pressed knob (0.5 mm travel) stays 3.8 mm off the face, 3.2 mm off the halo ring and 4.2 mm off the cowl.
+9. **Halo ring** is a plain 0.6 mm trim ring glued to the face. There is no LED, roof or reflector.
+10. **No printed feet.** The back plate's bed face is flat. Stick rubber bumpers on it over the six screw counterbores (**Ø4.4 mm**, clearance hole Ø2.4 above it): a round bumper of **Ø8 to Ø12 mm** covers one and stays on the flat bottom (the flat allows up to Ø12.3 at the tightest screw). The stepped bridge over each counterbore is unchanged.
+
+Reprint from the first print: Shell (USB hole and pocket, pegs, no LED), DisplayCowl, Carrier (new grooves, holes, board x), Knob, HaloDiffuser, BackPlate (flat bed face, reset guide at the new x). KnobCap prints the same. Unchanged: caps, bezel. `RpSpacer`, `ScrewFeet` and `HaloReflector` are gone.
 
 ## Previews
 
-- `preview-exterior.png` — assembled exterior.
-- `preview-front-wiring.png` — carrier front face with every wire labeled by net (RP2040 pin to its destination).
-- `preview-rear-wiring.png` — carrier rear face with every wire labeled by net, plus the tape strips.
-- `preview-led-resistors.png` — labeled close-up of the three LED resistors and their GPIO wires.
-
-## Test before printing the full carrier
-
-These nominal model margins are small; check each with the real parts and your PETG settings:
-
-| Area | Model value | Check |
-|---|---|---|
-| RP2040 pin-only hold | 0.90 mm hole (`RP_PIN_FIT_D`) | Print `PinFitCoupon.stl`; test USB plugging gently |
-| Plastic between front and rear wire channels | 0.80 mm | Slice and inspect |
-| Plastic between a display signal transfer hole and its pin hole | 0.90 mm | Slice and inspect |
-| Plastic between any wire channel and an unrelated hole or channel | 0.72 mm minimum (rule 0.70 mm) | Slice and inspect |
-| Display standoff at the upper right (centre x 58.26, y 89.39) | The GND front run (y 90.27) crosses its base in a 0.75 mm slot; the 3V3 transfer hole beside the 3V3 pin is 0.46 mm from its foot | Slice and inspect; add glue if the post is weak |
-| Plastic between LED lead holes | 0.47 mm (rear fan grooves 0.52 mm) | Slice; test-fit the real LED |
-| LED to encoder | 0.53 mm | Measure the real LED and encoder |
-| White liner to black bowl | about 0.07 mm normal to the slope | Test-fit the printed liner |
-| LED light quality | not simulated | Small LED/cavity test |
-
-The LED opening and mixing insert are intended for a physical lighting test. One LED can still produce an uneven, dim or visibly colored hotspot; no optical simulation or illumination test has been performed. Test the LED with the white cavity and roof first; neither uniform light nor brightness is guaranteed. White PETG and the hidden roof can reduce output. The LED's 8.7 mm height, 5.8 mm flange diameter and lead order are assumptions: measure and identify your actual part first. The RP2040's built-in LED is a separate onboard component.
+- `preview-exterior.png` — assembled exterior, raised knob.
+- `preview-front-wiring.png` — carrier front: the display wires and the display's power grooves round the east and south of it.
+- `preview-rear-wiring.png` — carrier rear: the west corridor from the vias to the encoder pins and the key legs.
+- `preview-closeup-display-rp2040.png` — close-up of the RP2040 pins and the display pockets, with the wire-wrap rings.
+- `preview-cowl-pegs.png` — cowl underside with the four pegs, seen from below.
 
 ## Pin-only RP2040 mount
 
-The board is held solely by its soldered male header pins in the printed carrier holes, with no RP2040 retainer, strap or socket. The provisional `RP_PIN_FIT_D = 0.90` mm is a CAD value, **not a verified PETG press fit**. Before printing the carrier, print `PinFitCoupon.stl` in the same orientation and settings. Its five rows of nine holes (one full header column each) have one to five engraved dots: 1 = 0.80, 2 = 0.85, 3 = 0.90, 4 = 0.95, 5 = 1.00 mm. Each hole has a short groove stub matching the carrier face. Test the actual header strip without forcing it; change `RP_PIN_FIT_D` in `build_case.py` and rebuild if needed.
+The board is held solely by its soldered male header pins in the carrier holes (`RP_PIN_FIT_D = 0.90` mm, a CAD value, **not a verified PETG press fit**). Print `PinFitCoupon.stl` in the same orientation and settings first. Its five rows of nine holes have one to five engraved dots: 1 = 0.80, 2 = 0.85, 3 = 0.90, 4 = 0.95, 5 = 1.00 mm. Test the actual header strip without forcing it; change `RP_PIN_FIT_D` and rebuild if needed. A coupon cannot establish the assembled board's resistance to repeated USB insertion and removal; test gently. Do not power an unstable assembly.
 
-A coupon cannot establish the assembled board's resistance to repeated USB insertion and removal. Test the assembled pin fit and USB load gently before relying on it; the board has no secondary retention. Do not power an unstable assembly.
+Solder the full male header strips to the board: **all 23 pins**, i.e. the nine-pin left column (GPIO0 to GPIO8), the nine-pin right column (5V, GND, 3V3, GPIO29, GPIO28, GPIO27, GPIO26, GPIO15, GPIO14) and the five-pin bottom row (GPIO13, GPIO12, GPIO11, GPIO10, GPIO9). The carrier has a hole for every one of them; the unwired pins are present in the plastic only. The build script fails unless all 23 holes go through the carrier. The controller is rotated physically: its component-side left and right exchange sides when viewed from the carrier front. Use the printed board labels to identify the pins.
 
-Solder the full male header strips to the board: **all 23 pins**, i.e. the nine-pin left column (GPIO0 to GPIO8), the nine-pin right column (5V, GND, 3V3, GPIO29, GPIO28, GPIO27, GPIO26, GPIO15, GPIO14) and the five-pin bottom row (GPIO13, GPIO12, GPIO11, GPIO10, GPIO9). The carrier has a `RP_PIN_FIT_D` hole for every one of them; the pins that carry no wire (GPIO0, GPIO1, GPIO2, 5V, GPIO29, GPIO28, GPIO27) are present in the plastic but unwired. The build script fails unless all 23 holes go through the carrier. The board's built-in GPIO16 LED is unchanged.
-
-Solder the strips to the board before inserting them into the carrier. The controller is rotated physically: its component-side left and right exchange sides when viewed from the carrier front. Use the printed board labels to identify the pins. The pins point through the carrier and can be connected on its front side.
-
-## Wiring and reset
-
-The model uses **0.3 mm outside-diameter enamel-insulated wire**, seated in 0.75 mm wide channels on both carrier faces. Short, supported transfer holes link faces. No wire crosses another on either face, so no Kapton is needed. Five wider removable tape strips in the model illustrate how to retain groups of wires. Route wires into the grooves before pressing the RP2040 into place. The opposite-face model leaves a nominal minimum **0.8 mm printed web**; slice and inspect this thin area. Thicker insulated wire requires wider channels and a fresh clearance check.
-
-The board's pins are grouped by what they connect to: the left row is the encoder and keys, the right row is the display, and the bottom row is the RGB LED. Nothing else shares those groups, so each group can be wired as one ribbon.
-
-Each of the five display signal wires has its own **1.0 mm transfer hole 2.0 mm to the left of its display header pin** (the BLK hole sits lower, at y = 68.9, so the DC wire can pass between it and the RP2040 pins). The wire runs on the carrier front from an RP2040 pin to this hole, descends through it, and on the rear runs a short hop to the display pin, which sits alone in its own 1.2 mm hole. Wrap the wire around the pin tip on the carrier underside. The web between a signal transfer hole and its pin hole is 0.90 mm. Display GND and VCC are fed from the east instead: a **1.2 mm transfer hole east of the header** (VCC at x = 60.9, y = 83.18; GND at x = 62.6, y = 85.72), then a rear hop west to the pin. Keep enamel intact inside the holes; strip it only at the pin wraps and check isolation between pins.
-
-**Power routing.** Every RP2040 header pin has its hole, and neighbouring holes leave too little plastic (0.445 mm at 2.54 mm pitch) for any channel between them, so no wire passes through a pin row. GND and 3V3 therefore leave the right column eastwards on the front face, pass the display header on its east side, turn west under the bottom pin row (3V3 along y = 67.2, GND along y = 65.4, below the display BLK wire and the three LED signal transfer holes) and drop to the rear on the encoder side, where they run south to the encoder and, for GND, to the left key. Nothing crosses another wire on either face; on the opposite face these front runs overlie the rear LED-signal runs with the usual 0.8 mm web.
-
-The LED flange seats on the carrier front without a separate keeper. Its four nominal 0.5 mm leads pass through four **0.8 mm holes at 1.27 mm pitch**. The adjacent holes leave only **0.47 mm nominal web**; the rear fan grooves have about 0.52 mm minimum web. Slice and test this small area with the real LED and PETG settings. Insert the leads straight through, bend them gently into their separate rear grooves, make and insulate the correct connections, and only then trim excess lead length. Avoid heating the printed carrier when soldering. The model's closest LED-to-encoder clearance is 0.53 mm and its flange-to-nut clearance is 1.90 mm; real parts must be checked. If your LED's common-cathode leg is not in the modeled position, adjust the wiring/model rather than crossing uninsulated leads.
-
-Complete the LED lead fan and its connections before installing the encoder module, whose PCB covers part of this wiring area.
-
-There are three separate LED series resistors, one for each color. Each resistor's output lead ends close to its LED lead: 2.69 mm for red and 1.69 mm for green and blue, measured in the model from the resistor output hole to the end of the LED lead groove. The red resistor sits 1 mm farther from the LED to clear the shell. Each LED signal (GPIO9 red, GPIO10 green, GPIO11 blue) runs on the carrier front face straight down from its pin to a transfer hole, then on the rear to its resistor input. The rear runs are nested so they do not cross. The modeled axial footprint is 3.2 × 1.8 mm body with 7.62 mm lead pitch. Identify the LED's common cathode and each color on the actual part. Three individual 1 kΩ resistors at 3.3 V are a conservative starting point for low-current testing; choose final values for the actual LED and desired brightness. Never connect a color lead directly to a GPIO without its resistor. Remove enamel only at intended connections and check continuity and isolation before power.
+## Wiring
 
 | RP2040-Zero | Function |
 |---|---|
@@ -60,30 +42,37 @@ There are three separate LED series resistors, one for each color. Each resistor
 | GPIO26 | LCD SCL (hardware SPI1 SCK) |
 | GPIO15 | LCD SDA (hardware SPI1 TX) |
 | GPIO14 / GPIO13 / GPIO12 | LCD RES / DC / BLK |
-| GPIO9 / GPIO10 / GPIO11 | RGB LED red / green / blue, through individual resistors |
-| 3V3 | Display VCC and encoder + |
-| GND | Display, encoder, keys and RGB common cathode |
+| 3V3 | Display VCC |
+| GND | Display GND |
 
-Each key's two lower legs (12.5 mm apart) are internally connected; the ground chain relies on this — check with a multimeter that the switch is not rotated 90°.
+GPIO0-2, 9-11 and 27-29 are free. Encoder 3V3 and GND and the key ground are taken from the display's VCC and GND pins (see "Before you print"). No RP2040 firmware is in this branch; the pin map above is the original one, which the firmware on `feat/rp2040-zero-board-179` (`firmware/pip/src/physical_st7789.rs`) uses (not checked from here). SPI1 uses SCK on GPIO26 and TX on GPIO15 ([Raspberry Pi's RP2040 datasheet, Table 3](https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf)), RES, DC and BLK are plain outputs, and the encoder and key inputs need pull-ups.
 
-No RP2040 firmware exists in the repo yet (the repo firmware targets the ESP32-C3). Implement the pin map above: SPI1 with SCK on GPIO26 and TX on GPIO15 ([Raspberry Pi's RP2040 datasheet, Table 3](https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf)), RES, DC and BLK as plain outputs, and pull-ups on the encoder and key inputs.
+Wrap steps (3 turns, tight, tail trimmed; bare wire, so check isolation between neighbours after each group):
 
-## Wiring order
+1. **Bench, before mounting the display.** On each display pin wrap the wires at the pin root, lowest wrap first: GND three wires (to the RP2040 GND pin, encoder GND via the east groove, key ground via the far-east groove), 3V3/VCC two wires (to the RP2040 3V3 pin, encoder 3V3), the other five pins one wire each. Leave a tail on each long enough to reach the RP2040 end.
+2. **Mount the display** (four standoffs and pegs). Press each tail down its pin into the pocket under it, then lay it in its groove. The seven display grooves run to the RP2040's right column and bottom row, and none crosses another.
+3. **RP2040 side.** Wrap each display wire on its pin, 4 mm of pin stand above the carrier: GND and 3V3 on the right column, GPIO26, GPIO15, GPIO14 below them, GPIO13 and GPIO12 on the bottom row. Every pin has a free ring of 1.3 mm round it.
+4. **Left column to the back.** GPIO3-8 each have a groove west to their own 0.8 mm hole. Wrap the wire on its pin, lay it in its groove, drop it through its hole and, on the back, straight down its column of the west corridor. The key wires (GPIO6-8) are the westmost columns; they turn east above the keys and go straight down to the upper right leg of the left, middle and right key. The encoder wires (GPIO3-5) turn east into the SW, DT and CLK pins.
+5. **Encoder power and key ground.** The 3V3 and GND wires from the display pins run on the front east and south of the display, then west and down to a hole east of the encoder pins and a short hop west on the back to the encoder + and GND pins. The key ground wire runs far east (x 75) down to a hole beside the right key and west on the back to its free lower right leg. Link the keys' ground chain with two short wires on the back (left lower-right to middle lower-left, middle lower-right to right lower-left).
+6. Check 3V3 to GND for a short before plugging in USB.
 
-1. **Left ribbon (encoder and keys).** On the rear, ground first: the GND rear via at x = 9.1 to the left key's lower-left leg, and the GND rear via at x = 27.6 to the encoder GND pin. Then the encoder: the 3V3 rear via at x = 25.9 to encoder +, GPIO3 to SW, GPIO4 to DT, GPIO5 to CLK. Then the keys: GPIO6, GPIO7 and GPIO8 to the upper-right leg of the left, middle and right key. Their runs nest, so the later key turns innermost. Link the keys' ground chain (left lower-right to middle lower-left, middle lower-right to right lower-left).
-2. **Right ribbon (display).** On the front, run GPIO26, GPIO15, GPIO14, GPIO13 and GPIO12 to the transfer hole beside the display SCL, SDA, RES, DC and BLK pins, and GND and 3V3 east to the GND and VCC holes east of the display header. On the rear, link each transfer hole to its display pin and wrap the pin.
-3. **Bottom ribbon (LED).** Front: GPIO9, GPIO10 and GPIO11 straight down to their transfer holes. Rear: each to its resistor input (red, green, blue, nested). Then each resistor output to its LED lead, and the LED common cathode to ground.
-4. **Power.** On the front, the GND and 3V3 wires leave their pins eastwards, serve the display holes, continue south past the display header and west under the bottom pin row (3V3 along y = 67.2, GND along y = 65.4). 3V3 drops to the rear at x = 25.9 for encoder +; GND drops at x = 27.6 for the encoder and at x = 9.1 for the left key's ground chain. Check 3V3 to GND for a short before plugging in USB.
+Wrap room (model values): RP2040 pins 4.0 mm above the carrier (3 turns need 0.9 mm), encoder pins 4.0 mm bare behind the carrier, key legs 1.5 mm behind it (the legs are flat 0.7 x 0.3, wrap tight). Each key's two lower legs (12.5 mm apart) are internally connected; the ground chain relies on this: check with a multimeter that the switch is not rotated 90°.
 
 A **1.4 mm reset access hole in the bottom cover** is aligned to the flipped board's RESET button; its internal guide ends 0.6 mm before the modeled button. Use a slender blunt nonconductive probe and press gently. BOOT remains accessible with the case open. Verify alignment and travel with the real board before fitting the cover.
 
+## Assembly order
+
+1. Solder headers to the RP2040-Zero, press the board into the carrier.
+2. Wrap the display wires on the display pins on the bench (wiring step 1), mount the display, lay the tails.
+3. Wrap the RP2040 pins and lay the grooves, then the left-column wires through their holes. On the back wrap the encoder pins and key legs (fit the encoder module after the key legs, as its board covers the area).
+
 ## PETG printing
 
-The export folder contains individually oriented STLs. Start with a 0.4 mm nozzle, 0.20 mm layers and your normal PETG profile on textured PEI. Slice and inspect the two-sided carrier channels, thin inter-face web, LED lead holes, sloped mixing liner, cowl clips and reset guide. The liner has a 0.8 mm-wide print-bed contact ring. Its nominal 0.1 mm vertical separation from the black bowl is only about 0.07 mm normal to the slope; test the white liner in the shell and adjust the fit for your printer. Print the fit coupon and a small LED/cavity test first, then test one keycap, the reset guide and USB plug with the actual hardware.
+The export folder contains individually oriented STLs. Start with a 0.4 mm nozzle, 0.20 mm layers and your normal PETG profile on textured PEI. Slice and inspect the carrier grooves, the cowl pegs and shell holes, and the reset guide. Print the fit coupon first, then test one keycap, the cowl pegs, the reset guide and a USB plug with the actual hardware.
 
 | Black | White |
 |---|---|
-| Shell, DisplayCowl, Carrier, Knob, PinFitCoupon | BackPlate, DisplayBezel, KnobCap, CapLeft, CapMiddle, CapRight, HaloDiffuser, HaloReflector, ScrewFeet |
+| Shell, DisplayCowl, Carrier, Knob, PinFitCoupon | BackPlate, DisplayBezel, KnobCap, CapLeft, CapMiddle, CapRight, HaloDiffuser |
 
 ## Rebuild
 
@@ -93,4 +82,4 @@ With FreeCAD 1.1:
 /Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd hardware/enclosure-v7/build_case.py
 ```
 
-The script checks modeled fit and exports the FreeCAD assembly, individually oriented STLs and carrier-outline DXF. Electronics, wire and tape are assembly references rather than printed parts. This remains an unprinted prototype: check physical fit, retention, operation, clip durability and LED appearance before relying on it.
+The script checks modeled fit and exports the FreeCAD assembly, individually oriented STLs and carrier-outline DXF. Electronics and wire are assembly references rather than printed parts. This remains a prototype: check physical fit, retention and operation before relying on it.

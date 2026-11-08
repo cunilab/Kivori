@@ -45,9 +45,10 @@ BP_CLR = 0.2                # back plate to wall clearance (per side)
 
 # Knob + encoder (EC11 dimensions from KiCad RotaryEncoder_Alps_EC11E-Switch_Vertical_H20mm)
 KNOB_C = (43.0, 40.0)       # knob / shaft centre on the face
-KNOB_D = 36.0               # height comes from the shaft: KNOB_H further down
-KNOB_GAP = 1.8              # air gap between knob skirt and face (push travel is ~0.5; at 1.0 a press hit the face)
-KNOB_TOP_T = 4.5            # knob top above the shaft-tip clearance: sets the knob 10.5 tall
+KNOB_D = 36.0
+KNOB_GAP = 4.3              # air gap between knob skirt and face (push travel is ~0.5; raised 2.5 mm from 1.8 after the first
+                            # print; KNOB_H is held, so the shaft enters the knob 2.5 mm less deep)
+KNOB_TOP_T = 4.5            # knob top above the shaft-tip clearance
 KNOB_TIP_CLR = 1.0          # free space between the shaft tip and the bore's ceiling
 KNOB_WALL = 2.5             # hollow knob: skirt wall (the grip flutes cut 0.6 into it)
 KNOB_HUB_D = 12.0           # hub round the shaft, hanging from the top, tied to the skirt by ribs
@@ -164,14 +165,11 @@ SW_PADS = [(-6.25, -2.5), (6.25, -2.5), (-6.25, 2.5), (6.25, 2.5)]  # pin 1,1,2,
 
 # Printed PCB ("carrier"): same plane as a future real PCB
 C_FRONT = -10.2             # printed PCB front (the 7.2 mm switch top ends 3.0 below the face: the caps reach down)
-# knob just tall enough to cover the whole shaft, so the shaft is never cut
-KNOB_H = HW040_FRONT + EC11_SHAFT_H + KNOB_TIP_CLR + KNOB_TOP_T - KNOB_GAP
+KNOB_H = 11.0               # held from the 1.8 mm gap (it was HW040_FRONT + EC11_SHAFT_H + KNOB_TIP_CLR + KNOB_TOP_T - KNOB_GAP)
 C_T = 2.0                   # printed thickness (a real board is 1.6, it grows backwards); leaves a 0.6 mm HW-040 pocket floor
 C_BACK = C_FRONT - C_T
 C_INSET = 0.8               # carrier outline inset from the inner walls
 HOLE_D = 1.2                # clearance for other 2.54 mm header pins
-DISP_VIA_D = 1.0            # transfer hole of each display wire (the display pin has its own HOLE_D hole)
-DISP_VIA_DX = 2.0           # transfer hole this far left of its display pin, same y
 RP_PIN_FIT_D = 0.90          # provisional PETG press fit; choose after coupon test
 SW_HOLE_D = HOLE_D          # switch legs: same hole as the header pins
 POSTS = [(6.0, 7.0), (6.0, H - 7.5), (W - 6.0, H - 7.5), (W - 6.0, 7.0),
@@ -195,7 +193,7 @@ PEG_RELIEF = 0.8            # face-back relief over the display peg tips: 0.1 ab
 
 # Waveshare RP2040-Zero sits on the carrier underside, components facing the bottom cover.
 SM = (18.0, 23.5, 1.1)      # drawing outline; thickness from official STEP
-SM_X = 46.0  # underside board, 3 mm off center for the encoder lanes
+SM_X = W / 2  # underside board, on the case's centre line (it was 46.0, 3 mm to the right)
 SM_USB = (9.6, 7.71, 3.25)  # official STEP: width, depth, height above board top
 SM_USB_OVERHANG = 1.21      # official STEP, receptacle front past the board end
 # USB-C port: a tight pill-shaped hole. A hidden pocket inside the far wall thins it to USB_WALL
@@ -203,6 +201,9 @@ SM_USB_OVERHANG = 1.21      # official STEP, receptacle front past the board end
 # reaches fully into the receptacle without its moulded grip entering the wall.
 USB_WALL = 0.8              # wall left in front of the receptacle (measured square to the wall)
 USB_HOLE = (10.4, 4.8)      # clearance round the STEP's 9.6 x 4.16 mm connector envelope
+USB_HOLE_DZ = -1.5          # the shell's hole sits this much lower than the modelled receptacle (towards the back plate): on the
+                            # print of the first v7 the hole came out 1.5 mm too high against the real connector (measured
+                            # on the print), so the real connector is taken to sit 1.5 mm lower than modelled
 USB_HOLE_CHAMFER = 0.0      # chamfer round the outside edge: off, it thinned the 0.8 mm wall to a 0.4 lip
 USB_FRONT_CLR = 0.15        # receptacle front to the pocket face
 SM_ROW = 15.24
@@ -218,25 +219,24 @@ SM_BTN = (3.0, 4.65, 2.5)
 C_TAB_CLR = 0.4             # carrier tab under the RP2040-Zero header ends, to the far wall
 C_TAB_PAST = 1.5            # tab edges past the outer pin rows
 
-# Enamelled wire runs in carrier channels. Controller and resistor leads are soldered;
-# display/encoder headers can be wrapped, and switch legs fold over their wire ends.
-# Dipped crossings have Kapton between the insulated wires.
-WIRE_D = 0.3                # wire diameter (stand-in)
-WIRE_CH = (0.75, 0.6)        # channel width, depth: room for two wires side by side where runs share it
-WIRE_BEND_R = 1.5           # channel centre-line radius at every bend (a sharp corner kinks the wire)
-WIRE_CROSS = (4.0, 1.0)     # where two runs cross, the lower channel dips: length, depth
-KAPTON = (2.0, 0.06)        # Kapton square over the lower wire at each crossing: side, thickness. It
-                            # lies in a pocket as deep as the channel plus the tape, so the upper
-                            # wire runs on over it at its own channel depth
-WIRE_RIDGE_MIN = 0.7        # plastic between two channels, or a channel and a hole, pin row or the edge
-WRAP_TURNS = 4              # turns round each header pin (1.2 mm of pin)
-WRAP_OD = 1.5               # the turns round a 0.64 mm square pin, outside
-PIN_ROW = (2.4, 0.9)        # room kept clear for the turns along each wrapped header row: width, past
-                            # the end pins (no other channel runs there)
-DISP_PIN_L = 11.0           # display header: long pin past the plastic. A long-pin header (2.54 mm,
-                            # 17 mm total, NOMINAL) puts the tips 6.2 mm past the back; the usual
-                            # 6 mm header reaches only 1.2 mm, too short to wind on
-LEG_POCKET = (1.4, 3.0)     # pocket the folded switch leg lies in, over the wire end: width, length
+# 0.3 mm copper wire (possibly bare), wire-wrapped on every pin and laid in its own groove. No two wires cross or
+# share a groove or hole, and different nets keep WIRE_RIDGE_MIN of plastic between them (pin holes included). A wire
+# changes face only through its own via. The routes are in wire_routes().
+WIRE_D = 0.3                # wire diameter
+GROOVE_W, GROOVE_D = 0.6, 0.5   # groove width, depth
+VIA_D = 0.8                 # a wire's own through-hole where it changes face
+WIRE_BEND_R = 1.5           # groove centre-line radius at every bend (less where a stretch is too short for it)
+WIRE_ATT = 0.5              # modelled wire ends this far from a pin centre (the wrap closes the gap)
+COL_PITCH = 1.5             # groove to groove in the west corridor (a via sits beside each column: 0.7 plastic to its neighbour)
+PITCH_MIN = 1.3             # groove to groove elsewhere: the groove plus WIRE_RIDGE_MIN
+WIRE_RIDGE_MIN = 0.7        # plastic kept between different nets (grooves, vias, pin holes), or a hole and the edge
+WRAP = (1.3, 1.0, 0.9)      # wire-wrap ring modelled on each pin: outside, inside, height (3 turns of 0.3)
+DPIN_POCKET = (1.2, 1.0)    # entry pocket in the carrier under each display pin: diameter, depth
+DISP_PIN_L = 6.0            # display header: standard 2.54 mm header, pin past the plastic (NOMINAL). The tips stop
+                            # 0.8 mm above the carrier front; the wires are wrapped at the pin root and each tail runs
+                            # down its pin into the pocket under it
+WIRE_Z_FRONT = C_FRONT - GROOVE_D + WIRE_D / 2 + 0.03   # wire centre in a front groove (0.03 off the floor)
+WIRE_Z_BACK = C_BACK + GROOVE_D - WIRE_D / 2 - 0.03      # ... in a back groove
 # RESET uses a bottom access guide; BOOT still requires opening the case.
 
 # the receptacle's face-side edge meets the leaning far wall furthest in, so it sets the board end
@@ -259,39 +259,21 @@ ENC_RELIEF = 1.0            # window through the plate (not the plinth below) un
 
 # White base edge under the black shell (part of the bottom cover)
 PLINTH_H = 3.0
-# PETG screw covers/feet: six round dots under the plinth, one centred near each corner screw (the dot hides its
-# counterbore) and one on the middle screw. Each drops into a shallow round pocket in the plinth's bottom
-# face (the bed side), so it locates itself and can be glued or pressed in. A dot is a flange (FOOT_D wide,
-# FOOT_PROUD proud, chamfered sole, covers the pocket edge) over a body FOOT_CLR narrower per side that fills
-# the pocket, plus a plug up into the counterbore.
-FOOT_D = 9.0                # dot Ø = pocket Ø at the plinth face
-FOOT_SHIFT = (0.4, 0.4)     # slight inset leaves a pocket rim and covers the screw bore fully
-
-FOOT_PROUD = 1.5            # feet stand this far below the plinth face: the plinth stays off the desk
-POCKET_D = 0.9              # pocket depth into the plinth (0.8 to 1.0)
-FOOT_CLR = 0.2              # body to pocket wall, per side
-FOOT_EDGE = 0.8             # 45° chamfer round the foot's sole
+# No printed feet: the plinth's bed face is flat (a flat roof over air printed badly) and the owner sticks rubber
+# bumpers over the screw counterbores (SCREW_HEAD_D).
 
 # Separate black display cowl and white trim: every visible face can lie on the print bed.
 VISOR_T = 0.0               # key mechanism references the bare main face in v7
 COWL_H = 4.5
 COWL_T = 2.5
 COWL_BOX = (14.0, 56.0, 72.0, 93.0)
-COWL_CLIPS = [(16.8, 66.0, -1), (16.8, 88.0, -1),
-              (69.2, 66.0, 1), (69.2, 88.0, 1)]
-COWL_CLIP_T, COWL_CLIP_W, COWL_CLIP_L = 1.2, 4.0, 9.0
-COWL_CLIP_REACH = 0.7
+COWL_PEGS = [(18.5, 60.0), (66.5, 60.0), (17.4, 76.0), (66.7, 76.0)]  # in the solid strips round the display pocket,
+                            # clear of the module, standoffs, wires and the knob curve
+COWL_PEG_D, COWL_PEG_HOLE_D, COWL_PEG_L = 3.0, 3.5, 3.0  # peg, shell hole (0.25 per side), peg length (the shell face
+                            # is 2.5: the tip comes out 0.5 behind it; glue or friction fit)
+COWL_EDGE = 0.4             # 45 deg chamfer round the cowl's seating edge
 COWL_CURVE_R = 22.0  # follows the halo, with clearance at rest and during knob press
-LED_C = (KNOB_C[0] + 10.0, KNOB_C[1])  # hidden beneath knob, 10 mm off-axis
-LED_D, LED_H, LED_FLANGE_D = 5.0, 8.7, 5.8  # diameter confirmed; other dimensions NOMINAL
-LED_BASE_Z = C_FRONT
-LED_TIP_Z = LED_BASE_Z + LED_H
-LED_LEAD_HOLE_D, LED_LEAD_D = 0.8, 0.5
-LED_FAN_WIDTH, LED_FAN_DEPTH = 0.75, 0.65
-HALO_OD, HALO_ID, HALO_T = 42.0, 12.4, 0.6
-HALO_R_IN, HALO_R_MID, HALO_R_OUT = 6.0, 13.0, 20.0
-RES_C = [(49.19, 54.5), (54.27, 53.5), (56.81, 53.5)]
-RES_PITCH = 7.62  # nominal 1/8 W resistor footprint: 3.2 x 1.8 mm body
+HALO_OD, HALO_ID, HALO_T = 42.0, 12.4, 0.6  # white trim ring on the face (glued on)
 
 BEZEL_T = 0.8
 BEZEL_W = 28.0
@@ -439,18 +421,10 @@ dpcb_z1 = glass_z1 - DISP_PCB[2]          # module PCB back
 disp_hdr_x = dpcb_c[0] + DISP_HEADER_SIDE * (DISP_PCB[0] / 2 - DISP_HDR_U)
 disp_hdr_y = dpcb_c[1] + DISP_HDR_V
 disp_pins = {n: (disp_hdr_x, disp_hdr_y + (3 - i) * 2.54) for i, n in enumerate(DISP_PINS)}
-disp_vias = {n: (x - DISP_VIA_DX, y) for n, (x, y) in disp_pins.items()}
-disp_vias['BLK'] = (disp_vias['BLK'][0], 68.9)  # below the DC wrap, which runs under IO14 and up past it
-# Power. A channel cannot pass between two RP pin holes (0.445 mm of plastic each side at 2.54 mm pitch), so GND and 3V3
-# leave the right column to the east, go round the display header and the bottom end of the pin rows, and come up on
-# the encoder side. GND runs on the front (through the display GND hole, GND_X); 3V3 hops to the rear next to its pin,
-# runs east on the rear (V33_X), feeds the display VCC pin from the east and drops to the front south of GND (V33_Y).
-GND_X, GND_Y = 62.6, 62.6
-V33_X, V33_Y = 64.3, 60.8
-del disp_vias['VCC']        # VCC is fed on the rear straight to its pin
-disp_vias['GND'] = (GND_X, disp_vias['GND'][1])
+disp_wire_z = dpcb_z1 - 2.5 - DISP_PIN_L + 0.8  # wires meet the display pins here, 0.8 above the tips
 disp_holes = [(dpcb_c[0] + su * (DISP_PCB[0] / 2 - DISP_HOLE_INSET), dpcb_c[1] + sv * (DISP_PCB[1] / 2 - DISP_HOLE_INSET))
               for su in (-1, 1) for sv in (-1, 1)]
+disp_standoffs = disp_holes
 
 # HW-040 rotated 180° around the stationary shaft: header to the left, holes to the far side.
 hw_c = (KNOB_C[0] + HW040_SHAFT[0], KNOB_C[1] + HW040_SHAFT[1])
@@ -480,37 +454,18 @@ sm_btns = [(SM_X - SM_BTN_DX, SM_USB_END - 16), (SM_X + SM_BTN_DX, SM_USB_END - 
 RESET_C = (SM_X - SM_BTN_DX, SM_USB_END - 16)
 RESET_SURFACE_Z = sm_lo - SM_BTN[2]
 usb_z = (usb_lo + usb_hi) / 2
-led_pins = {n: (LED_C[0] + (i - 1.5) * 2.54, LED_C[1])
-            for i, n in enumerate(('R', 'C', 'G', 'B'))}
-res_pins = {n: (x, y + side * RES_PITCH / 2) for i, (x, y) in enumerate(RES_C)
-            for n, side in ((('R', 'G', 'B')[i] + '_IN', 1), (('R', 'G', 'B')[i] + '_OUT', -1))}
-
-# The underside wires terminate on the actual GPIO header pins.
-RP_NETS = {'IO3':'SW', 'IO4':'DT', 'IO5':'CLK', 'IO6':'B1', 'IO7':'B2', 'IO8':'B3',
-           'IO9':'R_PWM', 'IO10':'G_PWM', 'IO11':'B_PWM',
-           'IO26':'SCL', 'IO15':'SDA', 'IO14':'RES', 'IO13':'DC', 'IO12':'BLK',
-           '3V3':'3V3', 'GND':'GND'}
-rp_vias = {'SW':(24.2,sm_pins['IO3'][1]), 'DT':(22.5,sm_pins['IO4'][1]),
-           'CLK':(20.8,sm_pins['IO5'][1]), 'B1':(11.0,sm_pins['IO6'][1]),
-           'B2':(12.9,sm_pins['IO7'][1]), 'B3':(19.1,sm_pins['IO8'][1]),
-           'R_PWM':(sm_pins['IO9'][0],sm_bottom_y-2.4),
-           'G_PWM':(sm_pins['IO10'][0],sm_bottom_y-2.4),
-           'B_PWM':(sm_pins['IO11'][0],sm_bottom_y-2.4),
-           'GND':(27.6,GND_Y),
-           '3V3':(25.9,V33_Y)}
-# transfer holes of the power runs that are not at a pin or a header: (net, position)
-power_vias = [('3V3',(sm_pins['3V3'][0]+1.78,sm_pins['3V3'][1])),('3V3',(V33_X,V33_Y)),('GND',(9.1,GND_Y))]
-v33_join = (V33_X,disp_pins['VCC'][1])
-LED_TERM_Y = LED_C[1] + 8.0
-led_terminals = {n:(x, LED_TERM_Y) for n,(x,y) in led_pins.items()}
-led_native_pins = {n:(LED_C[0]+(i-1.5)*1.27,LED_C[1]) for i,n in enumerate(('R','C','G','B'))}
-led_ground_vias = [(47.0,45.8),led_terminals['C']]
+# The wires are wrapped on the RP2040-Zero pins where they stand out of the carrier front.
+RP_NETS = {'IO3': 'SW', 'IO4': 'DT', 'IO5': 'CLK', 'IO6': 'B1', 'IO7': 'B2', 'IO8': 'B3',
+           'IO26': 'SCL', 'IO15': 'SDA', 'IO14': 'RES', 'IO13': 'DC', 'IO12': 'BLK',
+           '3V3': '3V3', 'GND': 'GND'}
 
 
 def btn_pin(idx, pad):
     x, y, a = BTNS[idx]
     dx, dy = rot(SW_PADS[pad], a)
     return (x + dx, y + dy)
+
+
 
 
 # ---------------------------------------------------------------------------------------------
@@ -573,16 +528,7 @@ def make_shell():
     for (x, y) in POSTS:
         cuts.append(cyl(SCREW_PILOT, x, y, C_BACK - SPIGOT_INTO_COL - 1, -FACE_T - 1.5))
     cuts += usb_port_cuts()
-    # Rounded slots guide the clip beams; the cowl's seating rim takes downward loads.
-    shell = shell.fuse([cbox(x, y, 4.0, 7.0, -7.0, -FACE_T + 0.01) for x, y, side in COWL_CLIPS])
-    cuts += [rr_prism(1.8, COWL_CLIP_W + 0.6, 0.3, x, y, -8.0, 1)
-             for x, y, side in COWL_CLIPS]
-    # The white-lined mixing cavity has a 45-degree V-profile and a six-millimetre nut clearance.
-    bowl=annular_profile([(6,-0.8),(12.6,-7.4),(13.4,-7.4),(20,-0.8),
-                          (20,-2.0),(13.4,-8.6),(12.6,-8.6),(6,-2.0)])
-    cavity=annular_profile([(6,1.0),(20,1.0),(20,-0.8),(13.4,-7.4),(12.6,-7.4),(6,-0.8)])
-    shell=shell.fuse(bowl)
-    cuts += [cavity,cyl(6.2,*LED_C,C_FRONT-0.1,1)]
+    cuts += [cyl(COWL_PEG_HOLE_D, x, y, -FACE_T - 1, 1) for x, y in COWL_PEGS]  # the cowl's pegs
     return shell.cut(cuts).removeSplitter()
 
 
@@ -598,20 +544,26 @@ def usb_port_cuts():
     port = hole.fuse(cham) if c > 0 else hole
     port.rotate(V(0, 0, 0), V(1, 0, 0), -90)   # extrusion +z -> +y, pill height along z
     port.rotate(V(0, 0, 0), V(1, 0, 0), WALL_TAPER)  # square to the leaning wall
-    port.translate(V(SM_X, H - usb_z * TAPER, usb_z))
+    uz = usb_z + USB_HOLE_DZ
+    port.translate(V(SM_X, H - uz * TAPER, uz))
 
     # pocket: from the inside up to USB_WALL short of the outer surface, over the board width and
     # from just behind the carrier down past the receptacle. Its far-from-face side slopes 45°,
     # so the shell still prints face down without an overhang.
     u = USB_WALL / math.cos(math.radians(WALL_TAPER))
     face_ = tapered(W - 2 * u, H - 2 * u, R_CORNER - u, 0, -60)
-    z_top, z_bot = max(sm_hi, usb_hi) + 0.3, min(sm_lo, usb_lo) - 0.4
+    z_top, z_bot = max(sm_hi, usb_hi) + 0.3, min(sm_lo, usb_lo + USB_HOLE_DZ) - 0.4   # (down to the real connector)
     yf = H - u - z_bot * TAPER        # pocket face at the bottom of the pocket
     prof = [(H - 15, z_top), (H + 5, z_top), (H + 5, z_bot + (H + 5 - yf)), (H - 15, z_bot - (yf - H + 15))]
     pocket = Part.Face(Part.makePolygon([V(0, py, pz) for (py, pz) in prof + [prof[0]]]))
     pocket = pocket.extrude(V(SM[0] + 1.2, 0, 0))
     pocket.translate(V(SM_X - SM[0] / 2 - 0.6, 0, 0))
     return [port, pocket.common(face_)]
+
+
+def cowl_pegs():
+    pegs = [peg(x, y, COWL_PEG_HOLE_D, -0.01, COWL_PEG_L, (COWL_PEG_HOLE_D - COWL_PEG_D) / 2) for x, y in COWL_PEGS]
+    return [q.mirror(V(0, 0, 0), V(0, 0, 1)) for q in pegs]  # peg() grows up; these hang down
 
 
 def make_cowl():
@@ -639,38 +591,18 @@ def make_cowl():
 
     cuts += [cyl(BEZEL_HOLE_D, x, y, COWL_H - BEZEL_PEG_H - 0.2, COWL_H + 1) for x, y in BEZEL_PEGS]
     c = c.cut(cuts)
-    for x, y, side in COWL_CLIPS:
-        beam = cbox(x, y, COWL_CLIP_T, COWL_CLIP_W, -COWL_CLIP_L, 0.01)
-        # Flat retention shoulder below the face; 45-degree insertion lead-in at the tip.
-        inner = side * COWL_CLIP_T / 2
-        outer = inner + side * COWL_CLIP_REACH
-        profile = [(inner, -7.1), (outer, -7.8), (outer, -7.9), (inner, -8.6)]
-        f = Part.Face(Part.makePolygon([V(x + px, y - COWL_CLIP_W / 2, z) for px, z in profile + [profile[0]]]))
-        c = c.fuse([beam, f.extrude(V(0, COWL_CLIP_W, 0))])
-    return c.removeSplitter()
-
-
-def annular_profile(points):
-    """Revolve an r/z section about the knob shaft."""
-    cx,cy=KNOB_C
-    pts=[V(cx+r,cy,z) for r,z in points]
-    return Part.Face(Part.makePolygon(pts+[pts[0]])).revolve(V(cx,cy,0),V(0,0,1),360)
+    # Plain pegs on the underside: they go through the shell face, 0.25 per side in their holes.
+    c = c.fuse(cowl_pegs()).removeSplitter()
+    # Chamfer the seating edge so the first layer's squish never shows as a gap against the face.
+    seat = [f for f in c.Faces if f.Surface.TypeId == "Part::GeomPlane" and f.BoundBox.ZMax < 1e-6 and f.BoundBox.ZMin > -1e-6
+            and f.Area > 100][0]
+    return c.makeChamfer(COWL_EDGE, [e for e in seat.OuterWire.Edges]).removeSplitter()
 
 
 def make_halo():
-    """White cover: thick hidden roof under the knob and the existing outer diffuser."""
-    cx,cy=KNOB_C
-    outer=cyl(HALO_OD,cx,cy,0,HALO_T).cut(cyl(HALO_ID,cx,cy,-1,1))
-    roof=cyl(36,cx,cy,-0.6,0.01).cut(cyl(HALO_ID,cx,cy,-1,1))
-    return outer.fuse(roof).removeSplitter()
-
-
-def make_halo_reflector():
-    """FDM-sloped white liner; LED opening and light distribution require physical testing."""
-    floor=annular_profile([(6.8,-1.5),(12.6,-7.3),(13.4,-7.3),(19.8,-0.9),
-                           (19.8,-0.3),(13.4,-6.7),(12.6,-6.7),(6.8,-0.9)])
-    # Open the inner edge instead of leaving an unprintable 0.1 mm sliver.
-    return floor.cut(cyl(6.8,*LED_C,C_FRONT-1,1)).removeSplitter()
+    """White trim ring on the face, glued on."""
+    cx, cy = KNOB_C
+    return cyl(HALO_OD, cx, cy, 0, HALO_T).cut(cyl(HALO_ID, cx, cy, -1, 1))
 
 
 def make_pin_coupon():
@@ -679,9 +611,6 @@ def make_pin_coupon():
     sizes=(0.80,0.85,0.90,0.95,1.00)
     coupon = coupon.cut([cyl(d,2.34+2.54*i,2.92+2.54*j,-1,3)
                          for j,d in enumerate(sizes) for i in range(9)]).removeSplitter()
-    coupon = coupon.cut([band([(2.34+2.54*i,2.92+2.54*j),(1.24+2.54*i,2.92+2.54*j)],
-                              WIRE_CH[0], 2-WIRE_CH[1], 3)
-                         for j in range(5) for i in range(9)])
     # One through five dot marks identify 0.80 through 1.00 mm rows.
     coupon = coupon.cut([cyl(0.8,24.6+i,2.92+2.54*j,1.5,3)
                          for j in range(5) for i in range(j+1)])
@@ -737,10 +666,6 @@ def make_back_plate():
                                                      if abs(e.BoundBox.ZMax + PLINTH_H) < 1e-6])
     except Exception as exc:
         print("plinth chamfer skipped:", exc)
-    zb = -PLINTH_H
-    # desk-side details: the six round foot pockets
-    under = [foot_prism(site, 0, zb - 0.1, zb + POCKET_D) for site in foot_sites()]
-    plinth = plinth.cut(under)
     plinth = desk_to_face(plinth)
     plate = plate.fuse(plinth)
 
@@ -789,64 +714,23 @@ def screw_axes():
     return [(x, (y + PLINTH_H * sa) / ca) for (x, y) in POSTS]
 
 
-def foot_sites():
-    """The six PETG screw-cover feet in the desk frame: (centre x, centre y, plug position), in POSTS order
-    (near-left, far-left, far-right, near-right, middle). The middle dot sits on its screw, a corner dot
-    FOOT_SHIFT inboard of its screw."""
-    ax = screw_axes()
-    mid = plinth_flat().CenterOfMass
-    sites = []
-    for i, (x, y) in enumerate(ax):
-        if i >= 4:
-            sites.append((x, y, ax[i]))
-        else:  # inboard: towards the flat's centre in x and y
-            sites.append((x + math.copysign(FOOT_SHIFT[0], mid.x - x), y + math.copysign(FOOT_SHIFT[1], mid.y - y), ax[i]))
-    return sites
-
-
-def foot_prism(site, shrink, z0, z1):
-    """A foot's plan (round) shrunk by `shrink` per side, extruded from z0 to z1."""
-    return cyl(FOOT_D - 2 * shrink, site[0], site[1], z0, z1)
-
-
-def make_screw_feet():
-    """Six PETG pocket-located covers, soles on the bed; retain with small adhesive spots."""
-    zb, zt = -PLINTH_H, -PLINTH_H + POCKET_D
-    feet = []
-    for site in foot_sites():
-        flange = foot_prism(site, 0, zb - FOOT_PROUD, zb)
-        try:
-            flange = flange.makeChamfer(FOOT_EDGE, [e for e in flange.Edges
-                                                    if abs(e.BoundBox.ZMax - (zb - FOOT_PROUD)) < 1e-6])
-        except Exception as exc:
-            print("foot chamfer skipped:", exc)
-        # A rigid PETG pocket locator needs no unsupported, offset TPU-style screw plug.
-        feet.append(flange.fuse(foot_prism(site, FOOT_CLR, zb - 0.01, zt)).removeSplitter())
-    return desk_to_face(Part.makeCompound(feet))
+def bumper_room():
+    """Largest round bumper centred on each screw axis that stays on the plinth's flat bottom (it stops where the
+    underside chamfer starts), in POSTS order."""
+    flat = plinth_flat().OuterWire
+    return [2 * flat.distToShape(Part.Vertex(V(x, y, -PLINTH_H)))[0] for (x, y) in screw_axes()]
 
 
 def check_underside():
-    """The bed side's plastic and layout: the foot pockets keep WIRE_RIDGE_MIN from the plinth's flat
-    edge, and the feet stand level and alone below the plinth. Returns problems."""
-    zb = -PLINTH_H
-    flat = plinth_flat().OuterWire
-    pockets = [foot_prism(site, 0, zb, zb + POCKET_D) for site in foot_sites()]
+    """Nothing but the plinth reaches the desk side. Returns problems."""
     problems = []
-    rim = min(g_.distToShape(flat)[0] for g_ in pockets)
-    if rim < WIRE_RIDGE_MIN - 1e-6:
-        problems.append("pocket to the flat's edge %.2f" % rim)
-    # level: the six soles are coplanar at -(PLINTH_H + FOOT_PROUD); no other part goes below the plinth
-    low = -(PLINTH_H + FOOT_PROUD)
     for n, shp in PRINTED.items():
         sd = shp.copy()
         sd.translate(V(0, 0, T_NEAR))
         sd.rotate(V(0, 0, 0), V(1, 0, 0), math.degrees(ALPHA))
         z = sd.optimalBoundingBox().ZMin
-        if n == "ScrewFeet" and abs(z - low) > 1e-3:
-            problems.append("feet soles at z %.2f, not %.2f" % (z, low))
-        elif n != "ScrewFeet" and z < -PLINTH_H - 1e-3:
+        if z < -PLINTH_H - 1e-3:
             problems.append("%s below the plinth bottom (z %.2f)" % (n, z))
-    print("underside: pocket rim %.2f" % rim)
     return problems
 
 
@@ -870,82 +754,168 @@ def carrier_through_cuts(pcb=False):
         cuts.append(cyl(SPIGOT_HOLE_D, x, y, z0, z1))
     # the EC11 bushing reaches through from the HW-040 hanging behind (its body stops just behind)
     cuts.append(cyl(EC11_BUSH_D + 2 * EC11_HOLE_CLR, KNOB_C[0], KNOB_C[1], z0, z1))
-    pins = list(enc_pins.values()) + list(res_pins.values()) + list(disp_pins.values())
-    cuts += [cyl(DISP_VIA_D, x, y, z0, z1) for x, y in disp_vias.values()]
+    cuts += [cyl(HOLE_D, x, y, z0, z1) for (x, y) in enc_pins.values()]
     cuts += [cyl(RP_PIN_FIT_D, x, y, z0, z1) for x, y in sm_pins.values()]
-    cuts += [cyl(1.2, x, y, z0, z1) for x, y in list(rp_vias.values()) + [p for _, p in power_vias]]
-    cuts += [cyl(LED_LEAD_HOLE_D,x,y,z0,z1) for x,y in led_native_pins.values()]
-    cuts += [cyl(1.2,x,y,z0,z1) for x,y in led_ground_vias]
-    cuts += [cyl(HOLE_D, x, y, z0, z1) for (x, y) in pins]
     cuts += [cyl(SW_HOLE_D, *btn_pin(i, k), z0, z1) for i in range(3) for k in range(4)]
+    cuts += [cyl(VIA_D, x, y, z0, z1) for _, x, y in wire_vias()]
     return cuts
 
 
-def front_layout():
-    """Direct LCD links plus short, supported GPIO transfers into rear vias."""
-    sm,dv=lambda n:sm_pins[n],lambda n:disp_vias[n]
-    runs=[('SCL',[sm('IO26'),dv('SCL')]),('SDA',[sm('IO15'),dv('SDA')]),
-          ('RES',[sm('IO14'),dv('RES')]),
-          ('DC',[sm('IO13'),(sm('IO13')[0],70.4),(55.95,70.4),(55.95,72.0),dv('DC')]),
-          ('BLK',[sm('IO12'),(sm('IO12')[0],dv('BLK')[1]),dv('BLK')])]
-    for pin,net in [('IO3','SW'),('IO4','DT'),('IO5','CLK'),('IO6','B1'),('IO7','B2'),('IO8','B3'),
-                    ('IO9','R_PWM'),('IO10','G_PWM'),('IO11','B_PWM')]:
-        runs.append((net,[sm(pin),rp_vias[net]]))
-    runs.append(('GND',[led_ground_vias[0],(led_ground_vias[1][0],led_ground_vias[0][1]),led_ground_vias[1]]))
-    a,b,gw=power_vias[0][1],power_vias[1][1],power_vias[2][1]
-    return runs + [('3V3',[sm('3V3'),a]),('3V3',[b,rp_vias['3V3']]),
-                   ('GND',[sm('GND'),(dv('GND')[0],sm('GND')[1]),dv('GND')]),
-                   ('GND',[dv('GND'),(dv('GND')[0],GND_Y),rp_vias['GND']]),('GND',[rp_vias['GND'],gw])]
+RP_PIN = {net: name for name, net in RP_NETS.items()}   # net -> RP2040 pin name
+LEG_NET = {(0, 1): 'GND', (1, 0): 'GND', (1, 1): 'GND', (2, 0): 'GND', (2, 1): 'GND',
+           (0, 3): 'B1', (1, 3): 'B2', (2, 3): 'B3'}      # switch leg (key, pad) -> net; the rest is n/c
+ENC_NET = {'CLK': 'CLK', 'DT': 'DT', 'SW': 'SW', '+': '3V3', 'GND': 'GND'}
 
 
-def wire_layout():
-    """Rear carrier channels: encoder, keys, LED, power buses and the display pin hops."""
-    ep,leg=lambda n:enc_pins[n],btn_pin
-    v=rp_vias
-    return [
-      ('GND',[power_vias[2][1],(9.1,leg(0,0)[1]),leg(0,0)]),
-      ('GND',[v['GND'],(27.6,ep('GND')[1]),ep('GND')]),
-      ('3V3',[v['3V3'],(v['3V3'][0],ep('+')[1]),ep('+')]),
-      ('SW',[v['SW'],(v['SW'][0],ep('SW')[1]),ep('SW')]),
-      ('DT',[v['DT'],(v['DT'][0],ep('DT')[1]),ep('DT')]),
-      ('CLK',[v['CLK'],(v['CLK'][0],ep('CLK')[1]),ep('CLK')]),
-      ('B1',[v['B1'],(11.0,22.5),(25.0,22.5),(25.0,leg(0,3)[1]),leg(0,3)]),
-      ('B2',[v['B2'],(12.9,25.0),(43.0,25.0),(43.0,leg(1,3)[1]),leg(1,3)]),
-      ('B3',[v['B3'],(v['B3'][0],27.5),(leg(2,3)[0],27.5),leg(2,3)]),
-      ('GND',[leg(0,1),leg(1,0)]),('GND',[leg(1,1),leg(2,0)]),
-      ('GND',[ep('GND'),(enc_x,led_ground_vias[0][1]),led_ground_vias[0]]),
-      ('R_PWM',[v['R_PWM'],(v['R_PWM'][0],62.0),(res_pins['R_IN'][0],62.0),res_pins['R_IN']]),
-      ('G_PWM',[v['G_PWM'],(v['G_PWM'][0],64.0),(res_pins['G_IN'][0],64.0),res_pins['G_IN']]),
-      ('B_PWM',[v['B_PWM'],(v['B_PWM'][0],66.0),(res_pins['B_IN'][0],66.0),res_pins['B_IN']]),
-      ('LED_R',[res_pins['R_OUT'],led_terminals['R']]),
-      ('LED_G',[res_pins['G_OUT'],led_terminals['G']]),
-      ('LED_B',[res_pins['B_OUT'],led_terminals['B']]),
-    ] + [(n,[disp_vias[n],disp_pins[n]]) for n in DISP_PINS if n in disp_vias] + [
-      ('3V3',[power_vias[0][1],(V33_X,power_vias[0][1][1]),v33_join]),
-      ('3V3',[v33_join,disp_pins['VCC']]),
-      ('3V3',[v33_join,power_vias[1][1]])]
+def wire_routes():
+    """Every wire as (net, segs, ends). segs = [(face, [(x, y), ...]), ...]: the groove centre lines, 'F' on the carrier
+    front and 'B' on its back; two segments meet at a via. ends = (start, end) as (kind, pin xy): 'rp' RP2040 pin
+    (front), 'disp' display pin (front, its pocket), 'enc' encoder pin or 'leg' switch leg (back). No run crosses another:
+      * display: RP2040 right column and bottom row to the display pins' pockets (GND and 3V3 almost straight)
+      * RP2040 left column: a groove on the front west to the via at the top of that wire's column, the column
+        straight down the west corridor on the back, then to the pin or leg; the columns west to east are the three
+        keys (they turn east above the keys) then CLK, DT, SW (they turn east into the encoder pins)
+      * encoder 3V3 and GND, key GND: from the display's VCC and GND pins (a second and third wrap there), on the
+        front round the east and south of the display, a via east of the encoder pins and a short hop west."""
+    S, D, E = sm_pins, disp_pins, enc_pins
+    R = []
+    # GND and 3V3: out to the display's pocket, a little steeper than a straight line, round the corner standoff
+    for n, p in (('GND', 'GND'), ('3V3', 'VCC')):
+        a_, d_ = S[RP_PIN[n]], D[p]
+        R.append((n, [('F', [a_, (a_[0] + 3.2, d_[1] + 0.7), d_])], (('rp', a_), ('disp', d_))))
+    for n, p in (('SCL', 'SCL'), ('SDA', 'SDA'), ('RES', 'RES')):
+        R.append((n, [('F', [S[RP_PIN[n]], D[p]])], (('rp', S[RP_PIN[n]]), ('disp', D[p]))))
+    s13, s12, s14 = S[RP_PIN['DC']], S[RP_PIN['BLK']], S[RP_PIN['RES']]
+    R.append(('DC', [('F', [s13, (s13[0] + 0.6, s13[1] - 1.45), (s14[0] + 1.9, s13[1] - 1.45), D['DC']])],
+              (('rp', s13), ('disp', D['DC']))))
+    R.append(('BLK', [('F', [s12, (s12[0] + 0.7, s12[1] - 2.75), (s14[0] + 2.4, s12[1] - 2.75), D['BLK']])],
+              (('rp', s12), ('disp', D['BLK']))))
+    # RP2040 left column: wires and the columns they take (west to east), see above
+    order = ['B1', 'B2', 'B3', 'CLK', 'DT', 'SW']
+    col = {n: enc_x - 1.95 - COL_PITCH * (5 - i) for i, n in enumerate(order)}
+    for n in order:
+        p = S[RP_PIN[n]]
+        top = (col[n], p[1])                       # the via: the column starts here
+        if n in ('CLK', 'DT', 'SW'):
+            e = E[n]
+            back, end = [top, (col[n], e[1]), e], ('enc', e)
+        else:
+            i = int(n[1]) - 1                      # key 0..2
+            leg = btn_pin(i, 3)
+            yh = 21.9 + COL_PITCH * i              # turns east above its key; the rightmost key turns first (highest)
+            back, end = [top, (col[n], yh), (leg[0], yh), leg], ('leg', leg)
+        R.append((n, [('F', [p, top]), ('B', back)], (('rp', p), end)))
+    # power from the display's VCC and GND pins
+    xp = enc_x + 2.4
+    xg = xp + 1.5
+    ex1 = D['VCC'][0] + 3.04
+    ex2 = ex1 + PITCH_MIN
+    yp = 62.0
+    via_p, via_g = (xp, E['+'][1] + 1.7), (xg, E['GND'][1] + 2.4)
+    R.append(('3V3', [('F', [D['VCC'], (ex1, D['VCC'][1]), (ex1, yp), (xp, yp), via_p]), ('B', [via_p, E['+']])],
+              (('disp', D['VCC']), ('enc', E['+']))))
+    R.append(('GND', [('F', [D['GND'], (D['GND'][0] + 1.4, D['GND'][1] - 0.8), (ex2, D['GND'][1] - 0.8),
+                             (ex2, yp - PITCH_MIN), (xg, yp - PITCH_MIN), via_g]),
+                      ('B', [via_g, E['GND']])], (('disp', D['GND']), ('enc', E['GND']))))
+    # key ground: east of everything, down to the right key's free lower leg
+    leg = btn_pin(2, 1)
+    xk = 75.0
+    via_k = (xk, leg[1])
+    R.append(('GND', [('F', [D['GND'], (D['GND'][0] + 1.9, D['GND'][1] + 0.8), (xk, D['GND'][1] + 0.8), via_k]),
+                      ('B', [via_k, leg])], (('disp', D['GND']), ('leg', leg))))
+    for a, b in (((0, 1), (1, 0)), ((1, 1), (2, 0))):   # key to key ground chain
+        pa, pb = btn_pin(*a), btn_pin(*b)
+        R.append(('GND', [('B', [pa, pb])], (('leg', pa), ('leg', pb))))
+    return R
 
-def header_rows(front=False):
-    """Header strips, every pin fitted: (x, y, pin count, horizontal)."""
-    if not front:
-        return []
-    return [(SM_X, sm_bottom_y, 5, True), (disp_hdr_x, disp_hdr_y, 7, False)] + [(x, sm_hdr_y, 9, False) for x in sm_rows]
 
-def row_len(n):
-    return (n - 1) * 2.54 + 2 * PIN_ROW[1]
+def wire_vias():
+    """Where a wire changes face: (net, x, y)."""
+    return [(net, *p1[-1]) for net, segs, _ in wire_routes() for (_, p1), _s in zip(segs, segs[1:])]
 
 
-def leg_ends():
-    """Switch legs a run ends on: (leg, the unit direction the run arrives from)."""
-    out = []
-    for _, pts in wire_layout():
-        for a, b in ((pts[0], pts[1]), (pts[-1], pts[-2])):
-            for i in range(3):
-                for k in range(4):
-                    if math.hypot(a[0] - btn_pin(i, k)[0], a[1] - btn_pin(i, k)[1]) < 1e-6:
-                        L = math.hypot(b[0] - a[0], b[1] - a[1])
-                        out.append((a, ((b[0] - a[0]) / L, (b[1] - a[1]) / L)))
-    return out
+def disp_pockets():
+    return list(disp_pins.values())
+
+
+def groove_cuts():
+    """Grooves, vias and display pockets, ready to cut from the carrier."""
+    cuts = []
+    for net, segs, _ in wire_routes():
+        for face, pts in segs:
+            if face == 'F':
+                cuts.append(band(pts, GROOVE_W, C_FRONT - GROOVE_D, C_FRONT + 1))
+            else:
+                cuts.append(band(pts, GROOVE_W, C_BACK - 1, C_BACK + GROOVE_D))
+    cuts += [cyl(VIA_D, x, y, C_BACK - 1, C_FRONT + 1) for _, x, y in wire_vias()]
+    cuts += [cyl(DPIN_POCKET[0], x, y, C_FRONT - DPIN_POCKET[1], C_FRONT + 1) for x, y in disp_pockets()]
+    return cuts
+
+
+def _circle(x, y, d):
+    return Part.Face(Part.Wire(Part.makeCircle(d / 2, V(x, y, 0))))
+
+
+def wire_features(face):
+    """(net, label, 2D shape) of everything on one face of the carrier that belongs to a net, plus the solids and holes
+    that have to be kept clear (net 'solid'). The 0.7 mm rule is checked between different nets."""
+    F = []
+    for net, segs, _ in wire_routes():
+        for fc, pts in segs:
+            if fc == face:
+                F.append((net, "groove %s %s" % (net, face), band_face(pts, GROOVE_W, 0)))
+    F += [(net, "via %s" % net, _circle(x, y, VIA_D)) for net, x, y in wire_vias()]
+    F += [(RP_NETS.get(n, 'n/c ' + n), "RP hole " + n, _circle(x, y, RP_PIN_FIT_D)) for n, (x, y) in sm_pins.items()]
+    F += [(ENC_NET[n], "encoder hole " + n, _circle(x, y, HOLE_D)) for n, (x, y) in enc_pins.items()]
+    F += [(LEG_NET.get((i, k), 'n/c %d.%d' % (i, k)), "leg hole %d.%d" % (i, k), _circle(*btn_pin(i, k), SW_HOLE_D))
+          for i in range(3) for k in range(4)]
+    F += [('solid', "spigot hole", _circle(x, y, SPIGOT_HOLE_D)) for x, y in POSTS]
+    F += [('solid', "encoder bushing hole", _circle(*KNOB_C, EC11_BUSH_D + 2 * EC11_HOLE_CLR))]
+    if face == 'F':
+        F += [('solid', "post", _circle(x, y, POST_D)) for x, y in POSTS]
+        F += [('solid', "standoff", _circle(x, y, DISP_STANDOFF_D)) for x, y in disp_standoffs]
+        F += [(net, "pocket %s" % n, _circle(x, y, DPIN_POCKET[0])) for (n, (x, y)), net in
+              zip(disp_pins.items(), ('GND', '3V3', 'SCL', 'SDA', 'RES', 'DC', 'BLK'))]
+    return F
+
+
+def _near(a, b, m):
+    A, B = a.BoundBox, b.BoundBox
+    return not (A.XMax + m < B.XMin or B.XMax + m < A.XMin or A.YMax + m < B.YMin or B.YMax + m < A.YMin)
+
+
+def check_wires():
+    """Plastic between different nets (and the board edge) on both faces. Returns (tightest mm, what, problems)."""
+    board = carrier_outline().cut(carrier_through_cuts()[:len(HOOKS)])
+    board = [f for f in board.Faces if abs(f.normalAt(0, 0).z + 1) < 1e-6][0].OuterWire
+    tight, problems = (9e9, ""), []
+    for face in ('F', 'B'):
+        F = wire_features(face)
+        for i, (na, la, sa) in enumerate(F):
+            if la.startswith(("groove", "via", "pocket")):
+                d = sa.distToShape(board)[0]
+                if d < WIRE_RIDGE_MIN - 1e-6:
+                    problems.append("%.2f %s / board edge" % (d, la))
+            for nb, lb, sb in F[i + 1:]:
+                if na == nb or (na == 'solid' and nb == 'solid') or not _near(sa, sb, WIRE_RIDGE_MIN + 0.5):
+                    continue
+                d = sa.distToShape(sb)[0]
+                if d < tight[0]:
+                    tight = (d, "%s: %s / %s" % (face, la, lb))
+                if d < WIRE_RIDGE_MIN - 1e-6:
+                    problems.append("%.2f %s: %s / %s" % (d, face, la, lb))
+    # one groove, one wire: grooves of the same net may only meet inside the 2 mm round a shared pin or pocket
+    for face in ('F', 'B'):
+        gs = [(net, pts) for net, segs, _ in wire_routes() for fc, pts in segs if fc == face]
+        for i, (na, pa) in enumerate(gs):
+            for nb, pb in gs[i + 1:]:
+                if na != nb:
+                    continue
+                ends = Part.makeCompound([_circle(*q, 2.0) for q in (pa[0], pa[-1], pb[0], pb[-1])])
+                sa, sb = band_face(pa, GROOVE_W, 0).cut(ends), band_face(pb, GROOVE_W, 0).cut(ends)
+                if sa.BoundBox.intersect(sb.BoundBox) and sa.common(sb).Area > 1e-3:
+                    problems.append("%s grooves of net %s overlap" % (face, na))
+    return tight, problems
 
 
 def run_edges(pts, z, r=WIRE_BEND_R):
@@ -977,8 +947,9 @@ def run_edges(pts, z, r=WIRE_BEND_R):
     return edges
 
 
+
 def band_face(pts, w, z):
-    """A channel's outline at height z: the run's centre line grown to width w (round ends)."""
+    """A groove's outline at height z: the run's centre line grown to width w (round ends)."""
     if len(pts) == 2:  # one straight stretch: no plane for the 2D offset, so a stadium by hand
         (ax, ay), (bx, by) = pts
         L = math.hypot(bx - ax, by - ay)
@@ -992,104 +963,6 @@ def band_face(pts, w, z):
 
 def band(pts, w, z0, z1):
     return band_face(pts, w, z0).extrude(V(0, 0, z1 - z0))
-
-
-def wire_crossings(runs=None):
-    """Where two runs of different nets cross: (x, y, run on top, run that dips, its direction)."""
-    runs = wire_layout() if runs is None else runs
-    segs = [(k, a, b) for k, (_, pts) in enumerate(runs) for a, b in zip(pts, pts[1:])]
-    out = []
-    for i, (ka, a0, a1) in enumerate(segs):
-        for (kb, b0, b1) in segs[i + 1:]:
-            if ka == kb or runs[ka][0] == runs[kb][0]:
-                continue
-            d = (a1[0] - a0[0]) * (b1[1] - b0[1]) - (a1[1] - a0[1]) * (b1[0] - b0[0])
-            if abs(d) < 1e-9:
-                continue
-            s = ((b0[0] - a0[0]) * (b1[1] - b0[1]) - (b0[1] - a0[1]) * (b1[0] - b0[0])) / d
-            t = ((b0[0] - a0[0]) * (a1[1] - a0[1]) - (b0[1] - a0[1]) * (a1[0] - a0[0])) / d
-            if 1e-6 < s < 1 - 1e-6 and 1e-6 < t < 1 - 1e-6:  # the later run dips under the earlier
-                L = math.hypot(b1[0] - b0[0], b1[1] - b0[1])
-                out.append((a0[0] + s * (a1[0] - a0[0]), a0[1] + s * (a1[1] - a0[1]), ka, kb,
-                            ((b1[0] - b0[0]) / L, (b1[1] - b0[1]) / L)))
-    return out
-
-
-def crossing_pockets(runs, front, z0, z1):
-    cuts=[]
-    for (x,y,_,_,(dx,dy)) in wire_crossings(runs):
-        cuts.append(place(box(-WIRE_CROSS[0]/2-WIRE_D,-WIRE_CH[0]/2,z0,
-                              WIRE_CROSS[0]/2+WIRE_D,WIRE_CH[0]/2,z1),x,y,math.degrees(math.atan2(dy,dx))))
-    return cuts
-
-
-def wire_cuts():
-    """Both faces retain at least 0.4 mm where ordinary and dipped channels overlap."""
-    w,dep=WIRE_CH
-    rear=wire_layout();front=front_layout()
-    cuts=[band(pts,w,C_BACK-1,C_BACK+dep) for _,pts in rear]
-    cuts += crossing_pockets(rear,False,C_BACK-1,C_BACK+WIRE_CROSS[1])
-    cuts += kapton_squares(C_BACK-1,C_BACK+dep+KAPTON[1],rear)
-    cuts += [band([led_native_pins[n],led_terminals[n]],LED_FAN_WIDTH,C_BACK-1,C_BACK+LED_FAN_DEPTH)
-             for n in ('R','C','G','B')]
-    cuts += [band(pts,w,C_FRONT-dep,C_FRONT+1) for _,pts in front]
-    cuts += crossing_pockets(front,True,C_FRONT-WIRE_CROSS[1],C_FRONT+1)
-    cuts += kapton_squares(C_FRONT-dep-KAPTON[1],C_FRONT+1,front)
-    for ((x,y),(dx,dy)) in leg_ends():
-        cuts.append(place(box(0,-LEG_POCKET[0]/2,C_BACK-1,LEG_POCKET[1],LEG_POCKET[0]/2,C_BACK+dep),
-                          x,y,math.degrees(math.atan2(dy,dx))))
-    return cuts
-
-def check_wires(runs=None, front=False):
-    """Narrowest plastic left between a channel and anything that is not its own: another net's
-    channel (where two runs cross, that pair is left out), a hole, pin row or leg pocket it does not
-    end in, the board edge. Returns [(mm, net, what)], smallest first."""
-    runs = wire_layout() if runs is None else runs
-    zt = C_BACK
-    chans = [band_face(pts, WIRE_CH[0], zt) for _, pts in runs]
-    crossed = {(min(a, b), max(a, b)) for (_, _, a, b, _) in wire_crossings(runs)}
-    holes = [((x, y), HOLE_D) for d in (enc_pins, res_pins, disp_pins) for (x, y) in d.values()]
-    holes += [(p, DISP_VIA_D) for p in disp_vias.values()]
-    holes += [(p, RP_PIN_FIT_D) for p in sm_pins.values()]
-    holes += [(p,1.2) for p in list(rp_vias.values())+[q for _,q in power_vias]]
-    holes += [(p,LED_LEAD_HOLE_D) for p in led_native_pins.values()]
-    holes += [(p,1.2) for p in led_ground_vias]
-    holes += [(btn_pin(i, k), SW_HOLE_D) for i in range(3) for k in range(4)]
-    holes += [(p, SPIGOT_HOLE_D) for p in POSTS] + [(KNOB_C, EC11_BUSH_D + 2 * EC11_HOLE_CLR)]
-    pockets = [(p, place(Part.Face(Part.makePolygon([V(0, -LEG_POCKET[0] / 2, zt), V(LEG_POCKET[1], -LEG_POCKET[0] / 2, zt),
-                                                     V(LEG_POCKET[1], LEG_POCKET[0] / 2, zt), V(0, LEG_POCKET[0] / 2, zt),
-                                                     V(0, -LEG_POCKET[0] / 2, zt)])), p[0], p[1], math.degrees(math.atan2(d[1], d[0]))))
-               for (p, d) in leg_ends()]
-    board = carrier_outline().cut(carrier_through_cuts()[:len(HOOKS)])
-    board = [f for f in board.Faces if abs(f.normalAt(0, 0).z + 1) < 1e-6][0]
-    out = []
-    for k, ((net, pts), ch) in enumerate(zip(runs, chans)):
-        ends = [pts[0], pts[-1]]
-        if front:
-            ends += [disp_pins[n] for n,p in disp_vias.items() if p in ends]
-        own = lambda p: any(math.hypot(p[0] - e[0], p[1] - e[1]) < 1e-6 for e in ends)
-        for j in range(k + 1, len(runs)):
-            if runs[j][0] != net and (k, j) not in crossed:
-                out.append((ch.distToShape(chans[j])[0], net, "channel " + runs[j][0]))
-        for (p, dia) in holes:
-            if not own(p):
-                out.append((ch.distToShape(Part.Vertex(V(p[0], p[1], zt)))[0] - dia / 2, net, "hole (%.1f, %.1f)" % p))
-        mine = []
-        for (x, y, n, horizontal) in header_rows(front):
-            w, h = (row_len(n), PIN_ROW[0]) if horizontal else (PIN_ROW[0], row_len(n))
-            tr = Part.Face(Part.makePolygon([V(x + sx * w / 2, y + sy * h / 2, zt)
-                                             for (sx, sy) in ((-1, -1), (1, -1), (1, 1), (-1, 1), (-1, -1))]))
-            if any((abs(e[1] - y) < 1e-6 and abs(e[0] - x) <= n * 1.27) if horizontal
-                   else (abs(e[0] - x) < 1e-6 and abs(e[1] - y) <= n * 1.27) for e in ends):
-                mine.append(tr)
-            else:
-                out.append((ch.distToShape(tr)[0], net, "pin row x %.1f" % x))
-        for (p, pk) in pockets:
-            if not own(p):
-                out.append((ch.distToShape(pk)[0], net, "leg pocket (%.1f, %.1f)" % p))
-        ch = ch.cut(mine) if mine else ch  # (a pin row may run out of the board edge)
-        out.append((ch.distToShape(board.OuterWire)[0] if ch.cut(board).Area < 1e-3 else 0.0, net, "board edge"))
-    return sorted(out, key=lambda t: t[0])
 
 
 def peg(x, y, hole_d, z0, z1, clr=PEG_CLR):
@@ -1107,13 +980,13 @@ def make_carrier():
     c = c.cut(cuts)
 
     adds = []
-    for (x, y) in disp_holes:  # display standoffs with pegs through its four corner holes
+    for (x, y) in disp_standoffs:  # display standoffs with pegs through its corner holes
         adds.append(cyl(DISP_STANDOFF_D, x, y, C_FRONT - 0.01, dpcb_z1))
         adds.append(peg(x, y, DISP_HOLE_D, dpcb_z1 - 0.01, glass_z1 + PEG_PROUD))
     c = c.fuse(adds)
     # keep the display header clear of the standoffs
     c = c.cut(cbox(disp_hdr_x, disp_hdr_y, 2.6, 7 * 2.54 + 1.0, C_FRONT, C_FRONT + 6))
-    c = c.cut(wire_cuts())
+    c = c.cut(groove_cuts())
     return c.removeSplitter()
 
 
@@ -1285,212 +1158,57 @@ def dummy_rp2040_zero():
     return board
 
 
-def rgb_led_lead(name):
-    """Trimmed lead, bent into the accessible rear fan groove."""
-    x,y=led_native_pins[name];tx,ty=led_terminals[name]
-    a=V(x,y,LED_BASE_Z);b=V(x,y,C_BACK-0.05)
-    c=V(x+(tx-x)/8.0,y+1.0,C_BACK+0.35);d=V(tx,ty,C_BACK+0.35)
-    pieces=[Part.makeCylinder(LED_LEAD_D/2,(v-u).Length,u,v-u) for u,v in ((a,b),(b,c),(c,d))]
-    pieces += [Part.makeSphere(LED_LEAD_D/2,q) for q in (b,c)]
-    return fuse_all(pieces)
+def _pipe(pts):
+    path = Part.Wire(run_edges(pts, None))
+    e = path.OrderedEdges[0]
+    profile = Part.Wire(Part.makeCircle(WIRE_D / 2, e.Vertexes[0].Point, e.tangentAt(e.FirstParameter)))
+    return path.makePipeShell([profile], True, True)
 
 
-def dummy_rgb_led():
-    x,y=LED_C
-    body=cyl(LED_D,x,y,LED_BASE_Z+1,LED_TIP_Z-LED_D/2)
-    dome=Part.makeSphere(LED_D/2,V(x,y,LED_TIP_Z-LED_D/2)).common(
-        box(x-3,y-3,LED_TIP_Z-LED_D/2,x+3,y+3,LED_TIP_Z+0.1))
-    flange=cyl(LED_FLANGE_D,x,y,LED_BASE_Z,LED_BASE_Z+1)
-    return fuse_all([body,dome,flange]+[rgb_led_lead(n) for n in ('R','C','G','B')])
-
-
-def dummy_resistor(i):
-    x,y=RES_C[i]
-    body=Part.makeCylinder(0.9,3.2,V(x,y-1.6,C_FRONT+1.1),V(0,1,0))
-    leads=[]
-    for side in (-1,1):
-        p=V(x,y+side*1.6,C_FRONT+1.1)
-        q=V(x,y+side*RES_PITCH/2,C_FRONT+1.1)
-        r=V(q.x,q.y,C_BACK-3)
-        leads += [Part.makeCylinder(0.25,(q-p).Length,p,q-p),Part.makeCylinder(0.25,(r-q).Length,q,r-q)]
-    return fuse_all([body]+leads)
-
-
-def shared_offsets(runs=None):
-    """Side-by-side offsets for runs of one net that share a channel: {(run, segment): mm}, one
-    wire to each side of the channel's centre line."""
-    runs = wire_layout() if runs is None else runs
-    segs = [(k, i, a, b) for k, (_, pts) in enumerate(runs) for i, (a, b) in enumerate(zip(pts, pts[1:]))]
-    off = {}
-    for n, (k1, i1, a1, b1) in enumerate(segs):
-        for (k2, i2, a2, b2) in segs[n + 1:]:
-            if k1 == k2 or runs[k1][0] != runs[k2][0]:
-                continue
-            d1 = (b1[0] - a1[0], b1[1] - a1[1])
-            L1 = math.hypot(*d1)
-            u = (d1[0] / L1, d1[1] / L1)
-            cross = lambda p: (p[0] - a1[0]) * u[1] - (p[1] - a1[1]) * u[0]
-            if abs(cross(a2)) > 1e-6 or abs(cross(b2)) > 1e-6:
-                continue  # not on the same line
-            t = sorted([(a2[0] - a1[0]) * u[0] + (a2[1] - a1[1]) * u[1], (b2[0] - a1[0]) * u[0] + (b2[1] - a1[1]) * u[1]])
-            if min(L1, t[1]) - max(0.0, t[0]) > 0.5:  # they overlap: one wire each side
-                s = (WIRE_CH[0] - WIRE_D) / 2 - 0.05
-                off[(k1, i1)], off[(k2, i2)] = -s, s
-    return off
-
-
-def offset_run(pts, k, off):
-    """A run's points with its shared segments moved sideways (see shared_offsets)."""
-    P = [list(p) for p in pts]
-    for i, (a, b) in enumerate(zip(pts, pts[1:])):
-        d = off.get((k, i))
-        if d:
-            L = math.hypot(b[0] - a[0], b[1] - a[1])
-            nx, ny = -(b[1] - a[1]) / L * d, (b[0] - a[0]) / L * d
-            for p in (P[i], P[i + 1]):
-                p[0] += nx
-                p[1] += ny
-    return [tuple(p) for p in P]
+def _toward(p, q, d):
+    L = math.hypot(q[0] - p[0], q[1] - p[1])
+    return (p[0] + (q[0] - p[0]) / L * d, p[1] + (q[1] - p[1]) / L * d)
 
 
 def dummy_wire():
-    """Two supported carrier-face routes, local via drops, and terminal wraps."""
-    parts=[]
-    groups={}
-    def add(net,shape):
-        parts.append(shape)
-        groups.setdefault(net,[]).append(shape)
-    r=WIRE_D/2
-    for front in (False,True):
-        runs=front_layout() if front else wire_layout()
-        zc=(C_FRONT-WIRE_CH[1]+r) if front else (C_BACK+WIRE_CH[1]-r)
-        zd=(C_FRONT-WIRE_CROSS[1]+r) if front else (C_BACK+WIRE_CROSS[1]-r)
-        off=shared_offsets(runs)
-        dips={}
-        for x,y,_,kb,d in wire_crossings(runs):
-            dips.setdefault(kb,[]).append((x,y,d))
-        physical=(list(sm_pins.values()) if front else
-                  list(enc_pins.values())+list(res_pins.values())+list(disp_pins.values()))
-        for k,(net,pts) in enumerate(runs):
-            P=offset_run(pts,k,off)
-            path=Part.Wire(run_edges(P,zc));e=path.OrderedEdges[0]
-            profile=Part.Wire(Part.makeCircle(r,e.Vertexes[0].Point,e.tangentAt(e.FirstParameter)))
-            wire=path.makePipeShell([profile],True,True)
-            terminals=[cyl(1.0,x,y,zc-1,zc+1) for x,y in (pts[0],pts[-1]) if (x,y) in physical]
-            if terminals:wire=wire.cut(terminals)
-            for x,y,(dx,dy) in dips.get(k,[]):
-                j=min(range(len(pts)-1),key=lambda i:Part.LineSegment(V(*pts[i],0),V(*pts[i+1],0)).toShape().distToShape(Part.Vertex(V(x,y,0)))[0])
-                px,py=x+(P[j][0]-pts[j][0]),y+(P[j][1]-pts[j][1]);h=WIRE_CROSS[0]/2
-                wire=wire.cut(place(box(-h,-1,zc-1,h,1,zc+1),px,py,math.degrees(math.atan2(dy,dx))))
-                pp=[V(px+dx*t,py+dy*t,z) for t,z in ((-h,zc),(-h+0.8,zd),(h-0.8,zd),(h,zc))]
-                for u,v in zip(pp,pp[1:]):wire=wire.fuse(Part.makeCylinder(r,(v-u).Length,u,v-u))
-                wire=wire.fuse([Part.makeSphere(r,q) for q in pp])
-            # A dip may reach a terminal; trim its end caps around the physical pin too.
-            if terminals:wire=wire.cut(terminals)
-            add(net,wire)
-    rear_z=C_BACK+WIRE_CH[1]-r
-    front_z=C_FRONT-WIRE_CH[1]+r
-    for net,(x,y) in rp_vias.items():
-        add(net,cyl(WIRE_D,x,y,rear_z,front_z))
-    for net,(x,y) in power_vias:add(net,cyl(WIRE_D,x,y,rear_z,front_z))
-    for i,(x,y) in enumerate(led_ground_vias):
-        add('GND',cyl(WIRE_D,x,y,rear_z if i==0 else C_BACK-0.8,front_z))
-    ring=lambda x,y,z0,z1:cyl(WRAP_OD,x,y,z0,z1).cut(cyl(0.95,x,y,z0-1,z1+1))
-    tall=WRAP_TURNS*WIRE_D
-    for name,(x,y) in sm_pins.items():
-        if name in RP_NETS:add(RP_NETS[name],ring(x,y,C_FRONT+0.3,C_FRONT+0.3+tall))
-    for name,(x,y) in disp_pins.items():
-        net={'GND':'GND','VCC':'3V3'}.get(name,name)
-        if name in disp_vias:add(net,cyl(WIRE_D,*disp_vias[name],rear_z,front_z))
-        add(net,ring(x,y,C_BACK-0.3-tall,C_BACK-0.3))
-    for name,(x,y) in enc_pins.items():
-        add({'CLK':'CLK','DT':'DT','SW':'SW','+':'3V3','GND':'GND'}[name],
-            ring(x,y,C_BACK-0.5-tall,C_BACK-0.5))
-    for name,(x,y) in res_pins.items():
-        color=name[0];net=color+'_PWM' if name.endswith('IN') else 'LED_'+color
-        add(net,cyl(WRAP_OD,x,y,C_BACK-1.5,C_BACK-0.3).cut(cyl(0.6,x,y,C_BACK-2,C_BACK)))
+    """Every wire of wire_routes() as a swept circle in its groove, with its wire-wrap rings and the tails down the display
+    pins; grouped by net in WIRE_BY_NET."""
+    groups, wraps = {}, {}
+    ring = lambda x, y, z0: cyl(WRAP[0], x, y, z0, z0 + WRAP[2]).cut(cyl(WRAP[1], x, y, z0 - 1, z0 + WRAP[2] + 1))
+    ring_top = dpcb_z1 - 2.5 - 0.2          # display pin: first ring just under the header plastic
+    for net, segs, ends in wire_routes():
+        parts = []
+        for k, (face, pts) in enumerate(segs):
+            pts = list(pts)
+            for end, at in ((0, ends[0]), (-1, ends[1])):
+                if (end == 0 and k != 0) or (end == -1 and k != len(segs) - 1):
+                    continue
+                kind, pin = at
+                nxt = pts[1] if end == 0 else pts[-2]
+                if kind == 'disp':     # tail: ring at the pin root, then down the pin on the side the groove leaves by
+                    i = wraps.setdefault(pin, [])
+                    i.append(1)
+                    top = ring_top - WRAP[2] * (len(i) - 1)
+                    u = _toward(pin, nxt, 1.0)
+                    f = 0.5 / max(abs(u[0] - pin[0]), abs(u[1] - pin[1]))   # clear of the 0.64 mm square pin
+                    tx, ty = _toward(pin, nxt, f)
+                    parts += [cyl(WIRE_D, tx, ty, WIRE_Z_FRONT, top - WRAP[2] / 2), ring(pin[0], pin[1], top - WRAP[2])]
+                    pts[end] = (tx, ty)
+                else:
+                    pts[end] = _toward(pin, nxt, WIRE_ATT)
+                    z0 = {'rp': C_FRONT + 0.05, 'enc': C_BACK - 0.05 - WRAP[2], 'leg': C_BACK - 0.05 - WRAP[2]}[kind]
+                    parts.append(ring(pin[0], pin[1], z0))
+            if face == 'B':
+                parts.append(_pipe([(x, y, WIRE_Z_BACK) for x, y in pts]))
+                continue
+            parts.append(_pipe([(x, y, WIRE_Z_FRONT) for x, y in pts]))
+        for (_, p1), _s in zip(segs, segs[1:]):
+            parts.append(cyl(WIRE_D, p1[-1][0], p1[-1][1], WIRE_Z_BACK, WIRE_Z_FRONT))
+        groups.setdefault(net, []).extend(parts)
     WIRE_BY_NET.clear()
-    WIRE_BY_NET.update({net:Part.makeCompound(shapes) for net,shapes in groups.items()})
-    return Part.makeCompound(parts)
+    WIRE_BY_NET.update({net: Part.makeCompound(shapes) for net, shapes in groups.items()})
+    return Part.makeCompound(list(WIRE_BY_NET.values()))
 
-
-def kapton_squares(z0,z1,runs=None):
-    """Squares span crossings; a normal trace and dipped trace have 0.10 mm air gap."""
-    half=KAPTON[0]/2
-    squares=[place(box(-half,-half,z0,half,half,z1),x,y,math.degrees(math.atan2(dy,dx)))
-             for x,y,_,_,(dx,dy) in wire_crossings(runs)]
-    return [fuse_all(squares)] if squares else []
-
-
-def dummy_kapton():
-    rear=C_BACK+WIRE_CH[1]
-    front=C_FRONT-WIRE_CH[1]-KAPTON[1]
-    return Part.makeCompound(kapton_squares(rear,rear+KAPTON[1],wire_layout())+
-                             kapton_squares(front,front+KAPTON[1],front_layout()))
-
-
-def dummy_wire_straps():
-    """A few wider removable tape strips hold adjacent wires, one set per face."""
-    rear=[cbox(11,60,8,2,C_BACK-0.08,C_BACK-0.02),
-          cbox(11,35,8,2,C_BACK-0.08,C_BACK-0.02),
-          cbox(22.8,60,10,2,C_BACK-0.08,C_BACK-0.02),
-          cbox(22.8,52,10,2,C_BACK-0.08,C_BACK-0.02)]
-    front=[cbox(56.0,79.0,2,13,C_FRONT+0.02,C_FRONT+0.08)]
-    return Part.makeCompound(rear+front)
-
-
-def check_led_fan():
-    """Check local lead-hole/fan webs and clearance from unrelated rear channels."""
-    names=('R','C','G','B');nets=('LED_R','GND','LED_G','LED_B');z=C_BACK
-    fans=[band_face([led_native_pins[n],led_terminals[n]],LED_FAN_WIDTH,z) for n in names]
-    runs=wire_layout();channels=[band_face(points,WIRE_CH[0],z) for _,points in runs]
-    issues=[]
-    if 1.27-LED_LEAD_HOLE_D < 0.4-1e-6:
-        issues.append(('lead-hole web',1.27-LED_LEAD_HOLE_D))
-    for i,name in enumerate(names):
-        for j in range(i+1,len(names)):
-            gap=fans[i].distToShape(fans[j])[0]
-            if gap < 0.4-1e-6:issues.append(('fan web',name,names[j],gap))
-        for j,(net,_) in enumerate(runs):
-            if net!=nets[i]:
-                gap=fans[i].distToShape(channels[j])[0]
-                if gap < WIRE_RIDGE_MIN-1e-6:issues.append(('wire',name,net,gap))
-        holes=[(q,LED_LEAD_HOLE_D,0.4,'LED_'+n) for n,q in led_native_pins.items() if n!=name]
-        holes += [(q,1.2,WIRE_RIDGE_MIN,'via') for q in list(rp_vias.values())+led_ground_vias+[p for _,p in power_vias] if q!=led_terminals[name]]
-        holes += [(q,HOLE_D,WIRE_RIDGE_MIN,'pin') for group in (enc_pins,res_pins,disp_pins) for q in group.values()]
-        holes += [(q,DISP_VIA_D,WIRE_RIDGE_MIN,'display via') for q in disp_vias.values()]
-        holes += [(p,RP_PIN_FIT_D,WIRE_RIDGE_MIN,'RP') for p in sm_pins.values()]
-        holes += [(q,SPIGOT_HOLE_D,WIRE_RIDGE_MIN,'post') for q in POSTS]
-        holes += [(KNOB_C,EC11_BUSH_D+2*EC11_HOLE_CLR,WIRE_RIDGE_MIN,'shaft')]
-        for (x,y),dia,limit,label in holes:
-            gap=fans[i].distToShape(Part.Vertex(V(x,y,z)))[0]-dia/2
-            if gap < limit-1e-6:issues.append(('hole',name,label,(x,y),gap))
-    return issues
-
-
-def check_twoface_web():
-    """Deep pockets on opposing faces must not overlap; other intersections retain >=0.4 mm."""
-    dip=WIRE_CROSS[1] if wire_crossings() or wire_crossings(front_layout()) else WIRE_CH[1]  # no dips without crossings
-    web=C_T-WIRE_CH[1]-dip
-    if web < 0.4-1e-6:
-        raise ValueError('opposite-face channels leave less than 0.4 mm web')
-    rear=crossing_pockets(wire_layout(),False,0,1)
-    front=crossing_pockets(front_layout(),True,0,1)
-    rear_tape=kapton_squares(0,1,wire_layout())
-    front_tape=kapton_squares(0,1,front_layout())
-    rear_fans=[band([led_native_pins[n],led_terminals[n]],LED_FAN_WIDTH,0,1)
-               for n in ('R','C','G','B')]
-    if C_T-WIRE_CROSS[1]-LED_FAN_DEPTH < 0.4-1e-6:
-        for a in front:
-            for b in rear_fans:
-                if a.BoundBox.intersect(b.BoundBox) and a.common(b).Volume>1e-7:
-                    raise ValueError('front crossing dip overlaps the LED fan')
-    for one,other in ((rear,front),(rear,front_tape),(front,rear_tape)):
-        for a in one:
-            for b in other:
-                if a.BoundBox.intersect(b.BoundBox) and a.common(b).Volume>1e-7:
-                    raise ValueError('opposite-face deep or tape pockets overlap')
-    return web
 
 # ---------------------------------------------------------------------------------------------
 # Build, check, export
@@ -1503,11 +1221,11 @@ WIRE_BY_NET = {}
 COLORS = {
     "Shell": (0.07, 0.07, 0.08), "DisplayCowl": (0.07, 0.07, 0.08),
     "DisplayBezel": (0.90, 0.90, 0.88), "KnobCap": (0.90, 0.90, 0.88),
-    "HaloDiffuser": (0.90, 0.90, 0.88), "HaloReflector": (0.90, 0.90, 0.88), "PinFitCoupon": (0.15, 0.15, 0.16),
-    "BackPlate": (0.90, 0.90, 0.88), "ScrewFeet": (0.90, 0.90, 0.88),
+    "HaloDiffuser": (0.90, 0.90, 0.88), "PinFitCoupon": (0.15, 0.15, 0.16),
+    "BackPlate": (0.90, 0.90, 0.88),
     "Carrier": (0.15, 0.15, 0.16), "Knob": (0.07, 0.07, 0.08),
     "CapLeft": (0.90, 0.90, 0.88), "CapMiddle": (0.90, 0.90, 0.88), "CapRight": (0.90, 0.90, 0.88),
-    "Dummy": (0.30, 0.45, 0.85), "Dummy_Wire": (0.85, 0.45, 0.20), "Dummy_Kapton": (0.95, 0.70, 0.15), "Dummy_WireStraps": (0.95, 0.70, 0.15),
+    "Dummy": (0.30, 0.45, 0.85), "Dummy_Wire": (0.85, 0.45, 0.20),
 }
 
 
@@ -1518,10 +1236,8 @@ def build():
     PRINTED["DisplayBezel"] = make_bezel()
     PRINTED["KnobCap"] = make_knob_cap()
     PRINTED["HaloDiffuser"] = make_halo()
-    PRINTED["HaloReflector"] = make_halo_reflector()
     PRINTED["PinFitCoupon"] = make_pin_coupon()
     PRINTED["BackPlate"] = make_back_plate()
-    PRINTED["ScrewFeet"] = make_screw_feet()
     PRINTED["Carrier"] = make_carrier()
     PRINTED["Knob"] = make_knob()
     for i, n in enumerate(["CapLeft", "CapMiddle", "CapRight"]):
@@ -1530,14 +1246,9 @@ def build():
     DUMMIES["Dummy_EncoderNut"] = dummy_encoder_nut()
     DUMMIES["Dummy_Display"] = dummy_display()
     DUMMIES["Dummy_RP2040_Zero"] = dummy_rp2040_zero()
-    DUMMIES["Dummy_RGB_LED"] = dummy_rgb_led()
-    for i in range(3): DUMMIES["Dummy_LEDResistor%d" % i] = dummy_resistor(i)
     DUMMIES["Dummy_Wire"] = dummy_wire()
-    if wire_crossings() or wire_crossings(front_layout()):
-        DUMMIES["Dummy_Kapton"] = dummy_kapton()
     for i, n in enumerate(["Dummy_SwitchLeft", "Dummy_SwitchMiddle", "Dummy_SwitchRight"]):
         DUMMIES[n] = dummy_switch(i)
-    DUMMIES["Dummy_WireStraps"] = dummy_wire_straps()
 
 
 PRESS_FITS = {("CapLeft", "Dummy_SwitchLeft"), ("CapMiddle", "Dummy_SwitchMiddle"),
@@ -1554,41 +1265,6 @@ def check_interference():
             (na, a), (nb, b) = items[i], items[j]
             if not a.BoundBox.intersect(b.BoundBox):
                 continue
-            if {na, nb} == {"Dummy_Wire", "Dummy_RGB_LED"}:
-                # Only the matching conductor may touch its physical LED lead.
-                led = DUMMIES["Dummy_RGB_LED"]
-                for net, wire in WIRE_BY_NET.items():
-                    if not wire.BoundBox.intersect(led.BoundBox):
-                        continue
-                    contact = wire.common(led)
-                    if contact.Volume <= 0.00001:
-                        continue
-                    name = 'C' if net == 'GND' else net[4:] if net in ('LED_R','LED_G','LED_B') else None
-                    excess = contact.cut(rgb_led_lead(name)).Volume if name else contact.Volume
-                    if excess > 0.01:
-                        clashes.append(("Dummy_Wire:" + net, "Dummy_RGB_LED", round(excess, 3)))
-                    else:
-                        fits.append(("Dummy_Wire:" + net, "Dummy_RGB_LED", round(contact.Volume, 3)))
-                continue
-            if na == "Dummy_Wire" and nb in ("Dummy_SwitchLeft", "Dummy_SwitchMiddle", "Dummy_SwitchRight"):
-                # Electrical contact is intentional only at that net's actual switch legs.
-                idx = ("Dummy_SwitchLeft", "Dummy_SwitchMiddle", "Dummy_SwitchRight").index(nb)
-                x, y, angle = BTNS[idx]
-                for net, wire in WIRE_BY_NET.items():
-                    if not wire.BoundBox.intersect(b.BoundBox):
-                        continue
-                    contact = wire.common(b)
-                    if contact.Volume <= 0.00001:
-                        continue
-                    endpoints = [p for n, pts in wire_layout() if n == net for p in (pts[0], pts[-1])]
-                    legs = [cbox(*btn_pin(idx, k), SW_LEG[0], SW_LEG[1], C_FRONT - SW_LEG[2], C_FRONT + 0.01, angle)
-                            for k in range(4) if btn_pin(idx, k) in endpoints]
-                    excess = contact.cut(Part.makeCompound(legs)).Volume if legs else contact.Volume
-                    if excess > 0.01:
-                        clashes.append((na + ":" + net, nb, round(excess, 3)))
-                    else:
-                        fits.append((na + ":" + net, nb, round(contact.Volume, 3)))
-                continue
             v = a.common(b).Volume
             if v > 0.01:
                 (fits if (na, nb) in PRESS_FITS else clashes).append((na, nb, round(v, 3)))
@@ -1599,7 +1275,8 @@ def check_interference():
 
 
 def check_wire_shorts():
-    """Reject modeled overlaps between insulated wires carrying different nets."""
+    """Reject modeled overlaps between insulated wires carrying different nets. Wires may cross, but only
+    stacked (none do in the current routes)."""
     nets = list(WIRE_BY_NET.items())
     shorts = []
     for i, (name, wire) in enumerate(nets):
@@ -1636,12 +1313,9 @@ def pin_labels():
     """(text, anchor x, y, align) for every pin and switch leg: what it is and the net its
     wire carries ("n/c": no wire). align is the side of the anchor the text sits on (+1 right of
     it, -1 left of it, 0 centred), as seen from the face."""
-    nets = {}
-    for net, pts in wire_layout():
-        for p in (pts[0], pts[-1]):
-            nets[(round(p[0], 3), round(p[1], 3))] = net
-    net = lambda p: nets.get((round(p[0], 3), round(p[1], 3)), "n/c")
-    gap = PIN_ROW[0] / 2 + 0.6                        # from the pin to the text, past the turns
+    gnd = {(0, 0), (0, 1), (1, 0), (1, 1), (2, 0)}    # lower legs: the key ground chain
+    net = lambda i, k: "GND" if (i, k) in gnd else "B%d" % (i + 1) if k == 3 else "n/c"
+    gap = 1.5                                         # from the pin to the text
     out = []
     for n, p in sm_pins.items():
         side = 1 if p[0] > SM_X else -1               # outside each row
@@ -1649,14 +1323,14 @@ def pin_labels():
         out.append((t, p[0] + side * gap, p[1], side))
     for n, p in disp_pins.items():
         out.append(("Disp " + n, p[0] + gap, p[1], 1))
-    for n, p in enc_pins.items():                     # wire channels approach on the left
-        out.append(("Enc " + n, p[0] + 1.2, p[1], 1))
+    for n, p in enc_pins.items():
+        out.append(("Enc " + n, p[0] - 1.2, p[1], -1))
     # switch legs: <switch L/M/R>-<leg: LL lower left, LR, UL, UR>, below the lower legs, above the upper
     legs = ["LL", "LR", "UL", "UR"]
     for i, sw in enumerate(["L", "M", "R"]):
         for k in range(4):
             p = btn_pin(i, k)
-            out.append(("%s-%s %s" % (sw, legs[k], net(p)), p[0], p[1] + (-1.9 if k < 2 else 1.9), 0))
+            out.append(("%s-%s %s" % (sw, legs[k], net(i, k)), p[0], p[1] + (-1.9 if k < 2 else 1.9), 0))
     return out
 
 
@@ -1682,7 +1356,7 @@ def print_pose(name, shp):
     s = shp.copy()
     if name in ("Shell", "Knob", "DisplayCowl", "DisplayBezel", "KnobCap", "HaloDiffuser") or name.startswith("Cap"):
         s.rotate(V(0, 0, 0), V(1, 0, 0), 180)       # face / knob top / visor top / cap top on the bed
-    elif name in ("BackPlate", "ScrewFeet"):
+    elif name == "BackPlate":
         s.rotate(V(0, 0, 0), V(1, 0, 0), math.degrees(ALPHA))  # desk side (plinth) on the bed
     bb = s.optimalBoundingBox()  # the fast box is loose around curved faces
     s.translate(V(-bb.XMin, -bb.YMin, -bb.ZMin))
@@ -1834,10 +1508,53 @@ def export(doc, here):
     doc.saveAs(os.path.join(here, "kivori-case-v7.FCStd"))
 
 
-def max_terminal_hop():
-    # Deepest modeled encoder wrap gap.
-    zc = C_BACK + WIRE_CH[1] - WIRE_D/2
-    return math.hypot(zc - (C_BACK - 0.5 - WRAP_TURNS*WIRE_D), 1.0 - WRAP_OD/2)
+def check_usb_hole():
+    """The real connector sits USB_HOLE_DZ lower than modelled (see there): it has to clear the hole all round. Returns the
+    smallest margin (mm) between the shifted connector envelope and the hole, in width and height."""
+    uz = usb_z + USB_HOLE_DZ
+    return min(USB_HOLE[0] / 2 - SM_USB[0] / 2,
+               (uz + USB_HOLE[1] / 2) - (usb_hi + USB_HOLE_DZ), (usb_lo + USB_HOLE_DZ) - (uz - USB_HOLE[1] / 2))
+
+
+def report_new_features():
+    """Numbers for the second-print changes: knob, cowl pegs, RP2040 drop."""
+    shaft_top = HW040_FRONT + EC11_SHAFT_H
+    hub_z0 = max(HW040_FRONT + EC11_BODY_H + EC11_BUSH_L + 0.5, KNOB_GAP)
+    print("knob: z %.1f..%.1f (H %.1f), shaft enters %.2f mm (D flat %.1f mm long, all inside), tip clearance %.1f" % (
+        KNOB_GAP, KNOB_GAP + KNOB_H, KNOB_H, shaft_top - hub_z0, min(EC11_FLAT_L, shaft_top - hub_z0), KNOB_TIP_CLR))
+    knob = PRINTED["Knob"]
+    pressed = knob.copy()
+    pressed.translate(V(0, 0, -0.5))
+    print("knob to face (pressed 0.5): %.2f mm; to cowl %.2f (rest) / %.2f (pressed); to halo ring %.2f (pressed)" % (
+        pressed.distToShape(PRINTED["Shell"])[0], knob.distToShape(PRINTED["DisplayCowl"])[0],
+        pressed.distToShape(PRINTED["DisplayCowl"])[0], pressed.distToShape(PRINTED["HaloDiffuser"])[0]))
+    print("cowl to halo ring %.2f mm" % PRINTED["DisplayCowl"].distToShape(PRINTED["HaloDiffuser"])[0])
+    pegs = cowl_pegs()
+    peg_shell = min(q.distToShape(PRINTED["Shell"])[0] for q in pegs)
+    peg_other = min(q.distToShape(DUMMIES[n])[0] for q in pegs for n in ("Dummy_Display", "Dummy_Wire", "Dummy_Encoder"))
+    peg_car = min(q.distToShape(PRINTED["Carrier"])[0] for q in pegs)
+    print("cowl pegs (%d, D%.1f x %.1f) at %s: to shell holes %.2f, to display/wires %.1f, to carrier %.1f mm" % (
+        len(pegs), COWL_PEG_D, COWL_PEG_L, COWL_PEGS, peg_shell, peg_other, peg_car))
+    print("cowl pegs poke %.2f mm behind the shell face" % (COWL_PEG_L - FACE_T))
+    tip = 2 * RP_FLIP_Z - (C_FRONT - SM_HDR[3])
+    print("RP2040: x %.2f (case centre %.2f), pins stand %.2f mm out of the carrier front; USB hole z %.2f (modelled receptacle %.2f)" % (
+        SM_X, W / 2, tip - C_FRONT, usb_z + USB_HOLE_DZ, usb_z))
+    margin = check_usb_hole()
+    print("USB hole vs the connector (shifted %.1f mm to its real position): margin %.2f mm" % (USB_HOLE_DZ, margin))
+    if margin < 0.2:
+        raise ValueError("USB hole does not clear the real connector")
+    print("wrap room: RP2040 pins %.1f mm above the carrier, encoder pins %.1f mm bare behind it, key legs %.1f mm; a wrap (%.1f mm) fits" % (
+        tip - C_FRONT, C_BACK - (HW040_FRONT + 2.5), C_BACK - (C_FRONT - SW_LEG[2]), WRAP[2]))
+    board = DUMMIES["Dummy_RP2040_Zero"]
+    rx, ry = RESET_C
+    plate = PRINTED["BackPlate"].cut(cyl(4.2, rx, ry, z_back(ry) - 1, RESET_SURFACE_Z))  # without the reset guide
+    print("board to back plate %.2f mm (guide aside), to encoder %.2f mm" % (
+        board.distToShape(plate)[0], board.distToShape(DUMMIES["Dummy_Encoder"])[0]))
+    print("display standoffs: %d" % len(disp_standoffs))
+    print("reset guide: %.1f mm tall, ends %.1f mm short of the button" % (RESET_SURFACE_Z - 0.6 - (z_back(ry) + 1.0), 0.6))
+    lens = [sum(math.dist(a, b) for _, pts in segs for a, b in zip(pts, pts[1:])) for _, segs, _ in wire_routes()]
+    print("wires: %d, %d vias, %d display pockets, total %.0f mm of groove, longest %.0f mm" % (
+        len(lens), len(wire_vias()), len(disp_pockets()), sum(lens), max(lens)))
 
 
 def main():
@@ -1846,20 +1563,15 @@ def main():
     doc = to_doc()
     clashes = check_interference()
     print("interference:", clashes if clashes else "none")
-    tight = [c for c in check_wires() + check_wires(front_layout(),True) if c[0] < WIRE_RIDGE_MIN - 1e-6]
-    print("front crossings:",len(wire_crossings(front_layout())),"minimum opposite-face web:",check_twoface_web())
-    print("wire channels: %d runs, %d crossing(s), plastic under %.1f mm: %s" % (
-        len(wire_layout()), len(wire_crossings()), WIRE_RIDGE_MIN,
-        "none" if not tight else ", ".join("%.2f %s / %s" % c for c in tight)))
-    fan_issues=check_led_fan()
-    print('LED fan clearance:',fan_issues if fan_issues else 'none')
-    if fan_issues:raise ValueError('LED lead fan clearance failed')
-    if len(wire_crossings())+len(wire_crossings(front_layout())) > 6:
-        raise ValueError('more than six modeled wire crossings')
+    tightest, tight = check_wires()
+    print("net to net plastic: tightest %.2f mm (%s); rule %.1f mm: %s" % (
+        tightest[0], tightest[1], WIRE_RIDGE_MIN, "ok" if not tight else "; ".join(tight)))
     shorts = check_wire_shorts()
     print("wire net overlaps:", shorts if shorts else "none")
     low = check_underside()
     print("underside problems:", ", ".join(low) if low else "none")
+    print("screw counterbore D%.1f (clearance hole D%.1f); biggest bumper that stays on the flat, per screw: %s mm" % (
+        SCREW_HEAD_D, SCREW_CLR, ", ".join("%.1f" % d for d in bumper_room())))
     ovh = check_overhangs()
     print("overhang problems:", "; ".join(ovh) if ovh else "none")
     print("encoder to back plate: %.2f mm" % DUMMIES["Dummy_Encoder"].distToShape(PRINTED["BackPlate"])[0])
@@ -1877,17 +1589,6 @@ def main():
     clearances = {name: board.distToShape(DUMMIES[name])[0]
                   for name in ("Dummy_Encoder", "Dummy_EncoderNut", "Dummy_SwitchLeft")}
     print("board clearances (mm):", clearances)
-    led = DUMMIES["Dummy_RGB_LED"]
-    led_clearance = min(led.distToShape(DUMMIES[name])[0]
-                        for name in ("Dummy_Encoder", "Dummy_EncoderNut"))
-    if led_clearance < 0.5 - 1e-6:
-        raise ValueError("LED clearance to encoder hardware below 0.5 mm")
-    if -0.6 - LED_TIP_Z < 0.5 - 1e-6:
-        raise ValueError("LED tip to fixed optical roof clearance below 0.5 mm")
-    if HALO_ID / 2 - HALO_R_IN < 0.2 - 1e-6:
-        raise ValueError("optical roof to shaft-island radial clearance below 0.2 mm")
-    print("LED to encoder hardware: %.2f mm; tip to optical roof: %.2f mm" %
-          (led_clearance, -0.6 - LED_TIP_Z))
     if not (enc_x < KNOB_C[0] and all(enc_pins[a][1] < enc_pins[b][1]
               for a, b in zip(("CLK", "DT", "SW", "+"), ("DT", "SW", "+", "GND")))):
         raise ValueError("rotated HW-040 header must preserve its physical pin order")
@@ -1898,11 +1599,6 @@ def main():
     print("carrier through-holes at all %d RP2040-Zero pins: %s" % (len(sm_pins), "yes" if not blocked else "NO " + ", ".join(blocked)))
     if blocked:
         raise ValueError("carrier has no through-hole for RP2040-Zero pin(s): %s" % ", ".join(blocked))
-    if sum(n.startswith("Dummy_RGB_LED") for n in DUMMIES) != 1 or len(led_terminals) != 4 or len(RES_C) != 3:
-        raise ValueError("exactly one external RGB LED and three series resistors required")
-    if max_terminal_hop() > 3.0:
-        raise ValueError("terminal connection exceeds 3 mm")
-    print("maximum modeled terminal hop: %.2f mm" % max_terminal_hop())
     if clashes or tight or shorts or low or ovh or any(not shape.isValid() or shape.Volume <= 0 for shape in PRINTED.values()):
         raise ValueError("design checks failed; inspect diagnostics above")
     if min(clearances.values()) < 0.5 - 1e-6:
@@ -1917,15 +1613,16 @@ def main():
     pressed_knob = PRINTED["Knob"].fuse(PRINTED["KnobCap"])
     pressed_knob.translate(V(0, 0, -0.5))
     if any(pressed_knob.common(shape).Volume > 0.01 for shape in
-           (PRINTED["Shell"], PRINTED["DisplayCowl"], PRINTED["HaloDiffuser"], PRINTED["HaloReflector"], DUMMIES["Dummy_Encoder"])):
+           (PRINTED["Shell"], PRINTED["DisplayCowl"], PRINTED["HaloDiffuser"], DUMMIES["Dummy_Encoder"])):
         raise ValueError("knob collides during 0.5 mm travel")
     if glass_z0 > COWL_H - COWL_T + DISP_POCKET - DISP_FACE_GAP + 1e-6:
         raise ValueError("LCD glass clearance lost")
-    if any(len(shape.Solids) != (6 if name == "ScrewFeet" else 1) for name, shape in PRINTED.items()):
+    if any(len(shape.Solids) != 1 for name, shape in PRINTED.items()):
         raise ValueError("printed part contains disconnected islands")
     if KNOB_GAP - 0.5 - HALO_T < 0.3-1e-6:
-        raise ValueError("pressed knob to optical roof clearance below 0.3 mm")
+        raise ValueError("pressed knob to halo ring clearance below 0.3 mm")
     print("all keys and knob: 0.5 mm travel clear")
+    report_new_features()
     if EXPORT:
         export(doc, here)
         print("exported to", os.path.join(here, "export"))
