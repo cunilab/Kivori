@@ -192,7 +192,6 @@ function ColorPicker({
 export function LedControls({ config }: { config: ConfigDto | null }): ReactElement {
   const [pending, setPending] = useState<LedSettingsDto | null>(null);
   // The slider moves locally while dragged and saves once on release.
-  const [dragging, setDragging] = useState<number | null>(null);
 
   const revision = config?.revision;
   useEffect(() => setPending(null), [revision]);
@@ -219,7 +218,7 @@ export function LedControls({ config }: { config: ConfigDto | null }): ReactElem
   if (!led) {
     return <div className="h-64 animate-pulse rounded-xl bg-muted" aria-busy="true" />;
   }
-  const brightness = dragging ?? led.brightness;
+  const brightness = led.brightness;
 
   return (
     <div className="space-y-8">
@@ -316,12 +315,9 @@ export function LedControls({ config }: { config: ConfigDto | null }): ReactElem
                 max={100}
                 step={5}
                 value={brightness}
-                onValueChange={(value) =>
-                  setDragging(Array.isArray(value) ? (value[0] ?? 0) : value)
-                }
-                onValueCommitted={(value) => {
+                // Saved on every step so the device LED follows the drag live.
+                onValueChange={(value) => {
                   const next = Array.isArray(value) ? (value[0] ?? 0) : value;
-                  setDragging(null);
                   if (next !== led.brightness) update({ brightness: next });
                 }}
               />

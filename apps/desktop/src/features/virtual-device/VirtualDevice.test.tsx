@@ -384,4 +384,69 @@ describe('virtual device internals', () => {
     expect(internalsBridge.get).not.toHaveBeenCalled();
     expect(screen.queryByTestId('internals-virtual-note')).not.toBeInTheDocument();
   });
+
+  it('shows the v2 LED output live and sends LED settings to the sandbox', async () => {
+    const snapshot = (rgb: [number, number, number]) => ({
+      connected: true,
+      generation: 1,
+      volume: 50,
+      mediaTriggers: 0,
+      frame: null,
+      led: { mode: 'breathe', rgb },
+      error: null,
+    });
+    mockedInvoke.mockImplementation((command) =>
+      Promise.resolve(command === 'virtual_snapshot' ? snapshot([46, 196, 182]) : undefined),
+    );
+    await act(async () => {
+      render(<VirtualDevice />);
+    });
+    expect(screen.getByTestId('virtual-led')).toHaveStyle({ backgroundColor: 'rgb(46, 196, 182)' });
+    expect(screen.getByText(/LED: rgb\(46, 196, 182\) · breathe/)).toBeInTheDocument();
+    // The next poll carries the next frame of the firmware's own animation.
+    mockedInvoke.mockImplementation((command) =>
+      Promise.resolve(command === 'virtual_snapshot' ? snapshot([5, 20, 18]) : undefined),
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(screen.getByTestId('virtual-led')).toHaveStyle({ backgroundColor: 'rgb(5, 20, 18)' });
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('LED mode'), { target: { value: 'cycle' } });
+    });
+    expect(mockedInvoke).toHaveBeenCalledWith('virtual_led', {
+      mode: 'cycle',
+      color: '#2EC4B6',
+      brightness: 60,
+      speed: 'medium',
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('LED brightness'), { target: { value: '25' } });
+    });
+    expect(mockedInvoke).toHaveBeenLastCalledWith('virtual_led', {
+      mode: 'cycle',
+      color: '#2EC4B6',
+      brightness: 25,
+      speed: 'medium',
+    });
+  });
+
+  it('says the v1 board has no LED', async () => {
+    mockedInvoke.mockResolvedValue({
+      connected: true,
+      generation: 1,
+      volume: 50,
+      mediaTriggers: 0,
+      frame: null,
+      led: null,
+      error: null,
+    });
+    await act(async () => {
+      render(<VirtualDevice />);
+    });
+    expect(screen.queryByTestId('virtual-led')).not.toBeInTheDocument();
+    expect(screen.getByText(/This board has no LED/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('LED mode')).not.toBeInTheDocument();
+  });
 });

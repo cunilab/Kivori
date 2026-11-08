@@ -3,6 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { TooltipProvider } from '@kivori/ui/components/tooltip';
 import { blitRgba } from '../../lib/canvas/blit';
 import { DeviceInternals, VIRTUAL_DEVICE_ID_HASH } from '../device/DeviceInternals';
+import { DEFAULT_LED_SETTINGS, LED_MODES, LED_SPEEDS } from '../../lib/ipc/types';
+import type { LedMode, LedSpeed } from '../../lib/ipc/types';
 import './virtual-device.css';
 
 type Snapshot = {
@@ -14,8 +16,11 @@ type Snapshot = {
   muted?: boolean | null;
   mediaTriggers: number;
   frame: number[] | null;
+  /** What the virtual board's RGB LED outputs right now; null on a board without one (v1). */
+  led?: { mode: string; rgb: [number, number, number] } | null;
   error: string | null;
 };
+type LedForm = { mode: LedMode; color: string; brightness: number; speed: LedSpeed };
 const FAULTS = [
   'fragmented',
   'silent',
@@ -36,6 +41,12 @@ export function VirtualDevice(): ReactElement {
   const connectionRevision = useRef(0);
   const canvas = useRef<HTMLCanvasElement>(null);
   const held = useRef<number | null>(null);
+  const [led, setLed] = useState<LedForm>(() => {
+    // The sandbox starts on the app's defaults; per-profile colours are not simulated here.
+    const { mode, color, brightness, speed } = DEFAULT_LED_SETTINGS;
+    return { mode, color, brightness, speed };
+  });
+  const [ledError, setLedError] = useState<string | null>(null);
 
   useEffect(() => {
     let stopped = false;
@@ -119,6 +130,16 @@ export function VirtualDevice(): ReactElement {
     } finally {
       operationPending.current = false;
       setConnectionBusy(false);
+    }
+  }
+
+  async function sendLed(next: LedForm) {
+    setLed(next);
+    try {
+      await invoke('virtual_led', { ...next });
+      setLedError(null);
+    } catch (cause) {
+      setLedError(String(cause));
     }
   }
 
@@ -219,6 +240,20 @@ export function VirtualDevice(): ReactElement {
           role="img"
           aria-label="Device screen rendered by firmware"
         />
+        {snapshot?.led ? (
+          <p className="virtual-led-row">
+            <span
+              className="virtual-led"
+              data-testid="virtual-led"
+              style={{
+                backgroundColor: `rgb(${snapshot.led.rgb.join(', ')})`,
+                boxShadow: `0 0 14px 3px rgb(${snapshot.led.rgb.join(', ')})`,
+              }}
+              aria-hidden="true"
+            />
+            LED: rgb({snapshot.led.rgb.join(', ')}) · {snapshot.led.mode}
+          </p>
+        ) : null}
         <div className="virtual-controls">
           <button disabled={!connected} onClick={() => void input('counterclockwise')}>
             Turn left
@@ -267,6 +302,82 @@ export function VirtualDevice(): ReactElement {
           Press once sends a 120 ms raw press. Hold with a pointer, Space or Enter; release sends
           the button-up edge. Holds automatically release after 2 seconds in this first slice.
         </p>
+      </section>
+      <section aria-label="Simulated LED">
+        <h2>Simulated LED</h2>
+        {snapshot && !snapshot.led ? (
+          <p>
+            This board has no LED (v1, ESP32-C3). Start the v2 board with{' '}
+            <code>just virtual-device-v2</code>.
+          </p>
+        ) : (
+          <>
+            <p>
+              The firmware runs the light; the dot above is its real output, refreshed ten times a
+              second. Status reacts to presses here and to a lost connection (Disconnect).
+            </p>
+            <div className="virtual-controls">
+              <label>
+                Mode
+                <select
+                  aria-label="LED mode"
+                  value={led.mode}
+                  onChange={(event) =>
+                    void sendLed({ ...led, mode: event.target.value as LedMode })
+                  }
+                >
+                  {LED_MODES.map((mode) => (
+                    <option key={mode} value={mode}>
+                      {mode}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Colour
+                <input
+                  type="color"
+                  aria-label="LED colour"
+                  value={led.color.toLowerCase()}
+                  onChange={(event) =>
+                    void sendLed({ ...led, color: event.target.value.toUpperCase() })
+                  }
+                />
+              </label>
+              <label>
+                Brightness {led.brightness}%
+                <input
+                  type="range"
+                  aria-label="LED brightness"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={led.brightness}
+                  onChange={(event) =>
+                    void sendLed({ ...led, brightness: Number(event.target.value) })
+                  }
+                />
+              </label>
+              <label>
+                Speed
+                <select
+                  aria-label="LED speed"
+                  value={led.speed}
+                  onChange={(event) =>
+                    void sendLed({ ...led, speed: event.target.value as LedSpeed })
+                  }
+                >
+                  {LED_SPEEDS.map((speed) => (
+                    <option key={speed} value={speed}>
+                      {speed}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {ledError ? <p role="alert">{ledError}</p> : null}
+          </>
+        )}
       </section>
       <section aria-label="Simulated OS">
         <h2>Simulated OS</h2>
