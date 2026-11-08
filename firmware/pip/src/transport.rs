@@ -13,8 +13,9 @@
 //! on the bootloader touch) whenever the controller raises an event; the device and class live in a
 //! critical-section mutex shared with [`Transport::write`], which also polls (harmless, and it moves
 //! a packet out right away). The handler also moves what the host sent into a 1 KiB queue that
-//! [`Transport::read`] drains: the controller re-raises the interrupt until an OUT packet is read,
-//! so data left in the endpoint starved the loop on the first real unit (no reply, a 750 ms loop).
+//! [`Transport::read`] drains (`usb_service`, host-tested): the controller re-raises the interrupt
+//! until an OUT packet is read, so data left in the endpoint starved the loop on the first real
+//! unit (no reply, a 750 ms loop).
 //!
 //! # Why bounded and non-blocking matters
 //!
@@ -32,6 +33,7 @@ use core::cell::RefCell;
 
 use crate::bootloader::is_touch;
 use crate::ports::Transport;
+use crate::usb_service::{service, UsbPort};
 use critical_section::Mutex;
 use rp2040_hal::pac::{self, interrupt};
 use rp2040_hal::usb::UsbBus;
@@ -56,23 +58,21 @@ const RX_BYTES_BUFFERED: usize = 1024;
 static RX: Mutex<RefCell<heapless::Deque<u8, RX_BYTES_BUFFERED>>> =
     Mutex::new(RefCell::new(heapless::Deque::new()));
 
-/// Services the USB stack, moves what the host sent into [`RX`], then acts on a bootloader touch.
-///
-/// The OUT data must be read here, in the interrupt: the RP2040 controller keeps its OUT buffer
-/// flag set until the packet is read, so leaving it for the run loop re-raises `USBCTRL_IRQ`
-/// at once, forever, and starves the loop (the rp-hal interrupt-driven serial example reads in
-/// the handler for the same reason). When the run loop falls behind, the overflow is dropped; the
-/// framing's CRC and delimiters resynchronise the protocol.
-fn poll(cs: critical_section::CriticalSection<'_>, (device, serial): &mut Usb) {
-    device.poll(&mut [serial]);
-    let mut rx = RX.borrow_ref_mut(cs);
-    let mut packet = [0u8; 64];
-    while let Ok(n) = serial.read(&mut packet) {
-        for &byte in &packet[..n] {
-            let _ = rx.push_back(byte);
-        }
+impl UsbPort for Usb {
+    fn poll(&mut self) {
+        self.0.poll(&mut [&mut self.1]);
     }
-    if is_touch(serial.line_coding().data_rate(), serial.dtr()) {
+
+    fn read_packet(&mut self, buf: &mut [u8]) -> Option<usize> {
+        self.1.read(buf).ok()
+    }
+}
+
+/// Services the USB stack and moves what the host sent into [`RX`] (`usb_service::service`, which
+/// documents why the OUT data must be read here), then acts on a bootloader touch.
+fn poll(cs: critical_section::CriticalSection<'_>, usb: &mut Usb) {
+    service(usb, &mut RX.borrow_ref_mut(cs));
+    if is_touch(usb.1.line_coding().data_rate(), usb.1.dtr()) {
         // Mass storage + PICOBOOT, no activity LED, nothing disabled. Does not return.
         rp2040_hal::rom_data::reset_to_usb_boot(0, 0);
     }

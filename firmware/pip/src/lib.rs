@@ -50,6 +50,8 @@ pub mod sim;
 pub mod transport;
 /// Whole-frame outbound queue (hardware-neutral).
 pub mod tx_buffer;
+/// The USB interrupt's service step (hardware-neutral, host-tested).
+pub mod usb_service;
 
 /// Board measurements for the device internals snapshot (flash, RAM, stack, chip, temperature).
 #[cfg(feature = "physical-st7789")]
