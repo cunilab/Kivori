@@ -38,9 +38,10 @@ impl LedSink for RgbLed {
     /// Sets the three colour levels (0 = off, 255 = fully on; common cathode, so active high).
     fn set_rgb(&mut self, [r, g, b]: [u8; 3]) {
         // A failed duty write leaves the previous colour: harmless on an indicator.
-        let _ = self.red.set_duty_cycle_fraction(u16::from(r), 255);
-        let _ = self.green.set_duty_cycle_fraction(u16::from(g), 255);
-        let _ = self.blue.set_duty_cycle_fraction(u16::from(b), 255);
+        let [gr, gg, gb] = crate::profile::physical_st7789::LED_GAIN.map(u16::from);
+        let _ = self.red.set_duty_cycle_fraction(u16::from(r) * gr, 255 * 255);
+        let _ = self.green.set_duty_cycle_fraction(u16::from(g) * gg, 255 * 255);
+        let _ = self.blue.set_duty_cycle_fraction(u16::from(b) * gb, 255 * 255);
     }
 }
 

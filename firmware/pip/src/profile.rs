@@ -65,6 +65,10 @@ pub mod physical_st7789 {
     /// slices 4B, 5A, 5B.
     pub const LED: [u8; 3] = [9, 10, 11];
 
+    /// Per-colour duty scale (255 = full) so a mix matches the app's colour: on 3.3 V with 200 R each,
+    /// red (Vf ~2.0 V) draws ~4x the current of green and blue (Vf ~3.0 V). Tuned by eye (#179).
+    pub const LED_GAIN: [u8; 3] = [77, 255, 255];
+
     /// This physical panel does not use chip select.
     pub const CS: Option<u8> = None;
 
