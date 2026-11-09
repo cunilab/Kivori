@@ -15,7 +15,7 @@ How it works:
 
 - `render.mjs` serves `scene.html` on 127.0.0.1 while it runs and drives Chrome with `puppeteer-core`.
 - The enclosure STLs are read from `hardware/enclosure-v7/export/` at render time only (Carrier and
-  PinFitCoupon are left out). They are not committed: export them first with FreeCAD's
+  PinFitCoupon are left out). They are committed; regenerate them after model changes with FreeCAD's
   `freecadcmd hardware/enclosure-v7/build_case.py`. They are never copied into `public/` or served by the site.
 - `scene.js` puts every part back in its assembled place. The STLs are in print orientation, so each part gets
   the inverse of `print_pose` in `hardware/enclosure-v7/build_case.py` plus its print-pose bounding-box
