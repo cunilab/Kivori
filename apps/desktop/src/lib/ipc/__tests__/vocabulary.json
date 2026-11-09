@@ -98,7 +98,7 @@
   },
   "resetReasons": ["powerOn", "software", "watchdog", "brownout", "deepSleep", "other"],
   "rotateSpecKinds": ["systemVolume", "shortcuts", "appVolume"],
-  "startupPlatform": ["windows", "macos", "other"],
+  "startupPlatform": ["windows", "macos", "linux", "other"],
   "stepSpecKinds": ["action", "delay"],
   "updateAdvice": ["upToDate", "updateAvailable", "deviceNewer", "unknown"],
   "updateDisabledReasons": ["devBuild", "noKey", "badEndpoint"],

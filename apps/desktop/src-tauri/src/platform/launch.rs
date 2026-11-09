@@ -29,6 +29,8 @@ pub fn validate_target(target: &str) -> Result<&str, ActionError> {
 ///   non-zero when no such application exists, so success means Launch Services accepted it.
 /// - Windows: an executable name or path, spawned directly (searched on `PATH` like a Run box
 ///   would). Success means the process was created.
+/// - Linux: a desktop entry (a `.desktop` path, or an entry's id or name) through `gio launch`, else
+///   an executable name or path spawned directly. Success means the launch was accepted.
 ///
 /// # Errors
 /// [`ActionError::Failed`] if the target is invalid or the OS refused it;
@@ -61,7 +63,11 @@ pub fn launch(target: &str) -> Result<(), ActionError> {
             .map(drop)
             .map_err(|e| ActionError::Failed(e.kind().to_string()))
     }
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(target_os = "linux")]
+    {
+        super::linux::launch_target(target)
+    }
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
         let _ = target;
         Err(ActionError::NotImplemented {

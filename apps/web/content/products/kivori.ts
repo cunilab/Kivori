@@ -91,7 +91,7 @@ export const kivori: Product = {
         { label: 'Desktop app', value: 'Kivori Desktop' },
         {
           label: 'Works with',
-          value: 'Windows 10 and 11 · Apple Silicon macOS beta in validation',
+          value: 'Windows 10 and 11 · macOS and Linux beta in validation',
         },
         { label: 'Privacy', value: 'Works offline, no account, no telemetry' },
       ],
@@ -100,7 +100,7 @@ export const kivori: Product = {
   compatibility: [
     { os: 'Windows', status: 'supported-beta' },
     { os: 'macOS (Apple Silicon)', status: 'beta-pending' },
-    { os: 'Linux', status: 'not-planned' },
+    { os: 'Linux (Ubuntu)', status: 'beta-pending' },
   ],
   faq: [
     {
@@ -111,7 +111,7 @@ export const kivori: Product = {
     {
       question: 'Which computers does it work with?',
       answer:
-        'Windows 10 and 11. Native Apple Silicon Mac builds are being validated; downloads appear when a build is published. On Mac, app updates are installed manually and per-app volume is unavailable. Linux is not planned until there is demand.',
+        'Windows 10 and 11. Native Apple Silicon Mac builds are being validated; downloads appear when a build is published. On Mac, app updates are installed manually and per-app volume is unavailable. Linux Ubuntu / Debian builds offer .deb and AppImage downloads when published. Volume and media work on Wayland; keyboard shortcuts and automatic app profiles require X11.',
     },
     {
       question: 'How does it connect?',

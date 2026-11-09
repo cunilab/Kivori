@@ -86,6 +86,38 @@ pub fn get_startup_settings(app: AppHandle) -> Result<StartupSettingsDto, String
     crate::runtime::lifecycle::startup_settings(&app)
 }
 
+/// Whether Kivori may open its USB device. Only Linux can refuse (no udev rule yet): `denied` is
+/// true while the last attempt to open it was refused for permission. `serial-access://changed`
+/// carries changes.
+#[tauri::command]
+pub fn get_serial_access() -> dto::SerialAccessDto {
+    dto::SerialAccessDto::current()
+}
+
+/// The one-click fix for [`get_serial_access`]: installs the udev rule through `pkexec` (the
+/// desktop's password prompt), reloads udev, and has the device thread look for the device again.
+/// Takes no input: the rule is the packaged file, the script a constant.
+///
+/// # Errors
+/// A short reason the user can read: the prompt was closed, `pkexec` is missing, or the install
+/// failed.
+#[tauri::command]
+pub async fn fix_serial_access(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+) -> Result<dto::SerialAccessDto, String> {
+    // Blocks while the user types their password, so not on the async runtime's worker.
+    tauri::async_runtime::spawn_blocking(crate::serial_access::install_rule)
+        .await
+        .map_err(|_| "The setup was interrupted".to_string())?
+        .map_err(|error| error.to_string())?;
+    // Permission now exists: do not make the user wait out a reconnect backoff.
+    let _ = app.send_command(DeviceCommand::Rediscover);
+    let access = dto::SerialAccessDto::current();
+    events::emit_serial_access(&handle, &access);
+    Ok(access)
+}
+
 /// Adds or removes the OS login entry and returns what the OS now says.
 ///
 /// # Errors

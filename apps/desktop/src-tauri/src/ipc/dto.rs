@@ -130,12 +130,12 @@ pub struct OnboardingDto {
 pub struct StartupSettingsDto {
     /// Whether the OS login entry exists.
     pub launch_at_login: bool,
-    /// Which OS this build runs on: `windows`, `macos` or `other` (for the switch's wording).
+    /// Which OS this build runs on: `windows`, `macos`, `linux` or `other` (for the switch's wording).
     pub platform: &'static str,
 }
 
 /// The platform tokens `StartupSettingsDto.platform` can carry (shared with the webview).
-pub const STARTUP_PLATFORM_TOKENS: [&str; 3] = ["windows", "macos", "other"];
+pub const STARTUP_PLATFORM_TOKENS: [&str; 4] = ["windows", "macos", "linux", "other"];
 
 impl StartupSettingsDto {
     /// Builds the DTO for this OS.
@@ -147,8 +147,41 @@ impl StartupSettingsDto {
                 "windows"
             } else if cfg!(target_os = "macos") {
                 "macos"
+            } else if cfg!(target_os = "linux") {
+                "linux"
             } else {
                 "other"
+            },
+        }
+    }
+}
+
+/// Whether Kivori may open its USB device, for the "needs permission" card (Linux only).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SerialAccessDto {
+    /// The last attempt to open the device was refused for lack of permission.
+    pub denied: bool,
+    /// The one-click fix can run here (Linux with `pkexec`).
+    pub can_fix: bool,
+    /// Where the fix cannot run: the same fix as one command to copy.
+    pub manual_command: Option<String>,
+}
+
+impl SerialAccessDto {
+    /// What is true now. The manual command is only offered while it is needed and the button is
+    /// not available.
+    #[must_use]
+    pub fn current() -> Self {
+        let denied = crate::serial_access::denied();
+        let can_fix = crate::serial_access::can_fix();
+        Self {
+            denied,
+            can_fix,
+            manual_command: if denied && !can_fix {
+                crate::serial_access::manual_command()
+            } else {
+                None
             },
         }
     }

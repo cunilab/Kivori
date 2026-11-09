@@ -122,6 +122,15 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
                 "com.microsoft.edgemac",
                 "com.brave.browser",
                 "company.thebrowser.browser",
+                // Linux: the lowercase executable file name (`platform::linux::foreground`).
+                "firefox",
+                "google-chrome",
+                "chrome",
+                "chromium",
+                "chromium-browser",
+                "brave",
+                "brave-browser",
+                "microsoft-edge",
             ]),
             rotate: RotateBinding::Shortcuts {
                 label: "Tabs".into(),
@@ -162,6 +171,15 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
                 "com.jetbrains.clion",
                 "com.jetbrains.rider",
                 "com.jetbrains.rustrover",
+                "code",
+                "cursor",
+                "idea",
+                "pycharm",
+                "webstorm",
+                "goland",
+                "clion",
+                "rider",
+                "rustrover",
             ]),
             bindings: with_buttons([
                 named("Terminal", shortcut("Ctrl+`")),
@@ -173,13 +191,18 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
         Profile {
             id: ProfileRef::Builtin(ProfileId::Media),
             name: "Media".into(),
-            ids: ids(&["spotify.exe", "com.spotify.client", "com.apple.music"]),
+            ids: ids(&[
+                "spotify.exe",
+                "com.spotify.client",
+                "com.apple.music",
+                "spotify",
+            ]),
             ..general.clone()
         },
         Profile {
             id: ProfileRef::Builtin(ProfileId::Zoom),
             name: "Zoom".into(),
-            ids: ids(&["zoom.exe", "us.zoom.xos"]),
+            ids: ids(&["zoom.exe", "us.zoom.xos", "zoom"]),
             mood: ContextMood::Meeting,
             bindings: with_buttons([
                 mic_mute.clone(),
@@ -261,7 +284,7 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
         Profile {
             id: ProfileRef::Builtin(ProfileId::Blender),
             name: "Blender".into(),
-            ids: ids(&["blender.exe", "org.blenderfoundation.blender"]),
+            ids: ids(&["blender.exe", "org.blenderfoundation.blender", "blender"]),
             in_pin_cycle: false,
             bindings: with_buttons([
                 named("Undo", os("Ctrl+Z", "Meta+Z")),

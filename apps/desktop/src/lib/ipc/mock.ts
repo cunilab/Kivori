@@ -18,6 +18,7 @@ import type {
   FirmwareOfferDto,
   FirmwareStatusDto,
   OnboardingDto,
+  SerialAccessDto,
   StartupSettingsDto,
   UpdateStatusDto,
   MacroSpec,
@@ -147,6 +148,38 @@ export function mockOnStartupChanged(handler: (settings: StartupSettingsDto) => 
   return () => {
     startupListeners.delete(handler);
   };
+}
+
+// USB access (Linux). `?mock=usbdenied` shows the "needs permission" card with its one-click fix,
+// `?mock=usbmanual` the same without `pkexec` (a command to copy); the fix then succeeds.
+const serialAccessListeners = new Set<(access: SerialAccessDto) => void>();
+let usbFixed = false;
+
+export function mockGetSerialAccess(): SerialAccessDto {
+  const denied = !usbFixed && ['usbdenied', 'usbmanual'].includes(scenario());
+  const canFix = scenario() !== 'usbmanual';
+  return {
+    denied,
+    canFix,
+    manualCommand:
+      denied && !canFix
+        ? 'printf \'%s\\n\' \'SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a"\' | sudo tee /etc/udev/rules.d/60-kivori.rules >/dev/null'
+        : null,
+  };
+}
+
+export function mockOnSerialAccess(handler: (access: SerialAccessDto) => void): () => void {
+  serialAccessListeners.add(handler);
+  return () => {
+    serialAccessListeners.delete(handler);
+  };
+}
+
+export function mockFixSerialAccess(): SerialAccessDto {
+  usbFixed = true;
+  const access = mockGetSerialAccess();
+  for (const listener of serialAccessListeners) listener(access);
+  return access;
 }
 
 // App updates (ADR-0015). A development build has no updater, so the preview is `disabled`;

@@ -195,11 +195,11 @@ describe('app updates in Settings', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('tells a development build, a build without a key and macOS apart, with nothing to press', async () => {
+  it('tells a development build, a build without a key and an install that cannot update itself apart, with nothing to press', async () => {
     const cases: [Partial<UpdateStatusDto>, string][] = [
       [{ state: 'disabled', reason: 'devBuild' }, 'development build'],
       [{ state: 'disabled', reason: 'noKey' }, 'cannot verify them yet'],
-      [{ state: 'unsupported' }, 'not available on macOS yet'],
+      [{ state: 'unsupported' }, 'not available for this install'],
     ];
     for (const [overrides, text] of cases) {
       bridge.get.mockResolvedValue({ ...idle, ...overrides });

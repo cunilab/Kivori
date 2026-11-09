@@ -1,0 +1,7 @@
+# Kivori USB CDC-ACM: active local sessions receive access via systemd-logind.
+# Keep this before 73-seat-late.rules so uaccess is applied. plugdev is a fallback
+# for explicitly enrolled users on systems without logind (never world-writable).
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000a", TAG+="uaccess", MODE="0660", GROUP="plugdev"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", TAG+="uaccess", MODE="0660", GROUP="plugdev"
+# BOOTSEL uses the desktop's normal removable-drive automount policy; do not
+# grant raw USB/block-device write access for the RP2040 2e8a:0003 bootloader.

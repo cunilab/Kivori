@@ -186,3 +186,23 @@ The default bindings (push switch: play/pause and mute; buttons: previous, play/
 volume) need none. The built-in Browser, Code, Zoom and Teams profiles use shortcuts, so they need it
 while those apps are in front. The Diagnostics "Input permission" row reads Not needed while the
 active profile presses no keys. Windows has no such permission and is unchanged.
+
+
+## Host platform capabilities
+
+| Host feature | Windows | macOS | Linux (Ubuntu) |
+| --- | --- | --- | --- |
+| Master volume / output mute | Native audio, read-back | CoreAudio, read-back where writable | libpulse, read-back (including PipeWire PulseAudio layer) |
+| Per-app volume / mute | Native sessions | Unavailable | PulseAudio streams |
+| Microphone mute | All devices, read-back | All devices, subject to writable mute support | All capture devices, read-back |
+| Media keys / now playing | Native media | Bundled media adapter | MPRIS over session D-Bus, X11 and Wayland |
+| Keyboard shortcuts | Native input | Accessibility required | X11 only; unavailable on Wayland |
+| Automatic app profiles | Foreground app | Foreground app | X11 only; General / pinned profiles on GNOME Wayland |
+| CPU / RAM | Native | Native | `/proc` |
+| Sleep / wake / lock | Native | Native | systemd-logind D-Bus |
+| App launch / login startup | Native / Run entry | Native | XDG desktop entries / autostart |
+| Tray | Native | Native | libayatana-appindicator; GNOME extension required |
+| App updater | Signed NSIS | Manual DMG replacement | Signed AppImage only; `.deb` updates unsupported in app (install a newer package from the website or a package manager if available) |
+
+Linux implementation and host tests do not close physical acceptance. See [linux.md](./linux.md)
+for setup, XWayland limits, USB rules and pending hands-on checks.

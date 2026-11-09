@@ -62,7 +62,10 @@ import {
   snoozeUpdate,
   skipUpdateVersion,
   setAutoUpdateCheck,
+  fixSerialAccess,
   getFirmwareOffer,
+  getSerialAccess,
+  onSerialAccess,
   onFirmwareOffer,
   onFirmwareOfferRequested,
   acceptFirmwareOffer,
@@ -108,6 +111,7 @@ import {
   parseFirmwareStatus,
   parseUpdateStatus,
   parseFirmwareOffer,
+  parseSerialAccess,
 } from '../validate';
 
 afterEach(() => {
@@ -1194,5 +1198,61 @@ describe('firmware offer', () => {
 
   it('offers nothing in the plain browser mock', async () => {
     await expect(getFirmwareOffer()).resolves.toMatchObject({ kind: 'none', key: null });
+  });
+
+  describe('USB access', () => {
+    const denied = { denied: true, canFix: true, manualCommand: null };
+
+    it('validates the shape and keeps a manual command only while denied', () => {
+      expect(parseSerialAccess(denied)).toEqual(denied);
+      expect(parseSerialAccess({ denied: true, canFix: false, manualCommand: 'sudo x' })).toEqual({
+        denied: true,
+        canFix: false,
+        manualCommand: 'sudo x',
+      });
+      expect(parseSerialAccess({ denied: false, canFix: false, manualCommand: 'sudo x' })).toEqual({
+        denied: false,
+        canFix: false,
+        manualCommand: null,
+      });
+      expect(() => parseSerialAccess({ ...denied, denied: 'yes' })).toThrow();
+      expect(() => parseSerialAccess({ ...denied, canFix: 1 })).toThrow();
+      expect(() => parseSerialAccess({ ...denied, manualCommand: 5 })).toThrow();
+      expect(() => parseSerialAccess({ ...denied, manualCommand: 'x'.repeat(3000) })).toThrow();
+      expect(() => parseSerialAccess(null)).toThrow();
+    });
+
+    it('calls the typed native commands, takes no webview input, and validates the answers', async () => {
+      enterTauri();
+      tauri.invoke.mockResolvedValue(denied);
+      await expect(getSerialAccess()).resolves.toEqual(denied);
+      expect(tauri.invoke).toHaveBeenLastCalledWith('get_serial_access', undefined);
+      tauri.invoke.mockResolvedValue({ ...denied, denied: false });
+      await expect(fixSerialAccess()).resolves.toMatchObject({ denied: false });
+      expect(tauri.invoke).toHaveBeenLastCalledWith('fix_serial_access', undefined);
+      tauri.invoke.mockRejectedValue("Permission wasn't granted");
+      await expect(fixSerialAccess()).rejects.toBe("Permission wasn't granted");
+      tauri.invoke.mockResolvedValue({ denied: 'maybe' });
+      await expect(getSerialAccess()).rejects.toThrow();
+    });
+
+    it('drops an invalid serial-access://changed payload', async () => {
+      enterTauri();
+      const listeners: Record<string, (event: { payload: unknown }) => void> = {};
+      tauri.listen.mockImplementation((name: string, cb: (event: { payload: unknown }) => void) => {
+        listeners[name] = cb;
+        return Promise.resolve(() => {});
+      });
+      const handler = vi.fn();
+      await onSerialAccess(handler);
+      listeners['serial-access://changed']!({ payload: { denied: 'nope' } });
+      expect(handler).not.toHaveBeenCalled();
+      listeners['serial-access://changed']!({ payload: denied });
+      expect(handler).toHaveBeenCalledWith(denied);
+    });
+
+    it('is fine in the plain browser mock', async () => {
+      await expect(getSerialAccess()).resolves.toMatchObject({ denied: false });
+    });
   });
 });

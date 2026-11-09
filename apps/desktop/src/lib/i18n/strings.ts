@@ -555,6 +555,18 @@ export const strings = {
     tabsLabel: 'Device sections',
     tabs: { overview: 'Overview', firmware: 'Firmware', internals: 'Internals' },
     sessionDeviceOnly: 'Connect your Kivori to see its protocol and reported state.',
+    usbAccess: {
+      title: 'Kivori needs permission to use the USB device',
+      body: 'Your Kivori is plugged in, but this computer is not letting Kivori Desktop talk to it. Allowing it takes one step and your computer password.',
+      fix: 'Allow USB access',
+      fixing: 'Waiting for your password…',
+      fixFailed: 'USB access was not set up.',
+      fixed: 'Done. Looking for your Kivori…',
+      manualBody:
+        'Open a terminal, paste this command, and enter your password when asked. Then unplug and replug your Kivori.',
+      copy: 'Copy command',
+      copied: 'Copied',
+    },
     connection: 'Connection',
     details: 'Details',
     empty: {
@@ -597,7 +609,12 @@ export const strings = {
     retries: 'Reconnect attempts',
     startup: {
       title: 'Startup',
-      label: { windows: 'Start with Windows', macos: 'Start with macOS', other: 'Start at login' },
+      label: {
+        windows: 'Start with Windows',
+        macos: 'Start with macOS',
+        linux: 'Start at login',
+        other: 'Start at login',
+      },
       hint: 'Kivori starts quietly in the tray and reconnects your device. The window stays closed until you open it.',
       failed: 'Could not change the startup setting.',
     },
@@ -619,7 +636,8 @@ export const strings = {
       noKey: 'Updates are off in this build: it cannot verify them yet.',
       badEndpoint: 'Updates are off in this build.',
     },
-    unsupported: 'Automatic updates are not available on macOS yet.',
+    unsupported:
+      'Automatic updates are not available for this install. Download new versions from the Kivori website.',
     dialog: {
       title: 'Kivori {version} is ready',
       current: 'You have {version}.',
@@ -970,6 +988,7 @@ export const strings = {
       launchLabel: {
         windows: 'Start with Windows',
         macos: 'Start with macOS',
+        linux: 'Start at login',
         other: 'Start at login',
       },
       launchNote: 'This is applied when you choose Finish.',

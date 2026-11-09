@@ -30,6 +30,7 @@ pub mod platform;
 pub mod presentation;
 pub mod render;
 pub mod runtime;
+pub mod serial_access;
 pub mod startup;
 pub mod uf2;
 pub mod updater;
@@ -220,6 +221,8 @@ pub fn run() {
         ipc::commands::skip_update_version,
         ipc::commands::set_auto_update_check,
         ipc::commands::get_firmware_offer,
+        ipc::commands::get_serial_access,
+        ipc::commands::fix_serial_access,
         ipc::commands::accept_firmware_offer,
         ipc::commands::dismiss_firmware_offer,
         ipc::channels::open_preview_stream,
@@ -283,6 +286,8 @@ pub fn run() {
         ipc::commands::skip_update_version,
         ipc::commands::set_auto_update_check,
         ipc::commands::get_firmware_offer,
+        ipc::commands::get_serial_access,
+        ipc::commands::fix_serial_access,
         ipc::commands::accept_firmware_offer,
         ipc::commands::dismiss_firmware_offer,
     ]);

@@ -9,7 +9,7 @@ use tauri::{AppHandle, Emitter};
 use crate::activity::ActivityEvent;
 use crate::ipc::dto::{
     self, ActivityEventDto, ConfigDto, ConnectionStatusDto, DeskStatusDto, FirmwareOfferDto,
-    StartupSettingsDto,
+    SerialAccessDto, StartupSettingsDto,
 };
 
 /// Event name for connection-snapshot changes.
@@ -25,6 +25,8 @@ pub const FIRMWARE_OFFER: &str = "firmware://offer";
 /// Event name asking the window to show the firmware offer dialog (the tray's "Update Kivori
 /// firmware…").
 pub const FIRMWARE_OFFER_SHOW: &str = "firmware://show-offer";
+/// Event name for a changed USB access state (Linux: permission to open the device).
+pub const SERIAL_ACCESS: &str = "serial-access://changed";
 /// Event name for typed session activity records.
 pub const ACTIVITY_LOG_EVENT: &str = "activity-log://event";
 
@@ -70,6 +72,11 @@ pub fn emit_startup_changed(app: &AppHandle, settings: &StartupSettingsDto) {
     let _ = app.emit(STARTUP_CHANGED, settings);
 }
 
+/// Broadcasts the USB access state whenever it changes.
+pub fn emit_serial_access(app: &AppHandle, access: &SerialAccessDto) {
+    let _ = app.emit(SERIAL_ACCESS, access);
+}
+
 /// Broadcasts the firmware update offer whenever it changes.
 pub fn emit_firmware_offer(app: &AppHandle, offer: &FirmwareOfferDto) {
     let _ = app.emit(FIRMWARE_OFFER, offer);
@@ -82,5 +89,10 @@ mod tests {
     #[test]
     fn the_startup_event_name_is_the_one_the_webview_listens_for() {
         assert_eq!(STARTUP_CHANGED, "startup://changed");
+    }
+
+    #[test]
+    fn the_serial_access_event_name_is_the_one_the_webview_listens_for() {
+        assert_eq!(SERIAL_ACCESS, "serial-access://changed");
     }
 }

@@ -28,10 +28,12 @@ use crate::companion::CompanionDirector;
 use crate::config::ResolvedConfig;
 use crate::desk::catalog::{Os, Services, ServicesCell};
 use crate::desk::DeskRuntime;
-use crate::device::discovery::{default_allowlist, filter_candidates, CandidateRotator};
+use crate::device::discovery::{
+    default_allowlist, filter_candidates, is_candidate, CandidateRotator,
+};
 use crate::device::fsm::{ConnectionManager, ManagerEvent};
 use crate::device::reconnect::base_delay_ms;
-use crate::device::serial::{enumerate, SerialPortLink};
+use crate::device::serial::{enumerate, is_permission_denied, SerialPortLink};
 use crate::device::session::{Session, SessionConfig, SessionError};
 use crate::device::transport::SerialLink;
 use crate::firmware::{self, FirmwareStatus, FlashFailure, FlashWorkflow, ResumeTarget};
@@ -44,7 +46,7 @@ use crate::identity::{
 use crate::input::{Freshness, InputIngress, LogicalInput, RejectReason};
 use crate::ipc::dto::{
     availability_token, connection_status, desk_status_dto, ConnectionStatusDto, DeskStatusDto,
-    DiagnosticsSnapshot, HostServicesSnapshot,
+    DiagnosticsSnapshot, HostServicesSnapshot, SerialAccessDto,
 };
 use crate::ipc::events;
 use crate::orchestrator::Orchestrator;
@@ -190,7 +192,7 @@ fn device_loop(
         0x4B49_564F,
         0,
     );
-    // Windows and macOS have real backends; every other target gets the honest "not implemented
+    // Windows, macOS and Linux have real backends; every other target gets the honest "not implemented
     // yet" services so this crate always compiles (`platform::os_services`).
     let main_app = app.clone();
     let services = platform::os_services(Some(Arc::new(move |run| {
@@ -201,6 +203,7 @@ fn device_loop(
     let app_volume = Arc::clone(&services.app_volume);
     let mic = Arc::clone(&services.mic);
     let media = Arc::clone(&services.media);
+    let synth = Arc::clone(&services.synth);
     let foreground = Arc::clone(&services.foreground);
     let mut diagnostics_publisher = DiagnosticsPublisher::default();
     let mut input_permission = InputPermissionProbe::default();
@@ -370,6 +373,10 @@ fn device_loop(
                     }
                 }
                 DeviceCommand::Refresh => {}
+                DeviceCommand::Rediscover => {
+                    retry_at = None;
+                    rotator = CandidateRotator::new();
+                }
                 DeviceCommand::RequestInternals => {
                     // A write failure here resurfaces through the next pump, so it is not handled
                     // twice. Nothing is sent while the serial port is reserved for flashing.
@@ -626,15 +633,25 @@ fn device_loop(
                     if manager.state() == kivori_model::ConnectionState::Error {
                         manager.apply(ManagerEvent::BackoffElapsed);
                     }
+                    let ports = enumerate();
                     let candidate = match flash.status().phase {
                         // A drive-only recovery has no port to reopen; discovery finds the board.
                         crate::firmware::FirmwarePhase::Reconnecting => {
                             flash.reconnect_port().map(str::to_string).or_else(|| {
-                                rotator.next(&enumerate(), default_allowlist(), started.elapsed())
+                                rotator.next(&ports, default_allowlist(), started.elapsed())
                             })
                         }
-                        _ => rotator.next(&enumerate(), default_allowlist(), started.elapsed()),
+                        _ => rotator.next(&ports, default_allowlist(), started.elapsed()),
                     };
+                    // A device that was unplugged takes its "needs permission" card with it.
+                    if candidate.is_none()
+                        && !ports
+                            .iter()
+                            .any(|port| is_candidate(port, default_allowlist()))
+                        && crate::serial_access::set_denied(false)
+                    {
+                        events::emit_serial_access(&app, &SerialAccessDto::current());
+                    }
                     if candidate.is_none()
                         && manager.state() == ConnectionState::Incompatible
                         && !rotator.any_skipped()
@@ -645,12 +662,26 @@ fn device_loop(
                     if let Some(name) = candidate {
                         let attempt = activity_planner.attempt();
                         record_with_metadata(&app, &activity_log, attempt.kind, attempt.metadata);
-                        let opened = SerialPortLink::open(&name).ok().and_then(|mut opened| {
-                            session
-                                .open(&mut opened, &mut manager)
-                                .is_ok()
-                                .then_some(opened)
-                        });
+                        let opened = match SerialPortLink::open(&name) {
+                            Ok(mut opened) => {
+                                if crate::serial_access::set_denied(false) {
+                                    events::emit_serial_access(&app, &SerialAccessDto::current());
+                                }
+                                session
+                                    .open(&mut opened, &mut manager)
+                                    .is_ok()
+                                    .then_some(opened)
+                            }
+                            Err(error) => {
+                                // Refused for permission is a state the user can fix, not a
+                                // generic failure: say so instead of retrying in silence.
+                                let denied = is_permission_denied(&error);
+                                if crate::serial_access::set_denied(denied) {
+                                    events::emit_serial_access(&app, &SerialAccessDto::current());
+                                }
+                                None
+                            }
+                        };
                         if let Some(opened) = opened {
                             link = Some(opened);
                             connected_port = Some(name);
@@ -1070,13 +1101,16 @@ fn device_loop(
 
         let system_volume = backend.availability();
         let app_volume_availability = app_volume.availability();
-        // The action catalog reads this instead of guessing from the OS. Input synthesis reports no
-        // availability of its own, so it keeps the OS expectation.
+        // The action catalog reads this instead of guessing from the OS. Input synthesis reports
+        // no availability of its own for media keys, so they keep the OS expectation; it may
+        // restrict keyboard shortcuts (Linux on Wayland).
+        let expected = Services::expected(Os::current());
         Services::publish(
             &services_cell,
             Services {
                 volume: system_volume.clone(),
-                input: Services::expected(Os::current()).input,
+                input: expected.input,
+                keyboard: synth.keyboard_availability().unwrap_or(expected.keyboard),
                 app_volume: app_volume_availability.clone(),
                 mic: mic.availability(),
             },
@@ -1558,6 +1592,7 @@ pub fn plan_device_request(
         | DeviceCommand::RestoreFirmware
         | DeviceCommand::RestoreFirmwareFor(_, _)
         | DeviceCommand::Refresh
+        | DeviceCommand::Rediscover
         | DeviceCommand::RequestInternals
         | DeviceCommand::SetDisplayMode(_)
         | DeviceCommand::TestAction(_, _)

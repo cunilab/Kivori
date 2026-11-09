@@ -40,6 +40,8 @@ export interface Release {
   prerelease: boolean;
   installer: Installer | null;
   macInstaller?: Installer | null;
+  linuxDeb?: Installer | null;
+  linuxAppImage?: Installer | null;
   notes: string;
   firmware: Firmware[];
   sourceCommit?: string;
@@ -103,7 +105,15 @@ export function parseReleaseSnapshot(payload: string): ReleaseSnapshot | null {
         !Array.isArray(r.firmware) ||
         !validSnapshotInstaller(r.installer, r.tag, /-setup\.exe$/i) ||
         (r.macInstaller !== undefined &&
-          !validSnapshotInstaller(r.macInstaller, r.tag, /(?:_|-)aarch64\.dmg$/i))
+          !validSnapshotInstaller(r.macInstaller, r.tag, /(?:_|-)aarch64\.dmg$/i)) ||
+        (r.linuxDeb !== undefined &&
+          !validSnapshotInstaller(r.linuxDeb, r.tag, /^Kivori_[0-9][0-9A-Za-z.+-]*_amd64\.deb$/)) ||
+        (r.linuxAppImage !== undefined &&
+          !validSnapshotInstaller(
+            r.linuxAppImage,
+            r.tag,
+            /^Kivori_[0-9][0-9A-Za-z.+-]*_amd64\.AppImage$/,
+          ))
       )
         return null;
       tags.add(r.tag);
@@ -212,6 +222,8 @@ export function toRelease(raw: RawRelease): Release {
     prerelease: raw.prerelease,
     installer: findInstaller(raw.assets),
     macInstaller: findMacInstaller(raw.assets),
+    linuxDeb: findAsset(raw.assets, /^Kivori_[0-9][0-9A-Za-z.+-]*_amd64\.deb$/),
+    linuxAppImage: findAsset(raw.assets, /^Kivori_[0-9][0-9A-Za-z.+-]*_amd64\.AppImage$/),
     notes: raw.body ?? '',
     firmware: [],
   };

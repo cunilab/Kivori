@@ -1,7 +1,7 @@
 # Kivori user guide
 
 A short guide for beta customers. Kivori Pip (model KV-P1) is a desk buddy with a knob, three
-buttons and a small screen. It controls your computer and shows what is going on. Windows and Apple Silicon macOS builds share the same controls; platform differences are called out.
+buttons and a small screen. It controls your computer and shows what is going on. Windows, Apple Silicon macOS and Linux builds share the same controls; platform differences are called out.
 
 ## What's in the box
 
@@ -36,6 +36,16 @@ Kivori), and never when it is already on. Choose **Allow**, then switch Kivori o
 Settings, Privacy & Security, Accessibility. If you choose **Not now**, it will not ask again by
 itself: the Controls page reminds you when you bind a shortcut, and Settings shows whether it is
 **Allowed** and lets you allow it. Play/pause, next, previous, volume and mute never need it.
+
+### Linux (Ubuntu / Debian)
+
+Install the published `.deb` with `sudo apt install ./Kivori_*_amd64.deb`, then reconnect the
+USB device. The package installs its USB access rule. For AppImage, make the download executable
+and choose **Grant access** to install the USB rule; see [Linux setup](./linux.md). Signed AppImages support
+in-app updates; `.deb` installs show updates as unsupported. Download and install a newer `.deb` from the website, or use your package manager if available. Volume, microphone mute and media work on
+X11 and Wayland; keyboard shortcuts and automatic app profiles require X11. On Wayland use
+General or pin a profile. GNOME needs the AppIndicator extension for the tray icon.
+
 
 ## First run and setup
 
@@ -160,7 +170,7 @@ quiet press/label pulse instead of an amber badge; that pulse does not confirm t
   port. On wake it reconnects by itself. Nothing you turned or pressed before sleep runs afterwards.
 - Locking the screen puts the buddy to sleep. Unlocking brings back what you had.
 - If the Kivori app stops or crashes, the screen shows **Offline** within about 4 seconds.
-- Kivori can start with Windows and sits in the tray. The window is optional: close it and Kivori
+- Kivori can start at login and sits in the tray. The window is optional: close it and Kivori
   keeps working. Use the tray icon to open it or quit.
 
 ## Updating firmware
@@ -206,7 +216,8 @@ BOOT is the pinhole in the base labelled BOOT; a paperclip reaches it.
 Windows: Settings, Apps, Kivori, Uninstall. This also removes the start-with-Windows entry. Your
 settings stay in your user data folder (`%LOCALAPPDATA%\id.cunilab.kivori`, plus
 `%LOCALAPPDATA%\id.immer.kivori` if you used a version from before November 2026); delete them if you
-want them gone. macOS: drag Kivori from Applications to the Bin.
+want them gone. macOS: drag Kivori from Applications to the Bin. Linux: remove the Debian package with your
+package manager, or delete the AppImage; configuration remains in your user data folder.
 
 ## Privacy
 

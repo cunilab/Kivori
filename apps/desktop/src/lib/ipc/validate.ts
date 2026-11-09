@@ -59,6 +59,7 @@ import type {
   FirmwareStatusDto,
   AccessibilityState,
   OnboardingDto,
+  SerialAccessDto,
   StartupSettingsDto,
   UpdateStatusDto,
   FirmwareOfferDto,
@@ -222,6 +223,21 @@ export function parseStartupSettings(raw: unknown): StartupSettingsDto {
     launchAtLogin: r.launchAtLogin,
     platform: oneOf('startup platform', STARTUP_PLATFORMS, r.platform),
   };
+}
+
+/** The longest manual command accepted (the rule is a few hundred bytes). */
+const MAX_MANUAL_COMMAND = 2048;
+
+/** Validates a `SerialAccessDto`; the manual command is only meaningful while access is denied. */
+export function parseSerialAccess(raw: unknown): SerialAccessDto {
+  const r = record('serial access', raw);
+  if (typeof r.denied !== 'boolean') throw new Error('Kivori: invalid denied.');
+  if (typeof r.canFix !== 'boolean') throw new Error('Kivori: invalid canFix.');
+  const manual = r.manualCommand ?? null;
+  if (manual !== null && (typeof manual !== 'string' || manual.length > MAX_MANUAL_COMMAND)) {
+    throw new Error('Kivori: invalid manualCommand.');
+  }
+  return { denied: r.denied, canFix: r.canFix, manualCommand: r.denied ? manual : null };
 }
 
 /** Release notes longer than this are cut (the native side already bounds them). */

@@ -109,8 +109,19 @@ export interface OnboardingDto {
 export const ACCESSIBILITY_STATES = ['granted', 'missing', 'notApplicable'] as const;
 export type AccessibilityState = (typeof ACCESSIBILITY_STATES)[number];
 
-export const STARTUP_PLATFORMS = ['windows', 'macos', 'other'] as const;
+export const STARTUP_PLATFORMS = ['windows', 'macos', 'linux', 'other'] as const;
 export type StartupPlatform = (typeof STARTUP_PLATFORMS)[number];
+
+/**
+ * Whether Kivori may open its USB device. Only Linux can refuse (no udev rule yet): `denied` is
+ * true while the last attempt was refused for permission, `canFix` while the one-click fix can run
+ * (`pkexec` is installed), and `manualCommand` is that fix as one command to copy when it cannot.
+ */
+export interface SerialAccessDto {
+  denied: boolean;
+  canFix: boolean;
+  manualCommand: string | null;
+}
 
 /** Whether Kivori starts at login; read from the OS entry, never stored in the config file. */
 export interface StartupSettingsDto {

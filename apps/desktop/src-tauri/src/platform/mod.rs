@@ -13,6 +13,8 @@ pub mod apps;
 pub mod foreground;
 pub mod host_events;
 pub mod launch;
+#[cfg(target_os = "linux")]
+pub mod linux;
 #[cfg(target_os = "macos")]
 pub mod macos;
 #[cfg(any(windows, test))]
@@ -20,7 +22,7 @@ mod mic_coverage;
 pub mod permissions;
 pub mod png;
 pub mod shortcut;
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 pub mod synth;
 pub mod system;
 pub mod unimplemented;
@@ -286,6 +288,12 @@ impl InputGuard {
 pub trait InputSynth: Send + Sync {
     fn send_media_key(&self, key: MediaKey, guard: InputGuard) -> Result<(), ActionError>;
     fn send_shortcut(&self, shortcut: &Shortcut, guard: InputGuard) -> Result<(), ActionError>;
+    /// Whether keyboard shortcuts can be sent right now, when the OS restricts them (Linux: not on
+    /// a Wayland session). `None` keeps the OS expectation: Windows and macOS report no
+    /// availability of their own (macOS's Accessibility is a permission, shown separately).
+    fn keyboard_availability(&self) -> Option<ActionAvailability> {
+        None
+    }
 }
 
 /// What is playing, as the OS (or player) reports it. Either part may be empty.
@@ -835,7 +843,7 @@ pub struct OsServices {
 /// Runs a closure on the app's main thread (Tauri's `run_on_main_thread`).
 pub type MainThread = std::sync::Arc<dyn Fn(Box<dyn FnOnce() + Send>) + Send + Sync>;
 
-/// Builds [`OsServices`] for this OS. Spawns the audio (and, on Windows, media) threads.
+/// Builds [`OsServices`] for this OS. Spawns the audio and media threads.
 ///
 /// `main` is how macOS key synthesis reaches the main thread: since macOS 15 the keyboard-layout
 /// lookups it needs assert they run there and kill the process otherwise. `None` runs input on the
@@ -873,7 +881,25 @@ pub fn os_services(main: Option<MainThread>) -> OsServices {
             foreground: Arc::new(macos::MacForeground),
         }
     }
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(target_os = "linux")]
+    {
+        // An X connection is fine on any thread: no main-thread hop for key synthesis.
+        let _ = main;
+        // One backend: app streams are read and written on the same audio thread as the master.
+        let audio = Arc::new(linux::LinuxVolumeBackend::new());
+        let mpris = Arc::new(linux::Mpris::new());
+        OsServices {
+            volume: audio.clone(),
+            app_volume: audio,
+            mic: Arc::new(linux::LinuxMicBackend::new()),
+            synth: Arc::new(linux::LinuxInputSynth::new(Arc::clone(&mpris))),
+            media: Arc::new(linux::LinuxMediaObserver::new(mpris)),
+            system: Box::new(linux::LinuxSystemProbe),
+            clock: linux::local_time,
+            foreground: Arc::new(linux::LinuxForeground::new()),
+        }
+    }
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     {
         let target = std::env::consts::OS;
         let _ = main;
@@ -906,7 +932,11 @@ pub fn start_host_events(
     {
         macos::host_events::start(tx)
     }
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(target_os = "linux")]
+    {
+        linux::host_events::start(tx)
+    }
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     {
         unimplemented::start_host_events(tx)
     }

@@ -62,11 +62,11 @@ export default function SupportPage(): ReactElement {
       body: (
         <Steps
           items={[
-            'Install the Kivori app on your Windows computer and open it.',
+            'Install the Kivori app on your computer (Windows, macOS or Linux) and open it.',
             'Plug Kivori into a USB-C data cable. The app finds it by itself, so there is no port to choose.',
             'Follow the short setup. You can skip any step, and you can run it again any time from the Device page.',
             'Try it: turn the knob, press the knob and press a side button. Each step ticks when Kivori sees it.',
-            'Pick your starting screen, how lively the buddy is, and whether Kivori starts with Windows.',
+            'Pick your starting screen, how lively the buddy is, and whether Kivori starts at login.',
           ]}
         />
       ),
@@ -167,6 +167,27 @@ export default function SupportPage(): ReactElement {
             </>,
           ]}
         />
+      ),
+    },
+    {
+      id: 'linux',
+      title: 'Linux setup',
+      body: (
+        <p>
+          On Ubuntu / Debian, install the .deb with your package installer; it includes the USB
+          access rule. AppImage users must install the Kivori udev rule separately, make the file
+          executable and install libfuse2 (libfuse2t64 on Ubuntu 24.04+) if needed. Reconnect the
+          device after installing the rule. Volume and MPRIS media work on Wayland; shortcuts and
+          automatic app profiles require an X11 session. GNOME needs the AppIndicator extension for
+          the tray icon. See{' '}
+          <a
+            href="https://github.com/cunilab/Kivori/blob/main/docs/linux.md"
+            className="text-primary underline"
+          >
+            Linux setup and troubleshooting
+          </a>
+          .
+        </p>
       ),
     },
     {

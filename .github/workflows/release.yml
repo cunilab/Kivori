@@ -60,6 +60,7 @@ on:
       - 'apps/desktop/src-tauri/Info.plist'
       - 'apps/desktop/src-tauri/Entitlements.plist'
       - 'apps/desktop/src-tauri/nsis/**'
+      - 'apps/desktop/src-tauri/linux/**'
       - 'bun.lock'
       - 'scripts/bundle-macos.sh'
       - 'scripts/sign-macos-bundle.sh'
@@ -331,6 +332,161 @@ jobs:
             echo "Release ${TAG} is already published; refusing to change it." >&2
             exit 1
           fi
+
+  linux:
+    needs: firmware
+    # 22.04 has WebKitGTK 4.1 and the oldest glibc baseline of supported Ubuntu
+    # runners; building here avoids requiring the newer 24.04 glibc on users' PCs.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Release tag
+        id: release
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="$INPUT_TAG"
+          if [ -z "$tag" ] && [[ "$GITHUB_REF" == refs/tags/v* ]]; then tag="$GITHUB_REF_NAME"; fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Updater signing key (ADR-0015)
+        id: updater
+        shell: bash
+        env:
+          # Never read on pull requests. Empty until the owner adds the secret (docs/release.md).
+          KEY: ${{ github.event_name != 'pull_request' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+        run: |
+          if [ -n "$KEY" ]; then
+            # A signed release must be verifiable by the app: the matching public key has to be in
+            # the release config, or installed apps could never install it (ADR-0015).
+            pubkey="$(node -p "(require('./apps/desktop/src-tauri/tauri.release.conf.json').plugins?.updater?.pubkey ?? '').trim()")"
+            if [ -z "$pubkey" ]; then
+              echo "::error title=Updater public key missing::TAURI_SIGNING_PRIVATE_KEY is set but plugins.updater.pubkey in apps/desktop/src-tauri/tauri.release.conf.json is empty. Put the public key (~/.tauri/kivori-updater.key.pub) there first; see docs/release.md, One-time owner setup."
+              exit 1
+            fi
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            if [ -n "${{ steps.release.outputs.tag }}" ]; then
+              echo "::warning title=Release is not updatable::TAURI_SIGNING_PRIVATE_KEY is not set, so no updater signature or latest.json is produced. Installed apps will not see this release. See docs/release.md, One-time owner setup."
+            else
+              echo "::notice::No TAURI_SIGNING_PRIVATE_KEY: building without updater artifacts."
+            fi
+          fi
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libudev-dev libssl-dev libpulse-dev patchelf file
+      - uses: actions/download-artifact@v8
+        with:
+          name: firmware-elfs
+          path: ${{ runner.temp }}/firmware
+      - run: bun install --frozen-lockfile
+      - name: Prepare the firmware manifest
+        id: firmware
+        run: |
+          set -euo pipefail
+          unset KIVORI_FIRMWARE_PATH
+          manifest="$(bun scripts/build-firmware-set.mjs --from-dir "$RUNNER_TEMP/firmware" --manifest-out "$RUNNER_TEMP/firmware-manifest.json")"
+          test -s "$manifest"
+          echo "manifest=$manifest" >> "$GITHUB_OUTPUT"
+      - run: bun --filter kivori-desktop-ui build
+      - name: Build deb and AppImage
+        working-directory: apps/desktop
+        env:
+          KIVORI_FIRMWARE_MANIFEST: ${{ steps.firmware.outputs.manifest }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ steps.updater.outputs.enabled == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ steps.updater.outputs.enabled == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          set -euo pipefail
+          unset KIVORI_FIRMWARE_PATH
+          args=(--config src-tauri/tauri.release.conf.json --config src-tauri/tauri.release.linux.conf.json)
+          if [ '${{ steps.updater.outputs.enabled }}' != 'true' ]; then
+            args+=(--config '{"bundle":{"createUpdaterArtifacts":false}}')
+          fi
+          # Debian packages are manually updated; only the AppImage gets updater artifacts.
+          bunx tauri build "${args[@]}" --config '{"bundle":{"createUpdaterArtifacts":false}}' --bundles deb -- --no-default-features
+          bunx tauri build "${args[@]}" --bundles appimage -- --no-default-features
+      - name: Validate packages and release surface
+        run: |
+          set -euo pipefail
+          bash scripts/check-release-surface.sh --desktop-artifact target/release/kivori-desktop
+          debs=(target/release/bundle/deb/*.deb)
+          images=(target/release/bundle/appimage/*.AppImage)
+          test "${#debs[@]}" -eq 1 && test -f "${debs[0]}"
+          test "${#images[@]}" -eq 1 && test -f "${images[0]}"
+          dpkg-deb -c "${debs[0]}" > "$RUNNER_TEMP/deb-contents.txt"
+          grep -F './usr/lib/udev/rules.d/60-kivori.rules' "$RUNNER_TEMP/deb-contents.txt"
+          mkdir -p linux-release
+          cp "${debs[0]}" "${images[0]}" linux-release/
+          if [ '${{ steps.updater.outputs.enabled }}' = 'true' ]; then
+            test -s "${images[0]}.sig"
+            cp "${images[0]}.sig" linux-release/
+          fi
+          (cd linux-release && sha256sum *.deb *.AppImage > SHA256SUMS-linux)
+      - name: Write Linux updater manifest
+        if: steps.release.outputs.tag != '' && steps.updater.outputs.enabled == 'true'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          images=(linux-release/*.AppImage)
+          node scripts/updater-manifest.mjs --platform linux-x86_64 --version "${TAG#v}" --installer "${images[0]}" --repo "$GITHUB_REPOSITORY" --out linux-release/latest-linux.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-bundles
+          path: linux-release/*
+          if-no-files-found: error
+
+  # Windows first uploads its own metadata; after both jobs succeed this job
+  # replaces it with combined metadata on the draft.
+  release-platforms:
+    needs: [windows, linux]
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows-installer
+          path: windows-release
+      - uses: actions/download-artifact@v8
+        with:
+          name: linux-bundles
+          path: linux-release
+      - name: Merge and attach Linux packages and platform metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-$GITHUB_REF_NAME}"
+          test "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true || { echo 'Refusing to change a published release' >&2; exit 1; }
+          assets=(linux-release/*.deb linux-release/*.AppImage)
+          if [ -f windows-release/latest.json ] || [ -f linux-release/latest-linux.json ]; then
+            test -s windows-release/latest.json && test -s linux-release/latest-linux.json
+            node scripts/updater-manifest.mjs --base windows-release/latest.json --merge linux-release/latest-linux.json --out latest.json
+            assets+=(latest.json linux-release/*.sig)
+          fi
+          cat windows-release/SHA256SUMS linux-release/SHA256SUMS-linux > SHA256SUMS
+          assets+=(SHA256SUMS)
+          gh release upload "$tag" "${assets[@]}" --clobber
 
   macos:
     # No macOS runner budget by default: only when dispatched with macos=true. The owner's local
