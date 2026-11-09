@@ -42,6 +42,7 @@ const GOLDEN: &[(&str, u64)] = &[
     ("feedback_processing_300", 0x2BD5_F77B_74EB_9578),
     ("clock_chips", 0x6104_1B3E_A07E_619E),
     ("volume_preview_58", 0x58E7_C667_DA29_697D),
+    ("buddy_volume_takeover_confirmed_58", 0x403E_16D8_30EE_FAC4),
     ("media_playing_info", 0xE309_D5A5_1945_9634),
     ("media_long_title_0", 0xFB7D_5CC3_384C_0128),
     ("media_long_title_4000", 0xF671_883D_0F38_0BCD),

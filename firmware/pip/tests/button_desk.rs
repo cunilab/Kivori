@@ -377,7 +377,7 @@ fn old_host_still_swallows_held_rotation_and_gets_hold() {
     rig.switch(true);
     rig.run(100);
     rig.turn(Direction::Cw);
-    rig.run(500);
+    rig.run(1_000);
     rig.switch(false);
     rig.run(100);
     assert_eq!(rig.inputs(), [(ControlId::Button, InputKind::Hold)]);
@@ -390,7 +390,7 @@ fn held_rotation_without_button_capability_remains_inert() {
     rig.switch(true);
     rig.run(100);
     rig.turn(Direction::Cw);
-    rig.run(500);
+    rig.run(1_000);
     rig.switch(false);
     rig.run(100);
     assert!(rig.inputs().is_empty());

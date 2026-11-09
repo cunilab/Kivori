@@ -16,8 +16,9 @@
 /// The switch level must stay put this long before an edge counts. Mechanical contact bounce is
 /// a few milliseconds; this keeps a margin without delaying a press noticeably.
 pub const DEBOUNCE_MS: u32 = 20;
-/// A press released before this many ms after key-down is a short Press.
-pub const PRESS_MAX_MS: u32 = 500;
+/// A press released before this many ms after key-down is a short Press; from here a release is a
+/// Hold (1 s: a deliberate hold, not a slow tap).
+pub const PRESS_MAX_MS: u32 = 1_000;
 /// At this many ms after key-down the recovery hold takes the gesture.
 pub const RECOVERY_START_MS: u32 = 2_000;
 /// At this many ms after key-down the MCU reboots.
@@ -359,17 +360,17 @@ mod tests {
     }
 
     #[test]
-    fn a_release_inside_500_ms_is_one_press() {
+    fn a_release_inside_1000_ms_is_one_press() {
         assert_eq!(
-            press(1_000, 1_499, false).as_slice(),
+            press(1_000, 1_999, false).as_slice(),
             [ButtonEvent::Down, ButtonEvent::Press]
         );
     }
 
     #[test]
-    fn a_release_at_500_ms_or_later_is_a_hold() {
+    fn a_release_at_1000_ms_or_later_is_a_hold() {
         assert_eq!(
-            press(1_000, 1_500, false).as_slice(),
+            press(1_000, 2_000, false).as_slice(),
             [ButtonEvent::Down, ButtonEvent::Hold]
         );
         assert_eq!(
@@ -556,8 +557,8 @@ mod tests {
     #[test]
     fn a_long_second_press_fires_the_first_press_then_a_hold() {
         let events = script_double(
-            &[(true, 100), (false, 200), (true, 350), (false, 1_350)],
-            2_000,
+            &[(true, 100), (false, 200), (true, 350), (false, 1_450)],
+            2_100,
         );
         assert_eq!(events.as_slice(), [ButtonEvent::Press, ButtonEvent::Hold]);
     }

@@ -102,11 +102,11 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
 - With negotiated support, pressing the knob before turning selects a separate, optional
   hold-and-rotate shortcut pair. The first completed detent consumes that press, so it does not
   also fire Press, Hold, or Double press. An already-started recovery hold cannot be interrupted.
-- Short press fires only if released within **500 ms**. Discrete mappings fire once per
+- Short press fires only if released within **1 s**. Discrete mappings fire once per
   press; no implicit key-repeat.
 - Contextual buttons give Press and Hold with the same timings, never recovery: held past ~2 s they
   fire nothing. Their labels on screen always match what they run.
-- Recovery button: release between 500 ms and ~2 s may run a mapped Hold. At ~2 s
+- Recovery button: release between 1 s and ~2 s may run a mapped Hold. At ~2 s
   recovery owns the gesture and the Hold is cancelled; at ~10 s from key-down the MCU
   reboots. Once recovery begins, rotation changes nothing. A hold-and-rotate gesture that
   started before recovery owns the press until release. Recovery itself is not configurable.
@@ -338,7 +338,7 @@ Numbers are fixed from the original user-story contract. Gaps are intentional; n
 33. **Recovery hold has absolute input arbitration.** Detents during a recovery hold never cancel it or run actions.
 36. **Takeover states preempt active gestures.** A takeover cancels the gesture without waiting for its end.
 38. **No ambiguous silence.** When it can render, every user-relevant condition has an intentional look.
-40. **Short press is release-qualified.** A short press is ineligible once 500 ms passes.
+40. **Short press is release-qualified.** A short press is ineligible once 1 s passes.
 42. **Only observed hardware input is actionable.** Kivori never reconstructs detents the device did not observe.
 45. **Composite confirmation is capped.** A macro is never more confirmed than its least-confirmed required step.
 46. **Input conditioning precedes gesture semantics.** Raw encoder edges may be filtered; only validated logical detents drive reversal and acceleration.

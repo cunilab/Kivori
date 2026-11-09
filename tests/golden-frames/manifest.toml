@@ -49,49 +49,6 @@ look_button_middle = "0xCC3C0F77CC9A7EC5"
 look_button_right = "0xABAED790E5D63D55"
 evening_blink = "0x7D94F9AB66AB462D"
 
-# Task 10 — canonical volume overlay (kivori_renderer::overlay::render_volume_overlay), sampled at the
-# (percent, confidence, at_boundary) combinations exercised by tests/overlay_golden.rs.
-[[overlay.frame]]
-percent = 0
-confidence = "confirmed"
-at_boundary = false
-hash = "0xBC2ED144C58185E5"
-[[overlay.frame]]
-percent = 49
-confidence = "confirmed"
-at_boundary = false
-hash = "0xFA46442C70DB3145"
-[[overlay.frame]]
-percent = 50
-confidence = "confirmed"
-at_boundary = false
-hash = "0xD454B4041BAED395"
-[[overlay.frame]]
-percent = 51
-confidence = "confirmed"
-at_boundary = false
-hash = "0xE6C3040C16312CBD"
-[[overlay.frame]]
-percent = 100
-confidence = "confirmed"
-at_boundary = false
-hash = "0x416FA57FDB1E6145"
-[[overlay.frame]]
-percent = 100
-confidence = "confirmed"
-at_boundary = true
-hash = "0xA7059821BF58F325"
-[[overlay.frame]]
-percent = 50
-confidence = "preview"
-at_boundary = false
-hash = "0xEC9B2BEE3F4F44AD"
-[[overlay.frame]]
-percent = 50
-confidence = "unverified"
-at_boundary = false
-hash = "0x0682064E865BB565"
-
 # M1 desk views (kivori_renderer::desk render_views/render_recovery then render_chrome), the frames named in
 # tests/golden-frames/src/desk_frames.rs and asserted by tests/desk_golden.rs. Export PNGs to review them:
 #   cargo run -p kivori-golden-frames --example desk_review -- <dir>
@@ -103,6 +60,7 @@ volume_42 = "0x41542E76821BB5B1"
 volume_100_muted = "0x6022A63F64114323"
 volume_unknown = "0x99D8445CCF24A04F"
 volume_overlay_unverified_75 = "0xE74395C853F7D133"
+buddy_volume_takeover_confirmed_58 = "0x403E16D830EEFAC4"
 media_playing = "0x38126DAEDAA1054D"
 media_paused = "0xCCCB9F145A503C1F"
 media_stopped = "0x413575B72938C66F"

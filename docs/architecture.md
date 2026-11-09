@@ -427,7 +427,6 @@ The webview may call only these commands and listen to these events. No command 
 - `face::buddy_face(state, view)` (`kivori-model`, #13) maps observed desk truth to a face override (Error, celebrate, MicMuted, Strained, Muted, Listening, Attentive; rules in product.md). The firmware applies it to the pose on the Buddy view only. Faces are eye/mouth sprite frames compiled from `assets/mascot.svg`; the blob is ~127.3 KB (127,253 bytes) of its 131,072-byte cap; the covered-mouth face added one 24x13 mouth frame (780 bytes) with no trimming, but a further face needs art or crop trimming first.
 - A pose's `press_q8` sinks the cap and the face printed on it while the base stays put, so the walls visibly shorten. Happy holds a 16 px press.
 - `MascotAnimator` (in `kivori-model`) resolves blinking, per-state motion, and eased transitions (350 ms, 600 ms into sleep). Expression changes are hidden inside a blink. Firmware keeps the animator between state changes and renders through the same compositor as Device Studio.
-- Volume overlay room: `MascotPose::with_overlay_room` scales the body by 0.72 (184/256) and lifts it 34 px so the keycap sits above the bar. The switch is instant, not eased.
 
 ### Companion and personality rules
 
@@ -444,7 +443,7 @@ The webview may call only these commands and listen to these events. No command 
 HW-040 A/B/SW -> InputSource port -> QuadratureDecoder -> RotaryGesture -> InputEvent (tag 13)
   -> wire -> Session decode -> InputIngress -> resolve_binding -> apply_step
   -> GestureValue -> VolumeBackend -> PresentationResolver -> Presentation (tag 14)
-  -> wire -> firmware expires value after transient_ms -> render_volume_overlay -> panel / preview
+  -> wire -> firmware expires value after transient_ms -> full-screen Volume view -> panel / preview
 ```
 
 Everything between the two hardware adapters (`PhysicalRotary` in firmware, the Windows backend on the desktop) is a pure function or state machine and is host-testable.
@@ -468,8 +467,8 @@ Everything between the two hardware adapters (`PhysicalRotary` in firmware, the 
   - Windows: the same `kivori-audio` thread, through `Command::App*` arms (`platform/windows/app_volume.rs`). It takes the default render endpoint, `IAudioSessionManager2::GetSessionEnumerator`, then per session `IAudioSessionControl2::GetProcessId` and `QueryFullProcessImageNameW` for the lowercase exe file name (a session it cannot inspect, such as an elevated process, is skipped). Every matching session is written with `ISimpleAudioVolume::SetMasterVolume(level, &KIVORI_EVENT_CONTEXT)` and read back; the result is confirmed only if all read-backs agree, otherwise `ReadBackUnavailable` (Unverified). No session, or no endpoint, is `NoSession`.
   - macOS: `Unsupported { reason: "Per-app volume isn't available on macOS" }`; Linux: `NotImplementedYet`. `FakeAppVolumeBackend` runs all host tests.
   - Keep three ideas apart: `BackendAvailability` (implemented or not), `ConfirmationClass` (`StateConfirmed`, `ExecutionConfirmed`, `TriggeredUnverified`), and the derived `ActionAvailability`. An OS-level `PlatformCapability` is not a type: "this OS cannot do it" is `ActionAvailability::Unsupported { reason }`, decided by the action catalog.
-- Presentation: `PresentationResolver` is a pure function from `ProductSnapshot` to `Presentation`. `value` is a transient overlay of 800 ms (`VALUE_TRANSIENT_MS`). Firmware expires it locally, so the overlay clears without a host timer. Firmware stores `primary` but does not render it; a failed volume write is shown through `Feedback { Volume, Error }` instead (section 5b).
-- Overlay: `render_volume_overlay` (`kivori-renderer/src/overlay.rs`) draws a solid-rect bar with no glyphs. `Confirmed` is a solid fill, `Preview` is hollow (top and bottom rows only), and the track outline turns white at a boundary. It is composited over the mascot in the same tile pass.
+- Presentation: `PresentationResolver` is a pure function from `ProductSnapshot` to `Presentation`. `value` is a transient full-screen Volume view of 1.2 s after the last change (`VALUE_TRANSIENT_MS`). Firmware expires it locally, so the view returns to the underlying one without a host timer. Firmware stores `primary` but does not render it; a failed volume write is shown through `Feedback { Volume, Error }` instead (section 5b).
+- Live volume value: while a value is in force the firmware draws the full-screen Volume view (`desk::volume_view`) in place of whatever view or the buddy is up, as an instant cut (no slide), and the underlying view returns when it expires. `Confirmed` is a solid arc fill, `Preview` is hollow (an outline), `Unverified` is dashed with a dimmed percentage, and the track brightens at a boundary.
 - Firmware owns raw input truth (conditioning, detents, gestures). The desktop owns action meaning.
 - Edge capture: every edge on CLK, DT or SW raises the GPIO interrupt, whose handler only stores a timestamped level snapshot in a 128-entry queue (`physical_rotary.rs`). The run loop drains it each tick (`InputSource::drain`), so quarter-steps and switch edges during a frame compose or flush are not lost. On overflow new edges are dropped: the decoder counts one invalid transition, which can lose a detent but never invents one.
 - Latency: the firmware renders on the tick a `Presentation` or `Feedback` arrives instead of waiting for the 33 ms frame cadence, and the desktop device thread blocks on serial bytes (bounded by its 50 ms tick) instead of sleeping. Row 3.14 measures the result.

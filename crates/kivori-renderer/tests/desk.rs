@@ -631,7 +631,7 @@ fn high_load_marks_the_cpu_bar_and_the_buddy_but_not_other_views() {
 }
 
 #[test]
-fn the_volume_view_follows_overlay_confidence_like_the_overlay_bar() {
+fn the_volume_view_follows_overlay_confidence() {
     let v = view(DisplayMode::Volume, |s| s.volume_percent = Some(10));
     let render = |o| full(|b| scene(b, &v, o));
     let confirmed = render(Some(overlay(ValueConfidence::Confirmed, 50)));
@@ -640,7 +640,7 @@ fn the_volume_view_follows_overlay_confidence_like_the_overlay_bar() {
     assert_ne!(confirmed, preview);
     assert_ne!(confirmed, unverified);
     assert_ne!(preview, unverified);
-    // The overlay wins over the status value, and its Confirmed bar is the status bar.
+    // The overlay wins over the status value, and a Confirmed overlay draws exactly the status view.
     let from_status = full(|b| {
         scene(
             b,

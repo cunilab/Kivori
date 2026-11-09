@@ -133,12 +133,25 @@ fn smoke(mut sandbox: Sandbox, output: PathBuf) -> Result<(), String> {
     if slowest >= Duration::from_secs(1) {
         return Err(format!("A detent took {slowest:?} to reach the volume"));
     }
-    // Canonical overlay: 188px inner width, solid observed fill at 56%, unlike hollow preview.
-    let filled = 188 * 56 / 100;
+    // A live value takes the whole screen as the Volume view: the 270 degree gauge (centre (120, 128),
+    // centre line 89 px out, from 5/8 turn clockwise) has a solid accent fill up to the observed 56%
+    // (a hollow preview would leave the centre line the track colour) and the track beyond it.
+    let accent = kivori_model::Rgb565::from_rgb888(0x4f, 0xc3, 0xf7).raw();
+    let on_gauge = |frame: &[u16], fraction: f64| {
+        let turns = 5.0 / 8.0 + 0.75 * fraction;
+        let angle = turns * std::f64::consts::TAU;
+        let x = (120.0 + 89.0 * angle.sin()).round() as usize;
+        let y = (128.0 - 89.0 * angle.cos()).round() as usize;
+        frame[y * 240 + x]
+    };
     wait_for(&mut sandbox, "confirmed firmware volume pixels", |s| {
         s.frame.as_ref().is_some_and(|frame| {
-            (26..26 + filled).all(|x| frame[185 * 240 + x] == 0xffff)
-                && frame[185 * 240 + 26 + filled] != 0xffff
+            [0.04, 0.2, 0.4, 0.5]
+                .iter()
+                .all(|f| on_gauge(frame, *f) == accent)
+                && [0.62, 0.8, 0.95]
+                    .iter()
+                    .all(|f| on_gauge(frame, *f) != accent)
         })
     })?;
     // Rotary ownership must expire before the independent knob press begins.

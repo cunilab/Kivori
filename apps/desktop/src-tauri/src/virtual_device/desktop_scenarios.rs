@@ -165,7 +165,7 @@ fn persistence_and_profiles(executable: &Path, config_dir: &Path) -> Result<(), 
     rig.until("automatic Code profile", |s| {
         s.desk.context().profile().id == ProfileRef::Builtin(ProfileId::Code)
     })?;
-    rig.raw_button(16, 600);
+    rig.raw_button(16, 1_200);
     rig.until("raw middle hold pins General", |s| {
         s.desk.context().pinned()
             && s.desk.context().profile().id == ProfileRef::Builtin(ProfileId::General)

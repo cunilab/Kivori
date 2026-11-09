@@ -76,7 +76,7 @@ You can repeat setup any time: Device page, **Run setup again**.
 | Hold the middle button | Pin a profile (see below) |
 | Hold the knob for about 10 seconds | Restarts Kivori, even if the app is closed |
 
-A short press means pressed and released within half a second. Holding the knob past about 2
+A short press means pressed and released within one second. Holding the knob past about 2
 seconds does nothing until the 10-second restart, and the screen shows its progress. The left and
 right buttons can also be given a Hold action in the app; holding them for a long time never
 restarts anything.

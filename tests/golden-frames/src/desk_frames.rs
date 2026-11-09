@@ -22,7 +22,7 @@ pub enum DeskFrame {
     Updating,
     /// `render_wrong_board`.
     WrongBoard,
-    /// `render_views` (with an optional live volume overlay) then `render_chrome`.
+    /// `render_views` (a live volume overlay takes the screen as the Volume view) then `render_chrome`.
     View(DeskView, Option<ValueDisplay>),
 }
 
@@ -43,21 +43,18 @@ pub fn render_desk_with(frame: &DeskFrame, mut buddy: impl FnMut(&mut TileBand))
         DeskFrame::Updating => desk::render_updating(&mut band),
         DeskFrame::WrongBoard => desk::render_wrong_board(&mut band),
         DeskFrame::View(view, overlay) => {
-            let _ = desk::render_views(&mut band, view, |b, mode| {
-                desk::render_view(b, mode, view, *overlay);
-                if mode == DisplayMode::Buddy {
-                    buddy(b);
-                }
-                Ok::<(), ()>(())
-            });
-            // As on the device: the volume bar over any view except Volume.
-            if let (Some(o), true) = (overlay, view.status.mode != DisplayMode::Volume) {
-                kivori_renderer::overlay::render_volume_overlay(
-                    &mut band,
-                    o.current_percent,
-                    o.confidence,
-                    o.at_boundary,
-                );
+            // As on the device: a live volume value takes the whole screen as the Volume view
+            // (in Buddy too), unless Volume is already the current view.
+            if overlay.is_some() && view.status.mode != DisplayMode::Volume {
+                desk::render_view(&mut band, DisplayMode::Volume, view, *overlay);
+            } else {
+                let _ = desk::render_views(&mut band, view, |b, mode| {
+                    desk::render_view(b, mode, view, *overlay);
+                    if mode == DisplayMode::Buddy {
+                        buddy(b);
+                    }
+                    Ok::<(), ()>(())
+                });
             }
             desk::render_chrome(&mut band, view);
         }
@@ -163,6 +160,19 @@ pub fn desk_frames() -> Vec<(&'static str, DeskFrame)> {
         ),
         ("volume_unknown", view(DisplayMode::Volume, |_| {})),
         ("volume_overlay_unverified_75", overlay),
+        (
+            // A live volume value over the Buddy view takes the whole screen as the Volume view.
+            "buddy_volume_takeover_confirmed_58",
+            DeskFrame::View(
+                DeskView::default(),
+                Some(ValueDisplay {
+                    kind: ValueKind::Volume,
+                    current_percent: 58,
+                    confidence: ValueConfidence::Confirmed,
+                    at_boundary: false,
+                }),
+            ),
+        ),
         (
             "media_playing",
             view(DisplayMode::Media, |v| {
