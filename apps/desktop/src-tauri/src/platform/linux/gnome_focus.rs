@@ -189,7 +189,8 @@ impl GnomeFocus {
     fn watch(&self) {
         let mut backoff = Backoff::new();
         loop {
-            if self.attend(&mut backoff).is_err() {
+            if let Err(error) = self.attend(&mut backoff) {
+                tracing::warn!(%error, "GNOME focus observer disconnected");
                 reset_connection();
             }
             self.clear();
@@ -207,7 +208,8 @@ impl GnomeFocus {
             match peer(&conn)? {
                 Peer::Shell { owner, version } if compatible(version) => {
                     *self.owner.lock().expect("GNOME focus") = Some(owner);
-                    if self.beat(&conn, backoff).is_err() {
+                    if let Err(error) = self.beat(&conn, backoff) {
+                        tracing::warn!(%error, "GNOME focus subscription failed");
                         self.clear();
                         backoff.wait();
                     }
@@ -226,8 +228,14 @@ impl GnomeFocus {
     /// Subscribe (which returns the current state) every second until a call fails. The repeat
     /// re-subscribes after an extension reload and keeps the cache fresh while Shell answers.
     fn beat(&self, conn: &Connection, backoff: &mut Backoff) -> zbus::Result<()> {
+        let mut subscribed = false;
         loop {
-            self.store(subscribe(conn)?);
+            let reply = subscribe(conn)?;
+            if !subscribed {
+                tracing::info!("GNOME focus observer subscribed");
+                subscribed = true;
+            }
+            self.store(reply);
             backoff.reset();
             std::thread::sleep(HEARTBEAT);
         }
@@ -259,6 +267,7 @@ impl GnomeFocus {
                 continue;
             }
             if let Ok(reply) = message.body().deserialize::<Reply>() {
+                tracing::info!(app_id = %reply.0, "GNOME focus change received");
                 self.store(reply);
             }
         }
@@ -300,6 +309,42 @@ mod tests {
                     .any(|profile| profile.name == expected && profile.ids.contains(&id)),
                 "{desktop}: {id}"
             );
+        }
+    }
+
+    #[test]
+    fn brave_desktop_and_snap_focus_commit_the_browser_profile() {
+        use crate::config::{ProfileId, ProfileRef};
+        use crate::desk::profile::{builtins_for, Context, STABLE_FOR};
+
+        let entry = super::super::apps::parse_desktop_entry(
+            std::path::Path::new("/var/lib/snapd/desktop/applications/brave_brave.desktop"),
+            "[Desktop Entry]\nType=Application\nName=Brave Web Browser\nExec=/snap/bin/brave %U\nStartupWMClass=brave\n",
+        )
+        .unwrap();
+        for (desktop, class) in [
+            ("brave-browser.desktop", "brave"),
+            ("brave_brave.desktop", "brave"),
+            ("", "brave"),
+        ] {
+            // No readable pid: desktop identity must also work for sandboxed/exited processes.
+            let foreground = map_reply_in(
+                std::slice::from_ref(&entry),
+                (desktop.into(), class.into(), 0, false),
+            );
+            let watch = GnomeFocus {
+                sample: Mutex::new(Some((Instant::now(), foreground))),
+                ..GnomeFocus::default()
+            };
+            let mut context = Context::new(builtins_for(false));
+            context.observe(watch.foreground(), Duration::ZERO);
+            context.observe(watch.foreground(), STABLE_FOR);
+            assert_eq!(
+                context.profile().id,
+                ProfileRef::Builtin(ProfileId::Browser),
+                "{desktop}/{class}"
+            );
+            assert!(!context.pinned());
         }
     }
 

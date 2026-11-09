@@ -452,6 +452,11 @@ impl Context {
             Foreground::Unknown => self.app_profile = 0,
             Foreground::Protected => {}
         }
+        let app_id = match &foreground {
+            Foreground::App { id, .. } => Some(id.as_str()),
+            _ => None,
+        };
+        tracing::info!(app_id, profile = ?self.profile().id, pinned = self.pinned(), protected = foreground == Foreground::Protected, "foreground profile resolved");
         self.committed = foreground;
         self.pending = None;
     }

@@ -256,13 +256,27 @@ fn installed() -> Option<(u32, SystemTime)> {
 }
 
 pub fn status() -> FocusStatus {
+    let state = read_status();
+    tracing::info!(?state, "GNOME app profiles status");
+    state
+}
+
+fn read_status() -> FocusStatus {
     if session_kind() != SessionKind::Wayland || !is_gnome() {
+        tracing::info!(session = ?session_kind(), desktop = ?std::env::var("XDG_CURRENT_DESKTOP").ok(), "GNOME app profiles not applicable");
         return FocusStatus::NotApplicable;
     }
     match output("gnome-shell", &["--version"]) {
-        Ok(version) if !supported(&version) => return FocusStatus::Unsupported,
-        Err(_) => return FocusStatus::Unavailable,
-        _ => {}
+        Ok(version) => {
+            tracing::info!(version = version.trim(), "GNOME Shell version detected");
+            if !supported(&version) {
+                return FocusStatus::Unsupported;
+            }
+        }
+        Err(error) => {
+            tracing::info!(%error, "GNOME Shell version check failed");
+            return FocusStatus::Unavailable;
+        }
     }
     let conn = super::gnome_focus::connection().ok();
     let peer = conn
@@ -270,16 +284,21 @@ pub fn status() -> FocusStatus {
         .and_then(|conn| super::gnome_focus::peer(conn).ok())
         .unwrap_or(Peer::Absent);
     let working = matches!(&peer, Peer::Shell { version, .. } if compatible(*version));
-    let Ok(enabled) = output(
+    let enabled = match output(
         "gsettings",
         &["get", "org.gnome.shell", "enabled-extensions"],
     )
-    .and_then(|text| extension_list(&text)) else {
-        return if working {
-            FocusStatus::Working
-        } else {
-            FocusStatus::Unavailable
-        };
+    .and_then(|text| extension_list(&text))
+    {
+        Ok(enabled) => enabled,
+        Err(error) => {
+            tracing::info!(%error, "GNOME enabled extensions check failed");
+            return if working {
+                FocusStatus::Working
+            } else {
+                FocusStatus::Unavailable
+            };
+        }
     };
     let globally_disabled = output(
         "gsettings",
@@ -293,11 +312,13 @@ pub fn status() -> FocusStatus {
             .and_then(super::proc::start_time)
             .is_some_and(|started| started > written)
     });
+    let cli = if working { Cli::NotLoaded } else { cli_info() };
+    tracing::info!(directory = ?extension_dir(), disk_version = ?disk.map(|(version, _)| version), enabled = enabled.iter().any(|uuid| uuid == UUID), globally_disabled, ?cli, ?peer, shell_restarted, "GNOME app profiles detection");
     detect(&Facts {
         disk_version: disk.map(|(version, _)| version),
         enabled: &enabled,
         globally_disabled,
-        cli: if working { Cli::NotLoaded } else { cli_info() },
+        cli,
         peer,
         shell_restarted,
     })
@@ -336,6 +357,16 @@ fn persist_enabled() -> Result<(), String> {
 /// Installs, or updates an older copy. Either way GNOME Shell loads JavaScript only at login on
 /// Wayland, so a log-out finishes it.
 pub fn install() -> Result<FocusStatus, String> {
+    tracing::info!("GNOME app profiles install requested");
+    let result = install_extension();
+    match &result {
+        Ok(state) => tracing::info!(?state, "GNOME app profiles install completed"),
+        Err(error) => tracing::info!(%error, "GNOME app profiles install failed"),
+    }
+    result
+}
+
+fn install_extension() -> Result<FocusStatus, String> {
     match status() {
         FocusStatus::NotApplicable => {
             return Err("App profiles require a GNOME Wayland session.".into())
@@ -360,11 +391,14 @@ pub fn install() -> Result<FocusStatus, String> {
                 .into(),
         );
     }
-    write_extension(&extension_dir()?)?;
+    let directory = extension_dir()?;
+    write_extension(&directory)?;
+    tracing::info!(?directory, "GNOME app profiles extension files installed");
     // The Shell's own enable is atomic. A copy it has not discovered yet cannot be enabled that
     // way ("does not exist" until the next login), so that one is persisted through the setting.
     let enable_result = output("gnome-extensions", &["enable", UUID]);
-    if enable_result.is_err() {
+    if let Err(error) = &enable_result {
+        tracing::info!(%error, "GNOME Shell has not enabled the extension; persisting enable for next login");
         persist_enabled()?;
     }
     let state = status();

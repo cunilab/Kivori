@@ -82,6 +82,20 @@ describe('GNOME Wayland profile setup', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
+  it('shows a failed status read instead of silently hiding setup, then recovers', async () => {
+    vi.mocked(ipc.getGnomeFocusStatus).mockRejectedValueOnce(new Error('Status command failed'));
+    render(<GnomeFocusHelp />);
+    expect(await screen.findByText('Status command failed')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Enable' })).toBeVisible();
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await waitFor(() =>
+      expect(screen.queryByText('Status command failed')).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole('button', { name: 'Enable' })).toBeVisible();
+  });
+
   it('shows an installation failure and permits retry', async () => {
     vi.mocked(ipc.enableGnomeFocus).mockRejectedValueOnce(new Error('Disk is full'));
     render(<GnomeFocusHelp />);

@@ -13,6 +13,7 @@ const t = strings.gnomeFocus;
 /** Opt-in only; GNOME Wayland is the only session that can show this card. */
 export function GnomeFocusHelp(): ReactElement | null {
   const [status, setStatus] = useState<GnomeFocusStatus | null>(null);
+  const [readError, setReadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -22,8 +23,16 @@ export function GnomeFocusHelp(): ReactElement | null {
       if (reading) return;
       reading = true;
       void getGnomeFocusStatus()
-        .then((next) => active && setStatus(next))
-        .catch(() => {})
+        .then((next) => {
+          if (!active) return;
+          setStatus(next);
+          setReadError(null);
+        })
+        .catch((reason: unknown) => {
+          if (!active) return;
+          setStatus('unavailable');
+          setReadError(errorText(reason));
+        })
         .finally(() => {
           reading = false;
         });
@@ -82,9 +91,9 @@ export function GnomeFocusHelp(): ReactElement | null {
             ) : null}
           </div>
         ) : null}
-        {error ? (
+        {error || readError ? (
           <p role="alert" className="text-destructive">
-            {error}
+            {error ?? readError}
           </p>
         ) : null}
       </AlertDescription>
