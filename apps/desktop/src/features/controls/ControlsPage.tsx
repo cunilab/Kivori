@@ -69,6 +69,7 @@ import { Page } from '@/components/kivori/page';
 import { PageTabs } from '@/components/kivori/page-tabs';
 import { ProductArt } from '@/components/kivori/product-art';
 import type { DeviceControl } from '@/components/kivori/device-visual';
+import { DeviceScreen, type DeviceScreenLine } from '@/components/kivori/device-screen';
 import { ResultBadge } from '@/components/kivori/result-badge';
 import {
   deleteMacro,
@@ -268,6 +269,8 @@ export function ControlsPage({
 }): ReactElement {
   const [chosen, setChosen] = useState<ProfileId | null>(null);
   const [selectedControl, setSelectedControl] = useState<DeviceControl>('knob');
+  // The control the pointer or keyboard is on; the device screen previews it until it leaves.
+  const [previewControl, setPreviewControl] = useState<DeviceControl | undefined>(undefined);
   const [catalog, setCatalog] = useState<ActionCatalogEntryDto[] | null>(null);
   const [editing, setEditing] = useState<PickerTarget | null>(null);
   // The New profile block under the profile chips.
@@ -378,6 +381,29 @@ export function ControlsPage({
     (scope === 'all' ? resetConfig() : resetProfile(selected)).catch((error: unknown) =>
       toast.error(t.resetFailed, { description: errorText(error) }),
     );
+  };
+
+  /** The device screen: the profile, and the focused control with its main gestures. */
+  const deviceScreen = (entry: ProfileConfigDto): ReactElement => {
+    const shown = previewControl ?? selectedControl;
+    const line = (gesture: string, index: number): DeviceScreenLine => {
+      const row = profileRows[index]!;
+      return { gesture, action: row.fixed ?? describe(row.spec ?? null, macros) };
+    };
+    const { turn, press, hold } = t.screen;
+    const lines: Record<DeviceControl, DeviceScreenLine[]> = {
+      knob: [line(turn, 0), line(press, 2), line(hold, 4)],
+      button1: [line(press, 5), line(hold, 8)],
+      button2: [line(press, 6), line(hold, 9)],
+      button3: [line(press, 7), line(hold, 10)],
+    };
+    const titles: Record<DeviceControl, string> = {
+      knob: t.groups.knob,
+      button1: t.gestures.button1.name,
+      button2: t.gestures.button2.name,
+      button3: t.gestures.button3.name,
+    };
+    return <DeviceScreen profile={entry.name} title={titles[shown]} lines={lines[shown]} />;
   };
 
   const renderRow = (entry: ProfileConfigDto, row: Row): ReactElement => {
@@ -644,7 +670,8 @@ export function ControlsPage({
                     connection={connection}
                     selectedControl={selectedControl}
                     onSelectControl={selectControl}
-                    profileName={profile.name}
+                    onPreviewControl={setPreviewControl}
+                    screen={deviceScreen(profile)}
                   />
                   <p className="text-center text-xs text-muted-foreground">{t.workbench.hint}</p>
                 </div>

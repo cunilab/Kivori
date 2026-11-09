@@ -151,6 +151,35 @@ describe('ControlsPage', () => {
     expect(await screen.findByRole('dialog', { name: 'Edit Left button' })).toBeVisible();
   });
 
+  it('shows the selected control and its gestures on the device screen, and previews hovered ones', async () => {
+    const user = userEvent.setup();
+    render(<Harness connection={connectionFixture()} />);
+    await screen.findByTestId('gesture-press');
+    const deviceScreen = screen.getByTestId('device-screen');
+    expect(deviceScreen).toHaveTextContent('General');
+    expect(deviceScreen).toHaveTextContent('Knob');
+    expect(deviceScreen).toHaveTextContent('TurnSystem volume');
+    expect(deviceScreen).toHaveTextContent('PressPlay / Pause');
+    expect(deviceScreen).toHaveTextContent('HoldMute');
+
+    const left = screen.getByRole('button', { name: 'Select Left button' });
+    await user.hover(left);
+    expect(deviceScreen).toHaveTextContent('Left button');
+    expect(deviceScreen).toHaveTextContent('PressPrevious track');
+    // Hovering previews only: the knob is still the selected control.
+    expect(screen.getByRole('button', { name: 'Select Knob' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await user.unhover(left);
+    expect(deviceScreen).toHaveTextContent('TurnSystem volume');
+
+    await user.click(left);
+    await user.unhover(left);
+    expect(deviceScreen).toHaveTextContent('Left button');
+    expect(left).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('retains edited bindings and host tests when switching to a device without their controls', async () => {
     const user = userEvent.setup();
     const page = render(<Harness connection={connectionFixture()} />);

@@ -56,7 +56,7 @@ export function PageTabs({
       <TabsList
         variant="line"
         aria-label={label}
-        className="sticky top-14 z-10 -mx-4 h-11! w-auto justify-start gap-1 overflow-x-auto border-b bg-background/95 px-4 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
+        className="sticky top-14 z-10 -mx-4 h-11! w-auto justify-start gap-1 overflow-x-auto overflow-y-hidden border-b [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bg-background/95 px-4 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
       >
         {tabs.map(({ value: tab, label: text, Icon }) => (
           <TabsTrigger

@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { connectionFixture } from '@/test/connection';
+import css from './device-visual.css?raw';
+import { DeviceScreen } from './device-screen';
 import { ProductArt } from './product-art';
 
 const ipc = vi.hoisted(() => ({ getProductArt: vi.fn() }));
@@ -116,5 +118,62 @@ describe('bundled product artwork', () => {
     expect(screen.getByTestId('product-art-neutral')).toBeInTheDocument();
     expect(screen.getByText('Product a')).toBeInTheDocument();
     expect(screen.getByText('KV-T1')).toBeInTheDocument();
+  });
+
+  it('draws a default screen when the caller gives none, and a custom one when it does', () => {
+    const connection = connectionFixture();
+    connection.device!.presentation!.controlLayout = 'rotary-three-button';
+    const page = render(<ProductArt connection={connection} />);
+    expect(screen.getByTestId('device-screen')).toHaveTextContent('Kivori');
+    expect(screen.getByTestId('device-screen')).toHaveTextContent(/\d{2}:\d{2}/);
+    page.rerender(<ProductArt connection={connection} screen={<p>Custom screen</p>} />);
+    expect(screen.queryByTestId('device-screen')).not.toBeInTheDocument();
+    expect(screen.getByText('Custom screen')).toBeInTheDocument();
+  });
+
+  it('reports hover and focus on a control, and marks selection only with aria-pressed', async () => {
+    const user = userEvent.setup();
+    const connection = connectionFixture();
+    connection.device!.presentation!.controlLayout = 'rotary-three-button';
+    const preview = vi.fn();
+    render(
+      <ProductArt
+        connection={connection}
+        selectedControl="knob"
+        onSelectControl={vi.fn()}
+        onPreviewControl={preview}
+      />,
+    );
+    const middle = screen.getByRole('button', { name: 'Select Middle button' });
+    await user.hover(middle);
+    expect(preview).toHaveBeenLastCalledWith('button2');
+    await user.unhover(middle);
+    expect(preview).toHaveBeenLastCalledWith(undefined);
+    // Selection is exposed to assistive tech, not drawn as the old coloured ring.
+    expect(screen.getByRole('button', { name: 'Select Knob' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(middle).toHaveAttribute('aria-pressed', 'false');
+    expect(css).not.toMatch(/outline:[^;]*#67dca7/);
+  });
+
+  it('shows the idle screen with a hint and ellipsis-ready lines', () => {
+    render(<DeviceScreen profile="Editing" hint="Select a control" />);
+    expect(screen.getByTestId('device-screen')).toHaveTextContent('Select a control');
+    render(
+      <DeviceScreen
+        profile="General"
+        title="Knob"
+        lines={[
+          { gesture: 'Turn', action: 'Volume' },
+          { gesture: 'Press', action: 'Mute' },
+          { gesture: 'Hold', action: 'A' },
+          { gesture: 'Extra', action: 'Dropped' },
+        ]}
+      />,
+    );
+    expect(screen.queryByText('Dropped')).not.toBeInTheDocument();
+    expect(screen.getByText('Mute')).toBeInTheDocument();
   });
 });
