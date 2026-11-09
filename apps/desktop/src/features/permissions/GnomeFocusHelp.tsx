@@ -51,11 +51,20 @@ export function GnomeFocusHelp(): ReactElement | null {
       setBusy(false);
     }
   };
-  const needsLogout = status === 'needsLogout';
+  const needsLogout = status === 'needsLogout' || status === 'cliMissing';
+  const updating = status === 'updateAvailable';
+  const title =
+    status === 'cliMissing'
+      ? t.cliMissingTitle
+      : needsLogout
+        ? t.logoutTitle
+        : updating
+          ? t.updateTitle
+          : t.title;
   return (
     <Alert className="border-primary/30 bg-primary/5" data-testid="gnome-focus-help">
       <AppWindow className="text-primary" aria-hidden="true" />
-      <AlertTitle>{needsLogout ? t.logoutTitle : t.title}</AlertTitle>
+      <AlertTitle>{title}</AlertTitle>
       <AlertDescription className="space-y-3">
         <p>{t[status]}</p>
         <p>{t.privacy}</p>
@@ -66,9 +75,11 @@ export function GnomeFocusHelp(): ReactElement | null {
               disabled={busy}
               onClick={() => void run(needsLogout ? 'logout' : 'enable')}
             >
-              {busy ? t.busy : needsLogout ? t.logout : t.enable}
+              {busy ? t.busy : needsLogout ? t.logout : updating ? t.update : t.enable}
             </Button>
-            {!needsLogout ? <span className="text-xs">{t.once}</span> : null}
+            {!needsLogout ? (
+              <span className="text-xs">{updating ? t.updateOnce : t.once}</span>
+            ) : null}
           </div>
         ) : null}
         {error ? (

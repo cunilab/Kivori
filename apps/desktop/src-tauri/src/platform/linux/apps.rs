@@ -27,7 +27,7 @@ use std::time::{Duration, Instant};
 use super::proc;
 use crate::platform::apps::RunningApp;
 use crate::platform::foreground::is_own_app;
-use crate::platform::ActionError;
+use crate::platform::{ActionError, Foreground};
 
 /// The most desktop entries read, and the largest one read.
 const MAX_ENTRIES: usize = 4000;
@@ -161,15 +161,27 @@ pub(super) fn parse_desktop_entry(path: &Path, text: &str) -> Option<DesktopEntr
     })
 }
 
+/// `XDG_DATA_HOME`, else `~/.local/share`. The XDG spec says a relative `XDG_DATA_HOME` is invalid
+/// and must be ignored, so a stray `XDG_DATA_HOME=data` can never redirect reads or installs.
+pub(super) fn data_home() -> Option<PathBuf> {
+    data_home_from(
+        std::env::var_os("XDG_DATA_HOME"),
+        std::env::var_os("HOME").map(PathBuf::from),
+    )
+}
+
+fn data_home_from(xdg: Option<std::ffi::OsString>, home: Option<PathBuf>) -> Option<PathBuf> {
+    xdg.map(PathBuf::from)
+        .filter(|dir| dir.is_absolute())
+        .or_else(|| home.map(|h| h.join(".local/share")))
+}
+
 /// The directories desktop entries live in, in precedence order: the user's, then
 /// `XDG_DATA_DIRS`, then where Flatpak and Snap export theirs.
 fn data_dirs() -> Vec<PathBuf> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let mut dirs = Vec::new();
-    match std::env::var_os("XDG_DATA_HOME").filter(|v| !v.is_empty()) {
-        Some(dir) => dirs.push(PathBuf::from(dir)),
-        None => dirs.extend(home.as_ref().map(|h| h.join(".local/share"))),
-    }
+    dirs.extend(data_home());
     let system = std::env::var("XDG_DATA_DIRS")
         .ok()
         .filter(|v| !v.is_empty())
@@ -230,7 +242,7 @@ fn load_entries(dirs: &[PathBuf]) -> Vec<DesktopEntry> {
 type Index = (Instant, Arc<Vec<DesktopEntry>>);
 static INDEX: Mutex<Option<Index>> = Mutex::new(None);
 
-fn entries() -> Arc<Vec<DesktopEntry>> {
+pub(super) fn entries() -> Arc<Vec<DesktopEntry>> {
     let mut slot = INDEX.lock().expect("desktop entry index");
     match slot.as_ref() {
         Some((at, entries)) if at.elapsed() < INDEX_TTL => Arc::clone(entries),
@@ -257,12 +269,12 @@ fn entry_for<'a>(entries: &'a [DesktopEntry], name: &str) -> Option<&'a DesktopE
 }
 
 /// Resolve Shell desktop ids to the same executable ids used by the app picker and X11.
-pub(super) fn focus_program(identity: &str) -> Option<String> {
+pub(super) fn focus_program_in(entries: &[DesktopEntry], identity: &str) -> Option<String> {
     let id = identity.trim().trim_end_matches(".desktop").to_lowercase();
     if id.is_empty() {
         return None;
     }
-    let id = entry_for(&entries(), &id)
+    let id = entry_for(entries, &id)
         .and_then(|e| e.program.clone())
         .unwrap_or(id);
     // Sandboxed entries may not be visible from the host. These are exact desktop/WM_CLASS
@@ -278,6 +290,74 @@ pub(super) fn focus_program(identity: &str) -> Option<String> {
         _ => &id,
     };
     Some(program.to_string())
+}
+
+/// Browsers whose app windows (PWAs) carry a 32-letter extension id in their app id or WM_CLASS.
+const CHROMIUM_BROWSERS: [&str; 8] = [
+    "crx", "brave", "chrome", "chromium", "msedge", "edge", "vivaldi", "opera",
+];
+
+/// `crx_<id>`, `brave-<id>-Default`, `chrome-<id>-Default`, `com.google.Chrome.flextop.chrome-<id>-…`
+fn is_chromium_app(identity: &str) -> bool {
+    let lower = identity.trim().trim_end_matches(".desktop").to_lowercase();
+    let parts: Vec<&str> = lower.split(['-', '_', '.']).collect();
+    parts.windows(2).any(|pair| {
+        CHROMIUM_BROWSERS.contains(&pair[0])
+            && pair[1].len() == 32
+            && pair[1].bytes().all(|b| (b'a'..=b'p').contains(&b))
+    })
+}
+
+/// The profile key of a web app: its name lowercased and hyphenated, `Microsoft ` dropped, so the
+/// Teams web app is `teams` like the native client.
+fn pwa_key(name: &str) -> String {
+    let words: Vec<String> = name
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(ToString::to_string)
+        .collect();
+    let words = match words.as_slice() {
+        [first, rest @ ..] if first == "microsoft" && !rest.is_empty() => rest,
+        all => all,
+    };
+    match words.join("-").as_str() {
+        "zoom-workplace" => "zoom".to_string(),
+        key => key.to_string(),
+    }
+}
+
+/// A Chromium app window as its own app. Its desktop entry names it (`Microsoft Teams`); without
+/// one the app id itself is the key. The browser process behind it is deliberately ignored: a web
+/// app must not inherit its browser's profile. `None` for an ordinary window.
+pub(super) fn pwa_foreground(
+    entries: &[DesktopEntry],
+    app_id: &str,
+    wm_class: &str,
+) -> Option<Foreground> {
+    let identity = [app_id, wm_class]
+        .into_iter()
+        .find(|identity| is_chromium_app(identity))?;
+    let stem = |s: &str| s.trim().trim_end_matches(".desktop").to_lowercase();
+    let (app, class) = (stem(app_id), stem(wm_class));
+    let entry = entries.iter().find(|e| {
+        let id = e.id.to_lowercase();
+        (!app.is_empty() && id == app)
+            || (!class.is_empty() && e.wm_class.as_deref() == Some(&class))
+    });
+    Some(match entry {
+        Some(entry) => Foreground::App {
+            id: pwa_key(&entry.name),
+            name: entry.name.clone(),
+        },
+        None => {
+            let id = stem(identity);
+            Foreground::App {
+                name: id.clone(),
+                id,
+            }
+        }
+    })
 }
 
 /// Apps running now: processes of this user that match a desktop entry, Kivori itself left out.
@@ -477,6 +557,102 @@ mod tests {
 
     fn entry(path: &str, text: &str) -> DesktopEntry {
         parse_desktop_entry(Path::new(path), text).expect("an application entry")
+    }
+
+    #[test]
+    fn a_relative_xdg_data_home_is_ignored() {
+        let home = Some(PathBuf::from("/home/me"));
+        let data = |xdg: Option<&str>| data_home_from(xdg.map(Into::into), home.clone());
+        assert_eq!(data(Some("/data")), Some(PathBuf::from("/data")));
+        assert_eq!(
+            data(Some("data")),
+            Some(PathBuf::from("/home/me/.local/share"))
+        );
+        assert_eq!(data(Some("")), Some(PathBuf::from("/home/me/.local/share")));
+        assert_eq!(data(None), Some(PathBuf::from("/home/me/.local/share")));
+        assert_eq!(data_home_from(Some("rel".into()), None), None);
+    }
+
+    const TEAMS_ID: &str = "brave-cifhbcnohmdccbgoicgdjpfamggdegmo-Default";
+
+    fn teams_entry() -> DesktopEntry {
+        parse_desktop_entry(
+            Path::new(&format!("/home/me/.local/share/applications/{TEAMS_ID}.desktop")),
+            "[Desktop Entry]\nType=Application\nName=Microsoft Teams\n\
+             Exec=/opt/brave.com/brave/brave-browser --profile-directory=Default --app-id=cifhbcnohmdccbgoicgdjpfamggdegmo\n\
+             StartupWMClass=crx_cifhbcnohmdccbgoicgdjpfamggdegmo\n",
+        )
+        .expect("teams entry")
+    }
+
+    #[test]
+    fn chromium_app_windows_are_recognised_by_app_id_or_wm_class() {
+        for yes in [
+            "crx_cifhbcnohmdccbgoicgdjpfamggdegmo",
+            "brave-cifhbcnohmdccbgoicgdjpfamggdegmo-Default.desktop",
+            "chrome-cifhbcnohmdccbgoicgdjpfamggdegmo-Profile 1.desktop",
+            "com.google.Chrome.flextop.chrome-cifhbcnohmdccbgoicgdjpfamggdegmo-Default",
+            "msedge-cifhbcnohmdccbgoicgdjpfamggdegmo-Default",
+        ] {
+            assert!(is_chromium_app(yes), "{yes}");
+        }
+        for no in [
+            "brave-browser.desktop",
+            "google-chrome.desktop",
+            "Brave-browser",
+            "crx_short",
+            "brave-cifhbcnohmdccbgoicgdjpfamggdegmz-Default", // z is outside a-p
+            "teams-for-linux",
+            "",
+        ] {
+            assert!(!is_chromium_app(no), "{no}");
+        }
+    }
+
+    #[test]
+    fn a_web_app_maps_to_its_own_app_not_its_browser() {
+        let entries = [teams_entry()];
+        let by_id = pwa_foreground(&entries, &format!("{TEAMS_ID}.desktop"), "");
+        let by_class = pwa_foreground(&entries, "", "crx_cifhbcnohmdccbgoicgdjpfamggdegmo");
+        for found in [by_id, by_class] {
+            assert_eq!(
+                found,
+                Some(Foreground::App {
+                    id: "teams".into(),
+                    name: "Microsoft Teams".into()
+                })
+            );
+        }
+        // Not installed (no entry): still its own app, keyed by the app id.
+        assert_eq!(
+            pwa_foreground(
+                &[],
+                "chrome-cifhbcnohmdccbgoicgdjpfamggdegmo-Default.desktop",
+                ""
+            ),
+            Some(Foreground::App {
+                id: "chrome-cifhbcnohmdccbgoicgdjpfamggdegmo-default".into(),
+                name: "chrome-cifhbcnohmdccbgoicgdjpfamggdegmo-default".into()
+            })
+        );
+        assert_eq!(
+            pwa_foreground(&entries, "brave-browser.desktop", "Brave-browser"),
+            None
+        );
+    }
+
+    #[test]
+    fn web_app_names_become_profile_keys() {
+        for (name, key) in [
+            ("Microsoft Teams", "teams"),
+            ("Teams", "teams"),
+            ("Zoom Workplace", "zoom"),
+            ("Google Calendar", "google-calendar"),
+            ("Microsoft", "microsoft"),
+            ("  Notion  ", "notion"),
+        ] {
+            assert_eq!(pwa_key(name), key, "{name}");
+        }
     }
 
     #[test]

@@ -43,6 +43,8 @@ async fn task(action: Action) -> Result<&'static str, String> {
             FocusStatus::Disabled => "disabled",
             FocusStatus::Unsupported => "unsupported",
             FocusStatus::Unavailable => "unavailable",
+            FocusStatus::UpdateAvailable => "updateAvailable",
+            FocusStatus::CliMissing => "cliMissing",
         })
     }
     #[cfg(not(target_os = "linux"))]

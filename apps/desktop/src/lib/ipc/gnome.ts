@@ -8,6 +8,8 @@ const STATES = [
   'disabled',
   'unsupported',
   'unavailable',
+  'updateAvailable',
+  'cliMissing',
 ] as const;
 export type GnomeFocusStatus = (typeof STATES)[number];
 

@@ -49,6 +49,32 @@ describe('GNOME Wayland profile setup', () => {
     },
   );
 
+  it('states exactly what is shared and with whom', async () => {
+    render(<GnomeFocusHelp />);
+    expect(await screen.findByText(/only learns which app is in front/)).toBeVisible();
+    expect(screen.getByText(/Other programs you run could ask/)).toBeVisible();
+  });
+
+  it('offers an update for an outdated extension and then asks for the one log-out', async () => {
+    vi.mocked(ipc.getGnomeFocusStatus).mockResolvedValue('updateAvailable');
+    render(<GnomeFocusHelp />);
+    expect(await screen.findByText('Update Kivori App Profiles')).toBeVisible();
+    expect(screen.getByText('One log-out is needed to finish the update.')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+    expect(await screen.findByText('Log out and back in once to finish')).toBeVisible();
+    expect(ipc.enableGnomeFocus).toHaveBeenCalledTimes(1);
+    expect(ipc.logoutGnome).not.toHaveBeenCalled();
+  });
+
+  it('says plainly when gnome-extensions is missing instead of insisting on a log-out title', async () => {
+    vi.mocked(ipc.getGnomeFocusStatus).mockResolvedValue('cliMissing');
+    render(<GnomeFocusHelp />);
+    expect(await screen.findByText("Kivori can't check the extension")).toBeVisible();
+    expect(screen.getByText(/gnome-extensions tool/)).toBeVisible();
+    expect(screen.queryByText('Log out and back in once to finish')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Log out now' })).toBeVisible();
+  });
+
   it('explains an unsupported version without an install action', async () => {
     vi.mocked(ipc.getGnomeFocusStatus).mockResolvedValue('unsupported');
     render(<GnomeFocusHelp />);

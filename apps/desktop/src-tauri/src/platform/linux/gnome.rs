@@ -1,35 +1,63 @@
 //! One-click, user-local installation of the embedded GNOME bridge. Never installs on startup.
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::SystemTime;
 
 use serde::Serialize;
 
-use super::session::{session_kind, SessionKind};
+use super::gnome_focus::{compatible, Peer, VERSION};
+use super::session::{is_gnome, session_kind, SessionKind};
 
 pub const UUID: &str = "kivori-focus@cunilab.id";
 const METADATA: &str =
     include_str!("../../../linux/gnome-extension/kivori-focus@cunilab.id/metadata.json");
 const EXTENSION: &str =
     include_str!("../../../linux/gnome-extension/kivori-focus@cunilab.id/extension.js");
+const BRIDGE: &str =
+    include_str!("../../../linux/gnome-extension/kivori-focus@cunilab.id/bridge.js");
+const FILES: [(&str, &str); 3] = [
+    ("metadata.json", METADATA),
+    ("extension.js", EXTENSION),
+    ("bridge.js", BRIDGE),
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum FocusStatus {
     NotApplicable,
     NotInstalled,
+    /// Written and enabled, but GNOME Shell has not started since (new install or an update).
     NeedsLogout,
     Working,
     Disabled,
     Unsupported,
     Unavailable,
+    /// An older copy is installed or running; installing writes the new one.
+    UpdateAvailable,
+    /// `gnome-extensions` cannot be run, so the extension's state cannot be checked.
+    CliMissing,
 }
 
-fn is_gnome() -> bool {
-    std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|desktop| {
-        desktop
-            .split(':')
-            .any(|part| part.eq_ignore_ascii_case("gnome"))
-    })
+/// What `gnome-extensions info` told us.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Cli {
+    /// The program is missing or could not be started.
+    Missing,
+    /// It ran, but the Shell does not know the extension (not discovered since it was written).
+    NotLoaded,
+    State(String),
+}
+
+/// Everything `detect` decides from.
+struct Facts<'a> {
+    /// The `version` in the installed `metadata.json`; `None` when nothing is installed.
+    disk_version: Option<u32>,
+    enabled: &'a [String],
+    globally_disabled: bool,
+    cli: Cli,
+    peer: Peer,
+    /// GNOME Shell started after the installed files were last written.
+    shell_restarted: bool,
 }
 
 fn output(program: &str, args: &[&str]) -> Result<String, String> {
@@ -55,12 +83,34 @@ fn supported(version: &str) -> bool {
 }
 
 fn extension_dir() -> Result<PathBuf, String> {
-    let data = std::env::var_os("XDG_DATA_HOME")
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
-        .ok_or("Your home folder could not be found.")?;
+    let data = super::apps::data_home().ok_or("Your home folder could not be found.")?;
     Ok(data.join("gnome-shell/extensions").join(UUID))
+}
+
+/// The unescaped text after a backslash in a GVariant string: `\\ \' \" \n \t \r \a \b \f \v`
+/// and `\uXXXX` / `\UXXXXXXXX`.
+fn unescape(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Result<char, String> {
+    let bad = || "Invalid GNOME extension list.".to_string();
+    let hex = |chars: &mut std::iter::Peekable<std::str::Chars<'_>>, digits: usize| {
+        let text: String = chars.by_ref().take(digits).collect();
+        (text.len() == digits)
+            .then(|| u32::from_str_radix(&text, 16).ok().and_then(char::from_u32))
+            .flatten()
+            .ok_or_else(bad)
+    };
+    Ok(match chars.next().ok_or_else(bad)? {
+        'n' => '\n',
+        't' => '\t',
+        'r' => '\r',
+        'a' => '\u{7}',
+        'b' => '\u{8}',
+        'f' => '\u{c}',
+        'v' => '\u{b}',
+        'u' => hex(chars, 4)?,
+        'U' => hex(chars, 8)?,
+        other @ ('\\' | '\'' | '"') => other,
+        _ => return Err(bad()),
+    })
 }
 
 /// GSettings prints a GVariant string array, with optional `@as` for an empty array. Parse its
@@ -88,7 +138,7 @@ fn extension_list(text: &str) -> Result<Vec<String>, String> {
                 break;
             }
             if c == '\\' {
-                value.push(chars.next().ok_or("Invalid GNOME extension list.")?);
+                value.push(unescape(&mut chars)?);
             } else {
                 value.push(c);
             }
@@ -104,40 +154,105 @@ fn extension_list(text: &str) -> Result<Vec<String>, String> {
 fn variant_list(values: &[String]) -> String {
     let quoted: Vec<String> = values
         .iter()
-        .map(|value| format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'")))
+        .map(|value| {
+            let mut out = String::from("'");
+            for c in value.chars() {
+                match c {
+                    '\\' => out.push_str("\\\\"),
+                    '\'' => out.push_str("\\'"),
+                    '\n' => out.push_str("\\n"),
+                    '\t' => out.push_str("\\t"),
+                    '\r' => out.push_str("\\r"),
+                    c if c.is_control() => out.push_str(&format!("\\u{:04x}", u32::from(c))),
+                    c => out.push(c),
+                }
+            }
+            out.push('\'');
+            out
+        })
         .collect();
     format!("[{}]", quoted.join(", "))
 }
 
-fn detect(
-    installed: bool,
-    enabled: &[String],
-    globally_disabled: bool,
-    info: Option<&str>,
-    working: bool,
-) -> FocusStatus {
-    if working {
-        return FocusStatus::Working;
+/// `enabled` with `UUID` added, or `None` when it is already there (nothing to write).
+fn with_extension(enabled: &[String]) -> Option<Vec<String>> {
+    if enabled.iter().any(|s| s == UUID) {
+        return None;
     }
-    if !installed {
-        return FocusStatus::NotInstalled;
+    let mut merged = enabled.to_vec();
+    merged.push(UUID.into());
+    Some(merged)
+}
+
+fn detect(facts: &Facts<'_>) -> FocusStatus {
+    match &facts.peer {
+        Peer::Shell { version, .. } if compatible(*version) => return FocusStatus::Working,
+        Peer::Foreign => return FocusStatus::Unavailable,
+        _ => {}
     }
-    if globally_disabled || !enabled.iter().any(|s| s == UUID) {
+    let running_stale = matches!(facts.peer, Peer::Shell { .. });
+    let Some(disk) = facts.disk_version else {
+        // Running from files that are gone: nothing to update, log out to unload it.
+        return if running_stale {
+            FocusStatus::NeedsLogout
+        } else {
+            FocusStatus::NotInstalled
+        };
+    };
+    if disk < VERSION {
+        return FocusStatus::UpdateAvailable;
+    }
+    if running_stale {
+        // The files are current, the running copy is not: only a new Shell loads them.
+        return if facts.shell_restarted {
+            FocusStatus::Unavailable
+        } else {
+            FocusStatus::NeedsLogout
+        };
+    }
+    if facts.globally_disabled || !facts.enabled.iter().any(|s| s == UUID) {
         return FocusStatus::Disabled;
     }
-    match info
-        .and_then(|text| {
-            text.lines()
-                .find_map(|line| line.trim().strip_prefix("State:"))
-        })
-        .map(str::trim)
-    {
-        None => FocusStatus::NeedsLogout,
-        Some("OUT OF DATE") => FocusStatus::Unsupported,
-        Some("ERROR" | "ACTIVE" | "ENABLED") => FocusStatus::Unavailable,
-        // Loaded but disabled, even if the preference still contains it (session-wide toggles).
-        Some(_) => FocusStatus::Disabled,
+    match &facts.cli {
+        Cli::Missing => FocusStatus::CliMissing,
+        // Shell never saw the files. Right before the first log-out; after one it is a failure,
+        // and asking for another log-out would loop forever.
+        Cli::NotLoaded if facts.shell_restarted => FocusStatus::Unavailable,
+        Cli::NotLoaded => FocusStatus::NeedsLogout,
+        Cli::State(state) => match state.as_str() {
+            "OUT OF DATE" => FocusStatus::Unsupported,
+            "ERROR" | "ACTIVE" | "ENABLED" => FocusStatus::Unavailable,
+            // Loaded but disabled, even if the preference still contains it (session-wide toggles).
+            _ => FocusStatus::Disabled,
+        },
     }
+}
+
+fn cli_info() -> Cli {
+    let result = Command::new("gnome-extensions")
+        .args(["info", UUID])
+        .env("LC_ALL", "C")
+        .output();
+    let Ok(result) = result else {
+        return Cli::Missing;
+    };
+    let text = String::from_utf8_lossy(&result.stdout);
+    text.lines()
+        .find_map(|line| line.trim().strip_prefix("State:"))
+        .map(str::trim)
+        .filter(|_| result.status.success())
+        .map_or(Cli::NotLoaded, |state| Cli::State(state.to_string()))
+}
+
+/// The `version` recorded in the installed `metadata.json`, and when it was written.
+fn installed() -> Option<(u32, SystemTime)> {
+    let file = extension_dir().ok()?.join("metadata.json");
+    let value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&file).ok()?).ok()?;
+    let version = value["version"]
+        .as_u64()
+        .map_or(0, |v| u32::try_from(v).unwrap_or(0));
+    Some((version, std::fs::metadata(&file).ok()?.modified().ok()?))
 }
 
 pub fn status() -> FocusStatus {
@@ -149,10 +264,12 @@ pub fn status() -> FocusStatus {
         Err(_) => return FocusStatus::Unavailable,
         _ => {}
     }
-    let installed = extension_dir().is_ok_and(|dir| dir.join("metadata.json").is_file());
-    let working = super::gnome_focus::connection()
-        .and_then(|conn| super::gnome_focus::read(&conn))
-        .is_ok();
+    let conn = super::gnome_focus::connection().ok();
+    let peer = conn
+        .as_ref()
+        .and_then(|conn| super::gnome_focus::peer(conn).ok())
+        .unwrap_or(Peer::Absent);
+    let working = matches!(&peer, Peer::Shell { version, .. } if compatible(*version));
     let Ok(enabled) = output(
         "gsettings",
         &["get", "org.gnome.shell", "enabled-extensions"],
@@ -169,24 +286,55 @@ pub fn status() -> FocusStatus {
         &["get", "org.gnome.shell", "disable-user-extensions"],
     )
     .is_ok_and(|text| text.trim() == "true");
-    let info = output("gnome-extensions", &["info", UUID]).ok();
-    detect(
-        installed,
-        &enabled,
+    let disk = installed();
+    let shell_restarted = disk.is_some_and(|(_, written)| {
+        conn.as_ref()
+            .and_then(super::gnome_focus::shell_pid)
+            .and_then(super::proc::start_time)
+            .is_some_and(|started| started > written)
+    });
+    detect(&Facts {
+        disk_version: disk.map(|(version, _)| version),
+        enabled: &enabled,
         globally_disabled,
-        info.as_deref(),
-        working,
-    )
+        cli: if working { Cli::NotLoaded } else { cli_info() },
+        peer,
+        shell_restarted,
+    })
 }
 
 fn write_extension(dir: &Path) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("Could not create extension folder: {e}"))?;
-    for (name, text) in [("metadata.json", METADATA), ("extension.js", EXTENSION)] {
+    for (name, text) in FILES {
         std::fs::write(dir.join(name), text).map_err(|e| format!("Could not write {name}: {e}"))?;
     }
     Ok(())
 }
 
+/// Add the extension to `enabled-extensions` by reading the list again right before writing it,
+/// so a change made a moment ago (the Extensions app) is merged rather than overwritten.
+fn persist_enabled() -> Result<(), String> {
+    let enabled = extension_list(&output(
+        "gsettings",
+        &["get", "org.gnome.shell", "enabled-extensions"],
+    )?)?;
+    let Some(merged) = with_extension(&enabled) else {
+        return Ok(());
+    };
+    output(
+        "gsettings",
+        &[
+            "set",
+            "org.gnome.shell",
+            "enabled-extensions",
+            &variant_list(&merged),
+        ],
+    )
+    .map(|_| ())
+}
+
+/// Installs, or updates an older copy. Either way GNOME Shell loads JavaScript only at login on
+/// Wayland, so a log-out finishes it.
 pub fn install() -> Result<FocusStatus, String> {
     match status() {
         FocusStatus::NotApplicable => {
@@ -212,27 +360,13 @@ pub fn install() -> Result<FocusStatus, String> {
                 .into(),
         );
     }
-    // Read before writing; never replace other extension preferences with an empty fallback.
-    let mut enabled = extension_list(&output(
-        "gsettings",
-        &["get", "org.gnome.shell", "enabled-extensions"],
-    )?)?;
     write_extension(&extension_dir()?)?;
-    // New extensions cannot be hot-loaded on Wayland. Persist the opt-in even if enable reports
-    // "does not exist" until Shell discovers the files at the next login.
+    // The Shell's own enable is atomic. A copy it has not discovered yet cannot be enabled that
+    // way ("does not exist" until the next login), so that one is persisted through the setting.
     let enable_result = output("gnome-extensions", &["enable", UUID]);
-    if !enabled.iter().any(|s| s == UUID) {
-        enabled.push(UUID.into());
+    if enable_result.is_err() {
+        persist_enabled()?;
     }
-    output(
-        "gsettings",
-        &[
-            "set",
-            "org.gnome.shell",
-            "enabled-extensions",
-            &variant_list(&enabled),
-        ],
-    )?;
     let state = status();
     if state == FocusStatus::Unavailable {
         return Err(enable_result.err().unwrap_or_else(|| {
@@ -248,16 +382,41 @@ pub fn logout() -> Result<(), String> {
         return Err("This action requires GNOME Wayland.".into());
     }
     // GNOME shows its normal confirmation dialog; never force or bypass unsaved work handling.
-    Command::new("gnome-session-quit")
+    let mut child = Command::new("gnome-session-quit")
         .arg("--logout")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    // Reap it when it exits (the dialog may stay open a while) so it never lingers as a zombie.
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn shell(version: Option<u32>) -> Peer {
+        Peer::Shell {
+            owner: ":1.5".into(),
+            version,
+        }
+    }
+
+    fn facts<'a>(enabled: &'a [String]) -> Facts<'a> {
+        Facts {
+            disk_version: Some(VERSION),
+            enabled,
+            globally_disabled: false,
+            cli: Cli::NotLoaded,
+            peer: Peer::Absent,
+            shell_restarted: false,
+        }
+    }
 
     #[test]
     fn shell_versions_and_gsettings_round_trip() {
@@ -272,47 +431,150 @@ mod tests {
             "ubuntu-appindicators@ubuntu.com".into(),
             UUID.into(),
             "a'b\\c".into(),
+            "line\nbreak\ttab".into(),
+            "bell\u{7}é".into(),
         ];
         assert_eq!(extension_list(&variant_list(&values)).unwrap(), values);
         assert!(extension_list("garbage").is_err());
         assert!(extension_list("['unfinished]").is_err());
+        assert!(
+            extension_list("['bad\\q']").is_err(),
+            "an unknown escape is refused"
+        );
+    }
+
+    #[test]
+    fn gvariant_escapes_decode_instead_of_becoming_literal_characters() {
+        // `\n` is a newline and `\u00e9` is é: the old parser kept the letters n and u00e9.
+        assert_eq!(
+            extension_list(r"['a\nb', 'caf\u00e9', 'x\U0001f600', 'q\\r']").unwrap(),
+            ["a\nb", "café", "x\u{1f600}", "q\\r"]
+        );
+        assert!(extension_list(r"['\u12']").is_err());
+        assert!(extension_list(r"['\ud800zz']").is_err());
+    }
+
+    #[test]
+    fn enabling_merges_into_the_current_list_and_skips_a_no_op() {
+        let current = vec!["a@x".to_string(), "b@y".to_string()];
+        assert_eq!(
+            with_extension(&current).unwrap(),
+            ["a@x", "b@y", UUID],
+            "every other extension survives, in order"
+        );
+        assert_eq!(with_extension(&["a@x".into(), UUID.into()]), None);
+        assert_eq!(with_extension(&[]).unwrap(), [UUID]);
+        assert_eq!(
+            variant_list(&with_extension(&[]).unwrap()),
+            format!("['{UUID}']")
+        );
+        assert_ne!(with_extension(&[format!("other-{UUID}")]), None);
     }
 
     #[test]
     fn states_use_exact_preferences_and_cli_output() {
-        let enabled = vec![UUID.into()];
+        let enabled = vec![UUID.to_string()];
+        let none: Vec<String> = Vec::new();
+        let status = |edit: &dyn Fn(&mut Facts<'_>), list: &[String]| {
+            let mut f = facts(list);
+            edit(&mut f);
+            detect(&f)
+        };
         assert_eq!(
-            detect(false, &[], false, None, false),
+            status(&|f| f.disk_version = None, &none),
             FocusStatus::NotInstalled
         );
+        assert_eq!(status(&|_| {}, &enabled), FocusStatus::NeedsLogout);
         assert_eq!(
-            detect(true, &enabled, false, None, false),
-            FocusStatus::NeedsLogout
-        );
-        assert_eq!(
-            detect(true, &[], false, Some("State: DISABLED"), false),
+            status(&|f| f.cli = Cli::State("DISABLED".into()), &none),
             FocusStatus::Disabled
         );
         assert_eq!(
-            detect(true, &enabled, true, Some("State: INITIALIZED"), false),
+            status(
+                &|f| {
+                    f.globally_disabled = true;
+                    f.cli = Cli::State("INITIALIZED".into());
+                },
+                &enabled
+            ),
             FocusStatus::Disabled
         );
         assert_eq!(
-            detect(true, &enabled, false, Some("  State: ERROR"), false),
+            status(&|f| f.cli = Cli::State("ERROR".into()), &enabled),
             FocusStatus::Unavailable
         );
         assert_eq!(
-            detect(true, &enabled, false, Some("  State: OUT OF DATE"), false),
+            status(&|f| f.cli = Cli::State("OUT OF DATE".into()), &enabled),
             FocusStatus::Unsupported
         );
         assert_eq!(
-            detect(true, &enabled, false, Some("State: ACTIVE"), true),
+            status(&|f| f.peer = shell(Some(VERSION)), &enabled),
             FocusStatus::Working
         );
         assert_eq!(
-            detect(true, &[format!("other-{UUID}")], false, None, false),
+            status(&|_| {}, &[format!("other-{UUID}")]),
             FocusStatus::Disabled
         );
+    }
+
+    #[test]
+    fn a_missing_gnome_extensions_tool_is_its_own_state() {
+        let enabled = vec![UUID.to_string()];
+        let mut f = facts(&enabled);
+        f.cli = Cli::Missing;
+        assert_eq!(detect(&f), FocusStatus::CliMissing);
+        // Not a log-out request, so it cannot loop: an unreadable tool never claims "log out".
+        assert_ne!(detect(&f), FocusStatus::NeedsLogout);
+    }
+
+    #[test]
+    fn a_log_out_that_already_happened_is_not_asked_for_again() {
+        let enabled = vec![UUID.to_string()];
+        let mut f = facts(&enabled);
+        assert_eq!(
+            detect(&f),
+            FocusStatus::NeedsLogout,
+            "Shell never saw the files"
+        );
+        f.shell_restarted = true;
+        assert_eq!(
+            detect(&f),
+            FocusStatus::Unavailable,
+            "Shell restarted and still has none"
+        );
+    }
+
+    #[test]
+    fn an_outdated_extension_is_updated_then_needs_a_log_out() {
+        let enabled = vec![UUID.to_string()];
+        // Old files on disk (v1), an old copy running: update.
+        let mut f = facts(&enabled);
+        f.disk_version = Some(VERSION - 1);
+        f.peer = shell(None);
+        assert_eq!(detect(&f), FocusStatus::UpdateAvailable);
+        // Old files, nothing running: still an update, never the stale code.
+        f.peer = Peer::Absent;
+        assert_eq!(detect(&f), FocusStatus::UpdateAvailable);
+        // New files written, the old copy still running in this Shell: log out to load them.
+        f.disk_version = Some(VERSION);
+        f.peer = shell(Some(VERSION - 1));
+        assert_eq!(detect(&f), FocusStatus::NeedsLogout);
+        f.peer = shell(None);
+        assert_eq!(detect(&f), FocusStatus::NeedsLogout);
+        // A Shell that restarted after the write and still runs old code is a failure.
+        f.shell_restarted = true;
+        assert_eq!(detect(&f), FocusStatus::Unavailable);
+        // Current copy running: working. A newer one is trusted too.
+        f.peer = shell(Some(VERSION + 1));
+        assert_eq!(detect(&f), FocusStatus::Working);
+    }
+
+    #[test]
+    fn a_stranger_owning_the_name_is_never_working() {
+        let enabled = vec![UUID.to_string()];
+        let mut f = facts(&enabled);
+        f.peer = Peer::Foreign;
+        assert_eq!(detect(&f), FocusStatus::Unavailable);
     }
 
     #[test]
@@ -327,14 +589,37 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(dir.join("metadata.json")).unwrap())
                 .unwrap();
         assert_eq!(metadata["uuid"], UUID);
+        assert_eq!(metadata["version"], VERSION);
         assert_eq!(
             metadata["shell-version"],
             serde_json::json!(["46", "47", "48", "49", "50"])
         );
+        for (name, text) in FILES {
+            assert_eq!(
+                std::fs::read_to_string(dir.join(name)).unwrap(),
+                text,
+                "{name}"
+            );
+        }
+        assert!(
+            EXTENSION.contains("./bridge.js"),
+            "extension.js imports the bridge it ships with"
+        );
+        write_extension(&dir).unwrap(); // Repeat install is safe.
+    }
+
+    #[test]
+    fn an_update_overwrites_an_older_installed_copy() {
+        let home = tempfile::tempdir().unwrap();
+        let dir = home.path().join("ext");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("metadata.json"), r#"{"uuid":"x","version":1}"#).unwrap();
+        std::fs::write(dir.join("extension.js"), "old").unwrap();
+        write_extension(&dir).unwrap();
         assert_eq!(
             std::fs::read_to_string(dir.join("extension.js")).unwrap(),
             EXTENSION
         );
-        write_extension(&dir).unwrap(); // Repeat install is safe.
+        assert!(dir.join("bridge.js").is_file());
     }
 }

@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use super::host_events::screen_locked;
-use super::session::{session_kind, SessionKind};
+use super::session::{is_gnome, session_kind, SessionKind};
 use super::x11::X11Watch;
 use crate::platform::foreground::classify_linux;
 use crate::platform::{Foreground, ForegroundObserver};
@@ -27,13 +27,16 @@ pub struct LinuxForeground {
 impl LinuxForeground {
     #[must_use]
     pub fn new() -> Self {
-        Self::for_session(session_kind())
+        Self::for_session(session_kind(), is_gnome())
     }
 
-    fn for_session(session: SessionKind) -> Self {
+    /// The GNOME bridge is watched only on GNOME Wayland: KDE, Sway and every other session never
+    /// start its D-Bus threads.
+    fn for_session(session: SessionKind, gnome: bool) -> Self {
         Self {
             watch: (session == SessionKind::X11).then(X11Watch::shared),
-            gnome: (session == SessionKind::Wayland).then(super::gnome_focus::GnomeFocus::shared),
+            gnome: (session == SessionKind::Wayland && gnome)
+                .then(super::gnome_focus::GnomeFocus::shared),
         }
     }
 
@@ -96,13 +99,16 @@ mod tests {
 
     #[test]
     fn wayland_and_headless_sessions_never_guess_a_focus() {
-        for session in [SessionKind::Wayland, SessionKind::Headless] {
-            let observer = LinuxForeground::for_session(session);
-            // No assertion about the live session: an installed bridge may already answer.
-            if session == SessionKind::Headless {
-                assert_eq!(observer.foreground(), Foreground::Unknown);
-            }
+        // Wayland without GNOME (KDE, Sway) starts nothing either: no bridge to ask.
+        for (session, gnome) in [
+            (SessionKind::Wayland, false),
+            (SessionKind::Headless, false),
+            (SessionKind::Headless, true),
+        ] {
+            let observer = LinuxForeground::for_session(session, gnome);
+            assert_eq!(observer.foreground(), Foreground::Unknown);
             assert!(observer.watch.is_none(), "no X worker is started");
+            assert!(observer.gnome.is_none(), "no GNOME D-Bus thread is started");
         }
     }
 

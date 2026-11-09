@@ -133,6 +133,18 @@ impl ConfigFile {
                 .any(|p| in_override(&p.bindings))
     }
 
+    /// Forgets the legacy stored `heldRotate` pairs (read, never used or written) and drops the
+    /// override entries that held nothing else, so a load never leaves an empty `{}` behind.
+    pub fn drop_legacy(&mut self) {
+        for over in self.profiles.values_mut() {
+            over.held_rotate = None;
+        }
+        self.profiles.retain(|_, over| !over.is_empty());
+        for custom in &mut self.custom_profiles {
+            custom.bindings.held_rotate = None;
+        }
+    }
+
     /// Checks the rules serde cannot express.
     ///
     /// # Errors
@@ -325,7 +337,11 @@ impl ProfileOverride {
     /// Nothing overridden: the entry can be dropped from the file.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        *self == Self::default()
+        // The legacy `heldRotate` pair is never written, so it does not keep an entry alive.
+        Self {
+            held_rotate: None,
+            ..self.clone()
+        } == Self::default()
     }
 }
 

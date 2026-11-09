@@ -20,6 +20,7 @@ import * as ipc from '../../../lib/ipc';
 import * as mock from '../../../lib/ipc/mock';
 import { resetPageTabs } from '../../../components/kivori/page-tabs';
 import { ControlsPage } from '../ControlsPage';
+import { ProfilesCard } from '../ProfilesCard';
 
 function Harness(): ReactElement {
   const desk = useDeskStatus();
@@ -83,6 +84,27 @@ describe('ProfilesCard', () => {
     );
     const pinned = (await ipc.getConfig()).profiles.filter((p) => p.inPinCycle).length;
     expect(pinned).toBe(6);
+  });
+
+  it('names the pinned profiles the device cannot hold instead of hiding them', async () => {
+    const config = structuredClone(mock.mockGetConfig());
+    for (const p of config.profiles) p.inPinCycle = true;
+    const extra = config.profiles.slice(10);
+    expect(extra.length).toBeGreaterThan(0);
+    render(
+      <ProfilesCard
+        config={config}
+        desk={null}
+        profile={config.profiles[0]!}
+        onShow={() => {}}
+        part="profile"
+      />,
+    );
+    const note = await screen.findByTestId('pinned-overflow');
+    expect(note).toHaveTextContent('holds only the first 10');
+    for (const p of extra) expect(note).toHaveTextContent(p.name);
+    const list = screen.getByTestId('pinned-list');
+    for (const p of extra) expect(list).not.toHaveTextContent(p.name);
   });
 
   it('refuses to pin more than the device can hold and says why', async () => {

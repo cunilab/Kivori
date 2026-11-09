@@ -17,9 +17,17 @@ export const strings = {
     unavailable:
       'GNOME could not start Kivori App Profiles. Try enabling it again, or check Kivori App Profiles in the Extensions app.',
     privacy:
-      'Only the app in front is shared with Kivori on this computer. No window titles or contents, and no network access.',
+      'Kivori only learns which app is in front, and only when it asks. No window titles or contents, and nothing leaves this computer. Other programs you run could ask for the same app name, so enable this only on a computer you control.',
+    updateTitle: 'Update Kivori App Profiles',
+    updateAvailable:
+      'The Kivori App Profiles extension in GNOME is out of date. Update it so your controls keep following the app in front of you.',
+    updateOnce: 'One log-out is needed to finish the update.',
+    cliMissingTitle: "Kivori can't check the extension",
+    cliMissing:
+      "Kivori could not run GNOME's gnome-extensions tool, so it can't confirm that App Profiles is running. Log out and back in to finish. If your controls still don't follow your apps, install gnome-extensions (part of GNOME Shell) and open this page again.",
     once: 'One log-out is needed the first time.',
     enable: 'Enable',
+    update: 'Update',
     logout: 'Log out now',
     busy: 'Please wait…',
   },
@@ -331,6 +339,8 @@ export const strings = {
       pinnedNone:
         'Nothing is pinned yet. Pin at least two profiles to choose between them on the device.',
       pinLimit: 'The device holds at most {max} pinned profiles. Unpin one first.',
+      pinnedOverflow:
+        'Not on the device: it holds only the first {max} pinned profiles. {names} stay pinned here; unpin another profile to make room.',
       rename: 'Rename',
       renameLabel: 'Profile name',
       renameSave: 'Save name',

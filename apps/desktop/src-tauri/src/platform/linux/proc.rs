@@ -30,6 +30,33 @@ fn exe_name_in(proc: &Path, pid: u32) -> Option<String> {
     (!comm.is_empty()).then(|| comm.to_string())
 }
 
+/// Clock ticks after boot at which a process started: field 22 of `/proc/<pid>/stat`. The name
+/// (field 2) may contain spaces and parentheses, so fields count from the last `)`.
+fn parse_start_ticks(stat: &str) -> Option<u64> {
+    stat.rsplit_once(')')?
+        .1
+        .split_whitespace()
+        .nth(19)?
+        .parse()
+        .ok()
+}
+
+/// When `pid` started, from `/proc` and the boot time. `None` when it can't be worked out.
+pub(super) fn start_time(pid: u32) -> Option<std::time::SystemTime> {
+    let ticks = parse_start_ticks(&std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)?;
+    let boot: u64 = std::fs::read_to_string("/proc/stat")
+        .ok()?
+        .lines()
+        .find_map(|line| line.strip_prefix("btime "))?
+        .trim()
+        .parse()
+        .ok()?;
+    // SAFETY: `sysconf` has no preconditions; a negative result is an error and is rejected.
+    let hz = u64::try_from(unsafe { libc::sysconf(libc::_SC_CLK_TCK) }).ok()?;
+    let secs = boot.checked_add(ticks.checked_div(hz)?)?;
+    Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -56,6 +83,20 @@ mod tests {
         std::os::unix::fs::symlink("/usr/bin/tool (deleted)", dir.join("exe")).unwrap();
         assert_eq!(exe_name_in(proc.path(), 42), Some("tool".into()));
         assert_eq!(exe_name_in(proc.path(), 43), None);
+    }
+
+    #[test]
+    fn the_start_time_counts_fields_after_the_last_parenthesis() {
+        let stat = "42 (a b) c) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 98765 23 24";
+        assert_eq!(parse_start_ticks(stat), Some(98765));
+        assert_eq!(parse_start_ticks("42 (short) S 1"), None);
+        assert_eq!(parse_start_ticks("garbage"), None);
+    }
+
+    #[test]
+    fn this_process_started_in_the_past() {
+        let started = start_time(std::process::id()).expect("own start time");
+        assert!(started <= std::time::SystemTime::now());
     }
 
     #[test]

@@ -449,8 +449,10 @@ impl DeskRuntime {
     /// follow the app in front again for Auto, and answer with what is now in force. A pick made
     /// from a list the device no longer has (the pins changed meanwhile) is not applied; the
     /// answer still goes out, so the device sees the real state and confirms nothing it did not get.
+    /// In a protected context nothing is changed either: the answer says what is in force, so the
+    /// device shows "not confirmed" instead of claiming a profile that Protected overrides.
     pub fn on_profile_pick(&mut self, pick: kivori_model::picker::ProfilePick) {
-        if pick.generation == self.picker_generation {
+        if pick.generation == self.picker_generation && !self.context.protected() {
             match usize::from(pick.index).checked_sub(1) {
                 None => self.context.pin(None),
                 Some(i) => {
@@ -971,7 +973,15 @@ impl DeskRuntime {
         });
         let (entries, selected) = self.context.picker_entries();
         if entries != self.picker_entries {
-            self.picker_generation = self.picker_generation.wrapping_add(1);
+            // An index only has to stay valid for the device: a list that merely grew or lost its
+            // tail (the desktop's own pin appearing or going) keeps every surviving index on the
+            // same profile, so a pick made from the older list still means what the device meant
+            // and its confirmation is not turned into a false "not confirmed".
+            let same_indexes = entries.starts_with(&self.picker_entries)
+                || self.picker_entries.starts_with(&entries);
+            if !same_indexes {
+                self.picker_generation = self.picker_generation.wrapping_add(1);
+            }
             self.picker_entries = entries;
         }
         let picker = self.picker_choices(selected);
@@ -2039,6 +2049,76 @@ mod tests {
         });
         assert!(!desk.context().pinned(), "a stale pick pins nothing");
         assert_eq!(desk.tick(ms(80), &mut |_| {}).picker.unwrap().selected, 0);
+    }
+
+    #[test]
+    fn a_pick_that_drops_the_desktops_own_pin_from_the_list_is_still_confirmable() {
+        use kivori_model::picker::ProfilePick;
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        // Codex is not pinned to the device, but the desktop pins it: it is appended as an extra.
+        let first = desk.tick(ms(0), &mut |_| {}).picker.unwrap();
+        desk.pin_profile(Some(&crate::config::ProfileRef::Builtin(
+            crate::config::ProfileId::Codex,
+        )));
+        let with_extra = desk.tick(ms(20), &mut |_| {}).picker.unwrap();
+        assert_eq!(with_extra.count, first.count + 1);
+        // The device picks another entry from that list: the extra goes, the answer must confirm.
+        desk.on_profile_pick(ProfilePick {
+            generation: with_extra.generation,
+            index: 2,
+        });
+        let answer = desk.tick(ms(40), &mut |_| {}).picker.unwrap();
+        assert_eq!(answer.count, first.count);
+        assert_eq!(answer.selected, 2);
+        assert_eq!(
+            answer.generation, with_extra.generation,
+            "the picked-from generation still names the surviving indexes"
+        );
+    }
+
+    #[test]
+    fn a_reordered_list_is_a_new_generation() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        let before = desk.tick(ms(0), &mut |_| {}).picker.unwrap();
+        let unpinned = config(|file| {
+            let _ = crate::config::profiles::set_pin_cycle(
+                file,
+                &crate::config::ProfileRef::Builtin(crate::config::ProfileId::Browser),
+                false,
+            );
+        });
+        desk.apply_config(&unpinned, &mut |_| {});
+        let after = desk.tick(ms(20), &mut |_| {}).picker.unwrap();
+        assert_ne!(
+            after.generation, before.generation,
+            "an index in the middle now means another profile"
+        );
+    }
+
+    #[test]
+    fn a_pick_in_a_protected_context_changes_nothing_and_confirms_nothing() {
+        use kivori_model::picker::ProfilePick;
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        let out = desk.tick(ms(0), &mut |_| {}).picker.unwrap();
+        *fg.0.lock().unwrap() = Foreground::Protected;
+        let _ = desk.tick(ms(10_000), &mut |_| {});
+        assert!(desk.context().protected());
+        desk.on_profile_pick(ProfilePick {
+            generation: out.generation,
+            index: 3,
+        });
+        assert!(!desk.context().pinned(), "no pin under Protected");
+        let answer = desk.tick(ms(10_020), &mut |_| {}).picker.expect("answered");
+        assert_eq!(
+            answer.selected, 0,
+            "nothing was applied, so nothing to confirm"
+        );
     }
 
     #[test]

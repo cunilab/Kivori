@@ -57,7 +57,8 @@ pub(crate) fn migrate_with(
     if let Some(fields) = raw.as_object_mut() {
         fields.remove("led");
     }
-    let file: ConfigFile = serde_json::from_value(raw).map_err(|_| LoadError::Corrupt)?;
+    let mut file: ConfigFile = serde_json::from_value(raw).map_err(|_| LoadError::Corrupt)?;
+    file.drop_legacy();
     if file.version != current || file.display.validate().is_err() {
         return Err(LoadError::Corrupt);
     }
@@ -69,6 +70,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::config::ProfileId;
 
     #[test]
     fn old_files_migrate_and_current_files_load_untouched() {
@@ -78,6 +80,30 @@ mod tests {
         let (file, from) = migrate(json!({ "version": 2 })).unwrap();
         assert_eq!(file, ConfigFile::default());
         assert_eq!(from, None);
+    }
+
+    #[test]
+    fn a_stored_held_rotate_pair_is_dropped_on_load_and_leaves_no_empty_entry() {
+        let (file, _) = migrate(json!({
+            "version": 2,
+            "profiles": {
+                "general": { "heldRotate": { "kind": "systemVolume" } },
+                "code": { "heldRotate": { "kind": "systemVolume" }, "inPinCycle": false },
+            },
+        }))
+        .unwrap();
+        assert!(
+            !file.profiles.contains_key(&ProfileId::General),
+            "an override that held only heldRotate is gone"
+        );
+        let code = &file.profiles[&ProfileId::Code];
+        assert!(code.held_rotate.is_none());
+        assert_eq!(code.in_pin_cycle, Some(false), "the rest is kept");
+        let text = serde_json::to_string(&file).unwrap();
+        assert!(
+            !text.contains("{}") && !text.contains("heldRotate"),
+            "{text}"
+        );
     }
 
     #[test]

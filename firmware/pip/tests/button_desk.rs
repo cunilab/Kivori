@@ -1252,6 +1252,117 @@ fn the_picker_is_inert_unless_negotiated_and_a_new_session_forgets_it() {
     assert!(picks(&mut rig).is_empty(), "a pick never crosses a session");
 }
 
+#[test]
+fn a_switch_bounce_while_choosing_sends_no_pick_and_keeps_the_choice() {
+    let mut rig = Rig::new();
+    rig.connect(PICKER);
+    rig.send(&choices(&rig, 7, 0));
+    rig.run(50);
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    // The raw switch chatters low for one 10 ms tick (under the 20 ms debounce) mid-turn.
+    rig.switch(false);
+    rig.run(10);
+    rig.switch(true);
+    rig.run(30);
+    assert!(picks(&mut rig).is_empty(), "a bounce is not a release");
+    // The picker is still choosing: the next detent moves on from entry 1, not from a new start.
+    rig.turn(Direction::Cw);
+    rig.run(50);
+    assert!(picks(&mut rig).is_empty());
+    rig.switch(false);
+    rig.run(100);
+    assert_eq!(
+        picks(&mut rig),
+        [(7, 2)],
+        "exactly one pick, from the one choosing session"
+    );
+}
+
+#[test]
+fn losing_input_while_choosing_cancels_the_picker_but_keeps_the_link() {
+    let mut rig = Rig::new();
+    rig.connect(PICKER);
+    rig.send(&choices(&rig, 7, 0));
+    rig.run(50);
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    let choosing = rig.display.frame().to_vec();
+    rig.levels.3.set(1);
+    let tick = rig.step();
+    assert!(
+        !tick.link_dropped,
+        "the picker queued nothing: keep the link"
+    );
+    rig.run(100);
+    assert_ne!(
+        rig.display.frame(),
+        choosing.as_slice(),
+        "the picker is gone from the screen"
+    );
+    // Releasing sends no pick (the choice was cancelled), and the next press works as usual.
+    rig.switch(false);
+    rig.run(100);
+    let sent = rig.drain();
+    assert!(
+        !sent.iter().any(|m| matches!(m, Message::ProfilePick(_))),
+        "{sent:?}"
+    );
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    rig.switch(false);
+    rig.run(100);
+    assert_eq!(picks(&mut rig), [(7, 1)], "the same session still picks");
+}
+
+#[test]
+fn holding_after_a_turn_past_two_seconds_never_starts_recovery_and_sends_one_pick() {
+    let mut rig = Rig::new();
+    rig.connect(PICKER);
+    rig.send(&choices(&rig, 7, 0));
+    rig.run(50);
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    assert!(
+        !rig.run_with_heartbeat(2_500),
+        "a consumed press never reboots"
+    );
+    assert!(picks(&mut rig).is_empty(), "nothing is sent before release");
+    rig.switch(false);
+    rig.run(100);
+    assert_eq!(picks(&mut rig), [(7, 1)]);
+}
+
+#[test]
+fn a_new_picker_after_not_confirmed_starts_from_the_desktops_state() {
+    let mut rig = Rig::new();
+    rig.connect(PICKER);
+    rig.send(&choices(&rig, 1, 0));
+    rig.run(50);
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    rig.switch(false);
+    rig.run(100);
+    assert_eq!(picks(&mut rig), [(1, 1)]);
+    // No answer: wait out "not confirmed" until the picker has closed.
+    assert!(!rig.run_with_heartbeat(3_500));
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    rig.switch(false);
+    rig.run(100);
+    assert_eq!(
+        picks(&mut rig),
+        [(1, 1)],
+        "the desktop still runs Auto, so one step on is entry 1 again"
+    );
+}
+
 fn ring_pixel(rig: &Rig) -> kivori_model::Rgb565 {
     // The centre of the ring: empty until the ring is drawn, then the growing dot.
     rig.display.pixel(120, 84)

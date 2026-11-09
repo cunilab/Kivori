@@ -893,6 +893,48 @@ impl<'a> Runtime<'a> {
             }
         }
 
+        // 5-6b. The tick's diagnostic, heartbeat health and internals snapshot.
+        let outbound_failed = self.send_reports(transport, input, now, &mut tick, &mut worked);
+        if outbound_failed {
+            self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
+            self.dispatcher.link_lost();
+            self.apply_session_boundary(now);
+            let state = self.device.current();
+            if self.animator.target() != state {
+                self.animator.set_state(state, now);
+            }
+            tick.state = Some(state);
+            tick.link_dropped = true;
+        }
+
+        if tick.state.is_none() {
+            tick.state = Some(self.device.current());
+        }
+        tick.reboot = self.reboot;
+        tick.rejected_frames = self.dispatcher.rejected_frames();
+        // The loop never sleeps, so only ticks that did something count as busy.
+        let end = clock.now_ms();
+        worked |= tick.frame_rendered || tick.diagnostic.is_some() || tick.health_sent;
+        self.load.on_tick(
+            end,
+            if worked { end.wrapping_sub(now) } else { 0 },
+            tick.frame_rendered,
+        );
+        tick
+    }
+
+    /// The tick's outbound reports: one diagnostic, the heartbeat health, and an internals
+    /// snapshot when asked. Returns whether the link failed. Out of line: each is a large
+    /// `Message` temporary that would otherwise sit in the run loop's stack frame.
+    #[inline(never)]
+    fn send_reports<T: Transport, I: InputSource>(
+        &mut self,
+        transport: &mut T,
+        input: &I,
+        now: ElapsedMs,
+        tick: &mut Tick,
+        worked: &mut bool,
+    ) -> bool {
         // 5. At most one safe diagnostic per tick, category + code only (ADR-0005).
         let mut outbound_failed = false;
         if let Some(diagnostic) = self.dispatcher.take_diagnostic() {
@@ -922,38 +964,13 @@ impl<'a> Runtime<'a> {
                     session,
                     internals: self.internals_snapshot(now, input),
                 });
-                worked = true;
+                *worked = true;
                 if self.dispatcher.emit(transport, &message).is_err() {
                     outbound_failed = true;
                 }
             }
         }
-        if outbound_failed {
-            self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
-            self.dispatcher.link_lost();
-            self.apply_session_boundary(now);
-            let state = self.device.current();
-            if self.animator.target() != state {
-                self.animator.set_state(state, now);
-            }
-            tick.state = Some(state);
-            tick.link_dropped = true;
-        }
-
-        if tick.state.is_none() {
-            tick.state = Some(self.device.current());
-        }
-        tick.reboot = self.reboot;
-        tick.rejected_frames = self.dispatcher.rejected_frames();
-        // The loop never sleeps, so only ticks that did something count as busy.
-        let end = clock.now_ms();
-        worked |= tick.frame_rendered || tick.diagnostic.is_some() || tick.health_sent;
-        self.load.on_tick(
-            end,
-            if worked { end.wrapping_sub(now) } else { 0 },
-            tick.frame_rendered,
-        );
-        tick
+        outbound_failed
     }
 
     /// The device internals snapshot at `now`: the board's figures first, then the loop's own.
@@ -1002,7 +1019,13 @@ impl<'a> Runtime<'a> {
         self.dropped_edges = before;
         if lost && (self.button.is_down() || samples.iter().any(|(levels, _)| levels.sw)) {
             self.held_rotation_blocked = true;
-            if self.button.rotation_claimed() && self.dispatcher.accepted_session().is_some() {
+            if self.picker.is_choosing() {
+                // The picker queues nothing until release, so there is no stale held input to
+                // discard: cancel it locally (the screen says so truthfully) and keep the link.
+                self.picker.close();
+                self.redraw = true;
+            } else if self.button.rotation_claimed() && self.dispatcher.accepted_session().is_some()
+            {
                 // Closing the session also discards any held detents waiting behind a stalled link.
                 transport.discard_unsent();
                 self.dispatcher.link_lost();
@@ -1083,22 +1106,12 @@ impl<'a> Runtime<'a> {
         levels: InputLevels,
         at_ms: ElapsedMs,
     ) {
+        // The picker releases on the debounced edge (`on_button`), never on this raw level: a
+        // contact bounce while choosing must not send a pick.
         if !levels.sw
             && (self.rotary_control == ControlId::PressedRotary
-                || self.button.rotation_claimed()
-                || self.picker.is_choosing())
+                || (self.button.rotation_claimed() && !self.picker.is_choosing()))
         {
-            if let Some((generation, index)) = self.picker.release(at_ms) {
-                // Released on an entry: the pick goes to the desktop, which answers with what it
-                // now runs. Until then the picker claims nothing.
-                self.redraw = true;
-                if !self
-                    .dispatcher
-                    .send_profile_pick(transport, generation, index)
-                {
-                    self.picker.send_failed(at_ms);
-                }
-            }
             if let Some(RotaryEvent::GestureEnded { gesture_id }) = self.gesture.finish() {
                 self.dispatcher.send_rotary_event(
                     transport,
@@ -1220,6 +1233,20 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    /// The switch was released (debounced) while choosing: the entry on screen goes to the
+    /// desktop, which answers with what it now runs. Until then the picker claims nothing.
+    #[inline(never)]
+    fn send_picked<T: Transport>(&mut self, transport: &mut T, at_ms: ElapsedMs) {
+        if let Some((generation, index)) = self.picker.release(at_ms) {
+            if !self
+                .dispatcher
+                .send_profile_pick(transport, generation, index)
+            {
+                self.picker.send_failed(at_ms);
+            }
+        }
+    }
+
     /// Applies the picker's entries and the Hold labels the desktop sent, and advances the picker.
     /// Out of line: the two messages are big, and their temporaries would otherwise sit in the
     /// run loop's stack frame (`just fw-budget`).
@@ -1286,6 +1313,9 @@ impl<'a> Runtime<'a> {
     /// desktop owns action meaning); everything else is local.
     fn on_button<T: Transport>(&mut self, transport: &mut T, event: ButtonEvent, at_ms: ElapsedMs) {
         self.redraw = true;
+        if event == ButtonEvent::Released && self.picker.is_choosing() {
+            self.send_picked(transport, at_ms);
+        }
         if event == ButtonEvent::Down {
             self.animator.look_at(LookTarget::Knob, at_ms);
         }

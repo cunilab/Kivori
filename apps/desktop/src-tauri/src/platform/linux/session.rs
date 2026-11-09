@@ -32,6 +32,18 @@ pub(super) fn classify(var: impl Fn(&str) -> Option<String>) -> SessionKind {
     }
 }
 
+/// Whether `XDG_CURRENT_DESKTOP` (a colon-separated list, e.g. `ubuntu:GNOME`) names GNOME.
+pub(super) fn desktop_is_gnome(desktop: &str) -> bool {
+    desktop
+        .split(':')
+        .any(|part| part.eq_ignore_ascii_case("gnome"))
+}
+
+/// Whether this process runs in a GNOME desktop session.
+pub(super) fn is_gnome() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|desktop| desktop_is_gnome(&desktop))
+}
+
 /// The session type of this process, from its environment.
 #[must_use]
 pub fn session_kind() -> SessionKind {
@@ -49,6 +61,15 @@ mod tests {
                 .find(|(k, _)| *k == name)
                 .map(|(_, v)| (*v).to_string())
         })
+    }
+
+    #[test]
+    fn gnome_is_one_entry_of_the_desktop_list() {
+        assert!(desktop_is_gnome("ubuntu:GNOME"));
+        assert!(desktop_is_gnome("gnome"));
+        assert!(!desktop_is_gnome("KDE"));
+        assert!(!desktop_is_gnome("X-Cinnamon:gnome-flashback"));
+        assert!(!desktop_is_gnome(""));
     }
 
     #[test]
