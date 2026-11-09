@@ -28,7 +28,7 @@ const screen = (name: string, alt: string): MediaImage => ({
 });
 
 const FRONT_ALT =
-  'Kivori seen straight on: a big knob, three green keys and a small screen with the buddy on it.';
+  'Kivori seen from the front: a black case, a big white-topped knob, three white keys and a small screen with the buddy on it.';
 
 export const renders = {
   hero: render(
@@ -36,14 +36,14 @@ export const renders = {
     'webp',
     2400,
     1800,
-    'Kivori on a white desk: a big black knob, three green keys and a bright little screen.',
+    'Kivori on a white desk: a black case with a big white-topped knob, three white keys and a bright little screen.',
   ),
   heroTransparent: render(
     'hero-34-transparent',
     'webp',
     2400,
     1800,
-    'Kivori, the desk buddy with a big knob, three green keys and a bright little screen.',
+    'Kivori, the black and white desk buddy with a big knob, three keys and a bright little screen.',
   ),
   front: render('front', 'webp', 2400, 1600, FRONT_ALT),
   top: render(
@@ -51,7 +51,7 @@ export const renders = {
     'webp',
     2400,
     1800,
-    'Kivori from above: a roomy knob beside three keys that are easy to find by feel.',
+    'Kivori from above: the screen at the back, a roomy knob in the middle and three keys in front, easy to find by feel.',
   ),
   side: render(
     'side',
@@ -94,7 +94,7 @@ export const renders = {
     'webp',
     3000,
     2000,
-    'Kivori, the desk buddy with a big knob, three mint keys and a bright little screen.',
+    'Kivori, the black and white desk buddy with a big knob, three keys and a bright little screen.',
   ),
   cutoutBuddy: render('front-cutout-buddy', 'webp', 3000, 1800, FRONT_ALT),
   cutoutVolume: render(

@@ -1,7 +1,7 @@
 // Dev-only studio renderer for the marketing product images. Not part of the web build.
 //   bun apps/web/tools/render-studio/render.mjs [shot-name ...]
 // Serves scene.html locally (127.0.0.1, only while rendering), loads the enclosure STLs from
-// hardware/enclosure/export/ at render time (they are never copied into public/), renders each shot in
+// hardware/enclosure-v7/export/ at render time (they are never copied into public/), renders each shot in
 // the installed Google Chrome and writes WebP files (plus a 1200 px variant) to public/media/renders/.
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
@@ -13,19 +13,30 @@ import sharp from 'sharp';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = join(HERE, '../..');
-const STL_DIR = join(WEB, '../../hardware/enclosure/export');
+const STL_DIR = join(WEB, '../../hardware/enclosure-v7/export');
 const SCREENS_DIR = join(WEB, 'public/media/screens');
 const OUT_DIR = join(WEB, 'public/media/renders');
 const THREE_DIR = dirname(createRequire(import.meta.url).resolve('three/package.json'));
 const CHROME =
   process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
-const PARTS = ['Shell', 'Visor', 'BackPlate', 'Knob', 'CapLeft', 'CapMiddle', 'CapRight']; // Carrier is internal
+const PARTS = [
+  'Shell',
+  'DisplayCowl',
+  'DisplayBezel',
+  'HaloDiffuser',
+  'BackPlate',
+  'Knob',
+  'KnobCap',
+  'CapLeft',
+  'CapMiddle',
+  'CapRight',
+]; // Carrier and PinFitCoupon are not visible
 const WHITE = '#ffffff';
 const TYPES = { '.js': 'text/javascript', '.html': 'text/html', '.webp': 'image/webp' };
 
 // Camera: azimuth/elevation in degrees around `target` (mm, world space, floor at y = 0), distance in mm.
-// The device is about 110 wide, 70 deep; its face centre is near [0, 14, 0].
+// The device is about 86 wide, 95 deep; its face centre is near [0, 28, 0].
 const SHOTS = [
   {
     name: 'hero-34',
@@ -33,10 +44,10 @@ const SHOTS = [
     height: 900,
     screen: 'buddy',
     fov: 22,
-    target: [4, 11, 2],
-    azimuth: -32,
-    elevation: 24,
-    distance: 320,
+    target: [2, 17, -2],
+    azimuth: -30,
+    elevation: 36,
+    distance: 340,
   },
   {
     name: 'front',
@@ -44,21 +55,21 @@ const SHOTS = [
     height: 800,
     screen: 'buddy',
     fov: 20,
-    target: [0, 11, 0],
+    target: [0, 18, 2],
     azimuth: 0,
-    elevation: 16,
-    distance: 290,
+    elevation: 50,
+    distance: 380,
   },
   {
     name: 'top',
     width: 1200,
     height: 900,
     screen: 'buddy',
-    fov: 20,
-    target: [0, 8, 0],
+    fov: 14,
+    target: [0, 24, 0],
     azimuth: 0,
     elevation: 89,
-    distance: 330,
+    distance: 480,
     floorShadow: false,
   },
   {
@@ -67,10 +78,10 @@ const SHOTS = [
     height: 800,
     screen: 'buddy',
     fov: 18,
-    target: [0, 14, 0],
+    target: [0, 18, 0],
     azimuth: 90,
     elevation: 3,
-    distance: 380,
+    distance: 420,
   },
   {
     name: 'knob',
@@ -78,10 +89,10 @@ const SHOTS = [
     height: 900,
     screen: 'buddy',
     fov: 24,
-    target: [6, 14, 4],
+    target: [0, 22, 12],
     azimuth: -16,
-    elevation: 30,
-    distance: 275,
+    elevation: 38,
+    distance: 300,
   },
   {
     name: 'hero-34-transparent',
@@ -89,10 +100,10 @@ const SHOTS = [
     height: 900,
     screen: 'buddy',
     fov: 22,
-    target: [4, 11, 2],
-    azimuth: -32,
-    elevation: 24,
-    distance: 320,
+    target: [2, 17, -2],
+    azimuth: -30,
+    elevation: 36,
+    distance: 340,
     transparent: true,
   },
   // Transparent cut-outs for coloured page grounds. Wider frame than the white shots so the floor
@@ -103,10 +114,10 @@ const SHOTS = [
     height: 1000,
     screen: 'buddy',
     fov: 22,
-    target: [4, 11, 2],
-    azimuth: -32,
-    elevation: 24,
-    distance: 340,
+    target: [2, 17, -2],
+    azimuth: -30,
+    elevation: 36,
+    distance: 360,
     transparent: true,
   },
   ...['buddy', 'volume', 'media', 'system'].map((view) => ({
@@ -115,10 +126,10 @@ const SHOTS = [
     height: 900,
     screen: view,
     fov: 20,
-    target: [0, 11, 0],
+    target: [0, 18, 2],
     azimuth: 0,
-    elevation: 16,
-    distance: 300,
+    elevation: 50,
+    distance: 400,
     transparent: true,
   })),
   ...['clock', 'volume', 'media'].map((view) => ({
@@ -127,10 +138,10 @@ const SHOTS = [
     height: 800,
     screen: view,
     fov: 20,
-    target: [0, 11, 0],
+    target: [0, 18, 2],
     azimuth: 0,
-    elevation: 16,
-    distance: 290,
+    elevation: 50,
+    distance: 380,
   })),
 ];
 

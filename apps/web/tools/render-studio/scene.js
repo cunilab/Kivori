@@ -6,13 +6,13 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // ---- Assembly -------------------------------------------------------------------------------
-// The STLs are in print orientation (see hardware/enclosure/build_case.py `print_pose`): each part is
+// The STLs are in print orientation (see hardware/enclosure-v7/build_case.py `print_pose`): each part is
 // rotated for the print bed and translated so its bounding box starts at the origin. These matrices
 // undo that and return every part to the CAD "face frame" (face plane z = 0, +z towards the viewer,
-// x right, y from the near/thin edge at 0 to the far/thick edge at 70). The offsets are the original
-// bounding-box minimums printed by build_case.py (see README.md in this folder).
-const ALPHA = Math.atan((30 - 18) / 70); // wedge angle: the face tilts towards the viewer
-const T_NEAR = 18;
+// x right, y from the near/thin edge at 0 to the far/thick edge at 95). The offsets are the print-pose
+// bounding-box minimums of each part (see README.md in this folder).
+const ALPHA = Math.atan((30.8 - 18.8) / 95); // wedge angle: the face tilts towards the viewer
+const T_NEAR = 18.8;
 const PLINTH_H = 3; // the plinth hangs this far below the back plane; that is the desk
 
 const m4 = (...e) => new THREE.Matrix4().set(...e);
@@ -21,30 +21,33 @@ const flipX = (tx, ty, tz) => m4(1, 0, 0, tx, 0, -1, 0, ty, 0, 0, -1, tz, 0, 0, 
 const move = (x, y, z) => new THREE.Matrix4().makeTranslation(x, y, z);
 
 const PARTS = {
-  Shell: { matrix: flipX(-3.01077, 73.21098, 0), mat: 'shell' },
-  Visor: { matrix: flipX(44, 62.5, 1), mat: 'visor' },
+  Shell: { matrix: flipX(-3.13198, 98.28077, 0), mat: 'shell' },
+  DisplayCowl: { matrix: flipX(14, 93, 4.5), mat: 'shell' },
+  DisplayBezel: { matrix: flipX(29, 92, 5.3), mat: 'white' },
+  HaloDiffuser: { matrix: flipX(22, 61, 0.6), mat: 'white' },
   // Printed rotated by +ALPHA about X: undo with the inverse rotation after restoring its bbox minimum.
   BackPlate: {
-    matrix: new THREE.Matrix4().makeRotationX(-ALPHA).multiply(move(-0.81041, 3.22001, -20.7412)),
-    mat: 'visor',
+    matrix: new THREE.Matrix4().makeRotationX(-ALPHA).multiply(move(-3.13198, 0.39045, -21.65179)),
+    mat: 'white',
   },
-  Knob: { matrix: flipX(3.5, 59, 13), mat: 'knob' },
-  CapLeft: { matrix: move(51.18391, 7.13261, -4), mat: 'cap' },
-  CapMiddle: { matrix: move(70.4, 10.4, -4), mat: 'cap' },
-  CapRight: { matrix: move(87.18391, 7.13261, -4), mat: 'cap' },
+  Knob: { matrix: flipX(25, 58, 15.3), mat: 'knob' },
+  KnobCap: { matrix: flipX(27.5, 55.5, 16.1), mat: 'white' },
+  CapLeft: { matrix: flipX(17.4, 18.6, 5), mat: 'white' },
+  CapMiddle: { matrix: flipX(35.4, 18.6, 5), mat: 'white' },
+  CapRight: { matrix: flipX(53.4, 18.6, 5), mat: 'white' },
 };
 
 // Face frame -> three.js world: lift by the thin-edge thickness, tilt by the wedge angle so the back
 // plane lies flat on the desk, then turn the CAD z-up frame into three's y-up frame (CAD y = depth away
-// from the viewer). Centred on x = 55 and y = 35, floor at y = 0.
-const FACE_TO_WORLD = move(-55, 0, 35)
+// from the viewer). Centred on x = 43 and y = 47.5, floor at y = 0.
+const FACE_TO_WORLD = move(-43, 0, 47.5)
   .multiply(new THREE.Matrix4().makeRotationX(-Math.PI / 2))
   .multiply(move(0, 0, PLINTH_H))
   .multiply(new THREE.Matrix4().makeRotationX(ALPHA))
   .multiply(move(0, 0, T_NEAR));
 
-// Display window centre and active-area size on the face (face frame, mm).
-const DISPLAY = { x: 78, y: 46, size: 23.4, z: 0.25 };
+// Display window centre and active-area size (face frame, mm): the glass sits under the cowl's window.
+const DISPLAY = { x: 43, y: 78, size: 23.4, z: 2.1 };
 
 // ---- Renderer / scene -----------------------------------------------------------------------
 const renderer = new THREE.WebGLRenderer({
@@ -66,33 +69,27 @@ scene.environmentIntensity = 0.75;
 
 const MATERIALS = {
   shell: new THREE.MeshPhysicalMaterial({
-    color: '#ebe6dd',
-    roughness: 0.62,
+    color: '#0a0a0c',
+    roughness: 0.5,
     metalness: 0,
-    sheen: 0.25,
+    sheen: 0.08,
     sheenRoughness: 0.8,
     sheenColor: '#ffffff',
   }),
-  visor: new THREE.MeshPhysicalMaterial({
-    color: '#0d0e10',
-    roughness: 0.32,
-    metalness: 0,
-    clearcoat: 0.35,
-    clearcoatRoughness: 0.3,
-  }),
   knob: new THREE.MeshPhysicalMaterial({
-    color: '#141518',
+    color: '#121316',
     roughness: 0.38,
     metalness: 0.1,
     clearcoat: 0.2,
     clearcoatRoughness: 0.4,
   }),
-  cap: new THREE.MeshPhysicalMaterial({
-    color: '#3fd09c',
-    roughness: 0.55,
+  white: new THREE.MeshPhysicalMaterial({
+    color: '#ebe9e3',
+    roughness: 0.6,
     metalness: 0,
-    clearcoat: 0.15,
-    clearcoatRoughness: 0.5,
+    sheen: 0.25,
+    sheenRoughness: 0.8,
+    sheenColor: '#ffffff',
   }),
 };
 
