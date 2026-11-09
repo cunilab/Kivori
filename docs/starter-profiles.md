@@ -1,6 +1,6 @@
 # Starter profiles
 
-The Controls page includes editable starter profiles. Each profile can be pinned with **Use this profile**, then released with **Follow foreground app**. The original device button pin cycle is unchanged by default; turn on **In pin cycle** for any starter you also want to select from the device. Pinning lasts until it is released or the application restarts. Protected foregrounds still suspend shortcut actions.
+The Controls page includes editable starter profiles. Each profile can be pinned with **Use this profile**, then released with **Follow foreground app**. The original device button pin cycle is unchanged by default; turn on **Pin to device** for any starter you also want to pick with the knob (hold the knob down and turn it). Pinning lasts until it is released or the application restarts. Protected foregrounds still suspend shortcut actions.
 
 The creative profiles match known application IDs; if a version is not recognized, use **Add app** and choose the running app. Shortcuts depend on the application's version, focused panel and keymap. Review and edit the controls before using them; reset the profile to restore its starter settings. Defaults below use Ctrl on Windows and Command on macOS where shown as Ctrl/Command.
 

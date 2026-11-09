@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use kivori_model::picker::PICKER_PINNED_MAX;
 use serde_json::Value;
 
 use super::migrate::{migrate, LoadError};
@@ -350,44 +351,32 @@ impl ConfigStore {
         self.save(next)
     }
 
-    /// Puts a custom or starter profile in or out of the pin cycle.
+    /// Pins a profile to the device (the knob's profile picker and the middle button's pin cycle),
+    /// or takes it off. The picker holds [`PICKER_PINNED_MAX`] pinned profiles; pinning one more is
+    /// refused, taking one off never is.
     ///
     /// # Errors
     /// [`ConfigError`]; on any error the stored config is unchanged.
     pub fn set_pin_cycle(&mut self, profile: &ProfileRef, on: bool) -> Result<(), ConfigError> {
         let mut next = self.file.clone();
         profiles::set_pin_cycle(&mut next, profile, on).map_err(ConfigError::Invalid)?;
-        self.save(next)
-    }
-
-    /// Sets or clears the shortcut pair for turning while the knob is held.
-    ///
-    /// # Errors
-    /// Returns an error for an unknown profile, invalid shortcut pair, or failed save.
-    pub fn set_held_rotate(
-        &mut self,
-        profile: &ProfileRef,
-        rotate: Option<super::RotateSpec>,
-    ) -> Result<(), ConfigError> {
-        let rotate = rotate
-            .as_ref()
-            .map(|spec| {
-                if !matches!(spec, super::RotateSpec::Shortcuts { .. }) {
-                    return Err(ConfigError::Invalid(
-                        "hold and rotate requires keyboard shortcuts",
-                    ));
-                }
-                super::resolve::canonical_rotate(spec).map_err(ConfigError::Invalid)
-            })
-            .transpose()?;
-        let mut next = self.file.clone();
-        profiles::edit_bindings(&mut next, profile, false, |over| over.held_rotate = rotate)
-            .map_err(ConfigError::Invalid)?;
+        if on {
+            let pinned = resolve(builtins(), &next)?
+                .profiles
+                .iter()
+                .filter(|p| p.in_pin_cycle)
+                .count();
+            if pinned > PICKER_PINNED_MAX {
+                return Err(ConfigError::Invalid(
+                    "the device holds at most 10 pinned profiles; unpin one first",
+                ));
+            }
+        }
         self.save(next)
     }
 
     /// A built-in profile goes back to its built-in bindings and app list; a custom one goes back
-    /// to a fresh copy of General's bindings with held rotation unbound (its name and apps stay).
+    /// to a fresh copy of General's bindings (its name and apps stay).
     ///
     /// # Errors
     /// [`ConfigError`]; on any error the stored config is unchanged.

@@ -256,6 +256,30 @@ fn entry_for<'a>(entries: &'a [DesktopEntry], name: &str) -> Option<&'a DesktopE
         .or_else(|| entries.iter().find(|e| e.id.to_lowercase() == name))
 }
 
+/// Resolve Shell desktop ids to the same executable ids used by the app picker and X11.
+pub(super) fn focus_program(identity: &str) -> Option<String> {
+    let id = identity.trim().trim_end_matches(".desktop").to_lowercase();
+    if id.is_empty() {
+        return None;
+    }
+    let id = entry_for(&entries(), &id)
+        .and_then(|e| e.program.clone())
+        .unwrap_or(id);
+    // Sandboxed entries may not be visible from the host. These are exact desktop/WM_CLASS
+    // aliases, not substring guesses (a web app must not inherit its browser's profile).
+    let program = match id.as_str() {
+        "com.brave.browser" | "brave-browser" => "brave",
+        "com.google.chrome" | "google-chrome" | "google-chrome-stable" => "chrome",
+        "org.chromium.chromium" => "chromium",
+        "org.mozilla.firefox" | "firefox_firefox" => "firefox",
+        "com.visualstudio.code" | "visual-studio-code" => "code",
+        "us.zoom.zoom" | "zoom_zoom" => "zoom",
+        "com.microsoft.teams" | "teams-for-linux" => "teams",
+        _ => &id,
+    };
+    Some(program.to_string())
+}
+
 /// Apps running now: processes of this user that match a desktop entry, Kivori itself left out.
 #[must_use]
 pub fn running_apps() -> Vec<RunningApp> {

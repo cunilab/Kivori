@@ -786,8 +786,6 @@ function builtin(
       deviceLabel: rotateLabel(rotate),
       overridden: false,
     },
-    heldRotate: null,
-    heldRotateOverridden: false,
     press: slot(media),
     hold: slot({ kind: 'systemMute' }),
     buttons,
@@ -1281,21 +1279,6 @@ export function mockSetRotate(profile: ProfileId, rotate: RotateSpec | null): Co
   });
 }
 
-export function mockSetHeldRotate(profile: ProfileId, rotate: RotateSpec | null): ConfigDto {
-  if (rotate && rotate.kind !== 'shortcuts') throw new Error('hold and rotate needs shortcuts');
-  return editProfile(profile, false, (target) => {
-    target.heldRotate = rotate
-      ? {
-          kind: 'shortcuts',
-          cw: mockShortcut(rotate.cw),
-          ccw: mockShortcut(rotate.ccw),
-          label: mockLabel(rotate.label),
-        }
-      : null;
-    target.heldRotateOverridden = !target.custom && rotate !== null;
-  });
-}
-
 /** Whether any profile binds macro `id`. */
 function macroBound(id: string): boolean {
   const bound = (s: SlotDto | 'pin'): boolean =>
@@ -1392,16 +1375,12 @@ function clearOverridden(profile: ProfileConfigDto): void {
   for (const b of profile.buttons) slots.push(b.press, ...(b.hold === 'pin' ? [] : [b.hold]));
   for (const slot of slots) slot.overridden = false;
   profile.rotate.overridden = false;
-  profile.heldRotateOverridden = false;
 }
 
 /** The bindings a custom profile starts with: General's as they are now. */
-function copyOfGeneral(): Pick<
-  ProfileConfigDto,
-  'rotate' | 'heldRotate' | 'heldRotateOverridden' | 'press' | 'hold' | 'buttons'
-> {
+function copyOfGeneral(): Pick<ProfileConfigDto, 'rotate' | 'press' | 'hold' | 'buttons'> {
   const { rotate, press, hold, buttons } = structuredClone(config.profiles[0]);
-  const copy = { rotate, heldRotate: null, heldRotateOverridden: false, press, hold, buttons };
+  const copy = { rotate, press, hold, buttons };
   clearOverridden({ ...config.profiles[0], ...copy });
   return copy;
 }
@@ -1532,11 +1511,8 @@ export function mockSetProfilePinCycle(profile: ProfileId, enabled: boolean): Co
   const profiles = structuredClone(config.profiles);
   const target = profiles.find((p) => p.id === profile);
   if (!target) throw new Error('unknown profile');
-  if (
-    !target.custom &&
-    ['general', 'browser', 'code', 'media', 'zoom', 'teams'].includes(profile)
-  ) {
-    throw new Error('a built-in profile is always in the pin cycle');
+  if (enabled && !target.inPinCycle && profiles.filter((p) => p.inPinCycle).length >= 10) {
+    throw new Error('the device holds at most 10 pinned profiles; unpin one first');
   }
   target.inPinCycle = enabled;
   return saveConfig({ display: config.display, buddy: config.buddy, profiles }, null);

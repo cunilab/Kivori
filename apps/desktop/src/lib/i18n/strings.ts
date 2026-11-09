@@ -3,6 +3,26 @@
 
 export const strings = {
   appTitle: 'Kivori',
+  gnomeFocus: {
+    title: "Let Kivori see which app you're using",
+    logoutTitle: 'Log out and back in once to finish',
+    notInstalled:
+      'Enable Kivori App Profiles for GNOME so your controls follow the app in front of you.',
+    disabled:
+      'Kivori App Profiles is turned off in GNOME. Enable it to let profiles follow your apps again.',
+    needsLogout:
+      'The extension is ready. Save your work, then log out and back in. GNOME will start it automatically.',
+    unsupported:
+      'Kivori App Profiles supports GNOME 46–50. Update Kivori for support for your GNOME version.',
+    unavailable:
+      'GNOME could not start Kivori App Profiles. Try enabling it again, or check Kivori App Profiles in the Extensions app.',
+    privacy:
+      'Only the app in front is shared with Kivori on this computer. No window titles or contents, and no network access.',
+    once: 'One log-out is needed the first time.',
+    enable: 'Enable',
+    logout: 'Log out now',
+    busy: 'Please wait…',
+  },
   tagline: 'Desk controller',
   unknown: '—',
   unknownValue: 'Unknown',
@@ -302,8 +322,15 @@ export const strings = {
       newProfileTitle: 'New profile',
       remove: 'Remove {app}',
       removeHint: 'Removing an app sends it back to General.',
-      inPinCycle: 'In pin cycle',
-      inPinCycleHint: 'The middle button’s Hold visits this profile.',
+      inPinCycle: 'Pin to device',
+      inPinCycleHint:
+        'Offers this profile when you hold the knob and turn it, and to the middle button’s Hold.',
+      pinnedTitle: 'Pinned to your device',
+      pinnedList: 'Pinned to your device: {names}.',
+      pinnedFew: 'Pin at least two profiles to choose between them on the device.',
+      pinnedNone:
+        'Nothing is pinned yet. Pin at least two profiles to choose between them on the device.',
+      pinLimit: 'The device holds at most {max} pinned profiles. Unpin one first.',
       rename: 'Rename',
       renameLabel: 'Profile name',
       renameSave: 'Save name',
@@ -429,19 +456,23 @@ export const strings = {
       rotate: { name: 'Rotate', hint: 'Turn the knob. Faster turns take bigger steps.' },
       heldRotate: {
         name: 'Hold + rotate',
-        hint: 'Press the knob, then turn it while holding it down.',
+        hint: 'Hold the knob down and turn it to pick a pinned profile on the device.',
       },
       press: { name: 'Press', hint: 'Press and release within one second.' },
       doublePress: { name: 'Double press', hint: 'Two quick presses.' },
-      hold: { name: 'Hold', hint: 'Hold for about a second and a half, then release.' },
+      hold: {
+        name: 'Hold',
+        hint: 'Hold for one second until the ring on the device fills, then release.',
+      },
       button1: { name: 'Left button', hint: 'Press and release.' },
       button2: { name: 'Middle button', hint: 'Press and release. Hold to pin a profile.' },
       button3: { name: 'Right button', hint: 'Press and release.' },
-      button1Hold: { name: 'Left button hold', hint: 'Hold. Not shown on the device.' },
+      button1Hold: { name: 'Left button hold', hint: 'Hold for one second until the ring fills.' },
       button2Hold: { name: 'Middle button hold', hint: 'Hold. Reserved for pinning a profile.' },
-      button3Hold: { name: 'Right button hold', hint: 'Hold. Not shown on the device.' },
+      button3Hold: { name: 'Right button hold', hint: 'Hold for one second until the ring fills.' },
     },
-    heldRotateUnsupported: 'Update the device firmware to use hold + rotate.',
+    heldRotateUnsupported: 'Update the device firmware to use the profile picker.',
+    profilePickerFixed: 'Fixed: picks a pinned profile. Pin profiles under Pin to device.',
     macros: {
       title: 'Macros',
       description:
@@ -482,9 +513,11 @@ export const strings = {
     suspended: 'Paused in a protected window',
     profile: 'Active profile',
     profileGeneral: 'General',
-    followHint: 'Follows the app in front of you. Hold the middle button to pin a profile.',
+    followHint:
+      'Follows the app in front of you. Hold the knob and turn it to pick a pinned profile.',
     pinned: 'Pinned on the device',
-    pinnedHint: 'Hold the middle button for the next profile, or to follow the app again.',
+    pinnedHint:
+      'Hold the knob and turn it to pick another, or choose Auto to follow the app again.',
     systemVolume: 'System volume',
     recoveryTitle: 'Restart Kivori',
     recovery:

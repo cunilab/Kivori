@@ -34,7 +34,6 @@ import {
   setBinding,
   setBuddySettings,
   setRotate,
-  setHeldRotate,
   setDisplaySettings,
   listStates,
   onActivityLog,
@@ -659,34 +658,26 @@ describe('config ipc', () => {
     expect(browser.buttons[0].press).toMatchObject({ deviceLabel: 'Back', overridden: false });
   });
 
-  it('validates and clears held-rotation shortcuts on built-in and custom profiles', async () => {
+  it('pins profiles to the device up to the picker’s limit and never reads a held-rotate pair', async () => {
     await resetConfig();
-    const pair = {
-      kind: 'shortcuts',
-      cw: 'Ctrl+Right',
-      ccw: 'Ctrl+Left',
-      label: 'Navigate',
-    } as const;
-    const saved = await setHeldRotate('general', pair);
-    expect(parseConfig(JSON.parse(JSON.stringify(saved))).profiles[0]).toMatchObject({
-      heldRotate: pair,
-      heldRotateOverridden: true,
+    const config = await getConfig();
+    // The six core built-in profiles are pinned by default, so two more fit.
+    expect(config.profiles.filter((p) => p.inPinCycle)).toHaveLength(6);
+    expect(await setProfilePinCycle('browser', false)).toMatchObject({
+      profiles: expect.arrayContaining([
+        expect.objectContaining({ id: 'browser', inPinCycle: false }),
+      ]),
     });
-    const old = JSON.parse(JSON.stringify(saved));
-    delete old.profiles[0].heldRotate;
-    delete old.profiles[0].heldRotateOverridden;
-    expect(parseConfig(old).profiles[0]).toMatchObject({
-      heldRotate: null,
-      heldRotateOverridden: false,
-    });
+    await setProfilePinCycle('codex', true);
+    await setProfilePinCycle('claudecode', true);
+    await setProfilePinCycle('opencode', true);
+    await setProfilePinCycle('blender', true);
+    await setProfilePinCycle('photoshop', true);
+    await expect(setProfilePinCycle('aftereffects', true)).rejects.toThrow('at most 10');
+    // An older core still sends a held-rotate pair; the app ignores it.
+    const old = JSON.parse(JSON.stringify(await getConfig()));
     old.profiles[0].heldRotate = { kind: 'systemVolume' };
-    expect(() => parseConfig(old)).toThrow('invalid held rotate');
-    await expect(setHeldRotate('general', { kind: 'systemVolume' })).rejects.toThrow('shortcuts');
-    expect((await setHeldRotate('general', null)).profiles[0].heldRotate).toBeNull();
-    const custom = (await addCustomProfile('notes.exe', 'Notes')).profiles.at(-1)!;
-    expect(custom.heldRotate).toBeNull();
-    await setHeldRotate(custom.id, pair);
-    expect((await setHeldRotate(custom.id, null)).profiles.at(-1)!.heldRotate).toBeNull();
+    expect(parseConfig(old).profiles[0]).not.toHaveProperty('heldRotate');
   });
 
   it('saves, validates and deletes macros in the mock, refusing a bound delete', async () => {
@@ -769,11 +760,6 @@ describe('config ipc', () => {
     expect(tauri.invoke).toHaveBeenLastCalledWith('set_rotate', {
       profile: 'browser',
       rotate: { kind: 'systemVolume' },
-    });
-    await setHeldRotate('browser', null);
-    expect(tauri.invoke).toHaveBeenLastCalledWith('set_held_rotate', {
-      profile: 'browser',
-      rotate: null,
     });
     await resetProfile('code');
     expect(tauri.invoke).toHaveBeenLastCalledWith('reset_profile', { profile: 'code' });

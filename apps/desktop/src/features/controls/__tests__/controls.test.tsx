@@ -1,6 +1,6 @@
 import { connectionFixture } from '../../../test/connection';
 import type { ConnectionStatusDto } from '../../../lib/ipc/types';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -91,38 +91,17 @@ afterEach(() => {
 });
 
 describe('ControlsPage', () => {
-  it('records, saves, reopens and clears held rotation shortcuts without changing normal rotate', async () => {
-    const user = userEvent.setup();
+  it('shows Hold + rotate as the device’s fixed profile picker, with nothing to bind', async () => {
     render(<Harness connection={connectionFixture()} />);
     await screen.findByTestId('gesture-heldRotate');
-    expect(row('heldRotate')).toHaveTextContent('Not set');
-    await user.click(within(row('heldRotate')).getByRole('button', { name: 'Edit Hold + rotate' }));
-    expect(screen.queryByRole('radio', { name: /System volume/ })).not.toBeInTheDocument();
-    for (const [label, key] of [
-      ['Clockwise shortcut', 'ArrowRight'],
-      ['Counter-clockwise shortcut', 'ArrowLeft'],
-    ] as const) {
-      await user.click(screen.getByRole('button', { name: `Record keys for ${label}` }));
-      fireEvent.keyDown(screen.getByLabelText(label), { key, ctrlKey: true });
-    }
-    await user.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(row('heldRotate')).toHaveTextContent('Ctrl+Right / Ctrl+Left'));
-    expect((await ipc.getConfig()).profiles[0]!.heldRotate).toMatchObject({
-      kind: 'shortcuts',
-      cw: 'Ctrl+Right',
-      ccw: 'Ctrl+Left',
-    });
+    expect(row('heldRotate')).toHaveTextContent('Fixed: picks a pinned profile');
+    expect(
+      within(row('heldRotate')).queryByRole('button', { name: 'Edit Hold + rotate' }),
+    ).not.toBeInTheDocument();
     expect(row('rotate')).toHaveTextContent('System volume');
-    await user.click(within(row('heldRotate')).getByRole('button', { name: 'Edit Hold + rotate' }));
-    expect(screen.getByLabelText('Clockwise shortcut')).toHaveValue('Ctrl+Right');
-    await user.click(screen.getByRole('radio', { name: /Not set/ }));
-    await user.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(row('heldRotate')).toHaveTextContent('Not set'));
-    expect((await ipc.getConfig()).profiles[0]!.heldRotate).toBeNull();
   });
 
-  it('offers saved hold-and-rotate settings but explains old firmware cannot use them', async () => {
-    const user = userEvent.setup();
+  it('explains that firmware without the profile picker cannot use Hold + rotate', async () => {
     render(
       <Harness
         connection={connectionFixture(['physicalInputV1', 'buttonInputV1', 'productIdentityV1'])}
@@ -132,9 +111,8 @@ describe('ControlsPage', () => {
     expect(within(row('heldRotate')).getByText('Saved only')).toBeVisible();
     expect(row('heldRotate')).toHaveTextContent('Update the device firmware');
     expect(within(row('rotate')).queryByText('Saved only')).not.toBeInTheDocument();
-    await user.click(within(row('heldRotate')).getByRole('button', { name: 'Edit Hold + rotate' }));
-    expect(await screen.findByRole('dialog')).toBeVisible();
   });
+
   it('selects a physical button for editing without running its action', async () => {
     const user = userEvent.setup();
     render(<Harness connection={connectionFixture()} />);

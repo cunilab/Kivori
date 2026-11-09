@@ -66,17 +66,17 @@ bundles omit updater signatures. With a key, the usual Tauri key/password valida
 | Microphone mute | Every capture device, confirmed by read-back | Same |
 | Media keys / now playing | MPRIS over session D-Bus | Same |
 | Keyboard shortcuts | enigo X11 input | Unavailable; XWayland does not grant access to native Wayland apps |
-| Automatic foreground-app profiles | X11 foreground window | Unavailable on GNOME Wayland; use General or pin a profile |
+| Automatic foreground-app profiles | X11 foreground window | Works with the Kivori GNOME extension (GNOME 46–50); one-time logout after enabling |
 | CPU / RAM | `/proc` | Same |
 | Sleep / wake / lock / unlock | systemd-logind D-Bus | Same |
 | App launch | XDG `.desktop` entries | Same |
 | Launch at login | `~/.config/autostart` | Same |
 | Tray | libayatana-appindicator | Same; GNOME requires the AppIndicator extension |
 
+On GNOME Wayland, Controls offers **Enable** for Kivori App Profiles. It installs a small user extension and shares only the app in front over local D-Bus; it never shares window titles or contents. Log out and back in once after enabling so GNOME loads it. Kivori detects unsupported GNOME versions and extensions that are disabled. Keyboard shortcuts remain unavailable on Wayland.
+
 Ubuntu normally enables the AppIndicator extension. On other GNOME installations enable it so
-closing the window leaves a reachable tray icon. GNOME Wayland cannot report the focused window,
-so automatic per-app profile switching is unavailable; hold the middle button to pin a profile.
-Choose **Ubuntu on Xorg** at login for full automatic switching and shortcuts.
+closing the window leaves a reachable tray icon. If profiles remain on General after the one-time logout, open the Extensions app and check that **Kivori App Profiles** is enabled. The Controls card can enable it again. Choose **Ubuntu on Xorg** at login if you need keyboard shortcuts.
 
 With no MPRIS player registered, media status is **nothing playing**. Play/pause, next and previous
 fall back to media keys on X11 (sent without confirmation) and are unavailable on Wayland. If
@@ -100,8 +100,8 @@ open it in Files and check that your user can write to it. Do not use a raw-disk
   `udevadm info /dev/ttyACM0` shows the device identity. Check `journalctl -b` for USB/udev errors.
 - **No volume or mic state:** `pactl info`, `pactl list short sources` and `wpctl status` check
   PulseAudio / PipeWire. Inspect `journalctl --user -b -u pipewire -u pipewire-pulse -u wireplumber`.
-- **Shortcuts or profiles unavailable:** inspect `echo "$XDG_SESSION_TYPE"`. Use an X11 session
-  for these features; XWayland alone does not provide native Wayland input/focus support.
+- **Profiles stay on General on GNOME Wayland:** enable Kivori App Profiles from Controls, then log out and back in once. In Extensions, check that it is enabled. Other Wayland compositors are not supported.
+- **Shortcuts unavailable:** inspect `echo "$XDG_SESSION_TYPE"`. Keyboard shortcuts require an X11 session; XWayland does not provide native Wayland input support.
 - **No media info:** start an MPRIS-capable player on the same user session D-Bus.
 - **No tray:** enable GNOME's AppIndicator extension, then restart the app.
 

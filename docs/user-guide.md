@@ -96,11 +96,17 @@ On Controls, choose **Use this profile** to pin the selected profile, or **Follo
 to return to Auto. Agent profiles need manual selection because Kivori cannot identify the agent
 inside a terminal window. Review the starter shortcuts for your app version and keymap before use.
 
-To stay on one profile, hold the middle button. Each hold moves on: General, Browser, Code, Media,
-Zoom, Teams, then back to Auto. A dot next to the name shows it is pinned. On a protected window
-(such as a Windows permission prompt or the lock screen) shortcuts and app launches pause, while
-volume, media keys and mute keep working. Starter profiles join this cycle only when you enable
-**In pin cycle** for them.
+To stay on one profile, **pin it to the device**: on Controls, switch on **Pin to device** for the
+profiles you want on the knob (General, Browser, Code, Media, Zoom and Teams start pinned; the
+starter and your own profiles start unpinned; the device holds up to 10). Then hold the knob down
+and turn it: the screen shows the profile picker, with the profile name large and a row of marks for
+Auto and each pinned profile. Turn to move the highlight, release to select. **Auto** follows the
+app in front again. The picker says "Pinned" (or "Following your apps") only once Kivori reports it
+now runs that profile; if Kivori does not answer it says "Not confirmed" and shows what is really
+active. Holding the middle button still steps through the same pinned profiles one at a time. A dot
+next to the name shows a profile is pinned. On a protected window (such as a Windows permission
+prompt or the lock screen) shortcuts and app launches pause, while volume, media keys and mute keep
+working.
 
 ## Muting your microphones
 
@@ -130,12 +136,15 @@ saving. **Escape** or **Cancel** leaves the previous value in place; you can als
 the shortcut manually. Recording is available for buttons, both knob directions and macro steps.
 Some shortcuts are intercepted by the operating system or terminal and must be entered manually.
 
-To use **Hold + rotate**, assign separate clockwise and counterclockwise shortcuts in the knob
-controls. Press the knob first, then turn it while holding it down. This uses the selected shortcut
-instead of the ordinary turn, press or hold action. Start turning before the recovery indicator
-appears; once it has appeared, release the knob and try again. To restart after using this gesture,
-release the knob first, then hold it still for 10 seconds. Hold + rotate requires firmware that
-supports it; older firmware keeps working and the binding stays saved until the device is updated.
+**Hold + rotate** is the device's profile picker and is fixed: it cannot be bound to shortcuts any
+more. A shortcut pair you saved for it in an earlier version is no longer used (it is dropped the
+next time your settings are saved). It needs firmware that supports the picker; update the device
+from the Device page if the row says so.
+
+**Hold ring.** Hold a button, or the knob switch, and a ring on the device fills over one second;
+when it is full and bright, releasing runs the Hold. Release earlier and it is an ordinary press.
+The ring appears only for controls whose Hold does something, so an unbound Hold shows nothing. The
+restart hold (about 2 seconds on the knob switch) takes over from the ring.
 
 A **macro** runs up to 8 steps in order, with optional waits. It stops at the first step that fails
 and does not undo earlier steps. Create macros on the Controls page, then bind one to a control.

@@ -13,11 +13,12 @@ use kivori_firmware::sim::{CaptureDisplay, SimPipe, VirtualClock};
 use kivori_framebuffer::hash_rgb565;
 use kivori_model::desk::{ControlLabels, DeskStatus, DisplayMode, MediaText};
 use kivori_model::input::{Direction, InputLevels};
+use kivori_model::picker::{HoldActions, PickerName, ProfileChoices};
 use kivori_model::{Capabilities, CompanionState, ProtocolVersion, SendableState};
 use kivori_protocol::{
     decode_message, encode_message, ByeReason, ControlId, ControlLabelsUpdate, FirmwareVersion,
-    Hello, InputEvent, InputKind, Message, Nonce, Ping, Ready, SetState, Status, MAX_FRAME,
-    MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
+    Hello, HoldActionsUpdate, InputEvent, InputKind, Message, Nonce, Ping, ProfileChoicesUpdate,
+    Ready, SetState, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 const M1: Capabilities = Capabilities::PHYSICAL_INPUT_V1
@@ -90,7 +91,9 @@ impl Rig {
                 .union(Capabilities::MEDIA_INFO_V1)
                 .union(Capabilities::CONTROL_LABELS_V1)
                 .union(Capabilities::CONTEXT_BUTTONS_V1)
-                .union(Capabilities::HELD_ROTATION_V1),
+                .union(Capabilities::HELD_ROTATION_V1)
+                .union(Capabilities::PROFILE_PICKER_V1)
+                .union(Capabilities::HOLD_RING_V1),
         };
         let mut rig = Self {
             runtime: Runtime::new(identity, RuntimeConfig::default()),
@@ -1041,4 +1044,316 @@ fn the_buddy_wears_the_muted_face_only_while_the_desktop_reports_mute() {
     let muted = send(&mut rig, Some(true));
     assert_ne!(muted, unknown, "muted zips the mouth");
     assert_eq!(send(&mut rig, Some(false)), unknown, "unmuting restores it");
+}
+
+// ---- the profile picker (knob switch held and turned) and the hold ring ----
+
+const PICKER: Capabilities = BUTTONS
+    .union(Capabilities::CONTROL_LABELS_V1)
+    .union(Capabilities::PROFILE_PICKER_V1)
+    .union(Capabilities::HOLD_RING_V1);
+
+fn choices(rig: &Rig, generation: u8, selected: u8) -> Message {
+    let mut c = ProfileChoices {
+        generation,
+        count: 2,
+        selected,
+        ..ProfileChoices::default()
+    };
+    c.names[0] = PickerName::from_text("Claude Code");
+    c.names[1] = PickerName::from_text("Photoshop");
+    Message::ProfileChoices(ProfileChoicesUpdate {
+        session: rig.nonce,
+        choices: c,
+    })
+}
+
+fn picks(rig: &mut Rig) -> Vec<(u8, u8)> {
+    rig.drain()
+        .into_iter()
+        .filter_map(|m| match m {
+            Message::ProfilePick(p) => {
+                assert_eq!(p.session, rig.nonce);
+                Some((p.pick.generation, p.pick.index))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn turning_with_the_switch_held_picks_a_profile_and_sends_one_pick_on_release() {
+    let mut rig = Rig::new();
+    rig.connect(PICKER.union(Capabilities::HELD_ROTATION_V1));
+    rig.send(&choices(&rig, 7, 0));
+    rig.run(50);
+    let before = rig.display.frame().to_vec();
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    rig.turn(Direction::Cw);
+    rig.run(100);
+    assert_ne!(
+        rig.display.frame(),
+        before.as_slice(),
+        "the picker owns the screen"
+    );
+    assert!(rig
+        .drain()
+        .iter()
+        .all(|m| !matches!(m, Message::InputEvent(_))));
+    rig.switch(false);
+    rig.run(100);
+    let sent = rig.drain();
+    assert!(
+        !sent.iter().any(|m| matches!(m, Message::InputEvent(_))),
+        "the picker is the device's own: no PressedRotary, no Press, no Hold: {sent:?}"
+    );
+    let picked: Vec<_> = sent
+        .iter()
+        .filter_map(|m| match m {
+            Message::ProfilePick(p) => Some((p.pick.generation, p.pick.index)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        picked,
+        [(7, 2)],
+        "the second pinned profile, from the list it was picked from"
+    );
+    // Ordinary rotation works again afterwards.
+    rig.turn(Direction::Cw);
+    assert!(rig
+        .inputs()
+        .contains(&(ControlId::Rotary, InputKind::Detent(Direction::Cw))));
+}
+
+#[test]
+fn the_picker_stays_on_screen_until_the_desktop_confirms_and_then_goes() {
+    let mut rig = Rig::new();
+    rig.connect(PICKER);
+    rig.send(&choices(&rig, 1, 0));
+    rig.run(50);
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    rig.switch(false);
+    rig.run(300);
+    assert_eq!(picks(&mut rig), [(1, 1)]);
+    let waiting = rig.display.frame().to_vec();
+    // The desktop now runs the pick: the confirmation shows, then the buddy returns.
+    rig.send(&choices(&rig, 1, 1));
+    rig.run(100);
+    assert_ne!(
+        rig.display.frame(),
+        waiting.as_slice(),
+        "confirmed looks different"
+    );
+    rig.run(1_200);
+    let home = rig.display.frame().to_vec();
+    // Picker gone: the legend row is back (the picker has none).
+    rig.send(&Message::ControlLabels(ControlLabelsUpdate {
+        session: rig.nonce,
+        labels: ControlLabels {
+            rotate: MediaText::from_text("Volume"),
+            press: MediaText::from_text("Play/Pause"),
+            ..ControlLabels::default()
+        },
+    }));
+    rig.run(100);
+    assert_ne!(rig.display.frame(), home.as_slice());
+    assert!(legend_drawn(rig.display.frame()));
+}
+
+#[test]
+fn an_unanswered_pick_never_claims_success_and_the_real_state_returns() {
+    let mut rig = Rig::new();
+    rig.connect(PICKER);
+    rig.send(&choices(&rig, 1, 0));
+    rig.send(&Message::ControlLabels(ControlLabelsUpdate {
+        session: rig.nonce,
+        labels: ControlLabels {
+            rotate: MediaText::from_text("Volume"),
+            press: MediaText::from_text("Play/Pause"),
+            ..ControlLabels::default()
+        },
+    }));
+    rig.run(50);
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    rig.switch(false);
+    rig.run(100);
+    assert_eq!(
+        rig.display.pixel(120, 190),
+        RING_DOT,
+        "the picker is up, waiting"
+    );
+    // No answer: after the wait and the "not confirmed" line, the home view is back.
+    assert!(!rig.run_with_heartbeat(3_000));
+    assert!(legend_drawn(rig.display.frame()), "back on the real state");
+    assert_ne!(rig.display.pixel(120, 190), RING_DOT, "the picker is gone");
+}
+
+#[test]
+fn a_pick_from_an_older_list_is_not_confirmed_by_a_newer_one() {
+    let mut rig = Rig::new();
+    rig.connect(PICKER);
+    rig.send(&choices(&rig, 1, 0));
+    rig.run(50);
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    rig.switch(false);
+    rig.run(100);
+    assert_eq!(picks(&mut rig), [(1, 1)]);
+    let waiting = rig.display.frame().to_vec();
+    // The list changed meanwhile (generation 2 says index 1 is pinned): that is not our pick.
+    rig.send(&choices(&rig, 2, 1));
+    rig.run(50);
+    // Still waiting, not confirmed (the frame may animate but must not be the confirmed look).
+    let _ = waiting;
+    assert_eq!(
+        rig.display.pixel(120, 190),
+        RING_DOT,
+        "still waiting, not green: that list is not the one picked from"
+    );
+    rig.run(1_500);
+    rig.run(1_300);
+    assert!(rig
+        .drain()
+        .iter()
+        .all(|m| !matches!(m, Message::ProfilePick(_))));
+}
+
+#[test]
+fn the_picker_is_inert_unless_negotiated_and_a_new_session_forgets_it() {
+    let mut rig = Rig::new();
+    rig.connect(BUTTONS.union(Capabilities::CONTROL_LABELS_V1));
+    rig.send(&choices(&rig, 1, 0));
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    rig.switch(false);
+    rig.run(100);
+    assert!(picks(&mut rig).is_empty());
+    // Negotiated, but the session ends while choosing: nothing is sent into the next session.
+    rig.nonce += 1;
+    rig.connect(PICKER);
+    rig.send(&choices(&rig, 1, 0));
+    rig.run(50);
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    rig.nonce += 1;
+    rig.connect(PICKER);
+    rig.switch(false);
+    rig.run(200);
+    assert!(picks(&mut rig).is_empty(), "a pick never crosses a session");
+}
+
+fn ring_pixel(rig: &Rig) -> kivori_model::Rgb565 {
+    // The centre of the ring: empty until the ring is drawn, then the growing dot.
+    rig.display.pixel(120, 84)
+}
+
+const RING_DOT: kivori_model::Rgb565 = kivori_model::Rgb565::from_rgb888(0x4f, 0xc3, 0xf7);
+
+fn knob_labels(rig: &Rig, hold: &str) -> Message {
+    Message::ControlLabels(ControlLabelsUpdate {
+        session: rig.nonce,
+        labels: ControlLabels {
+            rotate: MediaText::from_text("Volume"),
+            press: MediaText::from_text("Play/Pause"),
+            hold: MediaText::from_text(hold),
+            ..ControlLabels::default()
+        },
+    })
+}
+
+#[test]
+fn the_hold_ring_fills_towards_the_hold_and_appears_only_for_a_bound_hold() {
+    let mut rig = Rig::new();
+    rig.connect(PICKER);
+    rig.send(&knob_labels(&rig, "Mute"));
+    rig.run(50);
+    rig.switch(true);
+    rig.run(100);
+    assert_ne!(ring_pixel(&rig), RING_DOT, "a quick tap shows no ring");
+    rig.run(500);
+    assert_eq!(ring_pixel(&rig), RING_DOT, "charging");
+    rig.run(500);
+    assert_ne!(ring_pixel(&rig), RING_DOT, "full: the dot turns white");
+    let ready = rig.display.frame().to_vec();
+    // Recovery takes over at 2 s with its own screen.
+    rig.run_with_heartbeat(1_100);
+    assert_ne!(rig.display.frame(), ready.as_slice());
+    rig.switch(false);
+    rig.run(100);
+
+    // An unbound knob Hold is not teased.
+    rig.send(&knob_labels(&rig, ""));
+    rig.run(50);
+    rig.switch(true);
+    rig.run(600);
+    assert_ne!(ring_pixel(&rig), RING_DOT, "no Hold, no ring");
+    rig.switch(false);
+    rig.run(100);
+}
+
+#[test]
+fn a_contextual_buttons_ring_needs_the_desktop_to_say_it_has_a_hold() {
+    let mut rig = Rig::new();
+    rig.connect(PICKER);
+    rig.send(&knob_labels(&rig, "Mute"));
+    rig.run(50);
+    rig.key(1, true);
+    rig.run(600);
+    assert_ne!(ring_pixel(&rig), RING_DOT, "nothing known: not teased");
+    rig.key(1, false);
+    rig.run(100);
+    rig.send(&Message::HoldActions(HoldActionsUpdate {
+        session: rig.nonce,
+        actions: HoldActions {
+            buttons: [
+                MediaText::default(),
+                MediaText::from_text("Next profile"),
+                MediaText::default(),
+            ],
+        },
+    }));
+    rig.run(50);
+    rig.key(1, true);
+    rig.run(600);
+    assert_eq!(ring_pixel(&rig), RING_DOT);
+    rig.key(1, false);
+    rig.run(100);
+    // A button the desktop left empty has none.
+    rig.key(0, true);
+    rig.run(600);
+    assert_ne!(ring_pixel(&rig), RING_DOT);
+    rig.key(0, false);
+    rig.run(100);
+}
+
+#[test]
+fn a_turn_during_the_hold_hands_the_screen_from_the_ring_to_the_picker() {
+    let mut rig = Rig::new();
+    rig.connect(PICKER);
+    rig.send(&knob_labels(&rig, "Mute"));
+    rig.send(&choices(&rig, 1, 0));
+    rig.run(50);
+    rig.switch(true);
+    rig.run(500);
+    assert_eq!(ring_pixel(&rig), RING_DOT);
+    rig.turn(Direction::Cw);
+    rig.run(50);
+    assert_ne!(
+        ring_pixel(&rig),
+        RING_DOT,
+        "the ring is gone: the press is the picker's"
+    );
+    rig.switch(false);
+    rig.run(100);
+    assert_eq!(picks(&mut rig), [(1, 1)]);
 }

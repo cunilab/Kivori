@@ -71,21 +71,6 @@ describe('needsKeyEvents', () => {
     ).toBe(true);
   });
 
-  it('requests key-event permission when held rotation has shortcuts', () => {
-    expect(
-      needsKeyEvents(
-        config((c) => {
-          c.profiles[0]!.heldRotate = {
-            kind: 'shortcuts',
-            cw: 'Ctrl+Right',
-            ccw: 'Ctrl+Left',
-            label: 'Navigate',
-          };
-        }),
-      ),
-    ).toBe(true);
-  });
-
   it('ignores a built-in profile slot the user did not change', () => {
     expect(
       needsKeyEvents(

@@ -6,6 +6,19 @@ use kivori_golden_frames::{desk_frames, render_desk};
 use kivori_renderer::frame_hash;
 
 const GOLDEN: &[(&str, u64)] = &[
+    ("buddy_hold_ring_30", 0xCC43_24ED_A239_0B4F),
+    ("buddy_hold_ring_70", 0x9B30_4430_AFD2_D0E4),
+    ("buddy_hold_ring_ready", 0xF32A_5935_5E24_9764),
+    ("buddy_hold_ring_long_label", 0x631A_C2CB_A111_18D5),
+    ("picker_auto", 0xAC4E_8D65_59BE_BC8B),
+    ("picker_pin1", 0x8DC6_7E25_C819_8C33),
+    ("picker_pin2", 0x202C_6C30_B166_E37A),
+    ("picker_long_name", 0x300C_53F5_0F22_A561),
+    ("picker_pin1_waiting", 0x2FAC_4DBE_86BF_8525),
+    ("picker_pin1_confirmed", 0xCC29_1D62_6418_52CE),
+    ("picker_auto_confirmed", 0xF4F2_C7C9_AB50_ECBA),
+    ("picker_pin1_unconfirmed", 0x8FE2_B82E_0259_E080),
+    ("picker_slide_mid", 0xEEA0_EE6B_F8FA_5CFE),
     ("clock_0941_30s", 0xEE60_4E74_D8D2_2915),
     ("clock_0941_next_second", 0xE5BE_CC16_D926_BEB5),
     ("clock_unknown", 0xB1DF_015D_D00F_4075),

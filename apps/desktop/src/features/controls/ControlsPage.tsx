@@ -78,7 +78,6 @@ import {
   resetProfile,
   setBinding,
   setRotate,
-  setHeldRotate,
   testAction,
   testRotate,
 } from '@/lib/ipc';
@@ -100,6 +99,7 @@ import { controlSupported } from '@/lib/device-support';
 import type { ConnectionStatusDto } from '@/lib/ipc/types';
 import { format, strings } from '@/lib/i18n/strings';
 import { errorText } from '@/lib/utils';
+import { GnomeFocusHelp } from '../permissions/GnomeFocusHelp';
 import { AccessibilityHelp } from '../permissions/AccessibilityHelp';
 import { needsKeyEvents } from '../permissions/needs-key-events';
 import { ActionPicker, catalogId } from './ActionPicker';
@@ -118,7 +118,7 @@ interface Row {
   key: GestureKey;
   Icon: LucideIcon;
   /** What `setBinding` / `setRotate` edits; `null` = not editable. */
-  control: ControlRef | 'rotate' | 'heldRotate' | null;
+  control: ControlRef | 'rotate' | null;
   /** The bound action (`null` = unbound), or `undefined` for rows that are not bindings. */
   spec?: ActionSpec | RotateSpec | null;
   label?: string | null;
@@ -158,13 +158,8 @@ function rows(profile: ProfileConfigDto): Row[] {
       deviceLabel: rotate.deviceLabel,
       overridden: rotate.overridden,
     },
-    {
-      key: 'heldRotate',
-      Icon: RotateCw,
-      control: 'heldRotate',
-      spec: profile.heldRotate,
-      overridden: profile.heldRotateOverridden,
-    },
+    // The device's own profile picker; nothing to bind (like Double press).
+    { key: 'heldRotate', Icon: RotateCw, control: null, fixed: t.profilePickerFixed },
     slotRow('press', MousePointerClick, 'press', press),
     { key: 'doublePress', Icon: RefreshCw, control: null, fixed: t.doublePressFixed },
     slotRow('hold', Hand, 'hold', hold),
@@ -361,13 +356,9 @@ export function ControlsPage({
     }, 1000);
   };
 
-  const resetRow = (control: ControlRef | 'rotate' | 'heldRotate'): void => {
+  const resetRow = (control: ControlRef | 'rotate'): void => {
     const saved =
-      control === 'rotate'
-        ? setRotate(selected, null)
-        : control === 'heldRotate'
-          ? setHeldRotate(selected, null)
-          : setBinding(selected, control, null);
+      control === 'rotate' ? setRotate(selected, null) : setBinding(selected, control, null);
     saved.catch((error: unknown) => toast.error(t.resetFailed, { description: errorText(error) }));
   };
   const removeMacro = (target: MacroSpec): void => {
@@ -564,6 +555,8 @@ export function ControlsPage({
           {desk?.pinned ? t.pinnedHint : t.followHint}
         </p>
       </div>
+
+      <GnomeFocusHelp />
 
       {needsKeyEvents(config) ? (
         <AccessibilityHelp
@@ -819,19 +812,12 @@ export function ControlsPage({
         macros={macros}
         onClose={() => setEditing(null)}
         onSaveSlot={async (target, slot) => {
-          if (
-            target.control === 'rotate' ||
-            target.control === 'heldRotate' ||
-            target.control === 'step' ||
-            !target.profile
-          )
-            return;
+          if (target.control === 'rotate' || target.control === 'step' || !target.profile) return;
           await setBinding(target.profile.id, target.control, slot);
         }}
         onSaveRotate={async (target, rotate) => {
           if (!target.profile) return;
-          if (target.control === 'heldRotate') await setHeldRotate(target.profile.id, rotate);
-          else await setRotate(target.profile.id, rotate);
+          await setRotate(target.profile.id, rotate);
         }}
       />
 

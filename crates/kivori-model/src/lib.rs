@@ -20,6 +20,7 @@ pub mod geometry;
 pub mod input;
 pub mod internals;
 pub mod mascot;
+pub mod picker;
 pub mod presentation;
 pub mod profile;
 pub mod scene;

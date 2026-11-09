@@ -140,6 +140,29 @@ impl ButtonGesture {
         matches!(self.phase, Phase::Down { consumed: true, .. })
     }
 
+    /// How long the switch has been held at `now_ms`, while a release now would still run a Hold:
+    /// an eligible press that no held rotation owns and that recovery has not taken, so for any
+    /// press up to [`RECOVERY_START_MS`]. `None` otherwise. The hold ring draws from this; past
+    /// [`PRESS_MAX_MS`] the Hold is ready, and at [`RECOVERY_START_MS`] the ring hands over to the
+    /// recovery takeover (or, for a contextual button, vanishes: a hold that long fires nothing).
+    #[must_use]
+    pub fn held_ms(&self, now_ms: u32) -> Option<u32> {
+        let Phase::Down {
+            since_ms,
+            eligible: true,
+            recovery: false,
+            consumed: false,
+            ..
+        } = self.phase
+        else {
+            return None;
+        };
+        // A release still inside its debounce window already ended the press at its edge.
+        let until_ms = if self.raw { now_ms } else { self.raw_since_ms };
+        let held = until_ms.wrapping_sub(since_ms);
+        (held < RECOVERY_START_MS).then_some(held)
+    }
+
     /// Recovery-hold progress 0..=100 at `now_ms`, while recovery owns the gesture.
     #[must_use]
     pub fn recovery_percent(&self, now_ms: u32) -> Option<u8> {
@@ -357,6 +380,29 @@ mod tests {
             push([b.poll(up + dt), None]);
         }
         events
+    }
+
+    #[test]
+    fn held_ms_follows_an_eligible_press_until_recovery_and_not_a_consumed_one() {
+        let mut b = ButtonGesture::new();
+        assert_eq!(b.held_ms(0), None, "nothing is held");
+        b.update(true, 1_000, false);
+        b.poll(1_020);
+        assert_eq!(b.held_ms(1_020), Some(20));
+        assert_eq!(b.held_ms(1_999), Some(999));
+        assert_eq!(b.held_ms(2_999), Some(1_999), "still a Hold until recovery");
+        assert_eq!(b.held_ms(3_000), None, "recovery owns the gesture from 2 s");
+        // A press that another gesture owned at key-down shows nothing.
+        let mut other = ButtonGesture::new();
+        other.update(true, 1_000, true);
+        other.poll(1_020);
+        assert_eq!(other.held_ms(1_500), None);
+        // A held rotation consumed the press: no ring.
+        let mut turned = ButtonGesture::new();
+        turned.update(true, 1_000, false);
+        turned.poll(1_020);
+        assert_eq!(turned.claim_rotation(), Some(false));
+        assert_eq!(turned.held_ms(1_500), None);
     }
 
     #[test]

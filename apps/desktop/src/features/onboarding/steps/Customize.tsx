@@ -15,6 +15,7 @@ import type {
 } from '@/lib/ipc/types';
 import { strings } from '@/lib/i18n/strings';
 import { controlSupported, hasCapability } from '@/lib/device-support';
+import { GnomeFocusHelp } from '../../permissions/GnomeFocusHelp';
 import { StepFrame } from './frame';
 
 const t = strings.onboarding.customize;
@@ -84,6 +85,8 @@ export function Customize({
           <p className="text-sm text-muted-foreground">{t.pinBody}</p>
         ) : null}
       </div>
+
+      <GnomeFocusHelp />
 
       <div className="space-y-2">
         <div className="space-y-0.5">

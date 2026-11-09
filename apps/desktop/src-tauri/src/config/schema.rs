@@ -279,7 +279,8 @@ pub struct CustomProfile {
     /// Lowercase foreground ids (Windows executables, macOS bundle ids).
     #[serde(default)]
     pub apps: Vec<String>,
-    /// Whether the middle button's Hold cycle includes it.
+    /// Whether the profile is pinned to the device: in the knob's Hold-and-turn picker and the
+    /// middle button's Hold cycle.
     #[serde(default)]
     pub in_pin_cycle: bool,
     #[serde(default)]
@@ -292,7 +293,10 @@ pub struct CustomProfile {
 pub struct ProfileOverride {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rotate: Option<RotateSpec>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Legacy: the shortcut pair that used to be bindable on "Hold + rotate". That gesture is now
+    /// the device's fixed profile picker, so a stored pair is read (an older config still loads),
+    /// never used, and not written back: the next save drops it.
+    #[serde(default, skip_serializing)]
     pub held_rotate: Option<RotateSpec>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub press: Option<SlotSpec>,
@@ -307,9 +311,10 @@ pub struct ProfileOverride {
     /// Built-in apps the user moved out of this built-in profile to General.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub removed_apps: Vec<String>,
-    /// Starter profiles can be added to the physical pin cycle.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub in_pin_cycle: bool,
+    /// Pinned to the device, when the user decided: `None` keeps the profile's default (the core
+    /// built-in profiles are pinned, starter profiles are not).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub in_pin_cycle: Option<bool>,
 }
 
 fn buttons_untouched(buttons: &[ButtonOverride; 3]) -> bool {

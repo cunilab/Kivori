@@ -494,7 +494,8 @@ Hold = master mute. Shortcut and launch run from Device Studio's Test action pan
 - [ ] 4.3 Hold 3 s, release | the recovery screen with a filling bar appears at about 2 s; release cancels it; nothing runs
 - [ ] 4.4 Hold 10 s with Kivori Desktop running | "Restarting", the device reboots, the app shows the disconnect and reconnects by itself (gate 8)
 - [ ] 4.5 Hold 10 s with Kivori Desktop quit | the device still reboots (gate 8, invariant 24)
-- [ ] 4.6 With held-turn firmware, assign both Hold + rotate shortcuts, press before turning, then turn both ways and release | each direction runs only its assigned shortcut; no ordinary volume, Press, Hold or double-press action leaks (invariant 33)
+- [ ] 4.6 Pin two profiles, hold the knob and turn both ways, then release on each | the picker shows the name and the highlight moves; release pins that profile (Auto follows the app); "Pinned" appears only after Kivori reports it; no volume, Press, Hold or double-press action leaks (invariant 33)
+- [ ] 4.7 Hold the knob switch and a bound contextual button | a ring fills over 1 s and brightens when full; release early is a Press; an unbound Hold shows no ring; at 2 s the knob switch hands over to the recovery screen
 - [ ] 4.6a Keep a claimed hold-and-turn gesture pressed for more than 10 s | it does not reboot; release, then hold stationary for 10 s and confirm recovery still works
 - [ ] 4.6b Hold stationary until recovery starts, then turn | recovery remains in control; on firmware without held-turn support, switch-down detents remain ignored
 - [ ] 4.7 Press while the knob is still turning | no Play/Pause fires
@@ -714,7 +715,7 @@ Software rules in [product.md](./product.md); design in ADR-0011 and ADR-0012. W
 - [ ] 13.5 Zoom's own mute on, Kivori's off | Kivori says unmuted (it reports the OS mic, not Zoom's button); the Controls page explains the difference
 - [ ] 13.6 Focus an app with no profile, "Add the app in front of me" | a new profile appears with that app's icon, starting as General; the panel shows its name within about ½ s of focusing it
 - [ ] 13.7 Add `idea64.exe` (or any app) to Code, then to a custom profile | it moves, and the app says it moved; never in two profiles
-- [ ] 13.8 Mark a custom profile "In pin cycle", hold the middle button repeatedly | it appears after the built-ins; unmarked profiles do not
+- [ ] 13.8 Mark a custom profile "Pin to device", hold the middle button repeatedly | it appears after the built-ins; unmarked profiles do not
 - [ ] 13.9 Leave the app idle 5 minutes, then pause the desktop app (debugger or Task Manager suspend) | the buddy keeps blinking and glancing; no frozen frame; eyes never close fully outside Sleeping
 - [ ] 13.10 Touch each control slowly with the app idle | the buddy looks towards it before the action's own feedback
 - [ ] 13.11 Move the brightness setting from highest to lowest | the backlight follows at once; the lowest step is still clearly on (never looks like Display Sleep); the setting survives a restart

@@ -99,9 +99,19 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   first reverse detent applies immediately at 1x.
 - A `Rotate` binding owns both directions. A profile may replace the whole binding,
   never one direction.
-- With negotiated support, pressing the knob before turning selects a separate, optional
-  hold-and-rotate shortcut pair. The first completed detent consumes that press, so it does not
+- With negotiated support, pressing the knob before turning opens the device's **profile
+  picker**: Auto and the pinned profiles, the highlight following the knob, a release selecting the
+  entry. It is fixed (not bindable). The first completed detent consumes that press, so it does not
   also fire Press, Hold, or Double press. An already-started recovery hold cannot be interrupted.
+  The picker shows a pick as confirmed only when the desktop reports it now runs it; without an
+  answer it says "Not confirmed" and the real state returns. Without the picker capability the
+  older held-rotation gesture is unchanged.
+- **Hold ring:** while a switch is held, a ring fills over the 1 s Hold threshold and brightens
+  when a release would run the Hold. Only for a Hold the desktop said does something (the knob
+  switch's from its Hold label, a contextual button's from the Hold labels it sends); an unbound
+  Hold shows nothing. Releasing early is a Press and the ring vanishes. A turn turns the ring into
+  the picker; at ~2 s the knob switch's ring hands over to the recovery takeover, and a contextual
+  button's ring vanishes (such a hold fires nothing).
 - Short press fires only if released within **1 s**. Discrete mappings fire once per
   press; no implicit key-repeat.
 - Contextual buttons give Press and Hold with the same timings, never recovery: held past ~2 s they
@@ -143,7 +153,7 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   At most 16 custom profiles; a name longer than the panel's profile slot is shortened there,
   never replaced. Deleting a profile sends its apps back to General.
 - Holding the middle contextual button pins the next profile (Auto, then General and the built-in
-  profiles, then custom profiles marked "In pin cycle", then back to Auto); a pin ignores focus but
+  profiles, then custom profiles marked "Pin to device", then back to Auto); a pin ignores focus but
   never Protected.
 - In a protected context, shortcuts and launches are suspended: their labels disappear and a
   press says it can't run. System volume, media keys and mute keep working.

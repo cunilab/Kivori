@@ -1640,13 +1640,12 @@ pub struct ProfileConfigDto {
     pub name: String,
     /// The user's own profile (renamable, deletable); built-ins are not.
     pub custom: bool,
-    /// Whether the middle button's Hold cycle visits it.
+    /// Pinned to the device: offered by the knob's Hold-and-turn profile picker and visited by the
+    /// middle button's Hold cycle.
     pub in_pin_cycle: bool,
     /// The foreground app ids that select this profile (empty for General).
     pub apps: Vec<String>,
     pub rotate: RotateDto,
-    pub held_rotate: Option<crate::config::RotateSpec>,
-    pub held_rotate_overridden: bool,
     pub press: SlotDto,
     pub hold: SlotDto,
     pub buttons: [ButtonDto; 3],
@@ -1841,11 +1840,6 @@ fn profile_dtos(store: &crate::config::ConfigStore) -> Vec<ProfileConfigDto> {
                     device_label: profile.rotate.label().to_string(),
                     overridden: over.rotate.is_some(),
                 },
-                held_rotate: profile
-                    .held_rotate
-                    .as_ref()
-                    .map(crate::config::resolve::rotate_spec),
-                held_rotate_overridden: over.held_rotate.is_some(),
                 press: slot_dto(&b.press, over.press.is_some()),
                 hold: slot_dto(&b.hold, over.hold.is_some()),
                 buttons: [button(0), button(1), button(2)],
@@ -1872,7 +1866,7 @@ pub const fn availability_token(
 }
 
 /// Every capability flag with the name the diagnostics page lists it by, in bit order.
-const CAPABILITY_TABLE: [(Capabilities, &str); 18] = [
+const CAPABILITY_TABLE: [(Capabilities, &str); 20] = [
     (Capabilities::MASCOT_INTERACTION, "mascotInteraction"),
     (Capabilities::PHYSICAL_INPUT_V1, "physicalInputV1"),
     (Capabilities::PRESENTATION_V1, "presentationV1"),
@@ -1891,6 +1885,8 @@ const CAPABILITY_TABLE: [(Capabilities, &str); 18] = [
     (Capabilities::PRODUCT_IDENTITY_V1, "productIdentityV1"),
     (Capabilities::BUILD_INFO_V1, "buildInfoV1"),
     (Capabilities::HELD_ROTATION_V1, "heldRotationV1"),
+    (Capabilities::PROFILE_PICKER_V1, "profilePickerV1"),
+    (Capabilities::HOLD_RING_V1, "holdRingV1"),
 ];
 
 /// The capability names the diagnostics page lists, in bit order.
@@ -2279,6 +2275,7 @@ pub fn vocabulary_json() -> serde_json::Value {
             "customProfiles": crate::config::MAX_CUSTOM_PROFILES,
             "apps": crate::config::MAX_PROFILE_APPS,
             "nameMax": crate::config::PROFILE_NAME_MAX,
+            "pinned": kivori_model::picker::PICKER_PINNED_MAX,
         },
         "controls": crate::config::resolve::CONTROL_TOKENS,
         "actionSpecKinds": crate::config::resolve::ACTION_SPEC_KINDS,

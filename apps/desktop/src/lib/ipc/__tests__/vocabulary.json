@@ -29,7 +29,9 @@
     "micStateV1",
     "productIdentityV1",
     "buildInfoV1",
-    "heldRotationV1"
+    "heldRotationV1",
+    "profilePickerV1",
+    "holdRingV1"
   ],
   "chipModels": ["esp32c3", "rp2040"],
   "controlLayouts": ["rotary-three-button"],
@@ -94,7 +96,8 @@
   "profileLimits": {
     "apps": 32,
     "customProfiles": 16,
-    "nameMax": 32
+    "nameMax": 32,
+    "pinned": 10
   },
   "resetReasons": ["powerOn", "software", "watchdog", "brownout", "deepSleep", "other"],
   "rotateSpecKinds": ["systemVolume", "shortcuts", "appVolume"],

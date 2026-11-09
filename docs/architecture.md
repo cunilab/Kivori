@@ -152,7 +152,7 @@ One packet is `COBS(frame) || 0x00`. COBS makes the stream self-synchronizing, s
 | `payload` | bytes | postcard-encoded `Message` |
 | `crc32` | u32 | CRC-32/IEEE over header and payload |
 
-Constants: `PROTOCOL_MAJOR` 0, `PROTOCOL_MINOR` 3 (0.2 added `BuildInfo`, see Firmware build id). The numbers restarted at 0.1 before the first release (ADR-0014); boards flashed earlier speak 1.x and are `Incompatible` until reflashed. COBS and CRC are implemented in-crate.
+Constants: `PROTOCOL_MAJOR` 0, `PROTOCOL_MINOR` 4 (0.2 added `BuildInfo`, see Firmware build id; 0.4 added the profile picker and hold ring below). The numbers restarted at 0.1 before the first release (ADR-0014); boards flashed earlier speak 1.x and are `Incompatible` until reflashed. COBS and CRC are implemented in-crate.
 
 Every decode failure is a typed `ProtoError` (`BufferOverflow, Cobs, TooShort, BadMagic, UnsupportedVersion, PayloadTooLarge, LengthMismatch, BadCrc, Postcard`). The decoder never panics, always makes forward progress, and never dispatches a frame that failed CRC.
 
@@ -721,3 +721,13 @@ automated evidence. The review stack is not a shipping release; hardware accepta
 10. Build the smallest complete vertical path. Extract a crate or service only when isolation, reuse, security or runtime ownership needs it.
 11. Record hard-to-reverse decisions as a new entry in [Decisions](#7-decisions): what, why, and what was rejected.
 12. Evidence beats earlier recommendations. If measurements or tests show a better approach, change the code and fix the docs.
+
+## Profile picker and hold ring (`PROFILE_PICKER_V1`, `HOLD_RING_V1`)
+
+Protocol minor 4, three appended messages, each gated by its capability so an older peer never sees an unknown tag (`crates/kivori-protocol/tests/profile_picker.rs` freezes the 0.3 enum as an old decoder):
+
+- Tag 25 `ProfileChoices { session, choices }` (desktop to device, `PROFILE_PICKER_V1`): `generation`, `count`, `selected` (0 is Auto, `n` the n-th name) and up to 10 names of at most 20 characters, sized so `Message` does not grow. Sent once per session and on any change of the list or the pin, and always in answer to a pick.
+- Tag 26 `ProfilePick { session, pick: { generation, index } }` (device to desktop): sent once on releasing the knob switch after a held turn. The desktop applies it only when the generation is the list it last sent (a stale pick pins nothing), pins the profile or returns to Auto, and answers with `ProfileChoices`. The device shows a pick as confirmed only when that answer has the same generation and `selected == index`; a timeout (1.5 s) shows "Not confirmed" and the real state returns. `HELD_ROTATION_V1` is no longer advertised by the desktop; a device that negotiated both uses the picker and sends no `PressedRotary`. Membership is the existing pin cycle (`inPinCycle`: core profiles pinned by default, starters and custom profiles opt in), so the middle button's Hold cycles the same list.
+- Tag 27 `HoldActions { session, actions }` (desktop to device, `HOLD_RING_V1`): the three contextual buttons' Hold labels (empty = no Hold). The knob switch's Hold label already travels in `ControlLabels::hold`. Without the capability the device draws the ring for the knob switch only (when its Hold label is set) and never teases a contextual button.
+
+The picker and the ring are device-local render state (`PickerView`, `HoldRing` in `kivori-model`, drawn by `kivori_renderer::desk::render_picker` and the chrome), `ButtonGesture::held_ms` feeds the ring. Config: a stored `heldRotate` (the old bindable pair) still loads, is ignored and is not written back (`skip_serializing`), so no config version bump and older apps still read the file.

@@ -8,6 +8,7 @@
 use std::time::Duration;
 
 use kivori_model::desk::{ContextMood, ControlLabels, MediaText};
+use kivori_model::picker::{HoldActions, PICKER_PINNED_MAX};
 
 use super::actions::{Action, Bindings, ButtonSlots, Slot};
 use crate::config::{ProfileId, ProfileRef};
@@ -53,12 +54,11 @@ pub struct Profile {
     /// Lowercase foreground ids, Windows executables and macOS bundle ids in one list. Config
     /// resolution keeps an id in one profile only.
     pub ids: Vec<String>,
-    /// Whether the middle button's Hold cycle visits it.
+    /// Pinned to the device: the knob's Hold-and-turn picker offers it and the middle button's
+    /// Hold cycle visits it.
     pub in_pin_cycle: bool,
     pub mood: ContextMood,
     pub rotate: RotateBinding,
-    /// Shortcut pair for turning while the knob is pressed; unbound by default.
-    pub held_rotate: Option<RotateBinding>,
     pub bindings: Bindings,
 }
 
@@ -66,9 +66,7 @@ impl Profile {
     /// Whether this profile makes Kivori press keys (a shortcut on a button or on the knob).
     #[must_use]
     pub fn needs_key_events(&self) -> bool {
-        matches!(self.rotate, RotateBinding::Shortcuts { .. })
-            || self.held_rotate.is_some()
-            || self.bindings.needs_key_events()
+        matches!(self.rotate, RotateBinding::Shortcuts { .. }) || self.bindings.needs_key_events()
     }
 }
 
@@ -103,7 +101,6 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
         in_pin_cycle: true,
         mood: ContextMood::Neutral,
         rotate: RotateBinding::Volume,
-        held_rotate: None,
         bindings: Bindings::default(),
     };
     vec![
@@ -214,7 +211,16 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
         Profile {
             id: ProfileRef::Builtin(ProfileId::Teams),
             name: "Teams".into(),
-            ids: ids(&["ms-teams.exe", "teams.exe", "com.microsoft.teams2"]),
+            ids: ids(&[
+                "ms-teams.exe",
+                "teams.exe",
+                "com.microsoft.teams2",
+                // Linux: the lowercase executable file name (`platform::linux::foreground`).
+                "teams",
+                "teams-for-linux",
+                "ms-teams",
+                "com.microsoft.teams",
+            ]),
             mood: ContextMood::Meeting,
             bindings: with_buttons([
                 mic_mute,
@@ -469,10 +475,81 @@ impl Context {
         };
     }
 
-    /// Auto -> profiles marked "In pin cycle", in list order -> Auto.
+    /// What the device's picker offers after Auto, as indexes into the profiles: the pinned
+    /// profiles in list order (at most [`PICKER_PINNED_MAX`]), then the profile pinned from the
+    /// desktop when it is not one of them, so the picker always shows what is in force.
+    #[must_use]
+    pub fn picker_list(&self) -> Vec<usize> {
+        let mut list: Vec<usize> = (0..self.profiles.len())
+            .filter(|&i| self.profiles[i].in_pin_cycle)
+            .take(PICKER_PINNED_MAX)
+            .collect();
+        if let Some(pinned) = self.pinned.filter(|p| !list.contains(p)) {
+            if list.len() == PICKER_PINNED_MAX {
+                list.pop();
+            }
+            list.push(pinned);
+        }
+        list
+    }
+
+    /// Auto -> the pinned profiles ([`Self::picker_list`]) in order -> Auto.
     pub fn cycle_pin(&mut self) {
-        let from = self.pinned.map_or(0, |i| i + 1);
-        self.pinned = (from..self.profiles.len()).find(|&i| self.profiles[i].in_pin_cycle);
+        let list = self.picker_list();
+        let next = match self.pinned {
+            None => 0,
+            Some(p) => list
+                .iter()
+                .position(|&i| i == p)
+                .map_or(list.len(), |k| k + 1),
+        };
+        self.pinned = list.get(next).copied();
+    }
+
+    /// The picker's entries by identity (what the device was last offered) and which one is in
+    /// force: 0 is Auto, `n` the `n`-th profile.
+    #[must_use]
+    pub fn picker_entries(&self) -> (Vec<ProfileRef>, u8) {
+        let list = self.picker_list();
+        let selected = self
+            .pinned
+            .and_then(|p| list.iter().position(|&i| i == p))
+            .map_or(0, |k| k as u8 + 1);
+        let ids = list
+            .into_iter()
+            .map(|i| self.profiles[i].id.clone())
+            .collect();
+        (ids, selected)
+    }
+
+    /// The display name of the profile `id`, if it still exists.
+    #[must_use]
+    pub fn name_of(&self, id: &ProfileRef) -> Option<&str> {
+        self.profiles
+            .iter()
+            .find(|p| p.id == *id)
+            .map(|p| p.name.as_str())
+    }
+
+    /// The Hold labels of the three contextual buttons, for the device's hold ring: the middle
+    /// button's Hold is always the pin cycle; the others show the bound Hold in the profile's
+    /// words, and nothing when it is unbound or suspended (a protected context).
+    #[must_use]
+    pub fn hold_actions(&self) -> HoldActions {
+        let protected = self.protected();
+        let bindings = &self.profile().bindings;
+        HoldActions {
+            buttons: std::array::from_fn(|i| {
+                if i == usize::from(PIN_BUTTON) {
+                    return MediaText::from_text("Next profile");
+                }
+                match &bindings.buttons[i].hold.action {
+                    None => MediaText::default(),
+                    Some(action) if protected && !action.is_system() => MediaText::default(),
+                    Some(_) => MediaText::from_text(&bindings.buttons[i].hold.device_label()),
+                }
+            }),
+        }
     }
 
     /// Pin a profile by identity, or return to automatic matching.
@@ -758,6 +835,10 @@ mod tests {
                 ("ms-teams.exe", "Teams"),
                 ("teams.exe", "Teams"),
                 ("com.microsoft.teams2", "Teams"),
+                ("teams", "Teams"),
+                ("teams-for-linux", "Teams"),
+                ("ms-teams", "Teams"),
+                ("com.microsoft.teams", "Teams"),
                 ("notepad.exe", "General"),
                 ("", "General"),
             ];

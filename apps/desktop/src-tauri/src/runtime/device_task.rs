@@ -792,7 +792,13 @@ fn device_loop(
         // firmware flash owns the serial session: queued input is discarded unexecuted.
         let mut presentations = Vec::new();
         let inputs = session.take_input_events();
+        let picks = session.take_profile_picks();
         if !flash.is_busy() {
+            // The device's own profile picker: its pick pins a profile (or Auto), and the desk
+            // answers with what is now in force. Dropped while a flash owns the session.
+            for pick in picks {
+                desk.on_profile_pick(pick);
+            }
             let now = started.elapsed();
             let freshness = Freshness {
                 clock: session.device_clock(),
@@ -878,6 +884,12 @@ fn device_loop(
                 }
                 if let Some(mic) = desk_out.mic {
                     write_failed |= session.send_mic_state(open_link, mic).is_err();
+                }
+                if let Some(choices) = desk_out.picker {
+                    write_failed |= session.send_profile_choices(open_link, choices).is_err();
+                }
+                if let Some(holds) = desk_out.holds {
+                    write_failed |= session.send_hold_actions(open_link, holds).is_err();
                 }
                 if write_failed {
                     recover_link(

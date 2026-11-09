@@ -10,6 +10,8 @@
 mod apps;
 mod audio;
 mod foreground;
+pub mod gnome;
+mod gnome_focus;
 pub mod host_events;
 mod keys;
 mod media;

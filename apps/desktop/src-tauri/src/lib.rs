@@ -165,6 +165,9 @@ pub fn run() {
 
     #[cfg(feature = "device-studio")]
     let builder = builder.invoke_handler(tauri::generate_handler![
+        ipc::gnome::get_gnome_focus_status,
+        ipc::gnome::enable_gnome_focus,
+        ipc::gnome::logout_gnome,
         ipc::commands::get_app_info,
         ipc::commands::app_ready,
         ipc::commands::get_connection_status,
@@ -186,7 +189,6 @@ pub fn run() {
         ipc::commands::set_buddy_settings,
         ipc::commands::set_binding,
         ipc::commands::set_rotate,
-        ipc::commands::set_held_rotate,
         ipc::commands::reset_profile,
         ipc::commands::add_custom_profile,
         ipc::commands::assign_app,
@@ -232,6 +234,9 @@ pub fn run() {
     ]);
     #[cfg(not(feature = "device-studio"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
+        ipc::gnome::get_gnome_focus_status,
+        ipc::gnome::enable_gnome_focus,
+        ipc::gnome::logout_gnome,
         ipc::commands::get_app_info,
         ipc::commands::app_ready,
         ipc::commands::get_connection_status,
@@ -253,7 +258,6 @@ pub fn run() {
         ipc::commands::set_buddy_settings,
         ipc::commands::set_binding,
         ipc::commands::set_rotate,
-        ipc::commands::set_held_rotate,
         ipc::commands::reset_profile,
         ipc::commands::add_custom_profile,
         ipc::commands::assign_app,

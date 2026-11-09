@@ -231,6 +231,8 @@ export const CAPABILITY_NAMES = [
   'productIdentityV1',
   'buildInfoV1',
   'heldRotationV1',
+  'profilePickerV1',
+  'holdRingV1',
 ] as const;
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
 
@@ -502,7 +504,7 @@ export type ProfileId = BuiltinProfileId | `custom-${number}`;
 /** A custom profile's id: `custom-` and 1 to 4 digits. */
 export const CUSTOM_PROFILE_ID = /^custom-\d{1,4}$/;
 /** The native limits, checked again there. */
-export const PROFILE_LIMITS = { customProfiles: 16, apps: 32, nameMax: 32 } as const;
+export const PROFILE_LIMITS = { customProfiles: 16, apps: 32, nameMax: 32, pinned: 10 } as const;
 
 /** Controls `setBinding` targets. The middle button's Hold is reserved for the profile pin. */
 export const CONTROL_REFS = [
@@ -584,14 +586,12 @@ export interface ProfileConfigDto {
   name: string;
   /** The user's own profile: it can be renamed and deleted. Built-ins cannot. */
   custom: boolean;
-  /** The middle button's Hold cycle visits it. */
+  /** Pinned to the device: the knob's Hold-and-turn picker offers it and the middle button's Hold
+   *  cycle visits it. */
   inPinCycle: boolean;
   /** Foreground app ids that select this profile (empty for General). */
   apps: string[];
   rotate: { spec: RotateSpec; deviceLabel: string; overridden: boolean };
-  /** Optional shortcuts sent when the knob is held while turning. */
-  heldRotate: RotateSpec | null;
-  heldRotateOverridden: boolean;
   press: SlotDto;
   hold: SlotDto;
   /** A button's Hold is `'pin'` for the middle one (reserved for profile pin). */

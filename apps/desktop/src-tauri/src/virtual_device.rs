@@ -821,6 +821,9 @@ impl Sandbox {
             return Err(invalid("virtual heartbeat timeout"));
         }
         let inputs = self.session.take_input_events();
+        for pick in self.session.take_profile_picks() {
+            self.desk.on_profile_pick(pick);
+        }
         self.snapshot.detents += inputs
             .iter()
             .filter(|event| matches!(event.kind, kivori_protocol::InputKind::Detent(_)))
@@ -870,6 +873,16 @@ impl Sandbox {
             self.session
                 .send_mic_state(link, mic)
                 .map_err(|_| invalid("virtual mic state failed"))?;
+        }
+        if let Some(choices) = output.picker {
+            self.session
+                .send_profile_choices(link, choices)
+                .map_err(|_| invalid("virtual profile choices failed"))?;
+        }
+        if let Some(holds) = output.holds {
+            self.session
+                .send_hold_actions(link, holds)
+                .map_err(|_| invalid("virtual hold actions failed"))?;
         }
         if let Some(media) = output.media_info {
             self.session

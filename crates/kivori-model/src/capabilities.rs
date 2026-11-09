@@ -34,6 +34,8 @@ impl Capabilities {
     //   bit 15 PRODUCT_IDENTITY_V1 `Identity`: the device reports its product, board, hardware revision and where they came from
     //   bit 16 BUILD_INFO_V1       `BuildInfo`: the device reports its firmware source id and whether the tree had uncommitted changes
     //   bit 17 HELD_ROTATION_V1   rotary detents while its push switch is held
+    //   bit 18 PROFILE_PICKER_V1  hold the knob switch and turn: the device's own pinned-profile picker (`ProfileChoicesUpdate` / `ProfilePick`)
+    //   bit 19 HOLD_RING_V1       `HoldActionsUpdate`: which contextual buttons have a Hold, so the device draws the hold-progress ring only for those
 
     /// Bit 0 — device accepts deterministic social mascot actions and returns applied-time
     /// acknowledgments.
@@ -101,6 +103,16 @@ impl Capabilities {
 
     /// Bit 17 — the device emits rotary gestures made while its switch is held.
     pub const HELD_ROTATION_V1: Capabilities = Capabilities(1 << 17);
+
+    /// Bit 18 — the device runs the pinned-profile picker itself: with the knob switch held, turning
+    /// the knob steps through Auto and the pinned profiles from `ProfileChoicesUpdate`, and
+    /// releasing sends one `ProfilePick`. Replaces `HELD_ROTATION_V1` on the same gesture: a device
+    /// that negotiated both uses the picker and sends no `PressedRotary` events.
+    pub const PROFILE_PICKER_V1: Capabilities = Capabilities(1 << 18);
+
+    /// Bit 19 — the device accepts `HoldActionsUpdate` (which contextual buttons have a Hold, and
+    /// what it does) and draws the hold-progress ring only for controls whose Hold does something.
+    pub const HOLD_RING_V1: Capabilities = Capabilities(1 << 19);
 
     /// Creates a capability set from a raw bitmask.
     #[must_use]

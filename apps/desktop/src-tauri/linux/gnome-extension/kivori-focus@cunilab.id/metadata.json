@@ -1,0 +1,8 @@
+{
+  "uuid": "kivori-focus@cunilab.id",
+  "name": "Kivori App Profiles",
+  "description": "Shares only the focused app identity with Kivori over local session D-Bus. No window titles, contents or network access.",
+  "shell-version": ["46", "47", "48", "49", "50"],
+  "session-modes": ["user", "unlock-dialog"],
+  "version-name": "1.0"
+}

@@ -19,7 +19,8 @@ use kivori_model::desk::{DeskView, DisplayMode};
 use kivori_model::presentation::ValueDisplay;
 use kivori_model::{CompanionState, ElapsedMs, MascotPose, Rect, Rgb565};
 use kivori_renderer::desk::{
-    render_chrome, render_recovery, render_updating, render_view, render_views, render_wrong_board,
+    render_chrome, render_picker, render_recovery, render_updating, render_view, render_views,
+    render_wrong_board,
 };
 use kivori_renderer::render_scene;
 
@@ -433,6 +434,10 @@ impl<'a> TileRenderer<'a> {
             } else if view.updating {
                 // Then the update takeover: the host is flashing this device.
                 render_updating(&mut band);
+            } else if view.picker.is_some() {
+                // The profile picker: the knob switch held and turned. Its own full screen, no
+                // chrome (the clock and the press border would only crowd it).
+                render_picker(&mut band, view);
             } else {
                 let mode = view.status.mode;
                 if overlay.is_some() && mode != DisplayMode::Volume {

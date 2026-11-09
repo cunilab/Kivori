@@ -31,6 +31,6 @@ export function needsKeyEvents(config: ConfigDto | null): boolean {
     );
     const knob =
       (profile.custom || profile.rotate.overridden) && profile.rotate.spec.kind === 'shortcuts';
-    return bound || knob || profile.heldRotate?.kind === 'shortcuts';
+    return bound || knob;
   });
 }

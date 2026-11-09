@@ -1,10 +1,8 @@
 //! Linux focused app, on X11: the root window's `_NET_ACTIVE_WINDOW`, that window's `_NET_WM_PID`,
 //! and the executable behind it. The decision itself is `platform::foreground::classify_linux`.
 //!
-//! WAYLAND: there is no protocol for a client to ask which window has focus (that is the point of
-//! Wayland), and XWayland's `_NET_ACTIVE_WINDOW` only follows X11 clients, so it would show the
-//! last XWayland app while a native one has focus. That is a wrong answer, not an unknown one, so
-//! on a Wayland session the foreground is always `Unknown` and only the General profile applies.
+//! WAYLAND: the optional Kivori GNOME Shell extension reports title-free app identity over
+//! local D-Bus. Without it the answer stays Unknown; XWayland is never used as a substitute.
 //!
 //! The X work is done by the background worker in `x11` (one connection, a cache with a freshness
 //! limit), never on the caller: `foreground()` is called from the device thread and the action
@@ -23,6 +21,7 @@ use crate::platform::{Foreground, ForegroundObserver};
 pub struct LinuxForeground {
     /// The X worker's cache; `None` outside an X11 session (nothing to ask).
     watch: Option<Arc<X11Watch>>,
+    gnome: Option<Arc<super::gnome_focus::GnomeFocus>>,
 }
 
 impl LinuxForeground {
@@ -34,12 +33,16 @@ impl LinuxForeground {
     fn for_session(session: SessionKind) -> Self {
         Self {
             watch: (session == SessionKind::X11).then(X11Watch::shared),
+            gnome: (session == SessionKind::Wayland).then(super::gnome_focus::GnomeFocus::shared),
         }
     }
 
     #[cfg(test)]
     fn with_watch(watch: Arc<X11Watch>) -> Self {
-        Self { watch: Some(watch) }
+        Self {
+            watch: Some(watch),
+            gnome: None,
+        }
     }
 }
 
@@ -51,6 +54,12 @@ impl Default for LinuxForeground {
 
 impl ForegroundObserver for LinuxForeground {
     fn foreground(&self) -> Foreground {
+        if self.gnome.is_some() && screen_locked() {
+            return Foreground::Protected;
+        }
+        if let Some(gnome) = &self.gnome {
+            return gnome.foreground();
+        }
         let Some(watch) = &self.watch else {
             return Foreground::Unknown;
         };
@@ -89,7 +98,10 @@ mod tests {
     fn wayland_and_headless_sessions_never_guess_a_focus() {
         for session in [SessionKind::Wayland, SessionKind::Headless] {
             let observer = LinuxForeground::for_session(session);
-            assert_eq!(observer.foreground(), Foreground::Unknown, "{session:?}");
+            // No assertion about the live session: an installed bridge may already answer.
+            if session == SessionKind::Headless {
+                assert_eq!(observer.foreground(), Foreground::Unknown);
+            }
             assert!(observer.watch.is_none(), "no X worker is started");
         }
     }

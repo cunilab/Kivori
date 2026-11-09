@@ -91,7 +91,7 @@ on Finish; Skip setup leaves it unchanged.
 | Saved buddy settings | Always editable; used by device idle life (`idleLifeV1`) or desktop reactions (`mascotInteraction`). |
 | Rotary inputs | `physicalInputV1`. |
 | Push-switch press and hold | `physicalInputV1` and `buttonInputV1`. |
-| Hold + rotate | `physicalInputV1`, `buttonInputV1`, and the optional `heldRotationV1`. |
+| Hold + rotate (profile picker) | `profilePickerV1`; the desktop no longer offers `heldRotationV1`. |
 | Push-switch double press | Physical input, push-switch and `doublePressV1`. |
 | Context buttons | `physicalInputV1` and `contextButtonsV1`. |
 | Device Studio reaction preview | Host renderer always; request device playback only with `mascotInteraction`. |
@@ -179,7 +179,7 @@ the window regains focus, so anything showing disappears once it is granted).
 | Microphone mute, app mute | No | CoreAudio / session controls |
 | Launch an app | No | Opens the app through the OS |
 | Keyboard shortcut (a button or the knob in a shortcut profile) | Yes | A synthesized key event is the only way to type into another app |
-| Hold + rotate shortcut pair | Yes | One shortcut per direction while the knob is held; requires `heldRotationV1`, physical input, and push-switch support |
+| Hold + rotate profile picker | Fixed | Pick Auto or a pinned profile on the device; requires `profilePickerV1`. Replaces the bindable shortcut pair |
 | Macro | Only if a step is a keyboard shortcut | Same |
 
 The default bindings (push switch: play/pause and mute; buttons: previous, play/pause, next; knob:
@@ -197,7 +197,7 @@ active profile presses no keys. Windows has no such permission and is unchanged.
 | Microphone mute | All devices, read-back | All devices, subject to writable mute support | All capture devices, read-back |
 | Media keys / now playing | Native media | Bundled media adapter | MPRIS over session D-Bus, X11 and Wayland |
 | Keyboard shortcuts | Native input | Accessibility required | X11 only; unavailable on Wayland |
-| Automatic app profiles | Foreground app | Foreground app | X11 only; General / pinned profiles on GNOME Wayland |
+| Automatic app profiles | Foreground app | Foreground app | X11 foreground app; GNOME Wayland works with the Kivori GNOME extension (46–50) |
 | CPU / RAM | Native | Native | `/proc` |
 | Sleep / wake / lock | Native | Native | systemd-logind D-Bus |
 | App launch / login startup | Native / Run entry | Native | XDG desktop entries / autostart |
@@ -205,4 +205,4 @@ active profile presses no keys. Windows has no such permission and is unchanged.
 | App updater | Signed NSIS | Manual DMG replacement | Signed AppImage only; `.deb` updates unsupported in app (install a newer package from the website or a package manager if available) |
 
 Linux implementation and host tests do not close physical acceptance. See [linux.md](./linux.md)
-for setup, XWayland limits, USB rules and pending hands-on checks.
+for setup, the GNOME Wayland focus extension, XWayland limits, USB rules and pending hands-on checks.

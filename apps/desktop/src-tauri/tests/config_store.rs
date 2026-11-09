@@ -10,13 +10,15 @@ use kivori_desktop::config::{
 };
 
 #[test]
-fn held_rotation_migrates_v1_and_round_trips_without_losing_bindings() {
-    use kivori_desktop::config::{ProfileRef, RotateSpec};
+fn v1_migrates_and_a_stored_hold_rotate_pair_is_read_ignored_and_dropped_on_the_next_save() {
+    use kivori_desktop::config::ProfileRef;
     let dir = tempfile::tempdir().unwrap();
     let mut original = serde_json::to_value(ConfigFile::default()).unwrap();
     original["version"] = 1.into();
+    // "Hold + rotate" used to bind a shortcut pair; it is the device's profile picker now.
     original["profiles"]["general"] = serde_json::json!({
-        "press": {"action": {"kind": "shortcut", "keys": "Ctrl+A"}}
+        "press": {"action": {"kind": "shortcut", "keys": "Ctrl+A"}},
+        "heldRotate": {"kind": "shortcuts", "cw": "Ctrl+Right", "ccw": "Ctrl+Left", "label": "Seek"}
     });
     original["macros"] = serde_json::json!([{
         "id": "macro-1", "name": "Legacy", "steps": [{"kind": "action", "action": {"kind": "playPause"}}]
@@ -36,55 +38,12 @@ fn held_rotation_migrates_v1_and_round_trips_without_losing_bindings() {
     assert_eq!(store.file().macros[0].id, "macro-1");
     assert!(store.file().custom_profiles[0].bindings.press.is_some());
     let general = ProfileRef::Builtin(ProfileId::General);
-    let pair = RotateSpec::Shortcuts {
-        cw: "Ctrl+Right".into(),
-        ccw: "Ctrl+Left".into(),
-        label: "Seek".into(),
-    };
-    store.set_held_rotate(&general, Some(pair.clone())).unwrap();
-    assert!(store
-        .set_held_rotate(&general, Some(RotateSpec::SystemVolume))
-        .is_err());
-    assert_eq!(
-        ConfigStore::open(dir.path()).file().profiles[&ProfileId::General].held_rotate,
-        Some(pair)
-    );
     store.add_custom_profile("notepad.exe", "Notes").unwrap();
-    let custom = ProfileRef::Custom(store.file().custom_profiles[1].id.clone());
-    assert!(store.file().custom_profiles[1]
-        .bindings
-        .held_rotate
-        .is_none());
-    store
-        .set_held_rotate(
-            &custom,
-            Some(RotateSpec::Shortcuts {
-                cw: "Ctrl+A".into(),
-                ccw: "Ctrl+B".into(),
-                label: "Tabs".into(),
-            }),
-        )
-        .unwrap();
-    store.reset_profile(&custom).unwrap();
-    assert!(store.file().custom_profiles[1]
-        .bindings
-        .held_rotate
-        .is_none());
-    store
-        .set_held_rotate(
-            &custom,
-            Some(RotateSpec::Shortcuts {
-                cw: "Ctrl+A".into(),
-                ccw: "Ctrl+B".into(),
-                label: "Tabs".into(),
-            }),
-        )
-        .unwrap();
-    store.set_held_rotate(&custom, None).unwrap();
-    assert!(store.file().custom_profiles[1]
-        .bindings
-        .held_rotate
-        .is_none());
+    let saved = fs::read_to_string(dir.path().join("config.json")).unwrap();
+    assert!(
+        !saved.contains("heldRotate"),
+        "the next save drops the legacy pair"
+    );
     store.reset_profile(&general).unwrap();
     assert!(!store.file().profiles.contains_key(&ProfileId::General));
 }

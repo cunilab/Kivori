@@ -35,6 +35,9 @@ use kivori_model::desk::{
 use kivori_model::presentation::{ValueConfidence, ValueDisplay};
 use kivori_model::Rgb565;
 
+mod picker;
+pub use picker::render_picker;
+
 const fn rgb(r: u8, g: u8, b: u8) -> Rgb565 {
     Rgb565::from_rgb888(r, g, b)
 }
@@ -1415,6 +1418,11 @@ pub fn render_chrome(band: &mut TileBand, view: &DeskView) {
 
     if let Some(fb) = view.feedback.filter(|f| f.kind != FeedbackKind::Triggered) {
         badge(band, fb.kind, view.elapsed_ms);
+    }
+
+    // A switch held towards a Hold that does something: the progress ring.
+    if let Some(hold) = &view.hold {
+        picker::hold_ring(band, hold, view.elapsed_ms);
     }
 
     if view.button_down {

@@ -397,12 +397,6 @@ fn apply(
     if let Some(spec) = &over.rotate {
         profile.rotate = rotate(spec)?;
     }
-    if let Some(spec) = &over.held_rotate {
-        if !matches!(spec, RotateSpec::Shortcuts { .. }) {
-            return Err("hold and rotate requires keyboard shortcuts");
-        }
-        profile.held_rotate = Some(rotate(spec)?);
-    }
     let bindings = &mut profile.bindings;
     if let Some(spec) = &over.press {
         bindings.press = slot(spec, macros)?;
@@ -465,8 +459,8 @@ pub fn resolve(
             continue;
         };
         apply(profile, over, &macros).map_err(ConfigError::Invalid)?;
-        if id.is_starter() {
-            profile.in_pin_cycle = over.in_pin_cycle;
+        if let Some(pinned) = over.in_pin_cycle {
+            profile.in_pin_cycle = pinned;
         }
         let added = app_list(&over.added_apps).map_err(ConfigError::Invalid)?;
         let removed = app_list(&over.removed_apps).map_err(ConfigError::Invalid)?;
@@ -541,7 +535,6 @@ pub fn full_override(profile: &Profile) -> ProfileOverride {
     let bindings = &profile.bindings;
     ProfileOverride {
         rotate: Some(rotate_spec(&profile.rotate)),
-        held_rotate: None,
         press: Some(spec(&bindings.press)),
         hold: Some(spec(&bindings.hold)),
         buttons: std::array::from_fn(|i| ButtonOverride {

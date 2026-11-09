@@ -494,23 +494,6 @@ pub fn set_rotate(
     })
 }
 
-/// Sets or clears the shortcut pair for turning while holding the knob.
-///
-/// # Errors
-/// Returns an error for an unknown profile, invalid shortcuts, or failed save.
-#[tauri::command]
-pub fn set_held_rotate(
-    handle: AppHandle,
-    app: State<'_, AppState>,
-    profile: String,
-    rotate: Option<crate::config::RotateSpec>,
-) -> Result<ConfigDto, String> {
-    let profile = profile_ref(&profile)?;
-    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
-        store.set_held_rotate(&profile, rotate)
-    })
-}
-
 /// Creates a custom profile for an app, as a copy of General's bindings made now. `name` is the
 /// app's display name (empty = derived from `app`); the app moves out of any profile that held it.
 ///

@@ -7,6 +7,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::picker::{HoldRing, PickerView};
+
 /// Which full-screen view the device shows. Wire-significant, append-only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum DisplayMode {
@@ -237,6 +239,12 @@ pub struct MediaText {
 }
 
 impl MediaText {
+    /// No text.
+    pub const EMPTY: MediaText = MediaText {
+        bytes: [0; 32],
+        len: 0,
+    };
+
     /// Longest text kept, in characters.
     pub const CAPACITY: usize = 32;
 
@@ -407,6 +415,10 @@ pub struct DeskView {
     pub controls: Option<ControlLabels>,
     /// The microphones, when the desktop sent it this session (unknown otherwise).
     pub mic: MicState,
+    /// A switch is held towards a Hold that does something: the progress ring (device-local).
+    pub hold: Option<HoldRing>,
+    /// The knob switch is held and turned (or just released): the profile picker owns the screen.
+    pub picker: Option<PickerView>,
 }
 
 impl DeskView {

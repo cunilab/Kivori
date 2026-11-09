@@ -199,10 +199,12 @@ pub fn rename_profile(
     Ok(())
 }
 
-/// Puts a custom or starter profile in or out of the middle button's pin cycle.
+/// Pins a profile to the device (the knob's profile picker and the middle button's pin cycle), or
+/// takes it off. The core built-in profiles are pinned unless the user took them off, starter and
+/// custom profiles are not until the user pins them.
 ///
 /// # Errors
-/// A fixed reason for an unknown or fixed-cycle profile.
+/// A fixed reason for an unknown profile.
 pub fn set_pin_cycle(
     file: &mut ConfigFile,
     id: &ProfileRef,
@@ -210,11 +212,13 @@ pub fn set_pin_cycle(
 ) -> Result<(), &'static str> {
     match id {
         ProfileRef::Custom(id) => custom_mut(file, id)?.in_pin_cycle = in_pin_cycle,
-        ProfileRef::Builtin(id) if id.is_starter() => {
-            file.profiles.entry(*id).or_default().in_pin_cycle = in_pin_cycle;
+        ProfileRef::Builtin(id) => {
+            // Only a choice that differs from the profile's default is stored.
+            let default = !id.is_starter();
+            file.profiles.entry(*id).or_default().in_pin_cycle =
+                (in_pin_cycle != default).then_some(in_pin_cycle);
             file.profiles.retain(|_, over| !over.is_empty());
         }
-        ProfileRef::Builtin(_) => return Err("a built-in profile is always in the pin cycle"),
     }
     Ok(())
 }
@@ -338,8 +342,24 @@ mod tests {
         let code = ProfileRef::Builtin(ProfileId::Code);
         assert!(rename_profile(&mut file, &code, "Mine").is_err());
         assert!(delete_profile(&mut file, &code).is_err());
-        assert!(set_pin_cycle(&mut file, &code, true).is_err());
         set_pin_cycle(&mut file, &id, true).unwrap();
         assert!(file.custom_profiles[0].in_pin_cycle);
+    }
+
+    #[test]
+    fn pinning_stores_only_a_choice_that_differs_from_the_profiles_default() {
+        let mut file = ConfigFile::default();
+        let code = ProfileRef::Builtin(ProfileId::Code);
+        let codex = ProfileRef::Builtin(ProfileId::Codex);
+        // Core built-ins are pinned by default, starters are not.
+        set_pin_cycle(&mut file, &code, true).unwrap();
+        set_pin_cycle(&mut file, &codex, false).unwrap();
+        assert!(file.profiles.is_empty(), "the defaults store nothing");
+        set_pin_cycle(&mut file, &code, false).unwrap();
+        set_pin_cycle(&mut file, &codex, true).unwrap();
+        assert_eq!(file.profiles[&ProfileId::Code].in_pin_cycle, Some(false));
+        assert_eq!(file.profiles[&ProfileId::Codex].in_pin_cycle, Some(true));
+        set_pin_cycle(&mut file, &code, true).unwrap();
+        assert!(!file.profiles.contains_key(&ProfileId::Code));
     }
 }
