@@ -14,7 +14,6 @@
   --sky: #4fb7ff;
   --amber: #f5a524;
   --ok: #3cc47c;
-  --shell: #ecebe6;
 
   --background: #f7f9fa;
   --foreground: #182126;
@@ -42,7 +41,7 @@
   --radius: 0.5rem;
   color-scheme: light;
 
-  /* Homepage palette: a sage studio ground drawn from the mint keys, green-black ink. */
+  /* Homepage palette: a sage studio ground drawn from the brand mint, green-black ink. */
   --home-paper: #e6ece8;
   --home-raised: #f1f5f2;
   --home-ink: #0f1513;

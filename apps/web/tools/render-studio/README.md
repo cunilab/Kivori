@@ -14,11 +14,13 @@ downloaded. `three` and `puppeteer-core` are pinned devDependencies of `apps/web
 How it works:
 
 - `render.mjs` serves `scene.html` on 127.0.0.1 while it runs and drives Chrome with `puppeteer-core`.
-- The enclosure STLs are read from `hardware/enclosure/export/` at render time only (Carrier is left out). They
-  are never copied into `public/` or served by the site.
+- The enclosure STLs are read from `hardware/enclosure-v7/export/` at render time only (Carrier and
+  PinFitCoupon are left out). They are not committed: export them first with FreeCAD's
+  `freecadcmd hardware/enclosure-v7/build_case.py`. They are never copied into `public/` or served by the site.
 - `scene.js` puts every part back in its assembled place. The STLs are in print orientation, so each part gets
-  the inverse of `print_pose` in `hardware/enclosure/build_case.py` plus its original bounding-box minimum
-  (taken from the build script). If the enclosure model changes, re-derive those offsets (the numbers in
-  `PARTS`), then re-render.
+  the inverse of `print_pose` in `hardware/enclosure-v7/build_case.py` plus its print-pose bounding-box
+  minimum. If the enclosure model changes, re-derive those offsets (the numbers in `PARTS`), then re-render.
+- Materials follow the v7 CAD colours: black shell, cowl and knob; white bezel, halo ring, knob cap, keys and
+  back plate.
 - The screen texture comes from `public/media/screens/` (see `../export-screens.mjs`).
 - Output: 2400 px wide WebP (quality 90) and a `-1200` variant, plus a transparent `hero-34-transparent` PNG/WebP.

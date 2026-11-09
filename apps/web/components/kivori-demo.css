@@ -1,6 +1,7 @@
 /*
- * The interactive Kivori. Sizes are in em/% of the device so it scales as one object; the device
- * body, visor, bezel, knob and keys mirror the approved prototype. Colours come from the web tokens.
+ * The interactive Kivori: the v7 Terrace enclosure seen from above (hardware/enclosure-v7), the same
+ * drawing as the desktop app's device visual. Positions are the CAD's, as % of the 86 x 95 mm face:
+ * black shell and display cowl, white bezel, halo ring, knob cap and keys.
  */
 .kd {
   position: relative;
@@ -17,45 +18,55 @@
 .kd-device {
   position: relative;
   width: 100%;
-  max-width: 640px;
+  max-width: 380px;
   margin-inline: auto;
-  aspect-ratio: 1100 / 700;
-  border-radius: 9% / 14%;
-  background: linear-gradient(170deg, #f7f6f2 0%, var(--shell) 45%, #cfcdc5 100%);
+  aspect-ratio: 86 / 95;
+  border-radius: 9.3% / 8.4%;
+  background: linear-gradient(170deg, #26272b 0%, #151518 40%, #0d0d0f 100%);
   box-shadow:
-    0 2px 0 rgb(255 255 255 / 0.6) inset,
-    0 -10px 0 rgb(0 0 0 / 0.06) inset,
+    inset 0 0 0 1px rgb(255 255 255 / 0.07),
+    inset 0 1px 0 rgb(255 255 255 / 0.12),
+    0 4px 0 #e4e3dd,
     0 40px 70px -20px rgb(0 0 0 / 0.75),
     0 18px 30px -18px rgb(0 0 0 / 0.6);
 }
+/* Raised cowl (x 14..72, y 56..93); its near edge follows the knob at R 22. */
 .kd-visor {
   position: absolute;
-  left: 47.5%;
-  top: 6%;
-  width: 49%;
-  height: 88%;
-  border-radius: 9% / 8%;
-  background: linear-gradient(160deg, #262a31, #121418 60%);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
+  left: 16.28%;
+  top: 2.11%;
+  width: 67.44%;
+  height: 38.95%;
+  border-radius: 8% / 12%;
+  background: linear-gradient(165deg, #34363c, #222327 50%, #1a1b1e);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.1),
+    inset 0 1px 0 rgb(255 255 255 / 0.18),
+    inset 0 -12px 16px rgb(0 0 0 / 0.35);
+  -webkit-mask: radial-gradient(ellipse 37.93% 59.46% at 50% 143.24%, transparent 99.6%, #000 100%);
+  mask: radial-gradient(ellipse 37.93% 59.46% at 50% 143.24%, transparent 99.6%, #000 100%);
 }
+/* White 28 mm bezel round the display window (centre x 43, y 78). */
 .kd-bezel {
   position: absolute;
-  left: 60.2%;
-  top: 11.4%;
-  width: 23.4%;
+  left: 33.72%;
+  top: 3.16%;
+  width: 32.56%;
   aspect-ratio: 1;
-  border-radius: 6%;
-  background: #050608;
-  box-shadow: inset 0 0 0 2px #0d0f12;
+  border-radius: 7%;
+  background: linear-gradient(160deg, #f4f3ef, #d9d8d2);
+  box-shadow: 0 3px 6px rgb(0 0 0 / 0.45);
 }
 .kd-screen {
   position: absolute;
-  inset: 7%;
-  width: 86%;
-  height: 86%;
+  inset: 7.1%;
+  width: 85.8%;
+  height: 85.8%;
   border-radius: 3%;
   image-rendering: pixelated;
-  box-shadow: 0 0 24px rgb(79 183 255 / 0.1);
+  box-shadow:
+    inset 0 0 0 1px #000,
+    0 0 24px rgb(79 183 255 / 0.1);
 }
 .kd-light {
   position: absolute;
@@ -87,23 +98,25 @@
 
 .kd-keys {
   position: absolute;
-  left: 49.6%;
-  top: 59%;
-  width: 44.6%;
+  left: 21.28%;
+  top: 81.37%;
+  width: 57.44%;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 3.4%;
+  gap: 9.31%;
 }
+/* Three 13.4 mm white caps, 18 mm apart, centred on y 11. */
 .kd-key {
-  aspect-ratio: 1.08;
+  aspect-ratio: 1;
   border: 0;
+  padding: 0;
   cursor: pointer;
-  border-radius: 16%;
-  background: linear-gradient(180deg, #9ff7d4, var(--mint) 55%);
+  border-radius: 14%;
+  background: linear-gradient(180deg, #fbfaf7, #e4e3dd 60%);
   box-shadow:
-    inset 0 -0.55em 0 var(--mint-deep),
-    0 0.35em 0 #0c0e11,
-    0 0.6em 0.8em rgb(0 0 0 / 0.45);
+    inset 0 -0.55em 0 #c4c3bc,
+    0 0.35em 0 #060607,
+    0 0.6em 0.8em rgb(0 0 0 / 0.5);
   font-size: clamp(6px, 1.2vw, 12px);
   transition:
     transform 0.08s ease,
@@ -113,32 +126,43 @@
 .kd-key[data-down='true'] {
   transform: translateY(0.3em);
   box-shadow:
-    inset 0 -0.25em 0 var(--mint-deep),
-    0 0.05em 0 #0c0e11,
-    0 0.2em 0.3em rgb(0 0 0 / 0.4);
+    inset 0 -0.25em 0 #c4c3bc,
+    0 0.05em 0 #060607,
+    0 0.2em 0.3em rgb(0 0 0 / 0.45);
 }
 
+/* White Ø42 halo ring under the knob (centre x 43, y 40). */
 .kd-well {
   position: absolute;
-  left: 4.5%;
-  top: 15.7%;
-  width: 43.6%;
+  left: 25.58%;
+  top: 35.79%;
+  width: 48.84%;
   aspect-ratio: 1;
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 45%, #f3f2ee 60%, #d9d7cf 71%, #c4c2ba 72%);
+  background: radial-gradient(circle at 50% 42%, #f3f2ee 70%, #d6d5cf 100%);
 }
+/* Ø36 black knob; the ::after is its Ø31 white cap. */
 .kd-knob {
   position: absolute;
-  inset: 4.5%;
+  inset: 7.14%;
   border-radius: 50%;
   cursor: grab;
   touch-action: none;
-  background: radial-gradient(circle at 42% 34%, #3a3e46 0%, #23262c 38%, #15171b 70%), #15171b;
+  background: radial-gradient(circle at 42% 34%, #34363c 0%, #1b1c20 45%, #0e0e10 75%), #0e0e10;
   box-shadow:
     0 1.2em 1.8em rgb(0 0 0 / 0.5),
-    inset 0 2px 0 rgb(255 255 255 / 0.07),
     inset 0 -6px 12px rgb(0 0 0 / 0.5);
   font-size: clamp(6px, 1.2vw, 12px);
+}
+.kd-knob::after {
+  position: absolute;
+  inset: 6.94%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 32%, #fbfaf7, #e6e5df 55%, #d2d1ca);
+  box-shadow:
+    0 0 0 2px #0b0b0d,
+    inset 0 -4px 8px rgb(0 0 0 / 0.12);
+  content: '';
 }
 .kd-knob:active {
   cursor: grabbing;
@@ -149,32 +173,33 @@
   border-radius: 50%;
   background: repeating-conic-gradient(
     from 0deg,
-    rgb(255 255 255 / 0.07) 0deg 2deg,
-    transparent 2deg 6deg
+    rgb(255 255 255 / 0.1) 0deg 2deg,
+    transparent 2deg 7.5deg
   );
-  -webkit-mask: radial-gradient(circle, transparent 82%, #000 83%);
-  mask: radial-gradient(circle, transparent 82%, #000 83%);
+  -webkit-mask: radial-gradient(circle, transparent 86%, #000 87%);
+  mask: radial-gradient(circle, transparent 86%, #000 87%);
 }
 .kd-dial {
   position: absolute;
   inset: 0;
+  z-index: 1;
   transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1.2);
 }
 .kd-notch {
   position: absolute;
   left: 50%;
-  top: 8%;
+  top: 11%;
   width: 3.2%;
-  height: 14%;
+  height: 12%;
   margin-left: -1.6%;
   border-radius: 99px;
-  background: #e8e6e0;
-  opacity: 0.85;
+  background: #16171a;
 }
 .kd-hint {
   position: absolute;
-  left: 6%;
-  bottom: -14%;
+  left: 50%;
+  top: 156%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 8px;

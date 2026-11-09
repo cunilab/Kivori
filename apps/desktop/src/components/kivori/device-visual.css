@@ -1,43 +1,56 @@
-/* Proportions and materials match the website's physical product visual. */
+/*
+ * The v7 Terrace enclosure seen from above (hardware/enclosure-v7/build_case.py), the same drawing as
+ * the website's demo. Positions are the CAD's, as % of the 86 x 95 mm face: black shell and display
+ * cowl, white bezel, halo ring, knob cap and keys.
+ */
 .device-visual {
   position: relative;
   width: 100%;
-  max-width: 640px;
-  aspect-ratio: 1100 / 700;
-  border-radius: 9% / 14%;
-  background: linear-gradient(170deg, #f7f6f2 0%, #e6e5df 45%, #cfcdc5 100%);
+  max-width: 360px;
+  margin-inline: auto;
+  aspect-ratio: 86 / 95;
+  border-radius: 9.3% / 8.4%;
+  background: linear-gradient(170deg, #26272b 0%, #151518 40%, #0d0d0f 100%);
   box-shadow:
-    0 2px 0 rgb(255 255 255 / 0.6) inset,
-    0 -10px 0 rgb(0 0 0 / 0.06) inset,
-    0 20px 32px -20px rgb(0 0 0 / 0.5);
+    inset 0 0 0 1px rgb(255 255 255 / 0.07),
+    inset 0 1px 0 rgb(255 255 255 / 0.12),
+    0 3px 0 #e4e3dd,
+    0 20px 32px -18px rgb(0 0 0 / 0.55);
   container-type: inline-size;
 }
 
+/* Raised cowl (x 14..72, y 56..93); its near edge follows the knob at R 22. */
 .device-visual__visor {
   position: absolute;
-  left: 47.5%;
-  top: 6%;
-  width: 49%;
-  height: 88%;
-  border-radius: 9% / 8%;
-  background: linear-gradient(160deg, #262a31, #121418 60%);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
+  left: 16.28%;
+  top: 2.11%;
+  width: 67.44%;
+  height: 38.95%;
+  border-radius: 8% / 12%;
+  background: linear-gradient(165deg, #34363c, #222327 50%, #1a1b1e);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.1),
+    inset 0 1px 0 rgb(255 255 255 / 0.18),
+    inset 0 -1.2cqw 1.6cqw rgb(0 0 0 / 0.35);
+  -webkit-mask: radial-gradient(ellipse 37.93% 59.46% at 50% 143.24%, transparent 99.6%, #000 100%);
+  mask: radial-gradient(ellipse 37.93% 59.46% at 50% 143.24%, transparent 99.6%, #000 100%);
 }
 
+/* White 28 mm bezel round the display window (centre x 43, y 78). */
 .device-visual__bezel {
   position: absolute;
-  left: 60.2%;
-  top: 11.4%;
-  width: 23.4%;
+  left: 33.72%;
+  top: 3.16%;
+  width: 32.56%;
   aspect-ratio: 1;
-  border-radius: 6%;
-  background: #050608;
-  box-shadow: inset 0 0 0 2px #0d0f12;
+  border-radius: 7%;
+  background: linear-gradient(160deg, #f4f3ef, #d9d8d2);
+  box-shadow: 0 0.4cqw 0.8cqw rgb(0 0 0 / 0.45);
 }
 
 .device-visual__screen {
   position: absolute;
-  inset: 7%;
+  inset: 7.1%;
   display: flex;
   align-items: flex-start;
   overflow: hidden;
@@ -45,59 +58,73 @@
   border-radius: 3%;
   color: #9ff7d4;
   background: #080d19;
-  font-size: max(5px, 1.3cqw);
+  box-shadow: inset 0 0 0 1px #000;
+  font-size: max(5px, 2.3cqw);
   font-weight: 600;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
 
+/* White Ø42 halo ring under the knob (centre x 43, y 40). */
 .device-visual__well {
   position: absolute;
-  left: 4.5%;
-  top: 15.7%;
-  width: 43.6%;
+  left: 25.58%;
+  top: 35.79%;
+  width: 48.84%;
   aspect-ratio: 1;
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 45%, #f3f2ee 60%, #d9d7cf 71%, #c4c2ba 72%);
+  background: radial-gradient(circle at 50% 42%, #f3f2ee 70%, #d6d5cf 100%);
 }
 
+/* Ø36 black knob; the ::after is its Ø31 white cap. */
 .device-visual__knob {
   position: absolute;
-  inset: 4.5%;
+  inset: 7.14%;
   border: 0;
+  padding: 0;
   border-radius: 50%;
-  background: radial-gradient(circle at 42% 34%, #3a3e46, #23262c 38%, #15171b 70%);
+  background: radial-gradient(circle at 42% 34%, #34363c, #1b1c20 45%, #0e0e10 75%);
   box-shadow:
-    0 1.2em 1.8em rgb(0 0 0 / 0.5),
-    inset 0 2px 0 rgb(255 255 255 / 0.07),
-    inset 0 -6px 12px rgb(0 0 0 / 0.5);
+    0 1.6cqw 2.4cqw rgb(0 0 0 / 0.5),
+    inset 0 -1cqw 1.6cqw rgb(0 0 0 / 0.5);
 }
 
 .device-visual__knob::before {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: repeating-conic-gradient(rgb(255 255 255 / 0.07) 0deg 2deg, transparent 2deg 6deg);
-  -webkit-mask: radial-gradient(circle, transparent 82%, #000 83%);
-  mask: radial-gradient(circle, transparent 82%, #000 83%);
+  background: repeating-conic-gradient(rgb(255 255 255 / 0.1) 0deg 2deg, transparent 2deg 7.5deg);
+  -webkit-mask: radial-gradient(circle, transparent 86%, #000 87%);
+  mask: radial-gradient(circle, transparent 86%, #000 87%);
+  content: '';
+}
+
+.device-visual__knob::after {
+  position: absolute;
+  inset: 6.94%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 32%, #fbfaf7, #e6e5df 55%, #d2d1ca);
+  box-shadow:
+    0 0 0 0.3cqw #0b0b0d,
+    inset 0 -0.6cqw 1cqw rgb(0 0 0 / 0.12);
   content: '';
 }
 
 .device-visual__dial {
   position: absolute;
   inset: 0;
+  z-index: 1;
   transition: transform 180ms ease-out;
 }
 
 .device-visual__dial::after {
   position: absolute;
   left: 48.4%;
-  top: 8%;
+  top: 11%;
   width: 3.2%;
-  height: 14%;
+  height: 12%;
   border-radius: 99px;
-  background: #e8e6e0;
-  opacity: 0.85;
+  background: #16171a;
   content: '';
 }
 
@@ -105,26 +132,28 @@
   transform: rotate(-35deg);
 }
 
+/* Three 13.4 mm white caps, 18 mm apart, centred on y 11. */
 .device-visual__keys {
   position: absolute;
-  left: 49.6%;
-  top: 59%;
-  width: 44.6%;
+  left: 21.28%;
+  top: 81.37%;
+  width: 57.44%;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 3.4%;
+  gap: 9.31%;
 }
 
 .device-visual__key {
-  aspect-ratio: 1.08;
+  aspect-ratio: 1;
   border: 0;
-  border-radius: 16%;
-  background: linear-gradient(180deg, #a9f8d8, #8fe6bf 55%);
+  padding: 0;
+  border-radius: 14%;
+  background: linear-gradient(180deg, #fbfaf7, #e4e3dd 60%);
   box-shadow:
-    inset 0 -0.55em 0 #5ba980,
-    0 0.35em 0 #0c0e11,
-    0 0.6em 0.8em rgb(0 0 0 / 0.45);
-  font-size: max(6px, 2cqw);
+    inset 0 -0.55em 0 #c4c3bc,
+    0 0.35em 0 #060607,
+    0 0.6em 0.8em rgb(0 0 0 / 0.5);
+  font-size: max(6px, 3.4cqw);
   transition: transform 120ms ease-out;
 }
 
@@ -136,7 +165,7 @@ button.device-visual__key {
 button.device-visual__knob:disabled,
 button.device-visual__key:disabled {
   cursor: not-allowed;
-  filter: saturate(0.25);
+  opacity: 0.45;
 }
 
 button.device-visual__knob:focus-visible,
@@ -149,9 +178,15 @@ button.device-visual__key:focus-visible {
 button.device-visual__key:active {
   transform: translateY(0.25em);
   box-shadow:
-    inset 0 -0.25em 0 #5ba980,
-    0 0.05em 0 #0c0e11,
-    0 0.2em 0.3em rgb(0 0 0 / 0.4);
+    inset 0 -0.25em 0 #c4c3bc,
+    0 0.05em 0 #060607,
+    0 0.2em 0.3em rgb(0 0 0 / 0.45);
+}
+
+.device-visual__key[data-selected='true'],
+.device-visual__knob[data-selected='true']::after {
+  outline: 0.6cqw solid #67dca7;
+  outline-offset: 0.6cqw;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -14,9 +14,9 @@ interface Box {
   height: number;
   radius: string;
 }
-const KNOB: Box = { left: 18.4, top: 14.7, width: 30.6, height: 31.7, radius: '50%' };
-const KEYS: Box = { left: 47.3, top: 34.5, width: 33.6, height: 12.5, radius: '12px' };
-const SCREEN: Box = { left: 55, top: 26.2, width: 16.8, height: 11, radius: '10px' };
+const KNOB: Box = { left: 40.8, top: 32.7, width: 18.4, height: 28.3, radius: '50%' };
+const KEYS: Box = { left: 37.3, top: 62.1, width: 25.4, height: 13.1, radius: '12px' };
+const SCREEN: Box = { left: 43.9, top: 19, width: 12.3, height: 15.1, radius: '10px' };
 
 const APPS = ['Browser', 'Music', 'Meetings', 'Code'] as const;
 const BADGES = [
