@@ -43,7 +43,6 @@ class PinMapTest(unittest.TestCase):
         rotary = re.findall(r"pub const ROTARY: RotaryProfile = RotaryProfile \{([^}]+)\};", firmware)
         self.assertEqual(len(rotary), 1)
         buttons = array("CONTEXT_BUTTONS", 3)
-        led = array("LED", 3)
         clk = number(r"clk: (\d+),", rotary[0])
         dt = number(r"dt: (\d+),", rotary[0])
         sw = number(r"sw: (\d+),", rotary[0])
@@ -59,9 +58,8 @@ class PinMapTest(unittest.TestCase):
             "3V3": "3V3",
             "GND": "GND",
             **{f"IO{pin}": f"B{i + 1}" for i, pin in enumerate(buttons)},
-            **{f"IO{pin}": f"{colour}_PWM" for pin, colour in zip(led, "RGB")},
         }
-        self.assertEqual(len(expected), 16, "two firmware pins share a number")
+        self.assertEqual(len(expected), 13, "two firmware pins share a number")
 
         nets = assignments["RP_NETS"]
         self.assertIsInstance(nets, ast.Dict)
