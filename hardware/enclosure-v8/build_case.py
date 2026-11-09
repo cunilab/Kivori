@@ -47,9 +47,7 @@ BP_CLR = 0.2                # back plate to wall clearance (per side)
 # Knob + encoder (EC11 dimensions from KiCad RotaryEncoder_Alps_EC11E-Switch_Vertical_H20mm)
 KNOB_C = (43.0, 40.0)       # knob / shaft centre on the face
 KNOB_D = 36.0
-KNOB_GAP = 5.8              # air gap between knob skirt and face (push travel is ~0.5; raised 2.5 mm from 1.8 after the first
-                            # print, 1.5 mm more (4.3 -> 5.8) in v8; KNOB_H is held and the hub's bore goes KNOB_GAP - 4.3 lower,
-                            # so the shaft still enters KNOB_ENGAGE)
+KNOB_GAP = 4.3              # owner-approved: skirt and hub flush, with 3.0 mm shaft engagement
 KNOB_ENGAGE = 3.0           # how far the shaft enters the knob's bore (all of it on the D flat); the hub hangs this far below the shaft tip
 KNOB_TOP_T = 4.5            # knob top above the shaft-tip clearance
 KNOB_TIP_CLR = 1.0          # free space between the shaft tip and the bore's ceiling
@@ -87,8 +85,8 @@ HW040_BACK_PARTS = 2.0      # how far those (and the header joints) stick out of
 # the EC11's own M7 nut (with its washer) on the front clamps it. A knob press goes into the printed
 # PCB and on into the face posts; the back plate does not touch the encoder. Deep in the wedge, the
 # long shaft ends low and the knob stays short.
-HW040_FRONT = -18.7         # board front: the EC11 body (6.5 tall) flat against the carrier's pocket floor, so
-                            # the bushing tip and the nut clamp stay where they were (C_FLOOR - EC11_BODY_H, asserted in the build)
+HW040_FRONT = -18.7         # board front: the EC11 body (6.5 tall) flat against the printed PCB's back, so
+                            # the bushing tip and the nut clamp stay where they were (C_BACK - EC11_BODY_H)
 EC11_NUT = (9.0, 2.0, 0.5)  # M7 nut: across flats, thickness; washer thickness (NOMINAL, check yours)
 # Its five header pins stand straight up (straightened, or a straight header) into holes in the
 # printed PCB; the wire is wound round them in the gap between the two boards.
@@ -142,8 +140,8 @@ DISP_WIRE_DX = -0.7         # the wires leave a display pin's root this far to i
 PIN_PILLAR_CLR = 0.8          # slot in the far pillars round the leaning header pins (and their wire-wrap rings)
 DISP_HDR_BODY = (2.54, 7 * 2.54, 2.5)   # header plastic: width, length, height under the board
 LIP_W, LIP_H = 1.4, 0.6     # white lip: width and height above the cowl top (v7's bezel: 2.0 x 0.8)
-LIP_CHAMFER = 0.4           # 45° bevel on the lip's window edge, over 0.4 mm (0.2 vertical remains): the seated eye (59° over the glass) is steeper
-                            # than the bevel; the remaining vertical edge also contributes to the rim shadow
+LIP_CHAMFER = 0.4           # 45° bevel on the lip's window edge, over 0.4 mm (0.2 mm vertical remains): the seated eye (59° over the glass) is steeper
+                            # than the bevel, so what hides the screen is the bevel's foot, at the cowl top
 LIP_COLLAR = (0.4, 0.5, 0.1)  # collar on the lip's underside that locates it in the cowl window: wall, height, play per side
 EYE_ELEV = 40.0             # seated eye above the desk, from the front (the concept sheet's viewpoint)
 RIM_HIDDEN_MAX = 0.5        # build check: the near rim may hide at most this much of the active area from that eye
@@ -198,16 +196,8 @@ SW_PADS = [(-6.25, -2.5), (6.25, -2.5), (-6.25, 2.5), (6.25, 2.5)]  # pin 1,1,2,
 # Printed PCB ("carrier"): same plane as a future real PCB
 C_FRONT = -10.2             # printed PCB front (the 7.2 mm switch top ends 3.0 below the face: the caps reach down)
 KNOB_H = 11.0               # held from the 1.8 mm gap (it was HW040_FRONT + EC11_SHAFT_H + KNOB_TIP_CLR + KNOB_TOP_T - KNOB_GAP)
-C_T = 3.5                   # printed thickness (a real board is 1.6, it grows backwards): 1.5 mm thicker than the first v8 carrier, for
-                            # stiffness. Everything behind it (back plate, RP2040-Zero, HW-040, switch legs) stayed where it was, so the
-                            # carrier steps back to C_POCKET_T in the pockets (see carrier_pockets) and every pin keeps its wrap length
-C_POCKET_T = 2.0            # thickness in a pocket (the old C_T): the pocket floor
-C_BACK = C_FRONT - C_T      # the carrier's back surface (where it is thick)
-C_FLOOR = C_FRONT - C_POCKET_T   # the pocket floor plane = the old back surface; the back plate's columns, the shell's spigots, the
-                            # RP2040-Zero flip plane and the encoder keep their v8 z measured from it
-POCKET_CLR = 0.3            # pocket wall to the part it clears (RP header plastic, encoder body, back-plate columns)
-TOOL_CLR = 1.5              # free space round a wire-wrapped pin (tool and fingers), measured from the wrap ring's outside
-POCKET_WALL_MIN = 1.2       # plastic between two pockets, or a pocket and the carrier edge (vertical walls: they print from the bed)
+C_T = 2.0                   # flat printed carrier, no back-side component pockets
+C_BACK = C_FRONT - C_T
 C_INSET = 0.8               # carrier outline inset from the inner walls
 HOLE_D = 1.2                # clearance for other 2.54 mm header pins
 RP_PIN_FIT_D = 0.90          # provisional PETG press fit; choose after coupon test
@@ -254,8 +244,6 @@ SM_BOTTOM = ["IO13", "IO12", "IO11", "IO10", "IO9"]  # five middle pins; corners
 SM_HDR = (2.54, 9 * 2.54, 2.5, 6.0)  # ordinary headers, no extra printed spacers
 SM_BTN_DX = 4.5             # official STEP switch centres
 SM_BTN = (3.0, 4.65, 2.5)
-SM_CHIP = (7.04, 7.04, 12.1, 0.9)    # RP2040 chip: width, depth, centre from the USB end, height over the board (official STEP)
-SM_XTAL = (3.95, 3.1, 18.74, 1.0)    # crystal: the same
 C_TAB_CLR = 0.4             # carrier tab under the RP2040-Zero header ends, to the far wall
 C_TAB_PAST = 1.5            # tab edges past the outer pin rows
 
@@ -276,16 +264,11 @@ DISP_PIN_L = 6.0            # display header: standard 2.54 mm header, pin past 
                             # with the board, their tips DISP_PIN_TIP_CLR over the wire cradle; the wires are wrapped at the pin
                             # root and each tail drops straight to a funnel in the cradle, a bore and the pocket under it
 WIRE_Z_FRONT = C_FRONT - GROOVE_D + WIRE_D / 2 + 0.03   # wire centre in a front groove (0.03 off the floor)
-WIRE_IN_BACK = GROOVE_D - WIRE_D / 2 - 0.075             # wire centre above the surface it lies on in a back groove (0.075 under the ceiling:
-                                                         # a wire on the 45° ramp then clears the ramp's ceiling by its radius)
-WIRE_Z_BACK = C_BACK + WIRE_IN_BACK                      # ... on the carrier's back surface
-WIRE_Z_FLOOR = C_FLOOR + WIRE_IN_BACK                    # ... on a pocket floor (between the two it climbs the notch ramp)
-RAMP = C_T - C_POCKET_T     # rise from the back surface to a pocket floor: a 45° ramp is this long in plan
-TOOL_R = WRAP[0] / 2 + TOOL_CLR   # pocket floor radius round every wrapped pin
+WIRE_Z_BACK = C_BACK + GROOVE_D - WIRE_D / 2 - 0.03      # ... in a back groove
 # RESET uses a bottom access guide; BOOT still requires opening the case.
 
 # the receptacle's face-side edge meets the leaning far wall furthest in, so it sets the board end
-RP_FLIP_Z = (C_FRONT + C_FLOOR) / 2   # the board did not move: the USB hole was calibrated on a real print
+RP_FLIP_Z = (C_FRONT + C_BACK) / 2
 _rp_ref_hi = C_FRONT + SM_HDR[2] + SM[2]
 _usb_hi = 2 * RP_FLIP_Z - (_rp_ref_hi - 0.91)
 SM_USB_END = (H - USB_WALL / math.cos(math.radians(WALL_TAPER))  # y of the USB end of the board
@@ -571,15 +554,6 @@ def btn_pin(idx, pad):
     return (x + dx, y + dy)
 
 
-# Back-face wire columns and vias that the pockets are built round (wire_routes() uses them). v8 moved them 0.2 mm east (the six
-# columns), 0.8 mm west (the 3V3 / GND vias at the encoder) and key ground's via 1.7 mm west, to clear the pockets
-COL_ORDER = ['B1', 'B2', 'B3', 'CLK', 'DT', 'SW']
-COL_X = {n: enc_x - 1.75 - COL_PITCH * (5 - i) for i, n in enumerate(COL_ORDER)}   # west corridor, west to east
-VIA_P_X = enc_x + 1.6       # 3V3 via at the encoder (inside the encoder-pin pocket)
-VIA_G_X = VIA_P_X + 1.5     # GND via at the encoder
-KEY_GND_X = 73.3            # key ground's via, east of the keys
-VIA_P_DY, VIA_G_DY = 1.7, 2.4   # those two vias north of their encoder pins ('+' and GND)
-
 
 
 # ---------------------------------------------------------------------------------------------
@@ -618,7 +592,7 @@ def make_shell():
     adds = []
     for (x, y) in POSTS:
         adds.append(cyl(POST_D, x, y, C_FRONT, -FACE_T + 0.01))
-        adds.append(cyl(SPIGOT_D, x, y, C_FLOOR - SPIGOT_INTO_COL, C_FRONT + 0.01))
+        adds.append(cyl(SPIGOT_D, x, y, C_BACK - SPIGOT_INTO_COL, C_FRONT + 0.01))
     for (side, yc) in HOOKS:  # catch ribs for the back plate hooks
         x0, x1, z0, z1 = hook_geom(yc)[4]
         # the catch face slopes 45° back into the wall: the barb's 45° ramp rests on it, and the
@@ -639,7 +613,7 @@ def make_shell():
     for (x, y, a) in BTNS:
         cuts.append(rr_prism(BTN_OPEN + 2 * UNDER_CLR, BTN_OPEN + 2 * UNDER_CLR, 1.8, x, y, -FACE_T - 1, 1, a))
     for (x, y) in POSTS:
-        cuts.append(cyl(SCREW_PILOT, x, y, C_FLOOR - SPIGOT_INTO_COL - 1, -FACE_T - 1.5))
+        cuts.append(cyl(SCREW_PILOT, x, y, C_BACK - SPIGOT_INTO_COL - 1, -FACE_T - 1.5))
     cuts += usb_port_cuts()
     cuts += [cyl(COWL_PEG_HOLE_D, x, y, -FACE_T - 1, 1) for x, y in COWL_PEGS]  # the cowl's pegs
     return shell.cut(cuts).removeSplitter()
@@ -764,7 +738,7 @@ def make_back_plate():
         tri.translate(V(0, yc - HOOK_W / 2, 0))
         adds.append(mirror_x(arm.fuse(tri), side))
     for (x, y) in POSTS:
-        adds.append(cyl(COLUMN_D, x, y, z_back(y) + 0.5, C_FLOOR - 0.1))   # (its top enters the carrier's pocket)
+        adds.append(cyl(COLUMN_D, x, y, z_back(y) + 0.5, C_BACK - 0.1))
     plate = plate.fuse([a.common(above_back(0)) for a in adds])
 
     # White base: 1.2 mm visible vertical edge and a 45-degree underside chamfer.
@@ -780,7 +754,7 @@ def make_back_plate():
 
     cuts = []
     for (x, y) in POSTS:  # screw through each column: clearance hole and a counterbore from below
-        cuts.append(cyl(SCREW_CLR, x, y, -60, C_FLOOR + 1))
+        cuts.append(cyl(SCREW_CLR, x, y, -60, C_BACK + 1))
         cuts.append(cyl(SCREW_HEAD_D, x, y, -60, SCREW_SEAT_Z))
         # stepped bridge, so the seat prints over air without support (the screw leans 10° from the
         # print's Z, so the seat is a 10° roof): the seat stays one flat plane square to the screw, but
@@ -793,7 +767,7 @@ def make_back_plate():
                         x + SCREW_HEAD_D, y + SCREW_CLR / 2, SCREW_SEAT_Z + SEAT_LAYER).common(bore))
         cuts.append(box(x - SCREW_CLR / 2, y - SCREW_CLR / 2, SCREW_SEAT_Z + SEAT_LAYER - 0.01,
                         x + SCREW_CLR / 2, y + SCREW_CLR / 2, SCREW_SEAT_Z + 2 * SEAT_LAYER))
-        cuts.append(cyl(SPIGOT_HOLE_D, x, y, C_FLOOR - SPIGOT_INTO_COL - SPIGOT_SOCKET_CLR, C_FLOOR + 1))
+        cuts.append(cyl(SPIGOT_HOLE_D, x, y, C_BACK - SPIGOT_INTO_COL - SPIGOT_SOCKET_CLR, C_BACK + 1))
     # Guide stops 0.6 mm short of the outward-facing RESET button.
     rx, ry = RESET_C
     plate = plate.fuse(cyl(4.0, rx, ry, z_back(ry)+1.0, RESET_SURFACE_Z-0.6))
@@ -841,159 +815,6 @@ def check_underside():
         if z < -PLINTH_H - 1e-3:
             problems.append("%s below the plinth bottom (z %.2f)" % (n, z))
     return problems
-
-
-# ---------------------------------------------------------------------------------------------
-# Carrier pockets
-# ---------------------------------------------------------------------------------------------
-# The carrier is C_T thick (3.5) but everything behind it kept its v8 position, so wherever a part or a wrapped pin needs the
-# last C_T - C_POCKET_T (1.5 mm) behind the v8 back surface, the carrier steps back to C_POCKET_T (2.0, the pocket floor, C_FLOOR):
-#   * the three keys' legs (3.5 long: 1.5 mm behind the floor to wrap), the HW-040's five pins (4.0 bare behind the floor) and the
-#     EC11 body (it sits flat on the floor, its bushing goes through the carrier), each with TOOL_R round a wrapped pin;
-#   * the RP2040-Zero's two header rows and bottom row (the plastic sits on the floor), and under its chip and crystal;
-#   * the six back-plate column tops (they enter the carrier as before, so the back plate and the shell do not change).
-# Pocket walls are vertical (they print from the bed, a roof over each pocket bridges less than BRIDGE_MAX). A wire that goes from
-# the back surface to a floor climbs RAMP in a 45° notch ramp on the thick side of the wall (see ramp_envelope), as a groove
-# keeps its depth below whichever surface it runs on.
-
-def _rect(name, x0, y0, x1, y1, r=1.0, wired=False, open_=False):
-    return dict(name=name, kind="rect", cx=(x0 + x1) / 2, cy=(y0 + y1) / 2, w=x1 - x0, h=y1 - y0,
-                r=min(r, (x1 - x0) / 2 - 1e-3, (y1 - y0) / 2 - 1e-3), wired=wired, open=open_)
-
-
-def carrier_pockets():
-    """Floor outlines of every pocket (plan, vertical walls): dicts of kind 'rect' (cx, cy, w, h, corner r) or 'circle' (cx, cy,
-    d); wired: wires cross its wall; open: it runs out through the carrier's edge."""
-    R, c = TOOL_R, POCKET_CLR
-    P = []
-    legs = [btn_pin(i, k) for i in range(3) for k in range(4)]
-    xs = sorted({round(x, 6) for x, _ in legs})
-    groups = []
-    for x in xs:       # legs whose pockets would leave a thin wall between them share one (the chain wire runs between them)
-        if groups and x - groups[-1][-1] < 2 * R + 3.0:
-            groups[-1].append(x)
-        else:
-            groups.append([x])
-    for g in groups:
-        ys = [y for x, y in legs if round(x, 6) in g]
-        P.append(_rect("key legs x %.1f" % min(g), min(g) - R, min(ys) - R, max(g) + R, max(ys) + R, wired=True))
-    ey = [p[1] for p in enc_pins.values()]
-    P.append(_rect("encoder pins", COL_X['CLK'] - 0.5, min(ey) - R, VIA_G_X + VIA_D / 2 + 0.4,
-                   enc_pins['GND'][1] + VIA_G_DY + VIA_D / 2 + 0.4, r=0.4, wired=True))
-    P.append(_rect("encoder body", KNOB_C[0] - EC11_BODY[0] / 2 - c, KNOB_C[1] - EC11_BODY[1] / 2 - c,
-                   KNOB_C[0] + EC11_BODY[0] / 2 + c, KNOB_C[1] + EC11_BODY[1] / 2 + c, r=c))   # (r <= c: the part's sharp corner keeps c)
-    for x in sm_rows:
-        P.append(_rect("RP2040 header row", x - SM_HDR[0] / 2 - c, sm_hdr_y - SM_HDR[1] / 2 - c,
-                       x + SM_HDR[0] / 2 + c, sm_hdr_y + SM_HDR[1] / 2 + c, r=c, open_=True))
-    P.append(_rect("RP2040 header bottom", SM_X - 5 * 2.54 / 2 - c, sm_bottom_y - SM_HDR[0] / 2 - c,
-                   SM_X + 5 * 2.54 / 2 + c, sm_bottom_y + SM_HDR[0] / 2 + c, r=c))
-    yc, yx = SM_USB_END - SM_CHIP[2], SM_USB_END - SM_XTAL[2]
-    P.append(_rect("RP2040 chip and crystal", SM_X - SM_CHIP[0] / 2 - c, yx - SM_XTAL[1] / 2 - c, SM_X + SM_CHIP[0] / 2 + c,
-                   yc + SM_CHIP[1] / 2 + c, r=c))
-    rc = COLUMN_D / 2 + 0.2
-    for (x, y) in POSTS:
-        corner = (x < 12 or x > W - 12) and (y < 12 or y > H - 12)   # a corner column: its top runs out through the carrier's edge
-        P.append(dict(name="column %.0f,%.1f" % (x, y), kind="circle", cx=x, cy=y, d=2 * rc, wired=False, open=corner))
-    return P
-
-
-POCKETS = carrier_pockets()
-
-
-def pocket_dist(x, y):
-    """Plan distance from (x, y) to the nearest pocket floor (0 inside one)."""
-    d = 1e9
-    for p in POCKETS:
-        if p["kind"] == "circle":
-            q = math.hypot(x - p["cx"], y - p["cy"]) - p["d"] / 2
-        else:
-            q = math.hypot(max(abs(x - p["cx"]) - (p["w"] / 2 - p["r"]), 0.0), max(abs(y - p["cy"]) - (p["h"] / 2 - p["r"]), 0.0)) - p["r"]
-        d = min(d, max(q, 0.0))
-    return d
-
-
-def touches_pocket(pts, step=0.1):
-    """Does the polyline run into a pocket floor (a wire that ends at a pin there, or crosses a wall)?"""
-    for (ax, ay), (bx, by) in zip(pts, pts[1:]):
-        n = max(1, int(math.hypot(bx - ax, by - ay) / step))
-        if any(pocket_dist(ax + (bx - ax) * i / n, ay + (by - ay) * i / n) < 1e-9 for i in range(n + 1)):
-            return True
-    return False
-
-
-def pocket_voids():
-    return [cyl(p["d"], p["cx"], p["cy"], C_BACK - 1, C_FLOOR) if p["kind"] == "circle"
-            else rr_prism(p["w"], p["h"], p["r"], p["cx"], p["cy"], C_BACK - 1, C_FLOOR) for p in POCKETS]
-
-
-_RAMP_ENV = []
-
-
-def ramp_envelope():
-    """The region a back groove may be cut in: the usual GROOVE_D below the back surface, and GROOVE_D below a pocket floor, joined
-    over the last RAMP in front of every pocket wall (plan distance d from the floor) by a 45° ceiling, GROOVE_D + RAMP - d below
-    the back surface: a wire in the groove climbs from the surface to the floor along it, and the notch prints without support."""
-    if not _RAMP_ENV:
-        z_top, z_bot = C_FLOOR + GROOVE_D, C_BACK - 1
-        g = z_top - z_bot
-        env = [box(-10, -10, z_bot, W + 10, H + 10, C_BACK + GROOVE_D)]
-        for p in POCKETS:
-            if p["wired"]:
-                lo, hi = rr_wire(p["w"] + 2 * g, p["h"] + 2 * g, p["r"] + g, z_bot), rr_wire(p["w"], p["h"], p["r"], z_top)
-                env.append(place(Part.makeLoft([lo, hi], True, True), p["cx"], p["cy"]))
-        _RAMP_ENV.append(fuse_all(env))
-    return _RAMP_ENV[0]
-
-
-KNEE_R = 0.3                # bend radius where a wire starts or ends a ramp (the 45° bend rounds towards the groove's ceiling)
-
-
-def back_wire_points(pts):
-    """3D centre line of a back wire that runs into a pocket: on the back surface, up the ramp in front of each pocket wall and along
-    the floor. Returns (points, bend radius per point): WIRE_BEND_R at the plan corners, KNEE_R where a ramp begins and ends."""
-    def zf(x, y):
-        return C_BACK + WIRE_IN_BACK + max(0.0, min(RAMP, RAMP - pocket_dist(x, y)))
-
-    def region(x, y):
-        d = pocket_dist(x, y)
-        return 0 if d >= RAMP - 1e-9 else 2 if d <= 1e-9 else 1
-
-    out, rad = [(pts[0][0], pts[0][1], zf(*pts[0]))], [WIRE_BEND_R]
-    for (ax, ay), (bx, by) in zip(pts, pts[1:]):
-        n = max(2, int(math.hypot(bx - ax, by - ay) / 0.05))
-        prev, t_prev = region(ax, ay), 0.0
-        for i in range(1, n + 1):
-            t = i / n
-            cur = region(ax + (bx - ax) * t, ay + (by - ay) * t)
-            if cur != prev:
-                lo, hi = t_prev, t
-                for _ in range(30):
-                    mid = (lo + hi) / 2
-                    if region(ax + (bx - ax) * mid, ay + (by - ay) * mid) == prev:
-                        lo = mid
-                    else:
-                        hi = mid
-                x, y = ax + (bx - ax) * lo, ay + (by - ay) * lo
-                out.append((x, y, zf(x, y)))
-                rad.append(KNEE_R)
-                prev = cur
-            t_prev = t
-        out.append((bx, by, zf(bx, by)))
-        rad.append(WIRE_BEND_R)
-    return out, rad
-
-
-def pocket_faces():
-    """The pocket floors as plan faces (moved to z 0): one face per connected pocket."""
-    u = fuse_all(pocket_voids()).removeSplitter()
-    out = []
-    for f in u.Faces:
-        if f.Surface.TypeId == "Part::GeomPlane" and abs(f.BoundBox.ZMin - C_FLOOR) < 1e-6 and f.normalAt(0, 0).z > 0.9:
-            f = f.copy()
-            f.translate(V(0, 0, -C_FLOOR))
-            out.append(f)
-    return out
-
 
 
 def carrier_outline():
@@ -1053,8 +874,8 @@ def wire_routes():
     R.append(('BLK', [('F', [s12, (s12[0] + 0.7, s12[1] - 2.75), (s14[0] + 2.4, s12[1] - 2.75), D['BLK']])],
               (('rp', s12), ('disp', D['BLK']))))
     # RP2040 left column: wires and the columns they take (west to east), see above
-    order = COL_ORDER
-    col = COL_X
+    order = ['B1', 'B2', 'B3', 'CLK', 'DT', 'SW']
+    col = {n: enc_x - 1.95 - COL_PITCH * (5 - i) for i, n in enumerate(order)}
     for n in order:
         p = S[RP_PIN[n]]
         top = (col[n], p[1])                       # the via: the column starts here
@@ -1068,12 +889,13 @@ def wire_routes():
             back, end = [top, (col[n], yh), (leg[0], yh), leg], ('leg', leg)
         R.append((n, [('F', [p, top]), ('B', back)], (('rp', p), end)))
     # power from the display's VCC and GND pins
-    xp, xg = VIA_P_X, VIA_G_X
+    xp = enc_x + 2.4
+    xg = xp + 1.5
     X0 = disp_hdr_x     # the display pins' x (the pockets are DISP_WIRE_DX west of it)
     ex1 = X0 + 3.04
     ex2 = ex1 + PITCH_MIN
     yp = 62.0
-    via_p, via_g = (xp, E['+'][1] + VIA_P_DY), (xg, E['GND'][1] + VIA_G_DY)
+    via_p, via_g = (xp, E['+'][1] + 1.7), (xg, E['GND'][1] + 2.4)
     R.append(('3V3', [('F', [D['VCC'], (ex1, D['VCC'][1]), (ex1, yp), (xp, yp), via_p]), ('B', [via_p, E['+']])],
               (('disp', D['VCC']), ('enc', E['+']))))
     R.append(('GND', [('F', [D['GND'], (X0 + 1.4, D['GND'][1] - 0.8), (ex2, D['GND'][1] - 0.8),
@@ -1081,7 +903,7 @@ def wire_routes():
                       ('B', [via_g, E['GND']])], (('disp', D['GND']), ('enc', E['GND']))))
     # key ground: east of everything, down to the right key's free lower leg
     leg = btn_pin(2, 1)
-    xk = KEY_GND_X
+    xk = 75.0
     via_k = (xk, leg[1])
     R.append(('GND', [('F', [D['GND'], (X0 + 1.9, D['GND'][1] + 0.8), (xk, D['GND'][1] + 0.8), via_k]),
                       ('B', [via_k, leg])], (('disp', D['GND']), ('leg', leg))))
@@ -1107,8 +929,6 @@ def groove_cuts():
         for face, pts in segs:
             if face == 'F':
                 cuts.append(band(pts, GROOVE_W, C_FRONT - GROOVE_D, C_FRONT + 1))
-            elif touches_pocket(pts):
-                cuts.append(band(pts, GROOVE_W, C_BACK - 1, C_FLOOR + GROOVE_D + 0.01).common(ramp_envelope()))
             else:
                 cuts.append(band(pts, GROOVE_W, C_BACK - 1, C_BACK + GROOVE_D))
     cuts += [cyl(VIA_D, x, y, C_BACK - 1, C_FRONT + 1) for _, x, y in wire_vias()]
@@ -1194,8 +1014,7 @@ def run_edges(pts, z, r=WIRE_BEND_R):
         th = math.acos(max(-1.0, min(1.0, u.dot(v))))
         if th < 1e-6:
             continue
-        ri = r[i] if isinstance(r, (list, tuple)) else r
-        t = min(ri * math.tan(th / 2), lu / 2 if i > 1 else lu, lv / 2 if i < len(P) - 2 else lv)
+        t = min(r * math.tan(th / 2), lu / 2 if i > 1 else lu, lv / 2 if i < len(P) - 2 else lv)
         rr = t / math.tan(th / 2)
         t1, t2 = P[i] - u * t, P[i] + v * t
         n = u.cross(v).cross(u)
@@ -1243,7 +1062,6 @@ def make_carrier():
     c = carrier_outline()
     cuts = carrier_through_cuts()
     c = c.cut(cuts)
-    c = c.cut(pocket_voids())
 
     c = c.fuse(display_pillars() + [wire_cradle()])
     c = c.cut(groove_cuts())
@@ -1488,38 +1306,26 @@ def dummy_switch(i):
     return fuse_all([body, boss, neck, head] + legs)  # (legs straight, as pushed through)
 
 
-def rp_parts():
-    """The RP2040-Zero as separate solids, in the unflipped frame (header strips on the carrier front side)."""
-    lo, hi = rp_ref_lo, rp_ref_hi
-    hdr = [cbox(x, sm_hdr_y, SM_HDR[0], SM_HDR[1], C_FRONT, lo) for x in sm_rows]
-    hdr.append(cbox(SM_X, sm_bottom_y, 5 * 2.54, SM_HDR[0], C_FRONT, lo))
-    return {
-        "pcb": cbox(*sm_c, SM[0], SM[1], lo, hi),
-        "usb": cbox(SM_X, SM_USB_END - SM_USB[1] / 2 + SM_USB_OVERHANG, *SM_USB[:2], hi - 0.91, hi + SM_USB[2]),
-        "buttons": fuse_all([cbox(SM_X + dx, SM_USB_END - 16, *SM_BTN[:2], hi, hi + SM_BTN[2]) for dx in (-SM_BTN_DX, SM_BTN_DX)]),
-        "chip": cbox(SM_X, SM_USB_END - SM_CHIP[2], SM_CHIP[0], SM_CHIP[1], lo - SM_CHIP[3], lo),
-        "crystal": cbox(SM_X, SM_USB_END - SM_XTAL[2], SM_XTAL[0], SM_XTAL[1], lo - SM_XTAL[3], lo),
-        "regulator": cbox(SM_X, SM_USB_END - 3.14, 2.56, 2.98, lo - 0.7, lo),
-        "led": cbox(SM_X, SM_USB_END - 16, 2.4, 2.4, hi, hi + 1.6),
-        "headers": fuse_all(hdr),
-        "pins": fuse_all([cbox(x, y, 0.64, 0.64, C_FRONT - SM_HDR[3], hi + 0.5) for n, (x, y) in sm_native_pins.items()]),
-    }
-
-
-def flip_rp(shape):
-    """Carry a shape of rp_parts() onto the underside: rotated 180° about RP_FLIP_Z."""
-    shape = shape.copy()
-    shape.rotate(V(SM_X, 0, RP_FLIP_Z), V(0, 1, 0), 180)
-    return shape
-
-
 def dummy_rp2040_zero():
     """PCB, components, and headers physically rotated onto the underside."""
-    return flip_rp(fuse_all(list(rp_parts().values())))
+    lo, hi = rp_ref_lo, rp_ref_hi
+    pcb = cbox(*sm_c, SM[0], SM[1], lo, hi)
+    usb = cbox(SM_X, SM_USB_END - SM_USB[1] / 2 + SM_USB_OVERHANG, *SM_USB[:2], hi - 0.91, hi + SM_USB[2])
+    btns = [cbox(SM_X + dx, SM_USB_END - 16, *SM_BTN[:2], hi, hi + SM_BTN[2]) for dx in (-SM_BTN_DX, SM_BTN_DX)]
+    chip = cbox(SM_X, SM_USB_END - 12.1, 7.04, 7.04, lo - 0.9, lo)
+    crystal = cbox(SM_X, SM_USB_END - 18.74, 3.95, 3.1, lo - 1.0, lo)
+    regulator = cbox(SM_X, SM_USB_END - 3.14, 2.56, 2.98, lo - 0.7, lo)
+    led = cbox(SM_X, SM_USB_END - 16, 2.4, 2.4, hi, hi + 1.6)
+    hdr = [cbox(x, sm_hdr_y, SM_HDR[0], SM_HDR[1], C_FRONT, lo) for x in sm_rows]
+    hdr.append(cbox(SM_X, sm_bottom_y, 5 * 2.54, SM_HDR[0], C_FRONT, lo))
+    pins = [cbox(x, y, 0.64, 0.64, C_FRONT - SM_HDR[3], hi + 0.5) for n,(x,y) in sm_native_pins.items()]
+    board = fuse_all([pcb, usb, chip, crystal, regulator, led] + btns + hdr + pins)
+    board.rotate(V(SM_X, 0, RP_FLIP_Z), V(0, 1, 0), 180)
+    return board
 
 
-def _pipe(pts, r=WIRE_BEND_R):
-    path = Part.Wire(run_edges(pts, None, r))
+def _pipe(pts):
+    path = Part.Wire(run_edges(pts, None))
     e = path.OrderedEdges[0]
     profile = Part.Wire(Part.makeCircle(WIRE_D / 2, e.Vertexes[0].Point, e.tangentAt(e.FirstParameter)))
     return path.makePipeShell([profile], True, True)
@@ -1561,17 +1367,14 @@ def dummy_wire():
                     parts.append(tail)
                 else:
                     pts[end] = _toward(pin, nxt, WIRE_ATT)
-                    z0 = {'rp': C_FRONT + 0.05, 'enc': C_FLOOR - 0.05 - WRAP[2], 'leg': C_FLOOR - 0.05 - WRAP[2]}[kind]
+                    z0 = {'rp': C_FRONT + 0.05, 'enc': C_BACK - 0.05 - WRAP[2], 'leg': C_BACK - 0.05 - WRAP[2]}[kind]
                     parts.append(ring(pin[0], pin[1], z0))
             if face == 'B':
-                if touches_pocket(pts):
-                    parts.append(_pipe(*back_wire_points(pts)))
-                else:
-                    parts.append(_pipe([(x, y, WIRE_Z_BACK) for x, y in pts]))
+                parts.append(_pipe([(x, y, WIRE_Z_BACK) for x, y in pts]))
                 continue
             parts.append(_pipe([(x, y, WIRE_Z_FRONT) for x, y in pts]))
         for (_, p1), _s in zip(segs, segs[1:]):
-            parts.append(cyl(WIRE_D, p1[-1][0], p1[-1][1], WIRE_Z_FLOOR if pocket_dist(*p1[-1]) < 1e-9 else WIRE_Z_BACK, WIRE_Z_FRONT))
+            parts.append(cyl(WIRE_D, p1[-1][0], p1[-1][1], WIRE_Z_BACK, WIRE_Z_FRONT))
         groups.setdefault(net, []).extend(parts)
     WIRE_BY_NET.clear()
     WIRE_BY_NET.update({net: Part.makeCompound(shapes) for net, shapes in groups.items()})
@@ -1709,7 +1512,7 @@ def add_pin_labels(doc):
     (where you wire). In the document only: never printed, exported or checked for interference.
     The text size is a GUI setting, so it is kept when the document is built and saved in the GUI."""
     grp = doc.addObject("App::DocumentObjectGroup", "PinLabels")
-    z = C_FLOOR - 2.5
+    z = C_BACK - 2.5
     for k, (text, x, y, side) in enumerate(pin_labels()):
         a = doc.addObject("App::Annotation", "PinLabel%02d" % k)
         a.LabelText = [text]
@@ -1769,7 +1572,11 @@ def flat_roof(s, f):
         if (abs(sum(e.Length for e in free) - (a_ - b_).Length) < 1e-6  # one straight chord, maybe in pieces
                 and all(sc.distToShape(Part.Vertex(q))[0] < 1e-6 for q in (a_, b_))):
             return "bridge", (a_ - b_).Length  # a D: the lines parallel to its straight edge stand on both ends
-    reach = 0.0
+    # Include trimmed-face tessellation points: a UV grid alone can miss a narrow face
+    # completely and return zero reach without having sampled its interior.
+    mesh, triangles = f.tessellate(0.05)
+    probes = list(mesh) + [sum((mesh[k] for k in t), V()) / 3 for t in triangles]
+    reach = max((sc.distToShape(Part.Vertex(p))[0] for p in probes), default=0.0)
     u0, u1, v0, v1 = f.ParameterRange
     for i in range(11):
         for j in range(11):
@@ -1779,35 +1586,63 @@ def flat_roof(s, f):
     return ("bridge", 2 * reach) if around else ("ledge", reach)
 
 
+def face_samples(f):
+    """Points and exact surface normals on every trimmed face, including tiny faces.
+
+    Tessellation guarantees an interior sample even when a face misses the UV grid.
+    Boundary normals also catch steep ends of a curved face; no coarse-pass early exit.
+    """
+    if f.Surface.TypeId == "Part::GeomPlane":
+        return [(f.CenterOfMass, f.normalAt(0, 0))]
+    vertices, triangles = f.tessellate(0.05)
+    points = list(vertices) + [sum((vertices[k] for k in t), V()) / 3 for t in triangles]
+    samples = []
+    for p in points:
+        u, v = f.Surface.parameter(p)
+        samples.append((f.valueAt(u, v), f.normalAt(u, v)))
+    u0, u1, v0, v1 = f.ParameterRange
+    for i in range(17):
+        for j in range(17):
+            u, v = u0 + (u1 - u0) * i / 16, v0 + (v1 - v0) * j / 16
+            if f.isPartOfDomain(u, v):
+                samples.append((f.valueAt(u, v), f.normalAt(u, v)))
+    if not samples:
+        raise ValueError("overhang audit could not sample a face")
+    return samples
+
+
+OVERHANG_REPORT = {}
+
+
 def check_overhangs():
-    """Support-free check of every printed part in its print pose: a downward face steeper than
-    OVH_MAX from vertical (faces on the bed excepted) is a flat roof or a real overhang. Roofs are
-    bridges (at most BRIDGE_MAX across) or ledges (at most OVH_LEDGE, a line width, wide); the steep
-    curved faces that run on from a roof (the rounded ends of the USB hole) widen its bridge. Prints a
-    summary line; returns the problems."""
-    lim = math.sin(math.radians(OVH_MAX + 0.5))
+    """Audit every face in exported print pose, with no small-face exclusion.
+
+    Downward faces over OVH_MAX require supported edges on both sides of a bridge
+    <=BRIDGE_MAX, or a ledge <=OVH_LEDGE (one extrusion width). Curved USB ends
+    widen their roof's bridge; standalone curved groove roofs need their own supported
+    edges. Bed faces are counted separately. Report both the self-supporting and absolute worst surface angles.
+    """
+    # OCCT's approximated BSpline chamfers differ from 45 degrees by a few 1e-5
+    # degrees at trim boundaries. This is numerical tolerance, not a print allowance.
+    lim = math.sin(math.radians(OVH_MAX + 0.001))
     problems, summary = [], []
+    OVERHANG_REPORT.clear()
     for name, shp in PRINTED.items():
         s = print_pose(name, shp)
         roofs, steep = [], []
+        worst, supported, ledge, bed_faces = 0.0, 0.0, 0.0, 0
         for f in s.Faces:
-            if f.BoundBox.ZMax < 0.01 or f.Area < 0.05:
-                continue  # on the bed, or a sliver
-            if f.Surface.TypeId == "Part::GeomPlane":
-                nz = -f.normalAt(0, 0).z
-                bad = [f.CenterOfMass] if nz > lim else []
-            else:
-                u0, u1, v0, v1 = f.ParameterRange
-                bad = []
-                for n in (7, 25):  # a coarse look first, the extent of what is steep on a finer grid
-                    uv = [(u0 + (u1 - u0) * (i + 0.5) / n, v0 + (v1 - v0) * (j + 0.5) / n) for i in range(n) for j in range(n)]
-                    bad = [f.valueAt(u, v) for u, v in uv if f.isPartOfDomain(u, v) and -f.normalAt(u, v).z > lim]
-                    if not bad:
-                        break
-                nz = 0.0
-            if not bad:
+            samples = face_samples(f)
+            if f.BoundBox.ZMax < 1e-6:
+                bed_faces += 1
                 continue
-            if nz > 0.9:
+            angle = max(math.degrees(math.asin(max(0.0, min(1.0, -n.z)))) for p, n in samples)
+            worst = max(worst, angle)
+            bad = [p for p, n in samples if -n.z > lim]
+            if not bad:
+                supported = max(supported, angle)
+                continue
+            if f.Surface.TypeId == "Part::GeomPlane":
                 roofs.append([f, flat_roof(s, f), 0.0])
             else:
                 steep.append((f, bad))
@@ -1817,18 +1652,25 @@ def check_overhangs():
             if host:
                 host[0][2] += max(max(xs) - min(xs), max(ys) - min(ys))
             else:
-                problems.append("%s: face steeper than %d deg at (%.1f, %.1f), z %.1f" % (
-                    name, OVH_MAX, sum(xs) / len(xs), sum(ys) / len(ys), min(p.z for p in bad)))
+                # A curved groove roof may bridge between its own supported edges even
+                # without an adjacent planar roof. Audit those edges rather than skip it.
+                roofs.append([f, flat_roof(s, f), 0.0])
         bridges = []
         for f, (kind, w), extra in roofs:
             c = f.CenterOfMass
             if kind == "bridge" and w + extra <= BRIDGE_MAX + 1e-6:
                 bridges.append(w + extra)
             elif kind == "ledge" and w <= OVH_LEDGE + 1e-6:
+                ledge = max(ledge, w)
                 continue
             else:
                 problems.append("%s: %s %.1f mm at (%.1f, %.1f), z %.1f" % (name, kind, w + extra, c.x, c.y, c.z))
-        summary.append("%s %s" % (name, "%d bridges, max %.1f" % (len(bridges), max(bridges)) if bridges else "none"))
+        OVERHANG_REPORT[name] = dict(faces=len(s.Faces), bed_faces=bed_faces,
+                                    worst_angle=worst, self_support_angle=supported,
+                                    longest_bridge=max(bridges, default=0.0), ledge=ledge)
+        summary.append("%s: %d faces, self-support %.2f deg, worst %.2f deg incl. bridges/line-width ledges; "
+                       "bridge %.2f mm; ledge %.2f mm" % (name, len(s.Faces), supported, worst,
+                                                         max(bridges, default=0.0), ledge))
     print("overhangs (over %d deg, bridges up to %.0f mm): %s" % (OVH_MAX, BRIDGE_MAX, "; ".join(summary)))
     return problems
 
@@ -1967,140 +1809,6 @@ def check_display():
     return problems
 
 
-def local_back_z(x, y, reach=1.0):
-    """z of the carrier's back surface next to (x, y), measured on the built solid: the lowest plastic on vertical lines at
-    four points `reach` away (a groove or a hole on one of them only raises it)."""
-    zs = []
-    for dx, dy in ((reach, 0), (-reach, 0), (0, reach), (0, -reach)):
-        hit = Part.makeLine(V(x + dx, y + dy, C_BACK - 2), V(x + dx, y + dy, C_FRONT + 0.5)).common(PRINTED["Carrier"])
-        if hit.Edges:
-            zs.append(min(e.BoundBox.ZMin for e in hit.Edges))
-    return min(zs)
-
-
-def pin_wraps():
-    """Wrap length of every kind of pin, measured on the solids (the carrier's local back surface, the dummies' pin tips), before
-    the thicker carrier: RP2040 4.0 above the front, key legs 1.5 and encoder pins 4.0 behind the back, display entry pocket 1.0 deep."""
-    rp = DUMMIES["Dummy_RP2040_Zero"].optimalBoundingBox().ZMax - C_FRONT
-    keys = [local_back_z(*btn_pin(i, k)) - DUMMIES[n].optimalBoundingBox().ZMin
-            for i, n in enumerate(["Dummy_SwitchLeft", "Dummy_SwitchMiddle", "Dummy_SwitchRight"]) for k in range(4)]
-    enc = [local_back_z(x, y, 1.1) - (HW040_FRONT + 2.5) for x, y in enc_pins.values()]
-    dx, dy = next(iter(disp_pins.values()))
-    hit = Part.makeLine(V(dx, dy, C_BACK - 2), V(dx, dy, DISP_Z + 30)).common(PRINTED["Carrier"])
-    entry = C_FRONT - max(e.BoundBox.ZMax for e in hit.Edges)
-    return rp, keys, enc, entry
-
-
-def check_pockets():
-    """Pockets and thickness. Prints a summary and returns the problems: pin wrap lengths unchanged (RP2040 front 4.0, key legs 1.5, encoder
-    4.0, display entry 1.0), TOOL_R round every wrapped pin, POCKET_WALL_MIN between pockets and to the carrier edge, the carrier
-    C_POCKET_T thick or more everywhere (grooves aside), every back hole / via inside or POCKET_WALL_MIN away, and every wire that
-    reaches a pocket crossing its wall straight."""
-    problems = []
-    rp, keys, enc, entry = pin_wraps()
-    ok = (abs(rp - SM_HDR[3] + 2.0) < 1e-6 and all(abs(k - (SW_LEG[2] - 2.0)) < 1e-6 for k in keys)
-          and all(abs(e - 4.0) < 1e-6 for e in enc) and abs(entry - DPIN_POCKET[1]) < 1e-6)
-    print("pin wraps (measured on the solids): RP2040 %.2f mm above the carrier front, key legs %.2f..%.2f mm and encoder pins %.2f..%.2f mm behind "
-          "the pocket floor, display wire entry pocket %.2f mm deep" % (rp, min(keys), max(keys), min(enc), max(enc), entry))
-    if not ok:
-        problems.append("pin wrap lengths changed: RP %.2f keys %s encoder %s display %.2f" % (rp, keys, enc, entry))
-    U = pocket_faces()
-    board = carrier_outline().cut(carrier_through_cuts()[:len(HOOKS)])
-    board = [f for f in board.Faces if abs(f.normalAt(0, 0).z + 1) < 1e-6][0].OuterWire
-    board.translate(V(0, 0, -C_BACK))
-    wrapped = [("leg %d.%d" % (i, k), btn_pin(i, k)) for i in range(3) for k in range(4)] + [("encoder " + n, q) for n, q in enc_pins.items()]
-    tool = min((min(w.distToShape(Part.Vertex(V(x, y, 0)))[0] for f in U for w in f.Wires) if any(f.isInside(V(x, y, 0), 1e-6, True) for f in U)
-                else -1.0, lbl) for lbl, (x, y) in wrapped)
-    walls = min([U[i].distToShape(U[j])[0] for i in range(len(U)) for j in range(i + 1, len(U))] or [9e9])
-    prim = lambda p: (_circle(p["cx"], p["cy"], p["d"]) if p["kind"] == "circle"
-                      else place(Part.Face(rr_wire(p["w"], p["h"], p["r"], 0)), p["cx"], p["cy"]))
-    edge = min([prim(p).distToShape(board)[0] for p in POCKETS if not p["open"]] or [9e9])
-    open_n = sum(1 for p in POCKETS if p["open"])
-    runs_out = [p["name"] for p in POCKETS if prim(p).distToShape(board)[0] < 1e-6]
-    if sorted(runs_out) != sorted(p["name"] for p in POCKETS if p["open"]):
-        problems.append("pockets that run out through the edge: %s (declared open: %d)" % (runs_out, open_n))
-    area = Part.Face(board).Area
-    print("pockets: %d pockets (%d open to the edge) take %.0f %% of the carrier's area; tool room round wrapped pins %.2f mm (rule >= %.2f, "
-          "tightest %s), wall between pockets %.2f mm, to the carrier edge %.2f mm (rule >= %.1f)" % (
-              len(POCKETS), open_n, 100 * sum(f.common(Part.Face(board)).Area for f in U) / area, tool[0], TOOL_R, tool[1], walls, edge,
-              POCKET_WALL_MIN))
-    if tool[0] < TOOL_R - 1e-6:
-        problems.append("tool room %.2f round %s (< %.2f)" % (tool[0] if tool[0] >= 0 else 0.0, tool[1], TOOL_R))
-    if walls < POCKET_WALL_MIN - 1e-6 or edge < POCKET_WALL_MIN - 1e-6:
-        problems.append("pocket wall %.2f / edge %.2f below %.1f" % (walls, edge, POCKET_WALL_MIN))
-    # thickness: the plate without its grooves and holes, then probes on the finished carrier
-    base = carrier_outline().cut(pocket_voids())
-    thick = sorted({round(C_FRONT - f.CenterOfMass.z, 3) for f in base.Faces
-                    if f.Surface.TypeId == "Part::GeomPlane" and f.normalAt(0, 0).z < -0.9})
-    probe = lambda x, y: Part.makeLine(V(x, y, C_BACK - 2), V(x, y, C_FRONT + 0.5)).common(PRINTED["Carrier"]).Length
-    t_thick = max(probe(x, y) for x, y in ((60, 30), (62, 28), (58, 34), (50, 30)))
-    t_floor = max(probe(x, y) for x, y in ((19.8, 11.0), (17.7, 11.0), (19.8, 9.8), (17.7, 12.2)))
-    print("carrier thickness: plate %s mm (min %.2f, rule >= %.1f), measured on the finished solid %.2f thick / %.2f in a pocket "
-          "(grooves aside: 0.5 mm less under a groove, as before)" % (", ".join("%.1f" % t for t in thick), min(thick), C_POCKET_T, t_thick, t_floor))
-    if min(thick) < C_POCKET_T - 1e-6 or abs(t_floor - C_POCKET_T) > 1e-3 or abs(t_thick - C_T) > 1e-3:
-        problems.append("carrier thickness %s / probes %.2f %.2f" % (thick, t_thick, t_floor))
-    # Nominal minimum excludes intentional grooves and display entry bores (owner clarification).
-    # Require the entire remaining 1.5 mm front slab, not just a handful of thickness probes.
-    min_web = C_POCKET_T - GROOVE_D
-    slab = carrier_outline().common(box(-10, -10, C_FRONT - min_web, W + 10, H + 10, C_FRONT))
-    allowed = carrier_through_cuts() + cradle_cuts()
-    allowed += [band(pts, GROOVE_W, C_FRONT - GROOVE_D, C_FRONT + 1)
-                for _, segs, _ in wire_routes() for face, pts in segs if face == 'F']
-    missing = slab.cut(allowed).cut(PRINTED["Carrier"]).Volume
-    print("minimum web: nominal pocket 2.0 mm; intentional 0.5 mm grooves / display entries excepted; "
-          "all other material >= %.2f mm (missing protected slab %.6f mm3)" % (min_web, missing))
-    if min_web < 1.5 - 1e-6 or missing > 1e-5:
-        problems.append("unintended carrier web below 1.5 mm: missing %.6f mm3" % missing)
-    body = min(((n, PRINTED["Carrier"].distToShape(flip_rp(sh))[0]) for n, sh in rp_parts().items() if n not in ("headers", "pins")),
-               key=lambda t: t[1])
-    print("carrier to the RP2040-Zero board and its components (not the header, which sits on the pocket floor): nearest %s at %.2f mm (rule >= %.1f)" % (
-        body[0], body[1], POCKET_CLR))
-    if body[1] < POCKET_CLR - 1e-6:
-        problems.append("carrier %.2f mm from the RP2040-Zero %s" % (body[1], body[0]))
-    enc_body = cbox(KNOB_C[0], KNOB_C[1], EC11_BODY[0], EC11_BODY[1], HW040_FRONT, HW040_FRONT + EC11_BODY_H)
-    d_enc = PRINTED["Carrier"].distToShape(enc_body)[0]     # (the body's top is the pocket floor: it touches it)
-    d_col = PRINTED["Carrier"].distToShape(PRINTED["BackPlate"])[0]
-    print("carrier to the HW-040's EC11 body %.2f mm (it sits on the pocket floor), to the back plate %.2f mm (the column tops, 0.1 under "
-          "the pocket floors as in v8)" % (d_enc, d_col))
-    if d_col < 0.1 - 1e-6:
-        problems.append("carrier %.2f mm from the back plate" % d_col)
-    # holes and vias on the back are inside a pocket or WIRE_RIDGE_MIN away; a groove either runs into a pocket or keeps away
-    Uc = Part.makeCompound(U)
-    for net, label, sa in wire_features('B'):
-        hit = sa.common(Uc).Area > 1e-6
-        if label.startswith("groove"):
-            if not hit and sa.distToShape(Uc)[0] < WIRE_RIDGE_MIN - 1e-6:
-                problems.append("%.2f %s / pocket wall" % (sa.distToShape(Uc)[0], label))
-        elif hit:
-            if sa.cut(Uc).Area > 1e-6 or min(w.distToShape(sw)[0] for f in U for w in f.Wires for sw in sa.Wires) < 0.3 - 1e-6:
-                problems.append("%s straddles / touches a pocket wall" % label)
-        elif sa.distToShape(Uc)[0] < WIRE_RIDGE_MIN - 1e-6:
-            problems.append("%.2f %s / pocket wall" % (sa.distToShape(Uc)[0], label))
-    # wires that reach a pocket cross its wall within 60° of square and climb at most 45° (checked on the 3D centre line)
-    off, climb = 0.0, 0.0
-    for net, segs, ends in wire_routes():
-        for fc, pts in segs:
-            if fc != 'B' or not touches_pocket(pts):
-                continue
-            p3, _ = back_wire_points(pts)
-            for a, b in zip(p3, p3[1:]):
-                run = math.hypot(b[0] - a[0], b[1] - a[1])
-                if abs(b[2] - a[2]) < 1e-6 or run < 1e-6:
-                    continue
-                climb = max(climb, math.degrees(math.atan2(abs(b[2] - a[2]), run)))
-                mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
-                gx = (pocket_dist(mx + 0.01, my) - pocket_dist(mx - 0.01, my)) / 0.02
-                gy = (pocket_dist(mx, my + 0.01) - pocket_dist(mx, my - 0.01)) / 0.02
-                gl = math.hypot(gx, gy)
-                if gl > 1e-6:
-                    off = max(off, math.degrees(math.acos(min(1.0, abs(gx * (b[0] - a[0]) + gy * (b[1] - a[1])) / (gl * run)))))
-    print("back wires into pockets: ramp %.1f mm in plan (45° for a square crossing), steepest climb %.0f°, the crossing is at worst %.0f° off square" % (
-        RAMP, climb, off))
-    if climb > 46.0 or off > 60.0:
-        problems.append("wire ramp climbs %.0f° / crosses %.0f° off square" % (climb, off))
-    return problems
-
-
 def check_pillar_lip():
     """Measure the approved far-east support and the lip in its exported print orientation."""
     problems = []
@@ -2163,6 +1871,8 @@ def check_knob_engagement():
     d_nut = pressed.distToShape(DUMMIES["Dummy_EncoderNut"])[0]
     if eng < KNOB_ENGAGE - 1e-6:
         raise ValueError("knob shaft engagement %.2f mm is under %.1f mm" % (eng, KNOB_ENGAGE))
+    if abs(knob.BoundBox.ZMin - KNOB_GAP) > 1e-6 or abs(knob_hub_z0() - KNOB_GAP) > 1e-6:
+        raise ValueError("knob hub must be flush with the skirt rim")
     if min(d_press, d_nut) < 0.5 - 1e-6:
         raise ValueError("pressed knob within 0.5 mm of the encoder bushing / nut")
     return eng, d_rest, d_press, d_nut
@@ -2198,8 +1908,8 @@ def report_new_features():
     print("USB hole vs the connector (shifted %.1f mm to its real position): margin %.2f mm" % (USB_HOLE_DZ, margin))
     if margin < 0.2:
         raise ValueError("USB hole does not clear the real connector")
-    print("wrap room: RP2040 pins %.1f mm above the carrier, encoder pins %.1f mm bare behind the pocket floor, key legs %.1f mm; a wrap (%.1f mm) fits" % (
-        tip - C_FRONT, C_FLOOR - (HW040_FRONT + 2.5), C_FLOOR - (C_FRONT - SW_LEG[2]), WRAP[2]))
+    print("wrap room: RP2040 pins %.1f mm above the carrier, encoder pins %.1f mm bare behind it, key legs %.1f mm; a wrap (%.1f mm) fits" % (
+        tip - C_FRONT, C_BACK - (HW040_FRONT + 2.5), C_BACK - (C_FRONT - SW_LEG[2]), WRAP[2]))
     board = DUMMIES["Dummy_RP2040_Zero"]
     rx, ry = RESET_C
     plate = PRINTED["BackPlate"].cut(cyl(4.2, rx, ry, z_back(ry) - 1, RESET_SURFACE_Z))  # without the reset guide
@@ -2213,8 +1923,6 @@ def report_new_features():
 
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
-    if abs(HW040_FRONT - (C_FLOOR - EC11_BODY_H)) > 1e-9:
-        raise ValueError("HW040_FRONT must stay C_FLOOR - EC11_BODY_H (the encoder sits on the pocket floor)")
     build()
     doc = to_doc()
     clashes = check_interference()
@@ -2230,8 +1938,6 @@ def main():
         SCREW_HEAD_D, SCREW_CLR, ", ".join("%.1f" % d for d in bumper_room())))
     ovh = check_overhangs()
     print("overhang problems:", "; ".join(ovh) if ovh else "none")
-    pocket_problems = check_pockets()
-    print("pocket problems:", "; ".join(pocket_problems) if pocket_problems else "none")
     print("encoder to back plate: %.2f mm" % DUMMIES["Dummy_Encoder"].distToShape(PRINTED["BackPlate"])[0])
     print("buttons:", [(round(x, 2), round(y, 2), round(a, 2)) for (x, y, a) in BTNS])
     for name, shp in PRINTED.items():
@@ -2257,7 +1963,7 @@ def main():
     print("carrier through-holes at all %d RP2040-Zero pins: %s" % (len(sm_pins), "yes" if not blocked else "NO " + ", ".join(blocked)))
     if blocked:
         raise ValueError("carrier has no through-hole for RP2040-Zero pin(s): %s" % ", ".join(blocked))
-    if clashes or tight or shorts or low or ovh or pocket_problems or any(not shape.isValid() or shape.Volume <= 0 for shape in PRINTED.values()):
+    if clashes or tight or shorts or low or ovh or any(not shape.isValid() or shape.Volume <= 0 for shape in PRINTED.values()):
         raise ValueError("design checks failed; inspect diagnostics above")
     if min(clearances.values()) < 0.5 - 1e-6:
         raise ValueError("RP2040-Zero clearance below 0.5 mm")
