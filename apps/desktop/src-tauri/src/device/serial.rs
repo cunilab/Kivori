@@ -155,6 +155,8 @@ mod tests {
         )));
     }
 
+    // Raw OS error 13 is EACCES on Unix; on Windows it is ERROR_INVALID_DATA.
+    #[cfg(unix)]
     #[test]
     fn a_real_eacces_from_the_os_is_classified() {
         // What the posix backend produces for EACCES on open.

@@ -425,7 +425,7 @@ jobs:
           test "${#debs[@]}" -eq 1 && test -f "${debs[0]}"
           test "${#images[@]}" -eq 1 && test -f "${images[0]}"
           dpkg-deb -c "${debs[0]}" > "$RUNNER_TEMP/deb-contents.txt"
-          grep -F './usr/lib/udev/rules.d/60-kivori.rules' "$RUNNER_TEMP/deb-contents.txt"
+          grep -E '(^|[[:space:]])(\./)?usr/lib/udev/rules\.d/60-kivori\.rules$' "$RUNNER_TEMP/deb-contents.txt"
           mkdir -p linux-release
           cp "${debs[0]}" "${images[0]}" linux-release/
           if [ '${{ steps.updater.outputs.enabled }}' = 'true' ]; then

@@ -135,6 +135,29 @@ bundle-windows:
     fi
     KIVORI_FIRMWARE_MANIFEST="$manifest" bunx tauri build "${args[@]}" -- --no-default-features
 
+# Build the macOS .app + .dmg (run on a Mac). Signed with APPLE_SIGNING_IDENTITY, else the stable
+# KIVORI_MACOS_SIGNING_IDENTITY / "Kivori Dev" identity (see macos-dev-identity), else ad-hoc.
+bundle-macos:
+    bash scripts/bundle-macos.sh
+
+# Create the self-signed "Kivori Dev" signing identity in your login keychain (once; safe to rerun),
+# so local bundles keep their Accessibility approval across rebuilds (docs/macos.md).
+macos-dev-identity:
+    bash scripts/create-macos-dev-identity.sh
+
+# Native Mac checks without changing audio or launching the media observer / permission prompts.
+macos-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [ "$(uname -s)" = Darwin ] || { echo "Run macos-check on a Mac." >&2; exit 1; }
+    cargo test --locked -p kivori-desktop --lib platform::macos
+    cargo test --locked -p kivori-desktop --test macos_platform -- --skip media_observer_reads_without_blocking_and_stops_promptly
+    cargo test --locked -p kivori-desktop --test volume_backend_contract
+
+# Opt-in: changes output volume/mute, verifies observation, then restores the original values.
+macos-audio-test:
+    cargo test --locked -p kivori-desktop --test macos_platform write_round_trips_and_classifies_echo_versus_external -- --ignored --exact --test-threads=1
+
 # Print Ubuntu build dependencies; installation is a deliberate administrator action.
 linux-deps:
     @echo "sudo apt-get install -y build-essential pkg-config libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libudev-dev libssl-dev libpulse-dev patchelf file"
@@ -168,29 +191,6 @@ bundle-linux:
 # Native Linux unit tests; no deliberate audio writes or key injection.
 linux-check:
     cargo test --locked -p kivori-desktop --lib platform::linux
-
-# Build the macOS .app + .dmg (run on a Mac). Signed with APPLE_SIGNING_IDENTITY, else the stable
-# KIVORI_MACOS_SIGNING_IDENTITY / "Kivori Dev" identity (see macos-dev-identity), else ad-hoc.
-bundle-macos:
-    bash scripts/bundle-macos.sh
-
-# Create the self-signed "Kivori Dev" signing identity in your login keychain (once; safe to rerun),
-# so local bundles keep their Accessibility approval across rebuilds (docs/macos.md).
-macos-dev-identity:
-    bash scripts/create-macos-dev-identity.sh
-
-# Native Mac checks without changing audio or launching the media observer / permission prompts.
-macos-check:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    [ "$(uname -s)" = Darwin ] || { echo "Run macos-check on a Mac." >&2; exit 1; }
-    cargo test --locked -p kivori-desktop --lib platform::macos
-    cargo test --locked -p kivori-desktop --test macos_platform -- --skip media_observer_reads_without_blocking_and_stops_promptly
-    cargo test --locked -p kivori-desktop --test volume_backend_contract
-
-# Opt-in: changes output volume/mute, verifies observation, then restores the original values.
-macos-audio-test:
-    cargo test --locked -p kivori-desktop --test macos_platform write_round_trips_and_classifies_echo_versus_external -- --ignored --exact --test-threads=1
 
 # ---- dev ----
 
