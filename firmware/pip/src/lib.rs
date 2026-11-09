@@ -30,8 +30,6 @@ pub mod internals;
 /// Detent -> on-panel latency readout, development-only (Slice 002 checklist row 14).
 #[cfg(feature = "latency-probe")]
 pub mod latency_probe;
-/// The RGB LED engine: modes, animation, mood and status colours (hardware-neutral).
-pub mod led;
 pub mod ports;
 /// Board profiles: the verified physical pin map and panel facts.
 pub mod profile;
@@ -56,9 +54,6 @@ pub mod usb_service;
 /// Board measurements for the device internals snapshot (flash, RAM, stack, chip, temperature).
 #[cfg(feature = "physical-st7789")]
 pub mod chip_probe;
-/// The physical board's RGB LED, refreshed from a timer interrupt.
-#[cfg(feature = "physical-st7789")]
-pub mod physical_led;
 /// Physical HW-040 rotary encoder `InputSource` adapter.
 #[cfg(feature = "physical-st7789")]
 pub mod physical_rotary;

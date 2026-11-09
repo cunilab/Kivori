@@ -8,7 +8,6 @@ import { toast } from 'sonner';
 import { Toaster } from '@kivori/ui/components/sonner';
 import { useConfig, useDeskStatus } from '../../../hooks/use-kivori';
 import type { DeskActionDto, ConfigDto } from '../../../lib/ipc/types';
-import { DEFAULT_LED_SETTINGS } from '../../../lib/ipc/types';
 
 // The browser mock behind the real IPC wrappers; `testAction` and `testRotate` are spied on.
 vi.mock('../../../lib/ipc', async (importOriginal) => {
@@ -694,7 +693,6 @@ describe('ControlsPage notice', () => {
       macros: [],
       display: { defaultView: 'buddy', secondaryView: 'system', brightness: 5 },
       buddy: { reactions: true, intensity: 'normal' },
-      led: DEFAULT_LED_SETTINGS,
     };
   }
 

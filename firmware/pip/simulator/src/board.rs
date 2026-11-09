@@ -3,10 +3,7 @@
 //! (opt-in). Chosen per process with `KIVORI_VIRTUAL_BOARD` (docs/virtual-pip.md, "Virtual boards").
 //! The firmware library is compiled for one board only, so the reported identity is overridden here
 //! at runtime, on the same `BootCheck` seam the identity faults use.
-use kivori_firmware::{
-    identity::ProductIdentity, internals::ChipProbe, profile::physical_st7789::CAPABILITIES,
-};
-use kivori_model::Capabilities;
+use kivori_firmware::{identity::ProductIdentity, internals::ChipProbe};
 
 use crate::probe;
 
@@ -55,20 +52,6 @@ impl Board {
         ProductIdentity {
             board: self.number(),
             ..ProductIdentity::BUILD
-        }
-    }
-
-    /// Whether the board has an RGB LED. The C3 SuperMini has none.
-    pub const fn has_led(self) -> bool {
-        matches!(self, Self::Rp2040Zero)
-    }
-
-    /// What the board advertises: the firmware's capabilities, less the LED on a board without one.
-    pub const fn capabilities(self) -> Capabilities {
-        if self.has_led() {
-            CAPABILITIES
-        } else {
-            Capabilities::from_bits(CAPABILITIES.bits() & !Capabilities::RGB_LED_V1.bits())
         }
     }
 
@@ -142,20 +125,6 @@ mod tests {
         assert_eq!(
             Board::Rp2040Zero.number(),
             kivori_firmware::identity::BUILD_BOARD
-        );
-    }
-
-    #[test]
-    fn only_the_rp2040_zero_advertises_the_led() {
-        assert!(Board::Rp2040Zero
-            .capabilities()
-            .contains(Capabilities::RGB_LED_V1));
-        let c3 = Board::C3Supermini.capabilities();
-        assert!(!c3.contains(Capabilities::RGB_LED_V1));
-        // Nothing else is taken away.
-        assert_eq!(
-            c3.union(Capabilities::RGB_LED_V1),
-            Board::Rp2040Zero.capabilities()
         );
     }
 

@@ -10,7 +10,6 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::{LedMode, LedSettings, LedWire};
 use crate::desk::DeskRuntime;
 use crate::device::discovery::CandidateRotator;
 use crate::device::session::{Session, SessionConfig};
@@ -79,17 +78,8 @@ struct Response {
     wire: Vec<u8>,
     frame: Option<Vec<u16>>,
     brightness: Option<u8>,
-    /// The RGB LED, `None` from a board that has none.
-    led: Option<LedResponse>,
     reboot: bool,
     state: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct LedResponse {
-    rgb: [u8; 3],
-    mode: String,
 }
 
 /// The runner's firmware companion states; anything else breaks the contract.
@@ -124,10 +114,6 @@ fn read_response(reader: &mut impl BufRead) -> io::Result<Response> {
             .brightness
             .is_some_and(|step| !(1..=kivori_model::desk::BRIGHTNESS_STEPS).contains(&step))
         || !DEVICE_STATES.contains(&response.state.as_str())
-        || response
-            .led
-            .as_ref()
-            .is_some_and(|led| LedMode::from_token(&led.mode).is_none())
     {
         return Err(invalid("virtual response exceeds contract"));
     }
@@ -154,15 +140,6 @@ struct ProcessLink {
     inbound: VecDeque<u8>,
     /// The firmware companion state from the latest response.
     state: Option<&'static str>,
-    /// The LED from the latest response (`None` on a board without one).
-    led: Option<LedSnapshot>,
-}
-
-/// What the virtual device's RGB LED shows and which mode the app set.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub struct LedSnapshot {
-    pub mode: &'static str,
-    pub rgb: [u8; 3],
 }
 
 impl ProcessLink {
@@ -222,7 +199,6 @@ impl ProcessLink {
             outbound: Vec::new(),
             inbound: VecDeque::new(),
             state: None,
-            led: None,
         })
     }
 
@@ -247,10 +223,6 @@ impl ProcessLink {
                 self.state = DEVICE_STATES
                     .into_iter()
                     .find(|state| *state == response.state);
-                self.led = response.led.and_then(|led| {
-                    let mode = LedMode::from_token(&led.mode)?.token();
-                    Some(LedSnapshot { mode, rgb: led.rgb })
-                });
             }
             Err(TryRecvError::Disconnected) => return Err(invalid("virtual child I/O closed")),
             Err(TryRecvError::Empty) => {}
@@ -333,8 +305,6 @@ pub struct Snapshot {
     pub detents: usize,
     /// The firmware companion state the runner reported last (`None` before any response).
     pub device_state: Option<&'static str>,
-    /// The RGB LED the runner reported last: `None` before any response and on a board without one.
-    pub led: Option<LedSnapshot>,
     /// The simulated host presence: `active`, `locked` or `sleeping`.
     pub presence: &'static str,
     pub frame: Option<Vec<u16>>,
@@ -353,9 +323,6 @@ pub struct Sandbox {
     orchestrator: Orchestrator,
     rotary: RotaryPipeline,
     desk: DeskRuntime,
-    /// The LED settings the app would hold (in memory only), and the last ones sent per session.
-    led: LedSettings,
-    led_sent: Option<(u32, u32, LedWire)>,
     volume: Arc<FakeVolumeBackend>,
     synth: Arc<FakeInputSynth>,
     active_session: Option<(u32, u32)>,
@@ -430,8 +397,6 @@ impl Sandbox {
             orchestrator: Orchestrator::new(),
             rotary: RotaryPipeline::new(volume.as_ref()),
             desk: DeskRuntime::new_simulated(services),
-            led: LedSettings::default(),
-            led_sent: None,
             volume,
             synth,
             active_session: None,
@@ -457,7 +422,6 @@ impl Sandbox {
                 media_triggers: 0,
                 detents: 0,
                 device_state: None,
-                led: None,
                 presence: "active",
                 frame: None,
                 error: None,
@@ -524,7 +488,6 @@ impl Sandbox {
         self.held = false;
         self.release_by = None;
         self.snapshot.connected = false;
-        self.snapshot.led = None;
         self.snapshot.connection_state = if error.is_some() {
             "error"
         } else {
@@ -806,7 +769,6 @@ impl Sandbox {
             self.snapshot.frame = Some(frame);
         }
         self.snapshot.device_state = link.state;
-        self.snapshot.led = link.led;
         self.session.set_host_ms(ms);
         self.session.set_host_instant(Instant::now());
         self.session
@@ -914,28 +876,7 @@ impl Sandbox {
                 .send_media_info(link, media)
                 .map_err(|_| invalid("virtual media failed"))?;
         }
-        // The same rule as the app's device task: once per session and on any change, only to a
-        // device that negotiated an LED (the v1 board never does), Status mode in the active
-        // profile's colour.
-        if let (Some(nonce), true) = (
-            self.session.current_session(),
-            self.session.supports_rgb_led(),
-        ) {
-            let wire = self.led.wire(self.desk.context().profile().id.token());
-            let key = (self.session.connection_generation(), nonce, wire);
-            if self.led_sent != Some(key) {
-                self.led_sent = Some(key);
-                self.session
-                    .send_led_settings(link, wire.mode, wire.color, wire.brightness, wire.speed)
-                    .map_err(|_| invalid("virtual LED settings failed"))?;
-            }
-        }
         Ok(())
-    }
-
-    /// Sets the LED settings the sandbox sends the device, as the app's LED page would.
-    pub fn set_led(&mut self, led: LedSettings) {
-        self.led = led;
     }
 }
 
@@ -966,7 +907,6 @@ mod tests {
             outbound: Vec::new(),
             inbound: VecDeque::new(),
             state: None,
-            led: None,
         };
         let mut edges = VecDeque::new();
         link.exchange(0, &mut edges, false).unwrap();
@@ -978,7 +918,6 @@ mod tests {
                 wire: Vec::new(),
                 frame: None,
                 brightness: None,
-                led: None,
                 reboot: false,
                 state: "idle".into(),
             }))
@@ -1014,7 +953,6 @@ mod tests {
             outbound: Vec::new(),
             inbound: VecDeque::new(),
             state: None,
-            led: None,
         };
         let bytes: Vec<_> = (0..WIRE_CAPACITY).map(|n| (n % 251) as u8).collect();
         let mut sent = 0;
@@ -1038,7 +976,6 @@ mod tests {
                 wire: (0..100).collect(),
                 frame: None,
                 brightness: None,
-                led: None,
                 reboot: false,
                 state: "idle".into(),
             }))
@@ -1061,7 +998,6 @@ mod tests {
                 wire: vec![0; WIRE_CAPACITY],
                 frame: None,
                 brightness: None,
-                led: None,
                 reboot: false,
                 state: "idle".into(),
             }))
@@ -1109,17 +1045,17 @@ mod tests {
         for bytes in [
             vec![b'x'; MAX_LINE + 2],
             b"{}".to_vec(),
-            b"{\"wire\":[],\"frame\":[0],\"brightness\":null,\"led\":null,\"reboot\":false,\"state\":\"idle\"}\n"
+            b"{\"wire\":[],\"frame\":[0],\"brightness\":null,\"reboot\":false,\"state\":\"idle\"}\n"
                 .to_vec(),
             // Missing or unknown firmware state.
-            b"{\"wire\":[],\"frame\":null,\"brightness\":null,\"led\":null,\"reboot\":false}\n".to_vec(),
-            b"{\"wire\":[],\"frame\":null,\"brightness\":null,\"led\":null,\"reboot\":false,\"state\":\"asleep\"}\n"
+            b"{\"wire\":[],\"frame\":null,\"brightness\":null,\"reboot\":false}\n".to_vec(),
+            b"{\"wire\":[],\"frame\":null,\"brightness\":null,\"reboot\":false,\"state\":\"asleep\"}\n"
                 .to_vec(),
         ] {
             assert!(read_response(&mut io::Cursor::new(bytes)).is_err());
         }
         let good =
-            b"{\"wire\":[],\"frame\":null,\"brightness\":null,\"led\":null,\"reboot\":false,\"state\":\"sleeping\"}\n";
+            b"{\"wire\":[],\"frame\":null,\"brightness\":null,\"reboot\":false,\"state\":\"sleeping\"}\n";
         assert!(read_response(&mut io::Cursor::new(good)).is_ok());
     }
 }

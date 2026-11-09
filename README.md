@@ -119,7 +119,7 @@ result is never promoted to physical proof. Hardware results are recorded in
 ## Hardware and pin map
 
 Kivori Pip (KV-P1) is one Waveshare RP2040-Zero, one ST7789 240×240 panel, one HW-040 rotary
-encoder, three momentary push buttons and one RGB LED. USB provides power, flashing and the product
+encoder, three momentary push buttons. USB provides power, flashing and the product
 data link (USB CDC, `2E8A:000A`), with no external UART bridge. The first beta units used an
 ESP32-C3 SuperMini; the board changed with the v7 enclosure ([ADR-0019](docs/adr/0019-rp2040-zero-replaces-esp32-c3.md)).
 
@@ -134,7 +134,6 @@ ESP32-C3 SuperMini; the board changed with the v7 enclosure ([ADR-0019](docs/adr
 | Encoder DT (B) | 4 | |
 | Encoder CLK (A) | 5 | |
 | Button left / middle / right (B1 / B2 / B3) | 6 / 7 / 8 | to GND, internal pull-up, no resistor |
-| RGB LED red / green / blue | 9 / 10 / 11 | PWM, each through 1 kΩ, common cathode to GND |
 
 The display has no chip-select line. GP0/GP1 stay free for a debug UART, used only by the
 `debug-payloads` development feature. The board's own WS2812 LED (GP16) is not used.

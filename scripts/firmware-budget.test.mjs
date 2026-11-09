@@ -429,8 +429,8 @@ const committed = () => JSON.parse(readFileSync(join(FIRMWARE, 'resource-budget.
 test('the committed budget names the RP2040 interrupt handlers and sets every limit the check reads', () => {
   const budget = committed();
   assert.equal(budget.entry, 'main');
-  // Three handlers at one priority: the rotary GPIO interrupt, USB and the LED timer. All must be traced.
-  assert.deepEqual(budget.interrupt_paths, [['IO_IRQ_BANK0'], ['USBCTRL_IRQ'], ['TIMER_IRQ_0']]);
+  // Two handlers at one priority: the rotary GPIO interrupt and USB. All must be traced.
+  assert.deepEqual(budget.interrupt_paths, [['IO_IRQ_BANK0'], ['USBCTRL_IRQ']]);
   for (const key of [
     'app_image_bytes',
     'asset_blob_bytes',
@@ -467,7 +467,6 @@ test('measurements over the committed budget fail, each by name', () => {
       ['main', ['sub sp, #0x10', 'bx lr']],
       ['IO_IRQ_BANK0', ['sub sp, #0x20', 'bx lr']],
       ['USBCTRL_IRQ', ['sub sp, #0x40', 'bx lr']],
-      ['TIMER_IRQ_0', ['sub sp, #0x10', 'bx lr']],
     ),
   );
   const run = (over) => evaluate({ measured: { ...ok, ...over }, parsed, budget });

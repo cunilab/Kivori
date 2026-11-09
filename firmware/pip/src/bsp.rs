@@ -29,7 +29,7 @@ pub struct Board {
     pub sio: pac::SIO,
     /// The display's SPI block.
     pub spi1: pac::SPI1,
-    /// PWM slices: backlight and RGB LED.
+    /// PWM slices: the backlight.
     pub pwm: pac::PWM,
     /// USB controller registers and its dual-port RAM.
     pub usb: (pac::USBCTRL_REGS, pac::USBCTRL_DPRAM),

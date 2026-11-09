@@ -220,9 +220,6 @@ fn device_loop(
     // The brightness step to show, and the last buddy settings the device was sent (per session).
     let mut brightness = config.display.brightness;
     let mut buddy_sent: Option<(u32, u32, MascotPersonality, bool, u8)> = None;
-    // The LED settings, and the last ones the device was sent (per session).
-    let mut led = config.led.clone();
-    let mut led_sent: Option<(u32, u32, crate::config::LedWire)> = None;
     let mut flash = FlashWorkflow::new(!firmware::bundled_images().images().is_empty(), 0);
     // Setup initialized the shared status; publishing Idle here could erase a queued reservation.
     drain_firmware_activity(&app, &activity_log, &mut flash);
@@ -309,7 +306,6 @@ fn device_loop(
                         (config.buddy.intensity.personality(), config.buddy.reactions);
                     self_play_wanted = self_play;
                     brightness = config.display.brightness;
-                    led = config.led.clone();
                     let running = self_play && !self_play_paused;
                     // Restarting the cadence on an unrelated save would delay the next reaction.
                     if (personality, running) != (companion.personality(), companion.self_play()) {
@@ -908,46 +904,6 @@ fn device_loop(
                     buddy_sent = Some(key);
                     let write_failed = session
                         .send_buddy_settings(open_link, key.2, key.3, key.4)
-                        .is_err();
-                    if write_failed {
-                        recover_link(
-                            &mut activity_planner,
-                            &mut manager,
-                            ManagerEvent::IoError,
-                            LinkRecovery::new(
-                                &mut link,
-                                &mut connected_port,
-                                &mut retry_at,
-                                &mut deadlines,
-                                &flash,
-                            )
-                            .with_rotator(&mut rotator, started.elapsed()),
-                            |observation| {
-                                record_observations(&app, &activity_log, [observation]);
-                            },
-                        );
-                    }
-                }
-            }
-        }
-
-        // A device with an RGB LED runs it itself and is sent the settings once per session and again
-        // on any change. In Status mode the colour is the active profile's, so a profile change
-        // sends them again; the device knows nothing of profiles.
-        if !flash.is_busy() && manager.state().can_drive_device() && session.supports_rgb_led() {
-            if let (Some(nonce), Some(open_link)) = (session.current_session(), link.as_mut()) {
-                let wire = led.wire(desk.context().profile().id.token());
-                let key = (session.connection_generation(), nonce, wire);
-                if led_sent != Some(key) {
-                    led_sent = Some(key);
-                    let write_failed = session
-                        .send_led_settings(
-                            open_link,
-                            wire.mode,
-                            wire.color,
-                            wire.brightness,
-                            wire.speed,
-                        )
                         .is_err();
                     if write_failed {
                         recover_link(

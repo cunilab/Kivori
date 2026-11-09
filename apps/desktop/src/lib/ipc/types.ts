@@ -220,7 +220,6 @@ export const CAPABILITY_NAMES = [
   'productIdentityV1',
   'buildInfoV1',
   'heldRotationV1',
-  'rgbLedV1',
 ] as const;
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
 
@@ -456,35 +455,6 @@ export type DisplayMode = (typeof DISPLAY_MODES)[number];
 
 export const INTENSITIES = ['low', 'normal', 'high'] as const;
 export type Intensity = (typeof INTENSITIES)[number];
-/** What the RGB LED does. `cycle` and `mood` ignore the chosen colour; `status` reacts to the
- *  device's own state (muted mic red, no host amber, a press white) over the chosen colour. */
-export const LED_MODES = ['off', 'solid', 'breathe', 'cycle', 'status', 'mood'] as const;
-export type LedMode = (typeof LED_MODES)[number];
-export const LED_SPEEDS = ['slow', 'medium', 'fast'] as const;
-export type LedSpeed = (typeof LED_SPEEDS)[number];
-/** `#RRGGBB` (either case from the user; the native side stores it upper case). */
-export const LED_COLOR = /^#[0-9a-fA-F]{6}$/;
-
-/** The RGB LED settings. Only a device with `rgbLedV1` has an LED; the others ignore them. */
-export interface LedSettingsDto {
-  mode: LedMode;
-  /** The base colour, `#RRGGBB`. */
-  color: string;
-  /** Output scale in percent, 0 to 100. */
-  brightness: number;
-  speed: LedSpeed;
-  /** Status mode's colour per profile id; a profile without an entry uses `color`. */
-  profileColors: Record<string, string>;
-}
-
-/** What a fresh config holds (the native default): the buddy's mood in a soft teal at 60 %. */
-export const DEFAULT_LED_SETTINGS: LedSettingsDto = {
-  mode: 'mood',
-  color: '#2EC4B6',
-  brightness: 60,
-  speed: 'medium',
-  profileColors: {},
-};
 /** Low, Normal and High are the calm, cozy and playful personalities. */
 export const INTENSITY_PERSONALITY: Record<Intensity, MascotPersonality> = {
   low: 'calm',
@@ -637,7 +607,6 @@ export interface ConfigDto {
   macros: MacroSpec[];
   display: { defaultView: DisplayMode; secondaryView: DisplayMode | 'cycle'; brightness: number };
   buddy: { reactions: boolean; intensity: Intensity };
-  led: LedSettingsDto;
 }
 export const MEDIA_STATUSES = ['playing', 'paused', 'stopped'] as const;
 export type MediaStatus = (typeof MEDIA_STATUSES)[number];

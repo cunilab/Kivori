@@ -22,16 +22,16 @@ pub use handshake::{evaluate_hello_ack, HandshakeOutcome};
 pub use message::{
     BuddySettings, BuildInfo, Bye, ControlId, ControlLabelsUpdate, DeviceId, Diagnostic,
     ErrorReport, Feedback, FirmwareVersion, Health, Hello, HelloAck, Identity, IdentitySource,
-    InputEvent, InputKind, InternalsReport, InternalsRequest, LedSettings, MascotActionApplied,
-    MediaInfoUpdate, Message, MicStateUpdate, Nonce, Ping, PlayMascotAction, Pong, Presentation,
-    Ready, SetState, StateReport, Status, CONTEXT_BUTTONS, SOURCE_ID_LEN,
+    InputEvent, InputKind, InternalsReport, InternalsRequest, MascotActionApplied, MediaInfoUpdate,
+    Message, MicStateUpdate, Nonce, Ping, PlayMascotAction, Pong, Presentation, Ready, SetState,
+    StateReport, Status, CONTEXT_BUTTONS, SOURCE_ID_LEN,
 };
 pub use negotiate::negotiate;
 
 /// Current protocol major version.
 pub const PROTOCOL_MAJOR: u16 = 0;
 /// Current protocol minor version.
-pub const PROTOCOL_MINOR: u16 = 4;
+pub const PROTOCOL_MINOR: u16 = 3;
 /// Frame magic (`"KV"`, little-endian `0x4B56`).
 pub const MAGIC: u16 = 0x4B56;
 /// Maximum payload length, in bytes.

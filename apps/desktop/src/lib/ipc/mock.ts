@@ -30,7 +30,6 @@ import type {
   DeskStatusDto,
   DisplayMode,
   Intensity,
-  LedSettingsDto,
   ProfileConfigDto,
   ProfileId,
   RotateSpec,
@@ -40,10 +39,6 @@ import type {
 import {
   CAPABILITY_NAMES,
   COMPANION_STATES,
-  DEFAULT_LED_SETTINGS,
-  LED_COLOR,
-  LED_MODES,
-  LED_SPEEDS,
   MACRO_LIMITS,
   PREVIEW_DIM,
   PROFILE_LIMITS,
@@ -919,15 +914,13 @@ function defaultConfig(): ConfigDto {
     macros: [],
     display: { defaultView: 'buddy', secondaryView: 'system', brightness: 5 },
     buddy: { reactions: true, intensity: 'normal' },
-    led: { ...DEFAULT_LED_SETTINGS, profileColors: {} },
   };
 }
 let config: ConfigDto = defaultConfig();
 const configListeners = new Set<(config: ConfigDto) => void>();
 
 function saveConfig(
-  next: Pick<ConfigDto, 'display' | 'buddy' | 'profiles'> &
-    Partial<Pick<ConfigDto, 'macros' | 'led'>>,
+  next: Pick<ConfigDto, 'display' | 'buddy' | 'profiles'> & Partial<Pick<ConfigDto, 'macros'>>,
   notice: ConfigDto['notice'],
 ): ConfigDto {
   config = { ...config, ...next, notice, revision: config.revision + 1 };
@@ -1087,36 +1080,6 @@ export function mockSetBrightness(step: number): ConfigDto {
       display: { ...config.display, brightness: step },
       buddy: config.buddy,
       profiles: config.profiles,
-    },
-    null,
-  );
-}
-
-/** Mirrors native rules: a `#RRGGBB` colour (stored upper case), a percentage, and profile colours
- *  only for profiles that exist. */
-export function mockSetLedSettings(led: LedSettingsDto): ConfigDto {
-  const color = (value: string): string => {
-    if (!LED_COLOR.test(value)) throw new Error('the LED colour must be #RRGGBB');
-    return value.toUpperCase();
-  };
-  if (!Number.isInteger(led.brightness) || led.brightness < 0 || led.brightness > 100) {
-    throw new Error('the LED brightness is a percentage');
-  }
-  if (!LED_MODES.includes(led.mode)) throw new Error('unknown LED mode');
-  if (!LED_SPEEDS.includes(led.speed)) throw new Error('unknown LED speed');
-  const profileColors: Record<string, string> = {};
-  for (const [profile, value] of Object.entries(led.profileColors)) {
-    if (!config.profiles.some((p) => p.id === profile)) {
-      throw new Error('unknown profile for an LED colour');
-    }
-    profileColors[profile] = color(value);
-  }
-  return saveConfig(
-    {
-      display: config.display,
-      buddy: config.buddy,
-      profiles: config.profiles,
-      led: { ...led, color: color(led.color), profileColors },
     },
     null,
   );

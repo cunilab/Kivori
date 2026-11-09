@@ -386,7 +386,6 @@ fn capacity_and_overflow() -> Result<(), String> {
                 .collect(),
         ),
         brightness: rig.sim.shared.capture.borrow().brightness,
-        led: None,
         reboot: tick.reboot,
         state: super::state_token(rig.sim.runtime.state()),
     };

@@ -22,16 +22,15 @@ use kivori_model::desk::{
     ActionFeedback, ControlLabels, DeskStatus, FeedbackKind, MediaInfo, MicState,
 };
 use kivori_model::internals::DeviceInternals;
-use kivori_model::led::{LedMode, LedSpeed};
 use kivori_model::{
     Capabilities, CompanionState, MascotAction, MascotPersonality, ProtocolVersion, SendableState,
 };
 use kivori_protocol::{
     decode_frame, decode_message, encode_message, evaluate_hello_ack, BuddySettings, BuildInfo,
     Bye, ByeReason, ControlLabelsUpdate, Feedback, FirmwareVersion, HandshakeOutcome, Hello,
-    InputEvent, InternalsRequest, LedSettings, MascotActionApplied, MediaInfoUpdate, Message,
-    MicStateUpdate, Ping, PlayMascotAction, Presentation, ProtoError, SeqClass, SequenceTracker,
-    SetState, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
+    InputEvent, InternalsRequest, MascotActionApplied, MediaInfoUpdate, Message, MicStateUpdate,
+    Ping, PlayMascotAction, Presentation, ProtoError, SeqClass, SequenceTracker, SetState, Status,
+    MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 /// Static session parameters (the desktop's advertised identity + compatibility).
@@ -77,8 +76,7 @@ impl Default for SessionConfig {
                 .union(Capabilities::MIC_STATE_V1)
                 .union(Capabilities::PRODUCT_IDENTITY_V1)
                 .union(Capabilities::BUILD_INFO_V1)
-                .union(Capabilities::HELD_ROTATION_V1)
-                .union(Capabilities::RGB_LED_V1),
+                .union(Capabilities::HELD_ROTATION_V1),
             supported_majors: vec![PROTOCOL_MAJOR],
         }
     }
@@ -331,13 +329,6 @@ impl Session {
         self.effective_caps().contains(Capabilities::IDLE_LIFE_V1)
     }
 
-    /// Whether the device has an RGB LED it runs itself (`RGB_LED_V1`). Boards without one never
-    /// advertise it, so nothing is sent to them.
-    #[must_use]
-    pub fn supports_rgb_led(&self) -> bool {
-        self.effective_caps().contains(Capabilities::RGB_LED_V1)
-    }
-
     /// Whether both peers negotiated host takeovers (`Bye(HostSleeping)` / `Bye(FirmwareUpdate)`)
     /// for this connection.
     #[must_use]
@@ -550,38 +541,6 @@ impl Session {
                 personality,
                 self_play,
                 brightness,
-            }),
-        )?;
-        Ok(true)
-    }
-
-    /// Sends the RGB LED settings the device runs itself. Returns `Ok(false)` without writing when
-    /// there is no session or `RGB_LED_V1` was not negotiated.
-    ///
-    /// # Errors
-    /// [`SessionError::Transport`] if the write fails.
-    pub fn send_led_settings<L: SerialLink>(
-        &mut self,
-        link: &mut L,
-        mode: LedMode,
-        color: [u8; 3],
-        brightness: u8,
-        speed: LedSpeed,
-    ) -> Result<bool, SessionError<L::Error>> {
-        let Some(session) = self.current_session else {
-            return Ok(false);
-        };
-        if !self.supports_rgb_led() {
-            return Ok(false);
-        }
-        self.send(
-            link,
-            &Message::LedSettings(LedSettings {
-                session,
-                mode,
-                color,
-                brightness,
-                speed,
             }),
         )?;
         Ok(true)

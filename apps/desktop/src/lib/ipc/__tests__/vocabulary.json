@@ -29,8 +29,7 @@
     "micStateV1",
     "productIdentityV1",
     "buildInfoV1",
-    "heldRotationV1",
-    "rgbLedV1"
+    "heldRotationV1"
   ],
   "chipModels": ["esp32c3", "rp2040"],
   "controlLayouts": ["rotary-three-button"],
@@ -76,8 +75,6 @@
   "hostMedia": ["observable", "notObservable"],
   "hostPresence": ["active", "locked", "sleeping"],
   "identitySources": ["legacy", "build", "chip"],
-  "ledModes": ["off", "solid", "breathe", "cycle", "status", "mood"],
-  "ledSpeeds": ["slow", "medium", "fast"],
   "profileIds": [
     "general",
     "browser",

@@ -348,9 +348,9 @@ the current profile and complete rows 3.15 and 5.1 before powering/flashing an a
 | SPI1 SCK (20 MHz, Mode 3) | 26 | Encoder CLK | 5 |
 | SPI1 TX (display SDA) | 15 | Encoder DT | 4 |
 | Display D/C | 13 | Encoder SW | 3 |
-| Display RST | 14 | RGB LED R / G / B (1 kΩ each) | 9 / 10 / 11 |
-| Backlight (active-high, PWM) | 12 | Encoder COM / VCC | GND / **3V3** (never 5 V) |
-| Button left / middle / right | 6 / 7 / 8 | Button other leg | GND (no resistor) |
+| Display RST | 14 | Encoder COM / VCC | GND / **3V3** (never 5 V) |
+| Backlight (active-high, PWM) | 12 | Button other leg | GND (no resistor) |
+| Button left / middle / right | 6 / 7 / 8 | | |
 
 1. Once per machine: `bun install`, `cargo install elf2uf2-rs`, install `just`.
 2. Flash the product firmware: hold BOOT while plugging in, then `just fw-flash` (builds with `physical-st7789`, converts to UF2 and copies it to the `RPI-RP2` drive).
@@ -613,7 +613,7 @@ Run on a bare RP2040-Zero (USB only, no carrier) with firmware source `cd84f7e0d
 - [x] R.4 2026-11-06 Internals (`KIVORI_PROBE_SECS=8 device_probe PORT internals`) | compose 110 ms, 9 fps, flush 0 to 5 ms, busy 100 %, stack min free 9,976 to 9,988 B, static RAM 151,088 B of 270,336 B
 - [x] R.5 2026-11-06 1200-baud touch on the running unit | `RPI-RP2` appears in about 2 s, no button
 - [x] R.6 2026-11-06 Reflash after the touch | back as `Kivori Pip` in about 2 s without a replug, handshake OK
-- [ ] R.7 On the v7 carrier: panel shows the buddy, knob, press and the three keys act, RGB LED modes and brightness look right (pick the resistor values)
+- [ ] R.7 On the v7 carrier: panel shows the buddy, knob, press and the three keys act
 - [ ] R.8 On the v7 carrier: the app's own Update and Restore (BOOT) flows against this board (Phase 8)
 
 Found on the first unit: it enumerated but never answered (0 bytes in 2 minutes). On-device counters read 0 bytes received, 36 queued but never delivered, and a 750 ms loop: the USB interrupt only polled, and the RP2040 re-raises it until an OUT packet is read. Fixed by reading OUT data in the interrupt (architecture, Transport).

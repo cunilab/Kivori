@@ -33,10 +33,6 @@ pub struct ConfigFile {
     pub display: DisplaySettings,
     #[serde(default)]
     pub buddy: BuddySettings,
-    /// The RGB LED (app-only: nothing is written to the device). A file from before the setting
-    /// existed loads with the defaults.
-    #[serde(default)]
-    pub led: LedSettings,
     /// First-run setup. An absent field loads as not completed; [`super::store::ConfigStore::open`]
     /// treats a pre-existing valid file without it as an existing user who has already set up.
     #[serde(default)]
@@ -55,7 +51,6 @@ impl Default for ConfigFile {
             macros: Vec::new(),
             display: DisplaySettings::default(),
             buddy: BuddySettings::default(),
-            led: LedSettings::default(),
             onboarding: OnboardingState::default(),
             updates: UpdateSettings::default(),
         }
@@ -146,8 +141,7 @@ impl ConfigFile {
         if self.version != CONFIG_VERSION {
             return Err("unsupported config version");
         }
-        self.display.validate()?;
-        self.led.validate()
+        self.display.validate()
     }
 }
 
@@ -571,224 +565,6 @@ impl Default for BuddySettings {
         Self {
             reactions: true,
             intensity: Intensity::Normal,
-        }
-    }
-}
-
-/// What the RGB LED does. Mirrors `kivori_model::led::LedMode` with the token the file and IPC use.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum LedMode {
-    Off,
-    Solid,
-    Breathe,
-    Cycle,
-    Status,
-    /// Follows the buddy's mood: a fresh config starts here.
-    #[default]
-    Mood,
-}
-
-impl LedMode {
-    pub const ALL: [Self; 6] = [
-        Self::Off,
-        Self::Solid,
-        Self::Breathe,
-        Self::Cycle,
-        Self::Status,
-        Self::Mood,
-    ];
-
-    /// The lowercase token used in the file and over IPC.
-    #[must_use]
-    pub const fn token(self) -> &'static str {
-        match self {
-            Self::Off => "off",
-            Self::Solid => "solid",
-            Self::Breathe => "breathe",
-            Self::Cycle => "cycle",
-            Self::Status => "status",
-            Self::Mood => "mood",
-        }
-    }
-
-    #[must_use]
-    pub fn from_token(token: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|mode| mode.token() == token)
-    }
-
-    /// The wire value.
-    #[must_use]
-    pub const fn wire(self) -> kivori_model::led::LedMode {
-        use kivori_model::led::LedMode as Wire;
-        match self {
-            Self::Off => Wire::Off,
-            Self::Solid => Wire::Solid,
-            Self::Breathe => Wire::Breathe,
-            Self::Cycle => Wire::Cycle,
-            Self::Status => Wire::Status,
-            Self::Mood => Wire::Mood,
-        }
-    }
-}
-
-/// How fast an animated LED mode moves. Mirrors `kivori_model::led::LedSpeed`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum LedSpeed {
-    Slow,
-    #[default]
-    Medium,
-    Fast,
-}
-
-impl LedSpeed {
-    pub const ALL: [Self; 3] = [Self::Slow, Self::Medium, Self::Fast];
-
-    /// The lowercase token used in the file and over IPC.
-    #[must_use]
-    pub const fn token(self) -> &'static str {
-        match self {
-            Self::Slow => "slow",
-            Self::Medium => "medium",
-            Self::Fast => "fast",
-        }
-    }
-
-    #[must_use]
-    pub fn from_token(token: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|speed| speed.token() == token)
-    }
-
-    /// The wire value.
-    #[must_use]
-    pub const fn wire(self) -> kivori_model::led::LedSpeed {
-        use kivori_model::led::LedSpeed as Wire;
-        match self {
-            Self::Slow => Wire::Slow,
-            Self::Medium => Wire::Medium,
-            Self::Fast => Wire::Fast,
-        }
-    }
-}
-
-/// The colour a fresh config uses: a soft teal.
-pub const LED_DEFAULT_COLOR: &str = "#2EC4B6";
-/// Output scale of a fresh config, in percent.
-pub const LED_DEFAULT_BRIGHTNESS: u8 = 60;
-/// The most per-profile colours a config holds: every built-in and custom profile once.
-pub const MAX_LED_PROFILE_COLORS: usize = ProfileId::ALL.len() + MAX_CUSTOM_PROFILES;
-
-/// Parses `#RRGGBB` (either case); `None` for anything else.
-#[must_use]
-pub fn parse_hex_color(text: &str) -> Option<[u8; 3]> {
-    let digits = text.strip_prefix('#')?;
-    if digits.len() != 6 || !digits.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return None;
-    }
-    let value = u32::from_str_radix(digits, 16).ok()?;
-    Some([(value >> 16) as u8, (value >> 8) as u8, value as u8])
-}
-
-/// `#RRGGBB`, upper case: the one spelling the app stores.
-#[must_use]
-pub fn hex_color(rgb: [u8; 3]) -> String {
-    format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2])
-}
-
-/// What the device is told: the settings with the active profile's colour resolved.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LedWire {
-    pub mode: kivori_model::led::LedMode,
-    pub color: [u8; 3],
-    pub brightness: u8,
-    pub speed: kivori_model::led::LedSpeed,
-}
-
-/// The RGB LED settings. The device runs the animation itself; the app only stores these and sends
-/// them on every session start and change.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LedSettings {
-    #[serde(default)]
-    pub mode: LedMode,
-    /// The base colour, `#RRGGBB`.
-    #[serde(default = "default_led_color")]
-    pub color: String,
-    /// Output scale in percent, `0..=100`.
-    #[serde(default = "default_led_brightness")]
-    pub brightness: u8,
-    #[serde(default)]
-    pub speed: LedSpeed,
-    /// Status mode's colour per profile (`general`, `zoom`, `custom-1`, ...), `#RRGGBB`; a profile
-    /// without an entry uses `color`.
-    #[serde(default)]
-    pub profile_colors: BTreeMap<String, String>,
-}
-
-fn default_led_color() -> String {
-    LED_DEFAULT_COLOR.to_string()
-}
-
-const fn default_led_brightness() -> u8 {
-    LED_DEFAULT_BRIGHTNESS
-}
-
-impl Default for LedSettings {
-    fn default() -> Self {
-        Self {
-            mode: LedMode::default(),
-            color: default_led_color(),
-            brightness: LED_DEFAULT_BRIGHTNESS,
-            speed: LedSpeed::default(),
-            profile_colors: BTreeMap::new(),
-        }
-    }
-}
-
-impl LedSettings {
-    /// # Errors
-    /// A short reason when a colour is not `#RRGGBB`, the brightness is above 100, or a profile
-    /// colour names no profile.
-    pub fn validate(&self) -> Result<(), &'static str> {
-        if parse_hex_color(&self.color).is_none() {
-            return Err("the LED colour must be #RRGGBB");
-        }
-        if self.brightness > 100 {
-            return Err("the LED brightness is a percentage");
-        }
-        if self.profile_colors.len() > MAX_LED_PROFILE_COLORS {
-            return Err("too many LED profile colours");
-        }
-        for (profile, color) in &self.profile_colors {
-            if ProfileRef::parse(profile).is_none() {
-                return Err("unknown profile for an LED colour");
-            }
-            if parse_hex_color(color).is_none() {
-                return Err("the LED profile colour must be #RRGGBB");
-            }
-        }
-        Ok(())
-    }
-
-    /// What to send while `profile` (a profile token) is active: in Status mode its own colour
-    /// when it has one, otherwise the chosen colour.
-    #[must_use]
-    pub fn wire(&self, profile: &str) -> LedWire {
-        let own = || parse_hex_color(&self.color).unwrap_or([0; 3]);
-        let color = match self.mode {
-            LedMode::Status => self
-                .profile_colors
-                .get(profile)
-                .and_then(|color| parse_hex_color(color))
-                .unwrap_or_else(own),
-            _ => own(),
-        };
-        LedWire {
-            mode: self.mode.wire(),
-            color,
-            brightness: self.brightness,
-            speed: self.speed.wire(),
         }
     }
 }

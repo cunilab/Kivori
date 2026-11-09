@@ -53,8 +53,12 @@ pub(crate) fn migrate_with(
     for step in &migrations[(version - 1) as usize..(current - 1) as usize] {
         raw = step(raw)?;
     }
+    // A development build once stored an `led` section; the strict schema would call it corrupt.
+    if let Some(fields) = raw.as_object_mut() {
+        fields.remove("led");
+    }
     let file: ConfigFile = serde_json::from_value(raw).map_err(|_| LoadError::Corrupt)?;
-    if file.version != current || file.display.validate().is_err() || file.led.validate().is_err() {
+    if file.version != current || file.display.validate().is_err() {
         return Err(LoadError::Corrupt);
     }
     Ok((file, (version < current).then_some(version)))

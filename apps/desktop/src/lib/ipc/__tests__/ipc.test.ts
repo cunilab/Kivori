@@ -33,8 +33,6 @@ import {
   resetProfile,
   setBinding,
   setBuddySettings,
-  setBrightness,
-  setLedSettings,
   setRotate,
   setHeldRotate,
   setDisplaySettings,
@@ -75,9 +73,6 @@ import vocabulary from './vocabulary.json';
 import {
   ACTION_SPEC_KINDS,
   CAPABILITY_NAMES,
-  DEFAULT_LED_SETTINGS,
-  LED_MODES,
-  LED_SPEEDS,
   CONTROL_LAYOUTS,
   COMPANION_STATES,
   CONTROL_REFS,
@@ -530,7 +525,6 @@ describe('config ipc', () => {
     macros: [],
     display: { defaultView: 'buddy', secondaryView: 'cycle', brightness: 5 },
     buddy: { reactions: true, intensity: 'normal' },
-    led: DEFAULT_LED_SETTINGS,
   };
 
   it('accepts the mock defaults and every notice, and rejects unknown tokens', async () => {
@@ -555,16 +549,6 @@ describe('config ipc', () => {
       { ...validConfig, display: { defaultView: 'buddy', secondaryView: 'nope', brightness: 5 } },
       { ...validConfig, buddy: { reactions: 'yes', intensity: 'normal' } },
       { ...validConfig, buddy: { reactions: true, intensity: 'extreme' } },
-      { ...validConfig, led: undefined },
-      { ...validConfig, led: { ...DEFAULT_LED_SETTINGS, mode: 'disco' } },
-      { ...validConfig, led: { ...DEFAULT_LED_SETTINGS, speed: 'warp' } },
-      { ...validConfig, led: { ...DEFAULT_LED_SETTINGS, color: 'teal' } },
-      { ...validConfig, led: { ...DEFAULT_LED_SETTINGS, color: '#12345' } },
-      { ...validConfig, led: { ...DEFAULT_LED_SETTINGS, brightness: 101 } },
-      { ...validConfig, led: { ...DEFAULT_LED_SETTINGS, brightness: -1 } },
-      { ...validConfig, led: { ...DEFAULT_LED_SETTINGS, brightness: 50.5 } },
-      { ...validConfig, led: { ...DEFAULT_LED_SETTINGS, profileColors: { zoom: 'green' } } },
-      { ...validConfig, led: { ...DEFAULT_LED_SETTINGS, profileColors: 'none' } },
       { ...validConfig, profiles: 'none' },
       { ...validConfig, macros: 'none' },
       { ...validConfig, macros: [{ id: 'm', name: 'M', steps: [{ kind: 'delay', ms: 49 }] }] },
@@ -601,19 +585,6 @@ describe('config ipc', () => {
     expect(tauri.invoke).toHaveBeenLastCalledWith('set_buddy_settings', {
       reactions: false,
       intensity: 'high',
-    });
-    const led = {
-      ...DEFAULT_LED_SETTINGS,
-      mode: 'status',
-      profileColors: { zoom: '#00FF00' },
-    } as const;
-    await setLedSettings(led);
-    expect(tauri.invoke).toHaveBeenLastCalledWith('set_led_settings', {
-      mode: 'status',
-      color: '#2EC4B6',
-      brightness: 60,
-      speed: 'medium',
-      profileColors: { zoom: '#00FF00' },
     });
     await resetConfig();
     expect(tauri.invoke).toHaveBeenLastCalledWith('reset_config', undefined);
@@ -672,34 +643,6 @@ describe('config ipc', () => {
     const reset = await resetConfig();
     expect(reset.display).toEqual({ defaultView: 'buddy', secondaryView: 'system', brightness: 5 });
     expect(reset.revision).toBeGreaterThan(saved.revision);
-  });
-
-  it('mirrors the native LED rules in the browser mock', async () => {
-    const fresh = await resetConfig();
-    expect(fresh.led).toEqual(DEFAULT_LED_SETTINGS);
-    const led = {
-      mode: 'status',
-      color: '#ff8800',
-      brightness: 0,
-      speed: 'fast',
-      profileColors: { zoom: '#00ff00' },
-    } as const;
-    const saved = await setLedSettings(led);
-    expect(saved.led).toEqual({ ...led, color: '#FF8800', profileColors: { zoom: '#00FF00' } });
-    expect(() => parseConfig(JSON.parse(JSON.stringify(saved)))).not.toThrow();
-    // Another save keeps it.
-    expect((await setBrightness(3)).led).toEqual(saved.led);
-    for (const bad of [
-      { ...led, color: 'orange' },
-      { ...led, brightness: 101 },
-      { ...led, brightness: 1.5 },
-      { ...led, profileColors: { nobody: '#00ff00' } },
-      { ...led, profileColors: { zoom: '#0f0' } },
-    ]) {
-      await expect(setLedSettings(bad), JSON.stringify(bad)).rejects.toThrow();
-    }
-    expect((await getConfig()).led).toEqual(saved.led);
-    expect((await resetConfig()).led).toEqual(DEFAULT_LED_SETTINGS);
   });
 
   it('lists the built-in profiles in the mock and they pass parseConfig', async () => {
@@ -844,8 +787,6 @@ describe('Rust/TS token vocabulary', () => {
     expect([...STEP_SPEC_KINDS]).toEqual(vocabulary.stepSpecKinds);
     expect([...ROTATE_SPEC_KINDS]).toEqual(vocabulary.rotateSpecKinds);
     expect([...CAPABILITY_NAMES]).toEqual(vocabulary.capabilityNames);
-    expect([...LED_MODES]).toEqual(vocabulary.ledModes);
-    expect([...LED_SPEEDS]).toEqual(vocabulary.ledSpeeds);
     expect([...CONTROL_LAYOUTS]).toEqual(vocabulary.controlLayouts);
     expect([...HOST_AVAILABILITIES]).toEqual(vocabulary.hostAvailability);
     expect([...HOST_MEDIA]).toEqual(vocabulary.hostMedia);

@@ -242,7 +242,6 @@ firmware behaviour is the one `Runtime` both run.
   v2's connected-desk frame rate or a full-redraw flush as a fact about the unit.
 - The endurance run (`just virtual-device-endurance`) also passes on v2 (`KIVORI_VIRTUAL_BOARD=rp2040-zero`, 2026-11-06): one session, 305,058 detents in 1,248 s, both sequence counters wrapped with no gap, slowest heartbeat round trip 814 ms.
 
-- The RGB LED is v2's only: v2 advertises `RGB_LED_V1` and reports the LED's colour, and v1 (the C3 has no LED) never negotiates it. `--desktop-smoke` checks both (`S5.4 led`).
 
 ## Connection and fault controls (S5.2)
 

@@ -7,7 +7,6 @@ use kivori_model::desk::{
 };
 use kivori_model::input::Direction;
 use kivori_model::internals::DeviceInternals;
-use kivori_model::led::{LedMode, LedSpeed};
 use kivori_model::presentation::{PrimaryState, ValueDisplay};
 use kivori_model::{Capabilities, CompanionState, MascotAction, MascotPersonality, SendableState};
 use serde::{Deserialize, Serialize};
@@ -362,23 +361,6 @@ pub struct BuildInfo {
     pub dirty: bool,
 }
 
-/// Desktop -> device: what the RGB LED does (capability `RGB_LED_V1`). Sent on every session start and
-/// whenever it changes; the device runs the animation itself and keeps the last values until it
-/// restarts. Until the first one arrives the LED stays dark.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LedSettings {
-    /// The handshake nonce of the session this applies to.
-    pub session: Nonce,
-    /// What the LED does.
-    pub mode: LedMode,
-    /// The base colour, red, green, blue. Unused by `Cycle` and `Mood`.
-    pub color: [u8; 3],
-    /// Output scale in percent, `0..=100` (values above 100 count as 100).
-    pub brightness: u8,
-    /// How fast an animated mode moves.
-    pub speed: LedSpeed,
-}
-
 /// The top-level wire message.
 ///
 /// **Append-only**: new variants are added at the end within a major version — the `postcard`
@@ -436,7 +418,4 @@ pub enum Message {
     Identity(Identity),
     /// Tag 24 — device -> desktop firmware source id and dirty flag (capability `BUILD_INFO_V1`).
     BuildInfo(BuildInfo),
-    /// Tag 25 — desktop -> device RGB LED mode, colour, brightness and speed (capability
-    /// `RGB_LED_V1`).
-    LedSettings(LedSettings),
 }

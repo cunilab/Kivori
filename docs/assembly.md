@@ -21,7 +21,6 @@ Per unit:
 | Item | Qty | Notes |
 |---|---:|---|
 | Waveshare RP2040-Zero | 1 | Male header pins on the GPIOs in step 15 only (step 1) |
-| 5 mm common-cathode RGB LED, 1 kΩ resistor | 1, 3 | One resistor per colour |
 | ST7789 1.3" 240×240, 7-pin | 1 | |
 | HW-040 rotary encoder | 1 | Nut not used |
 | 12×12 mm push switch, 10 mm tall | 3 | |
@@ -85,10 +84,9 @@ Do this with the USB cable unplugged.
     | GP13 / GP14 | display DC / RES |
     | GP12 | display BLK |
     | 3V3 | display VCC, encoder + |
-    | GND | display GND, encoder GND, one leg of each switch, LED common cathode |
+    | GND | display GND, encoder GND, one leg of each switch |
     | GP5 / GP4 / GP3 | encoder CLK / DT / SW |
     | GP6 / GP7 / GP8 | left / middle / right switch |
-    | GP9 / GP10 / GP11 | LED red / green / blue, each through its 1 kΩ resistor |
 
 16. **Switches:** each switch beeps between its pin and GND only while pressed.
 

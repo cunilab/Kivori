@@ -390,31 +390,6 @@ pub fn set_buddy_settings(
     })
 }
 
-/// Sets the RGB LED: mode (`off`, `solid`, `breathe`, `cycle`, `status`, `mood`), colour
-/// (`#RRGGBB`), brightness (percent), speed (`slow`, `medium`, `fast`) and Status mode's colour
-/// per profile. The device follows at once; nothing is written to it.
-///
-/// # Errors
-/// Returns an error for an unknown mode or speed, a malformed colour, a brightness above 100, a
-/// colour for an unknown profile, or a failed save.
-#[tauri::command]
-pub fn set_led_settings(
-    handle: AppHandle,
-    app: State<'_, AppState>,
-    mode: String,
-    color: String,
-    brightness: u8,
-    speed: String,
-    profile_colors: std::collections::BTreeMap<String, String>,
-) -> Result<ConfigDto, String> {
-    let led = dto::led_settings_from_tokens(&mode, &color, brightness, &speed, &profile_colors)
-        .map_err(str::to_string)?;
-    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
-        let next = store.edited(|file| file.led = led);
-        store.save(next)
-    })
-}
-
 fn profile_ref(token: &str) -> Result<crate::config::ProfileRef, String> {
     crate::config::ProfileRef::parse(token).ok_or_else(|| "unknown profile".to_string())
 }

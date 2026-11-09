@@ -179,8 +179,6 @@ pub fn delete_profile(file: &mut ConfigFile, id: &ProfileRef) -> Result<(), &'st
     };
     custom_mut(file, id)?;
     file.custom_profiles.retain(|p| p.id != *id);
-    // Ids are reused lowest-first: a kept colour would pass to the next new profile.
-    file.led.profile_colors.remove(id.as_str());
     Ok(())
 }
 
@@ -248,14 +246,7 @@ mod tests {
         let b = with_custom(&mut file, "obs64.exe");
         assert_eq!((a.token(), b.token()), ("custom-1", "custom-2"));
         assert_eq!(file.custom_profiles[0].apps, ["figma.exe"]);
-        file.led
-            .profile_colors
-            .insert("custom-1".into(), "#FF0000".into());
         delete_profile(&mut file, &a).unwrap();
-        assert!(
-            file.led.profile_colors.is_empty(),
-            "a deleted profile's LED colour must not pass to the next one"
-        );
         assert_eq!(with_custom(&mut file, "x.exe").token(), "custom-1");
     }
 

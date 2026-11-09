@@ -51,32 +51,6 @@ fn virtual_connection(action: String, state: tauri::State<'_, State>) -> Result<
         .connection(&action)
 }
 
-/// The LED settings the sandbox sends the virtual board, as the app's Display > LED page would.
-/// Checked here because the webview is not trusted with the config's own validation path.
-#[tauri::command]
-fn virtual_led(
-    mode: String,
-    color: String,
-    brightness: u8,
-    speed: String,
-    state: tauri::State<'_, State>,
-) -> Result<(), String> {
-    use kivori_desktop::config::{hex_color, parse_hex_color, LedMode, LedSettings, LedSpeed};
-    let led = LedSettings {
-        mode: LedMode::from_token(&mode).ok_or("unknown LED mode")?,
-        color: hex_color(parse_hex_color(&color).ok_or("the LED colour must be #RRGGBB")?),
-        brightness: brightness.min(100),
-        speed: LedSpeed::from_token(&speed).ok_or("unknown LED speed")?,
-        ..LedSettings::default()
-    };
-    state
-        .0
-        .lock()
-        .map_err(|_| "Virtual device unavailable")?
-        .set_led(led);
-    Ok(())
-}
-
 fn settle(sandbox: &mut Sandbox, duration: Duration) -> Result<(), String> {
     let deadline = Instant::now() + duration;
     while Instant::now() < deadline {
@@ -309,7 +283,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             virtual_snapshot,
             virtual_input,
             virtual_connection,
-            virtual_led,
             get_device_internals
         ])
         .setup(move |app| {

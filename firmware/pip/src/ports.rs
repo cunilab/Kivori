@@ -1,6 +1,6 @@
 //! Hardware-neutral adapter ports.
 //!
-//! The device core depends only on these traits. The real board implements them over
+//! The device core depends only on these three traits. The real board implements them over
 //! USB Serial/JTAG, SPI, and a hardware timer; the host [`crate::sim`] adapters implement them in
 //! memory. Nothing above this layer knows which is in use (constraint 4).
 
@@ -97,13 +97,6 @@ pub trait DisplaySink {
     /// Sets the backlight to `step` (`1..=BRIGHTNESS_STEPS`, already clamped). Sinks without a
     /// dimmable backlight (a bare panel sink, a panel wired always-on) ignore it.
     fn set_brightness(&mut self, _step: u8) {}
-}
-
-/// The RGB LED's three PWM channels (the board's LED on device; a capture in sim). Fed from the
-/// [`crate::led::LedEngine`], which decides the colour.
-pub trait LedSink {
-    /// Drives red, green and blue, each `0..=255` (0 = off), common cathode.
-    fn set_rgb(&mut self, rgb: [u8; 3]);
 }
 
 /// A monotonic millisecond clock, measured from device boot.

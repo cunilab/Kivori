@@ -23,8 +23,7 @@ pub mod physical_st7789 {
         options::{ColorInversion, ColorOrder, Orientation, Rotation},
     };
 
-    /// Capabilities advertised by the shipping Pip runtime and its host simulator. The simulator
-    /// removes `RGB_LED_V1` for the v1 board (ESP32-C3), which has no LED.
+    /// Capabilities advertised by the shipping Pip runtime and its host simulator.
     pub const CAPABILITIES: kivori_model::Capabilities =
         kivori_model::Capabilities::MASCOT_INTERACTION
             .union(kivori_model::Capabilities::PHYSICAL_INPUT_V1)
@@ -43,8 +42,7 @@ pub mod physical_st7789 {
             .union(kivori_model::Capabilities::MIC_STATE_V1)
             .union(kivori_model::Capabilities::PRODUCT_IDENTITY_V1)
             .union(kivori_model::Capabilities::BUILD_INFO_V1)
-            .union(kivori_model::Capabilities::HELD_ROTATION_V1)
-            .union(kivori_model::Capabilities::RGB_LED_V1);
+            .union(kivori_model::Capabilities::HELD_ROTATION_V1);
 
     /// SPI1 clock pin (display SCL).
     pub const SCK: u8 = 26;
@@ -60,14 +58,6 @@ pub mod physical_st7789 {
 
     /// Display backlight pin: PWM slice 6, channel A.
     pub const BL: u8 = 12;
-
-    /// RGB LED pins (red, green, blue), each through 1 k to a common cathode, so active high. PWM
-    /// slices 4B, 5A, 5B.
-    pub const LED: [u8; 3] = [9, 10, 11];
-
-    /// Per-colour duty scale (255 = full) so a mix matches the app's colour: on 3.3 V with 200 R each,
-    /// red (Vf ~2.0 V) draws ~4x the current of green and blue (Vf ~3.0 V). Tuned by eye (#179).
-    pub const LED_GAIN: [u8; 3] = [77, 255, 255];
 
     /// This physical panel does not use chip select.
     pub const CS: Option<u8> = None;
@@ -224,15 +214,12 @@ pub mod physical_st7789 {
         }
 
         /// Every pin the firmware drives or reads, with what it is for.
-        const PINS: [(&str, u8); 14] = [
+        const PINS: [(&str, u8); 11] = [
             ("SCK", SCK),
             ("MOSI", MOSI),
             ("DC", DC),
             ("RST", RST),
             ("BL", BL),
-            ("LED R", LED[0]),
-            ("LED G", LED[1]),
-            ("LED B", LED[2]),
             ("ENC CLK", ROTARY.clk),
             ("ENC DT", ROTARY.dt),
             ("ENC SW", ROTARY.sw),
@@ -292,14 +279,9 @@ pub mod physical_st7789 {
         }
 
         #[test]
-        fn the_backlight_and_led_sit_on_the_pwm_channels_the_driver_code_names() {
-            // `physical_st7789.rs` types these as Pwm6/A, then Pwm4/B, Pwm5/A and Pwm5/B.
+        fn the_backlight_sits_on_the_pwm_channel_the_driver_code_names() {
+            // `physical_st7789.rs` types it as Pwm6/A.
             assert_eq!(pwm(BL), (6, false));
-            assert_eq!(
-                LED.map(pwm),
-                [(4, true), (5, false), (5, true)],
-                "LED pins moved: the driver's channel types no longer match"
-            );
         }
     }
 }

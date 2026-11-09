@@ -3,8 +3,8 @@
   "entry": "main",
   "limits": {
     "app_image_bytes": {
-      "max": 315000,
-      "why": "Loadable sections (vector table, boot2, text, rodata, data) were 300,120 B with the RGB LED (290,356 B without it: the LED engine and its timer interrupt are about 3 KB, the rest is the compiler re-deciding what to inline around the new `Message` variant). About 5% headroom; flash is 2 MB, so this is a regression tripwire, not the physical limit."
+      "max": 305000,
+      "why": "Loadable sections (vector table, boot2, text, rodata, data) were 290,636 B. About 5% headroom; flash is 2 MB, so this is a regression tripwire, not the physical limit."
     },
     "asset_blob_bytes": {
       "max": 129024,
@@ -12,7 +12,7 @@
     },
     "static_ram_bytes": {
       "max": 156000,
-      "why": "Static RAM (data + bss) was 150,044 B (the interrupt-shared USB device is about 1 KiB of that, the LED driver 44 B), of which the frame buffer is 115,200 B. Everything above it comes out of the stack region, which is the rest of the 264 KB of SRAM."
+      "why": "Static RAM (data + bss) was 151,036 B (the interrupt-shared USB device is about 1 KiB of that), of which the frame buffer is 115,200 B. Everything above it comes out of the stack region, which is the rest of the 264 KB of SRAM."
     },
     "stack_region_bytes": {
       "min": 119000,
@@ -32,14 +32,14 @@
     },
     "interrupt_margin_bytes": {
       "value": 256,
-      "why": "Added on top of the deepest traced interrupt path (interrupt_paths: the rotary GPIO, USBCTRL_IRQ and LED timer handlers, which share a priority and so do not nest) for the parts of an interrupt that are not followed, including the 32 B exception frame the core stacks."
+      "why": "Added on top of the deepest traced interrupt path (interrupt_paths: the rotary GPIO and USBCTRL_IRQ handlers, which share a priority and so do not nest) for the parts of an interrupt that are not followed, including the 32 B exception frame the core stacks."
     },
     "stack_margin_bytes": {
       "value": 8192,
       "why": "The estimated peak plus the allowances plus this margin must fit the stack region. 8 KiB (down from 16 KiB on the C3, which had 162 KiB of stack): the 264 KB SRAM leaves 10.8 KiB over the boot peak, and at that peak no interrupt is live and no indirect call runs. Raise the margin again once the ARM estimate is checked against a unit."
     }
   },
-  "interrupt_paths": [["IO_IRQ_BANK0"], ["USBCTRL_IRQ"], ["TIMER_IRQ_0"]],
+  "interrupt_paths": [["IO_IRQ_BANK0"], ["USBCTRL_IRQ"]],
   "large_frames": [
     {
       "fn": "kivori_firmware::physical_st7789::load_assets",
@@ -68,8 +68,8 @@
     },
     {
       "fn": "<kivori_firmware::proto::Dispatcher>::poll::*",
-      "max": 3800,
-      "why": "Frame decode and dispatch with the inlined handlers (3,720 B with the LedSettings arm; it was 3,232 B before)."
+      "max": 3400,
+      "why": "Frame decode and dispatch with the inlined handlers (3,232 B)."
     },
     {
       "fn": "<heapless::vec::VecInner<kivori_assets::manifest::BitmapEntry,*Deserialize>::deserialize::*",
@@ -88,10 +88,6 @@
     }
   ],
   "int64_division_allowlist": [
-    {
-      "fn": "TIMER_IRQ_0",
-      "why": "LED refresh (50 Hz): the clock turns the 64-bit microsecond counter into the same milliseconds the run loop uses, so the fade and a press flash stay in step across the 71-minute wrap of a 32-bit microsecond count. About a thousand cycles a tick. Known debt, like IO_IRQ_BANK0."
-    },
     {
       "fn": "IO_IRQ_BANK0",
       "why": "Rotary interrupt: the clock turns the 64-bit microsecond counter into milliseconds (a software loop on the M0+). Known debt; keep it cheap."

@@ -8,7 +8,7 @@ Kivori is a small desk companion. A keycap-shaped mascot lives on a 240x240 scre
 
 | Component | What it is |
 |---|---|
-| Firmware | RP2040-Zero (Cortex-M0+), ST7789 240x240 panel, HW-040 rotary encoder, three buttons, RGB LED. Version 0.1.4, protocol 0.4. `no_std`, no heap, `thumbv6m-none-eabi`. (The beta units were ESP32-C3 SuperMini boards, `riscv32imc`; ADR-0019.) |
+| Firmware | RP2040-Zero (Cortex-M0+), ST7789 240x240 panel, HW-040 rotary encoder, three buttons. Version 0.1.4, protocol 0.3. `no_std`, no heap, `thumbv6m-none-eabi`. (The beta units were ESP32-C3 SuperMini boards, `riscv32imc`; ADR-0019.) |
 | Desktop native core | Tauri 2.12 Rust process. Owns the serial port, the connection, OS integration, preview rendering, flashing. |
 | Desktop webview | React UI. Only calls a fixed set of typed commands. No serial, filesystem or shell access. |
 | Shared crates | One copy of the model, protocol, renderer and asset reader, used by both firmware and desktop. |
@@ -152,7 +152,7 @@ One packet is `COBS(frame) || 0x00`. COBS makes the stream self-synchronizing, s
 | `payload` | bytes | postcard-encoded `Message` |
 | `crc32` | u32 | CRC-32/IEEE over header and payload |
 
-Constants: `PROTOCOL_MAJOR` 0, `PROTOCOL_MINOR` 4 (0.2 added `BuildInfo`, see Firmware build id; 0.4 added `LedSettings`, see RGB LED). The numbers restarted at 0.1 before the first release (ADR-0014); boards flashed earlier speak 1.x and are `Incompatible` until reflashed. COBS and CRC are implemented in-crate.
+Constants: `PROTOCOL_MAJOR` 0, `PROTOCOL_MINOR` 3 (0.2 added `BuildInfo`, see Firmware build id). The numbers restarted at 0.1 before the first release (ADR-0014); boards flashed earlier speak 1.x and are `Incompatible` until reflashed. COBS and CRC are implemented in-crate.
 
 Every decode failure is a typed `ProtoError` (`BufferOverflow, Cobs, TooShort, BadMagic, UnsupportedVersion, PayloadTooLarge, LengthMismatch, BadCrc, Postcard`). The decoder never panics, always makes forward progress, and never dispatches a frame that failed CRC.
 
@@ -273,14 +273,6 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 - Host-silence timeout: with an accepted session and no valid inbound frame for 4 s (`HOST_SILENCE_MS`), the firmware calls `link_lost` and goes Offline. The desktop pings every second (`HEARTBEAT_INTERVAL`), so a killed or crashed desktop never leaves a frozen "connected" frame. This applies to every session, whatever was negotiated.
 - The firmware version comes from the firmware crate's own `Cargo.toml` (0.1.0) and is also embedded as `KIVORI-FW-VERSION:<ver>` text in the image.
 
-### RGB LED (`RGB_LED_V1`, #179)
-
-- Capability bit 18, tag 25 `LedSettings`, `PROTOCOL_MINOR` 3 to 4. Only a board with an LED advertises the bit (the RP2040-Zero, and the v2 virtual board); the desktop sends nothing to the others, and the Display page shows its LED tab only for them (or before any device has connected).
-- The desktop owns the settings (`led` in the config: mode, `#RRGGBB` colour, brightness percent, speed, and Status mode's colour per profile id). Nothing is written to the device: it gets them on every session start and on every change, and keeps the last ones until it restarts; before the first one it stays dark.
-- The device runs the light itself (`firmware/pip/src/led.rs`, `LedEngine`), so it reacts without a round trip. Breathe 6/4/2 s and colour wheel 20/10/5 s per speed. Status: a press flashes white for 120 ms over everything, then no host (amber pulse), then a muted microphone (red), else the base colour. Mood: the colour of the buddy's current expression with a soft breathe (Sleeping slower and dimmer; Booting and Offline dim and steady). Brightness scales a squared (perceptual) level.
-- Per-app colour stays on the desktop: in Status mode it sends the active profile's colour (or the base colour) and sends again when the active profile changes; the device knows nothing of profiles.
-- On the RP2040-Zero a 50 Hz timer interrupt (`TIMER_IRQ_0`, `physical_led.rs`) draws the frame, because a loop pass can take over 100 ms; the loop hands it the engine's state under a critical section.
-
 ### Messages (tag = postcard variant index)
 
 | Tag | Message | Dir | Payload | Capability |
@@ -310,7 +302,6 @@ The handshake nonce also identifies the connection. It is minted fresh from OS r
 | 22 | `MicState` | D to V | session, `MicState` (muted and in use, each optional) | `MIC_STATE_V1` |
 | 23 | `Identity` | V to D | session, product (`u16`), board (`u16`), hw_rev (optional `u8`), source (`Build`, `Chip`) | `PRODUCT_IDENTITY_V1` |
 | 24 | `BuildInfo` | V to D | session, source_id (optional 12 hex digits as 6 bytes), dirty (`bool`) | `BUILD_INFO_V1` |
-| 25 | `LedSettings` | D to V | session, mode (`Off`, `Solid`, `Breathe`, `Cycle`, `Status`, `Mood`), color (RGB), brightness (0 to 100 %), speed (`Slow`, `Medium`, `Fast`) | `RGB_LED_V1` |
 
 `InputEvent.control` is `Rotary`, `Button` or `ContextButton(0..3)` (the three contextual buttons, left to right; needs `CONTEXT_BUTTONS_V1`; `Press` and `Hold` only, an index of 3 or more is rejected). With `Rotary`, `kind` is `GestureStarted`, `Detent(Cw|Ccw)` or `GestureEnded`; with `Button` (needs `BUTTON_INPUT_V1` too), it is `Press`, `Hold` or `DoublePress` (needs `DOUBLE_PRESS_V1`), sent once per gesture. The desktop rejects a kind that does not belong to its control. `Presentation.primary` is `Idle, Active, Error, Unknown`. `value` is `{ kind: Volume, current_percent, confidence, at_boundary }`.
 

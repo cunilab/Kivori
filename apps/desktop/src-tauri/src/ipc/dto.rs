@@ -1596,7 +1596,6 @@ pub struct ConfigDto {
     pub macros: Vec<crate::config::MacroSpec>,
     pub display: DisplaySettingsDto,
     pub buddy: BuddySettingsDto,
-    pub led: LedSettingsDto,
 }
 
 /// One profile as the config UI shows it.
@@ -1677,22 +1676,6 @@ pub struct BuddySettingsDto {
     pub intensity: &'static str,
 }
 
-/// The RGB LED settings as the config UI shows them.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LedSettingsDto {
-    /// `off`, `solid`, `breathe`, `cycle`, `status` or `mood`.
-    pub mode: &'static str,
-    /// `#RRGGBB`, upper case.
-    pub color: String,
-    /// Output scale in percent, `0..=100`.
-    pub brightness: u8,
-    /// `slow`, `medium` or `fast`.
-    pub speed: &'static str,
-    /// Status mode's colour per profile token, `#RRGGBB`; a profile without one uses `color`.
-    pub profile_colors: std::collections::BTreeMap<String, String>,
-}
-
 fn config_notice_token(notice: crate::config::ConfigNotice) -> &'static str {
     use crate::config::ConfigNotice;
     match notice {
@@ -1754,37 +1737,6 @@ pub fn display_settings_from_tokens(
     Ok(settings)
 }
 
-/// Parses the LED settings from the webview, normalising every colour to `#RRGGBB` upper case.
-///
-/// # Errors
-/// A short reason naming the bad field; never echoes the input.
-pub fn led_settings_from_tokens(
-    mode: &str,
-    color: &str,
-    brightness: u8,
-    speed: &str,
-    profile_colors: &std::collections::BTreeMap<String, String>,
-) -> Result<crate::config::LedSettings, &'static str> {
-    use crate::config::{hex_color, parse_hex_color, LedMode, LedSettings, LedSpeed};
-    let normal = |text: &str| parse_hex_color(text).map(hex_color);
-    let settings = LedSettings {
-        mode: LedMode::from_token(mode).ok_or("unknown LED mode")?,
-        color: normal(color).ok_or("the LED colour must be #RRGGBB")?,
-        brightness,
-        speed: LedSpeed::from_token(speed).ok_or("unknown LED speed")?,
-        profile_colors: profile_colors
-            .iter()
-            .map(|(profile, color)| {
-                normal(color)
-                    .map(|color| (profile.clone(), color))
-                    .ok_or("the LED profile colour must be #RRGGBB")
-            })
-            .collect::<Result<_, _>>()?,
-    };
-    settings.validate()?;
-    Ok(settings)
-}
-
 /// Projects the stored config for the UI.
 #[must_use]
 pub fn config_dto(store: &crate::config::ConfigStore) -> ConfigDto {
@@ -1807,19 +1759,6 @@ pub fn config_dto(store: &crate::config::ConfigStore) -> ConfigDto {
         buddy: BuddySettingsDto {
             reactions: file.buddy.reactions,
             intensity: intensity_token(file.buddy.intensity),
-        },
-        led: LedSettingsDto {
-            mode: file.led.mode.token(),
-            // Saves store upper case; a hand-edited file may not, and the webview compares exactly.
-            color: file.led.color.to_ascii_uppercase(),
-            brightness: file.led.brightness,
-            speed: file.led.speed.token(),
-            profile_colors: file
-                .led
-                .profile_colors
-                .iter()
-                .map(|(profile, color)| (profile.clone(), color.to_ascii_uppercase()))
-                .collect(),
         },
     }
 }
@@ -1900,7 +1839,7 @@ pub const fn availability_token(
 }
 
 /// Every capability flag with the name the diagnostics page lists it by, in bit order.
-const CAPABILITY_TABLE: [(Capabilities, &str); 19] = [
+const CAPABILITY_TABLE: [(Capabilities, &str); 18] = [
     (Capabilities::MASCOT_INTERACTION, "mascotInteraction"),
     (Capabilities::PHYSICAL_INPUT_V1, "physicalInputV1"),
     (Capabilities::PRESENTATION_V1, "presentationV1"),
@@ -1919,7 +1858,6 @@ const CAPABILITY_TABLE: [(Capabilities, &str); 19] = [
     (Capabilities::PRODUCT_IDENTITY_V1, "productIdentityV1"),
     (Capabilities::BUILD_INFO_V1, "buildInfoV1"),
     (Capabilities::HELD_ROTATION_V1, "heldRotationV1"),
-    (Capabilities::RGB_LED_V1, "rgbLedV1"),
 ];
 
 /// The capability names the diagnostics page lists, in bit order.
@@ -2315,8 +2253,6 @@ pub fn vocabulary_json() -> serde_json::Value {
         "rotateSpecKinds": crate::config::resolve::ROTATE_SPEC_KINDS,
         "deskActions": crate::desk::ActionToken::ALL.map(crate::desk::ActionToken::token),
         "capabilityNames": CAPABILITY_TABLE.map(|(_, name)| name),
-        "ledModes": crate::config::LedMode::ALL.map(crate::config::LedMode::token),
-        "ledSpeeds": crate::config::LedSpeed::ALL.map(crate::config::LedSpeed::token),
         "controlLayouts": [crate::catalog::ControlLayout::RotaryThreeButton],
         "chipModels": CHIP_MODEL_TOKENS,
         "resetReasons": RESET_REASON_TOKENS,

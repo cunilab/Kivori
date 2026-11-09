@@ -51,16 +51,3 @@
 .virtual-device [role='alert'] {
   overflow-wrap: anywhere;
 }
-.virtual-led-row {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-.virtual-led {
-  display: inline-block;
-  width: 1.1rem;
-  height: 1.1rem;
-  border-radius: 999px;
-  background: #000;
-  outline: 1px solid var(--border);
-}

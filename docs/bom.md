@@ -13,7 +13,6 @@ are filled in. Related: [roadmap.md](./roadmap.md), [hardware/enclosure/README.m
 | Display | ST7789 1.3" 240x240 SPI module, 7-pin (SCL, SDA, RES, DC, BLK, VCC, GND), no CS | 1 | Verified on the board 2026-08-11 (offset 0,0, RGB order, inversion on). 3.3 V | **OWNER** | **OWNER** |
 | Rotary encoder | HW-040 (EC11-type with push switch), CLK/DT/SW/+/GND, 3 pull-up resistors on the module | 1 | Beta part. Decision #8: HW-040 for beta, PEC11R/EC11 for v1. Power from 3V3, never 5 V. Pins CLK GP5, DT GP4, SW GP3 are a spec until row 3.15 is ticked | **OWNER** | **OWNER** |
 | Push buttons | Momentary tactile switch, 12×12 mm, 10 mm tall, projected plunger (seller drawing TS-G005), each between its GPIO and GND, no resistors | 3 | Left / middle / right on GP6 / GP7 / GP8. The size the enclosure and its keycaps are built for | **OWNER** | **OWNER** |
-| RGB LED and resistors | 5 mm common-cathode RGB LED, three 1 kΩ resistors (one per colour, never a colour lead straight to a GPIO) | 1 + 3 | Red / green / blue on GP9 / GP10 / GP11, common cathode to GND. LED type to be confirmed against the enclosure test | **OWNER** | **OWNER** |
 | Wire | Thin wire, 26-30 AWG | 1 set | Hand-wired along the grooves on the back of the printed PCB | **OWNER** | **OWNER** |
 | USB cable | USB-C **data** cable (not charge-only) | 1 | Power, flashing and the data link; no UART bridge | **OWNER** | **OWNER** |
 | Rubber feet | 10 mm stick-on | 4 | In the recesses under the plinth | **OWNER** | **OWNER** |

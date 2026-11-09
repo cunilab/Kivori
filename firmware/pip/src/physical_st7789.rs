@@ -34,9 +34,8 @@ use crate::{
     device_id::{derive_device_id, usb_serial_number},
     display::MipidsiSink,
     identity::{check_boot, ProductIdentity, IMAGE_RECORD},
-    physical_led::{self, RgbLed},
     physical_rotary::PhysicalRotary,
-    ports::{Clock, DisplaySink, LedSink},
+    ports::{Clock, DisplaySink},
     profile::physical_st7789 as hw,
     proto::DeviceIdentity,
     render::FRAME_PIXELS,
@@ -101,12 +100,12 @@ static USB_SERIAL: static_cell::StaticCell<heapless::String<32>> = static_cell::
 /// The USB bus allocator, which the CDC class and device borrow for as long as the firmware runs.
 static USB_BUS: static_cell::StaticCell<UsbBusAllocator<UsbBus>> = static_cell::StaticCell::new();
 
-/// PWM period shared by the backlight and the LED: 125 MHz / (20 * 256) = 24 kHz, above hearing,
+/// PWM period of the backlight: 125 MHz / (20 * 256) = 24 kHz, above hearing,
 /// with 8-bit duty (far finer than the five backlight steps need).
 const PWM_DIV: u8 = 20;
 const PWM_TOP: u16 = 255;
 
-/// Starts one PWM slice with the shared period.
+/// Starts one PWM slice with the backlight period.
 fn start_pwm<I: rp2040_hal::pwm::SliceId>(slice: &mut Slice<I, FreeRunning>)
 where
     FreeRunning: rp2040_hal::pwm::ValidSliceMode<I>,
@@ -176,9 +175,6 @@ const _: () = {
     assert!(hw::RST == 14);
     assert!(hw::BL == 12);
     assert!(hw::CS.is_none());
-    assert!(hw::LED[0] == 9);
-    assert!(hw::LED[1] == 10);
-    assert!(hw::LED[2] == 11);
     assert!(hw::ROTARY.clk == 5);
     assert!(hw::ROTARY.dt == 4);
     assert!(hw::ROTARY.sw == 3);
@@ -189,7 +185,7 @@ const _: () = {
 
 /// Runs Kivori on the physical RP2040-Zero + ST7789 hardware.
 ///
-/// This function owns the USB CDC transport, SPI1, display control pins, backlight, RGB LED and the
+/// This function owns the USB CDC transport, SPI1, display control pins, backlight and the
 /// production runtime. It never returns.
 ///
 /// `blob` comes from [`load_assets`], which `main` calls first: its parse needs about 110 KiB of
@@ -239,30 +235,17 @@ pub fn run_mode(mut board: Board, blob: &'static AssetBlob<'static>, asset_bytes
     let rst = pins.gpio14.into_push_pull_output_in_state(PinState::High);
 
     // -------------------------------------------------------------------------
-    // PWM: backlight and RGB LED
+    // PWM: backlight
     //
     // The backlight is plainly on while the panel initialises (full duty) and follows the desktop's
-    // brightness setting once it is up. The LED starts off, and stays off until the app sends settings.
+    // brightness setting once it is up.
     // -------------------------------------------------------------------------
 
     let mut slices = Slices::new(board.pwm, &mut board.resets);
-    start_pwm(&mut slices.pwm4);
-    start_pwm(&mut slices.pwm5);
     start_pwm(&mut slices.pwm6);
     let mut backlight_channel = slices.pwm6.channel_a;
     backlight_channel.output_to(pins.gpio12);
     let _ = backlight_channel.set_duty_cycle_percent(100);
-    let mut led = RgbLed {
-        red: slices.pwm4.channel_b,
-        green: slices.pwm5.channel_a,
-        blue: slices.pwm5.channel_b,
-    };
-    led.red.output_to(pins.gpio9);
-    led.green.output_to(pins.gpio10);
-    led.blue.output_to(pins.gpio11);
-    led.set_rgb([0; 3]);
-    // From here a 50 Hz timer interrupt drives the LED from the engine the run loop publishes.
-    physical_led::start(board.timer.alarm_0().expect("alarm 0 is free"), led);
 
     // DEVELOPMENT ONLY: the payload trace goes out of UART0 (GP0 TX, GP1 RX).
     #[cfg(feature = "debug-payloads")]
@@ -435,7 +418,6 @@ pub fn run_mode(mut board: Board, blob: &'static AssetBlob<'static>, asset_bytes
         blob,
         frame_buffer,
         chip_probe::probe,
-        physical_led::publish,
         boot,
         |tick, transport| {
             if tick.reboot {

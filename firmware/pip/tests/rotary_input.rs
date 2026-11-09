@@ -1758,17 +1758,13 @@ fn render_with_overlay_composites_the_bar_into_the_flushed_pixels() {
 
 #[test]
 fn the_rotary_profile_does_not_collide_with_the_display_profile() {
-    use kivori_firmware::profile::physical_st7789::{BL, DC, LED, MOSI, ROTARY, RST, SCK};
+    use kivori_firmware::profile::physical_st7789::{BL, DC, MOSI, ROTARY, RST, SCK};
 
     let display_pins = [SCK, MOSI, DC, RST, BL];
     for pin in [ROTARY.clk, ROTARY.dt, ROTARY.sw] {
         assert!(
             !display_pins.contains(&pin),
             "rotary pin {pin} collides with the verified display profile"
-        );
-        assert!(
-            !LED.contains(&pin),
-            "rotary pin {pin} collides with the RGB LED"
         );
         // GP16 is the board's onboard WS2812.
         assert_ne!(pin, 16, "rotary pin {pin} is the onboard LED");
@@ -1782,12 +1778,10 @@ fn the_rotary_profile_does_not_collide_with_the_display_profile() {
 #[test]
 fn the_context_buttons_are_free_pins() {
     use kivori_firmware::profile::physical_st7789::{
-        BL, CONTEXT_BUTTONS, DC, LED, MOSI, ROTARY, RST, SCK,
+        BL, CONTEXT_BUTTONS, DC, MOSI, ROTARY, RST, SCK,
     };
 
-    let taken = [
-        SCK, MOSI, DC, RST, BL, ROTARY.clk, ROTARY.dt, ROTARY.sw, LED[0], LED[1], LED[2],
-    ];
+    let taken = [SCK, MOSI, DC, RST, BL, ROTARY.clk, ROTARY.dt, ROTARY.sw];
     for (i, pin) in CONTEXT_BUTTONS.into_iter().enumerate() {
         assert!(!taken.contains(&pin), "button pin {pin} is already taken");
         assert!(
