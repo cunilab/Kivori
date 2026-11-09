@@ -107,7 +107,19 @@ fn mix(a: Rgb565, b: Rgb565, cov: i32) -> Rgb565 {
 /// first, so tiles skip shapes they miss.
 fn paint(
     band: &mut TileBand,
+    bbox: (i32, i32, i32, i32),
+    paint: impl Fn(i32, i32) -> Option<(Rgb565, i32)>,
+) {
+    let (x0, _, x1, _) = bbox;
+    paint_spans(band, bbox, |_| [(x0, x1), (0, 0)], paint);
+}
+
+/// [`paint`] visiting only the pixels of up to two x-ranges per row (`spans(y)`, clipped to the
+/// bbox and the band); a pixel outside them must be one `paint` would leave untouched.
+fn paint_spans(
+    band: &mut TileBand,
     (x0, y0, x1, y1): (i32, i32, i32, i32),
+    spans: impl Fn(i32) -> [(i32, i32); 2],
     paint: impl Fn(i32, i32) -> Option<(Rgb565, i32)>,
 ) {
     let r = band.rect();
@@ -116,16 +128,18 @@ fn paint(
     let x1 = x1.min(i32::from(r.x) + i32::from(r.w));
     let y1 = y1.min(i32::from(r.y) + i32::from(r.h));
     for y in y0..y1 {
-        for x in x0..x1 {
-            let Some((col, cov)) = paint(x, y) else {
-                continue;
-            };
-            let (ux, uy) = (x as u16, y as u16);
-            if cov >= FULL {
-                band.set(ux, uy, col);
-            } else if cov > 0 {
-                if let Some(dst) = band.get(ux, uy) {
-                    band.set(ux, uy, mix(dst, col, cov));
+        for (sx0, sx1) in spans(y) {
+            for x in sx0.max(x0)..sx1.min(x1) {
+                let Some((col, cov)) = paint(x, y) else {
+                    continue;
+                };
+                let (ux, uy) = (x as u16, y as u16);
+                if cov >= FULL {
+                    band.set(ux, uy, col);
+                } else if cov > 0 {
+                    if let Some(dst) = band.get(ux, uy) {
+                        band.set(ux, uy, mix(dst, col, cov));
+                    }
                 }
             }
         }
@@ -147,6 +161,32 @@ fn rect(band: &mut TileBand, x: i32, y: i32, w: i32, h: i32, col: Rgb565) {
 }
 
 fn isqrt(n: u64) -> u64 {
+    // Nearly every call is an edge pixel with a small `n`; 32-bit arithmetic is a fraction of the
+    // cost of 64-bit on a 32-bit core, and the result is the same exact integer square root.
+    match u32::try_from(n) {
+        Ok(n) => u64::from(isqrt32(n)),
+        Err(_) => isqrt64(n),
+    }
+}
+
+fn isqrt32(n: u32) -> u32 {
+    let (mut op, mut res, mut one) = (n, 0u32, 1u32 << 30);
+    while one > op {
+        one >>= 2;
+    }
+    while one != 0 {
+        if op >= res + one {
+            op -= res + one;
+            res = (res >> 1) + one;
+        } else {
+            res >>= 1;
+        }
+        one >>= 2;
+    }
+    res
+}
+
+fn isqrt64(n: u64) -> u64 {
     let (mut op, mut res, mut one) = (n, 0u64, 1u64 << 62);
     while one > op {
         one >>= 2;
@@ -161,6 +201,17 @@ fn isqrt(n: u64) -> u64 {
         one >>= 2;
     }
     res
+}
+
+/// The largest `x` with `x * x <= n`, for `0 <= n < 2^16`.
+fn isqrt_small(n: i32) -> i32 {
+    let mut x = 0;
+    for bit in [128, 64, 32, 16, 8, 4, 2, 1] {
+        if (x + bit) * (x + bit) <= n {
+            x += bit;
+        }
+    }
+    x
 }
 
 /// Distance `sqrt(d2)` in sixteenths of a pixel.
@@ -408,6 +459,61 @@ impl Arc {
     }
 }
 
+/// The angular range `from..to` of an [`Arc`] as two boundary rays, so that [`contains`] can place a
+/// pixel with two multiplies each and no division, `turn_of` or table lookup.
+///
+/// [`contains`]: Wedge::contains
+struct Wedge {
+    /// Unit vectors (Q14, screen axes) along the two boundary rays.
+    from: (i32, i32),
+    to: (i32, i32),
+    /// The range spans more than half a turn.
+    wide: bool,
+    /// How far (Q14 pixels) a pixel must be from a boundary ray's line to be decided here:
+    /// 8 turn units of angle at the arc's outer radius, far above `turn_of`'s error (about 2).
+    margin: i32,
+}
+
+impl Wedge {
+    fn new(a: &Arc, from: i32, to: i32) -> Wedge {
+        let ray = |rel: i32| {
+            let t = a.start + rel;
+            (sin_q14(t), -sin_q14(t + TURN / 4))
+        };
+        Wedge {
+            from: ray(from),
+            to: ray(to),
+            wide: to - from > TURN / 2,
+            margin: (a.ro + 1) * 16384 * 8 / 652 + 1,
+        }
+    }
+
+    /// Whether the pixel at `(dx, dy)` from the centre is in the range, or `None` when it is too
+    /// close to a boundary ray to tell without the exact angle.
+    fn contains(&self, dx: i32, dy: i32) -> Option<bool> {
+        // `r * sin(angle - ray)` and `r * sin(ray - angle)`, positive just clockwise of the first
+        // ray and just anticlockwise of the second.
+        let s1 = self.from.0 * dy - self.from.1 * dx;
+        let s2 = dx * self.to.1 - dy * self.to.0;
+        let m = self.margin;
+        if self.wide {
+            if s1 > m || s2 > m {
+                Some(true)
+            } else if s1 < -m && s2 < -m {
+                Some(false)
+            } else {
+                None
+            }
+        } else if s1 > m && s2 > m {
+            Some(true)
+        } else if s1 < -m || s2 < -m {
+            Some(false)
+        } else {
+            None
+        }
+    }
+}
+
 /// The ring pixels of `a` between `from` and `to` (turns past `a.start`). With `dash > 0` only
 /// every other `dash`-long run is drawn.
 fn arc(band: &mut TileBand, a: &Arc, from: i32, to: i32, dash: i32, col: Rgb565) {
@@ -415,23 +521,41 @@ fn arc(band: &mut TileBand, a: &Arc, from: i32, to: i32, dash: i32, col: Rgb565)
         return;
     }
     let Arc { cx, cy, ro, ri, .. } = *a;
-    shape(
+    // `ring_cov` is 0 from distance `ro + 1` outwards and up to `ri - 1` inwards; each row only
+    // visits the pixels between, as two x-ranges either side of the hole.
+    let (outer, hole) = ((ro + 1) * (ro + 1), (ri - 1) * (ri - 1));
+    let spans = |y: i32| {
+        let dy2 = (y - cy) * (y - cy);
+        if outer <= dy2 {
+            return [(0, 0); 2];
+        }
+        let xo = isqrt_small(outer - 1 - dy2) + 1;
+        if ri <= 0 || hole < dy2 {
+            return [(cx - xo + 1, cx + xo), (0, 0)];
+        }
+        let xh = isqrt_small(hole - dy2);
+        [(cx - xo + 1, cx - xh), (cx + xh + 1, cx + xo)]
+    };
+    let wedge = (dash == 0 && ri > 1).then(|| Wedge::new(a, from, to));
+    paint_spans(
         band,
         (cx - ro - 1, cy - ro - 1, cx + ro + 2, cy + ro + 2),
-        col,
+        spans,
         |x, y| {
             let (dx, dy) = (x - cx, y - cy);
             let cov = ring_cov(i64::from(dx * dx + dy * dy), ro, ri);
             if cov == 0 {
-                return 0;
+                return None;
             }
-            let rel = (turn_of(dx, dy) - a.start).rem_euclid(TURN);
-            let off = dash > 0 && ((rel - from) / dash) % 2 == 1;
-            if rel < from || rel >= to || off {
-                0
-            } else {
-                cov
-            }
+            let inside = match wedge.as_ref().and_then(|w| w.contains(dx, dy)) {
+                Some(inside) => inside,
+                None => {
+                    let rel = (turn_of(dx, dy) - a.start).rem_euclid(TURN);
+                    let off = dash > 0 && ((rel - from) / dash) % 2 == 1;
+                    rel >= from && rel < to && !off
+                }
+            };
+            inside.then_some((col, cov))
         },
     );
 }
@@ -1578,6 +1702,61 @@ fn badge(band: &mut TileBand, kind: FeedbackKind, elapsed_ms: u32) {
                 };
                 let (x, y) = polar(cx, cy, 16, i * TURN / 8);
                 disc(band, x, y, 3, col);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kivori_model::Rect;
+
+    /// `arc` as it was before the per-row spans and the wedge test: every pixel of the bbox, the
+    /// exact angle for each.
+    fn arc_reference(band: &mut TileBand, a: &Arc, from: i32, to: i32, dash: i32, col: Rgb565) {
+        let Arc { cx, cy, ro, ri, .. } = *a;
+        shape(
+            band,
+            (cx - ro - 1, cy - ro - 1, cx + ro + 2, cy + ro + 2),
+            col,
+            |x, y| {
+                let (dx, dy) = (x - cx, y - cy);
+                let cov = ring_cov(i64::from(dx * dx + dy * dy), ro, ri);
+                if cov == 0 {
+                    return 0;
+                }
+                let rel = (turn_of(dx, dy) - a.start).rem_euclid(TURN);
+                let off = dash > 0 && ((rel - from) / dash) % 2 == 1;
+                if rel < from || rel >= to || off {
+                    0
+                } else {
+                    cov
+                }
+            },
+        );
+    }
+
+    #[test]
+    fn arc_matches_the_exact_per_pixel_angle_test() {
+        let mut fast = [BG; 240 * 240];
+        let mut slow = [BG; 240 * 240];
+        let gauges = [VOLUME_GAUGE, CPU_GAUGE, RAM_GAUGE];
+        for g in gauges {
+            for a in [g, g.inset(2)] {
+                for pct in 0..=100 {
+                    let end = a.sweep * pct / 100;
+                    for (from, dash) in [(0, 0), (0, a.dash()), (a.sweep / 7, 0)] {
+                        fast.fill(BG);
+                        slow.fill(BG);
+                        let r = Rect::new(0, 0, 240, 240);
+                        let mut f = TileBand::new(r, &mut fast).unwrap();
+                        arc(&mut f, &a, from, end, dash, ACCENT);
+                        let mut s = TileBand::new(r, &mut slow).unwrap();
+                        arc_reference(&mut s, &a, from, end, dash, ACCENT);
+                        assert!(fast == slow, "pct {pct} from {from} dash {dash}");
+                    }
+                }
             }
         }
     }
