@@ -123,7 +123,7 @@ Desktop state is in memory only. `desired` defaults to `idle` and is re-sent aft
 ### Chosen platform APIs
 
 - Transport: RP2040 native USB CDC (VID:PID `0x2E8A:0x000A`; the ESP32-C3's Serial/JTAG, `0x303A:0x1001`, is the legacy board's). `USBCTRL_IRQ` services the stack and must read the OUT packets itself, into a 1 KiB queue the loop drains: the RP2040 keeps its OUT buffer flag raised until the packet is read, so a poll-only handler re-fires forever and the unit enumerates but never answers (found on the first unit, #179; the service step is `usb_service`, host-tested). Its 64-byte FIFO can stall TX if the host does not drain, so frames are small and writes are bounded. The run loop writes through a whole-frame outbound queue (`TxBuffered`, about 1 KB over the FIFO). When the host stops draining, input events wait instead of ending the session: rotation as a bounded net count, presses in order, always leaving room for heartbeat replies (see [virtual-pip.md](virtual-pip.md#host-read-stall)).
-- Firmware HAL: `esp-hal`, bare metal. Display: `mipidsi` with windowed writes.
+- Firmware HAL: `rp2040-hal` with `cortex-m-rt`, bare metal. Display: `mipidsi` with windowed writes.
 - Desktop serial: blocking `serialport` on a dedicated device thread.
 - Windows volume and mute: Core Audio `IAudioEndpointVolume` with callbacks, on its own COM thread.
 - macOS volume and mute: CoreAudio `kAudioHardwareServiceDeviceProperty_VirtualMainVolume` and `kAudioDevicePropertyMute` on the default output device, with HAL property listeners, on its own `kivori-audio` thread (FFI declared by hand in `platform/macos/audio.rs`).

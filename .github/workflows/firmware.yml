@@ -62,10 +62,11 @@ jobs:
           cargo clippy --locked --lib --features physical-st7789,debug-payloads -- -D warnings
           cargo clippy --locked --lib --features physical-st7789,latency-probe -- -D warnings
 
-  # Predicted ESP32-C3 compose time (no hardware): the real renderer compiled for riscv32imc and run
-  # in an instruction-set simulator with an ESP32-C3 cycle model (virtual device docs, Hardware
-  # parity). Separate job so it runs beside the isolation job; fails if a scenario's predicted frame
-  # time grows more than 10% over frame-cost/fixtures/frame-cost.json. To accept an
+  # Predicted compose time of the v1 virtual board (ESP32-C3; no hardware): the real renderer compiled
+  # for riscv32imc and run in an instruction-set simulator with an ESP32-C3 cycle model. The v2
+  # virtual board (RP2040) reuses this model scaled x1.5 (virtual device docs, Virtual boards).
+  # Separate job so it runs beside the isolation job; fails if a scenario's predicted frame time
+  # grows more than 10% over frame-cost/fixtures/frame-cost.json. To accept an
   # intended change: `just fw-frame-cost-update` and commit the fixture with the reason.
   frame-cost:
     runs-on: ubuntu-latest
