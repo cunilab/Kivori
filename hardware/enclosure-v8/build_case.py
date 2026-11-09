@@ -173,15 +173,16 @@ CAP_FINGER = (5.5, 1.6)     # long sides: finger width (5.5 as on a bought round
 CAP_RIB_T = 1.0             # rib from every plate (long and short) out to the cap wall: thickness
 CAP_RIB_SHARE = (0.37, 0.55)  # ... and its share of the plate's height from the cap top (the user's grip
                             # support): long fingers, short side plates. The free rest below it is all that
-                            # bends as the cap snaps on: 5.9 mm of finger (2.5% strain, 3 t d / 2 L^2 with
-                            # d = lip reach + the 0.05 preload of CAP_SNAP_CLR = 0.35) and 4.6 mm of short
-                            # plate (1.7%, d 0.2), at PETG's limit of 2-2.5%. (A 0.75 share on both gave 15%
+                            # bends as the cap snaps on: 5.9 mm of finger (2.5% strain at the old d 0.35, now ~2.9%, 3 t d / 2 L^2 with
+                            # d = lip reach + the 0.05 preload of CAP_SNAP_CLR = 0.40 now) and 4.6 mm of short
+                            # plate (1.7% at the old d 0.2, now ~2.1%), at PETG's limit of 2-2.5%. (A 0.75 share on both gave 15%
                             # and 7%: the cap would not click on.)
-CAP_SNAP = 0.3              # lip reach in under the head (the neck is 0.4 narrower per side)
+CAP_SNAP = 0.35             # lip reach in under the head (the neck is 0.4 narrower per side: 0.05 gap left; 0.40 would touch it;
+                            # was 0.30, raised to cut the cap wobble: test-fit on a real switch)
 CAP_SNAP_CLR = -0.05        # finger to head side: they press on it slightly (at 0.1 the printed fingers stood off)
 CAP_SNAP_DROP = 0.4         # lip catch this much lower than drawn (measured: at 0.2 the cap was still loose on the head)
 CAP_SIDE = (2.0, 1.2, 0.0)  # short sides (2 wide, as on the bought cap): plate width, thickness, play to the head
-CAP_SIDE_SNAP = 0.2         # their lips reach this far in under the head (shorter, stiffer plates: less than
+CAP_SIDE_SNAP = 0.25        # (was 0.20) their lips reach this far in under the head (shorter, stiffer plates: less than
                             # the long ones); the ribs make a "+" with the fingers, as on the bought cap
 CAP_STOP_D = 3.0            # stop post on the head, round its centre hole
 CAP_STOP_ROOT = (3.6, 1.0)  # the post widens to this Ø over this height where it meets the cap top
@@ -1166,6 +1167,27 @@ def cap_grip(z_ceil, r_wall):
     return fuse_all(parts)
 
 
+def check_cap_grip():
+    """Measure the printed grip (not the constants): each lip's reach under the stem head must equal
+    CAP_SNAP / CAP_SIDE_SNAP and stay >= 0.05 mm clear of the stem neck. Returns (long, short) reach and
+    (long, short) neck clearance, raising if a rule fails."""
+    z_ceil = BTN_CAP_PROUD - CAP_TOP_T
+    grip = cap_grip(z_ceil, 6.0)
+    z_k = SW_PLUNGER_TOP - SW_HEAD_H - 0.05 - CAP_SNAP_DROP
+    z_lo, z_hi = z_k - 0.09, z_k - 0.01  # inside the lip's 0.1 land
+    long_lip = grip.common(box(0.5, -0.5, z_lo, 5, 0.5, z_hi))
+    short_lip = grip.common(box(-0.5, 0.5, z_lo, 0.5, 5, z_hi))
+    reach = (SW_HEAD / 2 - long_lip.BoundBox.XMin, SW_HEAD / 2 - short_lip.BoundBox.YMin)
+    neck = box(-SW_NECK / 2, -SW_NECK / 2, SW_PLUNGER_TOP - SW_HEAD_H - SW_NECK_H, SW_NECK / 2, SW_NECK / 2,
+               SW_PLUNGER_TOP - SW_HEAD_H)
+    clear = (long_lip.distToShape(neck)[0], short_lip.distToShape(neck)[0])
+    if abs(reach[0] - CAP_SNAP) > 1e-4 or abs(reach[1] - CAP_SIDE_SNAP) > 1e-4:
+        raise ValueError("cap lip reach %s differs from CAP_SNAP/CAP_SIDE_SNAP" % (reach,))
+    if min(clear) < 0.05 - 1e-6:
+        raise ValueError("cap lip to stem neck clearance %s below 0.05 mm" % (clear,))
+    return reach, clear
+
+
 def make_cap(i):
     """Hollow cap with a flat top, open underneath, that clicks onto the switch stem (cap_grip).
     Prints top down: the top comes off the bed flat, the grip grows up from it."""
@@ -1830,6 +1852,9 @@ def main():
     if KNOB_GAP - 0.5 - HALO_T < 0.3-1e-6:
         raise ValueError("pressed knob to halo ring clearance below 0.3 mm")
     print("all keys and knob: 0.5 mm travel clear")
+    reach, clear = check_cap_grip()
+    print("cap grip: lip under the head long %.2f / short %.2f mm; clearance to stem neck long %.2f / short %.2f mm (rule >= 0.05): ok" % (
+        reach + clear))
     report_new_features()
     if EXPORT:
         export(doc, here)
