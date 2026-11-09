@@ -67,110 +67,61 @@
   line-height: 1.2;
 }
 
-/* What the display shows. Everything is in cqw so it scales with the drawing. */
+/* A quiet glass surface around the buddy, without any competing screen copy. */
 .device-screen {
-  display: flex;
+  position: relative;
   height: 100%;
-  flex-direction: column;
-  padding: 2.4cqw 2.6cqw;
-  font-size: max(4px, 2.4cqw);
+  isolation: isolate;
+  background: radial-gradient(ellipse at 50% 54%, rgb(125 242 196 / 0.1), transparent 67%);
 }
 
-.device-screen__status {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1.2cqw;
-  color: #7d8497;
-  font-size: max(4px, 1.9cqw);
-  letter-spacing: 0.02em;
+.device-screen::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: linear-gradient(145deg, rgb(255 255 255 / 0.055), transparent 46%);
+  box-shadow: inset 0 0 2cqw rgb(0 0 0 / 0.35);
+  pointer-events: none;
+  content: '';
 }
 
-.device-screen__profile {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.device-screen__time {
-  flex: none;
-  color: #c2c7d4;
-  font-variant-numeric: tabular-nums;
-}
-
-.device-screen__body {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  justify-content: center;
-  gap: 1.5cqw;
-  animation: device-screen-in 200ms ease-out;
-}
-
-.device-screen__title {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 1cqw;
-  margin: 0;
-  overflow: hidden;
-  color: #fff;
-  font-size: max(5px, 2.9cqw);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.device-screen__dot {
-  flex: none;
-  width: 1.2cqw;
-  height: 1.2cqw;
-  border-radius: 50%;
-  background: #67dca7;
-}
-
-.device-screen__hint {
-  margin: 0;
-  color: #7d8497;
-  font-size: max(4px, 1.8cqw);
-}
-
-.device-screen__lines {
+.device-screen__pose {
   display: grid;
-  gap: 0.9cqw;
-  margin: 0;
+  height: 100%;
+  place-items: center;
+  transition: transform 220ms ease-out;
 }
 
-.device-screen__line {
-  display: grid;
-  grid-template-columns: 8cqw minmax(0, 1fr);
-  align-items: baseline;
-  gap: 1.2cqw;
+.device-screen__mascot {
+  /* The SVG includes whitespace: the character itself occupies 60% of the screen. */
+  width: 94%;
+  height: 94%;
+  object-fit: contain;
+  user-select: none;
+  transform: translateY(-4%);
+  animation: device-screen-breathe 5s ease-in-out infinite;
 }
 
-.device-screen__line dt {
-  overflow: hidden;
-  color: #7d8497;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.device-screen[data-reaction='knob'] .device-screen__pose {
+  transform: translateY(-2%) rotate(-2deg);
 }
 
-.device-screen__line dd {
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  color: #e6e9f0;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.device-screen[data-reaction='button1'] .device-screen__pose {
+  transform: translate(-3%, 2%) rotate(-5deg);
 }
 
-@keyframes device-screen-in {
-  from {
-    opacity: 0;
-    transform: translateY(0.8cqw);
+.device-screen[data-reaction='button2'] .device-screen__pose {
+  transform: translateY(3%) scale(1.025, 0.975);
+}
+
+.device-screen[data-reaction='button3'] .device-screen__pose {
+  transform: translate(3%, 2%) rotate(5deg);
+}
+
+@keyframes device-screen-breathe {
+  50% {
+    transform: translateY(-6%);
   }
 }
 
@@ -343,7 +294,11 @@ button.device-visual__key:not(:disabled):active {
     transition: none;
   }
 
-  .device-screen__body {
+  .device-screen__pose {
+    transition: none;
+  }
+
+  .device-screen__mascot {
     animation: none;
   }
 

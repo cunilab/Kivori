@@ -151,33 +151,33 @@ describe('ControlsPage', () => {
     expect(await screen.findByRole('dialog', { name: 'Edit Left button' })).toBeVisible();
   });
 
-  it('shows the selected control and its gestures on the device screen, and previews hovered ones', async () => {
+  it('keeps a text-free mascot screen and reacts to selection, hover and keyboard focus', async () => {
     const user = userEvent.setup();
     render(<Harness connection={connectionFixture()} />);
     await screen.findByTestId('gesture-press');
     const deviceScreen = screen.getByTestId('device-screen');
-    expect(deviceScreen).toHaveTextContent('General');
-    expect(deviceScreen).toHaveTextContent('Knob');
-    expect(deviceScreen).toHaveTextContent('TurnSystem volume');
-    expect(deviceScreen).toHaveTextContent('PressPlay / Pause');
-    expect(deviceScreen).toHaveTextContent('HoldMute');
+    expect(within(deviceScreen).getByTestId('device-screen-mascot')).toBeInTheDocument();
+    expect(deviceScreen.textContent).toBe('');
+    expect(deviceScreen).toHaveAttribute('data-reaction', 'knob');
 
     const left = screen.getByRole('button', { name: 'Select Left button' });
     await user.hover(left);
-    expect(deviceScreen).toHaveTextContent('Left button');
-    expect(deviceScreen).toHaveTextContent('PressPrevious track');
-    // Hovering previews only: the knob is still the selected control.
+    expect(deviceScreen).toHaveAttribute('data-reaction', 'button1');
     expect(screen.getByRole('button', { name: 'Select Knob' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
     await user.unhover(left);
-    expect(deviceScreen).toHaveTextContent('TurnSystem volume');
-
+    expect(deviceScreen).toHaveAttribute('data-reaction', 'knob');
     await user.click(left);
     await user.unhover(left);
-    expect(deviceScreen).toHaveTextContent('Left button');
+    expect(deviceScreen).toHaveAttribute('data-reaction', 'button1');
     expect(left).toHaveAttribute('aria-pressed', 'true');
+    await user.tab();
+    expect(deviceScreen).toHaveAttribute('data-reaction', 'button2');
+    expect(deviceScreen.textContent).toBe('');
+    expect(ipc.testAction).not.toHaveBeenCalled();
+    expect(ipc.testRotate).not.toHaveBeenCalled();
   });
 
   it('retains edited bindings and host tests when switching to a device without their controls', async () => {

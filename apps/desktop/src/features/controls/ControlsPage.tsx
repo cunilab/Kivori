@@ -69,7 +69,7 @@ import { Page } from '@/components/kivori/page';
 import { PageTabs } from '@/components/kivori/page-tabs';
 import { ProductArt } from '@/components/kivori/product-art';
 import type { DeviceControl } from '@/components/kivori/device-visual';
-import { DeviceScreen, type DeviceScreenLine } from '@/components/kivori/device-screen';
+import { DeviceScreen } from '@/components/kivori/device-screen';
 import { ResultBadge } from '@/components/kivori/result-badge';
 import {
   deleteMacro,
@@ -383,29 +383,6 @@ export function ControlsPage({
     );
   };
 
-  /** The device screen: the profile, and the focused control with its main gestures. */
-  const deviceScreen = (entry: ProfileConfigDto): ReactElement => {
-    const shown = previewControl ?? selectedControl;
-    const line = (gesture: string, index: number): DeviceScreenLine => {
-      const row = profileRows[index]!;
-      return { gesture, action: row.fixed ?? describe(row.spec ?? null, macros) };
-    };
-    const { turn, press, hold } = t.screen;
-    const lines: Record<DeviceControl, DeviceScreenLine[]> = {
-      knob: [line(turn, 0), line(press, 2), line(hold, 4)],
-      button1: [line(press, 5), line(hold, 8)],
-      button2: [line(press, 6), line(hold, 9)],
-      button3: [line(press, 7), line(hold, 10)],
-    };
-    const titles: Record<DeviceControl, string> = {
-      knob: t.groups.knob,
-      button1: t.gestures.button1.name,
-      button2: t.gestures.button2.name,
-      button3: t.gestures.button3.name,
-    };
-    return <DeviceScreen profile={entry.name} title={titles[shown]} lines={lines[shown]} />;
-  };
-
   const renderRow = (entry: ProfileConfigDto, row: Row): ReactElement => {
     const rowId = `${entry.id}:${row.key}`;
     const bound = row.spec ?? null;
@@ -671,7 +648,7 @@ export function ControlsPage({
                     selectedControl={selectedControl}
                     onSelectControl={selectControl}
                     onPreviewControl={setPreviewControl}
-                    screen={deviceScreen(profile)}
+                    screen={<DeviceScreen activeControl={previewControl ?? selectedControl} />}
                   />
                   <p className="text-center text-xs text-muted-foreground">{t.workbench.hint}</p>
                 </div>

@@ -2,9 +2,11 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { connectionFixture } from '@/test/connection';
-import css from './device-visual.css?raw';
+import { readFileSync } from 'node:fs';
 import { DeviceScreen } from './device-screen';
 import { ProductArt } from './product-art';
+
+const css = readFileSync('src/components/kivori/device-visual.css', 'utf8');
 
 const ipc = vi.hoisted(() => ({ getProductArt: vi.fn() }));
 vi.mock('@/lib/ipc', () => ipc);
@@ -124,8 +126,8 @@ describe('bundled product artwork', () => {
     const connection = connectionFixture();
     connection.device!.presentation!.controlLayout = 'rotary-three-button';
     const page = render(<ProductArt connection={connection} />);
-    expect(screen.getByTestId('device-screen')).toHaveTextContent('Kivori');
-    expect(screen.getByTestId('device-screen')).toHaveTextContent(/\d{2}:\d{2}/);
+    expect(screen.getByTestId('device-screen').textContent).toBe('');
+    expect(screen.getByTestId('device-screen-mascot')).toHaveAttribute('src');
     page.rerender(<ProductArt connection={connection} screen={<p>Custom screen</p>} />);
     expect(screen.queryByTestId('device-screen')).not.toBeInTheDocument();
     expect(screen.getByText('Custom screen')).toBeInTheDocument();
@@ -158,22 +160,20 @@ describe('bundled product artwork', () => {
     expect(css).not.toMatch(/outline:[^;]*#67dca7/);
   });
 
-  it('shows the idle screen with a hint and ellipsis-ready lines', () => {
-    render(<DeviceScreen profile="Editing" hint="Select a control" />);
-    expect(screen.getByTestId('device-screen')).toHaveTextContent('Select a control');
-    render(
-      <DeviceScreen
-        profile="General"
-        title="Knob"
-        lines={[
-          { gesture: 'Turn', action: 'Volume' },
-          { gesture: 'Press', action: 'Mute' },
-          { gesture: 'Hold', action: 'A' },
-          { gesture: 'Extra', action: 'Dropped' },
-        ]}
-      />,
-    );
-    expect(screen.queryByText('Dropped')).not.toBeInTheDocument();
-    expect(screen.getByText('Mute')).toBeInTheDocument();
+  it('shows only the mascot and changes its pose for each control', () => {
+    const view = render(<DeviceScreen />);
+    expect(screen.getByTestId('device-screen')).toHaveAttribute('data-reaction', 'idle');
+    for (const control of ['knob', 'button1', 'button2', 'button3'] as const) {
+      view.rerender(<DeviceScreen activeControl={control} />);
+      expect(screen.getByTestId('device-screen')).toHaveAttribute('data-reaction', control);
+      expect(screen.getByTestId('device-screen').textContent).toBe('');
+      expect(screen.getByTestId('device-screen-mascot')).toHaveAttribute('alt', '');
+    }
+  });
+
+  it('disables idle animation and pose transitions for reduced motion', () => {
+    const reducedMotion = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));
+    expect(reducedMotion).toMatch(/\.device-screen__mascot\s*{\s*animation: none;/);
+    expect(reducedMotion).toMatch(/\.device-screen__pose\s*{\s*transition: none;/);
   });
 });

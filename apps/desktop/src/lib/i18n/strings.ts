@@ -221,12 +221,6 @@ export const strings = {
       middle: 'Middle',
       right: 'Right',
     },
-    screen: {
-      turn: 'Turn',
-      press: 'Press',
-      hold: 'Hold',
-      hint: 'Select a control',
-    },
     editRow: 'Edit {control}',
     moreActions: 'More actions for {control}',
     status: {

@@ -23,7 +23,7 @@ export function DeviceVisual({
   onPreviewControl?: ((control: DeviceControl | undefined) => void) | undefined;
   availableControls?: DeviceControl[] | undefined;
   className?: string | undefined;
-  /** What the display shows; the Kivori name and the time when omitted. */
+  /** What the display shows; the buddy when omitted. */
   screen?: ReactNode | undefined;
 }): ReactElement {
   const names: Record<DeviceControl, string> = {
