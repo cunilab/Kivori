@@ -65,7 +65,7 @@ bundles omit updater signatures. With a key, the usual Tauri key/password valida
 | Per-app volume / mute | PulseAudio streams | Same |
 | Microphone mute | Every capture device, confirmed by read-back | Same |
 | Media keys / now playing | MPRIS over session D-Bus | Same |
-| Keyboard shortcuts | enigo X11 input | Unavailable; XWayland does not grant access to native Wayland apps |
+| Keyboard shortcuts | enigo X11 input | Keyboard access through the desktop permission prompt |
 | Automatic foreground-app profiles | X11 foreground window | Works with the Kivori GNOME extension (GNOME 46–50); one-time logout after enabling |
 | CPU / RAM | `/proc` | Same |
 | Sleep / wake / lock / unlock | systemd-logind D-Bus | Same |
@@ -73,10 +73,12 @@ bundles omit updater signatures. With a key, the usual Tauri key/password valida
 | Launch at login | `~/.config/autostart` | Same |
 | Tray | libayatana-appindicator | Same; GNOME requires the AppIndicator extension |
 
-On GNOME Wayland, Controls offers **Enable** for Kivori App Profiles. It installs a small user extension that tells Kivori which app is in front. Kivori must first ask (`Subscribe` over the local session D-Bus); changes are then sent only to Kivori, not broadcast, and the extension never shares window titles or contents or uses the network. The session bus is not a security boundary between programs you run yourself, so another program running as you could ask for the same app name: enable it only on a computer you control. While the screen is locked or GNOME Shell shows a modal prompt (a password or authentication dialog, a menu, the overview), the extension reports Protected and Kivori sends no shortcuts or macros. Log out and back in once after enabling so GNOME loads it. Kivori detects unsupported GNOME versions, disabled extensions, a missing `gnome-extensions` tool, and an older installed copy: Controls then offers **Update**, which needs one more log-out. Chrome and Brave app windows (for example the Teams web app) follow their own app's profile, not the browser's. Keyboard shortcuts remain unavailable on Wayland.
+On GNOME Wayland, Controls offers **Enable** for Kivori App Profiles. It installs a small user extension that tells Kivori which app is in front. Kivori must first ask (`Subscribe` over the local session D-Bus); changes are then sent only to Kivori, not broadcast, and the extension never shares window titles or contents or uses the network. The session bus is not a security boundary between programs you run yourself, so another program running as you could ask for the same app name: enable it only on a computer you control. While the screen is locked or GNOME Shell shows a modal prompt (a password or authentication dialog, a menu, the overview), the extension reports Protected and Kivori sends no shortcuts or macros. Log out and back in once after enabling so GNOME loads it. Kivori detects unsupported GNOME versions, disabled extensions, a missing `gnome-extensions` tool, and an older installed copy: Controls then offers **Update**, which needs one more log-out. Chrome and Brave app windows (for example the Teams web app) follow their own app's profile, not the browser's.
+
+On Wayland, open **Controls** or **Settings**, select **Enable keyboard shortcuts**, then approve keyboard control in the system dialog. Kivori requests keyboard access only; permission lasts until the app or session ends, so enable it again after a restart. If access is denied or disconnected, use the same button to retry. Shortcuts are suspended in protected contexts.
 
 Ubuntu normally enables the AppIndicator extension. On other GNOME installations enable it so
-closing the window leaves a reachable tray icon. If profiles remain on General after the one-time logout, open the Extensions app and check that **Kivori App Profiles** is enabled. The Controls card can enable it again. Choose **Ubuntu on Xorg** at login if you need keyboard shortcuts.
+closing the window leaves a reachable tray icon. If profiles remain on General after the one-time logout, open the Extensions app and check that **Kivori App Profiles** is enabled. The Controls card can enable it again.
 
 With no MPRIS player registered, media status is **nothing playing**. Play/pause, next and previous
 fall back to media keys on X11 (sent without confirmation) and are unavailable on Wayland. If
@@ -101,7 +103,7 @@ open it in Files and check that your user can write to it. Do not use a raw-disk
 - **No volume or mic state:** `pactl info`, `pactl list short sources` and `wpctl status` check
   PulseAudio / PipeWire. Inspect `journalctl --user -b -u pipewire -u pipewire-pulse -u wireplumber`.
 - **Profiles stay on General on GNOME Wayland:** enable Kivori App Profiles from Controls, then log out and back in once. In Extensions, check that it is enabled. Other Wayland compositors are not supported.
-- **Shortcuts unavailable:** inspect `echo "$XDG_SESSION_TYPE"`. Keyboard shortcuts require an X11 session; XWayland does not provide native Wayland input support.
+- **Shortcuts unavailable:** inspect `echo "$XDG_SESSION_TYPE"`. On Wayland, enable keyboard shortcuts in Settings and approve the system prompt. Check that the desktop portal supports keyboard access.
 - **No media info:** start an MPRIS-capable player on the same user session D-Bus.
 - **No tray:** enable GNOME's AppIndicator extension, then restart the app.
 
@@ -109,7 +111,7 @@ open it in Files and check that your user can write to it. Do not use a raw-disk
 
 - [ ] Clean Ubuntu installation of `.deb` and AppImage, USB permissions and tray reachability.
 - [ ] Real audio read-back, multiple microphones, hotplug and external state changes.
-- [ ] X11 shortcuts and profiles; honest unavailable results on GNOME Wayland.
+- [ ] X11 shortcuts and profiles; on GNOME Wayland, approve keyboard access and verify shortcuts and profiles.
 - [ ] Real media, login startup, lock/unlock, sleep/wake and USB reconnect.
 - [ ] Physical UF2 update, interrupted-flash recovery, and signed AppImage self-update.
 

@@ -101,6 +101,7 @@ import { format, strings } from '@/lib/i18n/strings';
 import { errorText } from '@/lib/utils';
 import { GnomeFocusHelp } from '../permissions/GnomeFocusHelp';
 import { AccessibilityHelp } from '../permissions/AccessibilityHelp';
+import { KeyboardShortcutsStatus } from '../permissions/KeyboardShortcutsStatus';
 import { needsKeyEvents } from '../permissions/needs-key-events';
 import { ActionPicker, catalogId } from './ActionPicker';
 import { MacroEditor, describeStep } from './MacroEditor';
@@ -557,6 +558,7 @@ export function ControlsPage({
       </div>
 
       <GnomeFocusHelp />
+      <KeyboardShortcutsStatus hideWhenEnabled />
 
       {needsKeyEvents(config) ? (
         <AccessibilityHelp

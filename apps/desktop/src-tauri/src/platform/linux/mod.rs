@@ -2,10 +2,8 @@
 //! media, X11 key synthesis and focus, `/proc` CPU/RAM, XDG desktop entries and systemd-logind
 //! sleep/lock. Target: Ubuntu / GNOME on X11 and Wayland.
 //!
-//! Wayland is the honest gap. No portal-free way exists to synthesize keys or to read the focused
-//! window there, so on a Wayland session shortcuts report `RuntimeUnavailable` and the foreground
-//! is `Unknown` (only the General profile applies). Media keys and observation use MPRIS over
-//! D-Bus and work on both session types. See each module for the contract it honours.
+//! Wayland keyboard access uses an explicit RemoteDesktop portal session. GNOME focus observation
+//! uses the optional Kivori extension; media uses MPRIS on both session types.
 
 mod apps;
 mod audio;
@@ -16,6 +14,7 @@ pub mod host_events;
 mod keys;
 mod media;
 mod mic;
+pub mod portal_keys;
 mod proc;
 mod pulse;
 mod session;

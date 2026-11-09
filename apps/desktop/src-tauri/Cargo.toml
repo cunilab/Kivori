@@ -61,8 +61,7 @@ libc = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # Keyboard shortcuts (and the media-key fallback) on X11 sessions: enigo's pure-Rust `x11rb`
-# backend, so no libxdo and no extra system package. Wayland has no portal-free way to inject
-# keys, so shortcuts report RuntimeUnavailable there (see `platform::linux::keys`).
+# backend, so no libxdo and no extra system package. Wayland uses the desktop portal.
 enigo = { version = "0.6", default-features = false, features = ["x11rb"] }
 # localtime_r (clock) and getuid/pid helpers. /proc/stat and /proc/meminfo are read as text.
 libc = "0.2"

@@ -6,11 +6,7 @@
 //! was found and refused, or that did not answer in time, is never retried as a key event, so one
 //! press is never delivered twice.
 //!
-//! SHORTCUTS need synthesized keyboard input, which exists on X11 only (XTest, through enigo's
-//! pure-Rust `x11rb` backend). On Wayland the only X server there is XWayland, and events injected
-//! into it reach XWayland clients only: a shortcut would silently miss every native Wayland window,
-//! which is most of a GNOME desktop. That is a wrong outcome reported as success, so a Wayland
-//! session reports shortcuts as `RuntimeUnavailable` and sends nothing (invariant 19).
+//! SHORTCUTS use XTest on X11 and a user-approved keyboard-only portal session on Wayland.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -24,8 +20,7 @@ use crate::platform::{
 };
 
 /// Why shortcuts are unavailable on a Wayland session. Shown in the UI.
-pub const WAYLAND_SHORTCUTS_REASON: &str =
-    "Keyboard shortcuts can't be sent from Wayland yet. Log in with an X11 session to use them.";
+pub const WAYLAND_SHORTCUTS_REASON: &str = "Enable keyboard shortcuts in Settings to use them.";
 /// Why shortcuts are unavailable with no graphical session.
 pub const HEADLESS_SHORTCUTS_REASON: &str = "Keyboard shortcuts need a graphical session";
 
@@ -55,6 +50,11 @@ fn shortcut_availability(session: SessionKind, x11: &dyn XHealth) -> ActionAvail
                 reason: X11_UNRESPONSIVE_REASON.to_string(),
             },
         },
+        SessionKind::Wayland if super::portal_keys::status() == "enabled" => {
+            ActionAvailability::Available {
+                confirmation: ConfirmationClass::TriggeredUnverified,
+            }
+        }
         SessionKind::Wayland => ActionAvailability::RuntimeUnavailable {
             reason: WAYLAND_SHORTCUTS_REASON.to_string(),
         },
@@ -152,6 +152,9 @@ impl InputSynth for LinuxInputSynth {
 
     fn send_shortcut(&self, shortcut: &Shortcut, guard: InputGuard) -> Result<(), ActionError> {
         match shortcut_availability(self.session, &*self.health) {
+            ActionAvailability::Available { .. } if self.session == SessionKind::Wayland => {
+                super::portal_keys::send(shortcut, guard)
+            }
             ActionAvailability::Available { .. } => self.x11.send_shortcut(shortcut, guard),
             ActionAvailability::RuntimeUnavailable { reason } => Err(ActionError::Failed(reason)),
             _ => Err(ActionError::Failed("shortcuts are unavailable".into())),

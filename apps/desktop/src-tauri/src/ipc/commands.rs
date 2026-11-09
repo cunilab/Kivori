@@ -902,3 +902,22 @@ async fn run_test(
         permission_required: outcome.permission_required,
     })
 }
+
+/// Status is read-only and never opens a system prompt.
+#[tauri::command]
+pub fn keyboard_shortcuts_status() -> &'static str {
+    #[cfg(target_os = "linux")]
+    if crate::platform::linux::session_kind() == crate::platform::linux::SessionKind::Wayland {
+        return crate::platform::linux::portal_keys::status();
+    }
+    "notApplicable"
+}
+
+/// Called only from the explicit settings action.
+#[tauri::command]
+pub fn enable_keyboard_shortcuts() {
+    #[cfg(target_os = "linux")]
+    if crate::platform::linux::session_kind() == crate::platform::linux::SessionKind::Wayland {
+        crate::platform::linux::portal_keys::enable();
+    }
+}
