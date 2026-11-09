@@ -47,8 +47,10 @@ BP_CLR = 0.2                # back plate to wall clearance (per side)
 # Knob + encoder (EC11 dimensions from KiCad RotaryEncoder_Alps_EC11E-Switch_Vertical_H20mm)
 KNOB_C = (43.0, 40.0)       # knob / shaft centre on the face
 KNOB_D = 36.0
-KNOB_GAP = 4.3              # air gap between knob skirt and face (push travel is ~0.5; raised 2.5 mm from 1.8 after the first
-                            # print; KNOB_H is held, so the shaft enters the knob 2.5 mm less deep)
+KNOB_GAP = 5.8              # air gap between knob skirt and face (push travel is ~0.5; raised 2.5 mm from 1.8 after the first
+                            # print, 1.5 mm more (4.3 -> 5.8) in v8; KNOB_H is held and the hub's bore goes KNOB_GAP - 4.3 lower,
+                            # so the shaft still enters KNOB_ENGAGE)
+KNOB_ENGAGE = 3.0           # how far the shaft enters the knob's bore (all of it on the D flat); the hub hangs this far below the shaft tip
 KNOB_TOP_T = 4.5            # knob top above the shaft-tip clearance
 KNOB_TIP_CLR = 1.0          # free space between the shaft tip and the bore's ceiling
 KNOB_WALL = 2.5             # hollow knob: skirt wall (the grip flutes cut 0.6 into it)
@@ -1097,6 +1099,11 @@ def cradle_cuts():
     return cuts
 
 
+def knob_hub_z0():
+    """z of the hub's underside (the bore's mouth): the shaft tip minus KNOB_ENGAGE."""
+    return HW040_FRONT + EC11_SHAFT_H - KNOB_ENGAGE
+
+
 def make_knob():
     z0, z1 = KNOB_GAP, KNOB_GAP + KNOB_H
     cx, cy = KNOB_C
@@ -1116,14 +1123,18 @@ def make_knob():
         flutes.append(cyl(KNOB_FLUTE_D, cx + r * math.cos(a), cy + r * math.sin(a), z0 - 1, z1 - KNOB_CHAMFER - 0.6))  # out the skirt edge
     bush_top = HW040_FRONT + EC11_BODY_H + EC11_BUSH_L
     shaft_top = HW040_FRONT + EC11_SHAFT_H
-    hub_z0 = max(bush_top + 0.5, z0)  # the bushing ends inside the face hole
+    hub_z0 = knob_hub_z0()            # hub / bore entry: KNOB_ENGAGE under the shaft tip (below the skirt rim when the gap is large)
+    if hub_z0 < bush_top + 0.5:
+        raise ValueError("knob hub would reach the bushing tip")
     # hollow: skirt, top, and a hub round the shaft tied to the skirt by ribs. Prints top down,
     # so all of it grows up from the top with no overhang.
     inside = cyl(KNOB_D - 2 * KNOB_WALL, cx, cy, z0 - 1, z1 - KNOB_TOP_T)
     keep = [cyl(KNOB_HUB_D, cx, cy, hub_z0, z1)]
     for i in range(KNOB_RIBS):
-        rib = box(0, -KNOB_RIB_T / 2, hub_z0, KNOB_D / 2 - KNOB_WALL + 0.1, KNOB_RIB_T / 2, z1)
+        rib = box(0, -KNOB_RIB_T / 2, max(hub_z0, z0), KNOB_D / 2 - KNOB_WALL + 0.1, KNOB_RIB_T / 2, z1)
         keep.append(place(rib, cx, cy, 45.0 + i * 360.0 / KNOB_RIBS))
+    if hub_z0 < z0:                   # the hub hangs below the skirt rim; the ribs stay flush with it
+        k = k.fuse(cyl(KNOB_HUB_D, cx, cy, hub_z0, z0 + 0.5))
     cuts = flutes + [inside.cut(keep)]
     # bore: round over the shaft's round part, D-shaped over its flat
     bore = cyl(EC11_SHAFT_D + 0.25, cx, cy, hub_z0 - 1, shaft_top + KNOB_TIP_CLR)  # snug once FDM shrinks it
@@ -1745,12 +1756,38 @@ def check_display():
     return problems
 
 
+def check_knob_engagement():
+    """Measured on the knob solid, not from the parameters: how far the shaft tip sits above the hub's underside (read on the round
+    side of the bore wall, where the D flat does not interfere), and the knob's gap to the bushing and to the nut, at rest and pressed
+    0.5 mm. Raises when the engagement is under KNOB_ENGAGE or the knob comes within 0.5 mm of the bushing tip or the nut.
+    Returns (engagement, to bushing at rest, to bushing pressed, to nut pressed)."""
+    cx, cy = KNOB_C
+    shaft_top = HW040_FRONT + EC11_SHAFT_H
+    knob = PRINTED["Knob"]
+    wall = Part.makeLine(V(cx, cy - (EC11_SHAFT_D + 0.25) / 2 - 0.1, shaft_top - 10), V(cx, cy - (EC11_SHAFT_D + 0.25) / 2 - 0.1, KNOB_GAP + KNOB_H + 1))
+    hit = wall.common(knob)
+    eng = shaft_top - min(e.BoundBox.ZMin for e in hit.Edges)
+    bush = cyl(EC11_BUSH_D, cx, cy, HW040_FRONT + EC11_BODY_H, HW040_FRONT + EC11_BODY_H + EC11_BUSH_L)
+    pressed = knob.copy()
+    pressed.translate(V(0, 0, -0.5))
+    d_rest, d_press = knob.distToShape(bush)[0], pressed.distToShape(bush)[0]
+    d_nut = pressed.distToShape(DUMMIES["Dummy_EncoderNut"])[0]
+    if eng < KNOB_ENGAGE - 1e-6:
+        raise ValueError("knob shaft engagement %.2f mm is under %.1f mm" % (eng, KNOB_ENGAGE))
+    if min(d_press, d_nut) < 0.5 - 1e-6:
+        raise ValueError("pressed knob within 0.5 mm of the encoder bushing / nut")
+    return eng, d_rest, d_press, d_nut
+
+
 def report_new_features():
     """Numbers for the second-print changes: knob, cowl pegs, RP2040 drop."""
     shaft_top = HW040_FRONT + EC11_SHAFT_H
-    hub_z0 = max(HW040_FRONT + EC11_BODY_H + EC11_BUSH_L + 0.5, KNOB_GAP)
-    print("knob: z %.1f..%.1f (H %.1f), shaft enters %.2f mm (D flat %.1f mm long, all inside), tip clearance %.1f" % (
-        KNOB_GAP, KNOB_GAP + KNOB_H, KNOB_H, shaft_top - hub_z0, min(EC11_FLAT_L, shaft_top - hub_z0), KNOB_TIP_CLR))
+    hub_z0 = knob_hub_z0()
+    print("knob: skirt z %.1f..%.1f (H %.1f), hub from z %.1f, shaft enters %.2f mm (D flat %.1f mm long, all inside), tip clearance %.1f" % (
+        KNOB_GAP, KNOB_GAP + KNOB_H, KNOB_H, hub_z0, shaft_top - hub_z0, min(EC11_FLAT_L, shaft_top - hub_z0), KNOB_TIP_CLR))
+    eng, bush_rest, bush_pressed, nut_pressed = check_knob_engagement()
+    print("knob measured on the solid: shaft enters %.2f mm (rule >= %.1f); hub underside to the bushing tip %.2f mm at rest, %.2f pressed "
+          "(0.5 mm travel; rule >= 0.5), to the nut %.2f pressed" % (eng, KNOB_ENGAGE, bush_rest, bush_pressed, nut_pressed))
     knob = PRINTED["Knob"]
     pressed = knob.copy()
     pressed.translate(V(0, 0, -0.5))
