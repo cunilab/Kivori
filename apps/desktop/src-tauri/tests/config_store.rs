@@ -1101,3 +1101,17 @@ mod profiles {
         assert!(!mine.press.overridden);
     }
 }
+
+/// A development build stored an `led` section. The file is otherwise strict, but that one loads.
+#[test]
+fn a_file_with_a_stale_led_section_still_loads() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("config.json"),
+        br##"{"version":2,"display":{"defaultView":"buddy","secondaryView":"system","brightness":3},"led":{"mode":"solid","color":"#FF8800","brightness":40,"speed":"fast","profileColors":{"zoom":"#00FF00"}}}"##,
+    )
+    .unwrap();
+    let store = ConfigStore::open(dir.path());
+    assert_eq!(store.notice(), None);
+    assert_eq!(store.file().display.brightness, 3);
+}

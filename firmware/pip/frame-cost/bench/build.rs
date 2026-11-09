@@ -9,8 +9,7 @@ fn main() {
         kivori_asset_compiler::compile_default_blob(),
     )
     .unwrap();
-    // The firmware crate's `.cargo/config.toml` (a parent directory) already passes `-Tlinkall.x` and
-    // cargo merges rustflags, so the memory map is provided under that name.
+    // This crate's `.cargo/config.toml` passes `-Tlinkall.x`, so the memory map is provided under that name.
     fs::copy("link.x", out.join("linkall.x")).unwrap();
     println!("cargo:rustc-link-search={}", out.display());
     println!("cargo:rerun-if-changed=link.x");

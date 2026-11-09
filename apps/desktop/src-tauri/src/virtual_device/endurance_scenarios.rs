@@ -16,6 +16,8 @@ struct Wraps {
     last: Option<(u16, Option<u16>)>,
     outbound: u32,
     inbound: u32,
+    /// The slowest heartbeat round trip seen at any sample.
+    max_rtt_ms: u32,
 }
 
 impl Wraps {
@@ -71,12 +73,17 @@ fn run(sandbox: &mut Sandbox, limit: Duration) -> Result<(Duration, Wraps, usize
         }
         sandbox.tick();
         wraps.sample(sandbox.session.sequence_positions());
+        wraps.max_rtt_ms = wraps
+            .max_rtt_ms
+            .max(sandbox.session.diagnostics().rtt_ms.unwrap_or(0));
         if last_report.elapsed() >= Duration::from_secs(30) {
             last_report = Instant::now();
             eprintln!(
-                "endurance: {} detents in {:?}",
+                "endurance: {} detents in {:?}, sequence host/device {:?}, heartbeat max {} ms",
                 sandbox.snapshot.detents,
-                started.elapsed()
+                started.elapsed(),
+                sandbox.session.sequence_positions(),
+                wraps.max_rtt_ms
             );
         }
         if started.elapsed() >= limit {
@@ -92,7 +99,7 @@ fn run(sandbox: &mut Sandbox, limit: Duration) -> Result<(Duration, Wraps, usize
 
 /// Opt-in long session: `virtual_device <runner> --endurance-smoke`.
 pub fn endurance_smoke(executable: &Path) -> Result<(), String> {
-    // Modelled ESP32-C3 time, as the unit runs. The flood is 250 detents a second (4 ms edge spacing)
+    // Modelled time, as the unit runs (the selected board's). The flood is 250 detents a second (4 ms edge spacing)
     // with presentation traffic back, well under what the runtime takes inbound (512 bytes per
     // frame, about 6 KB/s): the heartbeat round trip stays near 0.1 s against the host's 2 s
     // allowance (virtual device docs, Endurance run).
@@ -107,7 +114,9 @@ pub fn endurance_smoke(executable: &Path) -> Result<(), String> {
         std::thread::sleep(Duration::from_millis(5));
     }
     let generation = sandbox.snapshot.generation;
-    let (elapsed, wraps, sent) = run(&mut sandbox, Duration::from_secs(1200))?;
+    // A ceiling, not a duration: the run ends once both counters wrapped. v1 takes about 14 minutes; the
+    // slower v2 model sends fewer host frames per detent (one wrap needs over 300,000 detents).
+    let (elapsed, wraps, sent) = run(&mut sandbox, Duration::from_secs(3000))?;
     // Let the last replies settle, then require an exact, anomaly-free ledger.
     let settle = Instant::now() + Duration::from_millis(500);
     while Instant::now() < settle {
@@ -138,6 +147,14 @@ pub fn endurance_smoke(executable: &Path) -> Result<(), String> {
         sandbox.rejected_inputs == 0,
         "endurance: inputs were rejected as stale",
     )?;
+    // The host drops a link after three unanswered 1 s heartbeats; a healthy flood answers in ~0.1 s.
+    check(
+        wraps.max_rtt_ms < 2000,
+        &format!(
+            "endurance: heartbeat round trip reached {} ms",
+            wraps.max_rtt_ms
+        ),
+    )?;
     check(
         sandbox.snapshot.volume == 50,
         &format!(
@@ -157,10 +174,11 @@ pub fn endurance_smoke(executable: &Path) -> Result<(), String> {
         std::thread::sleep(Duration::from_millis(5));
     }
     println!(
-        "PASS ENDURANCE one session, {sent} detents in {} s; u16 sequence wraps host {} / device {}: no gap, malformed frame, device error, stale rejection or reconnect; volume back to 50; press works after the wrap",
+        "PASS ENDURANCE one session, {sent} detents in {} s; u16 sequence wraps host {} / device {}: no gap, malformed frame, device error, stale rejection or reconnect; slowest heartbeat round trip {} ms; volume back to 50; press works after the wrap",
         elapsed.as_secs(),
         wraps.outbound,
-        wraps.inbound
+        wraps.inbound,
+        wraps.max_rtt_ms
     );
     Ok(())
 }

@@ -104,6 +104,8 @@ try {
         : `node ${process.version}`,
       node: execFileSync('node', ['--version'], { cwd: root, encoding: 'utf8' }).trim(),
       platform: process.platform,
+      // The virtual board (docs/virtual-pip.md, "Virtual boards"): v1 unless the environment says v2.
+      board: process.env.KIVORI_VIRTUAL_BOARD ?? 'c3-supermini',
     };
     report.data.inputSha256 = Object.fromEntries(
       [

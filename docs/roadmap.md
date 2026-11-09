@@ -33,7 +33,7 @@ physical acceptance are tracked in [macOS support](./macos.md). Linux is later.
 Software for the device link, mascot, rotary volume and flashing is built and green in CI
 (about 300 workspace and 80 firmware tests; RISC-V clippy on every profile; Windows CI).
 
-- [x] ESP32-C3 ↔ desktop protocol: postcard + CRC frames, handshake, version and capability negotiation, nonce as session identity
+- [x] Device ↔ desktop protocol (first on the ESP32-C3, now the RP2040-Zero, #179): postcard + CRC frames, handshake, version and capability negotiation, nonce as session identity
 - [x] Automatic discovery, reconnect state machine, heartbeat, offline-first boundary
 - [x] ST7789 rendering: deterministic renderer, 36-tile DMA path, Device Studio preview, golden-frame tests
 - [x] Rotary input: HW-040 decoder (detent only on return to rest), 250 ms gesture boundary
@@ -85,8 +85,8 @@ stays the beta platform and its rows are tracked in a GitHub issue.
 Software complete and host-tested (S1–S7); the hardware rows and gates below remain.
 
 - [x] Three contextual buttons (#9), software done and host-tested end to end:
-  - pins GPIO9, GPIO8, GPIO10 to GND (moved to match the enclosure's wiring, #123), internal pull-ups, no resistors; GPIO21 stays the UART0 boot
-    log; B1 on GPIO9 doubles as BOOT (held at reset: download mode)
+  - pins GP6, GP7, GP8 to GND (RP2040-Zero carrier, #179; GPIO9, GPIO8, GPIO10 on the ESP32-C3), internal pull-ups, no resistors;
+    BOOT is the board's own button, not a Kivori control
   - same edge interrupt as the encoder (ADR-0007); each button gives Press and Hold, never recovery;
     one gesture owns all input: no contextual-button chords and nothing during recovery;
     negotiated knob hold-and-turn is a separate owned gesture
@@ -232,8 +232,8 @@ Software done and host-tested (#72); owner key and hardware rows remain.
   - each firmware image carries an identity record (product, board, firmware version, minimum
     protocol) next to its version marker; the app refuses to flash an image onto a different
     product or board, and the firmware shows an error screen if it boots on the wrong one
-  - `just provision --product --board --rev --burn-identity` writes the identity into chip one-time memory (C3 user
-    eFuse block) for units that are sold; it shows the record and needs a typed confirmation
+  - `just provision --product --board --rev --burn-identity` wrote the identity into chip one-time memory (C3 user
+    eFuse block); removed with the RP2040-Zero, which has none, so identity comes from the build (ADR-0019)
 - [x] **Product catalog in the app:** `products/<id>/product.toml` per product (display name, image,
   boards, flash method per board, bundled firmware with version, SHA-256 and minimum protocol,
   required capabilities); the app's device code reads the catalog instead of assuming one board.
@@ -616,19 +616,19 @@ evidence to choose other investments later.
 problems and uses it without developer help. Start charging for beta units here.
 
 - [ ] M2.9 reliability, recovery, usability and sustained Windows-use acceptance complete
-- [ ] Enclosure (keeps the USB port and the ESP32-C3 BOOT path reachable for recovery; the three
+- [ ] Enclosure (keeps the USB port and the RP2040-Zero BOOT button reachable for recovery; the three
   buttons sit in a row directly under the screen, centres one third of the panel's active width
   apart, each under its 80 px label column (#14))
 - [ ] BOM and real unit cost (draft parts list in [bom.md](./bom.md); prices, suppliers and the real unit cost still need the owner)
 - [ ] Repeatable assembly process (guide written: [assembly.md](./assembly.md); stays open until a person has built a unit with it)
-- [ ] Device flashing and provisioning process (tool exists: `just provision`, see [provisioning.md](./provisioning.md); stays open until a person has run it on real units)
-- [ ] Hardware QA checklist per unit (built from the remaining Phase 1–3 rows in [validation.md](./validation.md); the automated part is `just provision`, validation Phase 12, which still needs a human run)
-- [ ] Signed Windows installer, bundling the known-compatible firmware (this is the beta's update authentication, gate 10). The unsigned pipeline exists (M3 S5: `release.yml` builds, install-tests and drafts the NSIS installer with the pinned `espflash` sidecar); this stays open until the installer is signed, which waits on owner certificates (#36). See [release.md](./release.md)
+- [ ] Device flashing process (UF2 through the app, or `just fw-flash`; no per-unit provisioning, see [provisioning.md](./provisioning.md); stays open until a person has run it on real RP2040-Zero units)
+- [ ] Hardware QA checklist per unit (built from the remaining Phase 1–3 rows in [validation.md](./validation.md); validation Phase 12 is now a manual checklist and still needs a human run)
+- [ ] Signed Windows installer, bundling the known-compatible firmware (this is the beta's update authentication, gate 10). The unsigned pipeline exists (M3 S5: `release.yml` builds, install-tests and drafts the NSIS installer); this stays open until the installer is signed, which waits on owner certificates (#36). See [release.md](./release.md)
 - [ ] macOS build (if shipped; `scripts/bundle-macos.sh` bundles the adapter, entitlements and Info.plist and signs only when `APPLE_SIGNING_IDENTITY` is set; software done in M3 S5, signing and the hardware rows are open): bundle `target/<profile>/mediaremote-adapter/` as a resource, Developer ID-sign its two Mach-O helpers with hardened runtime, add `NSAppleEventsUsageDescription` and the `com.apple.security.automation.apple-events` entitlement, list the adapter (BSD-3) in third-party notices (ADR-0009)
 - [ ] Launch at login and tray presence; the window stays optional. Software done in M3 S4 (autostart plugin, hidden start, tray status and switch, Device page switch); stays open until the S4 hardware rows in [validation.md](./validation.md) pass
 - [ ] Survive sleep/wake and lock/unlock with intentional screens, never a frozen frame (gate 9). Software done in M3 S1+S2 (host takeovers: Sleeping, Updating and a 4 s host-silence Offline; sleep, lock and console-switch handling in Desktop); stays open until the S2 hardware rows (Phase 7) in [validation.md](./validation.md) pass
 - [ ] First-run onboarding. Software done in M3 S6 (stepper for plug in, macOS Accessibility, a capability-filtered non-verifying guide (replacing the earlier live-tour heuristic), default view, buddy intensity and launch at login, with "Run setup again" on the Device page); stays open until the S6 hardware rows in [validation.md](./validation.md) pass
-- [ ] User-facing firmware update and recovery flow (flash the bundled build; a failed flash says so). Software done in M3 S3 (flash, classified failures, BOOT-button restore, incompatible recovery); the pinned `espflash` 4.6.0 sidecar now ships in the installer (S5); stays open until the S3 hardware rows (Phase 8) in [validation.md](./validation.md) pass
+- [ ] User-facing firmware update and recovery flow (flash the bundled build; a failed flash says so). Software done in M3 S3 (flash, classified failures, BOOT-button restore, incompatible recovery); the app writes UF2 itself, so no flashing tool ships in the installer; stays open until the S3 hardware rows (Phase 8) in [validation.md](./validation.md) pass
 - [x] Device and software version shown to the user (Device page and Home show the device firmware, app version and the firmware bundled in the app, with an "update available" hint; the bundled version is read from the firmware image, so it appears whenever a build embeds one)
 - [ ] Regulatory check before selling (FCC Part 15 / CE for the finished unit, not just the module)
 - [ ] Basic packaging and a short user guide (guide written: [user-guide.md](./user-guide.md); stays open until the physical packaging exists)

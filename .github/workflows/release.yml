@@ -1,5 +1,5 @@
 # Release pipeline (M3 S5; docs/release.md). Builds the product firmware, then the unsigned Windows NSIS
-# installer with the pinned espflash sidecar, installs it silently on the runner and smoke-tests it.
+# installer, installs it silently on the runner and smoke-tests it.
 # A release tag also fills the DRAFT GitHub release, creating it when there is none: a call from the
 # Release button (release-start.yml) with `tag`, or a `v*` tag pushed by hand. Nothing is published
 # automatically, a release is never marked pre-release, and a published release is never changed.
@@ -61,7 +61,6 @@ on:
       - 'apps/desktop/src-tauri/Entitlements.plist'
       - 'apps/desktop/src-tauri/nsis/**'
       - 'bun.lock'
-      - 'scripts/fetch-espflash.*'
       - 'scripts/bundle-macos.sh'
       - 'scripts/sign-macos-bundle.sh'
       - 'scripts/build-firmware.mjs'
@@ -78,9 +77,6 @@ on:
 
 permissions:
   contents: read
-
-env:
-  ESPFLASH_VERSION: '4.6.0' # keep in sync with scripts/fetch-espflash.{sh,ps1}
 
 jobs:
   firmware:
@@ -176,9 +172,6 @@ jobs:
         with:
           node-version: 24
       - uses: dtolnay/rust-toolchain@stable
-      - name: Fetch the pinned espflash sidecar
-        shell: pwsh
-        run: ./scripts/fetch-espflash.ps1
       - uses: actions/download-artifact@v8
         with:
           name: firmware-elfs
@@ -227,7 +220,7 @@ jobs:
       #   - Azure Trusted Signing: secrets AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET and the
       #     account/profile names, via azure/trusted-signing-action;
       #   - a code-signing certificate: secrets WINDOWS_CERTIFICATE (base64 .pfx) and
-      #     WINDOWS_CERTIFICATE_PASSWORD, via signtool on the installer, the app exe and espflash.exe
+      #     WINDOWS_CERTIFICATE_PASSWORD, via signtool on the installer and the app exe
       #     (set bundle.windows.signCommand in a CI-only config so the inner binaries are signed too).
       - name: Sign the installer (placeholder)
         if: env.WINDOWS_SIGNING == 'true'
@@ -238,7 +231,7 @@ jobs:
       - name: Release-surface check on the built exe
         shell: bash
         run: bash scripts/check-release-surface.sh --desktop-artifact target/release/kivori-desktop.exe
-      - name: Silent install, sidecar check, startup smoke test, silent uninstall
+      - name: Silent install, startup smoke test, silent uninstall
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -254,15 +247,6 @@ jobs:
           }
           $dir = $app.DirectoryName
           Write-Host "Installed to $dir"
-          $espflash = Join-Path $dir 'espflash.exe'
-          if (-not (Test-Path $espflash)) { throw "espflash.exe is missing next to the app executable ($dir)." }
-
-          $reported = (& $espflash --version | Out-String).Trim()
-          Write-Host "espflash --version: $reported"
-          if ($reported -notmatch [regex]::Escape($env:ESPFLASH_VERSION)) {
-              throw "espflash reports '$reported', expected $env:ESPFLASH_VERSION."
-          }
-
           & ./scripts/test-windows-device-studio-startup.ps1 -Exe $app.FullName -Args '--autostart'
 
           # Stand in for the Launch at login entry the app writes, to prove the uninstall hook removes it.

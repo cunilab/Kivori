@@ -61,7 +61,8 @@ export function listFirmwarePlans(root) {
     for (const [id, spec] of Object.entries(catalog.boards ?? {})) {
       if (!machineId.test(id) || !registry.boards?.[id])
         throw new Error(`Unregistered board: ${id}`);
-      pairs.push({ product: entry.name, board: id, spec });
+      // A board with no firmware table (a retired board) is catalog data only: nothing to build.
+      if (spec.firmware) pairs.push({ product: entry.name, board: id, spec });
     }
   }
   if (!pairs.length) throw new Error('The catalog has no active firmware pairs.');

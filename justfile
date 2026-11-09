@@ -27,17 +27,17 @@ build:
 
 # ---- firmware (isolated workspace; ADR-0001) ----
 # fw-check/test/flash/flash-latency are explicit board-specific development recipes.
-# no_std isolation proof: compile ONLY the shared crates for the RISC-V target from the firmware
-# workspace. Nothing esp-hal here, so this stays fast and proves the firewall.
+# no_std isolation proof: compile ONLY the shared crates for the thumbv6m target from the firmware
+# workspace. Nothing rp2040-hal here, so this stays fast and proves the firewall.
 
-# Compile the shared crates for RISC-V (no_std / no-alloc isolation proof).
+# Compile the shared crates for thumbv6m (no_std / no-alloc isolation proof).
 fw-check:
     cd firmware/pip && cargo build -p kivori-model -p kivori-protocol -p kivori-framebuffer -p kivori-renderer -p kivori-assets
 
 # The flashable binary needs `--features embedded` at minimum: the bin target declares it in
 # `required-features`, so a plain `cargo build --release` silently builds only the library and
-# produces NO binary. `embedded` alone only selects main.rs's bare fallback mode (clock + serial,
-# no display, no input) — the shipped product firmware needs `physical-st7789` (which enables
+# produces NO binary. `embedded` alone only selects main.rs's bare fallback mode (clocks only,
+# no display, no input, no USB) — the shipped product firmware needs `physical-st7789` (which enables
 # `embedded` transitively via Cargo.toml). The selected catalog entry owns the build features.
 
 # Build the catalog firmware (sole pair, or KIVORI_PRODUCT + KIVORI_BOARD). Never flashes.
@@ -48,8 +48,10 @@ fw-build:
 fw-test:
     cd firmware/pip && cargo test --features host-sim --target $(rustc -vV | sed -n 's/^host: //p')
 
-# Flashes and monitors via the `espflash` runner in .cargo/config.toml.
-# The physical ESP32-C3 + ST7789 profile is verified in docs/validation.md.
+# Flashes through the `elf2uf2-rs -d` runner in .cargo/config.toml (`cargo install elf2uf2-rs`): it
+# converts the ELF to UF2 and copies it onto the RP2040's USB bootloader drive, so the board must be
+# in BOOTSEL mode first (hold BOOT while plugging in, or run the 1200-baud touch on its serial port).
+# The physical ST7789 profile is checked on hardware in docs/validation.md.
 # `--features physical-st7789` is required to select that runtime; `embedded` alone builds only
 # main.rs's bare fallback (no display, no input) and would silently flash non-product firmware.
 
@@ -70,8 +72,9 @@ fw-budget:
     bun scripts/firmware-budget.mjs
     bun scripts/virtual-resource-facts.mjs --check
 
-# Refresh the resource facts the virtual device reports (simulator/fixtures/resource-facts.json)
-# from the freshly built product ELF; commit the result. `just fw-budget` fails when they drift.
+# Refresh the resource facts the v2 (RP2040-Zero) virtual device reports
+# (simulator/fixtures/resource-facts-rp2040.json) from the freshly built product ELF; commit the
+# result. `just fw-budget` fails when they drift. The v1 (ESP32-C3) facts are frozen history.
 fw-virtual-facts-update:
     bun scripts/build-firmware.mjs > /dev/null
     bun scripts/virtual-resource-facts.mjs --write
@@ -123,7 +126,6 @@ bundle-windows:
     unset KIVORI_FIRMWARE_PATH
     manifest="$(bun scripts/build-firmware-set.mjs --out-dir "$firmware_dir/images" --manifest-out "$firmware_dir/manifest.json")"
     [ -s "$manifest" ] || { echo "Missing firmware manifest" >&2; exit 1; }
-    powershell -NoProfile -File scripts/fetch-espflash.ps1
     bun install --frozen-lockfile
     bun --filter kivori-desktop-ui build
     cd apps/desktop
@@ -200,18 +202,6 @@ app:
     [ -s "$manifest" ] || { echo "Missing firmware manifest" >&2; exit 1; }
     KIVORI_FIRMWARE_MANIFEST="$manifest" cargo run -p kivori-desktop
 
-# DEV ONLY (M3 S7; docs/provisioning.md): flash the freshly built firmware onto the ONE plugged-in
-# unit, check the link and controls, print PASS/FAIL and append to provisioning-log.csv.
-
-# Provision and QA one Kivori unit (builds the firmware first). Optional identity record:
-# `just provision --product <id> --board <id> --rev 1 [--burn-identity]` (docs/provisioning.md).
-provision *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    firmware="$(bun scripts/build-firmware.mjs)"
-    unset KIVORI_FIRMWARE_MANIFEST
-    KIVORI_FIRMWARE_PATH="$firmware" cargo run -p kivori-desktop --example provision -- {{args}}
-
 # ---- website (apps/web; Next.js on Cloudflare Workers via OpenNext) ----
 
 # Run the website dev server on :3000.
@@ -233,6 +223,15 @@ virtual-device:
 # Real Runtime/desktop-core smoke with fake OS and a captured firmware framebuffer.
 virtual-device-smoke:
     node firmware/pip/simulator/run.mjs --smoke
+
+# DEV ONLY: the v2 virtual device (Waveshare RP2040-Zero; timing is an estimate, not measured).
+# `just virtual-device` is v1 (ESP32-C3).
+virtual-device-v2:
+    KIVORI_VIRTUAL_BOARD=rp2040-zero bun firmware/pip/simulator/run.mjs
+
+# The same smoke on the v2 virtual device.
+virtual-device-smoke-v2:
+    KIVORI_VIRTUAL_BOARD=rp2040-zero node firmware/pip/simulator/run.mjs --smoke
 
 # Opt-in, several minutes: one virtual session past both protocol sequence wraps (no soak credit).
 virtual-device-endurance:

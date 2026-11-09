@@ -5,7 +5,7 @@
 //!
 //! The shared parser is also compiled by `build.rs`; `catalog_build.rs` discovers and validates
 //! sources and firmware, and runtime-only `catalog_embedded.rs` loads the generated constants.
-//! This parser stays free of crate-internal dependencies; capability names resolve in `provision`.
+//! This parser stays free of crate-internal dependencies; capability names resolve in `identity`.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -19,8 +19,8 @@ pub type UsbId = (u16, u16);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FlashMethod {
-    /// `espflash` over the board's USB serial port.
-    Espflash,
+    /// A UF2 file copied to the RP2040's USB bootloader drive.
+    Uf2,
 }
 
 /// A supported physical control arrangement for desktop illustrations.
@@ -92,12 +92,13 @@ pub struct Board {
     pub number: u16,
     /// Name shown to the user.
     pub display_name: String,
-    /// How the board is flashed.
-    pub flash: FlashMethod,
+    /// How the board is flashed; present exactly when `firmware` is.
+    pub flash: Option<FlashMethod>,
     /// USB ids that nominate a serial port as a candidate. Never identity.
     pub usb: Vec<UsbId>,
-    /// The firmware bundled for this board.
-    pub firmware: BundledFirmware,
+    /// The firmware bundled for this board. A board without it is recognized (discovery, identity,
+    /// presentation) but never offered firmware or flashing.
+    pub firmware: Option<BundledFirmware>,
 }
 
 /// One product.
@@ -170,9 +171,11 @@ struct RawProduct {
 #[serde(deny_unknown_fields)]
 struct RawBoard {
     display_name: String,
-    flash: FlashMethod,
+    #[serde(default)]
+    flash: Option<FlashMethod>,
     usb: Vec<String>,
-    firmware: RawFirmware,
+    #[serde(default)]
+    firmware: Option<RawFirmware>,
 }
 
 #[derive(Deserialize)]
@@ -257,8 +260,8 @@ impl Catalog {
     ///
     /// # Errors
     /// Malformed TOML, an invalid or reused id or number, a product missing from the registry, a
-    /// board missing from the registry, an empty name or short name, a malformed model code, or a
-    /// malformed USB id or protocol version.
+    /// board missing from the registry, an empty name or short name, a malformed model code, a
+    /// malformed USB id or protocol version, or `flash` without `firmware` (or the reverse).
     pub fn parse(registry: &str, products: &[(&str, &str)]) -> Result<Self, CatalogError> {
         let registry: RawRegistry =
             toml::from_str(registry).map_err(|e| CatalogError(format!("registry.toml: {e}")))?;
@@ -300,21 +303,32 @@ impl Catalog {
                     .iter()
                     .map(|u| parse_usb(u))
                     .collect::<Result<Vec<_>, _>>()?;
-                if let Some(build) = &board.firmware.build {
-                    build.validate(&board.firmware.artifact)?;
+                if board.flash.is_some() != board.firmware.is_some() {
+                    return err(format!(
+                        "`{id}` board `{board_id}` must set `flash` together with a `firmware` table, or neither"
+                    ));
                 }
+                let firmware = board
+                    .firmware
+                    .map(|firmware| {
+                        if let Some(build) = &firmware.build {
+                            build.validate(&firmware.artifact)?;
+                        }
+                        Ok(BundledFirmware {
+                            crate_dir: firmware.crate_dir.into(),
+                            artifact: firmware.artifact.into(),
+                            min_protocol: parse_protocol(&firmware.min_protocol)?,
+                            build: firmware.build,
+                        })
+                    })
+                    .transpose()?;
                 boards.push(Board {
                     id: board_id,
                     number: board_number,
                     display_name: board.display_name,
                     flash: board.flash,
                     usb,
-                    firmware: BundledFirmware {
-                        crate_dir: board.firmware.crate_dir.into(),
-                        artifact: board.firmware.artifact.into(),
-                        min_protocol: parse_protocol(&board.firmware.min_protocol)?,
-                        build: board.firmware.build,
-                    },
+                    firmware,
                 });
             }
             if boards.is_empty() {
@@ -389,7 +403,7 @@ mod tests {
     fn product(board: &str) -> String {
         format!(
             "display_name = \"X\"\nshort_name = \"X\"\nmodel = \"KV-X1\"\nrequired_capabilities = []\n[boards.{board}]\ndisplay_name = \"B\"\n\
-             flash = \"espflash\"\nusb = [\"303A:1001\"]\n[boards.{board}.firmware]\ncrate = \"fw\"\n\
+             flash = \"uf2\"\nusb = [\"303A:1001\"]\n[boards.{board}.firmware]\ncrate = \"fw\"\n\
              artifact = \"a\"\nmin_protocol = \"0.1\"\n"
         )
     }
@@ -416,21 +430,27 @@ mod tests {
     }
 
     #[test]
-    fn embedded_catalog_is_valid_and_has_pip_on_c3_supermini() {
+    fn embedded_catalog_is_valid_and_has_pip_on_rp2040_zero_and_legacy_c3_supermini() {
         let catalog = Catalog::embedded();
-        let (product, board) = catalog.by_wire(1, 1).expect("pip on c3-supermini");
+        let (product, board) = catalog.by_wire(1, 2).expect("pip on rp2040-zero");
         assert_eq!(product.id, "pip");
         assert_eq!(product.display_name, "Kivori Pip");
         assert_eq!(product.short_name, "Pip");
         assert_eq!(product.model, "KV-P1");
-        assert_eq!(board.id, "c3-supermini");
-        assert_eq!(board.flash, FlashMethod::Espflash);
+        assert_eq!(board.id, "rp2040-zero");
+        assert_eq!(board.display_name, "RP2040-Zero");
+        assert_eq!(board.flash, Some(FlashMethod::Uf2));
         // The bundled firmware speaks this app's protocol major, at a minor it has.
-        let (major, minor) = board.firmware.min_protocol;
+        let (major, minor) = board.firmware.as_ref().expect("firmware").min_protocol;
         assert_eq!(major, kivori_protocol::PROTOCOL_MAJOR);
         assert!(minor <= kivori_protocol::PROTOCOL_MINOR);
-        assert_eq!(catalog.usb_ids(), vec![(0x303A, 0x1001)]);
-        assert_eq!(catalog.by_wire(1, 2), None);
+        // The C3 is recognized (shipped units, the v1 virtual device) but never flashed.
+        let (_, legacy) = catalog.by_wire(1, 1).expect("pip on c3-supermini");
+        assert_eq!(legacy.id, "c3-supermini");
+        assert!(legacy.flash.is_none() && legacy.firmware.is_none());
+        // Both boards' USB ids stay allowlisted: C3 units and the v1 virtual device still connect.
+        assert_eq!(catalog.usb_ids(), vec![(0x303A, 0x1001), (0x2E8A, 0x000A)]);
+        assert_eq!(catalog.by_wire(1, 3), None);
         assert_eq!(catalog.by_wire(0, 0), None);
         assert!(catalog.product("pip").is_some());
         assert!(catalog.product("nope").is_none());
@@ -453,27 +473,21 @@ mod tests {
             .collect();
         embedded.sort_unstable();
         assert_eq!(on_disk, embedded);
-        for board in Catalog::embedded()
+        for (board, firmware) in Catalog::embedded()
             .products()
             .iter()
             .flat_map(|p| &p.boards)
+            .filter_map(|board| Some((board, board.firmware.as_ref()?)))
         {
-            let manifest = root.join(&board.firmware.crate_dir).join("Cargo.toml");
+            let manifest = root.join(&firmware.crate_dir).join("Cargo.toml");
             let text = std::fs::read_to_string(&manifest).expect("firmware crate manifest");
             assert!(crate_version(&text).is_some(), "{}", manifest.display());
-            let build = board
-                .firmware
+            let build = firmware
                 .build
                 .as_ref()
-                .expect("shipping board has build recipe");
+                .unwrap_or_else(|| panic!("{} has no build recipe", board.id));
             let manifest: toml::Value = toml::from_str(&text).unwrap();
-            let binary = board
-                .firmware
-                .artifact
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap();
+            let binary = firmware.artifact.file_name().unwrap().to_str().unwrap();
             assert!(manifest["bin"]
                 .as_array()
                 .unwrap()
@@ -484,6 +498,21 @@ mod tests {
                 "latency-probe" | "debug-payloads" | "host-sim"
             )));
         }
+    }
+
+    #[test]
+    fn flash_and_firmware_are_set_together_or_not_at_all() {
+        let base = product("c3-supermini");
+        let board = parse(REG, &base).unwrap().products()[0].boards[0].clone();
+        assert_eq!(board.flash, Some(FlashMethod::Uf2));
+        let neither = "display_name = \"X\"\nshort_name = \"X\"\nmodel = \"KV-X1\"\nrequired_capabilities = []\n[boards.c3-supermini]\ndisplay_name = \"B\"\nusb = []\n";
+        let board = parse(REG, neither).unwrap().products()[0].boards[0].clone();
+        assert!(board.flash.is_none() && board.firmware.is_none());
+        let no_flash = base.replace("flash = \"uf2\"\n", "");
+        assert!(parse(REG, &no_flash).unwrap_err().0.contains("together"));
+        let no_firmware = neither.replace("usb = []", "flash = \"uf2\"\nusb = []");
+        assert!(parse(REG, &no_firmware).unwrap_err().0.contains("together"));
+        assert!(parse(REG, &base.replace("uf2", "espflash")).is_err());
     }
 
     #[test]

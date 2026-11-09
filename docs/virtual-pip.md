@@ -161,6 +161,9 @@ just virtual-device          # owned Vite server + dedicated dev window + separa
 just virtual-device-smoke    # headless real core path; writes a firmware RGB565-derived PPM
 ```
 
+Both run the v1 (ESP32-C3) virtual device; `just virtual-device-v2` and `just virtual-device-smoke-v2`
+run v2 (RP2040-Zero). See [Virtual boards](#virtual-boards-v1-and-v2).
+
 Port 1420 must be free; the tool binds its own Vite server and never attaches to an unknown one.
 Closing the window stops the native owner, reaps the simulator and closes the owned server. The
 launcher clears inherited firmware/flag overrides, selects the Rust host target and uses separate
@@ -175,6 +178,70 @@ Only in-memory settings are used. Do not count this as normal-app configuration/
 The runner pipe contract and explicit-host commands are in its
 [README](../firmware/pip/simulator/README.md). No new framework, common simulator crate or runtime
 network transport was added.
+
+## Virtual boards (v1 and v2)
+
+The Pip has had two real boards, so the virtual Pip models both. v1 is the ESP32-C3 SuperMini the
+first units shipped on and stays the default: every command and test above behaves as it always has.
+v2 is the Waveshare RP2040-Zero the product is built for since #179 and is opt-in.
+
+| | v1 (default) | v2 (opt-in) |
+|---|---|---|
+| Board | ESP32-C3 SuperMini, id `c3-supermini`, wire number 1 | Waveshare RP2040-Zero, id `rp2040-zero`, wire number 2 |
+| Pick it | set nothing (or `KIVORI_VIRTUAL_BOARD=c3-supermini`) | `KIVORI_VIRTUAL_BOARD=rp2040-zero` |
+| Run it | `just virtual-device`, `just virtual-device-smoke` | `just virtual-device-v2`, `just virtual-device-smoke-v2` |
+| Identity it reports | product `pip` (1), board 1 | product `pip` (1), board 2 |
+| Chip in Device internals | ESP32-C3 rev v0.4, 4 MiB flash | RP2040, no revision (the firmware reads none), 2 MiB flash |
+| USB id of its port (recovery scenario) | `303A:1001` | `2E8A:000A` |
+| Compose time | the frame-cost model fitted to the unit | the same model x1.5, fitted to one measurement on an RP2040-Zero (idle session) |
+| Flush time | SPI wire time | SPI wire time plus 100 ns a pixel of CPU, an ESTIMATE (the idle session's small flushes agree, but do not test it) |
+| Resource facts | `fixtures/resource-facts.json`, frozen C3 history | `fixtures/resource-facts-rp2040.json`, checked against the product ELF |
+
+The selection is the environment variable `KIVORI_VIRTUAL_BOARD`, read once by the runner
+(`firmware/pip/simulator/src/board.rs`) and by the desktop example (`virtual_board()`, for the
+chip it expects and the USB id of the recovery scenario). The desktop starts the runner as a child
+process, which inherits the variable, so one setting reaches both, for the interactive window
+(`just virtual-device-v2`), the smoke (`just virtual-device-smoke-v2`) and the individual modes of
+the runner and the `virtual_device` example. The runner refuses any other value and exits nonzero. The
+smoke report records the board in `build.board`.
+
+How it works: the firmware library is compiled for one board (the product's, RP2040-Zero), and so its
+own build identity says board 2. The runner does not need a second build: the identity is an input to
+the runtime (`Runtime::set_boot_check`, the seam the `unknown-board` fault already uses), so each
+process reports its board's number there, and installs its board's chip probe and timing. The
+in-process scenarios (`--input-smoke`, `--io-smoke`, `--replay`) run on the selected board too;
+their results do not depend on it (the frames, goldens and ideal-time traces are the same), which
+the v2 smoke confirms. The runner's own unit tests are v1, except the tests of v2's figures.
+
+What v2 is not. Only v2's identity, chip facts and the two timing constants below differ from v1; the
+firmware behaviour is the one `Runtime` both run.
+
+- `frame-cost/` stays the RV32IMC model of the ESP32-C3 and is v1's compose model. There is no
+  instruction-set model of the Cortex-M0+ and none was built; v2 scales v1's per-row costs instead.
+- v2 compose is x1.5 (`Board::compose_scale_permille`), MEASURED on an RP2040-Zero on 2026-11-06
+  (`device_probe PORT internals` in a plain session: Hello, then Ping and InternalsRequest, no
+  DeskStatus, the default buddy view with its idle life running): compose 109 to 110 ms, 9 fps. The
+  v2 simulator in the same scenario (`modelled::tests`, a session opened and left idle) composed in
+  125 ms at the first estimate of x1.7 (reasoned: 125 MHz against 160 MHz is x1.28, times about 1.3x
+  the instructions for ARMv6-M against RV32IMC, 1.66), so the unit is 13% faster than that guess.
+  x1.5 gives 110 ms and 9 fps. It is one point of one scenario: a connected desk (DeskStatus, clock,
+  volume, legend) is not measured, so its modelled 118 ms (79 ms on v1) and 8 fps stay an estimate.
+  v1 is untouched.
+- v2 flush adds 100 ns a pixel (`Board::staging_ns_per_pixel`) to the SPI time: the RP2040 build has
+  no DMA, so `mipidsi` converts each RGB565 pixel into its 4096-byte staging buffer before a blocking
+  SPI1 write, about 12 cycles at 125 MHz. v2's SPI clock is an estimate too (`Board::spi_hz`): the
+  firmware requests 20 MHz, but `rp2040-hal` only reaches `clk_peri / (even prescaler x (1 + divider))`,
+  which at 125 MHz is 15.625 MHz. A full frame is then about 65 ms (59 ms of wire time plus 5.8 ms).
+  Feeding the SPI FIFO adds nothing: the CPU needs about 15 cycles a byte and the wire 64. The 150
+  microsecond service point and the 1 ms idle pass are v1's, unscaled.
+- The SPI clock and the 100 ns a pixel are still estimates. The measured idle session flushes 0 to
+  5 ms a frame (the buddy redraws only the tiles that changed) and the model gives 0 to 2 ms: the
+  right size, but those flushes are a few small windows, so they cannot fit either constant. To
+  measure them, read `device_probe PORT internals` while the whole screen is redrawn (a mode or
+  profile change) and set the CPU time per pixel so a full redraw's flush matches. Do not quote
+  v2's connected-desk frame rate or a full-redraw flush as a fact about the unit.
+- The endurance run (`just virtual-device-endurance`) also passes on v2 (`KIVORI_VIRTUAL_BOARD=rp2040-zero`, 2026-11-06): one session, 305,058 detents in 1,248 s, both sequence counters wrapped with no gap, slowest heartbeat round trip 814 ms.
+
 
 ## Connection and fault controls (S5.2)
 
@@ -326,7 +393,7 @@ on the device.
 
 The virtual runner executes the same firmware `Runtime` as the device, so behavior above the
 `InputSource`, display and transport ports matches once both run the same firmware build. Keep the
-device on repository firmware (`espflash flash --port PORT` with the product build of
+device on repository firmware (`just fw-flash`, the product build of
 `firmware/pip`); an unknown build cannot be compared.
 
 Which firmware a unit runs is reported, not guessed: the device and the virtual Pip both send a
@@ -344,6 +411,14 @@ Facts measured on hardware and pinned in host tests:
 - Panel orientation (2026-10-31): the picture was upside down at `Rotation::Deg90`, so the ST7789 runs
   at `Deg270`, unmirrored (`profile::physical_st7789::orientation`). Test:
   `panel_orientation_is_deg270_unmirrored`. The simulator cannot show this, so a change needs the unit.
+- USB receive (RP2040-Zero, 2026-11-06): the controller keeps its OUT buffer flag set until the packet
+  is read, so an interrupt handler that only polls `usb-device` is re-raised forever and starves the
+  run loop (the first unit enumerated and answered nothing). `usb_service::service` polls and reads
+  every pending OUT packet into the 1 KiB receive queue (overflow dropped), and `transport.rs` calls it
+  from `USBCTRL_IRQ`. `firmware/pip/tests/usb_service.rs` models that controller: the service clears
+  the flag, keeps byte order, drops overflow without blocking, a poll-only service stays raised (the
+  old bug), and the production runtime completes its handshake over a link fed only by the service.
+  The model is the documented behaviour, not the silicon: a change to the USB path still needs the unit.
 
 Comparing a real unit with the virtual one, using the production session (`device_probe`):
 
@@ -362,7 +437,7 @@ predict the ESP32-C3 (no 64-bit divide, flash-resident assets). Without a unit,
 [Frame cost without hardware](#frame-cost-without-hardware) predicts the compose time.
 
 Not covered by the simulator: pin wiring and electrical bounce, the USB CDC transport and its
-buffering, SPI/panel orientation and measured frame timing (it is modelled, see
+buffering (only the receive service step is modelled, above), SPI/panel orientation and measured frame timing (it is modelled, see
 [Modelled timing and internals](#modelled-timing-and-internals)).
 
 ### Resource budget without hardware
@@ -379,7 +454,7 @@ checks `firmware/pip/resource-budget.json`:
 - the worst stack depth over the direct call graph from `_start_rust`, with tail jumps counted
   without the caller's frame. Calls through a register (trait objects, fn pointers) and interrupts
   cannot be followed, so the budget adds a documented indirect-call allowance and the traced
-  interrupt path (`interrupt_path`) plus a margin. Peak plus margin must fit the stack region;
+  deepest interrupt path (`interrupt_paths`: the rotary GPIO and USB handlers) plus a margin. Peak plus margin must fit the stack region;
 - an allowlist of the functions that may call the 64-bit division libcalls (`__udivdi3`, `__divdi3`,
   `__umoddi3`, `__moddi3`, a software loop on this core). A new caller fails, so a 64-bit divide in
   the per-pixel path is caught without a frame-rate measurement.
@@ -528,7 +603,7 @@ remains a model: [Limits](#limits-of-the-model) says what it does not know.
 
 | Mode | Used by | One request is |
 |---|---|---|
-| Modelled (default) | `kivori-pip-simulator` with no arguments: the desktop bridge and `just virtual-device` | "run the device until `now_ms`": any number of ticks, on the device's own clock |
+| Modelled (default) | `kivori-pip-simulator` with no arguments: the desktop bridge, `just virtual-device` and `just virtual-device-v2` | "run the device until `now_ms`": any number of ticks, on the device's own clock |
 | Ideal (`--ideal-time`) | in-process `Simulator::new()`: `--input-smoke`, `--io-smoke`, `--replay`, the runner tests and the committed frame goldens | exactly one tick with the clock frozen at `now_ms`, frames cost 0 ms |
 
 Ideal timing is kept for everything whose assertions or goldens depend on a tick being one instant
@@ -561,7 +636,8 @@ control is unchanged.
 
 - **Compose.** After each tile row the clock advances by that row's cost from
   `firmware/pip/frame-cost/fixtures/frame-cost.json` (`row_ms_mean`, the RV32IMC simulation of the real
-  renderer, fitted to the unit's 79 ms). The scenario is picked from what the runtime is drawing:
+  renderer, fitted to the ESP32-C3 unit's 79 ms; v2 scales it by 1.7, see
+  [Virtual boards](#virtual-boards-v1-and-v2)). The scenario is picked from what the runtime is drawing:
 
   | The frame shows | Scenario |
   |---|---|
@@ -574,10 +650,13 @@ control is unchanged.
   | Volume view, recovery or update takeover | `connected_desk` (not measured) |
 
 - **Flush.** Each panel window advances the clock by its SPI time: `(pixels x 16 + 11 x 8) bits at
-  20 MHz` (`SPI_CLOCK_HZ`; 11 command bytes for the column and row address and the memory write).
+  the board's SPI clock` (`Board::spi_hz`: 20 MHz on v1, an estimated 15.625 MHz on v2; 11 command
+  bytes for the column and row address and the memory write).
   Which windows go out is the real renderer's choice (changed tiles only, a full tile row or two as one
-  band), so a quiet desk flushes in under a millisecond and a full redraw takes about 46 ms. DMA
-  set-up and the CPU time around a transfer are not modelled.
+  band), so a quiet desk flushes in under a millisecond and a full redraw takes about 46 ms on v1
+  (59 ms on v2). DMA
+  set-up and the CPU time around a transfer are not modelled on v1; v2 adds 100 ns a pixel for the CPU
+  staging of its no-DMA transfer (an estimate).
 - **Service points.** The runtime drains input and USB between tile rows and between windows. Each
   such point costs 150 microseconds (`SERVICE_POINT_US`). That figure is an assumption fitted to one
   fact: the unit reports 12 fps with a 79 ms compose, which needs a frame of at least 80 ms; without it
@@ -597,7 +676,7 @@ capture can lead the host's time by up to one row or window.
 
 #### Virtual figures against the unit
 
-Connected desk (buddy with clock, volume, media and legend), as in `device_probe PORT internals`:
+The first table is v1's, against the ESP32-C3 unit. Connected desk (buddy with clock, volume, media and legend), as in `device_probe PORT internals`:
 
 | Figure | Unit | Virtual Pip |
 |---|---:|---:|
@@ -607,22 +686,38 @@ Connected desk (buddy with clock, volume, media and legend), as in `device_probe
 | busy | about 100% | 99% |
 | input serviced while composing | about every 13 ms | 2 to 22 ms after the edge across 12 frame phases (a row is 4 to 24 ms) |
 
-The unit's figures are the ones recorded with the frame-cost fit; the virtual row is what the tests
+v2 against the RP2040-Zero (measured 2026-11-06, idle session: handshake, then Ping and
+InternalsRequest, no DeskStatus, default buddy view; `modelled::tests`
+`the_rp2040_idle_session_reports_the_measured_unit_figures`):
+
+| Figure | Unit | v2 model |
+|---|---:|---:|
+| compose | 109 to 110 ms | 110 ms |
+| fps | 9 | 9 |
+| flush | 0 to 5 ms | 0 to 2 ms |
+| busy | 100% | 99% |
+| static RAM | 151,088 B | 151,088 B (fixture) |
+| stack never used | 9,976 to 9,988 B | 9,988 B (fixture: region less estimated peak) |
+
+v1's unit figures are the ones recorded with the frame-cost fit; its virtual column is what the tests
 below assert (`modelled::tests`: compose within 1 ms of 79, fps 12, busy 99 or 100, flush at most 5 ms,
 worst service delay at most 25 ms against 79 ms for a frame).
 
 #### Internals
 
-The runner installs a chip probe (`src/probe.rs`) so the Device internals hold the facts the board
-would read from itself. They come from `firmware/pip/simulator/fixtures/resource-facts.json`:
+The runner installs its board's chip probe (`src/probe.rs`) so the Device internals hold the facts the
+board would read from itself. v1's come from `firmware/pip/simulator/fixtures/resource-facts.json`,
+frozen at the last ESP32-C3 build and no longer checked against anything (no firmware is built for
+that board any more). v2's come from `fixtures/resource-facts-rp2040.json`, which is kept current
+against the product ELF. Both have the same shape:
 
 | Field | Source |
 |---|---|
-| app image, asset blob (and its cap), static RAM, stack region | `scripts/firmware-budget.mjs --json` on the product ELF |
-| stack free minimum | stack region minus the estimated peak (115,744 B; the unit measured 115,740 B) |
+| app image, asset blob (and its cap), static RAM, stack region | `scripts/firmware-budget.mjs --json` on the product ELF (v2); the last C3 build's (v1) |
+| stack free minimum | stack region minus the estimated peak (v1: 115,744 B, the unit measured 115,740 B) |
 | RAM total | static RAM plus the stack region |
-| app partition, total flash | the unit's layout: 4 MiB module, factory app 0x3F0000 B (not in the ELF) |
-| chip | ESP32-C3 rev v0.4, the unit the model is fitted on |
+| app partition, total flash | v1: the unit's layout, 4 MiB module, factory app 0x3F0000 B; v2: one 2 MiB flash, no partition table, so the app partition is all of it (not in the ELF) |
+| chip | v1: ESP32-C3 rev v0.4, the unit the model is fitted on; v2: RP2040, no revision |
 | busy, compose, flush, fps, uptime, frame counters | the runtime itself, on the modelled clock |
 | temperature, reset reason, live free RAM | no model: Unavailable, never 0 |
 
@@ -637,18 +732,20 @@ with the shipping command's name and shape; the sandbox projects it from its ses
 `device_internals_dto`, and starts sending one `InternalsRequest` a second only once the card has
 asked. `just virtual-device-smoke` (vertical slice) reads the figures back through that path.
 
-Keeping the fixture current: `just fw-budget` ends with `bun scripts/virtual-resource-facts.mjs
+Keeping the v2 fixture current: `just fw-budget` ends with `bun scripts/virtual-resource-facts.mjs
 --check`, and the firmware CI job runs it after the budget check. It builds nothing; it reads the
-product ELF, derives the five ELF facts and fails when one differs from the fixture by more than 2%.
-After an intended size or stack change run `just fw-virtual-facts-update` (rebuilds the ELF and
-rewrites the `elf` block) and commit the fixture with the change. The simulator also asserts that the
-fixture's asset blob size equals the blob it compiles. Compose cost is kept current by the frame-cost
+product ELF, derives the five ELF facts and fails when one differs from `resource-facts-rp2040.json`
+by more than 2%. After an intended size or stack change run `just fw-virtual-facts-update` (rebuilds
+the ELF and rewrites the `elf` block) and commit the fixture with the change. The simulator also
+asserts that the v2 fixture's asset blob size equals the blob it compiles. The v1 fixture is not
+checked: the product ELF is no longer the C3's, and the fixture keeps the C3 figures on purpose. Compose cost is kept current by the frame-cost
 gate above.
 
 #### Limits of the model
 
 - Compose per row is the frame-cost model's, validated on the unit only as a total
-  ([Accuracy](#accuracy)). The scenario mapping covers seven situations; the others are
+  ([Accuracy](#accuracy)). That holds for v1 only: v2's compose and flush are estimates scaled from it,
+  never checked on an RP2040-Zero. The scenario mapping covers seven situations; the others are
   approximations as in the table above.
 - Flush is bandwidth only, and the 150 microsecond service cost is fitted to one integer. USB, interrupts
   and flash-cache disturbance are absent, so absolute latency to the host is optimistic.

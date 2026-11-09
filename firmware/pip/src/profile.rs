@@ -1,24 +1,22 @@
 //! Board profiles: the one place concrete panel and pin-map facts are recorded.
 //!
-//! [`physical_st7789`] is the hardware-validated ESP32-C3 + ST7789 240x240 profile. Changes to it
-//! require validation against real hardware.
+//! [`physical_st7789`] is the RP2040-Zero + ST7789 240x240 profile. Changes to it require
+//! validation against real hardware.
 //!
-//! The pin map follows the enclosure's wiring (#123): seen from the SuperMini's component side
-//! with USB-C at the top, the right row is 5V, GND, 3V3, IO4..IO0 and the left row is IO5..IO10,
-//! IO20, IO21. The display sits on the right row (IO4..IO0), the encoder and the buttons on the
-//! left row (IO5..IO10), so no wire crosses between the rows.
+//! The pin map is fixed by the enclosure's carrier (`hardware/enclosure-v7`, #179); it is checked
+//! against the carrier's net list by `hardware/enclosure-v7/test_pin_map.py`. Pins are GPxx numbers
+//! of the Waveshare RP2040-Zero.
 
-/// Verified physical ESP32-C3 + ST7789 240x240 hardware profile.
+/// Physical RP2040-Zero + ST7789 240x240 hardware profile.
 ///
 /// Gated on `host-sim` as well as `physical-st7789` so the plain pin-map data (and the
-/// profile-collision test in `tests/rotary_input.rs`) is host-testable. The esp-hal-typed
-/// helpers below (which cannot build for a host target at all) stay gated on
-/// `physical-st7789` alone.
+/// profile-collision test in `tests/rotary_input.rs`) is host-testable. The helpers below that
+/// name a HAL type stay gated on `physical-st7789` alone.
 #[cfg(any(feature = "physical-st7789", feature = "host-sim"))]
 pub mod physical_st7789 {
     use crate::display::PanelGeometry;
     #[cfg(feature = "physical-st7789")]
-    use esp_hal::{gpio::Level, spi::Mode};
+    use embedded_hal::spi::Mode;
     use kivori_model::desk::BRIGHTNESS_STEPS;
     use mipidsi::{
         models::ST7789,
@@ -46,28 +44,27 @@ pub mod physical_st7789 {
             .union(kivori_model::Capabilities::BUILD_INFO_V1)
             .union(kivori_model::Capabilities::HELD_ROTATION_V1);
 
-    /// SPI clock pin (display SCL).
-    pub const SCK: u8 = 4;
+    /// SPI1 clock pin (display SCL).
+    pub const SCK: u8 = 26;
 
-    /// SPI MOSI pin (display SDA).
-    pub const MOSI: u8 = 3;
+    /// SPI1 TX pin (display SDA).
+    pub const MOSI: u8 = 15;
 
-    /// Display data/command pin. GPIO1 is an XTAL_32K pin: a plain GPIO only on a board without
-    /// a 32.768 kHz crystal (validation row 5.1).
-    pub const DC: u8 = 1;
+    /// Display data/command pin.
+    pub const DC: u8 = 13;
 
-    /// Display reset pin. GPIO2 is a strapping pin; RES is an input on the display, so the pin
-    /// is left alone at reset, as on a bare board.
-    pub const RST: u8 = 2;
+    /// Display reset pin.
+    pub const RST: u8 = 14;
 
-    /// Display backlight pin. GPIO0 is an XTAL_32K pin, like [`DC`].
-    pub const BL: u8 = 0;
+    /// Display backlight pin: PWM slice 6, channel A.
+    pub const BL: u8 = 12;
 
     /// This physical panel does not use chip select.
     pub const CS: Option<u8> = None;
 
     /// Verified SPI clock. The next throughput lever once frame time is measured on hardware
-    /// (needs a signal-integrity check; a full frame is 46 ms of wire time at 20 MHz).
+    /// (needs a signal-integrity check; a full frame is 46 ms of wire time at 20 MHz; the RP2040
+    /// SPI tops out at 62.5 MHz).
     pub const SPI_CLOCK_HZ: u32 = 20_000_000;
 
     /// Visible panel width.
@@ -118,7 +115,7 @@ pub mod physical_st7789 {
     #[cfg(feature = "physical-st7789")]
     #[must_use]
     pub const fn spi_mode() -> Mode {
-        Mode::_3
+        embedded_hal::spi::MODE_3
     }
 
     /// Verified physical panel controller.
@@ -147,41 +144,23 @@ pub mod physical_st7789 {
         ColorInversion::Inverted
     }
 
-    /// Backlight output level.
-    #[cfg(feature = "physical-st7789")]
-    #[must_use]
-    pub const fn backlight_level() -> Level {
-        if BACKLIGHT_ACTIVE_HIGH {
-            Level::High
-        } else {
-            Level::Low
-        }
-    }
-
     /// HW-040 rotary encoder pin map.
     ///
     /// ISOLATED HERE ON PURPOSE: this is the single place to correct if the wiring changes.
     /// `sw` is sampled by the adapter and consumed by the push-switch gesture machine
     /// (`input::gesture`).
     ///
-    /// **This is a SPECIFICATION, not measured evidence.** The whole pin map moved to match the
-    /// enclosure (#123), so until `docs/validation.md` rows 3.15 and 5.1 are checked on a board
-    /// wired to an enclosure PCB, none of these GPIOs is confirmed hardware fact. The panel
-    /// parameters (geometry, SPI mode, orientation, colour order, inversion) stay verified.
+    /// **This is a SPECIFICATION, not measured evidence.** The pin map moved to the RP2040-Zero
+    /// carrier (#179), so until `docs/validation.md` rows 3.15 and 5.1 are checked on a board in
+    /// the v7 enclosure, none of these GPIOs is confirmed hardware fact. The panel parameters
+    /// (geometry, SPI mode, orientation, colour order, inversion) stay verified.
     ///
-    /// Pin choices, decided deliberately:
+    /// **SW = GP3, DT = GP4, CLK = GP5.** None is a boot-critical pin (the RP2040 has no strapping
+    /// pins; BOOTSEL is a dedicated button), so holding the encoder switch at power-on, the
+    /// recovery gesture, boots Kivori normally.
     ///
-    /// * **CLK = GPIO7, DT = GPIO6, SW = GPIO5.** All three sit on the SuperMini's left pin row,
-    ///   next to the encoder, so the enclosure needs no wire crossing between the rows.
-    /// * **GPIO9 stays off `sw`** despite being the devkit BOOT button. Holding GPIO9 low at reset
-    ///   enters ROM download mode, and the encoder switch is Kivori's recovery control: a user
-    ///   power-cycling while holding it for recovery would land in the downloader instead of
-    ///   booting Kivori. GPIO9 carries button B1 instead (see [`CONTEXT_BUTTONS`]).
-    /// * None of the three is a strapping pin. GPIO21 stays free as the UART0 TX boot / log
-    ///   console, and GPIO20 is free.
-    ///
-    /// The three lines are wired active-low (HW-040 COM to GND) and read with internal pull-ups;
-    /// the adapter in `physical_rotary` inverts them to logical levels.
+    /// The HW-040 module has its own pull-ups to 3V3 and its common pin to ground, so the lines
+    /// are active-low; the adapter in `physical_rotary` inverts them to logical levels.
     #[derive(Debug, Clone, Copy)]
     pub struct RotaryProfile {
         /// Quadrature channel A (CLK) pin.
@@ -194,28 +173,16 @@ pub mod physical_st7789 {
 
     /// HW-040 wiring specification decided for this board (see [`RotaryProfile`]).
     pub const ROTARY: RotaryProfile = RotaryProfile {
-        clk: 7,
-        dt: 6,
-        sw: 5,
+        clk: 5,
+        dt: 4,
+        sw: 3,
     };
 
-    /// The three contextual buttons, left to right. Each is a plain momentary switch from the
-    /// GPIO to GND, read active-low with the internal pull-up; no external parts.
-    ///
-    /// Pin choices, decided deliberately:
-    ///
-    /// * **B1 / B2 / B3 = GPIO9 / GPIO8 / GPIO10.** All three sit on the SuperMini's left pin
-    ///   row, next to the buttons, so the enclosure needs no wire crossing between the rows.
-    /// * **GPIO9 (BOOT) is B1.** Holding B1 while the board resets enters ROM download mode,
-    ///   exactly like the SuperMini's own BOOT button. That is harmless and sometimes handy;
-    ///   recovery is unaffected because it belongs to the encoder switch, which is not on GPIO9.
-    /// * **GPIO8 is B2**, a strapping pin that only matters for download mode (it must be high
-    ///   then), so do not hold B2 while flashing. On the SuperMini it also drives the onboard
-    ///   LED, which can light while B2 is pressed.
-    /// * Holding B2 or B3 alone at power-on boots Kivori normally.
+    /// The three contextual buttons, left to right (GP6 / GP7 / GP8). Each is a plain momentary
+    /// switch from the GPIO to GND, read active-low with the internal pull-up; no external parts.
     ///
     /// Like the encoder map, a specification until physically verified.
-    pub const CONTEXT_BUTTONS: [u8; 3] = [9, 8, 10];
+    pub const CONTEXT_BUTTONS: [u8; 3] = [6, 7, 8];
 
     #[cfg(all(test, feature = "host-sim"))]
     mod tests {
@@ -244,6 +211,77 @@ pub mod physical_st7789 {
         fn out_of_range_steps_clamp() {
             assert_eq!(backlight_duty_pct(0), backlight_duty_pct(1));
             assert_eq!(backlight_duty_pct(99), backlight_duty_pct(BRIGHTNESS_STEPS));
+        }
+
+        /// Every pin the firmware drives or reads, with what it is for.
+        const PINS: [(&str, u8); 11] = [
+            ("SCK", SCK),
+            ("MOSI", MOSI),
+            ("DC", DC),
+            ("RST", RST),
+            ("BL", BL),
+            ("ENC CLK", ROTARY.clk),
+            ("ENC DT", ROTARY.dt),
+            ("ENC SW", ROTARY.sw),
+            ("KEY 1", CONTEXT_BUTTONS[0]),
+            ("KEY 2", CONTEXT_BUTTONS[1]),
+            ("KEY 3", CONTEXT_BUTTONS[2]),
+        ];
+
+        #[test]
+        fn no_pin_is_used_for_two_things() {
+            for (i, (name, pin)) in PINS.iter().enumerate() {
+                for (other, other_pin) in &PINS[i + 1..] {
+                    assert_ne!(pin, other_pin, "GP{pin} is both {name} and {other}");
+                }
+            }
+        }
+
+        #[test]
+        fn only_pins_the_rp2040_zero_brings_out_are_used_and_never_the_reserved_ones() {
+            for (name, pin) in PINS {
+                // The Zero breaks out GP0 to GP15 and GP26 to GP29; GP16 is its WS2812. All of them
+                // are bank 0 pins, which the one edge handler (IO_IRQ_BANK0) serves.
+                assert!(
+                    pin <= 15 || (26..=29).contains(&pin),
+                    "{name} on GP{pin} is not a header pin of the RP2040-Zero"
+                );
+                assert!(
+                    pin > 1,
+                    "{name} on GP{pin} is the debug UART (GP0 TX, GP1 RX)"
+                );
+                assert!(
+                    !(27..=29).contains(&pin),
+                    "{name} on GP{pin}: GP27 to GP29 are kept free on the v7 carrier"
+                );
+            }
+        }
+
+        #[test]
+        fn the_display_pins_are_spi1_clock_and_data_out() {
+            // RP2040 GPIO function table: SPI1 SCK is GP10/14/26, SPI1 TX is GP11/15/27 (SPI0 is
+            // GP2/6/18 and GP3/7/19). One bus must carry both signals.
+            assert!(
+                [10, 14, 26].contains(&SCK),
+                "GP{SCK} is not an SPI1 SCK pin"
+            );
+            assert!(
+                [11, 15, 27].contains(&MOSI),
+                "GP{MOSI} is not an SPI1 TX pin"
+            );
+            // The panel is write-only and has no chip select.
+            assert_eq!(CS, None);
+        }
+
+        /// The PWM slice and channel (`false` = A, `true` = B) an RP2040 GPIO is wired to.
+        const fn pwm(pin: u8) -> (u8, bool) {
+            ((pin / 2) % 8, pin % 2 == 1)
+        }
+
+        #[test]
+        fn the_backlight_sits_on_the_pwm_channel_the_driver_code_names() {
+            // `physical_st7789.rs` types it as Pwm6/A.
+            assert_eq!(pwm(BL), (6, false));
         }
     }
 }

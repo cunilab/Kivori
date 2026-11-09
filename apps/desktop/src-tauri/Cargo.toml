@@ -10,11 +10,6 @@ description = "Kivori desktop native core (Tauri v2). Host preview renders the s
 name = "kivori-desktop"
 path = "src/main.rs"
 
-# DEV-ONLY per-unit QA helper (M3 S7): needs the Device Studio feature, so release builds never see it.
-[[example]]
-name = "provision"
-required-features = ["device-studio"]
-
 [[example]]
 name = "virtual_device"
 required-features = ["virtual-device"]

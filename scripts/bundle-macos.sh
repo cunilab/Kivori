@@ -3,7 +3,7 @@
 #
 #   scripts/bundle-macos.sh
 #
-# Steps: pinned espflash sidecar, frontend, product firmware, then `tauri build` with the release
+# Steps: frontend, product firmware, then `tauri build` with the release
 # configs (the Tauri build script compiles the vendored mediaremote-adapter and the config bundles it
 # into Contents/Resources/mediaremote-adapter, where `adapter_dir()` looks for it).
 #
@@ -15,8 +15,6 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
-
-bash scripts/fetch-espflash.sh
 
 bun install --frozen-lockfile
 bun --filter kivori-desktop-ui build

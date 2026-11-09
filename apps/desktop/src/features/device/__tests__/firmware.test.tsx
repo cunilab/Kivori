@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FLASH_FAILURES } from '../../../lib/ipc/types';
 import type { FirmwareStatusDto } from '../../../lib/ipc/types';
+import { strings } from '../../../lib/i18n/strings';
 import { failureMessage, needsRestore } from '../firmware-copy';
 
 const bridge = vi.hoisted(() => ({
@@ -191,6 +192,17 @@ describe('firmware update', () => {
     render(<FirmwareUpdate connected />);
     await screen.findByText(ready.message);
     expect(screen.queryByTestId('update-advice')).not.toBeInTheDocument();
+  });
+
+  it('has wording for exactly the failure tokens the native side sends', () => {
+    expect(Object.keys(strings.firmwareUpdate.failures).sort()).toEqual([...FLASH_FAILURES].sort());
+    for (const failure of FLASH_FAILURES) {
+      expect(failureMessage(failure, { device: 'D', image: 'I' }).trim()).not.toBe('');
+    }
+    // The tokens the UF2 flow raises (no drive, busy port, failed copy) point at the BOOT button or the port.
+    expect(failureMessage('noDownloadMode')).toMatch(/BOOT/);
+    expect(failureMessage('writeFailed')).toMatch(/BOOT/);
+    expect(failureMessage('portBusy')).toMatch(/serial/i);
   });
 
   it('words every failure token in plain language, never the native message', async () => {

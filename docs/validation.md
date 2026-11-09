@@ -1,7 +1,9 @@
 # Hardware validation
 
-The one checklist for everything CI cannot prove: real ESP32-C3 + ST7789 + HW-040 hardware, real
-OS behavior, real timing. Host-sim and other host tests are never promoted to physical evidence.
+The one checklist for everything CI cannot prove: real RP2040-Zero + ST7789 + HW-040 hardware, real
+OS behavior, real timing. Rows ticked before 2026-11-05 were run on the ESP32-C3 SuperMini units; the
+board changed in #179 (ADR-0019), so rows about the board, pins, flashing and timing need a run on
+the RP2040-Zero before they count for it. Host-sim and other host tests are never promoted to physical evidence.
 
 For issues #164, #165 and #167, use the [Windows desktop checklist](./windows-validation.md)
 to record installed-app launch, close-to-tray and security-warning evidence. Those checks remain
@@ -343,15 +345,15 @@ the current profile and complete rows 3.15 and 5.1 before powering/flashing an a
 
 | Signal | GPIO | Signal | GPIO |
 |---|---:|---|---:|
-| SPI SCK (SPI2, 20 MHz, Mode 3) | 4 | Encoder CLK | 7 |
-| SPI MOSI | 3 | Encoder DT | 6 |
-| Display D/C | 1 | Encoder SW | 5 |
-| Display RST | 2 | USB D- / D+ | 18 / 19 |
-| Backlight (active-high) | 0 | Encoder COM / VCC | GND / **3V3** (never 5 V) |
-| Button left / middle / right | 9 / 8 / 10 | Button other leg | GND (no resistor) |
+| SPI1 SCK (20 MHz, Mode 3) | 26 | Encoder CLK | 5 |
+| SPI1 TX (display SDA) | 15 | Encoder DT | 4 |
+| Display D/C | 13 | Encoder SW | 3 |
+| Display RST | 14 | Encoder COM / VCC | GND / **3V3** (never 5 V) |
+| Backlight (active-high, PWM) | 12 | Button other leg | GND (no resistor) |
+| Button left / middle / right | 6 / 7 / 8 | | |
 
-1. Once per machine: `bun install`, `cargo install espflash`, install `just`.
-2. Flash the product firmware: `just fw-flash` (builds with `physical-st7789`, then flashes and monitors).
+1. Once per machine: `bun install`, `cargo install elf2uf2-rs`, install `just`.
+2. Flash the product firmware: hold BOOT while plugging in, then `just fw-flash` (builds with `physical-st7789`, converts to UF2 and copies it to the `RPI-RP2` drive).
 3. Start the app: `just desktop` (one command: builds the firmware, starts the UI dev server, runs the
    app with the firmware embedded so Flash firmware works, and stops the UI server when the app quits).
    Plain `cargo run -p kivori-desktop` bundles no firmware and logs `firmwareUnavailable`.
@@ -362,7 +364,7 @@ the current profile and complete rows 3.15 and 5.1 before powering/flashing an a
    Accessibility.
 4. Latency only: `just fw-flash-latency` (dev-only probe build), then `just fw-flash` to restore the product build.
 
-Suggested order: wiring/crystal checks (3.15 and 5.1) and flash, then Phase 1 (Windows, then macOS), Phase 2, Phase 3, latency,
+Suggested order: wiring checks (3.15 and 5.1) and flash, then Phase 1 (Windows, then macOS), Phase 2, Phase 3, latency,
 then Phase 4 (M1), then Phases 5 to 12 in order (5b is the Config UI half of the M2 rows; 7 to 12 are the M3 rows). Rows marked macOS run on the Mac; everything else on Windows.
 
 ## Phase 1: Device connection
@@ -451,7 +453,7 @@ Desktop automation was unavailable, so no native click-through has been verified
 **Latency and wiring**
 
 - [ ] 3.14 Flash `just fw-flash-latency`, turn single detents about 30 times, read `L` (last) and `H` (max) off the panel corner | max under 50 ms detent to flush complete; record several readings plus `H`. This is a gate: the phase is not done while this fails or is unmeasured. Scan-out adds up to one refresh on top. Worst case predicted at about 85 ms (50 ms desktop tick, serial, 33 ms frame), so expect to tune; remedies in order: blocking serial read instead of the 50 ms tick, then a shorter frame interval, then device-local feedback. Re-measure after any change, then `just fw-flash`
-- [ ] 3.15 Check wiring with a continuity test | CLK=GPIO7, DT=GPIO6, SW=GPIO5, COM to GND, VCC to 3V3. Do this first: rows 3.1 to 3.4 depend on it
+- [ ] 3.15 Check wiring with a continuity test | CLK=GP5, DT=GP4, SW=GP3, COM to GND, VCC to 3V3. Do this first: rows 3.1 to 3.4 depend on it
 
 Measured 2026-10-31 on the owner's assembled unit over USB on macOS (`device_probe PORT inputs`):
 with CLK as quadrature channel A, three clicks to the right arrived as `Detent(Ccw)` and three to
@@ -539,9 +541,9 @@ Wiring: three momentary tactile switches (12×12 mm, 10 mm tall, seller drawing 
 capacitors; firmware enables the internal pull-ups and debounces 20 ms. Default bindings, left to
 right: Previous track, Play/Pause, Next track (Press only; Hold unbound by default).
 
-- [ ] 5.1 Before wiring: inspect the devkit near GPIO0/GPIO1 (display BLK/DC since #123) | no 32.768 kHz crystal fitted (if one is, stop: pick other pins before soldering)
-- [ ] 5.2 Power on with each button held in turn | B2 (GPIO8) and B3 (GPIO10): Kivori boots normally and the boot log still appears on GPIO21. B1 (GPIO9, BOOT): the board enters ROM download mode, as documented. With the display connected and no button held, the board boots (GPIO2 is display RES)
-- [ ] 5.2a Repeat power-on, reset and recovery reboot with every combination of B1/B2/B3 held | record USB enumeration and boot mode; B1+B2 pulls GPIO9/GPIO8 low, an invalid boot strap combination. Release the buttons and verify recovery by reset, with no stale input action. This is a physical check; restarting a virtual Runtime does not exercise ROM straps.
+- [ ] 5.1 Before wiring: inspect the board | a Waveshare RP2040-Zero whose pinout matches the profile (a clone with another pinout is set aside); header pins soldered only as `hardware/enclosure-v7/README.md` lists
+- [ ] 5.2 Power on with each button held in turn | B1 (GP6), B2 (GP7) and B3 (GP8): Kivori boots normally (no Pip input is a boot-critical pin). With the board's own BOOT button held at plug-in: the `RPI-RP2` drive appears (ROM UF2 bootloader). With the display connected and no button held, the board boots
+- [ ] 5.2a Repeat power-on, reset and recovery reboot with every combination of B1/B2/B3 held | record USB enumeration and boot mode; none of the combinations may change the boot mode (the RP2040 has no strapping pins; only the board's BOOT button does). Release the buttons and verify recovery by reset, with no stale input action. This is a physical check; restarting a virtual Runtime does not exercise the ROM.
 - [ ] 5.3 Each button, ten short presses while music plays | exactly one Previous / Play-Pause / Next per press; amber "?" badge (Unverified); a white frame on press
 - [ ] 5.4 Each button held about 1 s | nothing runs (Hold is unbound); held 12 s | nothing runs and the device never reboots
 - [ ] 5.5 Two buttons pressed together; a button pressed while the knob switch is down; a button pressed mid-turn | nothing fires from the second control (no chords)
@@ -601,6 +603,31 @@ behavior and measured timings still need these rows. See [virtual-pip.md](./virt
 - [ ] 7.11 macOS: Apple menu, Sleep, then wake | Sleeping before the screen goes dark, then reconnect
 - [ ] 7.12 macOS: close the lid on battery, then open | same as 7.11
 
+## RP2040-Zero bring-up (#179)
+
+Run on a bare RP2040-Zero (USB only, no carrier) with firmware source `cd84f7e0d806` (clean). Rows needing the screen, knob, keys or LED wait for the v7 carrier.
+
+- [x] R.1 2026-11-06 Copy the app's UF2 (`kivori_desktop::uf2::elf_to_uf2`) onto `RPI-RP2` | accepted; `INFO_UF2.TXT` reads `Board-ID: RPI-RP2`, matching the app's drive check
+- [x] R.2 2026-11-06 Enumeration | `Kivori` / `Kivori Pip`, `2E8A:000A`, serial = 32 hex digits of the derived device id
+- [x] R.3 2026-11-06 Handshake (`device_probe PORT 1000`) | `HelloAck` in 54 to 75 ms, firmware 0.1.4
+- [x] R.4 2026-11-06 Internals (`KIVORI_PROBE_SECS=8 device_probe PORT internals`) | compose 110 ms, 9 fps, flush 0 to 5 ms, busy 100 %, stack min free 9,976 to 9,988 B, static RAM 151,088 B of 270,336 B
+- [x] R.5 2026-11-06 1200-baud touch on the running unit | `RPI-RP2` appears in about 2 s, no button
+- [x] R.6 2026-11-06 Reflash after the touch | back as `Kivori Pip` in about 2 s without a replug, handshake OK
+- [ ] R.7 On the v7 carrier: panel shows the buddy, knob, press and the three keys act
+- [ ] R.8 On the v7 carrier: the app's own Update and Restore (BOOT) flows against this board (Phase 8)
+
+Found on the first unit: it enumerated but never answered (0 bytes in 2 minutes). On-device counters read 0 bytes received, 36 queued but never delivered, and a 750 ms loop: the USB interrupt only polled, and the RP2040 re-raises it until an OUT packet is read. Fixed by reading OUT data in the interrupt (architecture, Transport).
+
+### Flashing and checking a unit by hand (macOS)
+
+1. Bootloader: hold BOOT while plugging in, or touch the running unit at 1200 baud (open the port at 1200, drop DTR, close). `/Volumes/RPI-RP2` appears.
+2. `cp -X kivori-firmware.uf2 /Volumes/RPI-RP2/`. The drive disappearing is success; the unit returns as a `usbmodem` serial port.
+3. Quit the Kivori app (it holds the port), then run `device_probe` as in R.3 and R.4.
+
+### Finding a stall or crash without a probe
+
+With no SWD probe and no screen, a temporary `src/bin/` diagnostic (not committed; examples pull `std` dev-dependencies) can run the real boot and write what it learns into the watchdog scratch registers (`0x4005800C + 4n`, they survive a `SYSRESETREQ`): the panic location, the HardFault PC, or a `TIMER_IRQ_1` sampler's PCs and counters. It then resets and, on the next boot, brings up only a minimal USB CDC that prints the record; map PCs to functions through the ELF symbol table. On `thumbv6m` there is no atomic `fetch_add`, so counters use load and store.
+
 ## Phase 8: Firmware update and recovery (M3 S3)
 
 Automated image-set checks compile a generated two-product index outside shipping catalog roots and
@@ -621,7 +648,7 @@ ambiguity with explicit product/board choices, distinct-board selection, refusal
 reservation/flasher start on refusal. The fixtures are not shipping products. These checks do not
 complete the hardware rows below.
 
-Software is done (workflow, classifier fixtures, recovery rules, sidecar lookup, DTO allowlist, UI tests). The classifier fixtures are conservative guesses at `espflash` 4.x wording; row 8.7 refreshes them. Rows 8.1 to 8.6 need a real device and the installed app (the S5 installer bundles the `espflash` 4.6.0 sidecar) or a dev build with `espflash` on `PATH`.
+Software is done (workflow, recovery rules, DTO allowlist, UI tests). Flashing is the app's own UF2 copy since #179, so there is no tool output to classify. Rows 8.1 to 8.6 need a real device and the installed app or a dev build.
 
 - [ ] 8.1 Flash from the installed app on a machine with no Rust toolchain | it succeeds and the device reconnects (needs the S5 installer)
 - [ ] 8.2 Unplug the board mid-flash | the app says it failed and offers Restore with the BOOT button
@@ -629,7 +656,7 @@ Software is done (workflow, classifier fixtures, recovery rules, sidecar lookup,
 - [ ] 8.4 Hold the port open in a serial monitor, then flash | the "close other apps" message appears
 - [ ] 8.5 Flash a wrong-major firmware, then use Restore | Restore is offered on the Device page and works
 - [ ] 8.6 Flash from the app | the panel shows Updating (or goes dark cleanly) during the flash, never garbage, then returns to the buddy
-- [ ] 8.7 Capture `espflash` stderr for each failure above | add each as a classifier fixture in `tests/firmware_flash.rs`
+- [ ] 8.7 For each failure above | the app reports the matching failure (`PortBusy`, `NoDownloadMode`, `WriteFailed`, `Timeout`, `Cancelled`) and nothing else is written
 - [ ] 8.8 With an older app-bundled version than the device, and with a newer one | the Device page and Home show "update available" only when the bundled firmware is newer
 
 ## Phase 9: Launch at login and tray (M3 S4)
@@ -645,7 +672,7 @@ Software is done (tray model table, hidden-start lifecycle, `--autostart` parsin
 
 ## Phase 10: Installer and release (M3 S5)
 
-CI builds the NSIS installer, installs it silently, checks the app and the `espflash` sidecar, runs the startup smoke test with `--autostart`, and uninstalls (including the Run entry). Everything below needs a real machine. Rows 8.1 and 9.3 depend on this phase.
+CI builds the NSIS installer, installs it silently, checks the app, runs the startup smoke test with `--autostart`, and uninstalls (including the Run entry). Everything below needs a real machine. Rows 8.1 and 9.3 depend on this phase.
 
 The unsigned development check in 10.1 does not close M2.9's signed-beta requirement. Updater `.sig`
 files and Windows code signing are separate; use the
@@ -654,8 +681,8 @@ files and Windows code signing are separate; use the
 - [ ] 10.1 Clean Windows 11 VM with no dev tools: run the installer | SmartScreen "More info, Run anyway" works (unsigned build)
 - [ ] 10.2 Run the installer as a normal user | it installs without an admin prompt
 - [ ] 10.3 Install a newer build over an older one | the config is kept
-- [ ] 10.4 After installing | Windows Defender does not quarantine `espflash.exe`
-- [ ] 10.5 macOS: `scripts/bundle-macos.sh` | the `.app` has `Contents/Resources/mediaremote-adapter` and `Contents/MacOS/espflash`
+- [ ] 10.4 After installing | Windows Defender does not quarantine the app
+- [ ] 10.5 macOS: `scripts/bundle-macos.sh` | the `.app` has `Contents/Resources/mediaremote-adapter`
 - [ ] 10.6 macOS signed build: `codesign -d --entitlements - Kivori.app` | shows `com.apple.security.automation.apple-events` (needs the owner's Developer ID)
 - [ ] 10.7 macOS bundled app | now-playing works, and the Automation prompt shows the usage text
 
@@ -671,11 +698,10 @@ Automated: Plug-in/permission gates follow current readiness or Skip; the capabi
 
 ## Phase 12: Per-unit QA (M3 S7)
 
-Run for every assembled beta unit with `just provision` ([provisioning.md](./provisioning.md)). The tool's evaluator is unit tested; the rows need a real unit and a person.
+Run for every assembled unit. `just provision` was removed with the RP2040-Zero (#179, [provisioning.md](./provisioning.md)); these rows are manual and need a real unit and a person.
 
-- [ ] 12.1 Plug in one new unit, `just provision` | it flashes, then prints PASS (catalog-required capabilities incl. HOST_TAKEOVERS_V1 for Pip, post-flash Build/Chip identity matches target, firmware equals image identity and version marker, state and health seen, heartbeat held 5 s)
-- [ ] 12.2 Follow the prompts | knob right x3, left x3, press, hold and the three buttons are each seen
-- [ ] 12.3 Open `provisioning-log.csv` | one row for the unit: short hash and versions, no raw device id, no port name
+- [ ] 12.1 Plug in one new unit (BOOT held), flash it with the app or `just fw-flash` | the `RPI-RP2` drive appears, the firmware is copied, the unit restarts and connects with the catalog-required capabilities (incl. HOST_TAKEOVERS_V1 for Pip), identity from the build matches the target, state and health arrive, the heartbeat holds
+- [ ] 12.2 Turn the knob right x3 and left x3, press, hold, press the three buttons | each is seen in the app
 
 ## Phase 13: Beta hero features (M2.6)
 
@@ -704,11 +730,11 @@ Software rules in [product.md](./product.md); design in ADR-0011 and ADR-0012. W
 
 Rules in [product.md](./product.md#updates-us10-us11); design in ADR-0014 to ADR-0016.
 
-- [ ] 14.1 Plug in a unit with M2.7 firmware, open Diagnostics | product "Kivori Pip", board "C3 SuperMini", revision shown (or "unknown" before provisioning)
+- [ ] 14.1 Plug in a unit with M2.7 firmware, open Diagnostics | product "Kivori Pip", board "C3 SuperMini", revision shown (or "unknown" when the build reports none)
 - [ ] 14.2 Plug in a unit with older firmware | the app treats it as Kivori Pip on the C3 SuperMini and offers the firmware update a few seconds after it connects
 - [ ] 14.3 Choose "Later", unplug and replug | the offer comes back; choose "Update now" | "Updating" on the panel, then the buddy; Device page shows the new firmware
 - [ ] 14.4 Try to flash an image built for another board (developer build with a test image) | the app refuses and names the mismatch; nothing is written
-- [ ] 14.5 Provisioning with `--product pip --board c3-supermini --rev 1` on a spare unit: first without, then with `--burn-identity` (permanent; [provisioning.md](./provisioning.md)) | without it the record is previewed and firmware is still flashed/checked, with no eFuse write; with it the record is shown and the product id must be typed; the run prints identity PASS and the log row says `chip`; afterwards Diagnostics shows the identity from the chip; a second burn attempt on the same unit says "already provisioned"
+- [ ] 14.5 (removed with `just provision`, #179) | no identity burn exists on the RP2040-Zero; the build identity is checked by 14.1 and 14.4
 - [ ] 14.6 Install an older release, publish a newer one | within a day, or at the next start, a tray badge; opening the window shows the update dialog with the new version and notes
 - [ ] 14.7 "Install & restart" | the installer runs without questions, Kivori restarts on the new version, the device reconnects; the firmware offer follows if the new app bundles newer firmware
 - [ ] 14.8 "Skip this version", restart | no offer for that version; a newer one is offered again
@@ -1556,8 +1582,7 @@ production code change was needed. Documentation diff/checklist checks passed; M
 Item 15 preparation, 2026-10-25, Andress-MacBook-Air. The owner deferred the physical run to a later
 retry. This session runs on macOS; no Windows host with a connected unit was used. No physical checks below have run.
 Item 15 stays unchecked and progress remains 13/19. Windows CI startup/packaging and host simulation
-are software evidence only. The existing [provisioning tool](./provisioning.md) flashes firmware and
-does not cover double-press, microphone hotplug, latency or sleep/lock behavior; do not run it as a
+are software evidence only. Flashing a unit ([provisioning.md](./provisioning.md)) does not cover double-press, microphone hotplug, latency or sleep/lock behavior; do not run it as a
 read-only substitute for this session.
 
 Preparation checks: the wiring table matches the nine corresponding firmware declarations,
@@ -1661,7 +1686,7 @@ No production code changed. Item 16 and all live acceptance rows remain open; pr
   preparing this session does not publish one. A draft or PR artifact is invisible to the production
   updater endpoint. Any isolated update-endpoint test build must follow the developer procedure in
   [release.md](./release.md#verifying-an-app-update-end-to-end) and be identified as such in evidence.
-- Use a clean Windows user/machine without Rust, Cargo or a separately installed `espflash`.
+- Use a clean Windows user/machine without Rust, Cargo or any separately installed tool.
   Record Windows build, standard-user status, WebView2 availability/network use, USB arrangement,
   unit label and matching current wiring checks. Preserve the initial machine snapshot for retries.
 
@@ -1888,7 +1913,7 @@ The hand-wired generator still used the old display/encoder GPIOs and button GPI
 firmware and its wiring README specify display 4/3/2/1/0, encoder 7/6/5 and buttons 9/8/10.
 These assignments drive real wire grooves and engraved labels, so correcting only the README
 would leave misleading printable parts. The generator is now aligned with `profile.rs`.
-`test_pin_map.py` independently reads the firmware's literal declarations and checks all thirteen
+`test_pin_map.py` (now `hardware/enclosure-v7/test_pin_map.py`, checking the RP2040-Zero map) independently reads the firmware's literal declarations and checks all thirteen
 nets (eleven signals plus power/ground), including button order, without importing FreeCAD.
 It failed on the old source and passes after the fix; Linux host CI runs it. Unrecognized future
 Rust declaration syntax fails the check for review rather than silently omitting the comparison.
@@ -1956,12 +1981,12 @@ observed clearance. Record missing dimensions/force limits as open rather than i
 
 | Check | Measurements and required observation | Result / evidence |
 | --- | --- | --- |
-| Bought parts | Measure actual display PCB/glass/FPC/header, SuperMini USB/buttons, encoder PCB/shaft and switch body/stem/pin locations. Compare with the chosen model before committing to a full print; record each deviation. | NOT MEASURED |
+| Bought parts | Measure actual display PCB/glass/FPC/header, controller-board USB and buttons, encoder PCB/shaft and switch body/stem/pin locations. Compare with the chosen model before committing to a full print; record each deviation. | NOT MEASURED |
 | Carrier and display | Dry-fit components and mounting features; record hole/peg alignment, PCB seating, glass/FPC clearance and window alignment. No forced glass/PCB bend, obscured active area or trapped cable. | NOT MEASURED |
 | Button caps | Measure resting/pressed clearance, available travel, stem/socket engagement and return for each cap. Exercise centre and edge presses on all three; record counts, rubbing, preload, sticking and unintended holds. | NOT MEASURED |
 | Knob | Measure shaft engagement, resting and pressed axial gap and clearance through a full turn and push at several angles. No rubbing, neighbouring-cap contact, loss of push travel or loose/slipping shaft fit. | NOT MEASURED |
 | USB | Use the actual intended data-cable plug. Record opening/plug clearance and measured peak insertion/removal force with the measurement method. Observe connector/PCB displacement and support path; the shell must not prevent full seating or transfer damaging loads to the board. Force without an instrument remains unmeasured. | NOT MEASURED |
-| Wiring and closure | With power removed, check continuity against the firmware map and inspect insulation/routing, especially crossings and the SuperMini recess/edge. Close/open the selected case design, record fit and retention, then recheck for pinched wires, shifted parts and shorts before power. | NOT MEASURED |
+| Wiring and closure | With power removed, check continuity against the firmware map and inspect insulation/routing, especially crossings and the controller-board recess/edge. Close/open the selected case design, record fit and retention, then recheck for pinched wires, shifted parts and shorts before power. | NOT MEASURED |
 | RST access | With the case fully closed, verify the labelled access point reaches the actual reset switch without disassembly or contacting other circuitry. Observe reset and normal reconnect; record tool, alignment and actuation. Do not infer location from another variant's instructions. | NOT MEASURED |
 | BOOT access/recovery | With the case closed, demonstrate access to the actual BOOT switch, entry into recovery and return to normal operation using the existing recovery procedure. Record tool clearance, labels and actual app/device result; link item 16's flash/recovery evidence when applicable. | NOT MEASURED |
 | Closed-unit operation | With the product firmware, repeat physical control and display checks after closure, including mic feedback and USB reconnect. Record any changed behaviour versus the open assembly and failures after reopening/reclosing. | NOT MEASURED |

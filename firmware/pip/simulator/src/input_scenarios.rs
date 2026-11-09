@@ -40,7 +40,7 @@ fn request(now_ms: u32, edges: &[(u32, u8)]) -> Request {
 impl Rig {
     fn new(double: bool) -> Result<Box<Self>, String> {
         let mut rig = Box::new(Self {
-            sim: Simulator::new(),
+            sim: Simulator::assemble(Timing::Ideal, Board::selected()?),
             seq: 0,
             nonce: 42,
             events: vec![],

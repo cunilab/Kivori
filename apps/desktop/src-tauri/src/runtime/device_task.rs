@@ -38,7 +38,8 @@ use crate::firmware::{self, FirmwareStatus, FlashFailure, FlashWorkflow, ResumeT
 use crate::firmware_bundle::{FirmwareBundle, FirmwareImage};
 use crate::firmware_offer::{OfferDevice, OfferInputs, OfferTracker};
 use crate::identity::{
-    decide_recovery_for_port, missing_required_capabilities, DeviceIdentity, RecoveryDecision,
+    decide_recovery, decide_recovery_for_port, missing_required_capabilities, DeviceIdentity,
+    RecoveryDecision,
 };
 use crate::input::{Freshness, InputIngress, LogicalInput, RejectReason};
 use crate::ipc::dto::{
@@ -421,8 +422,12 @@ fn device_loop(
                     let bundled = if recovery {
                         let candidates = enumerate();
                         let found = filter_candidates(&candidates, default_allowlist());
-                        let [_] = found.as_slice() else {
-                            refusal = if found.is_empty() {
+                        // A board held in BOOTSEL has no serial port, only its bootloader drive.
+                        // With several drives and no port there is no telling which board to restore.
+                        let drives = crate::uf2::bootloader_drives();
+                        let drive_only = found.is_empty() && drives.len() == 1;
+                        if !drive_only && found.len() != 1 {
+                            refusal = if found.is_empty() && drives.is_empty() {
                                 firmware::FlashFailure::NoDownloadMode
                             } else {
                                 firmware::FlashFailure::Unknown
@@ -431,16 +436,26 @@ fn device_loop(
                             drain_firmware_activity(&app, &activity_log, &mut flash);
                             publish_firmware_status(&firmware_status, &flash);
                             continue;
+                        }
+                        let target = if drive_only {
+                            decide_recovery(
+                                Catalog::embedded(),
+                                None,
+                                chosen.as_deref(),
+                                chosen_board.as_deref(),
+                                None,
+                            )
+                        } else {
+                            decide_recovery_for_port(
+                                Catalog::embedded(),
+                                &found,
+                                chosen.as_deref(),
+                                chosen_board.as_deref(),
+                                connected_port.as_deref(),
+                                session.identity().as_ref(),
+                                manager.state(),
+                            )
                         };
-                        let target = decide_recovery_for_port(
-                            Catalog::embedded(),
-                            &found,
-                            chosen.as_deref(),
-                            chosen_board.as_deref(),
-                            connected_port.as_deref(),
-                            session.identity().as_ref(),
-                            manager.state(),
-                        );
                         let (product, board) = match target {
                             RecoveryDecision::Proceed { product, board } => (product, board),
                             RecoveryDecision::Choose(options) => {
@@ -509,7 +524,7 @@ fn device_loop(
                             let _ = session.close(open_link, ByeReason::FirmwareUpdate);
                         }
                     }
-                    // This drop closes the serial handle before `espflash` opens the same port.
+                    // This drop closes the serial handle before the flasher opens the same port.
                     link = None;
                     connected_port = None;
                     deadlines.on_link_lost();
@@ -612,8 +627,11 @@ fn device_loop(
                         manager.apply(ManagerEvent::BackoffElapsed);
                     }
                     let candidate = match flash.status().phase {
+                        // A drive-only recovery has no port to reopen; discovery finds the board.
                         crate::firmware::FirmwarePhase::Reconnecting => {
-                            flash_target(&flash).map(str::to_string)
+                            flash.reconnect_port().map(str::to_string).or_else(|| {
+                                rotator.next(&enumerate(), default_allowlist(), started.elapsed())
+                            })
                         }
                         _ => rotator.next(&enumerate(), default_allowlist(), started.elapsed()),
                     };
@@ -1794,12 +1812,6 @@ fn offer_device(manager: &ConnectionManager, session: &Session) -> OfferDevice {
 
 fn publish_firmware_status(status: &Mutex<FirmwareStatus>, workflow: &FlashWorkflow) {
     *status.lock().expect("firmware status lock") = workflow.status().clone();
-}
-
-fn flash_target(workflow: &FlashWorkflow) -> Option<&str> {
-    // The workflow's status deliberately hides the port from IPC. The device task needs it to reopen
-    // exactly the same native-owned port after programming.
-    workflow.target_port()
 }
 
 /// Records the manager's lifecycle transition as typed activity and emits it to the webview.

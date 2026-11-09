@@ -1,14 +1,16 @@
 #![no_std]
 #![warn(missing_docs)]
-//! `kivori-firmware` — the ESP32-C3 device firmware.
+//! `kivori-firmware` — the RP2040-Zero device firmware.
 //!
 //! The device's behaviour (lifecycle FSM, protocol dispatcher, heartbeat, change-driven rendering)
-//! is written against hardware-neutral [`ports`] so it runs identically on real esp-hal peripherals
+//! is written against hardware-neutral [`ports`] so it runs identically on real rp2040-hal peripherals
 //! (the `embedded` binary) and on the host [`sim`] adapters (the `host-sim` feature). This
 //! keeps every device decision host-testable against the shared golden frames (constitution
 //! Principle IV, constraint 4).
 
-/// Board bring-up shared by every `embedded` mode: the monotonic clock and USB Serial/JTAG (T070).
+/// The 1200-baud touch decision for entering the USB bootloader (hardware-neutral).
+pub mod bootloader;
+/// Board bring-up shared by every `embedded` mode: clocks and the monotonic timer (T070).
 #[cfg(feature = "embedded")]
 pub mod bsp;
 #[cfg(feature = "embedded")]
@@ -16,7 +18,7 @@ pub mod clock;
 /// Raw-payload tracing, development-only (T102). Compiled out unless `debug-payloads` is enabled.
 #[cfg(all(feature = "debug-payloads", feature = "embedded"))]
 pub mod debug_payloads;
-/// Per-unit device ID derivation from factory eFuse data (hardware-neutral, issue #24).
+/// Per-unit device ID derivation from the flash unique ID (hardware-neutral, issue #24).
 pub mod device_id;
 pub mod display;
 pub mod health;
@@ -41,11 +43,13 @@ pub mod state;
 #[cfg(feature = "host-sim")]
 pub mod sim;
 
-/// Real USB Serial/JTAG transport (also the hardware adapter core, T071).
+/// Real USB CDC-ACM transport (also the hardware adapter core, T071).
 #[cfg(feature = "embedded")]
 pub mod transport;
 /// Whole-frame outbound queue (hardware-neutral).
 pub mod tx_buffer;
+/// The USB interrupt's service step (hardware-neutral, host-tested).
+pub mod usb_service;
 
 /// Board measurements for the device internals snapshot (flash, RAM, stack, chip, temperature).
 #[cfg(feature = "physical-st7789")]

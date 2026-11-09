@@ -737,7 +737,7 @@ export const strings = {
       'Flash, memory, load and link numbers from the device. Updates about once a second.',
     virtualNote: {
       label: 'Modelled (virtual device)',
-      body: 'The chip figures come from a committed model of the ESP32-C3 build (frame cost, SPI transfer, flash, RAM and stack from the product ELF), not from a measurement. Temperature stays unavailable.',
+      body: 'The chip figures come from a committed model of the firmware build (frame cost, SPI transfer, flash, RAM and stack from the product ELF), not from a measurement. Temperature stays unavailable.',
     },
     loadFailed: 'Device internals are unavailable right now.',
     stale: 'Device internals are stale. Waiting for a new measurement…',
@@ -786,6 +786,7 @@ export const strings = {
     },
     values: {
       esp32c3: 'ESP32-C3',
+      rp2040: 'RP2040',
       powerOn: 'Power on',
       software: 'Software restart',
       watchdog: 'Watchdog',
@@ -813,12 +814,12 @@ export const strings = {
       unknown: '',
     },
     failures: {
-      toolMissing:
-        'The update tool is missing from this installation. Reinstall Kivori, then try again. If your antivirus removed it, allow it and reinstall.',
       portBusy:
         'Another program is using your Kivori. Close other apps that use USB serial devices (such as a serial monitor), then try again.',
       noDownloadMode:
-        'Your Kivori did not switch to update mode. Use the BOOT button to restore it.',
+        'Your Kivori did not switch to update mode. Hold the BOOT button while you plug in the USB cable to restore it.',
+      writeFailed:
+        'The firmware could not be copied to your Kivori. Keep USB connected and try again, or restore it with the BOOT button.',
       timeout: 'The update took too long and was stopped. Keep USB connected and try again.',
       cancelled: 'The update was cancelled. Your Kivori may need to be restored.',
       imageUnavailable:

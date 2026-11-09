@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use kivori_desktop::catalog::Catalog;
 use kivori_desktop::ipc::dto::DeviceInternalsDto;
 use kivori_desktop::virtual_device::{Sandbox, Snapshot};
 
@@ -118,11 +119,19 @@ fn smoke(mut sandbox: Sandbox, output: PathBuf) -> Result<(), String> {
         s.connected && s.frame.is_some()
     })?;
     let initial = sandbox.snapshot();
+    // Knob to fake volume, as the desktop sees it: how long each detent takes on this board's model.
+    let mut latencies = Vec::new();
     for detents in 1..=3 {
+        let sent = Instant::now();
         sandbox.input("clockwise")?;
         wait_for(&mut sandbox, "exact detent/volume result", |s| {
             s.detents == detents && s.volume == 50 + detents as u8 * 2
         })?;
+        latencies.push(sent.elapsed());
+    }
+    let slowest = latencies.iter().max().copied().unwrap_or_default();
+    if slowest >= Duration::from_secs(1) {
+        return Err(format!("A detent took {slowest:?} to reach the volume"));
     }
     // Canonical overlay: 188px inner width, solid observed fill at 56%, unlike hollow preview.
     let filled = 188 * 56 / 100;
@@ -152,13 +161,35 @@ fn smoke(mut sandbox: Sandbox, output: PathBuf) -> Result<(), String> {
         .snapshot
         .as_ref()
         .ok_or("Device internals missing")?;
+    // What the selected board must read back through the app's own projections: the UI chip token,
+    // flash size and silicon revision (the C3 reports one, the RP2040 does not), and the identity's
+    // product and board names, which the catalog owns.
+    let board_id = kivori_desktop::virtual_device::virtual_board();
+    let (chip_model, flash, revision) = match board_id.as_str() {
+        "rp2040-zero" => ("rp2040", 2 << 20, None),
+        _ => ("esp32c3", 4 << 20, Some((0, 4))),
+    };
     if !internals.connected
         || !internals.supported
-        || chip.chip_model != Some("esp32c3")
+        || chip.chip_model != Some(chip_model)
+        || chip.flash_total_bytes != Some(flash)
+        || chip.chip_revision.map(|r| (r.major, r.minor)) != revision
         || chip.busy_percent.is_none()
         || !chip.compose_ms.is_some_and(|ms| (20..=200).contains(&ms))
     {
         return Err(format!("Unexpected device internals: {internals:?}"));
+    }
+    let (product, board) = Catalog::embedded()
+        .products()
+        .iter()
+        .find_map(|p| p.boards.iter().find(|b| b.id == board_id).map(|b| (p, b)))
+        .ok_or("The virtual board is not in the catalog")?;
+    let identity = sandbox.device_identity().ok_or("Device identity missing")?;
+    if identity.product != product.display_name
+        || identity.board != board.display_name
+        || !identity.known
+    {
+        return Err(format!("Unexpected device identity: {identity:?}"));
     }
     let frame = result.frame.ok_or("Firmware frame missing")?;
     if Some(&frame) == initial.frame.as_ref() {
@@ -173,7 +204,7 @@ fn smoke(mut sandbox: Sandbox, output: PathBuf) -> Result<(), String> {
         ]);
     }
     std::fs::write(output, ppm).map_err(|error| error.to_string())?;
-    println!("PASS KIVORI-VIRTUAL-DEVICE: real firmware handshake, three raw detents → fake volume56, raw press/release → one fake media trigger; modelled device internals read back; firmware frame captured. Simulated device/OS, real elapsed time; no physical evidence.");
+    println!("PASS KIVORI-VIRTUAL-DEVICE: real firmware handshake, three raw detents (slowest {} ms) → fake volume56, raw press/release → one fake media trigger; modelled device internals and identity read back; firmware frame captured. Simulated device/OS, real elapsed time; no physical evidence.", slowest.as_millis());
     Ok(())
 }
 

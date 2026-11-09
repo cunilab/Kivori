@@ -19,7 +19,9 @@ const view = (): ReturnType<typeof render> =>
     </TooltipProvider>,
   );
 
-const snapshot: NonNullable<DeviceInternalsDto['snapshot']> = {
+type Snapshot = NonNullable<DeviceInternalsDto['snapshot']>;
+
+const snapshot: Snapshot = {
   appImageBytes: 742_880,
   appPartitionBytes: 4_128_768,
   assetBlobBytes: 65_536,
@@ -85,6 +87,47 @@ describe('DeviceInternals card', () => {
     expect(screen.getByText('14%')).toBeInTheDocument();
     expect(screen.getByText('30 fps')).toBeInTheDocument();
     expect(screen.getByText('3910')).toBeInTheDocument();
+  });
+
+  it('reads a v2 (RP2040-Zero) report: RP2040 with no revision, the whole 2 MiB flash, no thermal or reset figures', async () => {
+    // The facts the virtual v2 device reports (firmware/pip/simulator/fixtures/resource-facts-rp2040.json).
+    const rp2040: Snapshot = {
+      ...snapshot,
+      appImageBytes: 290_040,
+      appPartitionBytes: 2_097_152,
+      assetBlobBytes: 127_253,
+      flashTotalBytes: 2_097_152,
+      ramTotalBytes: 270_336,
+      ramStaticBytes: 150_000,
+      ramFreeBytes: null,
+      stackFreeMinBytes: 120_336 - 109_260,
+      chipModel: 'rp2040',
+      chipRevision: null,
+      temperatureDeciCelsius: null,
+      resetReason: null,
+    };
+    bridge.get.mockResolvedValue({ ...reporting, snapshot: rp2040 });
+    view();
+    await screen.findByText('Flash');
+    expect(screen.getByText('RP2040')).toBeInTheDocument();
+    expect(screen.queryByText(/ESP32/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/RP2040 rev/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('internals-app-image')).toHaveTextContent(
+      '283.2 KiB of 2.00 MiB (13.8%)',
+    );
+    expect(screen.getByText('2.00 MiB')).toBeInTheDocument();
+    expect(screen.getByTestId('internals-stack-peak')).toHaveTextContent(
+      '106.7 KiB of 117.5 KiB (90.8%)',
+    );
+    // Temperature and last reset have no source on this board: unavailable, never 0 or a guess.
+    for (const label of ['Chip temperature (approx.)', 'Last reset']) {
+      const row = screen.getByText(label).parentElement as HTMLElement;
+      expect(within(row).getByText('Unavailable')).toBeInTheDocument();
+    }
+    expect(parseDeviceInternals({ ...reporting, snapshot: rp2040 })).toEqual({
+      ...reporting,
+      snapshot: rp2040,
+    });
   });
 
   it('names the tiles and explains the scope of memory and runtime measurements', async () => {

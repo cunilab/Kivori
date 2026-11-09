@@ -1,38 +1,37 @@
 //! Board measurements for the device internals snapshot (ADR-0013), physical build only.
 //!
-//! Boot-time facts (flash layout, chip revision, reset reason) are read once by [`init`] and kept;
-//! the live ones (lowest free stack, temperature) are read when a snapshot is asked for. Anything
+//! Boot-time facts (flash size, image size, reset reason) are read once by [`init`] and kept; the
+//! live ones (lowest free stack, die temperature) are read when a snapshot is asked for. Anything
 //! that cannot be read stays `None`, which the desktop shows as unavailable.
 //!
 //! None of this is covered by the host tests, which see only the pure arithmetic in
 //! [`crate::internals`]; it needs checking on a real device (validation rows 13.14 to 13.16).
 
-use core::cell::{Cell, RefCell};
+use core::cell::Cell;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use critical_section::Mutex;
-use esp_hal::peripherals::TSENS;
-use esp_hal::tsens::{Config, TemperatureSensor};
 use kivori_model::internals::{ChipModel, DeviceInternals};
+use rp2040_hal::{pac, Adc};
 
 use crate::internals::{
-    app_image_bytes, find_app_partition, flash_size_from_header, reset_reason_from_code,
-    untouched_stack_bytes, PARTITION_TABLE_OFFSET, PARTITION_TABLE_READ,
+    flash_size_from_jedec, reset_reason_from_flags, temperature_decicelsius_from_adc,
+    untouched_stack_bytes,
 };
 
 extern "C" {
-    /// ROM flash read (the same entry point `esp-storage` uses). `len` is in bytes, a multiple of
-    /// four, and `src_addr` is four-byte aligned.
-    fn esp_rom_spiflash_read(src_addr: u32, data: *mut u32, len: u32) -> i32;
-
-    // Linker-provided: the lowest and highest stack addresses, and the stack-protector word.
+    // Linker-provided (cortex-m-rt): the lowest and highest stack addresses (no heap, so the stack
+    // region is all RAM past the statics), and the load address / bounds of `.data` in flash.
     static _stack_end: u32;
     static _stack_start: u32;
-    static __stack_chk_guard: u32;
+    static __sidata: u32;
+    static __sdata: u32;
+    static __edata: u32;
 }
 
-/// Where data RAM starts. RAM-resident code shares it, so "static" below counts that too.
-const DRAM_START: usize = 0x3FC8_0000;
+/// Where RAM and flash (XIP) start.
+const RAM_START: usize = 0x2000_0000;
+const FLASH_START: usize = 0x1000_0000;
 /// The pattern the unused stack is painted with.
 const STACK_PATTERN: u32 = 0xA5C3_5A3C;
 /// Bytes left unpainted below the stack pointer, for the painter's own frame.
@@ -42,8 +41,6 @@ const STACK_MARGIN: usize = 1024;
 static PAINTED_WORDS: AtomicUsize = AtomicUsize::new(0);
 /// What [`init`] measured at boot.
 static BOOT: Mutex<Cell<DeviceInternals>> = Mutex::new(Cell::new(empty()));
-static TSENS_DRIVER: Mutex<RefCell<Option<TemperatureSensor<'static>>>> =
-    Mutex::new(RefCell::new(None));
 
 const fn empty() -> DeviceInternals {
     DeviceInternals {
@@ -83,13 +80,8 @@ fn addr(symbol: *const u32) -> usize {
 /// off, so nothing live is touched.
 #[inline(never)]
 pub fn paint_stack() {
-    let sp: usize;
-    // SAFETY: reads the stack pointer register only.
-    unsafe { core::arch::asm!("mv {}, sp", out(reg) sp, options(nomem, nostack, preserves_flags)) };
-    let (low, guard) = (
-        addr(core::ptr::addr_of!(_stack_end)),
-        addr(core::ptr::addr_of!(__stack_chk_guard)),
-    );
+    let sp = cortex_m::register::msp::read() as usize;
+    let low = addr(core::ptr::addr_of!(_stack_end));
     let high = sp.saturating_sub(STACK_MARGIN) & !3;
     if high <= low {
         return;
@@ -97,12 +89,9 @@ pub fn paint_stack() {
     critical_section::with(|_| {
         let mut at = low;
         while at < high {
-            // The guard word is not stack; leave it as the HAL wrote it.
-            if at != guard {
-                // SAFETY: `[low, high)` lies in the stack region below the live stack, is
-                // word-aligned, and nothing else runs while interrupts are off.
-                unsafe { core::ptr::write_volatile(at as *mut u32, STACK_PATTERN) };
-            }
+            // SAFETY: `[low, high)` lies in the stack region below the live stack, is
+            // word-aligned, and nothing else runs while interrupts are off.
+            unsafe { core::ptr::write_volatile(at as *mut u32, STACK_PATTERN) };
             at += 4;
         }
     });
@@ -115,12 +104,8 @@ fn stack_free_min() -> Option<u32> {
     if words == 0 {
         return None;
     }
-    let (low, guard) = (
-        addr(core::ptr::addr_of!(_stack_end)),
-        addr(core::ptr::addr_of!(__stack_chk_guard)),
-    );
-    let skip = guard.checked_sub(low).map(|bytes| bytes / 4);
-    Some(untouched_stack_bytes(words, skip, STACK_PATTERN, |i| {
+    let low = addr(core::ptr::addr_of!(_stack_end));
+    Some(untouched_stack_bytes(words, None, STACK_PATTERN, |i| {
         // SAFETY: `i < words`, so the address is inside the region painted at boot.
         unsafe { core::ptr::read_volatile((low + i * 4) as *const u32) }
     }))
@@ -129,62 +114,24 @@ fn stack_free_min() -> Option<u32> {
 /// RAM not in use right now: with no heap, the stack headroom between its bottom and the stack
 /// pointer.
 fn ram_free_now() -> Option<u32> {
-    let sp: usize;
-    // SAFETY: reads the stack pointer register only.
-    unsafe { core::arch::asm!("mv {}, sp", out(reg) sp, options(nomem, nostack, preserves_flags)) };
+    let sp = cortex_m::register::msp::read() as usize;
     let low = addr(core::ptr::addr_of!(_stack_end));
     u32::try_from(sp.checked_sub(low)?).ok()
 }
 
-/// Reads `out.len()` bytes of flash at `offset`; `false` if the ROM reports an error.
-#[esp_hal::ram]
-fn flash_read(offset: u32, out: &mut [u8]) -> bool {
-    let mut words = [0u32; 16];
-    let mut done = 0;
-    while done < out.len() {
-        let at = offset + done as u32;
-        let aligned = at & !3;
-        let skew = (at - aligned) as usize;
-        let n_words = (out.len() - done + skew).min(64).div_ceil(4);
-        // SAFETY: `words` holds `n_words` words and the ROM writes only that many.
-        let status = critical_section::with(|_| unsafe {
-            esp_rom_spiflash_read(aligned, words.as_mut_ptr(), (n_words * 4) as u32)
-        });
-        if status != 0 {
-            return false;
-        }
-        let mut chunk = [0u8; 64];
-        for (bytes, word) in chunk
-            .as_chunks_mut::<4>()
-            .0
-            .iter_mut()
-            .zip(&words[..n_words])
-        {
-            *bytes = word.to_le_bytes();
-        }
-        let take = (n_words * 4 - skew).min(out.len() - done);
-        out[done..done + take].copy_from_slice(&chunk[skew..skew + take]);
-        done += take;
-    }
-    true
-}
-
-/// Measures the boot-time facts and starts the temperature sensor. `asset_blob_bytes` is the size
-/// of the asset blob baked into this image.
-pub fn init(tsens: TSENS<'static>, asset_blob_bytes: usize) {
+/// Measures the boot-time facts and starts the temperature sensor sampling. `asset_blob_bytes` is
+/// the size of the asset blob baked into this image; `flash_jedec_id` is what the flash chip
+/// answered to the JEDEC command (read by the caller, which also reads the unique id).
+pub fn init(adc: pac::ADC, resets: &mut pac::RESETS, asset_blob_bytes: usize, flash_jedec_id: u32) {
     let mut facts = empty();
 
-    let mut header = [0u8; 4];
-    if flash_read(0, &mut header) {
-        facts.flash_total_bytes = flash_size_from_header(header[3]);
-    }
-    let mut table = [0u8; PARTITION_TABLE_READ];
-    if flash_read(PARTITION_TABLE_OFFSET, &mut table) {
-        if let Some((offset, size)) = find_app_partition(&table) {
-            facts.app_partition_bytes = Some(size);
-            facts.app_image_bytes = app_image_bytes(offset, size, flash_read);
-        }
-    }
+    facts.flash_total_bytes = flash_size_from_jedec(flash_jedec_id);
+    // No partition table: the whole flash is the application's, and the image is the code and
+    // read-only data plus the initial values of `.data` that follow it.
+    facts.app_partition_bytes = facts.flash_total_bytes;
+    let data_load = addr(core::ptr::addr_of!(__sidata));
+    let data_len = addr(core::ptr::addr_of!(__edata)) - addr(core::ptr::addr_of!(__sdata));
+    facts.app_image_bytes = u32::try_from(data_load + data_len - FLASH_START).ok();
 
     facts.asset_blob_bytes = u32::try_from(asset_blob_bytes).ok();
 
@@ -192,40 +139,41 @@ pub fn init(tsens: TSENS<'static>, asset_blob_bytes: usize) {
         addr(core::ptr::addr_of!(_stack_end)),
         addr(core::ptr::addr_of!(_stack_start)),
     );
-    facts.ram_static_bytes = u32::try_from(stack_end.saturating_sub(DRAM_START)).ok();
-    facts.ram_total_bytes = u32::try_from(stack_start.saturating_sub(DRAM_START)).ok();
+    facts.ram_static_bytes = u32::try_from(stack_end.saturating_sub(RAM_START)).ok();
+    facts.ram_total_bytes = u32::try_from(stack_start.saturating_sub(RAM_START)).ok();
 
-    facts.chip_model = Some(ChipModel::Esp32C3);
-    facts.chip_revision = Some((
-        esp_hal::efuse::major_chip_version(),
-        esp_hal::efuse::minor_chip_version(),
-    ));
-    facts.reset_reason = esp_hal::system::reset_reason().map(|reason| {
-        // The enum's values are the chip's reset-reason codes.
-        reset_reason_from_code(reason as u32 as u8)
-    });
+    facts.chip_model = Some(ChipModel::Rp2040);
+    // SAFETY: read-only access to two status registers.
+    let (chip_reset, watchdog_reason) = unsafe {
+        (
+            (*pac::VREG_AND_CHIP_RESET::PTR).chip_reset().read().bits(),
+            (*pac::WATCHDOG::PTR).reason().read().bits(),
+        )
+    };
+    facts.reset_reason = Some(reset_reason_from_flags(chip_reset, watchdog_reason));
 
-    if let Ok(sensor) = TemperatureSensor::new(tsens, Config::default()) {
-        // The sensor wants a few hundred microseconds to settle after power-up.
-        esp_hal::delay::Delay::new().delay_micros(300);
-        critical_section::with(|cs| TSENS_DRIVER.borrow_ref_mut(cs).replace(sensor));
+    // The temperature sensor is channel 4; free-running keeps the latest sample in `RESULT` so a
+    // snapshot never waits for a conversion. Dropping the `Adc` handle leaves the block running.
+    let mut adc = Adc::new(adc, resets);
+    if let Some(sensor) = adc.take_temp_sensor() {
+        adc.free_running(&sensor);
+        TEMP_SENSOR.store(true, Ordering::Release);
     }
 
     critical_section::with(|cs| BOOT.borrow(cs).set(facts));
 }
 
-/// The chip's internal temperature in tenths of a degree, if the sensor reads inside its range.
+/// Set once the ADC is sampling the die temperature.
+static TEMP_SENSOR: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+
+/// The die temperature in tenths of a degree, if the sensor reads inside its range.
 fn temperature_decicelsius() -> Option<i16> {
-    let celsius = critical_section::with(|cs| {
-        TSENS_DRIVER
-            .borrow_ref(cs)
-            .as_ref()
-            .map(|sensor| sensor.get_temperature().to_celsius())
-    })?;
-    // The sensor's range is -40 to 125 degrees; anything else is a bad read, not a temperature.
-    (-40.0..=125.0)
-        .contains(&celsius)
-        .then_some((celsius * 10.0) as i16)
+    if !TEMP_SENSOR.load(Ordering::Acquire) {
+        return None;
+    }
+    // SAFETY: read-only access to the ADC result register.
+    let raw = unsafe { (*pac::ADC::PTR).result().read().result().bits() };
+    temperature_decicelsius_from_adc(raw)
 }
 
 /// The [`crate::internals::ChipProbe`] the physical runtime installs.

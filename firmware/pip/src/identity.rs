@@ -156,8 +156,8 @@ mod tests {
 
     #[test]
     fn build_identity_matches_the_registry_numbers() {
-        // pip 1 on c3-supermini 1 (products/registry.toml); `build.rs` generates them.
-        assert_eq!((BUILD_PRODUCT, BUILD_BOARD), (1, 1));
+        // pip 1 on rp2040-zero 2 (products/registry.toml); `build.rs` generates them.
+        assert_eq!((BUILD_PRODUCT, BUILD_BOARD), (1, 2));
         assert_ne!(BUILD_PRODUCT, 0);
         assert_ne!(BUILD_BOARD, 0);
     }
@@ -167,7 +167,7 @@ mod tests {
         assert_eq!(
             IMAGE_RECORD,
             concat!(
-                "KIVORI-FW-IDENTITY:p=1;b=1;v=",
+                "KIVORI-FW-IDENTITY:p=1;b=2;v=",
                 env!("CARGO_PKG_VERSION"),
                 ";m=0.1\0"
             )

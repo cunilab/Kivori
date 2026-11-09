@@ -28,11 +28,10 @@ pub mod ipc;
 pub mod orchestrator;
 pub mod platform;
 pub mod presentation;
-#[cfg(feature = "device-studio")]
-pub mod provision;
 pub mod render;
 pub mod runtime;
 pub mod startup;
+pub mod uf2;
 pub mod updater;
 #[cfg(feature = "virtual-device")]
 pub mod virtual_device;

@@ -1,5 +1,6 @@
-# Firmware toolchain pin (own workspace). ESP32-C3 = RISC-V, so stable Rust + the riscv target.
+# Firmware toolchain pin (own workspace). RP2040 = Cortex-M0+, so stable Rust + the thumbv6m target.
+# The riscv32imc target stays for the frame-cost bench, which models the v1 (ESP32-C3) virtual device.
 [toolchain]
 channel = "stable"
-targets = ["riscv32imc-unknown-none-elf"]
+targets = ["thumbv6m-none-eabi", "riscv32imc-unknown-none-elf"]
 components = ["rustfmt", "clippy"]

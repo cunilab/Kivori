@@ -123,6 +123,31 @@ describe('DevicePage', () => {
     expect(screen.getByTestId('device-identity-source')).toHaveTextContent('Firmware build');
   });
 
+  it('shows the v2 board by its catalog name', () => {
+    render(
+      view(
+        status({
+          connection: 'connected',
+          device: {
+            presentation: null,
+            firmwareVersion: '0.1.4',
+            protocolVersion: { major: 0, minor: 1 },
+            deviceIdHashShort: 'deadbeef',
+            identity: {
+              product: 'Kivori Pip',
+              board: 'RP2040-Zero',
+              hwRev: null,
+              source: 'build',
+              known: true,
+            },
+          },
+        }),
+      ),
+    );
+    expect(screen.getByTestId('device-board')).toHaveTextContent('RP2040-Zero');
+    expect(screen.getByTestId('device-hw-rev')).toHaveTextContent(/^Unknown$/);
+  });
+
   it('shows an unknown product by its number and a provisioned revision', () => {
     render(
       view(

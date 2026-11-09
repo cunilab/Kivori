@@ -7,7 +7,7 @@ knob and buttons are why you keep using it, and the display shows important desk
 state around the buddy.
 
 The first product is **Kivori Pip** (model KV-P1): a knob with a push switch, three buttons and a
-240×240 screen where the keycap buddy lives, on an ESP32-C3 SuperMini. A desktop app, Kivori
+240×240 screen where the keycap buddy lives, on a Waveshare RP2040-Zero. A desktop app, Kivori
 Desktop, drives it and is where you configure it. Windows is the beta platform; macOS is the daily
 test bed. Beta users start with the [user guide](docs/user-guide.md).
 
@@ -66,18 +66,18 @@ The paid beta (M3) also waits on items that are not code. Details in
 | M2 Configurable product, M2.5 Contextual profiles | done | hardware rows (Phases 5, 5b, 6) |
 | M2.6 Beta hero features | done | hardware rows (Phase 13) |
 | M2.7 Identity, versions and updates | done | hardware rows (Phase 14) |
-| M3 Paid beta | done for the app (installer, recovery, onboarding, provisioning) | hardware validation (#38), signing certificates (#36), enclosure (#33) |
+| M3 Paid beta | done for the app (installer, recovery, onboarding) | hardware validation (#38), signing certificates (#36), enclosure (#33) |
 
 ## Quick start for developers
 
 ### Prerequisites
 
 - **Rust** stable (both workspaces pin it; the firmware workspace adds the
-  `riscv32imc-unknown-none-elf` target automatically)
+  `thumbv6m-none-eabi` target automatically)
 - **[Bun](https://bun.sh)** for the frontend
 - **[just](https://github.com/casey/just)** as the command runner
-- **[espflash](https://github.com/esp-rs/espflash)** only if you are flashing hardware:
-  `cargo install espflash`
+- **[elf2uf2-rs](https://github.com/JoNil/elf2uf2-rs)** only if you are flashing hardware from the
+  command line (`just fw-flash`): `cargo install elf2uf2-rs`. The app flashes without it.
 - **jq** for the dependency guard scripts
 
 ### Run the desktop app
@@ -88,7 +88,7 @@ just desktop                   # UI dev server + native app with the bundled fir
 ```
 
 Desktop recipes embed firmware for every active catalog pair. Single-target `KIVORI_PRODUCT` /
-`KIVORI_BOARD` selection applies to `fw-build` and provisioning, not desktop packages.
+`KIVORI_BOARD` selection applies to `fw-build`, not desktop packages.
 
 The native core owns the serial link; the webview receives only typed IPC commands. Device
 discovery is automatic: there is no COM-port picker by design.
@@ -118,45 +118,49 @@ result is never promoted to physical proof. Hardware results are recorded in
 
 ## Hardware and pin map
 
-Kivori Pip (KV-P1) is one ESP32-C3 SuperMini, one ST7789 240×240 panel, one HW-040 rotary encoder
-and three momentary push buttons. USB provides power, flashing and the product data link, with no
-external UART bridge.
+Kivori Pip (KV-P1) is one Waveshare RP2040-Zero, one ST7789 240×240 panel, one HW-040 rotary
+encoder, three momentary push buttons. USB provides power, flashing and the product
+data link (USB CDC, `2E8A:000A`), with no external UART bridge. The first beta units used an
+ESP32-C3 SuperMini; the board changed with the v7 enclosure ([ADR-0019](docs/adr/0019-rp2040-zero-replaces-esp32-c3.md)).
 
 | Signal | GPIO | Notes |
 |---|---:|---|
-| SPI SCK (display SCL) | 4 | SPI2, 20 MHz, Mode 3 |
-| SPI MOSI (display SDA) | 3 | |
-| Display D/C | 1 | XTAL_32K pin: needs a board without a 32 kHz crystal |
-| Display RST | 2 | strapping pin; an input on the display, so it is left alone at reset |
-| Backlight | 0 | active-high, PWM for the brightness setting; XTAL_32K pin, as D/C |
-| Encoder CLK (A) | 7 | |
-| Encoder DT (B) | 6 | |
-| Encoder SW | 5 | push switch: Press, Hold, Double press, ~10 s recovery reboot |
-| Button left / middle / right (B1 / B2 / B3) | 9 / 8 / 10 | to GND, internal pull-up, no resistor; B1 doubles as BOOT, see below |
-| USB D− / D+ | 18 / 19 | native USB Serial/JTAG, `0x303A:0x1001` |
+| SPI1 SCK (display SCL) | 26 | 20 MHz, Mode 3 |
+| SPI1 TX (display SDA) | 15 | |
+| Display D/C | 13 | |
+| Display RST | 14 | |
+| Backlight | 12 | active-high, PWM (slice 6A) for the brightness setting |
+| Encoder SW | 3 | push switch: Press, Hold, Double press, ~10 s recovery reboot |
+| Encoder DT (B) | 4 | |
+| Encoder CLK (A) | 5 | |
+| Button left / middle / right (B1 / B2 / B3) | 6 / 7 / 8 | to GND, internal pull-up, no resistor |
 
-Encoder COM to **GND**, VCC to **3V3**. **Not 5V: ESP32-C3 GPIOs are not 5 V tolerant.** Firmware
+The display has no chip-select line. GP0/GP1 stay free for a debug UART, used only by the
+`debug-payloads` development feature. The board's own WS2812 LED (GP16) is not used.
+
+Encoder COM to **GND**, VCC to **3V3**. **Not 5V: RP2040 GPIOs are not 5 V tolerant.** Firmware
 enables internal pull-ups and reads all three encoder lines active-low, so it works whether or not
 your HW-040 board populates its own pull-ups.
 
 ### Two things worth knowing about these pins
 
-**GPIO9 (BOOT) is the left button, B1, and never the encoder switch.** Holding GPIO9 low at
-reset enters the ROM download mode. The encoder switch is Kivori's recovery control, so it stays
-off GPIO9: a user power-cycling while holding it for recovery boots Kivori. Holding **B1** while
-plugging in or resetting enters download mode, just like the SuperMini's own BOOT button. GPIO8
-(B2) is a strapping pin too; it only matters in download mode, so don't hold B2 while flashing.
-Holding B2 or B3 alone at power-on boots normally.
+**BOOT is the RP2040-Zero's own button, not a Kivori control.** Holding **BOOT** while plugging in
+the USB cable starts the ROM's UF2 bootloader (a drive named `RPI-RP2`), which is the recovery path
+when the firmware cannot start; the app, or `just fw-flash`, copies the firmware onto that drive. A
+running Kivori also reboots into the bootloader when the app opens its serial port at 1200 baud
+(the "1200-baud touch"), which is how the app updates a working unit. The encoder switch stays the
+user's recovery control and holding it at power-on boots Kivori normally: no Pip input is a
+boot-critical pin.
 
 **The panel parameters are measured evidence; the pin map is not.** The display profile (offset,
 colour order, inversion, SPI mode) was physically verified on 2026-08-11 and is recorded in
-[`docs/validation.md`](docs/validation.md) (rows 1.9, 1.24, 1.25). The pin map moved to match the
-enclosure's wiring (#123) and is a *specification* until rows 3.15, 5.1 and 5.2 of the same
-checklist are ticked on a board wired to an enclosure PCB.
+[`docs/validation.md`](docs/validation.md) (rows 1.9, 1.24, 1.25). The pin map moved to the RP2040-Zero
+carrier (#179) and is a *specification* until rows 3.15, 5.1 and 5.2 of the same checklist are
+ticked on a board wired into the v7 enclosure.
 
 Both live in one place, [`firmware/pip/src/profile.rs`](firmware/pip/src/profile.rs), so a
 rewire is a single constant change. The case and its printed carrier plate are in
-[`hardware/enclosure/`](hardware/enclosure/README.md); building a unit is in
+[`hardware/enclosure-v7/`](hardware/enclosure-v7/README.md); building a unit is in
 [`docs/assembly.md`](docs/assembly.md).
 
 ## Products, versions and releases
@@ -191,7 +195,7 @@ Kivori/
 │   └── web/         the website (Next.js on Cloudflare)
 ├── packages/ui/     shared UI components for the desktop app and the website
 ├── crates/          shared no_std crates: model, protocol, renderer, assets, framebuffer
-├── firmware/pip/   Kivori Pip firmware (ESP32-C3, its own Cargo workspace)
+├── firmware/pip/   Kivori Pip firmware (RP2040-Zero, its own Cargo workspace)
 ├── products/        product registry and catalog (registry.toml, <id>/product.toml)
 ├── hardware/        3D-printable enclosure and printed carrier plate (FreeCAD, parametric)
 ├── tests/           golden frames and cross-crate tests
@@ -211,9 +215,9 @@ One file per topic:
 | [`docs/adr/`](docs/adr/README.md) | Architecture decision records: one file per decision, with context and rejected options |
 | [`docs/roadmap.md`](docs/roadmap.md) | What gets built next, milestone by milestone (M0 to paid beta to v1) |
 | [`docs/validation.md`](docs/validation.md) | The hardware checklist and how to run a validation session |
-| [`docs/assembly.md`](docs/assembly.md) | Building one beta unit: copper traces, soldering, checks, provisioning, closing the case |
+| [`docs/assembly.md`](docs/assembly.md) | Building one beta unit: wiring, checks, closing the case |
 | [`docs/release.md`](docs/release.md) | How to cut a Windows or macOS release, and the unsigned-installer limits |
-| [`docs/provisioning.md`](docs/provisioning.md) | Flashing and checking each new unit (`just provision`) |
+| [`docs/provisioning.md`](docs/provisioning.md) | Why there is no per-unit provisioning, and where a unit's identity comes from |
 | [`docs/user-guide.md`](docs/user-guide.md) | Short guide for a beta customer: install, setup, controls, recovery |
 | [`docs/bom.md`](docs/bom.md) | Draft bill of materials (prices still to fill in) |
 
@@ -229,11 +233,10 @@ just dev               # Vite dev server for the Device Studio UI
 just lint              # Rust + TypeScript formatting/lint/type checks
 just test              # host workspace + frontend tests
 just build             # host workspace + frontend build
-just fw-check          # shared no_std crates compiled for RISC-V (isolation proof)
+just fw-check          # shared no_std crates compiled for thumbv6m (isolation proof)
 just fw-test           # firmware core against host-sim adapters
 just fw-build          # build catalog-selected firmware (currently Pip physical-st7789)
-just fw-flash          # flash + monitor the product firmware over USB
-just provision         # flash and check one new unit (docs/provisioning.md)
+just fw-flash          # flash the product firmware (board in BOOT mode, see Hardware)
 just bundle-windows    # build the unsigned Windows installer (docs/release.md)
 just bundle-macos      # build the macOS .app/.dmg (docs/release.md)
 just golden            # deterministic rendering golden-frame tests

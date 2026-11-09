@@ -1,6 +1,7 @@
 # Firmware CI. Proves no_std/no-alloc feature isolation by compiling the shared crates for
-# the RISC-V target. NO hardware tests run here (isolation requirement); on-device checks are manual
-# (docs/validation.md). The esp-hal firmware binary is built per feature set in the adapters step below.
+# the Cortex-M0+ target. NO hardware tests run here (isolation requirement); on-device
+# checks are manual (docs/validation.md). The rp2040-hal firmware binary is built per feature set in
+# the adapters step below.
 name: firmware
 on:
   push:
@@ -18,9 +19,9 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: riscv32imc-unknown-none-elf
+          targets: thumbv6m-none-eabi
           components: rustfmt, clippy, llvm-tools
-      - name: Compile the firmware library for RISC-V (no_std / no-alloc isolation proof)
+      - name: Compile the firmware library for thumbv6m (no_std / no-alloc isolation proof)
         working-directory: firmware/pip
         # Building the library pulls in all five shared crates + the device core; the bin target is
         # skipped here (its `embedded` feature is off) and built in the adapters step below.
@@ -29,7 +30,7 @@ jobs:
       # this job has no board. Every feature configuration that ships or is gated is
       # compiled, so a broken adapter fails CI instead of surfacing at flash time.
       # `physical-st7789` is the configuration that actually ships to the device (ST7789 display +
-      # HW-040 rotary adapter) — it must be built here, not just `embedded` (which only reaches
+      # HW-040 rotary adapter, USB CDC) — it must be built here, not just `embedded` (which only reaches
       # main.rs's bare fallback and compiles neither adapter).
       - name: Build the hardware adapters compile-only (no hardware test)
         working-directory: firmware/pip
@@ -45,12 +46,12 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
-      - name: Firmware resource budget (resource-budget.json beside the crate) and virtual device facts
+      - name: Firmware resource budget (resource-budget.json beside the crate) and v2 virtual device facts
         run: |
           bun scripts/build-firmware.mjs
           bun scripts/firmware-budget.mjs
           bun scripts/virtual-resource-facts.mjs --check
-      - name: Firmware format + clippy (RISC-V, every feature configuration)
+      - name: Firmware format + clippy (thumbv6m, every feature configuration)
         working-directory: firmware/pip
         run: |
           cargo fmt --all --check
@@ -61,10 +62,11 @@ jobs:
           cargo clippy --locked --lib --features physical-st7789,debug-payloads -- -D warnings
           cargo clippy --locked --lib --features physical-st7789,latency-probe -- -D warnings
 
-  # Predicted ESP32-C3 compose time (no hardware): the real renderer compiled for riscv32imc and run
-  # in an instruction-set simulator with an ESP32-C3 cycle model (virtual device docs, Hardware
-  # parity). Separate job so it runs beside the isolation job; fails if a scenario's predicted frame
-  # time grows more than 10% over frame-cost/fixtures/frame-cost.json. To accept an
+  # Predicted compose time of the v1 virtual board (ESP32-C3; no hardware): the real renderer compiled
+  # for riscv32imc and run in an instruction-set simulator with an ESP32-C3 cycle model. The v2
+  # virtual board (RP2040) reuses this model scaled x1.5 (virtual device docs, Virtual boards).
+  # Separate job so it runs beside the isolation job; fails if a scenario's predicted frame time
+  # grows more than 10% over frame-cost/fixtures/frame-cost.json. To accept an
   # intended change: `just fw-frame-cost-update` and commit the fixture with the reason.
   frame-cost:
     runs-on: ubuntu-latest
@@ -86,7 +88,7 @@ jobs:
           cargo clippy --locked -- -D warnings
 
   host-sim-tests:
-    # The hardware-neutral device core is validated on the host (FR-035). The forced RISC-V build
+    # The hardware-neutral device core is validated on the host (FR-035). The forced thumbv6m build
     # target is overridden with the host triple so std + the asset compiler (dev-dep) are available.
     runs-on: ubuntu-latest
     steps:

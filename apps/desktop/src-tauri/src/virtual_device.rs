@@ -17,7 +17,8 @@ use crate::device::transport::SerialLink;
 use crate::device::{ConnectionManager, ManagerEvent};
 use crate::input::freshness::Freshness;
 use crate::ipc::dto::{
-    connection_token, device_internals_dto, DeviceInternalsDto, DiagnosticsSnapshot,
+    connection_token, device_internals_dto, identity_dto, DeviceIdentityDto, DeviceInternalsDto,
+    DiagnosticsSnapshot,
 };
 use crate::orchestrator::Orchestrator;
 use crate::platform::host_events::{HostEvent, HostPresenceTracker, PresenceAction};
@@ -42,6 +43,13 @@ mod presence_scenarios;
 pub use presence_scenarios::presence_smoke;
 mod endurance_scenarios;
 pub use endurance_scenarios::endurance_smoke;
+
+/// The board the runner models, from `KIVORI_VIRTUAL_BOARD` (the child inherits it, so this is also
+/// what it was started with): v1 `c3-supermini` by default, v2 `rp2040-zero`. The runner rejects any
+/// other value, so a bad one never gets as far as a connected session.
+pub fn virtual_board() -> String {
+    std::env::var("KIVORI_VIRTUAL_BOARD").unwrap_or_else(|_| "c3-supermini".into())
+}
 
 const MAX_LINE: usize = 400_000;
 const WIRE_CAPACITY: usize = 8192;
@@ -445,6 +453,19 @@ impl Sandbox {
             diagnostics.internals_received_at = self.session.internals_received_at();
         }
         device_internals_dto(&diagnostics, Instant::now())
+    }
+
+    /// The identity the UI shows for the connected device (product and board names, source), as
+    /// projected from the live session; `None` while disconnected.
+    pub fn device_identity(&self) -> Option<DeviceIdentityDto> {
+        self.snapshot
+            .connected
+            .then(|| {
+                self.session
+                    .identity()
+                    .map(|identity| identity_dto(&identity))
+            })
+            .flatten()
     }
 
     fn end_link(&mut self, error: Option<String>) {

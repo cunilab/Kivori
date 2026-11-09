@@ -1,4 +1,5 @@
-//! Modelled ESP32-C3 time for the virtual Pip (docs/virtual-pip.md, "Modelled timing and internals").
+//! Modelled time for the virtual Pip (docs/virtual-pip.md, "Modelled timing and internals"): the
+//! ESP32-C3's for v1, a scaled estimate of the RP2040-Zero's for v2 (see `board`).
 //!
 //! The production `Runtime::step` measures itself with the `Clock` port. On the host every read used
 //! to return the request's time, so compose and flush cost 0 ms. [`SimClock`] keeps microseconds and,
@@ -8,6 +9,7 @@
 //! frame the runtime draws, so a modelled run is deterministic.
 use std::{cell::Cell, cell::RefCell, rc::Rc};
 
+use crate::board::Board;
 use kivori_firmware::{
     ports::{Clock, DisplaySink},
     profile::physical_st7789::SPI_CLOCK_HZ,
@@ -138,16 +140,17 @@ pub struct FrameCosts {
 }
 
 impl FrameCosts {
-    /// The costs in the committed fixture.
+    /// The costs in the committed fixture, scaled for `board` (as is for v1, an estimate for v2).
     ///
     /// # Panics
     /// If the fixture is malformed or lacks a scenario or a row: a build-time inconsistency.
     #[must_use]
-    pub fn committed() -> Self {
-        Self::parse(FRAME_COST_JSON).expect("committed frame-cost fixture")
+    pub fn committed(board: Board) -> Self {
+        Self::parse(FRAME_COST_JSON, board.compose_scale_permille())
+            .expect("committed frame-cost fixture")
     }
 
-    fn parse(json: &str) -> Result<Self, String> {
+    fn parse(json: &str, scale_permille: u64) -> Result<Self, String> {
         let fixture: Fixture = serde_json::from_str(json).map_err(|e| e.to_string())?;
         let mut rows_us = [[0; TILE_ROWS]; 7];
         for (scenario, name) in Scenario::ALL {
@@ -160,7 +163,7 @@ impl FrameCosts {
                 return Err(format!("{name}: {} rows, expected {TILE_ROWS}", rows.len()));
             }
             for (slot, ms) in rows_us[scenario.index()].iter_mut().zip(rows) {
-                *slot = (ms * 1000.0).round() as u64;
+                *slot = (ms * scale_permille as f64).round() as u64;
             }
         }
         Ok(Self { rows_us })
@@ -183,12 +186,12 @@ impl FrameCosts {
 }
 
 /// Microseconds the SPI link needs for one panel window of `pixels` pixels: the pixels plus the
-/// address-window commands, at the product's SPI clock. DMA set-up and CPU time around it are not
-/// modelled.
+/// address-window commands, at the board's SPI clock ([`Board::spi_hz`]). DMA set-up and CPU time
+/// around it are not modelled.
 #[must_use]
-pub fn window_transfer_us(pixels: usize) -> u64 {
+pub fn window_transfer_us(pixels: usize, spi_hz: u32) -> u64 {
     let bits = pixels as u64 * BITS_PER_PIXEL + WINDOW_COMMAND_BYTES * 8;
-    (bits * 1_000_000).div_ceil(u64::from(SPI_CLOCK_HZ))
+    (bits * 1_000_000).div_ceil(u64::from(spi_hz))
 }
 
 /// The virtual device clock: microseconds, settable like `VirtualClock`, and charged modelled time
@@ -196,6 +199,10 @@ pub fn window_transfer_us(pixels: usize) -> u64 {
 pub struct SimClock {
     us: Cell<u64>,
     costs: Option<FrameCosts>,
+    /// CPU time per flushed pixel on top of the wire time (see [`Board::staging_ns_per_pixel`]).
+    staging_ns_per_pixel: u64,
+    /// The panel's SPI clock (see [`Board::spi_hz`]).
+    spi_hz: u32,
 }
 
 impl SimClock {
@@ -205,15 +212,20 @@ impl SimClock {
         Self {
             us: Cell::new(0),
             costs: None,
+            staging_ns_per_pixel: 0,
+            spi_hz: SPI_CLOCK_HZ,
         }
     }
 
-    /// A clock at 0 that charges compose time per row and (through [`SharedDisplay`]) transfer time.
+    /// A clock at 0 that charges `board`'s compose time per row and (through [`SharedDisplay`])
+    /// transfer time.
     #[must_use]
-    pub fn modelled() -> Self {
+    pub fn modelled(board: Board) -> Self {
         Self {
             us: Cell::new(0),
-            costs: Some(FrameCosts::committed()),
+            costs: Some(FrameCosts::committed(board)),
+            staging_ns_per_pixel: board.staging_ns_per_pixel(),
+            spi_hz: board.spi_hz(),
         }
     }
 
@@ -267,7 +279,10 @@ impl SharedDisplay {
 
     fn charge(&self, pixels: usize) {
         if self.clock.is_modelled() {
-            self.clock.advance_us(window_transfer_us(pixels));
+            self.clock.advance_us(
+                window_transfer_us(pixels, self.clock.spi_hz)
+                    + pixels as u64 * self.clock.staging_ns_per_pixel / 1000,
+            );
         }
     }
 }
@@ -296,7 +311,7 @@ mod tests {
 
     #[test]
     fn committed_fixture_gives_the_documented_row_costs() {
-        let costs = FrameCosts::committed();
+        let costs = FrameCosts::committed(Board::C3Supermini);
         let desk: Vec<u64> = (0..TILE_ROWS)
             .map(|r| costs.row_us(Scenario::ConnectedDesk, r))
             .collect();
@@ -309,8 +324,8 @@ mod tests {
 
     #[test]
     fn a_malformed_fixture_is_refused() {
-        assert!(FrameCosts::parse("{}").is_err());
-        assert!(FrameCosts::parse(r#"{"scenarios":{}}"#).is_err());
+        assert!(FrameCosts::parse("{}", 1_000).is_err());
+        assert!(FrameCosts::parse(r#"{"scenarios":{}}"#, 1_000).is_err());
     }
 
     fn view(mode: DisplayMode) -> DeskView {
@@ -321,7 +336,7 @@ mod tests {
 
     #[test]
     fn frames_map_to_the_closest_measured_scenario() {
-        let costs = FrameCosts::committed();
+        let costs = FrameCosts::committed(Board::C3Supermini);
         let of = |v: &DeskView, overlay| Scenario::of(v, overlay, &costs);
         assert_eq!(of(&view(DisplayMode::Buddy), false), Scenario::IdleMascot);
         let mut desk = view(DisplayMode::Buddy);
@@ -356,13 +371,13 @@ mod tests {
             v.controls = Some(Default::default());
             v
         };
-        let modelled = SimClock::modelled();
+        let modelled = SimClock::modelled(Board::C3Supermini);
         for row in 0..TILE_ROWS {
             modelled.row_composed(row, &desk, false);
         }
         assert_eq!(
             modelled.us(),
-            FrameCosts::committed().total_us(Scenario::ConnectedDesk)
+            FrameCosts::committed(Board::C3Supermini).total_us(Scenario::ConnectedDesk)
         );
         let ideal = SimClock::ideal();
         ideal.row_composed(0, &desk, false);
@@ -370,10 +385,34 @@ mod tests {
     }
 
     #[test]
+    fn the_rp2040_scales_compose_and_estimates_cpu_staging() {
+        let desk = |board| FrameCosts::committed(board).total_us(Scenario::ConnectedDesk);
+        let scale = desk(Board::Rp2040Zero) as f64 / desk(Board::C3Supermini) as f64;
+        // x1.5, fitted to the unit's idle session (`Board::compose_scale_permille`).
+        assert!((1.499..1.501).contains(&scale), "{scale}");
+        // ESTIMATE (unmeasured): a tile row (240 x 40 = 9,600 pixels) at 15.625 MHz against 20 MHz (9,837 us against 7,685 us),
+        // plus 100 ns a pixel of CPU staging.
+        let flush = |board| {
+            let clock = Rc::new(SimClock::modelled(board));
+            let mut display =
+                SharedDisplay::new(Rc::new(RefCell::new(CaptureDisplay::new())), clock.clone());
+            let rect = Rect::new(0, 0, 240, 40);
+            display
+                .blit_tile(rect, &[Rgb565::from_raw(0); 240 * 40])
+                .unwrap();
+            clock.us()
+        };
+        assert_eq!(flush(Board::Rp2040Zero) - flush(Board::C3Supermini), 3_112);
+    }
+
+    #[test]
     fn a_window_takes_its_pixels_at_the_spi_clock() {
-        // A full tile row (240 x 40) at 20 MHz and 16 bits per pixel: 7.68 ms plus the commands.
-        let row = window_transfer_us(240 * 40);
+        // A full tile row (240 x 40) at 16 bits per pixel: 7.68 ms plus the commands at 20 MHz,
+        // 9.83 ms at the RP2040's 15.625 MHz.
+        let row = window_transfer_us(240 * 40, 20_000_000);
         assert!((7_680..7_700).contains(&row), "{row}");
-        assert!(window_transfer_us(1600) < window_transfer_us(3200));
+        let row = window_transfer_us(240 * 40, Board::Rp2040Zero.spi_hz());
+        assert!((9_830..9_850).contains(&row), "{row}");
+        assert!(window_transfer_us(1600, 20_000_000) < window_transfer_us(3200, 20_000_000));
     }
 }
