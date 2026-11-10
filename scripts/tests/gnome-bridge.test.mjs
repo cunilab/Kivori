@@ -53,6 +53,7 @@ const Gio = {
     }),
   },
 };
+const Clutter = { InputDeviceType: { KEYBOARD_DEVICE: 1 }, KeyState: { PRESSED: 1, RELEASED: 0 } };
 const GLib = {
   get_monotonic_time: () => now,
   file_read_link: () => exeLink,
@@ -71,7 +72,10 @@ async function load(name) {
   await module.link(async (specifier) => {
     if (specifier.startsWith('./')) return load(specifier.slice(2));
     return new SyntheticModule(['default'], function () {
-      this.setExport('default', specifier === 'gi://Gio' ? Gio : GLib);
+      this.setExport(
+        'default',
+        specifier === 'gi://Gio' ? Gio : specifier === 'gi://Clutter' ? Clutter : GLib,
+      );
     });
   });
   await module.evaluate();
@@ -637,4 +641,61 @@ test('the actual Shell dialog description contains the complete executable path 
   assert.match(content.description, /will be able to press keyboard shortcuts/);
   dialog.buttons.find((button) => button.label === 'Allow').action();
   assert.equal(await result, true);
+});
+
+test('virtual keyboard uses the stage Clutter backend, with microsecond times and separate modifier events', async () => {
+  const { createKeyboardDevice } = (await load('keyboard.js')).namespace;
+  const events = [];
+  let disposed = false;
+  const stage = {
+    context: {
+      get_backend: () => ({
+        get_default_seat: () => ({
+          create_virtual_device: (kind) => {
+            assert.equal(kind, Clutter.InputDeviceType.KEYBOARD_DEVICE);
+            return {
+              notify_keyval: (time, key, state) => events.push([time, key, state]),
+              run_dispose: () => {
+                disposed = true;
+              },
+            };
+          },
+        }),
+      }),
+    },
+  };
+  const keyboard = new Keyboard(() => createKeyboardDevice(stage));
+  keyboard.send(2, 0xff51);
+  assert.deepEqual(events, [
+    [now, 0xffe9, 1],
+    [now, 0xff51, 1],
+    [now, 0xff51, 0],
+    [now, 0xffe9, 0],
+  ]);
+  assert.equal(
+    disposed,
+    false,
+    'retain the device until cleanup, not just until events are queued',
+  );
+  keyboard.reset();
+  assert.equal(disposed, true);
+});
+
+test('older GNOME uses Clutter.get_default_backend when the stage has no context', async () => {
+  const { createKeyboardDevice } = (await load('keyboard.js')).namespace;
+  let created = false;
+  Clutter.get_default_backend = () => ({
+    get_default_seat: () => ({
+      create_virtual_device: () => {
+        created = true;
+        return {};
+      },
+    }),
+  });
+  try {
+    createKeyboardDevice({});
+    assert.equal(created, true);
+  } finally {
+    delete Clutter.get_default_backend;
+  }
 });

@@ -1,11 +1,11 @@
 import Gio from 'gi://Gio';
 import Shell from 'gi://Shell';
 import Clutter from 'gi://Clutter';
-import GLib from 'gi://GLib';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
 import * as Dialog from 'resource:///org/gnome/shell/ui/dialog.js';
+import { createKeyboardDevice } from './keyboard.js';
 import { FocusBridge } from './bridge.js';
 import { Identity, Keyboard, isProtected, consentDescription } from './security.js';
 
@@ -27,20 +27,7 @@ function readFocus() {
 
 export default class KivoriFocus extends Extension {
   enable() {
-    this._keyboard ??= new Keyboard(() => {
-      const device = global.backend
-        .get_default_seat()
-        .create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
-      return {
-        notify: (key, down) =>
-          device.notify_keyval(
-            GLib.get_monotonic_time(),
-            key,
-            down ? Clutter.KeyState.PRESSED : Clutter.KeyState.RELEASED,
-          ),
-        dispose: () => device.run_dispose(),
-      };
-    });
+    this._keyboard ??= new Keyboard(() => createKeyboardDevice(global.stage));
     // Retain the snapshot across disable/re-enable; disk changes need a new Shell session.
     this._identity ??= new Identity(this.path);
     this._identity.watch();

@@ -4,6 +4,6 @@
   "description": "Tells Kivori which app is in front, only after Kivori asks, over local session D-Bus. Sends allow-listed keyboard shortcuts only for the installed, approved Kivori executable outside protected contexts. No window titles, contents or network access.",
   "shell-version": ["46", "47", "48", "49", "50"],
   "session-modes": ["user", "unlock-dialog"],
-  "version": 5,
-  "version-name": "2.1"
+  "version": 6,
+  "version-name": "2.2"
 }

@@ -5,7 +5,7 @@ import { allowedShortcut } from './security.js';
 export const BUS = 'id.cunilab.KivoriFocus';
 export const PATH = '/id/cunilab/KivoriFocus';
 // Bump with metadata.json and desktop gnome_focus.rs on every protocol/behavior change.
-export const VERSION = 5;
+export const VERSION = 6;
 const MAX_SUBSCRIBERS = 4;
 const XML = `<node><interface name="${BUS}">
   <property name="Version" type="u" access="read"/>
@@ -219,8 +219,9 @@ export class FocusBridge {
     try {
       this._keyboard.send(modifiers, keysym);
       invocation.return_value(null);
-    } catch {
-      this._refuse(invocation, 'Failed', 'Keyboard cleanup is required');
+    } catch (error) {
+      console.error(`[Kivori] Keyboard shortcut failed: ${error.message}`);
+      this._refuse(invocation, 'Failed', 'Keyboard shortcut could not be sent');
     }
   }
   UnsubscribeAsync(_params, invocation) {

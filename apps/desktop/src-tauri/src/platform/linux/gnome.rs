@@ -40,11 +40,14 @@ const BRIDGE: &str =
     include_str!("../../../linux/gnome-extension/kivori-focus@cunilab.id/bridge.js");
 const SECURITY: &str =
     include_str!("../../../linux/gnome-extension/kivori-focus@cunilab.id/security.js");
-const FILES: [(&str, &str); 4] = [
+const KEYBOARD: &str =
+    include_str!("../../../linux/gnome-extension/kivori-focus@cunilab.id/keyboard.js");
+const FILES: [(&str, &str); 5] = [
     ("metadata.json", METADATA),
     ("extension.js", EXTENSION),
     ("bridge.js", BRIDGE),
     ("security.js", SECURITY),
+    ("keyboard.js", KEYBOARD),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

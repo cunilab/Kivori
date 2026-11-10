@@ -24,7 +24,7 @@ pub(super) const BUS: &str = "id.cunilab.KivoriFocus";
 const PATH: &str = "/id/cunilab/KivoriFocus";
 /// The extension version this build embeds (`metadata.json` "version", `bridge.js` VERSION).
 /// A running copy at least this new is trusted; an older one is never talked to.
-pub(super) const VERSION: u32 = 5;
+pub(super) const VERSION: u32 = 6;
 const TTL: Duration = Duration::from_secs(3);
 const HEARTBEAT: Duration = Duration::from_secs(1);
 const BACKOFF_FIRST: Duration = Duration::from_secs(2);
@@ -220,9 +220,11 @@ impl GnomeFocus {
         let proxy =
             Proxy::new(&conn, owner.as_str(), PATH, BUS).map_err(|_| ActionError::Uncertain)?;
         let started = Instant::now();
-        let (authorized, generation, shell_clock): (bool, u32, u64) = proxy
-            .call("GetShortcutContext", &())
-            .map_err(|_| ActionError::Uncertain)?;
+        let (authorized, generation, shell_clock): (bool, u32, u64) =
+            proxy.call("GetShortcutContext", &()).map_err(|error| {
+                tracing::warn!(%error, "GNOME shortcut context unavailable; no shortcut sent");
+                ActionError::Failed("GNOME shortcut context is unavailable".into())
+            })?;
         if !authorized {
             if !request_consent {
                 return Err(ActionError::Failed(
@@ -244,7 +246,7 @@ impl GnomeFocus {
         // One call only: Shell checks this exact focus generation and its monotonic deadline.
         proxy
             .call("SendShortcut", &(args.0, args.1, deadline, generation))
-            .map_err(|_| ActionError::Uncertain)
+            .map_err(shortcut_call_error)
     }
 
     /// Media fallback uses the same authorized, guarded shortcut transport, without opening consent.
@@ -424,6 +426,29 @@ fn keysym(key: ShortcutKey) -> Result<u32, ActionError> {
         _ => return Err(ActionError::Failed("unsupported key".into())),
     })
 }
+/// A method refusal proves the Shell did not send a chord. Only transport failures or
+/// timeouts leave delivery unknown; never turn a policy/injection error into "sent".
+fn shortcut_call_error(error: zbus::Error) -> ActionError {
+    let reason = match &error {
+        zbus::Error::MethodError(name, _, _) => match name.as_str() {
+            "org.freedesktop.DBus.Error.NoReply"
+            | "org.freedesktop.DBus.Error.Timeout"
+            | "org.freedesktop.DBus.Error.TimedOut" => return ActionError::Uncertain,
+            "org.freedesktop.DBus.Error.AccessDenied" => {
+                "GNOME refused the shortcut: check permission and focus"
+            }
+            "org.freedesktop.DBus.Error.InvalidArgs" => "Shortcut not allowed by GNOME",
+            "org.freedesktop.DBus.Error.LimitsExceeded" => {
+                "Keyboard shortcuts are arriving too quickly"
+            }
+            _ => "GNOME could not send the keyboard shortcut",
+        },
+        _ => return ActionError::Uncertain,
+    };
+    tracing::warn!(%error, reason, "GNOME shortcut refused");
+    ActionError::Failed(reason.into())
+}
+
 fn media_keysym(key: MediaKey) -> u32 {
     match key {
         MediaKey::PlayPause => 0x1008ff14, // XF86AudioPlay
@@ -485,6 +510,55 @@ fn deadline_budget(deadline: Option<Instant>, round_trip: Duration) -> Result<u6
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn method_error(name: &str, reason: &str) -> zbus::Error {
+        let call = zbus::Message::method_call(PATH, "SendShortcut")
+            .unwrap()
+            .build(&())
+            .unwrap();
+        let reply = zbus::Message::error(&call.header(), name)
+            .unwrap()
+            .build(&reason)
+            .unwrap();
+        zbus::Error::from(reply)
+    }
+
+    #[test]
+    fn shell_refusals_are_failures_never_sent_or_unknown() {
+        for (name, reason) in [
+            ("AccessDenied", "Keyboard authorization is required"),
+            (
+                "AccessDenied",
+                "Shortcut expired, focus changed, or desktop is protected",
+            ),
+            (
+                "InvalidArgs",
+                "Shortcut not allowed by the GNOME keyboard policy",
+            ),
+            (
+                "LimitsExceeded",
+                "Keyboard shortcuts are arriving too quickly",
+            ),
+            ("Failed", "Keyboard cleanup is required"),
+        ] {
+            let error = method_error(&format!("org.freedesktop.DBus.Error.{name}"), reason);
+            assert!(
+                matches!(shortcut_call_error(error), ActionError::Failed(reason) if !reason.is_empty())
+            );
+        }
+    }
+
+    #[test]
+    fn missing_shortcut_reply_keeps_delivery_unknown() {
+        for name in ["NoReply", "Timeout", "TimedOut"] {
+            let error = method_error(&format!("org.freedesktop.DBus.Error.{name}"), "No reply");
+            assert_eq!(shortcut_call_error(error), ActionError::Uncertain);
+        }
+        let error = zbus::Error::InputOutput(std::sync::Arc::new(std::io::Error::from(
+            std::io::ErrorKind::BrokenPipe,
+        )));
+        assert_eq!(shortcut_call_error(error), ActionError::Uncertain);
+    }
 
     #[test]
     fn media_fallback_keysyms_are_allowed_lone_keys() {
