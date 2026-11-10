@@ -60,7 +60,10 @@ export function UsbAccess(): ReactElement | null {
             {busy ? t.fixing : t.fix}
           </Button>
         ) : access.manualCommand ? (
-          <div className="space-y-2">
+          <details className="space-y-2">
+            <summary className="cursor-pointer rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              {t.manualTitle}
+            </summary>
             <p>{t.manualBody}</p>
             <code
               className="block break-all rounded-md bg-muted px-2 py-1.5 font-mono text-xs"
@@ -76,12 +79,22 @@ export function UsbAccess(): ReactElement | null {
             >
               {copied ? t.copied : t.copy}
             </Button>
-          </div>
+          </details>
         ) : null}
         {error ? (
-          <p className="text-destructive" role="status" data-testid="usb-access-error">
-            {error}
-          </p>
+          <div className="space-y-2">
+            <p className="text-destructive" role="status" data-testid="usb-access-error">
+              {t.fixFailed}
+            </p>
+            {error !== t.fixFailed ? (
+              <details className="text-xs">
+                <summary className="cursor-pointer rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {t.errorDetails}
+                </summary>
+                <p className="mt-2 break-words">{error}</p>
+              </details>
+            ) : null}
+          </div>
         ) : null}
       </AlertDescription>
     </Alert>

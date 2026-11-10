@@ -41,6 +41,10 @@ export async function enableGnomeFocus(): Promise<GnomeFocusStatus> {
     return parse(await invoke<unknown>('enable_gnome_focus'));
   }
   if (import.meta.env.DEV) {
+    // Preview the retry state without installing anything: ?mock=connected&gnome=notInstalled&gnomeError.
+    if (new URLSearchParams(window.location.search).has('gnomeError')) {
+      throw new Error('Mock installation failed.');
+    }
     mockEnabled = true;
     return mockStatus();
   }

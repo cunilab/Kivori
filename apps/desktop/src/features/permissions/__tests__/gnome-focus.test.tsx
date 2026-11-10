@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as ipc from '../../../lib/ipc/gnome';
 import type { GnomeFocusStatus } from '../../../lib/ipc/gnome';
 import { GnomeFocusHelp } from '../GnomeFocusHelp';
+import { strings } from '@/lib/i18n/strings';
+
+const t = strings.gnomeFocus;
 
 vi.mock('../../../lib/ipc/gnome', () => ({
   getGnomeFocusStatus: vi.fn(),
@@ -28,15 +31,15 @@ describe('GNOME Wayland profile setup', () => {
 
   it('explains privacy and the one-time logout before explicit opt-in', async () => {
     render(<GnomeFocusHelp />);
-    expect(await screen.findByText('Enable Kivori app profiles and shortcuts')).toBeVisible();
-    expect(screen.getByText(/No window titles or contents/)).toBeVisible();
-    expect(screen.getByText('One log-out is needed the first time.')).toBeVisible();
+    expect(await screen.findByText(t.title)).toBeVisible();
+    expect(screen.getByText(t.privacy)).toBeVisible();
+    expect(screen.getByText(t.once)).toBeVisible();
     expect(ipc.enableGnomeFocus).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Enable' }));
-    expect(await screen.findByText('Log out and back in once to finish')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: t.enable }));
+    expect(await screen.findByText(t.logoutTitle)).toBeVisible();
     expect(ipc.enableGnomeFocus).toHaveBeenCalledTimes(1);
     expect(ipc.logoutGnome).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Log out now' }));
+    fireEvent.click(screen.getByRole('button', { name: t.logout }));
     await waitFor(() => expect(ipc.logoutGnome).toHaveBeenCalledTimes(1));
   });
 
@@ -45,77 +48,78 @@ describe('GNOME Wayland profile setup', () => {
     async (status) => {
       vi.mocked(ipc.getGnomeFocusStatus).mockResolvedValue(status);
       render(<GnomeFocusHelp />);
-      expect(await screen.findByRole('button', { name: 'Enable' })).toBeVisible();
+      expect(await screen.findByRole('button', { name: t.enable })).toBeVisible();
     },
   );
 
-  it('states exactly what is shared and with whom', async () => {
+  it('keeps security facts in a disclosure that is closed by default', async () => {
     render(<GnomeFocusHelp />);
-    expect(await screen.findByText(/only learns which app is in front/)).toBeVisible();
-    expect(
-      screen.getByText(/Shortcuts are paused while GNOME is locked or showing a modal prompt/),
-    ).toBeVisible();
-    expect(
-      screen.getByText(
-        /require the installed Kivori executable and your approval in a GNOME dialog/,
-      ),
-    ).toBeVisible();
+    const summary = await screen.findByText(t.howItWorks);
+    const disclosure = summary.closest('details');
+    expect(disclosure).not.toHaveAttribute('open');
+    expect(screen.getByText(t.privacy)).toBeVisible();
+    for (const fact of Object.values(t.details)) {
+      expect(screen.getByText(fact)).not.toBeVisible();
+    }
+    fireEvent.click(summary);
+    expect(disclosure).toHaveAttribute('open');
+    for (const fact of Object.values(t.details)) {
+      expect(screen.getByText(fact)).toBeVisible();
+    }
   });
 
   it('offers an update for an outdated extension and then asks for the one log-out', async () => {
     vi.mocked(ipc.getGnomeFocusStatus).mockResolvedValue('updateAvailable');
     render(<GnomeFocusHelp />);
-    expect(await screen.findByText('Update Kivori App Profiles')).toBeVisible();
-    expect(screen.getByText('One log-out is needed to finish the update.')).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
-    expect(await screen.findByText('Log out and back in once to finish')).toBeVisible();
+    expect(await screen.findByText(t.updateTitle)).toBeVisible();
+    expect(screen.getByText(t.updateOnce)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: t.update }));
+    expect(await screen.findByText(t.logoutTitle)).toBeVisible();
     expect(ipc.enableGnomeFocus).toHaveBeenCalledTimes(1);
     expect(ipc.logoutGnome).not.toHaveBeenCalled();
   });
 
-  it('says plainly when gnome-extensions is missing instead of insisting on a log-out title', async () => {
+  it('offers a log-out when the desktop cannot confirm setup', async () => {
     vi.mocked(ipc.getGnomeFocusStatus).mockResolvedValue('cliMissing');
     render(<GnomeFocusHelp />);
-    expect(await screen.findByText("Kivori can't check the extension")).toBeVisible();
-    expect(screen.getByText(/gnome-extensions tool/)).toBeVisible();
-    expect(screen.queryByText('Log out and back in once to finish')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Log out now' })).toBeVisible();
+    expect(await screen.findByText(t.cliMissingTitle)).toBeVisible();
+    expect(screen.getByText(t.cliMissing)).toBeVisible();
+    expect(screen.getByText(t.privacy)).toBeVisible();
+    expect(screen.getByRole('button', { name: t.logout })).toBeVisible();
   });
 
   it('explains an unsupported version without an install action', async () => {
     vi.mocked(ipc.getGnomeFocusStatus).mockResolvedValue('unsupported');
     render(<GnomeFocusHelp />);
-    expect(await screen.findByText(/supports GNOME 46–50/)).toBeVisible();
+    expect(await screen.findByText(t.unsupported)).toBeVisible();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('shows a failed status read instead of silently hiding setup, then recovers', async () => {
     vi.mocked(ipc.getGnomeFocusStatus).mockRejectedValueOnce(new Error('Status command failed'));
     render(<GnomeFocusHelp />);
-    expect(await screen.findByText('Status command failed')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Enable' })).toBeVisible();
+    expect(await screen.findByText(t.readFailed)).toBeVisible();
+    expect(screen.getByRole('button', { name: t.enable })).toBeVisible();
     await act(async () => {
       window.dispatchEvent(new Event('focus'));
     });
-    await waitFor(() =>
-      expect(screen.queryByText('Status command failed')).not.toBeInTheDocument(),
-    );
-    expect(screen.getByRole('button', { name: 'Enable' })).toBeVisible();
+    await waitFor(() => expect(screen.queryByText(t.readFailed)).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: t.enable })).toBeVisible();
   });
 
   it('shows an installation failure and permits retry', async () => {
     vi.mocked(ipc.enableGnomeFocus).mockRejectedValueOnce(new Error('Disk is full'));
     render(<GnomeFocusHelp />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Enable' }));
-    expect(await screen.findByRole('alert', { name: '' })).toBeVisible();
-    expect(await screen.findByText('Disk is full')).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Enable' }));
-    expect(await screen.findByText('Log out and back in once to finish')).toBeVisible();
+    fireEvent.click(await screen.findByRole('button', { name: t.enable }));
+    expect(await screen.findByText(t.installFailed)).toHaveAttribute('role', 'alert');
+    expect(screen.queryByText('Disk is full')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: t.enable }));
+    expect(await screen.findByText(t.logoutTitle)).toBeVisible();
   });
 
   it('refreshes on returning from GNOME and disappears once working', async () => {
     render(<GnomeFocusHelp />);
-    await screen.findByRole('button', { name: 'Enable' });
+    await screen.findByRole('button', { name: t.enable });
     vi.mocked(ipc.getGnomeFocusStatus).mockResolvedValue('working');
     await act(async () => {
       window.dispatchEvent(new Event('focus'));

@@ -11,6 +11,9 @@ vi.mock('../../../lib/ipc', () => ({
 }));
 
 import { UsbAccess } from '../UsbAccess';
+import { strings } from '@/lib/i18n/strings';
+
+const t = strings.device.usbAccess;
 
 const ok: SerialAccessDto = { denied: false, canFix: true, manualCommand: null };
 const denied: SerialAccessDto = { denied: true, canFix: true, manualCommand: null };
@@ -36,10 +39,8 @@ describe('USB access card', () => {
   it('says what is wrong in plain words and offers one button', async () => {
     bridge.get.mockResolvedValue(denied);
     render(<UsbAccess />);
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Kivori needs permission to use the USB device',
-    );
-    expect(screen.getByRole('button', { name: 'Allow USB access' })).toBeEnabled();
+    expect(await screen.findByRole('alert')).toHaveTextContent(t.title);
+    expect(screen.getByRole('button', { name: t.fix })).toBeEnabled();
     expect(screen.queryByTestId('usb-access-command')).toBeNull();
   });
 
@@ -53,9 +54,9 @@ describe('USB access card', () => {
     let finish: (access: SerialAccessDto) => void = () => {};
     bridge.fix.mockReturnValue(new Promise((resolve) => (finish = resolve)));
     render(<UsbAccess />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Allow USB access' }));
+    await userEvent.click(await screen.findByRole('button', { name: t.fix }));
     expect(bridge.fix).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('button', { name: 'Waiting for your password…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: t.fixing })).toBeDisabled();
     await act(async () => {
       finish(denied);
       emit(ok);
@@ -67,21 +68,22 @@ describe('USB access card', () => {
     bridge.get.mockResolvedValue(denied);
     bridge.fix.mockRejectedValueOnce("Permission wasn't granted");
     render(<UsbAccess />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Allow USB access' }));
-    expect(await screen.findByTestId('usb-access-error')).toHaveTextContent(
-      "Permission wasn't granted",
-    );
-    expect(screen.getByRole('button', { name: 'Allow USB access' })).toBeEnabled();
+    await userEvent.click(await screen.findByRole('button', { name: t.fix }));
+    expect(await screen.findByRole('status')).toHaveTextContent(t.fixFailed);
+    const details = screen.getByText(t.errorDetails).closest('details');
+    expect(details).not.toHaveAttribute('open');
+    expect(screen.getByText("Permission wasn't granted")).not.toBeVisible();
+    await userEvent.click(screen.getByText(t.errorDetails));
+    expect(screen.getByText("Permission wasn't granted")).toBeVisible();
+    expect(screen.getByRole('button', { name: t.fix })).toBeEnabled();
   });
 
   it('falls back to a generic line when the failure has no text', async () => {
     bridge.get.mockResolvedValue(denied);
     bridge.fix.mockRejectedValueOnce(undefined);
     render(<UsbAccess />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Allow USB access' }));
-    expect(await screen.findByTestId('usb-access-error')).toHaveTextContent(
-      'USB access was not set up.',
-    );
+    await userEvent.click(await screen.findByRole('button', { name: t.fix }));
+    expect(await screen.findByTestId('usb-access-error')).toHaveTextContent(t.fixFailed);
   });
 
   it('without pkexec hides the button and shows the command to copy instead', async () => {
@@ -93,10 +95,15 @@ describe('USB access card', () => {
     expect(await screen.findByTestId('usb-access-command')).toHaveTextContent(
       'sudo tee /etc/udev/rules.d/60-kivori.rules',
     );
-    expect(screen.queryByRole('button', { name: 'Allow USB access' })).toBeNull();
-    await user.click(screen.getByRole('button', { name: 'Copy command' }));
+    const summary = screen.getByText(t.manualTitle);
+    expect(summary.closest('details')).not.toHaveAttribute('open');
+    expect(screen.getByTestId('usb-access-command')).not.toBeVisible();
+    await user.click(summary);
+    expect(screen.getByTestId('usb-access-command')).toBeVisible();
+    expect(screen.queryByRole('button', { name: t.fix })).toBeNull();
+    await user.click(screen.getByRole('button', { name: t.copy }));
     expect(writeText).toHaveBeenCalledWith(manual.manualCommand);
-    expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: t.copied })).toBeInTheDocument();
   });
 
   it('appears when a later event reports the permission was refused', async () => {

@@ -26,7 +26,9 @@ pub fn shortcut_policy(keys: &str) -> Option<String> {
                 .map(|_| ())
                 .map_err(|e| format!("{e:?}"))
         });
-    result.err().map(|_| "Shortcut not allowed on GNOME Wayland: use Ctrl/Alt/Super chords or permitted non-text keys; system launch, lock, console-switch and paste chords are blocked.".into())
+    result.err().map(|_| {
+        "This shortcut isn’t allowed. Try a different shortcut, such as Ctrl+Shift+T.".into()
+    })
 }
 
 pub const UUID: &str = "kivori-focus@cunilab.id";

@@ -1,3 +1,4 @@
+import { strings } from '@/lib/i18n/strings';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -199,7 +200,7 @@ describe('app updates in Settings', () => {
     const cases: [Partial<UpdateStatusDto>, string][] = [
       [{ state: 'disabled', reason: 'devBuild' }, 'development build'],
       [{ state: 'disabled', reason: 'noKey' }, 'cannot verify them yet'],
-      [{ state: 'unsupported' }, 'not available for this install'],
+      [{ state: 'unsupported' }, strings.updates.unsupported],
     ];
     for (const [overrides, text] of cases) {
       bridge.get.mockResolvedValue({ ...idle, ...overrides });

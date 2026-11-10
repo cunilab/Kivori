@@ -3,10 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getGnomeShortcutPolicy } from '@/lib/ipc/gnome';
 import { mockListActionCatalog } from '@/lib/ipc/mock';
 import { ActionPicker } from '../ActionPicker';
+import { strings } from '@/lib/i18n/strings';
 import type { ActionSpec, RotateSpec } from '@/lib/ipc/types';
 
 vi.mock('@/lib/ipc/gnome', () => ({ getGnomeShortcutPolicy: vi.fn() }));
-const denied = 'Shortcut not allowed on GNOME Wayland: system launch and paste chords are blocked.';
+const denied = 'This shortcut isn’t allowed. Try a different shortcut, such as Ctrl+Shift+T.';
 beforeEach(() => {
   vi.mocked(getGnomeShortcutPolicy).mockImplementation(async (keys) =>
     ['Alt+F2', 'Ctrl+Shift+V'].includes(keys) ? denied : null,
@@ -48,7 +49,7 @@ describe('GNOME shortcut restrictions in the action picker', () => {
     vi.mocked(getGnomeShortcutPolicy).mockRejectedValue(new Error('disconnected'));
     picker({ kind: 'shortcut', keys: 'Ctrl+A' }, 'step');
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Unable to check keyboard shortcut restrictions',
+      strings.controls.picker.shortcutPolicyUnavailable,
     );
     expect(screen.getByRole('button', { name: 'Add step' })).toBeDisabled();
   });

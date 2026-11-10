@@ -4,32 +4,41 @@
 export const strings = {
   appTitle: 'Kivori',
   gnomeFocus: {
-    title: 'Enable Kivori app profiles and shortcuts',
-    logoutTitle: 'Log out and back in once to finish',
-    notInstalled:
-      'Enable Kivori App Profiles for GNOME so your controls follow the app in front of you and keyboard shortcuts work on Wayland.',
-    disabled:
-      'Kivori App Profiles is turned off in GNOME. Enable it to let profiles follow your apps again.',
-    needsLogout:
-      'The extension is ready. Save your work, then log out and back in. GNOME will start it automatically. On first shortcut use, approve the GNOME dialog showing the full Kivori executable path.',
-    unsupported:
-      'Kivori App Profiles supports GNOME 46–50. Update Kivori for support for your GNOME version.',
-    unavailable:
-      'GNOME could not start Kivori App Profiles. Try enabling it again, or check Kivori App Profiles in the Extensions app.',
-    privacy:
-      'Kivori only learns which app is in front, and only when it asks. No window titles or contents, and nothing leaves this computer. Keyboard shortcuts require the installed Kivori executable and your approval in a GNOME dialog. Approval is remembered across restarts, and is requested again if the executable changes. Shortcuts are paused while GNOME is locked or showing a modal prompt. This protects against other apps silently pressing keys in this session. Like any GNOME extension, it relies on files in your home folder and does not defend against malware already running as you.',
-    updateTitle: 'Update Kivori App Profiles',
-    updateAvailable:
-      'The Kivori App Profiles extension in GNOME is out of date. Update it to enable keyboard shortcuts on Wayland and keep your controls following the app in front of you.',
-    updateOnce: 'One log-out is needed to finish the update.',
-    cliMissingTitle: "Kivori can't check the extension",
-    cliMissing:
-      "Kivori could not run GNOME's gnome-extensions tool, so it can't confirm that App Profiles is running. Log out and back in to finish. If your controls still don't follow your apps, install gnome-extensions (part of GNOME Shell) and open this page again.",
-    once: 'One log-out is needed the first time.',
-    enable: 'Enable',
+    title: 'Let Kivori follow your apps',
+    logoutTitle: 'Almost done: log out and back in',
+    notInstalled: 'Your buttons follow the app you’re using, and shortcuts work too.',
+    disabled: 'Turn app profiles back on so your buttons follow your apps.',
+    needsLogout: 'Save your work, then log out and back in once.',
+    unsupported: 'App profiles aren’t available on this desktop yet.',
+    unavailable: 'App profiles couldn’t start. Try again.',
+    privacy: 'Kivori only sees which app is in front. Nothing leaves this computer.',
+    updateTitle: 'Update needed',
+    updateAvailable: 'Update so your buttons keep following your apps and shortcuts work.',
+    updateOnce: 'Needs one log-out.',
+    cliMissingTitle: 'Log out and back in to finish',
+    cliMissing: 'Log out and back in once to finish setting up app profiles.',
+    once: 'Needs one log-out.',
+    enable: 'Turn on',
     update: 'Update',
     logout: 'Log out now',
     busy: 'Please wait…',
+    howItWorks: 'How this works',
+    details: {
+      sees: 'Kivori checks which app is in front when needed, never window titles or contents.',
+      approval:
+        'Shortcuts need your one-time Allow in a GNOME dialog showing the Kivori app’s full file path.',
+      remembered:
+        'Your approval lasts across restarts. If the Kivori app changes, you’ll be asked again.',
+      paused:
+        'Shortcuts pause on the lock screen and during password prompts and other system dialogs.',
+      malware:
+        'This relies on files in your home folder and can’t protect against malware already on this computer.',
+      docs: 'Technical details and troubleshooting: docs/linux.md.',
+    },
+    installFailed: 'Couldn’t turn on app profiles. Try again.',
+    updateFailed: 'Couldn’t update app profiles. Try again.',
+    logoutFailed: 'Couldn’t log out. Use your desktop menu to log out.',
+    readFailed: 'Couldn’t check app profiles. Try again.',
   },
   tagline: 'Desk controller',
   unknown: '—',
@@ -396,7 +405,7 @@ export const strings = {
     micScope:
       'Mic mute mutes the computer’s microphones, not an app’s own mute button. A call app can still show its own mute as off.',
     picker: {
-      shortcutPolicyUnavailable: 'Unable to check keyboard shortcut restrictions. Try again.',
+      shortcutPolicyUnavailable: 'Couldn’t check this shortcut. Try again.',
       title: 'Edit {control}',
       description: 'Choose what this control does in the {profile} profile.',
       actionGroup: 'Action',
@@ -614,12 +623,14 @@ export const strings = {
     tabs: { overview: 'Overview', firmware: 'Firmware', internals: 'Internals' },
     sessionDeviceOnly: 'Connect your Kivori to see its protocol and reported state.',
     usbAccess: {
-      title: 'Kivori needs permission to use the USB device',
-      body: 'Your Kivori is plugged in, but this computer is not letting Kivori Desktop talk to it. Allowing it takes one step and your computer password.',
+      title: 'Let Kivori connect',
+      body: 'Allow access to your Kivori using your computer password.',
       fix: 'Allow USB access',
       fixing: 'Waiting for your password…',
       fixFailed: 'USB access was not set up.',
       fixed: 'Done. Looking for your Kivori…',
+      manualTitle: 'Set up access manually',
+      errorDetails: 'Error details',
       manualBody:
         'Open a terminal, paste this command, and enter your password when asked. Then unplug and replug your Kivori.',
       copy: 'Copy command',
@@ -694,8 +705,7 @@ export const strings = {
       noKey: 'Updates are off in this build: it cannot verify them yet.',
       badEndpoint: 'Updates are off in this build.',
     },
-    unsupported:
-      'Automatic updates are not available for this install. Download new versions from the Kivori website.',
+    unsupported: 'To update, download and install the latest Kivori from our website.',
     dialog: {
       title: 'Kivori {version} is ready',
       current: 'You have {version}.',
