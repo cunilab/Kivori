@@ -18,7 +18,7 @@ use zbus::MatchRule;
 
 use super::apps::DesktopEntry;
 use crate::platform::foreground::classify_linux;
-use crate::platform::{ActionError, Foreground, InputGuard, Shortcut, ShortcutKey};
+use crate::platform::{ActionError, Foreground, InputGuard, MediaKey, Shortcut, ShortcutKey};
 
 pub(super) const BUS: &str = "id.cunilab.KivoriFocus";
 const PATH: &str = "/id/cunilab/KivoriFocus";
@@ -201,8 +201,16 @@ impl GnomeFocus {
         shortcut: &Shortcut,
         guard: InputGuard,
     ) -> Result<(), ActionError> {
+        self.send_shortcut_args(shortcut_args(shortcut)?, guard, true)
+    }
+
+    fn send_shortcut_args(
+        &self,
+        args: (u32, u32),
+        guard: InputGuard,
+        request_consent: bool,
+    ) -> Result<(), ActionError> {
         guard.check()?;
-        let args = shortcut_args(shortcut)?;
         let owner = self.owner.lock().expect("GNOME focus").clone();
         let owner = owner
             .filter(|_| self.bridge_ready())
@@ -216,6 +224,11 @@ impl GnomeFocus {
             .call("GetShortcutContext", &())
             .map_err(|_| ActionError::Uncertain)?;
         if !authorized {
+            if !request_consent {
+                return Err(ActionError::Failed(
+                    super::keys::NO_PLAYER_GNOME_REASON.into(),
+                ));
+            }
             if !self.prompt_requested.swap(true, Ordering::AcqRel) {
                 // Only an actual shortcut attempt may open Shell consent. Never defer this
                 // chord across the dialog: the user can try again after approving.
@@ -232,6 +245,21 @@ impl GnomeFocus {
         proxy
             .call("SendShortcut", &(args.0, args.1, deadline, generation))
             .map_err(|_| ActionError::Uncertain)
+    }
+
+    /// Media fallback uses the same authorized, guarded shortcut transport, without opening consent.
+    pub(super) fn send_media_key(
+        &self,
+        key: MediaKey,
+        guard: InputGuard,
+    ) -> Result<(), ActionError> {
+        guard.check()?;
+        if !self.shortcuts_ready() {
+            return Err(ActionError::Failed(
+                super::keys::NO_PLAYER_GNOME_REASON.into(),
+            ));
+        }
+        self.send_shortcut_args((0, media_keysym(key)), guard, false)
     }
 
     fn clear(&self) {
@@ -396,6 +424,14 @@ fn keysym(key: ShortcutKey) -> Result<u32, ActionError> {
         _ => return Err(ActionError::Failed("unsupported key".into())),
     })
 }
+fn media_keysym(key: MediaKey) -> u32 {
+    match key {
+        MediaKey::PlayPause => 0x1008ff14, // XF86AudioPlay
+        MediaKey::Previous => 0x1008ff16,  // XF86AudioPrev
+        MediaKey::Next => 0x1008ff17,      // XF86AudioNext
+    }
+}
+
 pub(super) fn shortcut_args(shortcut: &Shortcut) -> Result<(u32, u32), ActionError> {
     let modifiers = u32::from(shortcut.ctrl)
         | (u32::from(shortcut.alt) << 1)
@@ -449,6 +485,18 @@ fn deadline_budget(deadline: Option<Instant>, round_trip: Duration) -> Result<u6
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn media_fallback_keysyms_are_allowed_lone_keys() {
+        for (key, expected) in [
+            (MediaKey::PlayPause, 0x1008ff14),
+            (MediaKey::Previous, 0x1008ff16),
+            (MediaKey::Next, 0x1008ff17),
+        ] {
+            assert_eq!(media_keysym(key), expected);
+            assert!(permitted_shortcut(0, media_keysym(key)));
+        }
+    }
 
     #[test]
     fn policy_refuses_text_system_surfaces_and_clipboard_paste() {

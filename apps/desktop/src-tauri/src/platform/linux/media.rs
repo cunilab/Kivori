@@ -750,6 +750,10 @@ mod tests {
         });
         let mpris = Mpris::with_bus(bus);
         assert_eq!(mpris.observe(), (None, None));
+        assert_eq!(
+            mpris.send_key(MediaKey::PlayPause, &guard_until(None, true)),
+            Sent::NoPlayer
+        );
     }
 
     #[test]

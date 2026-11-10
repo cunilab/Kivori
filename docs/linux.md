@@ -64,7 +64,7 @@ bundles omit updater signatures. With a key, the usual Tauri key/password valida
 | Master volume / output mute | libpulse, confirmed by read-back | Same (PipeWire's PulseAudio compatibility service) |
 | Per-app volume / mute | PulseAudio streams | Same |
 | Microphone mute | Every capture device, confirmed by read-back | Same |
-| Media keys / now playing | MPRIS over session D-Bus | Same |
+| Media keys / now playing | MPRIS; media-key fallback with no player | MPRIS; authorized Kivori GNOME extension media-key fallback with no player |
 | Keyboard shortcuts | enigo X11 input | Kivori GNOME extension on GNOME 46–50; desktop keyboard portal on other compositors |
 | Automatic foreground-app profiles | X11 foreground window | Works with the Kivori GNOME extension (GNOME 46–50); one-time logout after enabling |
 | CPU / RAM | `/proc` | Same |
@@ -77,7 +77,7 @@ On GNOME Wayland, Controls offers **Enable** or **Update** for Kivori App Profil
 
 Focus subscription and keyboard authorization are separate. The extension obtains each caller’s PID from the bus daemon, checks `/proc/<pid>/exe` against the installed path and its executable fingerprint, and rejects sandbox proxies whose actual identity cannot be verified. Unauthenticated callers cannot occupy focus subscription slots; only one approved unique bus peer may inject. Disconnect, executable replacement and disable revoke active injection. The extension shares no window titles or contents and uses no network. Trust and approval files are read once at extension enable and retained in memory for this Shell session; background requests never re-read them or open a consent dialog. Changes to those files during the session cannot silently grant keyboard control. A trusted-file monitor revokes current consent when `trusted.json` changes, and a changed executable fingerprint requires a fresh Shell dialog. A new executable path or on-disk approval takes effect only after re-login; only approval granted by the Shell dialog can be added in memory during this session. The cached path is retained across extension disable/re-enable. This protects against other apps silently pressing keys in this session. Like any GNOME extension, it relies on files in your home folder and does not defend against malware already running as you. The PID/executable checks are not an atomic snapshot, and the executable fingerprint uses metadata rather than a content hash.
 
-Shortcut policy on GNOME Wayland: use a chord containing Ctrl, Alt or Super, or a **lone** F1–F12, Escape, Tab, arrow, Home, End, PageUp, PageDown, Delete, or explicit media/volume keysym. Plain printable characters, Shift-only chords, lone Enter/Return and modifier-only keys (including Super/overview) are refused. Also always blocked, even with extra modifiers: **Alt+F2**, **Ctrl+Alt+F1–F12**, **Ctrl+Alt+Delete/Backspace**, **Super+L**, and clipboard paste **Ctrl+V / Ctrl+Shift+V / Super+V**. The action picker displays a “not allowed” reason for blocked chords. There is no text or raw key-stream API. Media actions still use MPRIS.
+Shortcut policy on GNOME Wayland: use a chord containing Ctrl, Alt or Super, or a **lone** F1–F12, Escape, Tab, arrow, Home, End, PageUp, PageDown, Delete, or explicit media/volume keysym. Plain printable characters, Shift-only chords, lone Enter/Return and modifier-only keys (including Super/overview) are refused. Also always blocked, even with extra modifiers: **Alt+F2**, **Ctrl+Alt+F1–F12**, **Ctrl+Alt+Delete/Backspace**, **Super+L**, and clipboard paste **Ctrl+V / Ctrl+Shift+V / Super+V**. The action picker displays a “not allowed” reason for blocked chords. There is no text or raw key-stream API. Media actions use MPRIS first, then the authorized extension only when no player is registered or the bus is unreachable.
 
 The extension fails closed unless screen shield, session lock, modal count and stage-grab state can all be validated. Lock screens, menus, overview, authentication prompts and other Shell modal grabs refuse injection. Every send includes a Shell monotonic deadline (at most 100 ms) and focus generation; delayed or changed-focus requests are discarded without retries. Chords are rate-limited to 50 per second and key contents are never logged. Releases are attempted in reverse order, on errors, disconnect and disable; the virtual device is explicitly disposed/reset. Any unconfirmed release remains tracked and suspends further injection, including across extension disable/re-enable; restart the GNOME session if cleanup remains uncertain. Successful shortcuts are **triggered, unverified**, not confirmation that the target app performed an action.
 
@@ -89,8 +89,12 @@ Ubuntu normally enables the AppIndicator extension. On other GNOME installations
 closing the window leaves a reachable tray icon. If profiles remain on General after the one-time logout, open the Extensions app and check that **Kivori App Profiles** is enabled. The Controls card can enable it again.
 
 With no MPRIS player registered, media status is **nothing playing**. Play/pause, next and previous
-fall back to media keys on X11 (sent without confirmation) and are unavailable on Wayland. If
-players are present but unreadable, status is **unknown**. A missing PulseAudio compatibility
+fall back to media keys on X11 or through the available, authorized Kivori extension on GNOME
+Wayland, including when the MPRIS bus is unreachable. Dispatch produces a quiet acknowledgement
+(**triggered, unverified**), even with nothing to play; it does not show a failure cross. Without
+the extension or its keyboard approval, GNOME Wayland reports a short failure reason. Other
+Wayland desktops have no media-key fallback. A player that refuses or does not answer is never
+retried as a key event. If players are present but unreadable, status is **unknown**. A missing PulseAudio compatibility
 service reports unavailable. Tests do not prove that a real microphone, player or device worked.
 
 ## Firmware and recovery

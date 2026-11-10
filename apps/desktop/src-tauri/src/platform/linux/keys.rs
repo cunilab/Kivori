@@ -1,8 +1,8 @@
 //! Key synthesis for Linux.
 //!
 //! MEDIA KEYS go to the media player over MPRIS first (see `media`): that works on X11 and Wayland
-//! and needs no synthesized input. Only when no player is reachable on the bus does an X11 session
-//! fall back to the key event (`XF86AudioPlay` and friends through `platform::synth`). A player that
+//! and needs no synthesized input. With no player (or no bus), X11 falls back to a key event and
+//! GNOME Wayland uses the authorized extension shortcut path. A player that
 //! was found and refused, or that did not answer in time, is never retried as a key event, so one
 //! press is never delivered twice.
 //!
@@ -31,8 +31,11 @@ pub const X11_UNREACHABLE_REASON: &str =
 pub const X11_UNRESPONSIVE_REASON: &str =
     "Keyboard shortcuts are paused: the X server isn't responding";
 
-/// An MPRIS call is bounded by its own method timeout and the discovery by the request's deadline;
-/// this caps the whole send.
+/// Reason for refusing media-key fallback without authorized GNOME input.
+pub(super) const NO_PLAYER_GNOME_REASON: &str =
+    "No media player; enable and approve the Kivori GNOME extension for media keys";
+
+/// Caps discovery before falling back to synthesized input.
 const SEND_CEILING: Duration = Duration::from_secs(2);
 
 /// What the session allows for shortcuts. On X11 the answer follows the backend's health (a recent
@@ -93,6 +96,17 @@ impl MediaSend for Mpris {
     }
 }
 
+/// Authorized GNOME media-key fallback, injected so tests never synthesize live input.
+trait GnomeMediaSend: Send + Sync {
+    fn send(&self, key: MediaKey, guard: InputGuard) -> Result<(), ActionError>;
+}
+
+impl GnomeMediaSend for super::gnome_focus::GnomeFocus {
+    fn send(&self, key: MediaKey, guard: InputGuard) -> Result<(), ActionError> {
+        self.send_media_key(key, guard)
+    }
+}
+
 /// An X11 session's health is the shared X worker's; any other session has no X to ask.
 struct NoX;
 
@@ -102,12 +116,13 @@ impl XHealth for NoX {
     }
 }
 
-/// Key synthesis for Linux: MPRIS for media keys, X11 key events for the rest.
+/// Key synthesis for Linux: MPRIS first, then session-specific guarded input.
 pub struct LinuxInputSynth {
     session: SessionKind,
     player: Arc<dyn MediaSend>,
     x11: Arc<dyn InputSynth>,
     health: Arc<dyn XHealth>,
+    gnome: Option<Arc<dyn GnomeMediaSend>>,
 }
 
 impl LinuxInputSynth {
@@ -120,7 +135,12 @@ impl LinuxInputSynth {
         } else {
             Arc::new(NoX)
         };
-        Self::with_parts(session, mpris, Arc::new(EnigoInputSynth::new(None)), health)
+        let mut synth =
+            Self::with_parts(session, mpris, Arc::new(EnigoInputSynth::new(None)), health);
+        if session == SessionKind::Wayland && super::session::is_gnome() {
+            synth.gnome = Some(super::gnome_focus::GnomeFocus::shared());
+        }
+        synth
     }
 
     fn with_parts(
@@ -134,6 +154,7 @@ impl LinuxInputSynth {
             player,
             x11,
             health,
+            gnome: None,
         }
     }
 }
@@ -162,7 +183,13 @@ impl InputSynth for LinuxInputSynth {
                 }
                 match self.session {
                     SessionKind::X11 => self.x11.send_media_key(key, guard),
-                    _ => Err(ActionError::Failed("no media player is running".into())),
+                    SessionKind::Wayland => self.gnome.as_ref().map_or_else(
+                        || Err(ActionError::Failed(NO_PLAYER_GNOME_REASON.into())),
+                        |gnome| gnome.send(key, guard),
+                    ),
+                    SessionKind::Headless => {
+                        Err(ActionError::Failed("no media player is running".into()))
+                    }
                 }
             }
         }
@@ -269,6 +296,86 @@ mod tests {
         synth_with(session, outcome, Some(true))
     }
 
+    struct GnomeKeys {
+        sent: Mutex<Vec<MediaKey>>,
+        ready: bool,
+    }
+
+    impl GnomeMediaSend for GnomeKeys {
+        fn send(&self, key: MediaKey, guard: InputGuard) -> Result<(), ActionError> {
+            guard.check()?;
+            if !self.ready {
+                return Err(ActionError::Failed(NO_PLAYER_GNOME_REASON.into()));
+            }
+            self.sent.lock().unwrap().push(key);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn no_player_on_gnome_sends_each_media_key_once() {
+        let (mut synth, player, x11) = synth(SessionKind::Wayland, Sent::NoPlayer);
+        let gnome = Arc::new(GnomeKeys {
+            sent: Mutex::default(),
+            ready: true,
+        });
+        synth.gnome = Some(gnome.clone());
+        for key in [MediaKey::PlayPause, MediaKey::Next, MediaKey::Previous] {
+            assert_eq!(synth.send_media_key(key, guard()), Ok(()));
+        }
+        assert_eq!(*gnome.sent.lock().unwrap(), *player.0.lock().unwrap());
+        assert_eq!(gnome.sent.lock().unwrap().len(), 3);
+        assert!(x11.media.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn gnome_media_fallback_requires_authorization_and_a_current_request() {
+        let (mut synth, _, _) = synth(SessionKind::Wayland, Sent::NoPlayer);
+        let gnome = Arc::new(GnomeKeys {
+            sent: Mutex::default(),
+            ready: false,
+        });
+        synth.gnome = Some(gnome.clone());
+        assert_eq!(
+            synth.send_media_key(MediaKey::PlayPause, guard()),
+            Err(ActionError::Failed(NO_PLAYER_GNOME_REASON.into()))
+        );
+        for guard in [
+            InputGuard {
+                deadline: None,
+                current: Arc::new(|| false),
+            },
+            InputGuard {
+                deadline: Some(Instant::now()),
+                current: Arc::new(|| true),
+            },
+        ] {
+            assert!(synth.send_media_key(MediaKey::Next, guard).is_err());
+        }
+        assert!(gnome.sent.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn gnome_never_falls_back_when_a_player_is_present() {
+        for sent in [
+            Sent::Yes,
+            Sent::Unknown,
+            Sent::Failed("unreadable or refused".into()),
+            Sent::Expired,
+        ] {
+            let (mut synth, player, _) = synth(SessionKind::Wayland, sent.clone());
+            let gnome = Arc::new(GnomeKeys {
+                sent: Mutex::default(),
+                ready: true,
+            });
+            synth.gnome = Some(gnome.clone());
+            let result = synth.send_media_key(MediaKey::PlayPause, guard());
+            assert_eq!(result.is_ok(), matches!(sent, Sent::Yes));
+            assert_eq!(player.0.lock().unwrap().len(), 1);
+            assert!(gnome.sent.lock().unwrap().is_empty());
+        }
+    }
+
     #[test]
     fn wayland_availability_requires_its_keyboard_backend() {
         assert_eq!(
@@ -306,12 +413,12 @@ mod tests {
     }
 
     #[test]
-    fn with_no_player_wayland_reports_a_failure_instead_of_a_silent_miss() {
+    fn with_no_player_and_no_extension_wayland_reports_a_reason() {
         for session in [SessionKind::Wayland, SessionKind::Headless] {
             let (synth, _, keys) = synth(session, Sent::NoPlayer);
             assert!(matches!(
                 synth.send_media_key(MediaKey::PlayPause, guard()),
-                Err(ActionError::Failed(_))
+                Err(ActionError::Failed(reason)) if reason.contains("media player")
             ));
             assert!(keys.media.lock().unwrap().is_empty());
         }

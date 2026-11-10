@@ -1033,7 +1033,12 @@ mod tests {
 
     #[test]
     fn play_pause_is_never_more_than_triggered() {
-        for media in [None, Some(MediaStatus::Paused), Some(MediaStatus::Playing)] {
+        for media in [
+            None,
+            Some(MediaStatus::Stopped),
+            Some(MediaStatus::Paused),
+            Some(MediaStatus::Playing),
+        ] {
             let (p, _) = platform(Ok(()), media, FakeVolumeBackend::new(0));
             assert_eq!(kind(&Action::PlayPause, &p), FeedbackKind::Triggered);
         }

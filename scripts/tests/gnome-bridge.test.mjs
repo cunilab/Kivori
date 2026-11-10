@@ -326,6 +326,8 @@ test('all prohibited chords are refused, non-text keys and ordinary shortcuts ar
     [0, 0xff1b],
     [0, 0xffff],
     [0, 0x1008ff14],
+    [0, 0x1008ff16],
+    [0, 0x1008ff17],
     [0, 0x1008ff13],
   ]) {
     assert.equal(allowedShortcut(modifiers, key), true);
