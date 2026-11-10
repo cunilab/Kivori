@@ -55,3 +55,12 @@ export async function logoutGnome(): Promise<void> {
   if (import.meta.env.DEV) return;
   throw new Error('Kivori: the native runtime is unavailable.');
 }
+
+/** Restrictions apply only on GNOME Wayland; the native dispatcher enforces them too. */
+export async function getGnomeShortcutPolicy(keys: string): Promise<string | null> {
+  if (!isTauri()) return null;
+  const { invoke } = await import('@tauri-apps/api/core');
+  const value = await invoke<unknown>('gnome_shortcut_policy', { keys });
+  if (value === null || typeof value === 'string') return value;
+  throw new Error('Invalid keyboard policy response.');
+}

@@ -73,6 +73,7 @@ fn run_fake(
 
 fn flash_reconnect(executable: &Path) -> Result<(), String> {
     let mut sandbox = Sandbox::open(executable).map_err(|e| e.to_string())?;
+    super::scenarios::bind_media_press(&mut sandbox)?;
     connected(&mut sandbox)?;
     let mut calls = 0;
     let mut flash = FlashWorkflow::new(true, 512);

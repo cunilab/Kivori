@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { getGnomeShortcutPolicy } from '@/lib/ipc/gnome';
 import type { FormEvent, KeyboardEvent, ReactElement } from 'react';
 import { Button } from '@kivori/ui/components/button';
 import { Input } from '@kivori/ui/components/input';
@@ -19,6 +20,7 @@ import type {
   ControlRef,
   MacroSpec,
   ProfileConfigDto,
+  ProfileId,
   RotateSpec,
   SlotSpec,
   StepSpec,
@@ -35,6 +37,21 @@ export const LABEL_MAX = 32;
 export const LABEL_COMFORTABLE = 10;
 const NOT_SET = 'none';
 const DELAY = 'delay';
+
+const ROTATE_SUGGESTIONS: Partial<
+  Record<ProfileId, { label: string; cw: string; ccw: string; name: string }>
+> = {
+  browser: {
+    label: 'Tabs',
+    cw: 'Ctrl+Tab',
+    ccw: 'Ctrl+Shift+Tab',
+    name: p.rotateSuggestions.browser,
+  },
+  premiere: { label: 'Frame', cw: 'Right', ccw: 'Left', name: p.rotateSuggestions.premiere },
+  claudecode: { label: 'History', cw: 'Down', ccw: 'Up', name: p.rotateSuggestions.history },
+  codex: { label: 'History', cw: 'Down', ccw: 'Up', name: p.rotateSuggestions.history },
+  opencode: { label: 'Navigate', cw: 'Down', ccw: 'Up', name: p.rotateSuggestions.opencode },
+};
 
 /** The catalog id of a saved binding (a knob shortcut pair is `knobShortcuts` in the catalog). */
 export function catalogId(spec: ActionSpec | RotateSpec): string {
@@ -115,6 +132,7 @@ function PickerForm({
 }: Omit<ActionPickerProps, 'target'> & { target: PickerTarget }): ReactElement {
   const rotate = target.control === 'rotate';
   const stepMode = target.control === 'step';
+  const suggestion = rotate && target.profile ? ROTATE_SUGGESTIONS[target.profile.id] : undefined;
   const spec = target.spec;
   const [id, setId] = useState(spec ? catalogId(spec) : NOT_SET);
   const [app, setApp] = useState(
@@ -166,7 +184,32 @@ function PickerForm({
     (stepMode && id === NOT_SET);
   const unavailable =
     id !== NOT_SET && !isDelay && (entry === null || entry.availability !== 'available');
-  const canSave = !saving && !problem && !missing && !unavailable;
+  const policyInput =
+    params === 'shortcut'
+      ? JSON.stringify([keys])
+      : params === 'shortcutPair'
+        ? JSON.stringify([cw, ccw])
+        : '';
+  const [policyResult, setPolicyResult] = useState({ input: '', reason: null as string | null });
+  useEffect(() => {
+    if (!policyInput) return;
+    let active = true;
+    const values = JSON.parse(policyInput) as string[];
+    void Promise.all(values.map((keys) => getGnomeShortcutPolicy(keys)))
+      .then((results) => {
+        if (active) setPolicyResult({ input: policyInput, reason: results.find(Boolean) ?? null });
+      })
+      .catch(() => {
+        if (active) setPolicyResult({ input: policyInput, reason: p.shortcutPolicyUnavailable });
+      });
+    return () => {
+      active = false;
+    };
+  }, [policyInput]);
+  const checkingPolicy = Boolean(policyInput) && policyResult.input !== policyInput;
+  const policyProblem = policyResult.input === policyInput ? policyResult.reason : null;
+  const canSave =
+    !saving && !problem && !missing && !unavailable && !checkingPolicy && !policyProblem;
 
   const discrete = (): ActionSpec | null => {
     switch (id) {
@@ -237,6 +280,27 @@ function PickerForm({
       </SheetHeader>
 
       <div className="flex-1 space-y-5 overflow-y-auto px-4">
+        {suggestion && (
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">{p.rotateSuggestions.hint}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={
+                !entries.some((e) => e.id === 'knobShortcuts' && e.availability === 'available')
+              }
+              onClick={() => {
+                setId('knobShortcuts');
+                setCw(suggestion.cw);
+                setCcw(suggestion.ccw);
+                setLabel(suggestion.label);
+              }}
+            >
+              {suggestion.name}
+            </Button>
+          </div>
+        )}
         <RadioGroup
           aria-label={p.actionGroup}
           value={id}
@@ -389,6 +453,11 @@ function PickerForm({
             />
           </Field>
         )}
+        {policyProblem ? (
+          <p role="alert" className="text-sm text-destructive">
+            {policyProblem}
+          </p>
+        ) : null}
         {error ? (
           <p role="alert" className="text-sm text-destructive">
             {p.saveFailed}: {error}

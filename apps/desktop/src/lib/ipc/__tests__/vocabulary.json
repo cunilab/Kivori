@@ -37,7 +37,6 @@
   "controlLayouts": ["rotary-three-button"],
   "controls": [
     "press",
-    "hold",
     "button1Press",
     "button1Hold",
     "button2Press",

@@ -1019,7 +1019,7 @@ impl<'a> Runtime<'a> {
         self.dropped_edges = before;
         if lost && (self.button.is_down() || samples.iter().any(|(levels, _)| levels.sw)) {
             self.held_rotation_blocked = true;
-            if self.picker.is_choosing() {
+            if self.picker.is_choosing() || self.dispatcher.profile_picker_enabled() {
                 // The picker queues nothing until release, so there is no stale held input to
                 // discard: cancel it locally (the screen says so truthfully) and keep the link.
                 self.picker.close();
@@ -1276,14 +1276,11 @@ impl<'a> Runtime<'a> {
     /// something. A control whose Hold is unknown or unbound shows nothing (never teased), and so
     /// does a press that held rotation or the picker owns.
     fn hold_ring(&self, now: ElapsedMs) -> Option<HoldRing> {
-        let (control, held) = match self.button.held_ms(now) {
-            Some(held) => (0u8, held),
-            None => (0..3u8).find_map(|i| {
-                self.keys[usize::from(i)]
-                    .held_ms(now)
-                    .map(|held| (i + 1, held))
-            })?,
-        };
+        let (control, held) = (0..3u8).find_map(|i| {
+            self.keys[usize::from(i)]
+                .held_ms(now)
+                .map(|held| (i + 1, held))
+        })?;
         if held < HOLD_RING_SHOW_MS || self.picker.is_open() {
             return None;
         }
@@ -1313,7 +1310,7 @@ impl<'a> Runtime<'a> {
     /// desktop owns action meaning); everything else is local.
     fn on_button<T: Transport>(&mut self, transport: &mut T, event: ButtonEvent, at_ms: ElapsedMs) {
         self.redraw = true;
-        if event == ButtonEvent::Released && self.picker.is_choosing() {
+        if event == ButtonEvent::Released {
             self.send_picked(transport, at_ms);
         }
         if event == ButtonEvent::Down {
@@ -1321,7 +1318,7 @@ impl<'a> Runtime<'a> {
         }
         let kind = match event {
             ButtonEvent::Press => InputKind::Press,
-            ButtonEvent::Hold => InputKind::Hold,
+            ButtonEvent::Hold => return,
             ButtonEvent::DoublePress => InputKind::DoublePress,
             ButtonEvent::Reboot => {
                 if !self.reboot {

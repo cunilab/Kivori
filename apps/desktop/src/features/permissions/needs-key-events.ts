@@ -23,7 +23,7 @@ export function needsKeyEvents(config: ConfigDto | null): boolean {
     const slots = [
       profile.press,
       profile.hold,
-      ...profile.buttons.flatMap(({ press, hold }) => [press, hold === 'pin' ? null : hold]),
+      ...profile.buttons.flatMap(({ press, hold }) => [press, hold === 'micMute' ? null : hold]),
     ];
     const bound = slots.some(
       (slot) =>

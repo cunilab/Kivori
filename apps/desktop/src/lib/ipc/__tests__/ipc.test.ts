@@ -450,10 +450,10 @@ describe('action catalog ipc', () => {
     await expect(setRotate('media', { kind: 'appVolume', app: 'a'.repeat(129) })).rejects.toThrow(
       '128',
     );
-    const mute = await setBinding('media', 'hold', {
+    const mute = await setBinding('media', 'press', {
       action: { kind: 'appMute', app: 'Spotify.exe' },
     });
-    expect(mute.profiles[3].hold).toMatchObject({
+    expect(mute.profiles[3].press).toMatchObject({
       action: { kind: 'appMute', app: 'spotify.exe' },
       deviceLabel: 'Mute',
     });
@@ -654,7 +654,7 @@ describe('config ipc', () => {
     expect(config.profiles.map((p) => p.id)).toEqual([...PROFILE_IDS]);
     const [general, browser] = config.profiles;
     expect(general.rotate.spec).toEqual({ kind: 'systemVolume' });
-    expect(browser.buttons[1].hold).toBe('pin');
+    expect(browser.buttons[1].hold).toBe('micMute');
     expect(browser.buttons[0].press).toMatchObject({ deviceLabel: 'Back', overridden: false });
   });
 
@@ -726,11 +726,14 @@ describe('config ipc', () => {
     expect((await getDeskStatus()).pressAction).toBeNull();
     const back = await setBinding('general', 'press', null);
     expect(back.profiles[0].press).toMatchObject({
-      action: { kind: 'playPause' },
+      action: { kind: 'systemMute' },
       overridden: false,
     });
     await expect(
-      setBinding('general', 'hold', { action: { kind: 'playPause' }, label: 'x'.repeat(33) }),
+      setBinding('general', 'button1Hold', {
+        action: { kind: 'playPause' },
+        label: 'x'.repeat(33),
+      }),
     ).rejects.toThrow('32 characters');
     await expect(
       setBinding('code', 'press', { action: { kind: 'shortcut', keys: 'Ctrl+' } }),

@@ -4,23 +4,23 @@
 export const strings = {
   appTitle: 'Kivori',
   gnomeFocus: {
-    title: "Let Kivori see which app you're using",
+    title: 'Enable Kivori app profiles and shortcuts',
     logoutTitle: 'Log out and back in once to finish',
     notInstalled:
-      'Enable Kivori App Profiles for GNOME so your controls follow the app in front of you.',
+      'Enable Kivori App Profiles for GNOME so your controls follow the app in front of you and keyboard shortcuts work on Wayland.',
     disabled:
       'Kivori App Profiles is turned off in GNOME. Enable it to let profiles follow your apps again.',
     needsLogout:
-      'The extension is ready. Save your work, then log out and back in. GNOME will start it automatically.',
+      'The extension is ready. Save your work, then log out and back in. GNOME will start it automatically. On first shortcut use, approve the GNOME dialog showing the full Kivori executable path.',
     unsupported:
       'Kivori App Profiles supports GNOME 46–50. Update Kivori for support for your GNOME version.',
     unavailable:
       'GNOME could not start Kivori App Profiles. Try enabling it again, or check Kivori App Profiles in the Extensions app.',
     privacy:
-      'Kivori only learns which app is in front, and only when it asks. No window titles or contents, and nothing leaves this computer. Other programs you run could ask for the same app name, so enable this only on a computer you control.',
+      'Kivori only learns which app is in front, and only when it asks. No window titles or contents, and nothing leaves this computer. Keyboard shortcuts require the installed Kivori executable and your approval in a GNOME dialog. Approval is remembered across restarts, and is requested again if the executable changes. Shortcuts are paused while GNOME is locked or showing a modal prompt. This protects against other apps silently pressing keys in this session. Like any GNOME extension, it relies on files in your home folder and does not defend against malware already running as you.',
     updateTitle: 'Update Kivori App Profiles',
     updateAvailable:
-      'The Kivori App Profiles extension in GNOME is out of date. Update it so your controls keep following the app in front of you.',
+      'The Kivori App Profiles extension in GNOME is out of date. Update it to enable keyboard shortcuts on Wayland and keep your controls following the app in front of you.',
     updateOnce: 'One log-out is needed to finish the update.',
     cliMissingTitle: "Kivori can't check the extension",
     cliMissing:
@@ -230,7 +230,7 @@ export const strings = {
     description: 'Choose a control to edit its actions.',
     doublePressFixed: 'Fixed. Choose the views under Display.',
     holdNote:
-      'Hold actions on the three buttons work, but the device does not show them on screen yet.',
+      'Hold a button for one second until the ring fills, then release. Middle button hold mutes every microphone.',
     howTitle: 'How controls work',
     newProfileToggle: 'New profile',
     tabsLabel: 'Controls sections',
@@ -331,8 +331,7 @@ export const strings = {
       remove: 'Remove {app}',
       removeHint: 'Removing an app sends it back to General.',
       inPinCycle: 'Pin to device',
-      inPinCycleHint:
-        'Offers this profile when you hold the knob and turn it, and to the middle button’s Hold.',
+      inPinCycleHint: 'Offers this profile in the knob’s Hold + turn picker.',
       pinnedTitle: 'Pinned to your device',
       pinnedList: 'Pinned to your device: {names}.',
       pinnedFew: 'Pin at least two profiles to choose between them on the device.',
@@ -397,9 +396,17 @@ export const strings = {
     micScope:
       'Mic mute mutes the computer’s microphones, not an app’s own mute button. A call app can still show its own mute as off.',
     picker: {
+      shortcutPolicyUnavailable: 'Unable to check keyboard shortcut restrictions. Try again.',
       title: 'Edit {control}',
       description: 'Choose what this control does in the {profile} profile.',
       actionGroup: 'Action',
+      rotateSuggestions: {
+        hint: 'Volume is the default in every profile. You can choose a different knob action here.',
+        browser: 'Use tab switching',
+        premiere: 'Use frame stepping',
+        history: 'Use prompt history',
+        opencode: 'Use navigation',
+      },
       notSet: 'Not set',
       notSetHint: 'The control does nothing.',
       groups: {
@@ -466,23 +473,32 @@ export const strings = {
       rotate: { name: 'Rotate', hint: 'Turn the knob. Faster turns take bigger steps.' },
       heldRotate: {
         name: 'Hold + rotate',
-        hint: 'Hold the knob down and turn it to pick a pinned profile on the device.',
+        hint: 'Hold the knob down and turn two detents to open the profile picker. Release to choose.',
       },
       press: { name: 'Press', hint: 'Press and release within one second.' },
       doublePress: { name: 'Double press', hint: 'Two quick presses.' },
       hold: {
         name: 'Hold',
-        hint: 'Hold for one second until the ring on the device fills, then release.',
+        hint: 'Hold + turn switches profile. Holding the knob alone has no action.',
       },
       button1: { name: 'Left button', hint: 'Press and release.' },
-      button2: { name: 'Middle button', hint: 'Press and release. Hold to pin a profile.' },
+      button2: {
+        name: 'Middle button',
+        hint: 'Press and release. Hold for one second to mute every microphone.',
+      },
       button3: { name: 'Right button', hint: 'Press and release.' },
       button1Hold: { name: 'Left button hold', hint: 'Hold for one second until the ring fills.' },
-      button2Hold: { name: 'Middle button hold', hint: 'Hold. Reserved for pinning a profile.' },
+      button2Hold: {
+        name: 'Middle button hold',
+        hint: 'Hold for one second until the ring fills, then release to mute every microphone.',
+      },
       button3Hold: { name: 'Right button hold', hint: 'Hold for one second until the ring fills.' },
     },
     heldRotateUnsupported: 'Update the device firmware to use the profile picker.',
-    profilePickerFixed: 'Fixed: picks a pinned profile. Pin profiles under Pin to device.',
+    profilePickerFixed:
+      'Fixed: picks a pinned profile. Turn two detents while held, then release to choose.',
+    knobHoldFixed: 'Fixed: Hold + turn switches profile.',
+    micMuteFixed: 'Fixed: Mic mute (every capture device).',
     macros: {
       title: 'Macros',
       description:
@@ -1020,7 +1036,7 @@ export const strings = {
       autoBody:
         'Saved profiles choose bindings for each app. You can edit those bindings in Controls.',
       pinBody:
-        'Hold the middle context button to pin a profile. Each further hold moves to the next profile in the cycle, then back to Auto to follow apps automatically.',
+        'Hold the knob and turn two detents to open the profile picker. Turn to choose, then release. Choose Auto to follow apps automatically. Hold the middle button for one second to mute every microphone.',
       viewHeading: 'Screen at start',
       viewBody: 'The saved default view for devices with display support.',
       intensityHeading: 'Buddy liveliness',

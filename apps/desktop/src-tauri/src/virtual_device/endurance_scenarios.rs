@@ -104,6 +104,7 @@ pub fn endurance_smoke(executable: &Path) -> Result<(), String> {
     // frame, about 6 KB/s): the heartbeat round trip stays near 0.1 s against the host's 2 s
     // allowance (virtual device docs, Endurance run).
     let mut sandbox = Sandbox::open(executable).map_err(|error| error.to_string())?;
+    super::scenarios::bind_media_press(&mut sandbox)?;
     let deadline = Instant::now() + Duration::from_secs(5);
     while !(sandbox.snapshot.connected && sandbox.snapshot.frame.is_some()) {
         sandbox.tick();

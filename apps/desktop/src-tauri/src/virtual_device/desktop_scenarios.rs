@@ -165,11 +165,14 @@ fn persistence_and_profiles(executable: &Path, config_dir: &Path) -> Result<(), 
     rig.until("automatic Code profile", |s| {
         s.desk.context().profile().id == ProfileRef::Builtin(ProfileId::Code)
     })?;
+    rig.mic.add_device("USB mic", FakeMicQuirk::Works);
     rig.raw_button(16, 1_200);
-    rig.until("raw middle hold pins General", |s| {
-        s.desk.context().pinned()
-            && s.desk.context().profile().id == ProfileRef::Builtin(ProfileId::General)
+    rig.until("raw middle hold mutes every mic without pinning", |s| {
+        s.desk.mic().0.muted == Some(true) && !s.desk.context().pinned()
     })?;
+    rig.sandbox
+        .desk
+        .pin_profile(Some(&ProfileRef::Builtin(ProfileId::General)));
     rig.focus("zoom.exe");
     // A correlated system action commits the observed focus while preserving the pin.
     check(

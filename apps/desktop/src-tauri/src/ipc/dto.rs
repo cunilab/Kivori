@@ -1373,7 +1373,7 @@ pub struct DeskStatusDto {
     /// Desk action tokens bound to the three contextual buttons' Press (`null` = unbound).
     pub button_actions: [Option<&'static str>; 3],
     /// Desk action tokens bound to the three contextual buttons' Hold (`null` = unbound; the
-    /// middle one is always `null`, it pins the profile).
+    /// middle one is always `micMute`).
     pub button_hold_actions: [Option<&'static str>; 3],
     /// The active profile's id token (what the config UI keys its tabs by).
     pub profile_id: String,
@@ -1492,7 +1492,13 @@ fn button_tokens(bindings: &crate::desk::Bindings) -> [Option<&'static str>; 3] 
 }
 
 fn button_hold_tokens(bindings: &crate::desk::Bindings) -> [Option<&'static str>; 3] {
-    bindings.buttons.each_ref().map(|b| slot_token(&b.hold))
+    std::array::from_fn(|i| {
+        if i == 1 {
+            Some("micMute")
+        } else {
+            slot_token(&bindings.buttons[i].hold)
+        }
+    })
 }
 
 fn text(text: kivori_model::desk::MediaText) -> String {
@@ -1681,11 +1687,11 @@ pub struct ButtonDto {
     pub hold: HoldDto,
 }
 
-/// A button's Hold: a slot, or `"pin"` for the middle button (reserved for profile pin).
+/// A button's Hold: a slot, or `"micMute"` for the fixed middle-button action.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 pub enum HoldDto {
-    Pin(&'static str),
+    FixedMic(&'static str),
     Slot(SlotDto),
 }
 
@@ -1823,8 +1829,8 @@ fn profile_dtos(store: &crate::config::ConfigStore) -> Vec<ProfileConfigDto> {
             let b = &profile.bindings;
             let button = |i: usize| ButtonDto {
                 press: slot_dto(&b.buttons[i].press, over.buttons[i].press.is_some()),
-                hold: if i == usize::from(crate::desk::profile::PIN_BUTTON) {
-                    HoldDto::Pin("pin")
+                hold: if i == usize::from(crate::desk::profile::MIC_BUTTON) {
+                    HoldDto::FixedMic("micMute")
                 } else {
                     HoldDto::Slot(slot_dto(&b.buttons[i].hold, over.buttons[i].hold.is_some()))
                 },

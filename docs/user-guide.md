@@ -69,15 +69,15 @@ You can repeat setup any time: Device page, **Run setup again**.
 | Control | What it does by default |
 |---|---|
 | Turn the knob | Volume (faster turns take bigger steps) |
-| Press the knob | Play / Pause |
-| Hold the knob (about 1 second, then let go) | Mute |
+| Press the knob | System output mute / unmute (every profile) |
+| Hold + turn the knob (two detents) | Open profile picker; turn to choose, release to select |
 | Double-press the knob | Switch screen view |
 | Left / middle / right button | Previous track / Play-Pause / Next track |
-| Hold the middle button | Pin a profile (see below) |
+| Hold the middle button for 1 second, then release | Mic mute / unmute on every capture device (every profile) |
 | Hold the knob for about 10 seconds | Restarts Kivori, even if the app is closed |
 
 A short press means pressed and released within one second. Holding the knob past about 2
-seconds does nothing until the 10-second restart, and the screen shows its progress. The left and
+seconds starts recovery until the 10-second restart, and the screen shows its progress. The left and
 right buttons can also be given a Hold action in the app; holding them for a long time never
 restarts anything.
 
@@ -87,7 +87,7 @@ Kivori can distinguish it from a double press.
 ## Profiles
 
 Kivori changes what the controls do to suit the app in front of you, for example media keys in a
-player or tab switching in a browser. This is **Auto**, and the profile name shows at the top left of
+player or Back / Reload / Forward in a browser. This is **Auto**, and the profile name shows at the top left of
 the screen. The built-in profiles include General, Browser, Code, Media, Zoom and Teams. In Zoom and
 Teams the left button mutes your microphones. Editable [starter profiles](./starter-profiles.md)
 also cover CapCut, Photoshop, After Effects, Premiere Pro, Blender, Claude Code, Codex and OpenCode.
@@ -99,11 +99,11 @@ inside a terminal window. Review the starter shortcuts for your app version and 
 To stay on one profile, **pin it to the device**: on Controls, switch on **Pin to device** for the
 profiles you want on the knob (General, Browser, Code, Media, Zoom and Teams start pinned; the
 starter and your own profiles start unpinned; the device holds up to 10). Then hold the knob down
-and turn it: the screen shows the profile picker, with the profile name large and a row of marks for
+and turn it two detents: the screen shows the profile picker, with the profile name large and a row of marks for
 Auto and each pinned profile. Turn to move the highlight, release to select. **Auto** follows the
 app in front again. The picker says "Pinned" (or "Following your apps") only once Kivori reports it
 now runs that profile; if Kivori does not answer it says "Not confirmed" and shows what is really
-active. Holding the middle button still steps through the same pinned profiles one at a time. A dot
+active. Middle-button hold always mutes every microphone; wait for its one-second ring to fill, then release. A dot
 next to the name shows a profile is pinned. On a protected window (such as a Windows permission
 prompt or the lock screen) shortcuts and app launches pause, while volume, media keys and mute keep
 working.
@@ -232,3 +232,20 @@ package manager, or delete the AppImage; configuration remains in your user data
 
 Kivori works fully offline. It has no telemetry, no account and no cloud, and nothing in the app
 needs the internet. Your settings and the session activity list stay on your computer.
+
+Knob Hold alone has no action and no hold ring. Existing knob-Hold bindings are ignored; the old middle-button pin gesture automatically becomes mic mute, while your pinned profile list stays available in the picker.
+
+The core profiles use these button presses. Left and right holds start unbound in every built-in profile.
+
+| Profile | Left press | Middle press | Right press | Turn target |
+| --- | --- | --- | --- | --- |
+| General | Previous track | Play / Pause | Next track | System volume |
+| Browser | Back | Reload | Forward | System volume |
+| Code | Terminal | Run | Git | System volume |
+| Media | Previous track | Play / Pause | Next track | System volume |
+| Zoom | Mic mute (all devices) | Camera | Leave | System volume |
+| Teams | Mic mute (all devices) | Camera | Leave | System volume |
+
+Media buttons use the system media backend (MPRIS on Linux); Browser and Code actions and Camera / Leave use application shortcuts. Microphone mute affects every capture device, so the call app's own mute icon may not change.
+
+Every built-in profile turns system volume. To opt in to browser tabs, Premiere frames, or agent history/navigation on the knob, open **Controls → Rotate → Edit** and choose the suggested action, then **Save**. Your saved rotate overrides and custom profiles keep their existing targets.

@@ -29,12 +29,16 @@ struct Active {
 #[derive(Debug, Default)]
 pub struct Picker {
     active: Option<Active>,
+    held_detents: u8,
 }
 
 impl Picker {
     /// A closed picker.
     pub const fn new() -> Self {
-        Self { active: None }
+        Self {
+            active: None,
+            held_detents: 0,
+        }
     }
 
     /// The picker owns the screen (choosing, or showing its outcome).
@@ -55,9 +59,15 @@ impl Picker {
         )
     }
 
-    /// One detent with the switch held. The first one opens the picker on the pin the desktop
-    /// reported; each one moves the highlight a step and stops at the ends (Auto is the first stop).
+    /// One detent with the switch held. The second one opens the picker on the pin the desktop
+    /// reported, then moves the highlight one step. Further detents step and stop at the ends.
     pub fn turn(&mut self, direction: Direction, choices: &ProfileChoices, now: u32) {
+        if !self.is_choosing() {
+            self.held_detents = self.held_detents.saturating_add(1);
+            if self.held_detents < 2 {
+                return;
+            }
+        }
         let mut a = match self.active {
             Some(a) if a.phase == PickerPhase::Choosing => a,
             _ => Active {
@@ -84,6 +94,7 @@ impl Picker {
 
     /// The switch was released: the entry to send, as `(generation, index)`, once.
     pub fn release(&mut self, now: u32) -> Option<(u8, u8)> {
+        self.held_detents = 0;
         let a = self
             .active
             .as_mut()
@@ -152,6 +163,7 @@ impl Picker {
 
     /// Forgets everything: a session boundary, a takeover.
     pub fn close(&mut self) {
+        self.held_detents = 0;
         self.active = None;
     }
 
@@ -198,7 +210,8 @@ mod tests {
     fn it_opens_on_the_desktops_pin_and_steps_without_wrapping() {
         let c = choices(&["Code", "Media"], 1, 4);
         let mut p = Picker::new();
-        assert!(!p.is_open());
+        p.turn(Direction::Cw, &c, 0);
+        assert!(!p.is_open(), "one held detent must not open the picker");
         p.turn(Direction::Cw, &c, 100);
         let v = p.view(&c, 100).unwrap();
         assert_eq!(
@@ -222,6 +235,7 @@ mod tests {
         let c = choices(&["Code", "Media"], 0, 4);
         let mut p = Picker::new();
         p.turn(Direction::Cw, &c, 0);
+        p.turn(Direction::Cw, &c, 0);
         assert_eq!(p.release(500), Some((4, 1)));
         assert_eq!(p.release(510), None, "sent once");
         assert_eq!(p.view(&c, 600).unwrap().phase, PickerPhase::Waiting);
@@ -243,6 +257,7 @@ mod tests {
         let c = choices(&["Code"], 0, 1);
         let mut p = Picker::new();
         p.turn(Direction::Cw, &c, 0);
+        p.turn(Direction::Cw, &c, 0);
         p.release(100);
         assert!(!p.poll(100 + PICKER_CONFIRM_TIMEOUT_MS - 1));
         assert!(p.poll(100 + PICKER_CONFIRM_TIMEOUT_MS));
@@ -261,6 +276,7 @@ mod tests {
     fn a_failed_send_says_so_at_once_and_a_changed_list_resyncs_while_choosing() {
         let c = choices(&["Code", "Media"], 0, 1);
         let mut p = Picker::new();
+        p.turn(Direction::Cw, &c, 0);
         p.turn(Direction::Cw, &c, 0);
         p.turn(Direction::Cw, &c, 10);
         // The list shrinks under the highlight: it stays on a real entry.
@@ -281,7 +297,23 @@ mod tests {
         let c = ProfileChoices::default();
         let mut p = Picker::new();
         p.turn(Direction::Cw, &c, 0);
+        p.turn(Direction::Cw, &c, 0);
         let v = p.view(&c, 0).unwrap();
         assert_eq!((v.count, v.index), (1, 0));
+    }
+    #[test]
+    fn release_and_session_close_reset_the_two_detent_threshold() {
+        let c = choices(&["Code"], 0, 1);
+        let mut p = Picker::new();
+        p.turn(Direction::Cw, &c, 0);
+        assert!(!p.is_open());
+        assert_eq!(p.release(10), None);
+        p.turn(Direction::Cw, &c, 20);
+        assert!(!p.is_open());
+        p.close();
+        p.turn(Direction::Ccw, &c, 30);
+        assert!(!p.is_open());
+        p.turn(Direction::Cw, &c, 40);
+        assert!(p.is_choosing());
     }
 }

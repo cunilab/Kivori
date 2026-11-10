@@ -55,3 +55,17 @@ async fn task(action: Action) -> Result<&'static str, String> {
         }
     }
 }
+
+/// Read-only per-chord policy for the action picker; dispatch validates independently.
+#[tauri::command]
+pub fn gnome_shortcut_policy(keys: String) -> Option<String> {
+    #[cfg(target_os = "linux")]
+    {
+        crate::platform::linux::gnome::shortcut_policy(&keys)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = keys;
+        None
+    }
+}

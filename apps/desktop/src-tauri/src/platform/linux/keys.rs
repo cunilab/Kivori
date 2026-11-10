@@ -6,7 +6,7 @@
 //! was found and refused, or that did not answer in time, is never retried as a key event, so one
 //! press is never delivered twice.
 //!
-//! SHORTCUTS use XTest on X11 and a user-approved keyboard-only portal session on Wayland.
+//! SHORTCUTS use XTest on X11, the GNOME extension on GNOME Wayland, and the portal elsewhere.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -20,7 +20,7 @@ use crate::platform::{
 };
 
 /// Why shortcuts are unavailable on a Wayland session. Shown in the UI.
-pub const WAYLAND_SHORTCUTS_REASON: &str = "Enable keyboard shortcuts in Settings to use them.";
+pub const WAYLAND_SHORTCUTS_REASON: &str = "Enable Kivori app profiles in Controls, or update the extension, then log out and back in once and approve the GNOME keyboard dialog.";
 /// Why shortcuts are unavailable with no graphical session.
 pub const HEADLESS_SHORTCUTS_REASON: &str = "Keyboard shortcuts need a graphical session";
 
@@ -37,7 +37,11 @@ const SEND_CEILING: Duration = Duration::from_secs(2);
 
 /// What the session allows for shortcuts. On X11 the answer follows the backend's health (a recent
 /// look at the X server: reachable, with XTEST), not just a `DISPLAY` variable.
-fn shortcut_availability(session: SessionKind, x11: &dyn XHealth) -> ActionAvailability {
+fn shortcut_availability(
+    session: SessionKind,
+    x11: &dyn XHealth,
+    wayland_ready: bool,
+) -> ActionAvailability {
     match session {
         SessionKind::X11 => match x11.xtest() {
             Some(true) => ActionAvailability::Available {
@@ -50,17 +54,31 @@ fn shortcut_availability(session: SessionKind, x11: &dyn XHealth) -> ActionAvail
                 reason: X11_UNRESPONSIVE_REASON.to_string(),
             },
         },
-        SessionKind::Wayland if super::portal_keys::status() == "enabled" => {
-            ActionAvailability::Available {
-                confirmation: ConfirmationClass::TriggeredUnverified,
-            }
-        }
+        SessionKind::Wayland if wayland_ready => ActionAvailability::Available {
+            confirmation: ConfirmationClass::TriggeredUnverified,
+        },
         SessionKind::Wayland => ActionAvailability::RuntimeUnavailable {
-            reason: WAYLAND_SHORTCUTS_REASON.to_string(),
+            reason: wayland_reason().to_string(),
         },
         SessionKind::Headless => ActionAvailability::RuntimeUnavailable {
             reason: HEADLESS_SHORTCUTS_REASON.to_string(),
         },
+    }
+}
+
+fn wayland_reason() -> &'static str {
+    if super::session::is_gnome() {
+        WAYLAND_SHORTCUTS_REASON
+    } else {
+        "Enable keyboard shortcuts in Settings to use them."
+    }
+}
+
+fn wayland_ready() -> bool {
+    if super::session::is_gnome() {
+        super::gnome_focus::GnomeFocus::shared().shortcuts_ready()
+    } else {
+        super::portal_keys::status() == "enabled"
     }
 }
 
@@ -151,9 +169,20 @@ impl InputSynth for LinuxInputSynth {
     }
 
     fn send_shortcut(&self, shortcut: &Shortcut, guard: InputGuard) -> Result<(), ActionError> {
-        match shortcut_availability(self.session, &*self.health) {
+        if self.session == SessionKind::Wayland && super::session::is_gnome() {
+            return super::gnome_focus::GnomeFocus::shared().send_shortcut(shortcut, guard);
+        }
+        match shortcut_availability(
+            self.session,
+            &*self.health,
+            self.session == SessionKind::Wayland && wayland_ready(),
+        ) {
             ActionAvailability::Available { .. } if self.session == SessionKind::Wayland => {
-                super::portal_keys::send(shortcut, guard)
+                if super::session::is_gnome() {
+                    super::gnome_focus::GnomeFocus::shared().send_shortcut(shortcut, guard)
+                } else {
+                    super::portal_keys::send(shortcut, guard)
+                }
             }
             ActionAvailability::Available { .. } => self.x11.send_shortcut(shortcut, guard),
             ActionAvailability::RuntimeUnavailable { reason } => Err(ActionError::Failed(reason)),
@@ -162,7 +191,11 @@ impl InputSynth for LinuxInputSynth {
     }
 
     fn keyboard_availability(&self) -> Option<ActionAvailability> {
-        Some(shortcut_availability(self.session, &*self.health))
+        Some(shortcut_availability(
+            self.session,
+            &*self.health,
+            self.session == SessionKind::Wayland && wayland_ready(),
+        ))
     }
 }
 
@@ -234,6 +267,22 @@ mod tests {
 
     fn synth(session: SessionKind, outcome: Sent) -> (LinuxInputSynth, Arc<Player>, Arc<Keys>) {
         synth_with(session, outcome, Some(true))
+    }
+
+    #[test]
+    fn wayland_availability_requires_its_keyboard_backend() {
+        assert_eq!(
+            shortcut_availability(SessionKind::Wayland, &NoX, true),
+            ActionAvailability::Available {
+                confirmation: ConfirmationClass::TriggeredUnverified
+            }
+        );
+        assert_eq!(
+            shortcut_availability(SessionKind::Wayland, &NoX, false),
+            ActionAvailability::RuntimeUnavailable {
+                reason: wayland_reason().into()
+            }
+        );
     }
 
     #[test]
@@ -311,7 +360,7 @@ mod tests {
         let shortcut: Shortcut = "Ctrl+M".parse().unwrap();
         assert_eq!(
             synth.send_shortcut(&shortcut, guard()),
-            Err(ActionError::Failed(WAYLAND_SHORTCUTS_REASON.into()))
+            Err(ActionError::Failed(wayland_reason().into()))
         );
         assert_eq!(*keys.shortcuts.lock().unwrap(), 0);
     }
@@ -375,7 +424,7 @@ mod tests {
         assert_eq!(
             availability(SessionKind::Wayland),
             ActionAvailability::RuntimeUnavailable {
-                reason: WAYLAND_SHORTCUTS_REASON.into()
+                reason: wayland_reason().into()
             }
         );
         assert_eq!(

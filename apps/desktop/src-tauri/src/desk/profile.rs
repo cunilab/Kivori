@@ -54,8 +54,7 @@ pub struct Profile {
     /// Lowercase foreground ids, Windows executables and macOS bundle ids in one list. Config
     /// resolution keeps an id in one profile only.
     pub ids: Vec<String>,
-    /// Pinned to the device: the knob's Hold-and-turn picker offers it and the middle button's
-    /// Hold cycle visits it.
+    /// Pinned to the device: the knob's Hold-and-turn picker offers it.
     pub in_pin_cycle: bool,
     pub mood: ContextMood,
     pub rotate: RotateBinding,
@@ -129,15 +128,10 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
                 "brave-browser",
                 "microsoft-edge",
             ]),
-            rotate: RotateBinding::Shortcuts {
-                label: "Tabs".into(),
-                cw: shortcut("Ctrl+Tab"),
-                ccw: shortcut("Ctrl+Shift+Tab"),
-            },
             bindings: with_buttons([
                 named("Back", os("Alt+Left", "Meta+[")),
                 named("Reload", os("Ctrl+R", "Meta+R")),
-                named("New tab", os("Ctrl+T", "Meta+T")),
+                named("Forward", os("Alt+Right", "Meta+]")),
             ]),
             ..general.clone()
         },
@@ -203,7 +197,7 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
             mood: ContextMood::Meeting,
             bindings: with_buttons([
                 mic_mute.clone(),
-                named("Video", os("Alt+V", "Meta+Shift+V")),
+                named("Camera", os("Alt+V", "Meta+Shift+V")),
                 named("Leave", os("Alt+Q", "Meta+W")),
             ]),
             ..general.clone()
@@ -224,7 +218,7 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
             mood: ContextMood::Meeting,
             bindings: with_buttons([
                 mic_mute,
-                named("Video", os("Ctrl+Shift+O", "Meta+Shift+O")),
+                named("Camera", os("Ctrl+Shift+O", "Meta+Shift+O")),
                 named("Leave", os("Ctrl+Shift+H", "Meta+Shift+H")),
             ]),
             ..general.clone()
@@ -275,11 +269,6 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
                 "com.adobe.premierepro.23",
             ]),
             in_pin_cycle: false,
-            rotate: RotateBinding::Shortcuts {
-                label: "Frame".into(),
-                cw: shortcut("Right"),
-                ccw: shortcut("Left"),
-            },
             bindings: with_buttons([
                 ButtonSlots::default(),
                 named("Play", shortcut("Space")),
@@ -304,11 +293,6 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
             name: "Claude Code".into(),
             ids: Vec::new(),
             in_pin_cycle: false,
-            rotate: RotateBinding::Shortcuts {
-                label: "History".into(),
-                cw: shortcut("Down"),
-                ccw: shortcut("Up"),
-            },
             bindings: with_buttons([
                 named("Search", shortcut("Ctrl+R")),
                 named("Transcript", shortcut("Ctrl+O")),
@@ -321,11 +305,6 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
             name: "Codex".into(),
             ids: Vec::new(),
             in_pin_cycle: false,
-            rotate: RotateBinding::Shortcuts {
-                label: "History".into(),
-                cw: shortcut("Down"),
-                ccw: shortcut("Up"),
-            },
             bindings: with_buttons([
                 named("Search", shortcut("Ctrl+R")),
                 named("Copy", shortcut("Ctrl+O")),
@@ -338,11 +317,6 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
             name: "OpenCode".into(),
             ids: Vec::new(),
             in_pin_cycle: false,
-            rotate: RotateBinding::Shortcuts {
-                label: "Navigate".into(),
-                cw: shortcut("Down"),
-                ccw: shortcut("Up"),
-            },
             bindings: with_buttons([
                 ButtonSlots::default(),
                 ButtonSlots::default(),
@@ -368,8 +342,8 @@ pub fn match_profile(profiles: &[Profile], id: &str) -> usize {
         .unwrap_or(0)
 }
 
-/// The contextual button whose Hold cycles the pinned profile.
-pub const PIN_BUTTON: u8 = 1;
+/// The contextual button whose Hold mutes every capture device.
+pub const MIC_BUTTON: u8 = 1;
 
 /// What a discrete input does under the active context.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -379,8 +353,6 @@ pub enum Resolved {
     Run(Action),
     /// Bound, but suspended in a protected context: it can't run and says so (invariant 19).
     Suspended(Action),
-    /// The pin button's Hold: cycle the pinned profile.
-    CyclePin,
 }
 
 /// Which profile owns the controls right now.
@@ -499,6 +471,7 @@ impl Context {
     }
 
     /// Auto -> the pinned profiles ([`Self::picker_list`]) in order -> Auto.
+    #[cfg(test)]
     pub fn cycle_pin(&mut self) {
         let list = self.picker_list();
         let next = match self.pinned {
@@ -537,7 +510,7 @@ impl Context {
     }
 
     /// The Hold labels of the three contextual buttons, for the device's hold ring: the middle
-    /// button's Hold is always the pin cycle; the others show the bound Hold in the profile's
+    /// button's Hold is always mic mute; the others show the bound Hold in the profile's
     /// words, and nothing when it is unbound or suspended (a protected context).
     #[must_use]
     pub fn hold_actions(&self) -> HoldActions {
@@ -545,8 +518,8 @@ impl Context {
         let bindings = &self.profile().bindings;
         HoldActions {
             buttons: std::array::from_fn(|i| {
-                if i == usize::from(PIN_BUTTON) {
-                    return MediaText::from_text("Next profile");
+                if i == usize::from(MIC_BUTTON) {
+                    return MediaText::from_text("Mic mute");
                 }
                 match &bindings.buttons[i].hold.action {
                     None => MediaText::default(),
@@ -619,11 +592,14 @@ impl Context {
         if matches!(
             input,
             LogicalInput::ButtonHold {
-                button: PIN_BUTTON,
+                button: MIC_BUTTON,
                 ..
             }
         ) {
-            return Resolved::CyclePin;
+            return Resolved::Run(Action::ToggleMicMute);
+        }
+        if matches!(input, LogicalInput::Hold { .. }) {
+            return Resolved::Nothing;
         }
         match super::bound_action(&self.profile().bindings, input) {
             None => Resolved::Nothing,
@@ -775,7 +751,7 @@ mod tests {
         assert_eq!(ctx.profile().id, ProfileRef::Builtin(ProfileId::Codex));
         ctx.observe(Foreground::Protected, ms(1));
         assert!(ctx.protected());
-        assert!(ctx.rotate().is_none());
+        assert_eq!(ctx.rotate(), Some(&RotateBinding::Volume));
         ctx.observe(app("chrome.exe"), ms(2));
         ctx.commit_pending();
         ctx.pin(None);
@@ -888,7 +864,7 @@ mod tests {
         let mac = builtins_for(true);
         assert_eq!(button(&win[1], 0), "Alt+Left");
         assert_eq!(button(&mac[1], 0), "Meta+[");
-        assert_eq!(button(&mac[1], 2), "Meta+T");
+        assert_eq!(button(&mac[1], 2), "Meta+]");
         assert_eq!(button(&win[2], 0), "Ctrl+`");
         assert_eq!(
             button(&mac[2], 0),
@@ -898,14 +874,11 @@ mod tests {
         assert_eq!(button(&win[4], 2), "Alt+Q");
         assert_eq!(button(&mac[4], 2), "Meta+W");
         assert_eq!(button(&mac[5], 2), "Shift+Meta+H");
-        assert_eq!(
-            mac[1].rotate,
-            RotateBinding::Shortcuts {
-                label: "Tabs".into(),
-                cw: shortcut("Ctrl+Tab"),
-                ccw: shortcut("Ctrl+Shift+Tab"),
-            }
-        );
+        for profile in win.iter().chain(&mac) {
+            assert_eq!(profile.rotate, RotateBinding::Volume, "{}", profile.name);
+            assert_eq!(profile.bindings.press.action, Some(Action::ToggleMute));
+            assert_eq!(profile.bindings.hold, Slot::default());
+        }
         assert_eq!(
             win[3].bindings, win[0].bindings,
             "Media is General's media row"
@@ -958,11 +931,15 @@ mod tests {
         assert!(ctx.protected());
         let labels = ctx.labels();
         assert_eq!(text(labels.profile), "Protected");
-        assert_eq!(text(labels.rotate), "", "the Tabs knob is suspended");
+        assert_eq!(
+            text(labels.rotate),
+            "Volume",
+            "system volume stays available"
+        );
         assert!(labels.buttons.iter().all(MediaText::is_empty));
-        assert_eq!(text(labels.press), "Play/Pause", "system actions still run");
-        assert_eq!(text(labels.hold), "Mute");
-        assert_eq!(ctx.rotate(), None);
+        assert_eq!(text(labels.press), "Mute", "system actions still run");
+        assert_eq!(text(labels.hold), "");
+        assert_eq!(ctx.rotate(), Some(&RotateBinding::Volume));
         let button = LogicalInput::ButtonPress {
             button: 1,
             gesture_id: 1,
@@ -973,7 +950,7 @@ mod tests {
         ));
         assert_eq!(
             ctx.resolve(&LogicalInput::Hold { gesture_id: 2 }),
-            Resolved::Run(Action::ToggleMute)
+            Resolved::Nothing
         );
         // Leaving Protected follows the normal stability rule, then the pin applies again.
         ctx.observe(app("code.exe"), ms(100));
@@ -981,7 +958,7 @@ mod tests {
         ctx.observe(app("code.exe"), ms(500));
         assert!(!ctx.protected());
         assert_eq!(name(&ctx), "Browser", "still pinned");
-        assert_eq!(text(ctx.labels().rotate), "Tabs");
+        assert_eq!(text(ctx.labels().rotate), "Volume");
     }
 
     #[test]
@@ -1034,10 +1011,10 @@ mod tests {
         );
         assert_eq!(
             ctx.resolve(&LogicalInput::ButtonHold {
-                button: PIN_BUTTON,
+                button: MIC_BUTTON,
                 gesture_id: 1
             }),
-            Resolved::CyclePin
+            Resolved::Run(Action::ToggleMicMute)
         );
         assert_eq!(
             ctx.resolve(&LogicalInput::ButtonHold {
@@ -1091,7 +1068,7 @@ mod tests {
     }
 
     #[test]
-    fn a_button_hold_runs_its_bound_action_and_the_middle_one_still_pins() {
+    fn a_button_hold_runs_its_bound_action_and_the_middle_one_mutes_mics() {
         let mut profiles = builtins();
         profiles[0].bindings.buttons[0].hold = Slot::bound(Action::ToggleMute);
         profiles[0].bindings.buttons[1].hold = Slot::bound(Action::ToggleMute);
@@ -1101,7 +1078,7 @@ mod tests {
             gesture_id: 1,
         };
         assert_eq!(ctx.resolve(&hold(0)), Resolved::Run(Action::ToggleMute));
-        assert_eq!(ctx.resolve(&hold(1)), Resolved::CyclePin);
+        assert_eq!(ctx.resolve(&hold(1)), Resolved::Run(Action::ToggleMicMute));
         assert_eq!(ctx.resolve(&hold(2)), Resolved::Nothing);
     }
 

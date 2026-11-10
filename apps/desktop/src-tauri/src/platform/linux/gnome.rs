@@ -8,6 +8,27 @@ use serde::Serialize;
 use super::gnome_focus::{compatible, Peer, VERSION};
 use super::session::{is_gnome, session_kind, SessionKind};
 
+/// GNOME shortcuts share the extension setup card, not the ephemeral portal permission card.
+pub fn manages_shortcuts() -> bool {
+    session_kind() == SessionKind::Wayland && is_gnome()
+}
+
+/// Used by the action picker; execution enforces the same policy independently.
+pub fn shortcut_policy(keys: &str) -> Option<String> {
+    if !manages_shortcuts() {
+        return None;
+    }
+    let result = keys
+        .parse::<crate::platform::Shortcut>()
+        .map_err(|e| e.to_string())
+        .and_then(|shortcut| {
+            super::gnome_focus::shortcut_args(&shortcut)
+                .map(|_| ())
+                .map_err(|e| format!("{e:?}"))
+        });
+    result.err().map(|_| "Shortcut not allowed on GNOME Wayland: use Ctrl/Alt/Super chords or permitted non-text keys; system launch, lock, console-switch and paste chords are blocked.".into())
+}
+
 pub const UUID: &str = "kivori-focus@cunilab.id";
 const METADATA: &str =
     include_str!("../../../linux/gnome-extension/kivori-focus@cunilab.id/metadata.json");
@@ -15,10 +36,13 @@ const EXTENSION: &str =
     include_str!("../../../linux/gnome-extension/kivori-focus@cunilab.id/extension.js");
 const BRIDGE: &str =
     include_str!("../../../linux/gnome-extension/kivori-focus@cunilab.id/bridge.js");
-const FILES: [(&str, &str); 3] = [
+const SECURITY: &str =
+    include_str!("../../../linux/gnome-extension/kivori-focus@cunilab.id/security.js");
+const FILES: [(&str, &str); 4] = [
     ("metadata.json", METADATA),
     ("extension.js", EXTENSION),
     ("bridge.js", BRIDGE),
+    ("security.js", SECURITY),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -186,7 +210,13 @@ fn with_extension(enabled: &[String]) -> Option<Vec<String>> {
 
 fn detect(facts: &Facts<'_>) -> FocusStatus {
     match &facts.peer {
-        Peer::Shell { version, .. } if compatible(*version) => return FocusStatus::Working,
+        Peer::Shell { version, .. } if compatible(*version) => {
+            return if facts.shell_restarted {
+                FocusStatus::Working
+            } else {
+                FocusStatus::NeedsLogout
+            }
+        }
         Peer::Foreign => return FocusStatus::Unavailable,
         _ => {}
     }
@@ -255,6 +285,19 @@ fn installed() -> Option<(u32, SystemTime)> {
     Some((version, std::fs::metadata(&file).ok()?.modified().ok()?))
 }
 
+fn trusted_executable_matches(dir: &Path) -> bool {
+    let expected = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.canonicalize().ok());
+    let trusted = std::fs::read(dir.join("trusted.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
+    match (expected, trusted) {
+        (Some(expected), Some(trusted)) => trusted["executable"].as_str() == expected.to_str(),
+        _ => false,
+    }
+}
+
 pub fn status() -> FocusStatus {
     let state = read_status();
     tracing::info!(?state, "GNOME app profiles status");
@@ -277,6 +320,9 @@ fn read_status() -> FocusStatus {
             tracing::info!(%error, "GNOME Shell version check failed");
             return FocusStatus::Unavailable;
         }
+    }
+    if installed().is_some() && !extension_dir().is_ok_and(|dir| trusted_executable_matches(&dir)) {
+        return FocusStatus::UpdateAvailable;
     }
     let conn = super::gnome_focus::connection().ok();
     let peer = conn
@@ -329,6 +375,24 @@ fn write_extension(dir: &Path) -> Result<(), String> {
     for (name, text) in FILES {
         std::fs::write(dir.join(name), text).map_err(|e| format!("Could not write {name}: {e}"))?;
     }
+    // Record a canonical executable, never a caller-provided path or a sandbox proxy identity.
+    let executable = std::env::current_exe()
+        .and_then(std::fs::canonicalize)
+        .map_err(|e| format!("Could not identify Kivori executable: {e}"))?;
+    let trusted = serde_json::to_vec(&serde_json::json!({ "executable": executable }))
+        .map_err(|e| e.to_string())?;
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let temporary = dir.join("trusted.json.tmp");
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&temporary)
+        .map_err(|e| e.to_string())?;
+    file.write_all(&trusted).map_err(|e| e.to_string())?;
+    std::fs::rename(temporary, dir.join("trusted.json")).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -376,7 +440,7 @@ fn install_extension() -> Result<FocusStatus, String> {
                 "This extension supports GNOME 46–50. Update Kivori for your GNOME version.".into(),
             )
         }
-        FocusStatus::Working => return Ok(FocusStatus::Working),
+
         _ => {}
     }
     if output(
@@ -450,6 +514,16 @@ mod tests {
             peer: Peer::Absent,
             shell_restarted: false,
         }
+    }
+
+    #[test]
+    fn even_a_compatible_running_extension_needs_logout_after_reinstall() {
+        let enabled = vec![UUID.to_string()];
+        let mut f = facts(&enabled);
+        f.peer = shell(Some(VERSION));
+        assert_eq!(detect(&f), FocusStatus::NeedsLogout);
+        f.shell_restarted = true;
+        assert_eq!(detect(&f), FocusStatus::Working);
     }
 
     #[test]
@@ -543,7 +617,7 @@ mod tests {
         );
         assert_eq!(
             status(&|f| f.peer = shell(Some(VERSION)), &enabled),
-            FocusStatus::Working
+            FocusStatus::NeedsLogout
         );
         assert_eq!(
             status(&|_| {}, &[format!("other-{UUID}")]),
@@ -618,7 +692,9 @@ mod tests {
             .path()
             .join(".local/share/gnome-shell/extensions")
             .join(UUID);
+        assert!(!trusted_executable_matches(&dir));
         write_extension(&dir).unwrap();
+        assert!(trusted_executable_matches(&dir));
         let metadata: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(dir.join("metadata.json")).unwrap())
                 .unwrap();
@@ -639,7 +715,36 @@ mod tests {
             EXTENSION.contains("./bridge.js"),
             "extension.js imports the bridge it ships with"
         );
-        write_extension(&dir).unwrap(); // Repeat install is safe.
+        let trusted: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.join("trusted.json")).unwrap()).unwrap();
+        assert_eq!(
+            trusted["executable"],
+            std::env::current_exe()
+                .unwrap()
+                .canonicalize()
+                .unwrap()
+                .to_str()
+                .unwrap()
+        );
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(dir.join("trusted.json"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        std::fs::write(dir.join("trusted.json"), "old executable").unwrap();
+        assert!(!trusted_executable_matches(&dir));
+        write_extension(&dir).unwrap(); // Repeat install refreshes the trusted executable.
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(
+                &std::fs::read(dir.join("trusted.json")).unwrap()
+            )
+            .unwrap(),
+            trusted
+        );
     }
 
     #[test]

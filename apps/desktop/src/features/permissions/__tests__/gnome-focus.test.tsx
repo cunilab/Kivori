@@ -28,7 +28,7 @@ describe('GNOME Wayland profile setup', () => {
 
   it('explains privacy and the one-time logout before explicit opt-in', async () => {
     render(<GnomeFocusHelp />);
-    expect(await screen.findByText("Let Kivori see which app you're using")).toBeVisible();
+    expect(await screen.findByText('Enable Kivori app profiles and shortcuts')).toBeVisible();
     expect(screen.getByText(/No window titles or contents/)).toBeVisible();
     expect(screen.getByText('One log-out is needed the first time.')).toBeVisible();
     expect(ipc.enableGnomeFocus).not.toHaveBeenCalled();
@@ -52,7 +52,14 @@ describe('GNOME Wayland profile setup', () => {
   it('states exactly what is shared and with whom', async () => {
     render(<GnomeFocusHelp />);
     expect(await screen.findByText(/only learns which app is in front/)).toBeVisible();
-    expect(screen.getByText(/Other programs you run could ask/)).toBeVisible();
+    expect(
+      screen.getByText(/Shortcuts are paused while GNOME is locked or showing a modal prompt/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /require the installed Kivori executable and your approval in a GNOME dialog/,
+      ),
+    ).toBeVisible();
   });
 
   it('offers an update for an outdated extension and then asks for the one log-out', async () => {

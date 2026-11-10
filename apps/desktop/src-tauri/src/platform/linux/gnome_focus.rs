@@ -5,6 +5,7 @@
 //! running a compatible extension version, Subscribes, and then re-reads once a second so a hung
 //! Shell expires the cache. A second thread receives the unicast `FocusChanged` signals and
 //! accepts only those sent by that verified owner. Failures back off exponentially up to a minute.
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -17,13 +18,13 @@ use zbus::MatchRule;
 
 use super::apps::DesktopEntry;
 use crate::platform::foreground::classify_linux;
-use crate::platform::Foreground;
+use crate::platform::{ActionError, Foreground, InputGuard, Shortcut, ShortcutKey};
 
 pub(super) const BUS: &str = "id.cunilab.KivoriFocus";
 const PATH: &str = "/id/cunilab/KivoriFocus";
 /// The extension version this build embeds (`metadata.json` "version", `bridge.js` VERSION).
 /// A running copy at least this new is trusted; an older one is never talked to.
-pub(super) const VERSION: u32 = 2;
+pub(super) const VERSION: u32 = 5;
 const TTL: Duration = Duration::from_secs(3);
 const HEARTBEAT: Duration = Duration::from_secs(1);
 const BACKOFF_FIRST: Duration = Duration::from_secs(2);
@@ -90,8 +91,8 @@ pub(super) fn compatible(version: Option<u32>) -> bool {
     version.is_some_and(|v| v >= VERSION)
 }
 
-fn is_shell_exe(exe: Option<&str>) -> bool {
-    exe.is_some_and(|name| name.contains("gnome-shell"))
+fn canonical_shell_owner(owner: &str, shell: Option<&str>) -> bool {
+    shell == Some(owner)
 }
 
 pub(super) fn peer(conn: &Connection) -> zbus::Result<Peer> {
@@ -103,12 +104,14 @@ pub(super) fn peer(conn: &Connection) -> zbus::Result<Peer> {
     let Ok(owner) = dbus.get_name_owner(name) else {
         return Ok(Peer::Absent);
     };
-    let pid = dbus.get_connection_unix_process_id(BusName::Unique(owner.inner().clone()))?;
-    if !is_shell_exe(super::proc::exe_name(pid).as_deref()) {
+    let shell = dbus
+        .get_name_owner(BusName::try_from("org.gnome.Shell")?)
+        .ok();
+    if !canonical_shell_owner(owner.as_str(), shell.as_ref().map(|name| name.as_str())) {
         return Ok(Peer::Foreign);
     }
     let version = PropertiesProxy::builder(conn)
-        .destination(BUS)?
+        .destination(owner.as_str())?
         .path(PATH)?
         .cache_properties(CacheProperties::No)
         .build()
@@ -133,8 +136,8 @@ pub(super) fn shell_pid(conn: &Connection) -> Option<u32> {
         .ok()
 }
 
-fn subscribe(conn: &Connection) -> zbus::Result<Reply> {
-    Proxy::new(conn, BUS, PATH, BUS)?.call("Subscribe", &())
+fn subscribe(conn: &Connection, owner: &str) -> zbus::Result<Reply> {
+    Proxy::new(conn, owner, PATH, BUS)?.call("Subscribe", &())
 }
 
 /// Doubles up to a minute; a success starts it over.
@@ -160,6 +163,8 @@ pub(super) struct GnomeFocus {
     sample: Mutex<Option<(Instant, Foreground)>>,
     /// The unique name of the verified GNOME Shell; only its signals are believed.
     owner: Mutex<Option<String>>,
+    authorized: AtomicBool,
+    prompt_requested: AtomicBool,
 }
 
 impl GnomeFocus {
@@ -176,7 +181,62 @@ impl GnomeFocus {
         }))
     }
 
+    /// Only a fresh subscription to a verified, compatible Shell enables shortcuts.
+    pub(super) fn shortcuts_ready(&self) -> bool {
+        self.authorized.load(Ordering::Acquire) && self.bridge_ready()
+    }
+
+    fn bridge_ready(&self) -> bool {
+        self.owner.lock().expect("GNOME focus").is_some()
+            && self
+                .sample
+                .lock()
+                .expect("GNOME focus")
+                .as_ref()
+                .is_some_and(|(at, _)| at.elapsed() < TTL)
+    }
+
+    pub(super) fn send_shortcut(
+        &self,
+        shortcut: &Shortcut,
+        guard: InputGuard,
+    ) -> Result<(), ActionError> {
+        guard.check()?;
+        let args = shortcut_args(shortcut)?;
+        let owner = self.owner.lock().expect("GNOME focus").clone();
+        let owner = owner
+            .filter(|_| self.bridge_ready())
+            .ok_or_else(|| ActionError::Failed(super::keys::WAYLAND_SHORTCUTS_REASON.into()))?;
+        let conn = connection().map_err(|_| ActionError::Uncertain)?;
+        // Pin to the verified unique name: a replacement bus-name owner cannot receive keys.
+        let proxy =
+            Proxy::new(&conn, owner.as_str(), PATH, BUS).map_err(|_| ActionError::Uncertain)?;
+        let started = Instant::now();
+        let (authorized, generation, shell_clock): (bool, u32, u64) = proxy
+            .call("GetShortcutContext", &())
+            .map_err(|_| ActionError::Uncertain)?;
+        if !authorized {
+            if !self.prompt_requested.swap(true, Ordering::AcqRel) {
+                // Only an actual shortcut attempt may open Shell consent. Never defer this
+                // chord across the dialog: the user can try again after approving.
+                let _: zbus::Result<(bool,)> = proxy.call("Authorize", &(true,));
+            }
+            return Err(ActionError::PermissionRequired);
+        }
+        guard.check()?;
+        let budget = deadline_budget(guard.deadline, started.elapsed())?;
+        let deadline = shell_clock
+            .checked_add(budget)
+            .ok_or(ActionError::Uncertain)?;
+        // One call only: Shell checks this exact focus generation and its monotonic deadline.
+        proxy
+            .call("SendShortcut", &(args.0, args.1, deadline, generation))
+            .map_err(|_| ActionError::Uncertain)
+    }
+
     fn clear(&self) {
+        self.authorized.store(false, Ordering::Release);
+        self.prompt_requested.store(false, Ordering::Release);
         *self.sample.lock().expect("GNOME focus") = None;
         *self.owner.lock().expect("GNOME focus") = None;
     }
@@ -229,13 +289,40 @@ impl GnomeFocus {
     /// re-subscribes after an extension reload and keeps the cache fresh while Shell answers.
     fn beat(&self, conn: &Connection, backoff: &mut Backoff) -> zbus::Result<()> {
         let mut subscribed = false;
+        let mut automatic_attempted = false;
         loop {
-            let reply = subscribe(conn)?;
+            // A Shell can reload an extension without changing its process/unique name.
+            // Recheck its version so a disabled or downgraded bridge cannot stay available.
+            match peer(conn)? {
+                Peer::Shell { owner, version }
+                    if compatible(version)
+                        && Some(owner.as_str())
+                            == self.owner.lock().expect("GNOME focus").as_deref() => {}
+                _ => return Err(zbus::Error::Failure("GNOME bridge changed".into())),
+            }
+            let owner = self
+                .owner
+                .lock()
+                .expect("GNOME focus")
+                .clone()
+                .ok_or_else(|| zbus::Error::Failure("GNOME owner missing".into()))?;
+            let reply = subscribe(conn, &owner)?;
             if !subscribed {
                 tracing::info!("GNOME focus observer subscribed");
                 subscribed = true;
             }
+            let protected = reply.3;
             self.store(reply);
+            let proxy = Proxy::new(conn, owner.as_str(), PATH, BUS)?;
+            if !automatic_attempted && !protected {
+                automatic_attempted = true;
+                // Restore only consent snapshotted at login; observing focus cannot open a dialog.
+                let _: zbus::Result<(bool,)> = proxy.call("Authorize", &(false,));
+            }
+            let (authorized, _, _): (bool, u32, u64) = proxy.call("GetShortcutContext", &())?;
+            if self.authorized.swap(authorized, Ordering::AcqRel) && !authorized {
+                self.prompt_requested.store(false, Ordering::Release);
+            }
             backoff.reset();
             std::thread::sleep(HEARTBEAT);
         }
@@ -284,9 +371,141 @@ impl GnomeFocus {
     }
 }
 
+fn keysym(key: ShortcutKey) -> Result<u32, ActionError> {
+    Ok(match key {
+        ShortcutKey::Char(c)
+            if c.is_ascii_lowercase() || c.is_ascii_digit() || "`[]".contains(c) =>
+        {
+            c as u32
+        }
+        ShortcutKey::Function(n @ 1..=20) => 0xffbe + u32::from(n) - 1,
+        ShortcutKey::Enter => 0xff0d,
+        ShortcutKey::Tab => 0xff09,
+        ShortcutKey::Space => 0x20,
+        ShortcutKey::Escape => 0xff1b,
+        ShortcutKey::Backspace => 0xff08,
+        ShortcutKey::Delete => 0xffff,
+        ShortcutKey::Home => 0xff50,
+        ShortcutKey::End => 0xff57,
+        ShortcutKey::PageUp => 0xff55,
+        ShortcutKey::PageDown => 0xff56,
+        ShortcutKey::Up => 0xff52,
+        ShortcutKey::Down => 0xff54,
+        ShortcutKey::Left => 0xff51,
+        ShortcutKey::Right => 0xff53,
+        _ => return Err(ActionError::Failed("unsupported key".into())),
+    })
+}
+pub(super) fn shortcut_args(shortcut: &Shortcut) -> Result<(u32, u32), ActionError> {
+    let modifiers = u32::from(shortcut.ctrl)
+        | (u32::from(shortcut.alt) << 1)
+        | (u32::from(shortcut.shift) << 2)
+        | (u32::from(shortcut.meta) << 3);
+    let key = keysym(shortcut.key)?;
+    if !permitted_shortcut(modifiers, key) {
+        return Err(ActionError::Failed(
+            "Shortcut not allowed by the GNOME keyboard policy".into(),
+        ));
+    }
+    Ok((modifiers, key))
+}
+
+fn permitted_shortcut(modifiers: u32, key: u32) -> bool {
+    let ctrl = modifiers & 1 != 0;
+    let alt = modifiers & 2 != 0;
+    let super_key = modifiers & 8 != 0;
+    let function = (0xffbe..=0xffc9).contains(&key);
+    let lone = function
+        || [
+            0xff1b, 0xff09, 0xff51, 0xff52, 0xff53, 0xff54, 0xff50, 0xff57, 0xff55, 0xff56, 0xffff,
+            0x1008ff11, 0x1008ff12, 0x1008ff13, 0x1008ff14, 0x1008ff15, 0x1008ff16, 0x1008ff17,
+        ]
+        .contains(&key);
+    let printable = (97..=122).contains(&key)
+        || (48..=57).contains(&key)
+        || [0x60, 0x5b, 0x5d, 0x20].contains(&key);
+    modifiers <= 15
+        && (lone || printable || [0xff0d, 0xff08].contains(&key))
+        && !(alt && key == 0xffbf
+            || ctrl && alt && (function || [0xffff, 0xff08].contains(&key))
+            || super_key && key == 108
+            || (ctrl || super_key) && key == 118)
+        && (ctrl || alt || super_key || modifiers == 0 && lone)
+}
+
+fn deadline_budget(deadline: Option<Instant>, round_trip: Duration) -> Result<u64, ActionError> {
+    let remaining = deadline.map_or(Duration::from_millis(100), |at| {
+        at.saturating_duration_since(Instant::now())
+    });
+    let budget = remaining
+        .min(Duration::from_millis(100))
+        .saturating_sub(round_trip);
+    if budget.is_zero() {
+        return Err(ActionError::Failed("Keyboard shortcut expired".into()));
+    }
+    Ok(budget.as_micros() as u64)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn policy_refuses_text_system_surfaces_and_clipboard_paste() {
+        for text in [
+            "A",
+            "Shift+A",
+            "Enter",
+            "Shift+Enter",
+            "Alt+F2",
+            "Ctrl+Alt+F1",
+            "Ctrl+Alt+F12",
+            "Ctrl+Alt+Delete",
+            "Ctrl+Alt+Backspace",
+            "Meta+L",
+            "Ctrl+V",
+            "Ctrl+Shift+V",
+            "Meta+V",
+            "F13",
+        ] {
+            assert!(shortcut_args(&text.parse().unwrap()).is_err(), "{text}");
+        }
+        assert!(deadline_budget(Some(Instant::now()), Duration::ZERO).is_err());
+        assert!(deadline_budget(None, Duration::from_millis(101)).is_err());
+        assert!(deadline_budget(None, Duration::from_millis(5)).unwrap() <= 95_000);
+    }
+
+    #[test]
+    fn shortcut_mapping_is_bounded_and_preserves_modifiers() {
+        for (text, expected) in [
+            ("Ctrl+Shift+Tab", (5, 0xff09)),
+            ("Alt+Left", (2, 0xff51)),
+            ("Meta+A", (8, 97)),
+            ("F12", (0, 0xffc9)),
+            ("Ctrl+[", (1, 0x5b)),
+        ] {
+            assert_eq!(shortcut_args(&text.parse().unwrap()), Ok(expected));
+        }
+        assert!(keysym(ShortcutKey::Char('é')).is_err());
+        assert!(keysym(ShortcutKey::Function(21)).is_err());
+    }
+
+    #[test]
+    fn shortcuts_require_a_fresh_verified_subscription() {
+        let watch = GnomeFocus::default();
+        assert!(!watch.shortcuts_ready());
+        *watch.sample.lock().unwrap() = Some((Instant::now(), Foreground::Unknown));
+        assert!(!watch.shortcuts_ready());
+        *watch.owner.lock().unwrap() = Some(":1.42".into());
+        assert!(
+            !watch.shortcuts_ready(),
+            "focus alone never grants keyboard control"
+        );
+        watch.authorized.store(true, Ordering::Release);
+        assert!(watch.shortcuts_ready());
+        *watch.sample.lock().unwrap() = Some((Instant::now() - TTL, Foreground::Unknown));
+        assert!(!watch.shortcuts_ready());
+    }
 
     #[test]
     fn dbus_reply_maps_to_existing_builtin_profiles() {
@@ -391,10 +610,9 @@ mod tests {
 
     #[test]
     fn only_gnome_shell_and_a_new_enough_version_are_trusted() {
-        assert!(is_shell_exe(Some("gnome-shell")));
-        assert!(is_shell_exe(Some(".gnome-shell-wrapped")));
-        assert!(!is_shell_exe(Some("python3")));
-        assert!(!is_shell_exe(None));
+        assert!(canonical_shell_owner(":1.42", Some(":1.42")));
+        assert!(!canonical_shell_owner(":1.43", Some(":1.42")));
+        assert!(!canonical_shell_owner(":1.42", None));
         assert!(compatible(Some(VERSION)));
         assert!(compatible(Some(VERSION + 1)));
         assert!(!compatible(Some(VERSION - 1)));

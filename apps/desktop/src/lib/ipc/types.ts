@@ -506,10 +506,9 @@ export const CUSTOM_PROFILE_ID = /^custom-\d{1,4}$/;
 /** The native limits, checked again there. */
 export const PROFILE_LIMITS = { customProfiles: 16, apps: 32, nameMax: 32, pinned: 10 } as const;
 
-/** Controls `setBinding` targets. The middle button's Hold is reserved for the profile pin. */
+/** Controls `setBinding` targets. Knob Hold and middle-button Hold are fixed. */
 export const CONTROL_REFS = [
   'press',
-  'hold',
   'button1Press',
   'button1Hold',
   'button2Press',
@@ -594,12 +593,12 @@ export interface ProfileConfigDto {
   rotate: { spec: RotateSpec; deviceLabel: string; overridden: boolean };
   press: SlotDto;
   hold: SlotDto;
-  /** A button's Hold is `'pin'` for the middle one (reserved for profile pin). */
+  /** A button's Hold is `'micMute'` for the middle one (fixed mic mute on every capture device). */
   buttons: [ButtonDto, ButtonDto, ButtonDto];
 }
 export interface ButtonDto {
   press: SlotDto;
-  hold: SlotDto | 'pin';
+  hold: SlotDto | 'micMute';
 }
 
 /** Backlight steps, 1 (dimmest, still clearly on) to 5 (full). */

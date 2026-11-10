@@ -32,9 +32,8 @@ pub enum Control {
 }
 
 /// Every token [`Control::from_token`] accepts, for the Rust/TS vocabulary check.
-pub const CONTROL_TOKENS: [&str; 7] = [
+pub const CONTROL_TOKENS: [&str; 6] = [
     "press",
-    "hold",
     "button1Press",
     "button1Hold",
     "button2Press",
@@ -65,15 +64,15 @@ impl Control {
     /// Parses a webview control token.
     ///
     /// # Errors
-    /// A fixed reason; `button2Hold` is reserved for the profile pin.
+    /// A fixed reason; knob Hold and middle-button Hold are fixed.
     pub fn from_token(token: &str) -> Result<Self, &'static str> {
         match token {
             "press" => Ok(Self::Press),
-            "hold" => Ok(Self::Hold),
+            "hold" => Err("knob Hold is reserved for Hold + turn: switch profile"),
             "button1Press" => Ok(Self::ButtonPress(0)),
             "button1Hold" => Ok(Self::ButtonHold(0)),
             "button2Press" => Ok(Self::ButtonPress(1)),
-            "button2Hold" => Err("the middle button's Hold is reserved for profile pin"),
+            "button2Hold" => Err("the middle button's Hold is reserved for mic mute"),
             "button3Press" => Ok(Self::ButtonPress(2)),
             "button3Hold" => Ok(Self::ButtonHold(2)),
             _ => Err("unknown control"),
@@ -401,9 +400,8 @@ fn apply(
     if let Some(spec) = &over.press {
         bindings.press = slot(spec, macros)?;
     }
-    if let Some(spec) = &over.hold {
-        bindings.hold = slot(spec, macros)?;
-    }
+    // Legacy knob Hold overrides remain readable but no longer execute.
+    bindings.hold = Slot::default();
     for (target, over) in bindings.buttons.iter_mut().zip(&over.buttons) {
         if let Some(spec) = &over.press {
             target.press = slot(spec, macros)?;
@@ -413,7 +411,7 @@ fn apply(
         }
     }
     if over.buttons[1].hold.is_some() {
-        return Err("the middle button's Hold is reserved for profile pin");
+        return Err("the middle button's Hold is reserved for mic mute");
     }
     Ok(())
 }
@@ -539,7 +537,7 @@ pub fn full_override(profile: &Profile) -> ProfileOverride {
         hold: Some(spec(&bindings.hold)),
         buttons: std::array::from_fn(|i| ButtonOverride {
             press: Some(spec(&bindings.buttons[i].press)),
-            // The middle button's Hold is reserved for the pin and never written.
+            // The middle button's Hold is fixed mic mute and never written.
             hold: (i != 1).then(|| spec(&bindings.buttons[i].hold)),
         }),
         ..ProfileOverride::default()
@@ -850,7 +848,7 @@ mod tests {
         pin.buttons[1].hold = Some(spec(Some(ActionSpec::PlayPause), None));
         assert_eq!(
             invalid(&file_with(ProfileId::Code, pin)),
-            "the middle button's Hold is reserved for profile pin"
+            "the middle button's Hold is reserved for mic mute"
         );
         let bad_knob = ProfileOverride {
             rotate: Some(RotateSpec::Shortcuts {
@@ -867,11 +865,53 @@ mod tests {
     }
 
     #[test]
+    fn saved_rotate_shortcuts_survive_the_new_volume_defaults() {
+        let over = ProfileOverride {
+            rotate: Some(RotateSpec::Shortcuts {
+                cw: "Ctrl+Tab".into(),
+                ccw: "Ctrl+Shift+Tab".into(),
+                label: "My tabs".into(),
+            }),
+            ..ProfileOverride::default()
+        };
+        let file = file_with(ProfileId::Browser, over);
+        let resolved = resolve(crate::desk::profile::builtins(), &file).unwrap();
+        assert_eq!(
+            resolved.profiles[1].rotate,
+            RotateBinding::Shortcuts {
+                cw: "Ctrl+Tab".parse().unwrap(),
+                ccw: "Ctrl+Shift+Tab".parse().unwrap(),
+                label: "My tabs".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn legacy_knob_hold_is_readable_but_never_runs_and_pin_list_is_kept() {
+        let mut over = ProfileOverride {
+            hold: Some(spec(Some(ActionSpec::SystemMute), Some("Old mute"))),
+            in_pin_cycle: Some(false),
+            ..ProfileOverride::default()
+        };
+        over.buttons[0].hold = Some(spec(Some(ActionSpec::PlayPause), None));
+        let file = file_with(ProfileId::General, over);
+        let resolved = resolve(crate::desk::profile::builtins(), &file).unwrap();
+        let general = &resolved.profiles[0];
+        assert_eq!(general.bindings.hold, Slot::default());
+        assert!(!general.in_pin_cycle);
+        assert_eq!(
+            general.bindings.buttons[0].hold.action,
+            Some(Action::PlayPause)
+        );
+    }
+
+    #[test]
     fn control_tokens_parse_and_the_pin_hold_is_refused() {
         for token in CONTROL_TOKENS {
             assert!(Control::from_token(token).is_ok(), "{token}");
         }
         assert!(Control::from_token("button2Hold").is_err());
+        assert!(Control::from_token("hold").is_err());
         assert!(Control::from_token("rotate").is_err());
     }
 

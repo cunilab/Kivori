@@ -142,12 +142,12 @@ function slotRow(key: GestureKey, Icon: LucideIcon, control: ControlRef, slot: S
 }
 
 function rows(profile: ProfileConfigDto): Row[] {
-  const { rotate, press, hold, buttons } = profile;
+  const { rotate, press, buttons } = profile;
   const holdRow = (i: 0 | 1 | 2, key: GestureKey, control: ControlRef): Row => {
     const slot = buttons[i].hold;
-    // The middle button's Hold pins a profile; it can never be rebound.
-    return slot === 'pin'
-      ? { key, Icon: Hand, control: null, fixed: t.pinProfile }
+    // The middle button's Hold mutes every microphone; it cannot be rebound.
+    return slot === 'micMute'
+      ? { key, Icon: Hand, control: null, fixed: t.micMuteFixed }
       : slotRow(key, Hand, control, slot);
   };
   return [
@@ -163,7 +163,7 @@ function rows(profile: ProfileConfigDto): Row[] {
     { key: 'heldRotate', Icon: RotateCw, control: null, fixed: t.profilePickerFixed },
     slotRow('press', MousePointerClick, 'press', press),
     { key: 'doublePress', Icon: RefreshCw, control: null, fixed: t.doublePressFixed },
-    slotRow('hold', Hand, 'hold', hold),
+    { key: 'hold', Icon: Hand, control: null, fixed: t.knobHoldFixed },
     slotRow('button1', CircleDot, 'button1Press', buttons[0].press),
     slotRow('button2', CircleDot, 'button2Press', buttons[1].press),
     slotRow('button3', CircleDot, 'button3Press', buttons[2].press),

@@ -101,22 +101,25 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   never one direction.
 - With negotiated support, pressing the knob before turning opens the device's **profile
   picker**: Auto and the pinned profiles, the highlight following the knob, a release selecting the
-  entry. It is fixed (not bindable). The first completed detent consumes that press, so it does not
+  entry. It opens only after two completed detents while held and is fixed (not bindable). The first completed detent consumes that press, so it does not
   also fire Press, Hold, or Double press. An already-started recovery hold cannot be interrupted.
   The picker shows a pick as confirmed only when the desktop reports it now runs it; without an
   answer it says "Not confirmed" and the real state returns. Without the picker capability the
   older held-rotation gesture is unchanged.
-- **Hold ring:** while a switch is held, a ring fills over the 1 s Hold threshold and brightens
-  when a release would run the Hold. Only for a Hold the desktop said does something (the knob
-  switch's from its Hold label, a contextual button's from the Hold labels it sends); an unbound
-  Hold shows nothing. Releasing early is a Press and the ring vanishes. A turn turns the ring into
-  the picker; at ~2 s the knob switch's ring hands over to the recovery takeover, and a contextual
-  button's ring vanishes (such a hold fires nothing).
+- Knob Press toggles system output mute in every built-in profile; Double press changes view.
+  Knob Hold has no bindable action and never shows a hold ring. Old Hold overrides remain
+  readable but do not execute. Every built-in knob turns system output volume; saved rotate
+  overrides and custom profiles keep their existing targets. Browser tab switching, Premiere
+  frame stepping, and agent history/navigation are optional presets in Controls, never defaults.
+- **Hold ring:** contextual buttons with an action show progress over the 1 s Hold threshold.
+  Release when full to run the action; release early for Press. The middle button always mutes
+  every capture device in every profile. Left and right Holds remain profile-specific.
+  At ~2 s a contextual button's ring vanishes and releasing fires nothing.
 - Short press fires only if released within **1 s**. Discrete mappings fire once per
   press; no implicit key-repeat.
 - Contextual buttons give Press and Hold with the same timings, never recovery: held past ~2 s they
   fire nothing. Their labels on screen always match what they run.
-- Recovery button: release between 1 s and ~2 s may run a mapped Hold. At ~2 s
+- Recovery button: release between 1 s and ~2 s fires nothing. At ~2 s
   recovery owns the gesture and the Hold is cancelled; at ~10 s from key-down the MCU
   reboots. Once recovery begins, rotation changes nothing. A hold-and-rotate gesture that
   started before recovery owns the press until release. Recovery itself is not configurable.
@@ -152,9 +155,10 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   included. One app belongs to exactly one profile: adding it elsewhere moves it, and says so.
   At most 16 custom profiles; a name longer than the panel's profile slot is shortened there,
   never replaced. Deleting a profile sends its apps back to General.
-- Holding the middle contextual button pins the next profile (Auto, then General and the built-in
-  profiles, then custom profiles marked "Pin to device", then back to Auto); a pin ignores focus but
-  never Protected.
+- Holding the middle contextual button for 1 s, then releasing, toggles mute on every capture
+  device. This replaces the former profile-pin gesture automatically, including for existing configs.
+  The pinned profile list is retained for the knob's two-detent Hold + turn picker; a selected pin
+  ignores focus but never Protected.
 - In a protected context, shortcuts and launches are suspended: their labels disappear and a
   press says it can't run. System volume, media keys and mute keep working.
 - A knob bound to shortcuts sends one per detent with no badge per detent; the label is the

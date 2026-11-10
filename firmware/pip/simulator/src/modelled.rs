@@ -442,7 +442,12 @@ mod tests {
         // The unit (device_probe internals, connected desk): compose 79 ms, 12 fps, busy ~100%.
         let compose = i32::from(internals.compose_ms.expect("compose"));
         assert!((compose - 79).abs() <= 1, "compose {compose} ms");
-        assert_eq!(internals.fps, Some(12), "fps");
+        // Whole-frame sampling rounds the committed ~78 ms fixture to 12 or 13 fps.
+        assert!(
+            matches!(internals.fps, Some(12 | 13)),
+            "fps {:?}",
+            internals.fps
+        );
         let busy = internals.busy_percent.expect("busy");
         assert!((99..=100).contains(&busy), "busy {busy}%");
         let flush = internals.flush_ms.expect("flush");

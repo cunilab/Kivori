@@ -196,7 +196,7 @@ active profile presses no keys. Windows has no such permission and is unchanged.
 | Per-app volume / mute | Native sessions | Unavailable | PulseAudio streams |
 | Microphone mute | All devices, read-back | All devices, subject to writable mute support | All capture devices, read-back |
 | Media keys / now playing | Native media | Bundled media adapter | MPRIS over session D-Bus, X11 and Wayland |
-| Keyboard shortcuts | Native input | Accessibility required | X11 only; unavailable on Wayland |
+| Keyboard shortcuts | Native input | Accessibility required | X11; GNOME Wayland with Kivori App Profiles extension v5+ (one logout after install/update and one remembered Shell approval for the installed executable); keyboard portal on other Wayland desktops |
 | Automatic app profiles | Foreground app | Foreground app | X11 foreground app; GNOME Wayland works with the Kivori GNOME extension (46–50) |
 | CPU / RAM | Native | Native | `/proc` |
 | Sleep / wake / lock | Native | Native | systemd-logind D-Bus |
@@ -206,3 +206,5 @@ active profile presses no keys. Windows has no such permission and is unchanged.
 
 Linux implementation and host tests do not close physical acceptance. See [linux.md](./linux.md)
 for setup, the GNOME Wayland focus extension, XWayland limits, USB rules and pending hands-on checks.
+
+GNOME Wayland shortcuts use a verified, approved executable and one authorized bus peer. Trust and saved consent are snapshotted at enable; disk edits cannot silently authorize input in the running session. Reinstall/update requires re-login, and first shortcut use opens a Shell dialog showing the full executable path if consent is needed. This protects against other apps silently pressing keys in this session, relies on home-folder files like any GNOME extension, and does not defend against malware already running as you. Focus subscriptions alone cannot inject. Only Ctrl/Alt/Super chords or explicit lone non-text keys are allowed; plain text, lone Return, modifier-only keys, Alt+F2, Ctrl+Alt+F1–F12/Delete/Backspace, Super+L and clipboard-paste chords (Ctrl+V, Ctrl+Shift+V, Super+V) are blocked, with a reason in the action picker. Protection validation fails closed; every chord carries a bounded Shell-clock deadline and focus generation. Failed releases suspend injection and reset/dispose the virtual keyboard. See [Linux setup and shortcut policy](linux.md) for the complete allowed-key list and recovery steps.

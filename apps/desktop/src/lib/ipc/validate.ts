@@ -652,7 +652,7 @@ function slotDto(raw: unknown): SlotDto {
 
 function buttonDto(raw: unknown): ButtonDto {
   const r = record('button', raw);
-  return { press: slotDto(r.press), hold: r.hold === 'pin' ? 'pin' : slotDto(r.hold) };
+  return { press: slotDto(r.press), hold: r.hold === 'micMute' ? 'micMute' : slotDto(r.hold) };
 }
 
 function profileDto(raw: unknown): ProfileConfigDto {

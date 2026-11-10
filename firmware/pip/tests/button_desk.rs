@@ -374,7 +374,7 @@ fn recovery_already_started_cannot_be_stolen_by_held_rotation() {
 }
 
 #[test]
-fn old_host_still_swallows_held_rotation_and_gets_hold() {
+fn old_host_still_swallows_held_rotation_without_a_knob_hold_action() {
     let mut rig = Rig::new();
     rig.connect(M1);
     rig.switch(true);
@@ -383,7 +383,7 @@ fn old_host_still_swallows_held_rotation_and_gets_hold() {
     rig.run(1_000);
     rig.switch(false);
     rig.run(100);
-    assert_eq!(rig.inputs(), [(ControlId::Button, InputKind::Hold)]);
+    assert!(rig.inputs().is_empty(), "knob Hold is never an action");
 }
 
 #[test]
@@ -578,11 +578,14 @@ fn a_short_press_reaches_the_desktop_once() {
 }
 
 #[test]
-fn a_hold_is_sent_as_hold_and_never_also_as_press() {
+fn knob_hold_never_emits_an_action() {
     let mut rig = Rig::new();
     rig.connect(M1);
     rig.press_for(1_000);
-    assert_eq!(rig.button_kinds(), [InputKind::Hold]);
+    assert!(
+        rig.button_kinds().is_empty(),
+        "knob Hold is never an action"
+    );
 }
 
 #[test]
@@ -1082,6 +1085,26 @@ fn picks(rig: &mut Rig) -> Vec<(u8, u8)> {
 }
 
 #[test]
+fn one_held_detent_never_opens_the_picker_or_fires_a_hold_and_release_resets_it() {
+    let mut rig = Rig::new();
+    rig.connect(PICKER);
+    rig.send(&choices(&rig, 1, 0));
+    rig.run(50);
+    for _ in 0..2 {
+        rig.switch(true);
+        rig.run(100);
+        rig.turn(Direction::Cw);
+        rig.run(1_000);
+        rig.switch(false);
+        rig.run(100);
+        let sent = rig.drain();
+        assert!(!sent
+            .iter()
+            .any(|m| matches!(m, Message::ProfilePick(_) | Message::InputEvent(_))));
+    }
+}
+
+#[test]
 fn turning_with_the_switch_held_picks_a_profile_and_sends_one_pick_on_release() {
     let mut rig = Rig::new();
     rig.connect(PICKER.union(Capabilities::HELD_ROTATION_V1));
@@ -1090,6 +1113,7 @@ fn turning_with_the_switch_held_picks_a_profile_and_sends_one_pick_on_release() 
     let before = rig.display.frame().to_vec();
     rig.switch(true);
     rig.run(100);
+    rig.turn(Direction::Cw);
     rig.turn(Direction::Cw);
     rig.turn(Direction::Cw);
     rig.run(100);
@@ -1137,6 +1161,7 @@ fn the_picker_stays_on_screen_until_the_desktop_confirms_and_then_goes() {
     rig.switch(true);
     rig.run(100);
     rig.turn(Direction::Cw);
+    rig.turn(Direction::Cw);
     rig.switch(false);
     rig.run(300);
     assert_eq!(picks(&mut rig), [(1, 1)]);
@@ -1182,6 +1207,7 @@ fn an_unanswered_pick_never_claims_success_and_the_real_state_returns() {
     rig.switch(true);
     rig.run(100);
     rig.turn(Direction::Cw);
+    rig.turn(Direction::Cw);
     rig.switch(false);
     rig.run(100);
     assert_eq!(
@@ -1203,6 +1229,7 @@ fn a_pick_from_an_older_list_is_not_confirmed_by_a_newer_one() {
     rig.run(50);
     rig.switch(true);
     rig.run(100);
+    rig.turn(Direction::Cw);
     rig.turn(Direction::Cw);
     rig.switch(false);
     rig.run(100);
@@ -1234,6 +1261,7 @@ fn the_picker_is_inert_unless_negotiated_and_a_new_session_forgets_it() {
     rig.switch(true);
     rig.run(100);
     rig.turn(Direction::Cw);
+    rig.turn(Direction::Cw);
     rig.switch(false);
     rig.run(100);
     assert!(picks(&mut rig).is_empty());
@@ -1244,6 +1272,7 @@ fn the_picker_is_inert_unless_negotiated_and_a_new_session_forgets_it() {
     rig.run(50);
     rig.switch(true);
     rig.run(100);
+    rig.turn(Direction::Cw);
     rig.turn(Direction::Cw);
     rig.nonce += 1;
     rig.connect(PICKER);
@@ -1261,6 +1290,7 @@ fn a_switch_bounce_while_choosing_sends_no_pick_and_keeps_the_choice() {
     rig.switch(true);
     rig.run(100);
     rig.turn(Direction::Cw);
+    rig.turn(Direction::Cw);
     // The raw switch chatters low for one 10 ms tick (under the 20 ms debounce) mid-turn.
     rig.switch(false);
     rig.run(10);
@@ -1268,6 +1298,7 @@ fn a_switch_bounce_while_choosing_sends_no_pick_and_keeps_the_choice() {
     rig.run(30);
     assert!(picks(&mut rig).is_empty(), "a bounce is not a release");
     // The picker is still choosing: the next detent moves on from entry 1, not from a new start.
+    rig.turn(Direction::Cw);
     rig.turn(Direction::Cw);
     rig.run(50);
     assert!(picks(&mut rig).is_empty());
@@ -1288,6 +1319,7 @@ fn losing_input_while_choosing_cancels_the_picker_but_keeps_the_link() {
     rig.run(50);
     rig.switch(true);
     rig.run(100);
+    rig.turn(Direction::Cw);
     rig.turn(Direction::Cw);
     let choosing = rig.display.frame().to_vec();
     rig.levels.3.set(1);
@@ -1313,6 +1345,7 @@ fn losing_input_while_choosing_cancels_the_picker_but_keeps_the_link() {
     rig.switch(true);
     rig.run(100);
     rig.turn(Direction::Cw);
+    rig.turn(Direction::Cw);
     rig.switch(false);
     rig.run(100);
     assert_eq!(picks(&mut rig), [(7, 1)], "the same session still picks");
@@ -1326,6 +1359,7 @@ fn holding_after_a_turn_past_two_seconds_never_starts_recovery_and_sends_one_pic
     rig.run(50);
     rig.switch(true);
     rig.run(100);
+    rig.turn(Direction::Cw);
     rig.turn(Direction::Cw);
     assert!(
         !rig.run_with_heartbeat(2_500),
@@ -1346,6 +1380,7 @@ fn a_new_picker_after_not_confirmed_starts_from_the_desktops_state() {
     rig.switch(true);
     rig.run(100);
     rig.turn(Direction::Cw);
+    rig.turn(Direction::Cw);
     rig.switch(false);
     rig.run(100);
     assert_eq!(picks(&mut rig), [(1, 1)]);
@@ -1353,6 +1388,7 @@ fn a_new_picker_after_not_confirmed_starts_from_the_desktops_state() {
     assert!(!rig.run_with_heartbeat(3_500));
     rig.switch(true);
     rig.run(100);
+    rig.turn(Direction::Cw);
     rig.turn(Direction::Cw);
     rig.switch(false);
     rig.run(100);
@@ -1383,7 +1419,7 @@ fn knob_labels(rig: &Rig, hold: &str) -> Message {
 }
 
 #[test]
-fn the_hold_ring_fills_towards_the_hold_and_appears_only_for_a_bound_hold() {
+fn knob_hold_never_shows_a_ring_even_with_legacy_hold_labels() {
     let mut rig = Rig::new();
     rig.connect(PICKER);
     rig.send(&knob_labels(&rig, "Mute"));
@@ -1392,7 +1428,7 @@ fn the_hold_ring_fills_towards_the_hold_and_appears_only_for_a_bound_hold() {
     rig.run(100);
     assert_ne!(ring_pixel(&rig), RING_DOT, "a quick tap shows no ring");
     rig.run(500);
-    assert_eq!(ring_pixel(&rig), RING_DOT, "charging");
+    assert_ne!(ring_pixel(&rig), RING_DOT, "knob Hold never shows a ring");
     rig.run(500);
     assert_ne!(ring_pixel(&rig), RING_DOT, "full: the dot turns white");
     let ready = rig.display.frame().to_vec();
@@ -1428,7 +1464,7 @@ fn a_contextual_buttons_ring_needs_the_desktop_to_say_it_has_a_hold() {
         actions: HoldActions {
             buttons: [
                 MediaText::default(),
-                MediaText::from_text("Next profile"),
+                MediaText::from_text("Mic mute"),
                 MediaText::default(),
             ],
         },
@@ -1448,7 +1484,7 @@ fn a_contextual_buttons_ring_needs_the_desktop_to_say_it_has_a_hold() {
 }
 
 #[test]
-fn a_turn_during_the_hold_hands_the_screen_from_the_ring_to_the_picker() {
+fn two_held_detents_open_the_picker_without_a_knob_hold_ring() {
     let mut rig = Rig::new();
     rig.connect(PICKER);
     rig.send(&knob_labels(&rig, "Mute"));
@@ -1456,7 +1492,8 @@ fn a_turn_during_the_hold_hands_the_screen_from_the_ring_to_the_picker() {
     rig.run(50);
     rig.switch(true);
     rig.run(500);
-    assert_eq!(ring_pixel(&rig), RING_DOT);
+    assert_ne!(ring_pixel(&rig), RING_DOT, "knob has no Hold ring");
+    rig.turn(Direction::Cw);
     rig.turn(Direction::Cw);
     rig.run(50);
     assert_ne!(

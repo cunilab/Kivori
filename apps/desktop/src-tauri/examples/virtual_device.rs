@@ -159,12 +159,18 @@ fn smoke(mut sandbox: Sandbox, output: PathBuf) -> Result<(), String> {
     sandbox.input("press")?;
     settle(&mut sandbox, Duration::from_millis(120))?;
     sandbox.input("release")?;
-    wait_for(&mut sandbox, "fake media action", |s| s.media_triggers == 1)?;
+    wait_for(&mut sandbox, "confirmed output mute", |s| {
+        s.muted == Some(true)
+    })?;
     settle(&mut sandbox, Duration::from_millis(250))?;
     let result = sandbox.snapshot();
-    if result.media_triggers != 1 || result.detents != 3 || result.volume != 56 {
+    if result.muted != Some(true)
+        || result.media_triggers != 0
+        || result.detents != 3
+        || result.volume != 56
+    {
         return Err(format!(
-            "Expected volume56, three detents and one media trigger; got {}, {}, {}",
+            "Expected volume56, three detents, output muted and no media trigger; got {}, {}, {}",
             result.volume, result.detents, result.media_triggers
         ));
     }
@@ -217,7 +223,7 @@ fn smoke(mut sandbox: Sandbox, output: PathBuf) -> Result<(), String> {
         ]);
     }
     std::fs::write(output, ppm).map_err(|error| error.to_string())?;
-    println!("PASS KIVORI-VIRTUAL-DEVICE: real firmware handshake, three raw detents (slowest {} ms) → fake volume56, raw press/release → one fake media trigger; modelled device internals and identity read back; firmware frame captured. Simulated device/OS, real elapsed time; no physical evidence.", slowest.as_millis());
+    println!("PASS KIVORI-VIRTUAL-DEVICE: real firmware handshake, three raw detents (slowest {} ms) → fake volume56, raw press/release → confirmed fake output mute; modelled device internals and identity read back; firmware frame captured. Simulated device/OS, real elapsed time; no physical evidence.", slowest.as_millis());
     Ok(())
 }
 

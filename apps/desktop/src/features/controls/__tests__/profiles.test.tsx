@@ -226,7 +226,7 @@ describe('ProfilesCard', () => {
     expect(await within(added).findByTestId('app-icon-figma.exe')).toHaveAttribute('src', ICON);
     // It is selected and shows General's bindings.
     expect(await screen.findByRole('combobox', { name: 'Profile' })).toHaveTextContent('Figma');
-    expect(screen.getByTestId('gesture-press')).toHaveTextContent('Play / Pause');
+    expect(screen.getByTestId('gesture-press')).toHaveTextContent('Mute');
     expect(screen.getByText(/Later changes to General do not flow into it/)).toBeVisible();
   });
 
@@ -362,8 +362,6 @@ describe('ProfilesCard', () => {
       within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Reset' }),
     );
     await user.click(screen.getByRole('tab', { name: 'Controls' }));
-    await waitFor(() =>
-      expect(screen.getByTestId('gesture-press')).toHaveTextContent('Play / Pause'),
-    );
+    await waitFor(() => expect(screen.getByTestId('gesture-press')).toHaveTextContent('Mute'));
   });
 });

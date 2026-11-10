@@ -39,6 +39,7 @@ import type {
 } from './types';
 import {
   CAPABILITY_NAMES,
+  CONTROL_REFS,
   COMPANION_STATES,
   MACRO_LIMITS,
   PREVIEW_DIM,
@@ -741,7 +742,7 @@ const key = (keys: string): ActionSpec => ({ kind: 'shortcut', keys });
 const media = { kind: 'playPause' } as const;
 const mediaButtons: ProfileConfigDto['buttons'] = [
   { press: slot({ kind: 'previousTrack' }), hold: slot(null) },
-  { press: slot(media), hold: 'pin' },
+  { press: slot(media), hold: 'micMute' },
   { press: slot({ kind: 'nextTrack' }), hold: slot(null) },
 ];
 /** The meeting profiles: the left button mutes the OS microphones, the others are the app's keys. */
@@ -749,7 +750,10 @@ const meetingButtons = (
   buttons: [[string, string], [string, string]],
 ): ProfileConfigDto['buttons'] => [
   { press: slot({ kind: 'micMute' }), hold: slot(null) },
-  { press: slot(buttons[0][1] ? key(buttons[0][1]) : null, buttons[0][0] || null), hold: 'pin' },
+  {
+    press: slot(buttons[0][1] ? key(buttons[0][1]) : null, buttons[0][0] || null),
+    hold: 'micMute',
+  },
   {
     press: slot(buttons[1][1] ? key(buttons[1][1]) : null, buttons[1][0] || null),
     hold: slot(null),
@@ -762,7 +766,10 @@ const shortcutButtons = (
     press: slot(buttons[0][1] ? key(buttons[0][1]) : null, buttons[0][0] || null),
     hold: slot(null),
   },
-  { press: slot(buttons[1][1] ? key(buttons[1][1]) : null, buttons[1][0] || null), hold: 'pin' },
+  {
+    press: slot(buttons[1][1] ? key(buttons[1][1]) : null, buttons[1][0] || null),
+    hold: 'micMute',
+  },
   {
     press: slot(buttons[2][1] ? key(buttons[2][1]) : null, buttons[2][0] || null),
     hold: slot(null),
@@ -786,8 +793,8 @@ function builtin(
       deviceLabel: rotateLabel(rotate),
       overridden: false,
     },
-    press: slot(media),
-    hold: slot({ kind: 'systemMute' }),
+    press: slot({ kind: 'systemMute' }),
+    hold: slot(null),
     buttons,
   };
 }
@@ -803,9 +810,8 @@ function builtinProfiles(): ProfileConfigDto[] {
       shortcutButtons([
         ['Back', 'Alt+Left'],
         ['Reload', 'Ctrl+R'],
-        ['New tab', 'Ctrl+T'],
+        ['Forward', 'Alt+Right'],
       ]),
-      { kind: 'shortcuts', cw: 'Ctrl+Tab', ccw: 'Ctrl+Shift+Tab', label: 'Tabs' },
     ),
     builtin(
       'code',
@@ -834,7 +840,7 @@ function builtinProfiles(): ProfileConfigDto[] {
       'Zoom',
       ['zoom.exe'],
       meetingButtons([
-        ['Video', 'Alt+V'],
+        ['Camera', 'Alt+V'],
         ['Leave', 'Alt+Q'],
       ]),
     ),
@@ -843,7 +849,7 @@ function builtinProfiles(): ProfileConfigDto[] {
       'Teams',
       ['ms-teams.exe', 'teams.exe'],
       meetingButtons([
-        ['Video', 'Ctrl+Shift+O'],
+        ['Camera', 'Ctrl+Shift+O'],
         ['Leave', 'Ctrl+Shift+H'],
       ]),
     ),
@@ -887,7 +893,6 @@ function builtinProfiles(): ProfileConfigDto[] {
           ['Play', 'Space'],
           ['', ''],
         ]),
-        { kind: 'shortcuts', cw: 'Right', ccw: 'Left', label: 'Frame' },
       ),
       builtin(
         'blender',
@@ -908,7 +913,6 @@ function builtinProfiles(): ProfileConfigDto[] {
           ['Transcript', 'Ctrl+O'],
           ['', ''],
         ]),
-        { kind: 'shortcuts', cw: 'Down', ccw: 'Up', label: 'History' },
       ),
       builtin(
         'codex',
@@ -919,7 +923,6 @@ function builtinProfiles(): ProfileConfigDto[] {
           ['Copy', 'Ctrl+O'],
           ['', ''],
         ]),
-        { kind: 'shortcuts', cw: 'Down', ccw: 'Up', label: 'History' },
       ),
       builtin(
         'opencode',
@@ -930,7 +933,6 @@ function builtinProfiles(): ProfileConfigDto[] {
           ['', ''],
           ['', ''],
         ]),
-        { kind: 'shortcuts', cw: 'Down', ccw: 'Up', label: 'Navigate' },
       ),
     ].map((profile) => ({ ...profile, inPinCycle: false })),
   ];
@@ -963,8 +965,14 @@ function saveConfig(
 function syncDesk(): void {
   const active = config.profiles.find((p) => p.id === deskStatus.profileId);
   if (!active) return;
-  const action = (s: SlotDto | 'pin'): DeskStatusDto['holdAction'] =>
-    s === 'pin' || !s.action ? null : s.action.kind === 'systemMute' ? 'mute' : s.action.kind;
+  const action = (s: SlotDto | 'micMute'): DeskStatusDto['holdAction'] =>
+    s === 'micMute'
+      ? 'micMute'
+      : !s.action
+        ? null
+        : s.action.kind === 'systemMute'
+          ? 'mute'
+          : s.action.kind;
   updateDesk({
     pressAction: action(active.press),
     holdAction: action(active.hold),
@@ -1202,6 +1210,7 @@ export function mockSetBinding(
   control: ControlRef,
   slot: SlotSpec | null,
 ): ConfigDto {
+  if (!CONTROL_REFS.includes(control)) throw new Error('unknown or fixed control');
   const next = slot && {
     action: slot.action && mockAction(slot.action),
     label: slot.action && slot.label ? mockLabel(slot.label) : null,
@@ -1227,13 +1236,6 @@ export function mockSetBinding(
           (p) => p.press,
           (d) => {
             target.press = d;
-          },
-        );
-      case 'hold':
-        return place(
-          (p) => p.hold,
-          (d) => {
-            target.hold = d;
           },
         );
       case 'button1Press':
@@ -1281,8 +1283,8 @@ export function mockSetRotate(profile: ProfileId, rotate: RotateSpec | null): Co
 
 /** Whether any profile binds macro `id`. */
 function macroBound(id: string): boolean {
-  const bound = (s: SlotDto | 'pin'): boolean =>
-    s !== 'pin' && s.action?.kind === 'macro' && s.action.id === id;
+  const bound = (s: SlotDto | 'micMute'): boolean =>
+    s !== 'micMute' && s.action?.kind === 'macro' && s.action.id === id;
   return config.profiles.some(
     (p) =>
       bound(p.press) || bound(p.hold) || p.buttons.some((b) => bound(b.press) || bound(b.hold)),
@@ -1291,8 +1293,8 @@ function macroBound(id: string): boolean {
 
 /** Re-derives each macro-bound slot's device label (a rename shows on the device). */
 function relabelMacros(profiles: ProfileConfigDto[]): void {
-  const fix = (s: SlotDto | 'pin'): void => {
-    if (s !== 'pin' && s.action?.kind === 'macro' && s.label === null) {
+  const fix = (s: SlotDto | 'micMute'): void => {
+    if (s !== 'micMute' && s.action?.kind === 'macro' && s.label === null) {
       s.deviceLabel = actionLabel(s.action);
     }
   };
@@ -1372,7 +1374,7 @@ export function mockDeleteMacro(id: string): ConfigDto {
 
 function clearOverridden(profile: ProfileConfigDto): void {
   const slots = [profile.press, profile.hold];
-  for (const b of profile.buttons) slots.push(b.press, ...(b.hold === 'pin' ? [] : [b.hold]));
+  for (const b of profile.buttons) slots.push(b.press, ...(b.hold === 'micMute' ? [] : [b.hold]));
   for (const slot of slots) slot.overridden = false;
   profile.rotate.overridden = false;
 }

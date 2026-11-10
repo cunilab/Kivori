@@ -166,6 +166,7 @@ pub fn run() {
     #[cfg(feature = "device-studio")]
     let builder = builder.invoke_handler(tauri::generate_handler![
         ipc::gnome::get_gnome_focus_status,
+        ipc::gnome::gnome_shortcut_policy,
         ipc::gnome::enable_gnome_focus,
         ipc::gnome::logout_gnome,
         ipc::commands::get_app_info,
@@ -237,6 +238,7 @@ pub fn run() {
     #[cfg(not(feature = "device-studio"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         ipc::gnome::get_gnome_focus_status,
+        ipc::gnome::gnome_shortcut_policy,
         ipc::gnome::enable_gnome_focus,
         ipc::gnome::logout_gnome,
         ipc::commands::get_app_info,

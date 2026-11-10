@@ -743,9 +743,6 @@ impl DeskRuntime {
                 Resolved::Nothing => {}
                 Resolved::Run(action) => self.run_within(action, now, remaining, observe),
                 Resolved::Suspended(action) => self.refuse(&action, now, observe),
-                // Not an action: the new labels are the feedback.
-                // ponytail: not in the activity log, no event kind fits; add one if users ask.
-                Resolved::CyclePin => self.context.cycle_pin(),
             },
         }
         false
@@ -1326,8 +1323,8 @@ mod tests {
         let out = desk.tick(ms(500), &mut |_| {});
         let labels = out.controls.expect("new labels in the commit tick");
         assert_eq!(text(labels.profile), "Browser");
-        assert_eq!(text(labels.rotate), "Tabs");
-        assert_eq!(labels.buttons.map(text), ["Back", "Reload", "New tab"]);
+        assert_eq!(text(labels.rotate), "Volume");
+        assert_eq!(labels.buttons.map(text), ["Back", "Reload", "Forward"]);
         assert!(matches!(
             bound_action(desk.bindings(), &button(1, 1)),
             Some(Action::Shortcut(_))
@@ -1361,17 +1358,20 @@ mod tests {
         let fg = Arc::new(FakeForeground::default());
         let synth = Arc::new(FakeInputSynth::new(Ok(())));
         let mut desk = desk_with(&fg, &synth);
-        // Pin Browser (Auto -> General -> Browser), then a protected surface takes focus.
-        for id in 1..=2 {
-            desk.on_input(
-                &LogicalInput::ButtonHold {
-                    button: 1,
-                    gesture_id: id,
-                },
-                ms(0),
-                &mut |_| {},
-            );
-        }
+        desk.apply_config(
+            &config(|file| {
+                override_of(file, crate::config::ProfileId::Browser).rotate =
+                    Some(crate::config::RotateSpec::Shortcuts {
+                        cw: "Ctrl+Tab".into(),
+                        ccw: "Ctrl+Shift+Tab".into(),
+                        label: "Tabs".into(),
+                    });
+            }),
+            &mut |_| {},
+        );
+        desk.pin_profile(Some(&crate::config::ProfileRef::Builtin(
+            crate::config::ProfileId::Browser,
+        )));
         assert_eq!(text(desk.labels().profile), "Browser");
         assert!(
             desk.tick(ms(0), &mut |_| {}).feedback.is_empty(),
@@ -1416,7 +1416,7 @@ mod tests {
         }
         assert_eq!(desk.tick(ms(30), &mut |_| {}).feedback.len(), 1);
         // A system action still runs.
-        desk.on_input(&LogicalInput::Hold { gesture_id: 5 }, ms(40), &mut |_| {});
+        desk.on_input(&LogicalInput::Press { gesture_id: 5 }, ms(40), &mut |_| {});
         let feedback = settle(&mut desk, ms(50), |f| !f.is_empty());
         assert_eq!(feedback[0].action, ActionKind::Mute);
         assert_eq!(feedback[0].kind, FeedbackKind::StateConfirmed);
@@ -1534,6 +1534,17 @@ mod tests {
         let fg = Arc::new(FakeForeground::default());
         let synth = Arc::new(FakeInputSynth::new(Ok(())));
         let mut desk = desk_with(&fg, &synth);
+        desk.apply_config(
+            &config(|file| {
+                override_of(file, crate::config::ProfileId::Browser).rotate =
+                    Some(crate::config::RotateSpec::Shortcuts {
+                        cw: "Ctrl+Tab".into(),
+                        ccw: "Ctrl+Shift+Tab".into(),
+                        label: "Tabs".into(),
+                    });
+            }),
+            &mut |_| {},
+        );
         focus(&fg, "chrome.exe");
         let _ = desk.tick(ms(0), &mut |_| {});
         let _ = desk.tick(ms(400), &mut |_| {});
@@ -1610,6 +1621,17 @@ mod tests {
         let fg = Arc::new(FakeForeground::default());
         let synth = Arc::new(FakeInputSynth::new(Ok(())));
         let mut desk = desk_with(&fg, &synth);
+        desk.apply_config(
+            &config(|file| {
+                override_of(file, crate::config::ProfileId::Browser).rotate =
+                    Some(crate::config::RotateSpec::Shortcuts {
+                        cw: "Ctrl+Tab".into(),
+                        ccw: "Ctrl+Shift+Tab".into(),
+                        label: "Tabs".into(),
+                    });
+            }),
+            &mut |_| {},
+        );
         focus(&fg, "brave.exe");
         let start = LogicalInput::GestureStarted { gesture_id: 1 };
         assert!(!desk.on_input(&start, ms(0), &mut |_| {}));
@@ -1634,6 +1656,17 @@ mod tests {
         let fg = Arc::new(FakeForeground::default());
         let synth = Arc::new(FakeInputSynth::new(Err(ActionError::PermissionRequired)));
         let mut desk = desk_with(&fg, &synth);
+        desk.apply_config(
+            &config(|file| {
+                override_of(file, crate::config::ProfileId::Browser).rotate =
+                    Some(crate::config::RotateSpec::Shortcuts {
+                        cw: "Ctrl+Tab".into(),
+                        ccw: "Ctrl+Shift+Tab".into(),
+                        label: "Tabs".into(),
+                    });
+            }),
+            &mut |_| {},
+        );
         focus(&fg, "firefox.exe");
         for gesture_id in [1, 2] {
             let mut log = Vec::new();
@@ -1801,8 +1834,8 @@ mod tests {
         desk.on_session_begin();
         let labels = desk.tick(ms(0), &mut |_| {}).controls.unwrap();
         assert_eq!(labels.rotate.as_latin1(), b"Volume");
-        assert_eq!(labels.press.as_latin1(), b"Play/Pause");
-        assert_eq!(labels.hold.as_latin1(), b"Mute");
+        assert_eq!(labels.press.as_latin1(), b"Mute");
+        assert_eq!(labels.hold.as_latin1(), b"");
         let buttons = labels.buttons.map(|b| b.as_latin1().to_vec());
         assert_eq!(
             buttons,
@@ -1825,11 +1858,11 @@ mod tests {
         let bindings = Bindings::default();
         assert_eq!(
             bound_action(&bindings, &LogicalInput::Press { gesture_id: 1 }),
-            Some(&Action::PlayPause)
+            Some(&Action::ToggleMute)
         );
         assert_eq!(
             bound_action(&bindings, &LogicalInput::Hold { gesture_id: 2 }),
-            Some(&Action::ToggleMute)
+            None
         );
         assert_eq!(
             bound_action(&bindings, &LogicalInput::GestureStarted { gesture_id: 3 }),
@@ -1889,7 +1922,7 @@ mod tests {
                 });
         });
         desk.apply_config(&hold_only, &mut |_| {});
-        assert_eq!(desk.bindings().hold.action, Some(Action::PlayPause));
+        assert_eq!(desk.bindings().hold.action, None);
         let again = desk.tick(ms(20), &mut |_| {}).controls;
         assert_eq!(again, Some(desk.labels()), "re-sent although identical");
         assert_eq!(
@@ -1905,14 +1938,9 @@ mod tests {
         let synth = Arc::new(FakeInputSynth::new(Ok(())));
         let mut desk = desk_with(&fg, &synth);
         let _ = desk.tick(ms(0), &mut |_| {});
-        desk.on_input(
-            &LogicalInput::ButtonHold {
-                button: profile::PIN_BUTTON,
-                gesture_id: 1,
-            },
-            ms(10),
-            &mut |_| {},
-        );
+        desk.pin_profile(Some(&crate::config::ProfileRef::Builtin(
+            crate::config::ProfileId::General,
+        )));
         assert!(desk.context().pinned());
         let renamed = config(|file| {
             override_of(file, crate::config::ProfileId::General).buttons[0].press =
@@ -1932,6 +1960,17 @@ mod tests {
         let fg = Arc::new(FakeForeground::default());
         let synth = Arc::new(FakeInputSynth::new(Ok(())));
         let mut desk = desk_with(&fg, &synth);
+        desk.apply_config(
+            &config(|file| {
+                override_of(file, crate::config::ProfileId::Browser).rotate =
+                    Some(crate::config::RotateSpec::Shortcuts {
+                        cw: "Ctrl+Tab".into(),
+                        ccw: "Ctrl+Shift+Tab".into(),
+                        label: "Tabs".into(),
+                    });
+            }),
+            &mut |_| {},
+        );
         focus(&fg, "chrome.exe");
         let _ = desk.tick(ms(0), &mut |_| {});
         let _ = desk.tick(ms(400), &mut |_| {});
@@ -2131,8 +2170,8 @@ mod tests {
             .holds
             .expect("sent once per session");
         let labels: Vec<String> = holds.buttons.map(text).into();
-        // Nothing is bound to the side buttons' Hold in General; the middle one pins.
-        assert_eq!(labels, ["", "Next profile", ""]);
+        // Nothing is bound to the side buttons' Hold in General; the middle one mutes every microphone.
+        assert_eq!(labels, ["", "Mic mute", ""]);
         let bound = config(|file| {
             override_of(file, crate::config::ProfileId::General).buttons[0].hold =
                 Some(crate::config::SlotSpec {
@@ -2377,7 +2416,7 @@ mod tests {
     }
 
     #[test]
-    fn a_bound_button_hold_runs_and_the_middle_hold_still_pins() {
+    fn a_bound_button_hold_runs_and_the_middle_hold_mutes_mics() {
         let fg = Arc::new(FakeForeground::default());
         let synth = Arc::new(FakeInputSynth::new(Ok(())));
         let mut desk = desk_with(&fg, &synth);
@@ -2403,7 +2442,14 @@ mod tests {
         assert_eq!(sent(&synth), ["Ctrl+Shift+K"]);
         assert!(!desk.context().pinned());
         desk.on_input(&hold(1), ms(20), &mut |_| {});
-        assert!(desk.context().pinned(), "the middle Hold is still CyclePin");
+        assert!(
+            !desk.context().pinned(),
+            "middle Hold must never change profile"
+        );
+        let feedback = settle(&mut desk, ms(30), |f| !f.is_empty());
+        assert!(feedback
+            .iter()
+            .any(|f| f.action == kivori_model::desk::ActionKind::Mute));
         assert_eq!(sent(&synth).len(), 1);
     }
 }

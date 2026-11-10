@@ -231,15 +231,15 @@ pub struct Bindings {
     pub press: Slot,
     pub hold: Slot,
     /// The three contextual buttons, left to right. The middle one's Hold is reserved for
-    /// pinning a profile and is never bound.
+    /// muting every capture device and cannot be rebound.
     pub buttons: [ButtonSlots; 3],
 }
 
 impl Default for Bindings {
     fn default() -> Self {
         Self {
-            press: Slot::bound(Action::PlayPause),
-            hold: Slot::bound(Action::ToggleMute),
+            press: Slot::bound(Action::ToggleMute),
+            hold: Slot::default(),
             // A media row: the most common use, and every result is honest (Unverified).
             buttons: [Action::PreviousTrack, Action::PlayPause, Action::NextTrack].map(|action| {
                 ButtonSlots {

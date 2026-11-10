@@ -907,7 +907,9 @@ async fn run_test(
 #[tauri::command]
 pub fn keyboard_shortcuts_status() -> &'static str {
     #[cfg(target_os = "linux")]
-    if crate::platform::linux::session_kind() == crate::platform::linux::SessionKind::Wayland {
+    if crate::platform::linux::session_kind() == crate::platform::linux::SessionKind::Wayland
+        && !crate::platform::linux::gnome::manages_shortcuts()
+    {
         return crate::platform::linux::portal_keys::status();
     }
     "notApplicable"
@@ -917,7 +919,9 @@ pub fn keyboard_shortcuts_status() -> &'static str {
 #[tauri::command]
 pub fn enable_keyboard_shortcuts() {
     #[cfg(target_os = "linux")]
-    if crate::platform::linux::session_kind() == crate::platform::linux::SessionKind::Wayland {
+    if crate::platform::linux::session_kind() == crate::platform::linux::SessionKind::Wayland
+        && !crate::platform::linux::gnome::manages_shortcuts()
+    {
         crate::platform::linux::portal_keys::enable();
     }
 }
