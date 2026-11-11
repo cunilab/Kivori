@@ -28,14 +28,14 @@ All six S5 software items are complete. This is software evidence only. The
 [plan and pending-check map](./virtual-pip.md) and
 [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) define the boundaries.
 
-| Roadmap item | Required software evidence | Current result |
-|---|---|---|
-| S5.1 | Real firmware Runtime, raw detents/press, real desktop handshake/action path, fake OS read-back and captured firmware screen; isolated settings, no real executors, bounded pipes and clean child exit. | PASS (software only); evidence below |
-| S5.2 | Identity/protocol refusal, fragmented traffic/backpressure, timeout, child exit, reconnect and no old-session action replay. | PASS (software only); local macOS and Linux/Windows CI |
-| S5.3 | Threshold/bounce/buffered-edge/overflow/ownership scenarios use timestamped raw input through Runtime, with expected action traces and frames. | PASS (software only); local macOS and Linux/Windows combined smoke |
-| S5.4 | Profiles, microphones, media, macros, bindings and setup exercise production logic against fake OS state; unknown/failure never falsely confirms. | PASS (software only); native smoke and separate setup UI contracts |
-| S5.5 | Fake flash/install executors exercise production recovery/admission/compatibility decisions; no real process, eFuse or update side effect. | PASS (software only); native rehearsal and separate UI contracts |
-| S5.6 | Deterministic headless replay/report, CI assertions, offline and release guard positive controls, independent embedded build and production exclusion proof. | PASS (software only); verified Linux/Windows report artifacts and guards |
+| Roadmap item | Required software evidence                                                                                                                                                                              | Current result                                                           |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| S5.1         | Real firmware Runtime, raw detents/press, real desktop handshake/action path, fake OS read-back and captured firmware screen; isolated settings, no real executors, bounded pipes and clean child exit. | PASS (software only); evidence below                                     |
+| S5.2         | Identity/protocol refusal, fragmented traffic/backpressure, timeout, child exit, reconnect and no old-session action replay.                                                                            | PASS (software only); local macOS and Linux/Windows CI                   |
+| S5.3         | Threshold/bounce/buffered-edge/overflow/ownership scenarios use timestamped raw input through Runtime, with expected action traces and frames.                                                          | PASS (software only); local macOS and Linux/Windows combined smoke       |
+| S5.4         | Profiles, microphones, media, macros, bindings and setup exercise production logic against fake OS state; unknown/failure never falsely confirms.                                                       | PASS (software only); native smoke and separate setup UI contracts       |
+| S5.5         | Fake flash/install executors exercise production recovery/admission/compatibility decisions; no real process, eFuse or update side effect.                                                              | PASS (software only); native rehearsal and separate UI contracts         |
+| S5.6         | Deterministic headless replay/report, CI assertions, offline and release guard positive controls, independent embedded build and production exclusion proof.                                            | PASS (software only); verified Linux/Windows report artifacts and guards |
 
 For each result record source SHA/build, scenario id, expected and actual outcome, input/time seed,
 clock mode, exercised layers, commands and trace/frame references. Failed assertions fail the run;
@@ -57,15 +57,15 @@ production Session, protocol admission, session synchronization, RotaryPipeline 
 This verifies those core paths, not the complete shipping `device_loop`, normal app UI, setup,
 persistence or real Windows adapters; broader scenarios remain S5.2–S5.6.
 
-| Check | Verified result |
-|---|---|
-| Standalone runner | Six host tests passed: bounded/truncated/invalid records, timestamped raw input, real handshake/Build identity, captured framebuffer and exactly three normalized CW detents. Strict runner Clippy and formatting passed. |
-| Native tests | Full opt-in library suite: 321 passed, three existing ignored. After the final capture-latch fix, all three focused bridge tests passed: record validation, hung-child timeout/reaping and capture demand surviving pending I/O. |
-| Desktop UI | Five focused tests passed, including RGB565 conversion, one pending poll, stale/error handling, pointer/keyboard release and accessible timed raw press. Typecheck and zero-warning targeted lint passed. |
+| Check               | Verified result                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Standalone runner   | Six host tests passed: bounded/truncated/invalid records, timestamped raw input, real handshake/Build identity, captured framebuffer and exactly three normalized CW detents. Strict runner Clippy and formatting passed.                                                                                                                                                     |
+| Native tests        | Full opt-in library suite: 321 passed, three existing ignored. After the final capture-latch fix, all three focused bridge tests passed: record validation, hung-child timeout/reaping and capture demand surviving pending I/O.                                                                                                                                              |
+| Desktop UI          | Five focused tests passed, including RGB565 conversion, one pending poll, stale/error handling, pointer/keyboard release and accessible timed raw press. Typecheck and zero-warning targeted lint passed.                                                                                                                                                                     |
 | Cross-process smoke | `just virtual-device-smoke` builds separate runner and desktop example, performs a real firmware handshake, asserts three actual firmware CW detents and fake volume 50→56, asserts the captured solid confirmed 56% bar (not autonomous mascot motion), then raw press/release yields exactly one fake media trigger. Saves `firmware/pip/simulator/target/smoke-frame.ppm`. |
-| Interactive macOS | Launched the dedicated development window, observed live firmware pixels and Connected; three interactive right turns changed fake volume from 50 to 56. The accessible Press once control produced exactly one fake media trigger. Closing the window exited the launcher, simulator and native tool with no remaining owned device process. |
-| Release exclusion | No-default-features desktop build passed; `virtual_snapshot`, `virtual_input`, `new_simulated` and the virtual marker were absent from that binary and present in the opt-in example. Production frontend build passed and excluded the virtual entry/commands; an injected virtual sentinel made the exclusion guard fail, then passed after removal. |
-| Firmware boundary | Embedded `physical-st7789` RISC-V check passed. Physical firmware and runner now share the exact same 16-capability constant; extraction preserved all previous flags. No pin map, protocol schema or release recipe changed. |
+| Interactive macOS   | Launched the dedicated development window, observed live firmware pixels and Connected; three interactive right turns changed fake volume from 50 to 56. The accessible Press once control produced exactly one fake media trigger. Closing the window exited the launcher, simulator and native tool with no remaining owned device process.                                 |
+| Release exclusion   | No-default-features desktop build passed; `virtual_snapshot`, `virtual_input`, `new_simulated` and the virtual marker were absent from that binary and present in the opt-in example. Production frontend build passed and excluded the virtual entry/commands; an injected virtual sentinel made the exclusion guard fail, then passed after removal.                        |
+| Firmware boundary   | Embedded `physical-st7789` RISC-V check passed. Physical firmware and runner now share the exact same 16-capability constant; extraction preserved all previous flags. No pin map, protocol schema or release recipe changed.                                                                                                                                                 |
 
 Commands used: `cargo test --locked -p kivori-desktop --features virtual-device --lib`, followed by
 `cargo test --locked -p kivori-desktop --features virtual-device --lib virtual_device::tests`;
@@ -94,17 +94,17 @@ unit, real OS state, signing, deployment, sustained-use day or participant accep
 Implemented and verified on Andress-MacBook-Air and Linux/Windows CI, 2026-10-26. `just virtual-device-smoke` now also runs `--connection-smoke`: a separate fresh
 sandbox executes these nine real cross-process scenarios, without a GUI, hardware or real OS actions:
 
-| Scenario | Local verified result |
-|---|---|
-| Queued-input disconnect/reconnect | Disconnect clears child, wire/edge queues, hold/failsafe, live pixels and session-bound actions. Outage input and a late old-generation UI request are rejected. Reconnect renews actual session nonce/generation and preserves fake OS volume. |
-| Stale-nonce packet | A valid fresh-sequence protocol frame carrying the previous real nonce is rejected by the production input ingress, observed by its rejection counter. A new-session press still executes exactly once after another reconnect. This is deliberate wire fault injection, not fabricated hardware input. |
-| Half press and ten reconnects | A real raw down reaches the old firmware, then disconnect occurs before release. No press appears in the replacement session; ten more cycles settle to one live owner without extra media actions. |
-| Fragmented traffic | Seven-byte per-tick budgets in both directions exercise the actual firmware decoder and desktop session through handshake and exactly one detent; no message schema changes. |
-| Wrong protocol major | Only an actual runner HelloAck header is re-encoded with an unsupported major, preserving payload/sequence/CRC. The production Session refuses it and raw controls remain unavailable. |
-| Unknown product | Runtime reports an unknown product via its real identity path; catalog/capability admission refuses use, clears the display and allows a normal retry. |
-| Unknown board | Same refusal for an unknown board, without USB hints or implicit product fallback. |
-| Missing heartbeats | Live runner still executes firmware/captures and accepts host traffic but suppresses wire output. The desktop's real elapsed heartbeat policy times out, clears ownership and reconnects normally. No clock acceleration. |
-| Child exit | Runner exits without a JSON response on an explicit development fault. Real pipe EOF invalidates the connection; retry preserves fake OS state but replays neither queued tap nor old traffic. A fresh press still works. |
+| Scenario                          | Local verified result                                                                                                                                                                                                                                                                                   |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Queued-input disconnect/reconnect | Disconnect clears child, wire/edge queues, hold/failsafe, live pixels and session-bound actions. Outage input and a late old-generation UI request are rejected. Reconnect renews actual session nonce/generation and preserves fake OS volume.                                                         |
+| Stale-nonce packet                | A valid fresh-sequence protocol frame carrying the previous real nonce is rejected by the production input ingress, observed by its rejection counter. A new-session press still executes exactly once after another reconnect. This is deliberate wire fault injection, not fabricated hardware input. |
+| Half press and ten reconnects     | A real raw down reaches the old firmware, then disconnect occurs before release. No press appears in the replacement session; ten more cycles settle to one live owner without extra media actions.                                                                                                     |
+| Fragmented traffic                | Seven-byte per-tick budgets in both directions exercise the actual firmware decoder and desktop session through handshake and exactly one detent; no message schema changes.                                                                                                                            |
+| Wrong protocol major              | Only an actual runner HelloAck header is re-encoded with an unsupported major, preserving payload/sequence/CRC. The production Session refuses it and raw controls remain unavailable.                                                                                                                  |
+| Unknown product                   | Runtime reports an unknown product via its real identity path; catalog/capability admission refuses use, clears the display and allows a normal retry.                                                                                                                                                  |
+| Unknown board                     | Same refusal for an unknown board, without USB hints or implicit product fallback.                                                                                                                                                                                                                      |
+| Missing heartbeats                | Live runner still executes firmware/captures and accepts host traffic but suppresses wire output. The desktop's real elapsed heartbeat policy times out, clears ownership and reconnects normally. No clock acceleration.                                                                               |
+| Child exit                        | Runner exits without a JSON response on an explicit development fault. Real pipe EOF invalidates the connection; retry preserves fake OS state but replays neither queued tap nor old traffic. A fresh press still works.                                                                               |
 
 Four native bridge tests pass, including ordered fragmented reads/writes, bounded transmit/receive
 queues and fail-closed Session WriteZero under backpressure. Existing capture-latch, malformed
@@ -155,15 +155,15 @@ uses injected firmware milliseconds, its real `Simulator::step`, production `Run
 input-event traces (control, kind and firmware emission timestamp) and current session nonce;
 settling ticks reject extra events. These are firmware logical actions, not desktop OS actions.
 
-| Scenario | Required result asserted by the suite |
-|---|---|
-| CW/CCW quadrature | One correctly directed detent with gesture start/end; illegal two-bit changes, partial cycles and rest bounce produce none. A subsequent full cycle works. |
-| Switch boundaries and bounce | 19 ms is ignored; 20 ms is a Press. 499 ms is Press, 500 and 1999 ms are Hold, 2000 ms enters recovery without a normal action. Contact bounce produces one Press. |
-| Negotiated double press | First press waits; a 249 ms second-down gap produces one DoublePress, while 250/251 ms produce two separate Press events. |
-| Buffered history | Two completed presses on each of the knob and three contextual switches retain their classification when delivered together after a long tick gap. |
-| Control ownership | Knob hold swallows rotation, simultaneous contextual downs do not chord, an earlier contextual press suppresses the knob press, and fresh input works after rotary ownership expires. |
-| Bounds and overflow | 128 edges are accepted; 129 are refused before advancing simulator time, then a valid press works. A separate oversized input-port drain exercises Runtime's defensive overflow branch and preserves final release plus the next press without extra actions. |
-| Session/recovery lifecycle | Session renewal cancels a partial press. A buffered release cancels recovery even when the next tick is beyond the reboot deadline. An uninterrupted recovery survives session renewal and requests reboot at exactly 10000 ms from down, refuses later ticks, and a fresh runtime accepts input. |
+| Scenario                     | Required result asserted by the suite                                                                                                                                                                                                                                                             |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CW/CCW quadrature            | One correctly directed detent with gesture start/end; illegal two-bit changes, partial cycles and rest bounce produce none. A subsequent full cycle works.                                                                                                                                        |
+| Switch boundaries and bounce | 19 ms is ignored; 20 ms is a Press. 499 ms is Press, 500 and 1999 ms are Hold, 2000 ms enters recovery without a normal action. Contact bounce produces one Press.                                                                                                                                |
+| Negotiated double press      | First press waits; a 249 ms second-down gap produces one DoublePress, while 250/251 ms produce two separate Press events.                                                                                                                                                                         |
+| Buffered history             | Two completed presses on each of the knob and three contextual switches retain their classification when delivered together after a long tick gap.                                                                                                                                                |
+| Control ownership            | Knob hold swallows rotation, simultaneous contextual downs do not chord, an earlier contextual press suppresses the knob press, and fresh input works after rotary ownership expires.                                                                                                             |
+| Bounds and overflow          | 128 edges are accepted; 129 are refused before advancing simulator time, then a valid press works. A separate oversized input-port drain exercises Runtime's defensive overflow branch and preserves final release plus the next press without extra actions.                                     |
+| Session/recovery lifecycle   | Session renewal cancels a partial press. A buffered release cancels recovery even when the next tick is beyond the reboot deadline. An uninterrupted recovery survives session renewal and requests reboot at exactly 10000 ms from down, refuses later ticks, and a fresh runtime accepts input. |
 
 The runner checks complete, nonblank 240×240 captures. Settled trace cases print actual events,
 frame FNV-1a 64-bit hashes and virtual time. Recovery capture differs from a same-time no-input
@@ -209,12 +209,12 @@ directory; scenarios cannot select the installed app's configuration through web
 fake volume, microphone, media, foreground and input services are injected before constructing
 `DeskRuntime::new_simulated`; application launching remains unavailable.
 
-| Layer | Checks |
-|---|---|
-| Firmware session → desktop | Real child handshake/capture, saved-and-reopened binding driven by raw press, raw middle-button profile pinning, quantized detent using observed rather than requested volume, persisted macro order and fresh-session input. |
+| Layer                          | Checks                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Firmware session → desktop     | Real child handshake/capture, saved-and-reopened binding driven by raw press, raw middle-button profile pinning, quantized detent using observed rather than requested volume, persisted macro order and fresh-session input.                                                                                                                                                                                                                                       |
 | Desktop action and observation | Correlated production action-test replies exercise Protected custom-action refusal, allowed system media, disabled launch, unknown/healthy/unreadable/unsettable microphones, hotplug arrival that stays live, missing volume endpoint/read-back failure, media triggered/error/permission/uncertain outcomes observer-only playback changes, and an action-test macro interrupted by a real session disconnect. These calls do not claim to originate in firmware. |
-| Configuration store | Real isolated save/reopen/resolve and setup flags, invalid-save preservation and a detached store refusing completion without changing its setup flag. Installed upgrade retention and power-loss durability are not established. |
-| Setup UI | Real React app/hooks with the existing browser IPC mock: failed completion remains unfinished after remount and succeeds on retry; startup-setting refusal stays unapplied and shows its error while setup may finish. Existing capability, disconnected, permission, recovery and setup suites remain required. No native WebView/IPC-to-runner end-to-end setup flow is claimed. |
+| Configuration store            | Real isolated save/reopen/resolve and setup flags, invalid-save preservation and a detached store refusing completion without changing its setup flag. Installed upgrade retention and power-loss durability are not established.                                                                                                                                                                                                                                   |
+| Setup UI                       | Real React app/hooks with the existing browser IPC mock: failed completion remains unfinished after remount and succeeds on retry; startup-setting refusal stays unapplied and shows its error while setup may finish. Existing capability, disconnected, permission, recovery and setup suites remain required. No native WebView/IPC-to-runner end-to-end setup flow is claimed.                                                                                  |
 
 The interruption case starts through the production desktop Test path, without the raw input
 freshness deadline that could otherwise confound a long-delay cancellation test. It observes the
@@ -251,14 +251,14 @@ Implemented and verified on Andress-MacBook-Air, 2026-10-29, code `d5f0599`. The
 `--recovery-smoke`, included in `just virtual-device-smoke`. It never registers the real updater
 or invokes espflash, eFuse tools, network/download code or an operating-system installer.
 
-| Layer | Rehearsal and assertions |
-|---|---|
-| Fake flash + actual virtual session | Counting injected executor drives production `run_accepted_firmware_flash` and `FlashWorkflow` through cancellation, timeout, port-busy and missing-download-mode failures. Ownership returns to discovery without verification. A successful fake executor remains Reconnecting until a matching compatible virtual handshake; wrong port/hash and an actual wrong-major virtual peer are refused. A real normal reconnect and fresh raw input establish continued virtual usability. No firmware bytes were rewritten. |
-| Workflow timeout policy | An injected reconnect-timeout event rejects a late success. An explicitly retried recovery can record its compatible identity. This checks the model's timeout transition, not the shipping device loop's timer or physical reset. |
-| Recovery target policy | Local fixture Catalog/FirmwareBundle data exercises shared-USB ambiguity, explicit current product/board choice, missing exact images and wrong identity. The same counting fake writer serves admitted and refused pairs; refusal must leave its count unchanged. Fixtures never register shipping products or enumerate actual ports. |
-| Firmware offers | Production OfferTracker uses injected policy time for idle, Later/reconnect, app-update priority and newer-device decisions. These model clocks do not accelerate desktop liveness or OS scheduling. |
-| App update policy + operation admission | Production updater Machine handles fake failed checks/downloads/installs and retries. Fake callbacks require the model's offered/downloaded states and real AppState install reservation. Flash/restore requests must not enqueue while installation owns admission; queued Preparing and busy flash phases exclude installation. Failed enqueue rolls back ownership. The AppState device thread is a disposable fake, stopped by its fixture guard. |
-| Recovery/update UI | Real React components use existing IPC mocks for BOOT instructions and cancellation, product/board confirmation, stale choices, offers and update progress. A new accepted-flash → reconnect-timeout case stays unverified, shows the native failure and queues neither another flash nor a restore automatically. This is separate from native-session and executor tests. |
+| Layer                                   | Rehearsal and assertions                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Fake flash + actual virtual session     | Counting injected executor drives production `run_accepted_firmware_flash` and `FlashWorkflow` through cancellation, timeout, port-busy and missing-download-mode failures. Ownership returns to discovery without verification. A successful fake executor remains Reconnecting until a matching compatible virtual handshake; wrong port/hash and an actual wrong-major virtual peer are refused. A real normal reconnect and fresh raw input establish continued virtual usability. No firmware bytes were rewritten. |
+| Workflow timeout policy                 | An injected reconnect-timeout event rejects a late success. An explicitly retried recovery can record its compatible identity. This checks the model's timeout transition, not the shipping device loop's timer or physical reset.                                                                                                                                                                                                                                                                                       |
+| Recovery target policy                  | Local fixture Catalog/FirmwareBundle data exercises shared-USB ambiguity, explicit current product/board choice, missing exact images and wrong identity. The same counting fake writer serves admitted and refused pairs; refusal must leave its count unchanged. Fixtures never register shipping products or enumerate actual ports.                                                                                                                                                                                  |
+| Firmware offers                         | Production OfferTracker uses injected policy time for idle, Later/reconnect, app-update priority and newer-device decisions. These model clocks do not accelerate desktop liveness or OS scheduling.                                                                                                                                                                                                                                                                                                                     |
+| App update policy + operation admission | Production updater Machine handles fake failed checks/downloads/installs and retries. Fake callbacks require the model's offered/downloaded states and real AppState install reservation. Flash/restore requests must not enqueue while installation owns admission; queued Preparing and busy flash phases exclude installation. Failed enqueue rolls back ownership. The AppState device thread is a disposable fake, stopped by its fixture guard.                                                                    |
+| Recovery/update UI                      | Real React components use existing IPC mocks for BOOT instructions and cancellation, product/board confirmation, stale choices, offers and update progress. A new accepted-flash → reconnect-timeout case stays unverified, shows the native failure and queues neither another flash nor a restore automatically. This is separate from native-session and executor tests.                                                                                                                                              |
 
 The fake callbacks exercise policy/admission seams; they do not replace or execute the production
 Tauri updater/plugin orchestration. Fake download completion does not establish actual signature
@@ -343,14 +343,14 @@ Current wiring specification (source of truth: `firmware/pip/src/profile.rs`). T
 for the enclosure; earlier display measurements do not verify this map. Check continuity against
 the current profile and complete rows 3.15 and 5.1 before powering/flashing an assembled unit.
 
-| Signal | GPIO | Signal | GPIO |
-|---|---:|---|---:|
-| SPI1 SCK (20 MHz, Mode 3) | 26 | Encoder CLK | 5 |
-| SPI1 TX (display SDA) | 15 | Encoder DT | 4 |
-| Display D/C | 13 | Encoder SW | 3 |
-| Display RST | 14 | Encoder COM / VCC | GND / **3V3** (never 5 V) |
-| Backlight (active-high, PWM) | 12 | Button other leg | GND (no resistor) |
-| Button left / middle / right | 6 / 7 / 8 | | |
+| Signal                       |      GPIO | Signal            |                      GPIO |
+| ---------------------------- | --------: | ----------------- | ------------------------: |
+| SPI1 SCK (20 MHz, Mode 3)    |        26 | Encoder CLK       |                         5 |
+| SPI1 TX (display SDA)        |        15 | Encoder DT        |                         4 |
+| Display D/C                  |        13 | Encoder SW        |                         3 |
+| Display RST                  |        14 | Encoder COM / VCC | GND / **3V3** (never 5 V) |
+| Backlight (active-high, PWM) |        12 | Button other leg  |         GND (no resistor) |
+| Button left / middle / right | 6 / 7 / 8 |                   |                           |
 
 1. Once per machine: `bun install`, `cargo install elf2uf2-rs`, install `just`.
 2. Flash the product firmware: hold BOOT while plugging in, then `just fw-flash` (builds with `physical-st7789`, converts to UF2 and copies it to the `RPI-RP2` drive).
@@ -715,7 +715,7 @@ Software rules in [product.md](./product.md); design in ADR-0011 and ADR-0012. W
 - [ ] 13.5 Zoom's own mute on, Kivori's off | Kivori says unmuted (it reports the OS mic, not Zoom's button); the Controls page explains the difference
 - [ ] 13.6 Focus an app with no profile, "Add the app in front of me" | a new profile appears with that app's icon, starting as General; the panel shows its name within about ½ s of focusing it
 - [ ] 13.7 Add `idea64.exe` (or any app) to Code, then to a custom profile | it moves, and the app says it moved; never in two profiles
-- [ ] 13.8 Mark a custom profile "Pin to device", hold the middle button repeatedly | it appears after the built-ins; unmarked profiles do not
+- [ ] 13.8 Mark a custom profile "Show on device", hold the middle button repeatedly | it appears after the built-ins; unmarked profiles do not
 - [ ] 13.9 Leave the app idle 5 minutes, then pause the desktop app (debugger or Task Manager suspend) | the buddy keeps blinking and glancing; no frozen frame; eyes never close fully outside Sleeping
 - [ ] 13.10 Touch each control slowly with the app idle | the buddy looks towards it before the action's own feedback
 - [ ] 13.11 Move the brightness setting from highest to lowest | the backlight follows at once; the lowest step is still clearly on (never looks like Display Sleep); the setting survives a restart
@@ -742,19 +742,17 @@ Rules in [product.md](./product.md#updates-us10-us11); design in ADR-0014 to ADR
 - [ ] 14.9 Turn off the network, start the app | no error, no wait; turn off "Check for updates" | no request to GitHub (check with a firewall log)
 - [ ] 14.10 Tamper with the downloaded update (developer test: wrong signature) | it is refused and nothing installs
 
-
-| Date | What | Result |
-|---|---|---|
-| 2026-08-04 | macOS hardware inventory, read-only | No board attached, nothing flashed. Desktop launched, 22 threads; in-window checks blocked by missing Accessibility permission |
-| 2026-08-11 | Windows, physical board | Rows 1.5, 1.9, 1.23, 1.24, 1.25 passed (see above) |
-| 2026-09-07 | CI Windows startup smoke (automated) | `kivori-desktop.exe` alive for 10 s, no stack overflow. Not a manual row |
-| 2026-09-08 | Mascot automated checks | 204 workspace tests, 36 firmware host-sim tests, clippy clean, blob 116,634 of 131,072 bytes. Panel fps, SPI time and playback not measured |
-| 2026-09-25 | macOS 27, debug build, no device | Rows 1.1, 1.3, 1.4 passed on macOS; 1.22 partial; 1.19 code review only |
+| Date       | What                                                    | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-08-04 | macOS hardware inventory, read-only                     | No board attached, nothing flashed. Desktop launched, 22 threads; in-window checks blocked by missing Accessibility permission                                                                                                                                                                                                                                                                                                                               |
+| 2026-08-11 | Windows, physical board                                 | Rows 1.5, 1.9, 1.23, 1.24, 1.25 passed (see above)                                                                                                                                                                                                                                                                                                                                                                                                           |
+| 2026-09-07 | CI Windows startup smoke (automated)                    | `kivori-desktop.exe` alive for 10 s, no stack overflow. Not a manual row                                                                                                                                                                                                                                                                                                                                                                                     |
+| 2026-09-08 | Mascot automated checks                                 | 204 workspace tests, 36 firmware host-sim tests, clippy clean, blob 116,634 of 131,072 bytes. Panel fps, SPI time and playback not measured                                                                                                                                                                                                                                                                                                                  |
+| 2026-09-25 | macOS 27, debug build, no device                        | Rows 1.1, 1.3, 1.4 passed on macOS; 1.22 partial; 1.19 code review only                                                                                                                                                                                                                                                                                                                                                                                      |
 | 2026-10-02 | macOS 27, ESP32-C3 over USB, automated (no human input) | `espflash` flashed the product build (4 MB flash, rev v0.4); production `Session` handshake Connected in 25 to 776 ms over repeated warm reconnects, heartbeats stable for 8 s each. Found and fixed: a reconnect to a device already in the desired state never learned it (no `StateReport`); verified fixed on the board. Interrupt edge-capture and M1 firmware boot and connect. Not a manual row: cold plug, knob, switch and panel were not exercised |
-| 2026-10-02 | macOS 27, CoreAudio backend, automated | Volume set and read-back, mute toggle and read-back, an external `osascript` change arriving as External, own writes tagged Kivori; original volume and mute restored. CPU, RAM and local time read |
+| 2026-10-02 | macOS 27, CoreAudio backend, automated                  | Volume set and read-back, mute toggle and read-back, an external `osascript` change arriving as External, own writes tagged Kivori; original volume and mute restored. CPU, RAM and local time read                                                                                                                                                                                                                                                          |
 
 Screenshots and logs from before this consolidation stay in git history.
-
 
 ## M2.8 product identifier guard (automated)
 
@@ -795,16 +793,16 @@ The existing IPC tests cover the bridge contract separately; the native/catalog 
 These automated checks close the product acceptance test item, not the hardware acceptance rows.
 Synthetic products and ELF bytes remain in test code or temporary directories outside shipping roots.
 
-| Criterion | Automated evidence |
-| --- | --- |
-| Pip, a minimal dial, mixed features, usable supported controls, missing art, offline edits and preserved bindings | `__tests__/product-acceptance.test.tsx` mounts the real App/hooks/navigation with parsed fixture sessions and browser IPC. |
-| Setup identity readiness, absent controls and saved-only settings | `features/onboarding/__tests__/capabilities.test.tsx` covers pending/unknown/identity-only/legacy and generation changes. |
-| Session switch with late internals reply while the card stays mounted | `features/device/__tests__/internals.test.tsx` clears the old card and refuses the old session's reply. |
-| No feature writes before identity resolves or for an unknown product | Native `tests/session.rs::every_feature_writer_is_inert_for_pending_and_unknown_identity` checks the writers and an empty wire. `reactions_require_current_identity_and_rejected_requests_are_never_replayed` adds a positive accepted action, reconnect-to-pending and unknown-board refusal without replay. |
-| Current-session display/flash admission | Native `tests/session.rs::runtime_display_and_flash_admission_follow_current_session_support` uses real handshakes and the helpers called by the device loop; covers pending, unknown product/board, identity-only, known, legacy, disconnected and busy display states, plus missing exact images. Existing flash workflow tests cover exclusive reservations. |
-| State versus preview intent | Native session tests prove saved desired state resyncs only when usable; Mirror never stages state for pending/unknown/identity-only/offline sessions. Frontend `features/controls/__tests__/controls.test.tsx` exercises host action tests against the disconnected browser backend. |
-| Catalog additions need no maintained shared-source list | `catalog_build.rs::second_product_is_generated_without_a_source_list_and_reservations_stay_inactive` adds a temporary product and compiles the generated constants and snapshot art. |
-| Exact images and complete packaging independent of order | `catalog_build.rs::firmware_set_generation_is_deterministic_and_compiles_with_exact_lookup`, native `tests/firmware_bundle.rs` and `tests/recovery_target.rs`, plus `scripts/build-firmware{,-set}.test.mjs`, validate identity, reversed inputs, complete sets, explicit selection and missing/mismatched refusal. |
+| Criterion                                                                                                         | Automated evidence                                                                                                                                                                                                                                                                                                                                              |
+| ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pip, a minimal dial, mixed features, usable supported controls, missing art, offline edits and preserved bindings | `__tests__/product-acceptance.test.tsx` mounts the real App/hooks/navigation with parsed fixture sessions and browser IPC.                                                                                                                                                                                                                                      |
+| Setup identity readiness, absent controls and saved-only settings                                                 | `features/onboarding/__tests__/capabilities.test.tsx` covers pending/unknown/identity-only/legacy and generation changes.                                                                                                                                                                                                                                       |
+| Session switch with late internals reply while the card stays mounted                                             | `features/device/__tests__/internals.test.tsx` clears the old card and refuses the old session's reply.                                                                                                                                                                                                                                                         |
+| No feature writes before identity resolves or for an unknown product                                              | Native `tests/session.rs::every_feature_writer_is_inert_for_pending_and_unknown_identity` checks the writers and an empty wire. `reactions_require_current_identity_and_rejected_requests_are_never_replayed` adds a positive accepted action, reconnect-to-pending and unknown-board refusal without replay.                                                   |
+| Current-session display/flash admission                                                                           | Native `tests/session.rs::runtime_display_and_flash_admission_follow_current_session_support` uses real handshakes and the helpers called by the device loop; covers pending, unknown product/board, identity-only, known, legacy, disconnected and busy display states, plus missing exact images. Existing flash workflow tests cover exclusive reservations. |
+| State versus preview intent                                                                                       | Native session tests prove saved desired state resyncs only when usable; Mirror never stages state for pending/unknown/identity-only/offline sessions. Frontend `features/controls/__tests__/controls.test.tsx` exercises host action tests against the disconnected browser backend.                                                                           |
+| Catalog additions need no maintained shared-source list                                                           | `catalog_build.rs::second_product_is_generated_without_a_source_list_and_reservations_stay_inactive` adds a temporary product and compiles the generated constants and snapshot art.                                                                                                                                                                            |
+| Exact images and complete packaging independent of order                                                          | `catalog_build.rs::firmware_set_generation_is_deterministic_and_compiles_with_exact_lookup`, native `tests/firmware_bundle.rs` and `tests/recovery_target.rs`, plus `scripts/build-firmware{,-set}.test.mjs`, validate identity, reversed inputs, complete sets, explicit selection and missing/mismatched refusal.                                             |
 
 Native paths above are relative to `apps/desktop/src-tauri`; frontend paths are relative to
 `apps/desktop/src`. Rust fixtures compile generated source against synthetic marker-only ELF bytes; build-script fixtures
@@ -824,10 +822,10 @@ Post-merge [host](https://github.com/cunilab/Kivori/actions/runs/39260985475),
 The Product contract and Capability-driven UI items are implemented in that merged software.
 The audit reuses the product-acceptance evidence above and checks the broader contract boundaries:
 
-| Item | Implementation and evidence |
-| --- | --- |
-| Product contract | Native `catalog_build.rs` discovers metadata/art and compiles fixture additions without a shared product list. Provisioning selects QA/identity from the chosen image (`tests/provision_policy.rs`), with eFuse burns limited to the implemented C3 board backend. Build, desktop packaging and release helpers use the catalog's complete image set (`scripts/build-firmware{,-set}.test.mjs`, `scripts/firmware-release-guard.test.mjs`). The identifier guard and its CLI positive controls enforce the shared-source boundary with exact reviewed legacy/hardware/fixture exceptions. |
-| Capability-driven UI | `Session::effective_caps` combines host/device negotiation with resolved current identity; frontend `device-support.ts` requires that connected known session. The documented surface mapping is exercised by app-shell, setup, Controls/Display, art and focus tests. Native session and runtime-admission tests prevent ordinary feature traffic from pending/unknown identities; saved settings and host-only action tests remain usable offline. |
+| Item                 | Implementation and evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Product contract     | Native `catalog_build.rs` discovers metadata/art and compiles fixture additions without a shared product list. Provisioning selects QA/identity from the chosen image (`tests/provision_policy.rs`), with eFuse burns limited to the implemented C3 board backend. Build, desktop packaging and release helpers use the catalog's complete image set (`scripts/build-firmware{,-set}.test.mjs`, `scripts/firmware-release-guard.test.mjs`). The identifier guard and its CLI positive controls enforce the shared-source boundary with exact reviewed legacy/hardware/fixture exceptions. |
+| Capability-driven UI | `Session::effective_caps` combines host/device negotiation with resolved current identity; frontend `device-support.ts` requires that connected known session. The documented surface mapping is exercised by app-shell, setup, Controls/Display, art and focus tests. Native session and runtime-admission tests prevent ordinary feature traffic from pending/unknown identities; saved settings and host-only action tests remain usable offline.                                                                                                                                      |
 
 The audit reruns the product identifier/build-script fixtures, provisioning/recovery/presentation
 tests, and app-shell/support/art tests. Catalog registration, complete image indexes, release
@@ -1080,7 +1078,6 @@ Local validation on Andress-MacBook-Air:
 Windows filesystem behavior and the live UI presentation of the error remain untested locally.
 The following acceptance section covers preservation when recovery backups fail.
 
-
 ## M2.9 recovery backup software acceptance
 
 Implemented the fourth S2 item on `feat/m2.9-reliability` for PR #127, 2026-10-25.
@@ -1126,7 +1123,6 @@ Real Windows permission/antivirus failures, visual UI inspection and power-loss 
 unverified. File-copy synchronization is tested through software outcomes; this is not a power-cut
 proof for filesystem directory updates.
 
-
 ## M2.9 shortcut execution software acceptance
 
 Implemented the fifth S2 item on `feat/m2.9-reliability` for PR #127, 2026-10-25.
@@ -1157,7 +1153,6 @@ Local validation on Andress-MacBook-Air:
 
 Actual key delivery, OS permission handling and receiving-application behavior were not exercised.
 Windows runtime coverage remains a CI/platform check; Linux input remains unimplemented.
-
 
 ## M2.9 onboarding recovery software acceptance
 
@@ -1197,7 +1192,6 @@ Previous commit `39f27df` passed all required CI, including Windows Rust, packag
 the macOS CI job was skipped. Native/firmware source was unchanged in this increment, so the
 previous 316-library/54-integration native baseline was not rerun locally. Actual Windows USB
 recovery and small-window/large-text layout acceptance remain open in later roadmap items.
-
 
 ## M2.9 control-test correlation software acceptance
 
@@ -1243,7 +1237,6 @@ backend that blocks can leave tests pending. Epoch cancellation closes queued re
 worker dequeues them, so cancellation is not prompt behind a blocked backend. Pending is retained
 rather than borrowing another action's result or claiming completion from a timer.
 
-
 ## M2.9 small-window dialog software acceptance
 
 Implemented the third S3 item on `feat/m2.9-reliability` for PR #127, 2026-10-25.
@@ -1264,11 +1257,11 @@ and BOOT-recovery dialogs at 400×480 and the configured 360×420 minimum. Each 
 in the browser DOM with 40 copies of the existing mock notes to exercise long content; no shipping
 mock or production data changed. Firmware/recovery checks used their actual instructions.
 
-| Dialog | Height at 400×480: 100% / 150% / 200% | Height at 360×420: 100% / 150% / 200% |
-| --- | --- | --- |
-| App update, long notes | 448 / 432 / 416 px | 388 / 372 / 356 px |
-| Required firmware offer | 207 / 376 / 416 px | 207 / 372 / 356 px |
-| BOOT recovery | 387 / 432 / 416 px | 387 / 372 / 356 px |
+| Dialog                  | Height at 400×480: 100% / 150% / 200% | Height at 360×420: 100% / 150% / 200% |
+| ----------------------- | ------------------------------------- | ------------------------------------- |
+| App update, long notes  | 448 / 432 / 416 px                    | 388 / 372 / 356 px                    |
+| Required firmware offer | 207 / 376 / 416 px                    | 207 / 372 / 356 px                    |
+| BOOT recovery           | 387 / 432 / 416 px                    | 387 / 372 / 356 px                    |
 
 Every measured popup stayed inside the viewport with no horizontal overflow. Tab cycling stayed
 inside the popup and scrolled every enabled action fully into view. The release-notes pane could
@@ -1292,7 +1285,6 @@ Local validation:
 These are browser viewport/root-font checks, not native Windows WebView2, OS display-scaling,
 screen-reader or full browser-zoom verification. No installer, firmware flash or hardware action
 was run. Native platform and unfamiliar-user acceptance remain in S4.
-
 
 ## M2.9 signup attribution software acceptance
 
@@ -1341,15 +1333,15 @@ Read-only audit on Andress-MacBook-Air, 2026-10-25, for item 13 of PR #127.
 At this audit snapshot the item remained unchecked and M2.9 progress was 12/19.
 Current completion status is tracked in [the roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness).
 
-| Check | Observed result |
-| --- | --- |
-| Committed configuration | `apps/web/wrangler.jsonc` uses the always-pass test site key and an empty `CONTACT_EMAIL`. |
+| Check                     | Observed result                                                                                                                                                                                                                                                                                                                            |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Committed configuration   | `apps/web/wrangler.jsonc` uses the always-pass test site key and an empty `CONTACT_EMAIL`.                                                                                                                                                                                                                                                 |
 | Active production version | Wrangler deployment/version inspection reports version `cdd9f9bb-99c3-4e63-977a-1a22b9f76529`, deployed 2026-10-10 at 03:45:20 UTC with 100% traffic. Reported bindings are `ASSETS`, `DOWNLOADS` and `WORKER_SELF_REFERENCE`. No waitlist database, limiter, signup analytics, Turnstile/contact variables or secret binding is reported. |
-| Worker secrets | `bunx wrangler secret list` returned `[]`. No secret values were retrieved. |
-| D1 database | `bunx wrangler d1 info kivori-web --json` confirms the configured database exists with two tables. This metadata does not verify the waitlist schema, contents or production binding. No signup rows were queried. |
-| Turnstile widget | `bunx wrangler turnstile widget list --json` failed with authentication error 10000; local OAuth reports missing `challenge-widgets.write`. Widget existence/configuration remains unverified. |
-| Anonymous public access | GET requests to `https://kivori-web.andres12holivin.workers.dev/` and `/privacy` returned HTTP 403 from this environment. The root response identified Cloudflare Access, including with a browser User-Agent. Live form/privacy content could not be inspected. |
-| Deployment path | `.github/workflows/web.yml` uploads PR preview versions; pushes to main migrate D1 and deploy. The feature branch is not the active production release. |
+| Worker secrets            | `bunx wrangler secret list` returned `[]`. No secret values were retrieved.                                                                                                                                                                                                                                                                |
+| D1 database               | `bunx wrangler d1 info kivori-web --json` confirms the configured database exists with two tables. This metadata does not verify the waitlist schema, contents or production binding. No signup rows were queried.                                                                                                                         |
+| Turnstile widget          | `bunx wrangler turnstile widget list --json` failed with authentication error 10000; local OAuth reports missing `challenge-widgets.write`. Widget existence/configuration remains unverified.                                                                                                                                             |
+| Anonymous public access   | GET requests to `https://kivori-web.andres12holivin.workers.dev/` and `/privacy` returned HTTP 403 from this environment. The root response identified Cloudflare Access, including with a browser User-Agent. Live form/privacy content could not be inspected.                                                                           |
+| Deployment path           | `.github/workflows/web.yml` uploads PR preview versions; pushes to main migrate D1 and deploy. The feature branch is not the active production release.                                                                                                                                                                                    |
 
 The owner must provide a public privacy mailbox and consented test address, arrange access to the
 real Turnstile widget, and confirm the intended public access policy. Configuration review and an
@@ -1511,17 +1503,17 @@ The configured Rust channel is `stable`, not an exact numeric pin; this machine 
 The system Bun was 1.4.0, so Bun 1.4.2 (the repository/CI pin) was obtained with `bunx bun@1.4.2`
 and placed first on PATH for child scripts. Frozen-lockfile install passed without tracked changes.
 
-| Local check | Final result |
-| --- | --- |
-| `cargo test --workspace --locked --no-fail-fast -j 2 -- --test-threads=1` | 887 passed, 4 intentionally ignored; includes native, shared crates, golden frames, asset compiler and host end-to-end suites. |
-| `cargo test --manifest-path firmware/pip/Cargo.toml --locked --features host-sim --target aarch64-apple-darwin -j 2` | 207 passed, none ignored. |
-| `bun run --cwd apps/desktop test --maxWorkers=2` | 417 passed across 36 files. |
-| `bun run --cwd apps/web test` | 104 passed across 14 files. |
-| Firmware recipe/catalog tests | 34 passed: `bun test scripts/build-firmware.test.mjs scripts/build-firmware-set.test.mjs scripts/check-product-identifiers.test.mjs`. |
-| Release tooling | 78 passed: `node --test --test-concurrency=1 scripts/release-tools.test.mjs scripts/firmware-release-guard.test.mjs scripts/release-finalize.test.mjs`. |
-| Clippy, warnings denied | Host workspace all targets, desktop all targets with `--no-default-features`, firmware host-sim all targets; all passed with locked dependencies and two Cargo jobs. |
-| Formatting and frontend checks | Root/firmware `cargo fmt --all --check`, `bun run typecheck`, `lint`, `format` and `build` passed. Both frontend production builds completed. |
-| Guards | `check-crate-boundaries.sh`, `check-offline-deps.sh`, `check-product-identifiers.mjs`, `check-frontend-offline.mjs`, `check-mock-excluded.mjs` and website `check:leaks` passed. |
+| Local check                                                                                                          | Final result                                                                                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cargo test --workspace --locked --no-fail-fast -j 2 -- --test-threads=1`                                            | 887 passed, 4 intentionally ignored; includes native, shared crates, golden frames, asset compiler and host end-to-end suites.                                                   |
+| `cargo test --manifest-path firmware/pip/Cargo.toml --locked --features host-sim --target aarch64-apple-darwin -j 2` | 207 passed, none ignored.                                                                                                                                                        |
+| `bun run --cwd apps/desktop test --maxWorkers=2`                                                                     | 417 passed across 36 files.                                                                                                                                                      |
+| `bun run --cwd apps/web test`                                                                                        | 104 passed across 14 files.                                                                                                                                                      |
+| Firmware recipe/catalog tests                                                                                        | 34 passed: `bun test scripts/build-firmware.test.mjs scripts/build-firmware-set.test.mjs scripts/check-product-identifiers.test.mjs`.                                            |
+| Release tooling                                                                                                      | 78 passed: `node --test --test-concurrency=1 scripts/release-tools.test.mjs scripts/firmware-release-guard.test.mjs scripts/release-finalize.test.mjs`.                          |
+| Clippy, warnings denied                                                                                              | Host workspace all targets, desktop all targets with `--no-default-features`, firmware host-sim all targets; all passed with locked dependencies and two Cargo jobs.             |
+| Formatting and frontend checks                                                                                       | Root/firmware `cargo fmt --all --check`, `bun run typecheck`, `lint`, `format` and `build` passed. Both frontend production builds completed.                                    |
+| Guards                                                                                                               | `check-crate-boundaries.sh`, `check-offline-deps.sh`, `check-product-identifiers.mjs`, `check-frontend-offline.mjs`, `check-mock-excluded.mjs` and website `check:leaks` passed. |
 
 Failed/interrupted attempts are retained rather than counted as passing runs:
 
@@ -1600,18 +1592,18 @@ Use a temporary test profile and a scratch document or non-sensitive playback to
 Record each row as PASS/FAIL/NOT RUN with actual counts/times and a local evidence reference.
 NOT RUN, missing measurements and unsupported machine power modes cannot become PASS.
 
-| Case / existing rows | Procedure and required evidence | Result |
-| --- | --- | --- |
-| Connection / 1.6, 1.15–1.17, 1.20 | Time cold connect (<5 s), disconnect indication and reconnect with state restore (<10 s). Repeat rapid unplug/replug 10 times; record each duration and any duplicate/stuck session. | NOT RUN |
-| Rotary / 3.1–3.13, G1/G2 | Count slow detents both ways, fast turns, edge wiggles, 0/100 reversal and default-output change mid-turn. Compare Windows mixer read-back with the panel; no phantom/reversed/stale action or invented confirmation. | NOT RUN |
-| Latency / 3.14, 4.28 | After wiring checks and an agreed firmware-flash step, use the dev-only latency image. Capture about 30 distinct detents in both directions, `L` samples and final `H` (<50 ms), plus `F/t/o/n` counters. Note the device view and dropped/invalid input. Restore the matching product image afterwards and record its version/hash. | NOT RUN |
-| Press/hold/double / 4.1–4.2, 4.24–4.25, 5.15 | On each supported control count 10 short presses and 5 roughly 1.5 s holds; on the double-press-capable knob count 10 natural double presses. Use recorded bindings; each gesture has exactly its intended action, no extra press on hold/double, no merged distinct presses. Note the 250 ms single-press delay and any lost/duplicate input. | NOT RUN |
-| Microphone / 13.1–13.5 | With built-in and USB mics active, compare every endpoint's actual mute state in Windows before/after Mic Mute. Hotplug a third mic while muted, then unmute externally and unplug/replug an endpoint. Record time to reconcile and per-endpoint result; incomplete/failed coverage must remain unknown/unverified, never a muted or confirmed claim. App-call mute is distinct from OS endpoint mute. | NOT RUN |
-| Disconnect during input / 3.12, 4.8, G2 | Disconnect during a turn and during a queued scratch-document shortcut/macro; press during the outage, then reconnect. Count output before/after; no pre-disconnect or outage input replays. Record actual delivery and feedback separately: keyboard delivery remains Unverified. | NOT RUN |
-| Context changes / G2, 5.18 | Queue a scratch-document action, switch focus/profile before dispatch or during a macro wait, and cancel a pending Controls Test. The remaining old-target input must not execute or retarget; another action's result must not become that test's result. Record which input had already completed before cancellation. | NOT RUN |
-| Lock/unlock / 7.1–7.2 | Repeat 3 cycles, with attempted shortcut input while locked. Record sleeping indication (<1 s), restored profile/state, allowed volume behavior and no old shortcut replay after unlock. | NOT RUN |
-| Sleep/wake / 7.3–7.7 | Record `powercfg /a`, then exercise each available sleep/resume mode (3 cycles for the normal mode). Record sleeping/offline indication, USB power behavior, reconnect (<5 s) and absence of old press/turn replay. Record unsupported modes explicitly; required coverage stays open. | NOT RUN |
-| Feedback / G1/G2, 4.16, 13.12 | Across all cases compare Activity, panel and independent Windows state. A failed/unreadable endpoint never confirms; shortcuts/media remain Unverified. Record any stale overlay or result separately from whether the OS action happened. | NOT RUN |
+| Case / existing rows                         | Procedure and required evidence                                                                                                                                                                                                                                                                                                                                                                        | Result  |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| Connection / 1.6, 1.15–1.17, 1.20            | Time cold connect (<5 s), disconnect indication and reconnect with state restore (<10 s). Repeat rapid unplug/replug 10 times; record each duration and any duplicate/stuck session.                                                                                                                                                                                                                   | NOT RUN |
+| Rotary / 3.1–3.13, G1/G2                     | Count slow detents both ways, fast turns, edge wiggles, 0/100 reversal and default-output change mid-turn. Compare Windows mixer read-back with the panel; no phantom/reversed/stale action or invented confirmation.                                                                                                                                                                                  | NOT RUN |
+| Latency / 3.14, 4.28                         | After wiring checks and an agreed firmware-flash step, use the dev-only latency image. Capture about 30 distinct detents in both directions, `L` samples and final `H` (<50 ms), plus `F/t/o/n` counters. Note the device view and dropped/invalid input. Restore the matching product image afterwards and record its version/hash.                                                                   | NOT RUN |
+| Press/hold/double / 4.1–4.2, 4.24–4.25, 5.15 | On each supported control count 10 short presses and 5 roughly 1.5 s holds; on the double-press-capable knob count 10 natural double presses. Use recorded bindings; each gesture has exactly its intended action, no extra press on hold/double, no merged distinct presses. Note the 250 ms single-press delay and any lost/duplicate input.                                                         | NOT RUN |
+| Microphone / 13.1–13.5                       | With built-in and USB mics active, compare every endpoint's actual mute state in Windows before/after Mic Mute. Hotplug a third mic while muted, then unmute externally and unplug/replug an endpoint. Record time to reconcile and per-endpoint result; incomplete/failed coverage must remain unknown/unverified, never a muted or confirmed claim. App-call mute is distinct from OS endpoint mute. | NOT RUN |
+| Disconnect during input / 3.12, 4.8, G2      | Disconnect during a turn and during a queued scratch-document shortcut/macro; press during the outage, then reconnect. Count output before/after; no pre-disconnect or outage input replays. Record actual delivery and feedback separately: keyboard delivery remains Unverified.                                                                                                                     | NOT RUN |
+| Context changes / G2, 5.18                   | Queue a scratch-document action, switch focus/profile before dispatch or during a macro wait, and cancel a pending Controls Test. The remaining old-target input must not execute or retarget; another action's result must not become that test's result. Record which input had already completed before cancellation.                                                                               | NOT RUN |
+| Lock/unlock / 7.1–7.2                        | Repeat 3 cycles, with attempted shortcut input while locked. Record sleeping indication (<1 s), restored profile/state, allowed volume behavior and no old shortcut replay after unlock.                                                                                                                                                                                                               | NOT RUN |
+| Sleep/wake / 7.3–7.7                         | Record `powercfg /a`, then exercise each available sleep/resume mode (3 cycles for the normal mode). Record sleeping/offline indication, USB power behavior, reconnect (<5 s) and absence of old press/turn replay. Record unsupported modes explicitly; required coverage stays open.                                                                                                                 | NOT RUN |
+| Feedback / G1/G2, 4.16, 13.12                | Across all cases compare Activity, panel and independent Windows state. A failed/unreadable endpoint never confirms; shortcuts/media remain Unverified. Record any stale overlay or result separately from whether the OS action happened.                                                                                                                                                             | NOT RUN |
 
 The latency probe records the device timestamp of a successfully transmitted detent and measures
 to completed tile flush after a new Presentation, not physical-contact-to-visible-pixel time.
@@ -1710,16 +1702,16 @@ Record UTC/operator, unit and source/artifact metadata above, before/after app a
 settings checksum/selected bindings, actual outcome, durations and local evidence references for
 each row. Redact machine paths/usernames from shared logs. Missing prerequisites stay NOT RUN.
 
-| Case / existing rows | Required observation | Result |
-| --- | --- | --- |
-| Clean install / 10.1–10.2, 10.4, 11.1–11.2 | Install signed A as a standard user; record publisher/trust prompts, WebView2 setup and Defender outcome. App starts, setup completes once, device connects, bundled sidecar works without dev tools. Unsigned development smoke is recorded separately. | NOT RUN |
-| Login/tray / 9.1–9.2, 9.5–9.6 | Enable launch at login, sign out/in, verify hidden window, tray, one process and device connection. Disable it and repeat; no automatic launch. | NOT RUN |
-| Settings-preserving app update / 10.3, 11.4 | Save a distinctive profile/binding and update A to B through the real updater. Observe download/install/restart, reported B version, reconnect and preserved settings; onboarding must not repeat. Record endpoint and signature-verification outcome. | NOT RUN |
-| Rejected update / release update procedure | With the documented isolated test build, attempt a corrupted installer or mismatched updater signature. Installation is refused and current app/settings remain usable. Keep its endpoint/build evidence separate from production-endpoint acceptance. | NOT RUN |
-| Installed firmware update / 8.1, 8.6, 8.8 | On the dev-tool-free machine, flash the exact bundled product/board image through the installed app. Observe progress, updating display, reconnect, identity and reported version. Confirm version-based offers are accurate. | NOT RUN |
+| Case / existing rows                          | Required observation                                                                                                                                                                                                                                                                                                                      | Result  |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Clean install / 10.1–10.2, 10.4, 11.1–11.2    | Install signed A as a standard user; record publisher/trust prompts, WebView2 setup and Defender outcome. App starts, setup completes once, device connects, bundled sidecar works without dev tools. Unsigned development smoke is recorded separately.                                                                                  | NOT RUN |
+| Login/tray / 9.1–9.2, 9.5–9.6                 | Enable launch at login, sign out/in, verify hidden window, tray, one process and device connection. Disable it and repeat; no automatic launch.                                                                                                                                                                                           | NOT RUN |
+| Settings-preserving app update / 10.3, 11.4   | Save a distinctive profile/binding and update A to B through the real updater. Observe download/install/restart, reported B version, reconnect and preserved settings; onboarding must not repeat. Record endpoint and signature-verification outcome.                                                                                    | NOT RUN |
+| Rejected update / release update procedure    | With the documented isolated test build, attempt a corrupted installer or mismatched updater signature. Installation is refused and current app/settings remain usable. Keep its endpoint/build evidence separate from production-endpoint acceptance.                                                                                    | NOT RUN |
+| Installed firmware update / 8.1, 8.6, 8.8     | On the dev-tool-free machine, flash the exact bundled product/board image through the installed app. Observe progress, updating display, reconnect, identity and reported version. Confirm version-based offers are accurate.                                                                                                             | NOT RUN |
 | Interrupted flash and BOOT restore / 8.2, 8.7 | On the test unit, disconnect USB during a real flash. Record failure/retry feedback and actual sidecar error. Follow the app's BOOT/Restore instructions, explicitly select the matching target if needed, and verify successful reconnect/identity/version plus normal controls. Retain redacted real errors for classifier regressions. | NOT RUN |
-| Install/flash exclusion / M2.9 S1 | Exercise both admission orders with an update ready: active firmware flash blocks installer start; admitted installation blocks flash/restore. Observe child processes, progress and runtime shutdown where the app exits. No flasher and installer overlap; after a failed operation the appropriate retry becomes usable. | NOT RUN |
-| Uninstall / 9.3 | Uninstall and verify the app is gone and both Kivori startup registry values are removed. Record settings retention/removal behavior and actual sign-in result; preserve evidence before resetting the test machine. | NOT RUN |
+| Install/flash exclusion / M2.9 S1             | Exercise both admission orders with an update ready: active firmware flash blocks installer start; admitted installation blocks flash/restore. Observe child processes, progress and runtime shutdown where the app exits. No flasher and installer overlap; after a failed operation the appropriate retry becomes usable.               | NOT RUN |
+| Uninstall / 9.3                               | Uninstall and verify the app is gone and both Kivori startup registry values are removed. Record settings retention/removal behavior and actual sign-in result; preserve evidence before resetting the test machine.                                                                                                                      | NOT RUN |
 
 The current CI smoke installs/uninstalls silently and tests a ten-second `--autostart` process; it
 manually inserts a Run entry to test cleanup. It does not observe a real login, manual trust prompts,
@@ -1793,9 +1785,9 @@ verified hours and workdays at 0/10; item 17 stays open and progress remains 13/
    press/hold and relevant microphone checks and compare OS state with feedback. Record spontaneous
    actions, stale indicators, missed/wrong inputs and whether recovery was needed.
 
-| Trial / candidate | UTC start/end and elapsed | Snapshots / observations | Incidents / recovery | Result |
-| --- | --- | --- | --- | --- |
-| Not started | — / 0 verified hours | None | Not observed | NOT RUN |
+| Trial / candidate | UTC start/end and elapsed | Snapshots / observations | Incidents / recovery | Result  |
+| ----------------- | ------------------------- | ------------------------ | -------------------- | ------- |
+| Not started       | — / 0 verified hours      | None                     | Not observed         | NOT RUN |
 
 Passing needs a fully evidenced interval of at least 8 hours, a responsive final control check and
 no unresolved stability or feedback failure. Do not add interrupted intervals together to claim a
@@ -1809,18 +1801,18 @@ and profiles used in real work, including audio-device changes, ordinary lock/sl
 USB reconnects when they occur. Distinguish planned disconnects from unexplained ones. Record a
 count for a defined action sample each day so a claim of no missed/wrong input has an observed basis.
 
-| Day | Date / candidate / unit | Use start/end, active hours, breaks | Action sample expected/actual; disconnects, missed/wrong input, stale feedback, crashes | Recovery / evidence | Result |
-| --- | --- | --- | --- | --- | --- |
-| 1 | — | — | Not observed | — | NOT RUN |
-| 2 | — | — | Not observed | — | NOT RUN |
-| 3 | — | — | Not observed | — | NOT RUN |
-| 4 | — | — | Not observed | — | NOT RUN |
-| 5 | — | — | Not observed | — | NOT RUN |
-| 6 | — | — | Not observed | — | NOT RUN |
-| 7 | — | — | Not observed | — | NOT RUN |
-| 8 | — | — | Not observed | — | NOT RUN |
-| 9 | — | — | Not observed | — | NOT RUN |
-| 10 | — | — | Not observed | — | NOT RUN |
+| Day | Date / candidate / unit | Use start/end, active hours, breaks | Action sample expected/actual; disconnects, missed/wrong input, stale feedback, crashes | Recovery / evidence | Result  |
+| --- | ----------------------- | ----------------------------------- | --------------------------------------------------------------------------------------- | ------------------- | ------- |
+| 1   | —                       | —                                   | Not observed                                                                            | —                   | NOT RUN |
+| 2   | —                       | —                                   | Not observed                                                                            | —                   | NOT RUN |
+| 3   | —                       | —                                   | Not observed                                                                            | —                   | NOT RUN |
+| 4   | —                       | —                                   | Not observed                                                                            | —                   | NOT RUN |
+| 5   | —                       | —                                   | Not observed                                                                            | —                   | NOT RUN |
+| 6   | —                       | —                                   | Not observed                                                                            | —                   | NOT RUN |
+| 7   | —                       | —                                   | Not observed                                                                            | —                   | NOT RUN |
+| 8   | —                       | —                                   | Not observed                                                                            | —                   | NOT RUN |
+| 9   | —                       | —                                   | Not observed                                                                            | —                   | NOT RUN |
+| 10  | —                       | —                                   | Not observed                                                                            | —                   | NOT RUN |
 
 For each incident record UTC time, candidate/unit, trigger, expected versus actual OS/device/UI
 behavior, count/duration, recovery steps and evidence. False confirmation, stale replay, wrong-target
@@ -1870,15 +1862,15 @@ unassisted attempt. Record task start/end, attempts, outcome, help and observed 
 
 ### Participant goals and evaluator record
 
-| Neutral goal prompt | Evaluator observation (keep separate from participant prompts) | Result / time / help / evidence |
-| --- | --- | --- |
-| Get Kivori ready to use on this computer. | Install and complete setup, identify connection readiness and understand Tour guidance. Observe trust prompts, cable confusion, permission/setup errors and reliance on developer help. | NOT RUN |
-| Adjust the sound and control playback, then silence the sound. | Observe knob turn, Press versus Hold discovery, actual OS state and accidental repeats/holds. Record what the participant expected before interpreting feedback. | NOT RUN |
-| Give a button a second action and show both actions working. | Find the Hold binding in Controls, distinguish Press/Hold, save, test in a scratch app and confirm the physical bindings. Observe shortcut countdown/focus and whether pending feedback is understood. | NOT RUN |
-| Keep these controls the same while you switch between apps, then restore automatic switching. | Discover middle-button profile pin/cycle and return to Auto. Record confusion about active, edited and pinned profiles or the on-device labels. | NOT RUN |
-| Show another view on the device, then return to your starting view. | Discover double press and distinguish it from two single actions. Count unintended playback/actions and repeated presses caused by uncertainty. | NOT RUN |
-| Tell me what happened after these actions and what you would do next. | Use real successful, Unverified and benign failure cases prepared for this candidate. Ask what labels, pulses, badges and Activity mean; a pulse or queued request must not be mistaken for proof the OS action completed. | NOT RUN |
-| Get this disconnected or recoverable test unit working again. | Observe discovery of Device/setup recovery and following BOOT/target-confirmation steps. Use an agreed recoverable unit state; record its setup, actual flash/reconnect result and any coaching. A screenshot or simulated failure is labelled separately and cannot prove physical recovery. | NOT RUN |
+| Neutral goal prompt                                                                           | Evaluator observation (keep separate from participant prompts)                                                                                                                                                                                                                                | Result / time / help / evidence |
+| --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| Get Kivori ready to use on this computer.                                                     | Install and complete setup, identify connection readiness and understand Tour guidance. Observe trust prompts, cable confusion, permission/setup errors and reliance on developer help.                                                                                                       | NOT RUN                         |
+| Adjust the sound and control playback, then silence the sound.                                | Observe knob turn, Press versus Hold discovery, actual OS state and accidental repeats/holds. Record what the participant expected before interpreting feedback.                                                                                                                              | NOT RUN                         |
+| Give a button a second action and show both actions working.                                  | Find the Hold binding in Controls, distinguish Press/Hold, save, test in a scratch app and confirm the physical bindings. Observe shortcut countdown/focus and whether pending feedback is understood.                                                                                        | NOT RUN                         |
+| Keep these controls the same while you switch between apps, then restore automatic switching. | Discover middle-button profile pin/cycle and return to Auto. Record confusion about active, edited and pinned profiles or the on-device labels.                                                                                                                                               | NOT RUN                         |
+| Show another view on the device, then return to your starting view.                           | Discover double press and distinguish it from two single actions. Count unintended playback/actions and repeated presses caused by uncertainty.                                                                                                                                               | NOT RUN                         |
+| Tell me what happened after these actions and what you would do next.                         | Use real successful, Unverified and benign failure cases prepared for this candidate. Ask what labels, pulses, badges and Activity mean; a pulse or queued request must not be mistaken for proof the OS action completed.                                                                    | NOT RUN                         |
+| Get this disconnected or recoverable test unit working again.                                 | Observe discovery of Device/setup recovery and following BOOT/target-confirmation steps. Use an agreed recoverable unit state; record its setup, actual flash/reconnect result and any coaching. A screenshot or simulated failure is labelled separately and cannot prove physical recovery. | NOT RUN                         |
 
 After the first attempts, ask neutrally whether responses matched expectations and what felt slow
 or unclear. Record the single-press delay experience, spontaneous extra presses, accidental double
@@ -1954,9 +1946,9 @@ Its common volume with every printed part and bought-part stand-in is zero. A se
 tip segment straddling the button face intersects the nominal SuperMini switch stand-in.
 
 | Modeled access | Face-frame centre (mm) | Clear-path overlap (mm³) | Tip contact (mm³) | Probe shifted +2.5 mm in x: BackPlate overlap (mm³) |
-| --- | --- | --- | --- | --- |
-| RST | 50.5, 58.0 | 0 | 0.039270 | 12.398782 |
-| BOOT | 59.5, 58.0 | 0 | 0.039270 | 12.398782 |
+| -------------- | ---------------------- | ------------------------ | ----------------- | --------------------------------------------------- |
+| RST            | 50.5, 58.0             | 0                        | 0.039270          | 12.398782                                           |
+| BOOT           | 59.5, 58.0             | 0                        | 0.039270          | 12.398782                                           |
 
 Both deliberately off-centre probes fail the clearance check, providing obstruction controls.
 The document SHA-256 before/after is
@@ -1980,17 +1972,17 @@ label. Name the instrument, resolution and method for each measurement. Compare 
 with the selected CAD and actual component specifications; a nominal CAD clearance is not an
 observed clearance. Record missing dimensions/force limits as open rather than inventing a tolerance.
 
-| Check | Measurements and required observation | Result / evidence |
-| --- | --- | --- |
-| Bought parts | Measure actual display PCB/glass/FPC/header, controller-board USB and buttons, encoder PCB/shaft and switch body/stem/pin locations. Compare with the chosen model before committing to a full print; record each deviation. | NOT MEASURED |
-| Carrier and display | Dry-fit components and mounting features; record hole/peg alignment, PCB seating, glass/FPC clearance and window alignment. No forced glass/PCB bend, obscured active area or trapped cable. | NOT MEASURED |
-| Button caps | Measure resting/pressed clearance, available travel, stem/socket engagement and return for each cap. Exercise centre and edge presses on all three; record counts, rubbing, preload, sticking and unintended holds. | NOT MEASURED |
-| Knob | Measure shaft engagement, resting and pressed axial gap and clearance through a full turn and push at several angles. No rubbing, neighbouring-cap contact, loss of push travel or loose/slipping shaft fit. | NOT MEASURED |
-| USB | Use the actual intended data-cable plug. Record opening/plug clearance and measured peak insertion/removal force with the measurement method. Observe connector/PCB displacement and support path; the shell must not prevent full seating or transfer damaging loads to the board. Force without an instrument remains unmeasured. | NOT MEASURED |
-| Wiring and closure | With power removed, check continuity against the firmware map and inspect insulation/routing, especially crossings and the controller-board recess/edge. Close/open the selected case design, record fit and retention, then recheck for pinched wires, shifted parts and shorts before power. | NOT MEASURED |
-| RST access | With the case fully closed, verify the labelled access point reaches the actual reset switch without disassembly or contacting other circuitry. Observe reset and normal reconnect; record tool, alignment and actuation. Do not infer location from another variant's instructions. | NOT MEASURED |
-| BOOT access/recovery | With the case closed, demonstrate access to the actual BOOT switch, entry into recovery and return to normal operation using the existing recovery procedure. Record tool clearance, labels and actual app/device result; link item 16's flash/recovery evidence when applicable. | NOT MEASURED |
-| Closed-unit operation | With the product firmware, repeat physical control and display checks after closure, including mic feedback and USB reconnect. Record any changed behaviour versus the open assembly and failures after reopening/reclosing. | NOT MEASURED |
+| Check                 | Measurements and required observation                                                                                                                                                                                                                                                                                               | Result / evidence |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| Bought parts          | Measure actual display PCB/glass/FPC/header, controller-board USB and buttons, encoder PCB/shaft and switch body/stem/pin locations. Compare with the chosen model before committing to a full print; record each deviation.                                                                                                        | NOT MEASURED      |
+| Carrier and display   | Dry-fit components and mounting features; record hole/peg alignment, PCB seating, glass/FPC clearance and window alignment. No forced glass/PCB bend, obscured active area or trapped cable.                                                                                                                                        | NOT MEASURED      |
+| Button caps           | Measure resting/pressed clearance, available travel, stem/socket engagement and return for each cap. Exercise centre and edge presses on all three; record counts, rubbing, preload, sticking and unintended holds.                                                                                                                 | NOT MEASURED      |
+| Knob                  | Measure shaft engagement, resting and pressed axial gap and clearance through a full turn and push at several angles. No rubbing, neighbouring-cap contact, loss of push travel or loose/slipping shaft fit.                                                                                                                        | NOT MEASURED      |
+| USB                   | Use the actual intended data-cable plug. Record opening/plug clearance and measured peak insertion/removal force with the measurement method. Observe connector/PCB displacement and support path; the shell must not prevent full seating or transfer damaging loads to the board. Force without an instrument remains unmeasured. | NOT MEASURED      |
+| Wiring and closure    | With power removed, check continuity against the firmware map and inspect insulation/routing, especially crossings and the controller-board recess/edge. Close/open the selected case design, record fit and retention, then recheck for pinched wires, shifted parts and shorts before power.                                      | NOT MEASURED      |
+| RST access            | With the case fully closed, verify the labelled access point reaches the actual reset switch without disassembly or contacting other circuitry. Observe reset and normal reconnect; record tool, alignment and actuation. Do not infer location from another variant's instructions.                                                | NOT MEASURED      |
+| BOOT access/recovery  | With the case closed, demonstrate access to the actual BOOT switch, entry into recovery and return to normal operation using the existing recovery procedure. Record tool clearance, labels and actual app/device result; link item 16's flash/recovery evidence when applicable.                                                   | NOT MEASURED      |
+| Closed-unit operation | With the product firmware, repeat physical control and display checks after closure, including mic feedback and USB reconnect. Record any changed behaviour versus the open assembly and failures after reopening/reclosing.                                                                                                        | NOT MEASURED      |
 
 Retain photos/dimensioned notes and any failed fit. Link every parameter/design correction to the
 specific measured discrepancy, regenerate/review the affected geometry, reprint and remeasure.

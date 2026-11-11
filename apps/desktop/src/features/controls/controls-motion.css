@@ -1,0 +1,9 @@
+/* One-shot mint flash after a successful Test on a control row. */
+@keyframes kivori-row-flash {
+  0% {
+    background-color: color-mix(in oklab, var(--primary) 24%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}

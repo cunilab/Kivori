@@ -115,6 +115,7 @@ describe('capability-aware setup', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled());
     await next(user);
     await next(user);
+    await next(user);
     expect(screen.getByRole('heading', { level: 1, name: 'Make it yours' })).toBeInTheDocument();
     expect(screen.getByText(/Hold the knob and turn two detents/)).toBeInTheDocument();
     expect(screen.queryByText('Saved only')).not.toBeInTheDocument();
@@ -143,7 +144,7 @@ describe('capability-aware setup', () => {
     expect(screen.getAllByText('Saved only')).toHaveLength(2);
     page.rerender(setup(null));
     expect(screen.getByRole('button', { name: 'Clock' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'High' })).toBeEnabled();
+    expect(screen.getByRole('radio', { name: /Playful/ })).toBeEnabled();
     expect(ipc.setDisplaySettings).not.toHaveBeenCalled();
     expect(ipc.setBuddySettings).not.toHaveBeenCalled();
     expect(await ipc.getConfig()).toEqual(before);
@@ -152,7 +153,7 @@ describe('capability-aware setup', () => {
         .violations,
     ).toEqual([]);
     await user.click(screen.getByRole('button', { name: 'Clock' }));
-    await user.click(screen.getByRole('button', { name: 'High' }));
+    await user.click(screen.getByRole('radio', { name: /Playful/ }));
     expect(ipc.setDisplaySettings).toHaveBeenCalledTimes(1);
     expect(ipc.setBuddySettings).toHaveBeenCalledTimes(1);
     expect((await ipc.getConfig()).profiles).toEqual(before.profiles);
