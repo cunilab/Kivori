@@ -7,7 +7,7 @@ interface Context {
   params: Promise<{ os: string; version: string }>;
 }
 
-/** `/download/windows/latest` or `/download/windows/<semver>`: the installer, streamed (see lib/download.ts). */
+/** Streams a published installer; Linux selects .deb by default or ?format=appimage. */
 export async function GET(request: NextRequest, { params }: Context): Promise<Response> {
   const { os, version } = await params;
   return downloadResponse(request, os, version);

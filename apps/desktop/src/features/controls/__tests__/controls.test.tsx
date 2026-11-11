@@ -1,6 +1,6 @@
 import { connectionFixture } from '../../../test/connection';
 import type { ConnectionStatusDto } from '../../../lib/ipc/types';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -91,38 +91,19 @@ afterEach(() => {
 });
 
 describe('ControlsPage', () => {
-  it('records, saves, reopens and clears held rotation shortcuts without changing normal rotate', async () => {
-    const user = userEvent.setup();
+  it('shows Hold + rotate as the device’s fixed profile picker, with nothing to bind', async () => {
     render(<Harness connection={connectionFixture()} />);
     await screen.findByTestId('gesture-heldRotate');
-    expect(row('heldRotate')).toHaveTextContent('Not set');
-    await user.click(within(row('heldRotate')).getByRole('button', { name: 'Edit Hold + rotate' }));
-    expect(screen.queryByRole('radio', { name: /System volume/ })).not.toBeInTheDocument();
-    for (const [label, key] of [
-      ['Clockwise shortcut', 'ArrowRight'],
-      ['Counter-clockwise shortcut', 'ArrowLeft'],
-    ] as const) {
-      await user.click(screen.getByRole('button', { name: `Record keys for ${label}` }));
-      fireEvent.keyDown(screen.getByLabelText(label), { key, ctrlKey: true });
-    }
-    await user.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(row('heldRotate')).toHaveTextContent('Ctrl+Right / Ctrl+Left'));
-    expect((await ipc.getConfig()).profiles[0]!.heldRotate).toMatchObject({
-      kind: 'shortcuts',
-      cw: 'Ctrl+Right',
-      ccw: 'Ctrl+Left',
-    });
+    expect(row('heldRotate')).toHaveTextContent('Fixed: picks a pinned profile');
+    expect(
+      within(row('heldRotate')).queryByRole('button', { name: 'Edit Hold + rotate' }),
+    ).not.toBeInTheDocument();
     expect(row('rotate')).toHaveTextContent('System volume');
-    await user.click(within(row('heldRotate')).getByRole('button', { name: 'Edit Hold + rotate' }));
-    expect(screen.getByLabelText('Clockwise shortcut')).toHaveValue('Ctrl+Right');
-    await user.click(screen.getByRole('radio', { name: /Not set/ }));
-    await user.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(row('heldRotate')).toHaveTextContent('Not set'));
-    expect((await ipc.getConfig()).profiles[0]!.heldRotate).toBeNull();
+    expect(row('hold')).toHaveTextContent('Fixed: Hold + turn switches profile.');
+    expect(within(row('hold')).queryByRole('button')).not.toBeInTheDocument();
   });
 
-  it('offers saved hold-and-rotate settings but explains old firmware cannot use them', async () => {
-    const user = userEvent.setup();
+  it('explains that firmware without the profile picker cannot use Hold + rotate', async () => {
     render(
       <Harness
         connection={connectionFixture(['physicalInputV1', 'buttonInputV1', 'productIdentityV1'])}
@@ -132,9 +113,8 @@ describe('ControlsPage', () => {
     expect(within(row('heldRotate')).getByText('Saved only')).toBeVisible();
     expect(row('heldRotate')).toHaveTextContent('Update the device firmware');
     expect(within(row('rotate')).queryByText('Saved only')).not.toBeInTheDocument();
-    await user.click(within(row('heldRotate')).getByRole('button', { name: 'Edit Hold + rotate' }));
-    expect(await screen.findByRole('dialog')).toBeVisible();
   });
+
   it('selects a physical button for editing without running its action', async () => {
     const user = userEvent.setup();
     render(<Harness connection={connectionFixture()} />);
@@ -149,6 +129,35 @@ describe('ControlsPage', () => {
     expect(ipc.testRotate).not.toHaveBeenCalled();
     await user.click(within(row('button1')).getByRole('button', { name: 'Edit Left button' }));
     expect(await screen.findByRole('dialog', { name: 'Edit Left button' })).toBeVisible();
+  });
+
+  it('keeps a text-free mascot screen and reacts to selection, hover and keyboard focus', async () => {
+    const user = userEvent.setup();
+    render(<Harness connection={connectionFixture()} />);
+    await screen.findByTestId('gesture-press');
+    const deviceScreen = screen.getByTestId('device-screen');
+    expect(within(deviceScreen).getByTestId('device-screen-mascot')).toBeInTheDocument();
+    expect(deviceScreen.textContent).toBe('');
+    expect(deviceScreen).toHaveAttribute('data-reaction', 'knob');
+
+    const left = screen.getByRole('button', { name: 'Select Left button' });
+    await user.hover(left);
+    expect(deviceScreen).toHaveAttribute('data-reaction', 'button1');
+    expect(screen.getByRole('button', { name: 'Select Knob' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await user.unhover(left);
+    expect(deviceScreen).toHaveAttribute('data-reaction', 'knob');
+    await user.click(left);
+    await user.unhover(left);
+    expect(deviceScreen).toHaveAttribute('data-reaction', 'button1');
+    expect(left).toHaveAttribute('aria-pressed', 'true');
+    await user.tab();
+    expect(deviceScreen).toHaveAttribute('data-reaction', 'button2');
+    expect(deviceScreen.textContent).toBe('');
+    expect(ipc.testAction).not.toHaveBeenCalled();
+    expect(ipc.testRotate).not.toHaveBeenCalled();
   });
 
   it('retains edited bindings and host tests when switching to a device without their controls', async () => {
@@ -180,15 +189,15 @@ describe('ControlsPage', () => {
     render(<Harness />);
     expect(await screen.findByRole('combobox', { name: 'Profile' })).toHaveTextContent('General');
     expect(row('rotate')).toHaveTextContent('System volume');
-    expect(row('press')).toHaveTextContent('Play / Pause');
-    expect(row('hold')).toHaveTextContent('Mute');
+    expect(row('press')).toHaveTextContent('Mute');
+    expect(row('press')).toHaveTextContent('Mute');
     await userEvent.setup().click(screen.getByRole('tab', { name: 'Left button' }));
     expect(row('button1')).toHaveTextContent('Previous track');
     expect(row('button1Hold')).toHaveTextContent('Not set');
     // The disclaimers live under Reset & help, not above the controls.
     expect(screen.queryByTestId('controls-notes')).not.toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole('tab', { name: 'Reset & help' }));
-    expect(screen.getByText(/not show them on screen yet/)).toBeVisible();
+    expect(screen.getByText(/Middle button hold mutes every microphone/)).toBeVisible();
     expect(screen.getByTestId('mic-scope-note')).toBeVisible();
     expect(screen.queryByText('Custom')).not.toBeInTheDocument();
   });
@@ -220,19 +229,20 @@ describe('ControlsPage', () => {
     const user = userEvent.setup();
     render(<Harness />);
     await screen.findByTestId('gesture-press');
-    await user.click(within(row('press')).getByText('Play / Pause'));
+    await user.click(within(row('press')).getByText('Mute'));
     expect(await screen.findByRole('dialog')).toBeVisible();
   });
 
   it('shows a friendly status mark instead of a Confirmed / Result unknown badge', async () => {
     render(<Harness />);
-    await screen.findByTestId('gesture-hold');
-    const mark = within(row('hold')).getByLabelText('Kivori can confirm this worked');
+    await screen.findByTestId('gesture-press');
+    const mark = within(row('press')).getByLabelText('Kivori can confirm this worked');
     expect(mark).toHaveAttribute('data-verification', 'confirmed');
+    await userEvent.setup().click(screen.getByRole('tab', { name: 'Left button' }));
     expect(
-      within(row('press')).getByLabelText('Kivori can’t tell whether this worked'),
+      within(row('button1')).getByLabelText('Kivori can’t tell whether this worked'),
     ).toHaveAttribute('data-verification', 'unverified');
-    expect(within(row('hold')).queryByText('Result unknown')).toBeNull();
+    expect(within(row('press')).queryByText('Result unknown')).toBeNull();
   });
 
   it('marks an edited Press as Custom and Reset brings the built-in back', async () => {
@@ -248,7 +258,7 @@ describe('ControlsPage', () => {
 
     await rowAction(user, 'press', 'Reset');
     await waitFor(() => expect(row('press')).not.toHaveTextContent('Custom'));
-    expect(row('press')).toHaveTextContent('Play / Pause');
+    expect(row('press')).toHaveTextContent('Mute');
   });
 
   it('shows a native rejection in the sheet and leaves the row unchanged', async () => {
@@ -260,7 +270,7 @@ describe('ControlsPage', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('not a valid shortcut');
-    expect(row('press')).toHaveTextContent('Play / Pause');
+    expect(row('press')).toHaveTextContent('Mute');
     expect(row('press')).not.toHaveTextContent('Custom');
   });
 
@@ -296,11 +306,11 @@ describe('ControlsPage', () => {
   it('runs a non-keyboard Test at once and shows its result', async () => {
     const user = userEvent.setup();
     render(<Harness />);
-    await screen.findByTestId('gesture-hold');
-    await rowAction(user, 'hold', 'Test');
+    await screen.findByTestId('gesture-press');
+    await rowAction(user, 'press', 'Test');
     expect(ipc.testAction).toHaveBeenCalledWith({ kind: 'systemMute' });
     expect(
-      await within(row('hold')).findByText('Confirmed', { selector: '[data-result]' }),
+      await within(row('press')).findByText('Confirmed', { selector: '[data-result]' }),
     ).toBeVisible();
   });
 
@@ -315,45 +325,56 @@ describe('ControlsPage', () => {
         }),
     );
     render(<Harness />);
-    await screen.findByTestId('gesture-hold');
-    await rowAction(user, 'hold', 'Test');
-    expect(row('hold').querySelector('[data-result]')).toHaveAttribute('data-result', 'processing');
+    await screen.findByTestId('gesture-press');
+    await rowAction(user, 'press', 'Test');
+    expect(row('press').querySelector('[data-result]')).toHaveAttribute(
+      'data-result',
+      'processing',
+    );
     await act(async () => {
       await ipc.testRotate({ kind: 'systemVolume' });
     });
-    expect(row('hold').querySelector('[data-result]')).toHaveAttribute('data-result', 'processing');
+    expect(row('press').querySelector('[data-result]')).toHaveAttribute(
+      'data-result',
+      'processing',
+    );
     await act(async () =>
       finish({ action: 'mute', result: 'unverified', permissionRequired: false }),
     );
-    expect(row('hold').querySelector('[data-result]')).toHaveAttribute('data-result', 'unverified');
+    expect(row('press').querySelector('[data-result]')).toHaveAttribute(
+      'data-result',
+      'unverified',
+    );
     await act(async () => {
       await ipc.testRotate({ kind: 'systemVolume' });
     });
-    expect(row('hold').querySelector('[data-result]')).toHaveAttribute('data-result', 'unverified');
+    expect(row('press').querySelector('[data-result]')).toHaveAttribute(
+      'data-result',
+      'unverified',
+    );
   });
 
   it('replaces a prior success when a later test rejects', async () => {
     const user = userEvent.setup();
     render(<Harness />);
-    await screen.findByTestId('gesture-hold');
-    await rowAction(user, 'hold', 'Test');
+    await screen.findByTestId('gesture-press');
+    await rowAction(user, 'press', 'Test');
     await waitFor(() =>
-      expect(row('hold').querySelector('[data-result]')).toHaveAttribute(
+      expect(row('press').querySelector('[data-result]')).toHaveAttribute(
         'data-result',
         'stateConfirmed',
       ),
     );
     vi.mocked(ipc.testAction).mockRejectedValueOnce(new Error('failed test'));
-    await rowAction(user, 'hold', 'Test');
+    await rowAction(user, 'press', 'Test');
     await waitFor(() =>
-      expect(row('hold').querySelector('[data-result]')).toHaveAttribute('data-result', 'error'),
+      expect(row('press').querySelector('[data-result]')).toHaveAttribute('data-result', 'error'),
     );
     expect(await screen.findByText('failed test')).toBeVisible();
   });
 
   it('ignores superseded replies and clears old feedback when a countdown starts', async () => {
     const user = userEvent.setup();
-    await ipc.setBinding('general', 'press', { action: { kind: 'shortcut', keys: 'Ctrl+K' } });
     let finish!: (outcome: DeskActionDto) => void;
     vi.mocked(ipc.testAction).mockImplementationOnce(
       () =>
@@ -362,8 +383,8 @@ describe('ControlsPage', () => {
         }),
     );
     render(<Harness />);
-    await screen.findByTestId('gesture-hold');
-    await rowAction(user, 'hold', 'Test');
+    await screen.findByTestId('gesture-press');
+    await rowAction(user, 'press', 'Test');
     await rowAction(user, 'rotate', 'Test');
     await waitFor(() =>
       expect(row('rotate').querySelector('[data-result]')).toHaveAttribute(
@@ -372,11 +393,12 @@ describe('ControlsPage', () => {
       ),
     );
     await act(async () => finish({ action: 'mute', result: 'error', permissionRequired: false }));
-    expect(row('hold').querySelector('[data-result]')).toBeNull();
+    expect(row('press').querySelector('[data-result]')).toBeNull();
     expect(row('rotate').querySelector('[data-result]')).toHaveAttribute(
       'data-result',
       'stateConfirmed',
     );
+    await ipc.setBinding('general', 'press', { action: { kind: 'shortcut', keys: 'Ctrl+K' } });
     await rowActionFake(user, 'press', 'Test');
     expect(row('rotate').querySelector('[data-result]')).toBeNull();
     expect(within(row('press')).getByRole('status')).toHaveTextContent('Running in 3');
@@ -395,15 +417,15 @@ describe('ControlsPage', () => {
         }),
     );
     render(<Harness />);
-    await screen.findByTestId('gesture-hold');
-    await rowAction(user, 'hold', 'Test');
+    await screen.findByTestId('gesture-press');
+    await rowAction(user, 'press', 'Test');
     await act(async () => {
-      await ipc.setBinding('general', 'hold', { action: { kind: 'playPause' } });
+      await ipc.setBinding('general', 'press', { action: { kind: 'playPause' } });
     });
     await act(async () =>
       finish({ action: 'mute', result: 'stateConfirmed', permissionRequired: false }),
     );
-    expect(row('hold').querySelector('[data-result]')).toBeNull();
+    expect(row('press').querySelector('[data-result]')).toBeNull();
   });
 
   it.each(['profile', 'unmount'])('ignores a late rejection after %s changes', async (change) => {
@@ -416,15 +438,15 @@ describe('ControlsPage', () => {
         }),
     );
     const page = render(<Harness />);
-    await screen.findByTestId('gesture-hold');
-    await rowAction(user, 'hold', 'Test');
+    await screen.findByTestId('gesture-press');
+    await rowAction(user, 'press', 'Test');
     if (change === 'unmount') page.unmount();
     else await selectProfile(user, 'Browser');
     const errorToast = vi.spyOn(toast, 'error');
     await act(async () => reject(new Error('obsolete test')));
     expect(errorToast).not.toHaveBeenCalled();
     errorToast.mockRestore();
-    if (change === 'profile') expect(row('hold').querySelector('[data-result]')).toBeNull();
+    if (change === 'profile') expect(row('press').querySelector('[data-result]')).toBeNull();
   });
 
   it('tests a volume knob at once, as a step up and back, and shows the result', async () => {
@@ -441,6 +463,36 @@ describe('ControlsPage', () => {
       await within(row('rotate')).findByText('Confirmed', { selector: '[data-result]' }),
     ).toBeVisible();
   });
+
+  it.each([
+    ['Browser', 'Use tab switching', 'Tabs', 'Ctrl+Tab', 'Ctrl+Shift+Tab'],
+    ['Premiere Pro', 'Use frame stepping', 'Frame', 'Right', 'Left'],
+    ['Claude Code', 'Use prompt history', 'History', 'Down', 'Up'],
+    ['Codex', 'Use prompt history', 'History', 'Down', 'Up'],
+    ['OpenCode', 'Use navigation', 'Navigate', 'Down', 'Up'],
+  ])(
+    'offers an optional rotate preset for %s without changing the default',
+    async (name, preset, label, cw, ccw) => {
+      const user = userEvent.setup();
+      render(<Harness />);
+      await selectProfile(user, name);
+      expect(row('rotate')).toHaveTextContent('System volume');
+      const saved = await ipc.getConfig();
+      await user.click(within(row('rotate')).getByRole('button', { name: /^Edit/ }));
+      await user.click(await screen.findByRole('button', { name: preset }));
+      expect(screen.getByLabelText('Clockwise shortcut')).toHaveValue(cw);
+      expect(screen.getByLabelText('Counter-clockwise shortcut')).toHaveValue(ccw);
+      expect(await ipc.getConfig()).toEqual(saved);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(row('rotate')).toHaveTextContent(label));
+      expect((await ipc.getConfig()).profiles.find((p) => p.name === name)?.rotate.spec).toEqual({
+        kind: 'shortcuts',
+        cw,
+        ccw,
+        label,
+      });
+    },
+  );
 
   it('counts down before testing a knob shortcut pair, then sends it as one test', async () => {
     const user = userEvent.setup();
@@ -500,12 +552,12 @@ describe('ControlsPage', () => {
     expect(within(row('button1')).queryByRole('status')).not.toBeInTheDocument();
   });
 
-  it('keeps the middle button Hold locked as Pin profile', async () => {
+  it('keeps the middle button Hold locked as mic mute', async () => {
     const user = userEvent.setup();
     render(<Harness />);
     await user.click(await screen.findByRole('tab', { name: 'Middle button' }));
     await screen.findByTestId('gesture-button2Hold');
-    expect(row('button2Hold')).toHaveTextContent('Pin profile');
+    expect(row('button2Hold')).toHaveTextContent('Mic mute (every capture device)');
     expect(within(row('button2Hold')).queryByRole('button')).not.toBeInTheDocument();
     await user.click(screen.getByRole('tab', { name: 'Left button' }));
     expect(within(row('button1Hold')).getByRole('button', { name: /^Edit/ })).toBeVisible();

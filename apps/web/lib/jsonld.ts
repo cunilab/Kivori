@@ -55,14 +55,19 @@ export function softwareApplicationJsonLd(
   version?: string,
   origin?: URL,
   macAvailable = false,
+  linuxAvailable = false,
 ): JsonLd {
   const data: JsonLd = {
     '@context': 'https://schema.org',
     '@type': 'SoftwareApplication',
     name: SITE_NAME,
-    operatingSystem: macAvailable
-      ? 'Windows 10, Windows 11, macOS (Apple Silicon)'
-      : 'Windows 10, Windows 11',
+    operatingSystem: [
+      'Windows 10, Windows 11',
+      macAvailable ? 'macOS (Apple Silicon)' : null,
+      linuxAvailable ? 'Linux (Ubuntu/Debian x86_64)' : null,
+    ]
+      .filter(Boolean)
+      .join(', '),
     applicationCategory: 'UtilitiesApplication',
     url: absoluteUrl('/download', origin),
   };

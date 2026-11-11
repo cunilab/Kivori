@@ -244,7 +244,20 @@ fn shortcut_detents_are_never_batched() {
     });
     desk.on_session_begin();
     let _ = desk.tick(Duration::ZERO, &mut |_| {});
-    // The browser binds the knob to tab shortcuts.
+    // An explicit saved customization opts Browser into tab shortcuts; built-ins use volume.
+    let mut file = kivori_desktop::config::ConfigFile::default();
+    file.profiles
+        .entry(kivori_desktop::config::ProfileId::Browser)
+        .or_default()
+        .rotate = Some(kivori_desktop::config::RotateSpec::Shortcuts {
+        cw: "Ctrl+Tab".into(),
+        ccw: "Ctrl+Shift+Tab".into(),
+        label: "Tabs".into(),
+    });
+    let config =
+        kivori_desktop::config::resolve::resolve(kivori_desktop::desk::profile::builtins(), &file)
+            .unwrap();
+    desk.apply_config(&config, &mut |_| {});
     *fg.0.lock().unwrap() = Foreground::App {
         id: "chrome.exe".into(),
         name: "chrome.exe".into(),

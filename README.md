@@ -9,7 +9,8 @@ state around the buddy.
 The first product is **Kivori Pip** (model KV-P1): a knob with a push switch, three buttons and a
 240×240 screen where the keycap buddy lives, on a Waveshare RP2040-Zero. A desktop app, Kivori
 Desktop, drives it and is where you configure it. Windows is the beta platform; macOS is the daily
-test bed. Beta users start with the [user guide](docs/user-guide.md).
+test bed. Linux (Ubuntu) support is in validation; see [Linux setup](docs/linux.md).
+Beta users start with the [user guide](docs/user-guide.md).
 
 ## What it does
 
@@ -45,7 +46,7 @@ host-tested; the hardware checks are still open (see [Status](#status)).
 
 - Views: Buddy, Clock, Volume, Media and CPU / RAM.
 - **Updates:** the app updates itself from GitHub Releases (signed, with "Install & restart",
-  "Later" and "Skip this version"), and offers a firmware update when an older Kivori connects.
+  "Later" and "Skip this version") on Windows and Linux AppImage, and offers a firmware update when an older Kivori connects. Linux `.deb` installs update by downloading and installing a newer package from the website, or via a package manager if available.
 - **Identity:** every device reports its product, board and revision, and the app never flashes
   firmware made for another product or board.
 - Device internals (flash, RAM, CPU, frame times, link counters) in developer mode, a splash on
@@ -79,6 +80,8 @@ The paid beta (M3) also waits on items that are not code. Details in
 - **[elf2uf2-rs](https://github.com/JoNil/elf2uf2-rs)** only if you are flashing hardware from the
   command line (`just fw-flash`): `cargo install elf2uf2-rs`. The app flashes without it.
 - **jq** for the dependency guard scripts
+- **Linux:** Ubuntu build packages (`just linux-deps` prints the apt command) and USB access
+  rules (`just linux-udev`); see [docs/linux.md](docs/linux.md).
 
 ### Run the desktop app
 
@@ -216,7 +219,8 @@ One file per topic:
 | [`docs/roadmap.md`](docs/roadmap.md) | What gets built next, milestone by milestone (M0 to paid beta to v1) |
 | [`docs/validation.md`](docs/validation.md) | The hardware checklist and how to run a validation session |
 | [`docs/assembly.md`](docs/assembly.md) | Building one beta unit: wiring, checks, closing the case |
-| [`docs/release.md`](docs/release.md) | How to cut a Windows or macOS release, and the unsigned-installer limits |
+| [`docs/release.md`](docs/release.md) | How to cut a Windows, macOS or Linux release, and the unsigned-installer limits |
+| [`docs/linux.md`](docs/linux.md) | Ubuntu installation, USB permissions, X11 / Wayland limits and troubleshooting |
 | [`docs/provisioning.md`](docs/provisioning.md) | Why there is no per-unit provisioning, and where a unit's identity comes from |
 | [`docs/user-guide.md`](docs/user-guide.md) | Short guide for a beta customer: install, setup, controls, recovery |
 | [`docs/bom.md`](docs/bom.md) | Draft bill of materials (prices still to fill in) |
@@ -239,6 +243,7 @@ just fw-build          # build catalog-selected firmware (currently Pip physical
 just fw-flash          # flash the product firmware (board in BOOT mode, see Hardware)
 just bundle-windows    # build the unsigned Windows installer (docs/release.md)
 just bundle-macos      # build the macOS .app/.dmg (docs/release.md)
+just bundle-linux      # build the Linux .deb/.AppImage (docs/linux.md)
 just golden            # deterministic rendering golden-frame tests
 just check-boundaries  # shared-crate dependency firewall
 just assets            # recompile the canonical asset blob

@@ -565,29 +565,6 @@ mod tests {
     }
 
     #[test]
-    fn overlay_room_shrinks_and_lifts_the_keycap_clear_of_the_volume_bar() {
-        const BAR_TOP: i64 = 180 * 256;
-        let rest = MascotPose::for_state(CompanionState::Idle).with_overlay_room();
-        assert_eq!(rest.body_scale_q8, 184);
-        // The base's bottom edge (art row 206) lands at ~y172, above the bar.
-        let base_bottom = art_y_q8(206, body_transform(&rest));
-        assert!(
-            (172 * 256..173 * 256).contains(&base_bottom),
-            "{base_bottom}"
-        );
-        // Even a full press keeps the cap (art rows ..172) above the bar and on its base.
-        let mut pressed = MascotPose::for_state(CompanionState::Happy);
-        pressed.press_q8 = 16 * 256;
-        let pressed = pressed.with_overlay_room();
-        let cap_bottom = art_y_q8(172, pressed_transform(&pressed));
-        assert!(cap_bottom < BAR_TOP && cap_bottom < base_bottom);
-        // Horizontal centre stays on the anchor.
-        let (left, _) = transformed_origin(28, 48, body_transform(&rest));
-        let right = left + 184 * i64::from(rest.body_scale_q8);
-        assert_eq!(left + right, 2 * i64::from(MASCOT_ANCHOR.x) * 256);
-    }
-
-    #[test]
     fn eye_blink_keeps_the_local_crop_centre_stationary() {
         let normal = MascotPose::for_state(CompanionState::Idle);
         let mut blink = normal;

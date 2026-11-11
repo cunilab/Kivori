@@ -98,7 +98,7 @@ describe('downloadResponse', () => {
 
   it('404s for unsupported systems and malformed versions', async () => {
     const deps = { load: loaded(true), fetcher: vi.fn() as unknown as typeof fetch };
-    expect((await downloadResponse(request(), 'linux', 'latest', deps)).status).toBe(404);
+    expect((await downloadResponse(request(), 'android', 'latest', deps)).status).toBe(404);
     expect((await downloadResponse(request(), 'windows', '../x', deps)).status).toBe(404);
   });
 });
@@ -151,4 +151,63 @@ it('does not select a newer preview for latest', async () => {
     record: vi.fn(),
   });
   expect(response.headers.get('content-disposition')).toContain('0.2.0');
+});
+
+it.each(['deb', 'appimage'])(
+  'streams Linux %s without selecting another platform',
+  async (format) => {
+    const result = await loaded(true)();
+    if (result.status !== 'ok') throw new Error('fixture');
+    const url = `https://example.test/linux.${format}`;
+    if (format === 'deb') result.releases[0].linuxDeb = { size: 4, url };
+    else result.releases[0].linuxAppImage = { size: 4, url };
+    const fetcher = vi.fn(async () => new Response('data'));
+    const record = vi.fn();
+    const response = await downloadResponse(
+      new Request(`https://kivori.example/download/linux/latest?format=${format}`),
+      'linux',
+      'latest',
+      { load: async () => result, fetcher, record },
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-disposition')).toContain(
+      `Kivori_0.2.0_amd64.${format === 'deb' ? 'deb' : 'AppImage'}`,
+    );
+    expect(fetcher).toHaveBeenCalledWith(url, { headers: {}, redirect: 'follow' });
+    expect(record).toHaveBeenCalledWith(expect.objectContaining({ os: 'linux' }));
+  },
+);
+
+it('does not substitute another platform or package when Linux is missing', async () => {
+  const fetcher = vi.fn();
+  for (const format of ['deb', 'appimage']) {
+    const response = await downloadResponse(
+      new Request(`https://kivori.example/download/linux/latest?format=${format}`),
+      'linux',
+      'latest',
+      { load: loaded(true), fetcher },
+    );
+    expect(response.status).toBe(302);
+  }
+  expect(fetcher).not.toHaveBeenCalled();
+});
+
+it('refuses unknown Linux formats and does not substitute a different package', async () => {
+  const result = await loaded(true)();
+  if (result.status !== 'ok') throw new Error('fixture');
+  result.releases[0].linuxDeb = { size: 4, url: 'https://example.test/linux.deb' };
+  const fetcher = vi.fn();
+  for (const [format, status] of [
+    ['appimage', 302],
+    ['rpm', 404],
+  ] as const) {
+    const response = await downloadResponse(
+      new Request(`https://kivori.example/download/linux/latest?format=${format}`),
+      'linux',
+      'latest',
+      { load: async () => result, fetcher },
+    );
+    expect(response.status).toBe(status);
+  }
+  expect(fetcher).not.toHaveBeenCalled();
 });

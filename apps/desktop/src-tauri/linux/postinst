@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+# Package operations also run in containers/chroots without a running udev daemon.
+case "${1:-}" in
+  configure)
+    if command -v udevadm >/dev/null 2>&1 && [ -d /run/udev ]; then
+      udevadm control --reload-rules && udevadm trigger --subsystem-match=tty || true
+    fi
+    ;;
+esac
+exit 0

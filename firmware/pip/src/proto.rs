@@ -13,10 +13,11 @@ use kivori_model::input::Direction;
 use kivori_model::{Capabilities, ProtocolVersion};
 use kivori_protocol::{
     decode_message, encode_message, BuddySettings, BuildInfo, ByeReason, ControlId,
-    ControlLabelsUpdate, DeviceId, Feedback, FirmwareVersion, HelloAck, Identity, InputEvent,
-    InputKind, MascotActionApplied, MediaInfoUpdate, Message, MicStateUpdate, Nonce,
-    PlayMascotAction, Presentation, ProtoError, SeqClass, SequenceTracker, StateReport, Status,
-    MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
+    ControlLabelsUpdate, DeviceId, Feedback, FirmwareVersion, HelloAck, HoldActionsUpdate,
+    Identity, InputEvent, InputKind, MascotActionApplied, MediaInfoUpdate, Message, MicStateUpdate,
+    Nonce, PlayMascotAction, Presentation, ProfileChoicesUpdate, ProfilePickReport, ProtoError,
+    SeqClass, SequenceTracker, StateReport, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR,
+    PROTOCOL_MINOR,
 };
 
 /// Bounded storage for one inbound packet awaiting its delimiter.
@@ -138,6 +139,10 @@ pub struct Dispatcher {
     /// The latest negotiated `MediaInfo`, awaiting [`Self::take_media_info`].
     pending_media_info: Option<MediaInfoUpdate>,
     pending_controls: Option<ControlLabelsUpdate>,
+    /// The latest negotiated `ProfileChoices`, awaiting [`Self::take_profile_choices`].
+    pending_choices: Option<ProfileChoicesUpdate>,
+    /// The latest negotiated `HoldActions`, awaiting [`Self::take_hold_actions`].
+    pending_holds: Option<HoldActionsUpdate>,
     /// The latest accepted `BuddySettings`, awaiting [`Self::take_buddy_settings`].
     pending_buddy: Option<BuddySettings>,
     /// The latest accepted `MicState`, awaiting [`Self::take_mic_state`].
@@ -179,6 +184,8 @@ impl Dispatcher {
             pending_feedback: None,
             pending_media_info: None,
             pending_controls: None,
+            pending_choices: None,
+            pending_holds: None,
             pending_buddy: None,
             pending_mic: None,
             pending_takeover: None,
@@ -525,6 +532,16 @@ impl Dispatcher {
         self.pending_controls.take()
     }
 
+    /// Takes the pending accepted `ProfileChoices`, if any.
+    pub fn take_profile_choices(&mut self) -> Option<ProfileChoicesUpdate> {
+        self.pending_choices.take()
+    }
+
+    /// Takes the pending accepted `HoldActions`, if any.
+    pub fn take_hold_actions(&mut self) -> Option<HoldActionsUpdate> {
+        self.pending_holds.take()
+    }
+
     /// Takes the pending accepted `MicState`, if any.
     pub fn take_mic_state(&mut self) -> Option<MicStateUpdate> {
         self.pending_mic.take()
@@ -550,6 +567,51 @@ impl Dispatcher {
                     .union(Capabilities::BUTTON_INPUT_V1)
                     .union(Capabilities::HELD_ROTATION_V1),
             )
+    }
+
+    /// Whether this session runs the device's own profile picker on the held-and-turned knob
+    /// switch. It wins over held rotation: a device that negotiated both sends no `PressedRotary`.
+    #[must_use]
+    pub const fn profile_picker_enabled(&self) -> bool {
+        self.accepted_session.is_some()
+            && self
+                .negotiated_caps
+                .contains(Capabilities::PROFILE_PICKER_V1)
+    }
+
+    /// Whether the desktop tells the device which contextual buttons have a Hold (`HOLD_RING_V1`).
+    #[must_use]
+    pub const fn hold_ring_enabled(&self) -> bool {
+        self.accepted_session.is_some() && self.negotiated_caps.contains(Capabilities::HOLD_RING_V1)
+    }
+
+    /// Reports the entry the knob switch was released on. Returns `false` and writes nothing when
+    /// the picker is not negotiated or no session is accepted, and when the outbound queue had no
+    /// room or the link failed (the caller then shows no confirmation). Like input, it never takes
+    /// the room kept for the heartbeat.
+    pub fn send_profile_pick<T: Transport>(
+        &mut self,
+        transport: &mut T,
+        generation: u8,
+        index: u8,
+    ) -> bool {
+        let Some(session) = self.accepted_session else {
+            return false;
+        };
+        if !self.profile_picker_enabled() {
+            return false;
+        }
+        let message = Message::ProfilePick(ProfilePickReport {
+            session,
+            pick: kivori_model::picker::ProfilePick { generation, index },
+        });
+        match self.send_within(transport, &message, CONTROL_RESERVE_BYTES) {
+            Ok(sent) => sent,
+            Err(_) => {
+                self.link_lost();
+                false
+            }
+        }
     }
 
     /// Takes the pending accepted `Feedback`, if any.
@@ -818,6 +880,19 @@ impl Dispatcher {
                     .contains(Capabilities::CONTROL_LABELS_V1) =>
             {
                 self.pending_controls = Some(update);
+            }
+            // Same inertness rule as `ControlLabels`: unnegotiated means dropped, unseen.
+            Message::ProfileChoices(ref update)
+                if self
+                    .negotiated_caps
+                    .contains(Capabilities::PROFILE_PICKER_V1) =>
+            {
+                self.pending_choices = Some(*update);
+            }
+            Message::HoldActions(ref update)
+                if self.negotiated_caps.contains(Capabilities::HOLD_RING_V1) =>
+            {
+                self.pending_holds = Some(*update);
             }
             // Settings only count from the accepted session, with the capability negotiated.
             Message::BuddySettings(settings)

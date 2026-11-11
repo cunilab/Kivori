@@ -127,6 +127,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Message::MicState(_) => "MicState",
                             Message::Identity(_) => "Identity",
                             Message::BuildInfo(_) => "BuildInfo",
+                            Message::ProfileChoices(_) => "ProfileChoices",
+                            Message::ProfilePick(_) => "ProfilePick",
+                            Message::HoldActions(_) => "HoldActions",
                         }
                     ),
                     Err(_) if !packet.is_empty() => invalid += 1,

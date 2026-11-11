@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { resetMemoryCache } from './github-cache';
 import {
+  parseReleaseSnapshot,
   findInstaller,
   findMacInstaller,
   loadReleases,
@@ -286,4 +287,27 @@ it('keeps separate product and board firmware mappings in one desktop release', 
     )) as typeof fetch;
   const result = await loadReleases(fetcher, 'https://api.test/products');
   expect(result.status === 'ok' && result.releases[0].firmware).toEqual(firmware);
+});
+
+it('discovers Linux packages and validates them through the published snapshot', () => {
+  const assets = ['Kivori_0.1.0_amd64.deb', 'Kivori_0.1.0_amd64.AppImage'].map((name) => ({
+    name,
+    size: 42,
+    browser_download_url: `https://github.com/cunilab/Kivori/releases/download/v0.1.0/${name}`,
+  }));
+  const linux = toRelease(release({ assets }));
+  expect(linux.linuxDeb?.url).toContain('_amd64.deb');
+  expect(linux.linuxAppImage?.url).toContain('_amd64.AppImage');
+  const snapshot = (r: typeof linux) =>
+    JSON.stringify({ schema_version: 1, synced_at: 1234, releases: [r] });
+  expect(parseReleaseSnapshot(snapshot(linux))?.releases[0].linuxDeb).toEqual(linux.linuxDeb);
+  expect(
+    parseReleaseSnapshot(
+      snapshot({ ...linux, linuxDeb: { size: 42, url: 'https://evil.test/package.deb' } }),
+    ),
+  ).toBeNull();
+  expect(toRelease(release({ assets: [assets[0], assets[0]] })).linuxDeb).toBeNull();
+  expect(
+    toRelease(release({ assets: [{ ...assets[0], name: 'Kivori_0.1.0_arm64.deb' }] })).linuxDeb,
+  ).toBeNull();
 });

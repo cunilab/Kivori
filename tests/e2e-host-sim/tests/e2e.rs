@@ -407,8 +407,9 @@ fn a_button_press_round_trips_to_an_honest_feedback_and_a_desk_status() {
     let started = Instant::now();
     let mut received = Vec::new();
     for (control, id, kind) in [
-        (ControlId::Button, 1, InputKind::Press),
-        (ControlId::Button, 2, InputKind::Hold),
+        // Middle press is media; knob press is output mute.
+        (ControlId::ContextButton(1), 1, InputKind::Press),
+        (ControlId::Button, 2, InputKind::Press),
         // The right contextual button: Next track by default.
         (ControlId::ContextButton(2), 3, InputKind::Press),
     ] {

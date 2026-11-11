@@ -81,6 +81,11 @@ describe('current device support', () => {
     expect(
       controlSupported(connectionFixture(['contextButtonsV1', 'buttonInputV1']), 'button1'),
     ).toBe(false);
+    // Hold + rotate is the device's profile picker: it needs that capability, not held rotation.
+    expect(controlSupported(connectionFixture(['physicalInputV1']), 'heldRotate')).toBe(false);
+    expect(
+      controlSupported(connectionFixture(['physicalInputV1', 'profilePickerV1']), 'heldRotate'),
+    ).toBe(true);
     expect(controlSupported(null, 'rotate')).toBe(false);
     const unknown = connectionFixture();
     unknown.device!.identity!.known = false;

@@ -1,8 +1,8 @@
 //! The honest fallback for targets Kivori has not implemented a backend for.
 //!
-//! This reports `NotImplementedYet`, never "unsupported": macOS Core Audio and
-//! Linux PipeWire can both change master volume. Claiming otherwise would tell a
-//! user their machine cannot do something it can.
+//! This reports `NotImplementedYet`, never "unsupported": any desktop OS can change its master
+//! volume. Claiming otherwise would tell a user their machine cannot do something it can. Windows,
+//! macOS and Linux have real backends; this serves every other target.
 
 use super::{
     ActionAvailability, ActionError, AppVolumeBackend, AppVolumeError, BackendError, InputSynth,
@@ -163,7 +163,10 @@ impl super::ForegroundObserver for NoForeground {
 
 /// Targets without a sleep/lock source never emit a host event: the device simply never hears
 /// "goodnight", and its host-silence timeout still shows Offline.
-#[cfg_attr(any(windows, target_os = "macos"), allow(dead_code))]
+#[cfg_attr(
+    any(windows, target_os = "macos", target_os = "linux"),
+    allow(dead_code)
+)]
 pub fn start_host_events(
     _tx: std::sync::mpsc::Sender<super::host_events::HostSignal>,
 ) -> Result<super::host_events::HostEventsGuard, super::host_events::HostEventsError> {

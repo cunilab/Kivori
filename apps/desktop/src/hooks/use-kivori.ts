@@ -5,12 +5,14 @@ import {
   getConnectionStatus,
   getDeskStatus,
   getFirmwareOffer,
+  getSerialAccess,
   getFirmwareStatus,
   getUpdateStatus,
   onConfigChanged,
   onConnectionStatus,
   onDeskStatus,
   onFirmwareOffer,
+  onSerialAccess,
   onUpdateStatus,
   type Unlisten,
 } from '@/lib/ipc';
@@ -20,6 +22,7 @@ import type {
   ConnectionStatusDto,
   DeskStatusDto,
   FirmwareOfferDto,
+  SerialAccessDto,
   UpdateStatusDto,
 } from '@/lib/ipc/types';
 
@@ -96,6 +99,11 @@ export function useUpdateStatus(): UpdateStatusDto | null {
 /** The firmware update offer (ADR-0015, step 6), following `firmware://offer`. */
 export function useFirmwareOffer(): FirmwareOfferDto | null {
   return useNative(getFirmwareOffer, onFirmwareOffer);
+}
+
+/** Whether Kivori may open its USB device, following `serial-access://changed`. */
+export function useSerialAccess(): SerialAccessDto | null {
+  return useNative(getSerialAccess, onSerialAccess);
 }
 
 /** The saved settings; a stale (lower-revision) copy never replaces a newer one. */

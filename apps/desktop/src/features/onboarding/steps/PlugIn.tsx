@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { CircleCheck, LoaderCircle, TriangleAlert } from 'lucide-react';
 import { FirmwareUpdate } from '@/features/device/FirmwareUpdate';
+import { UsbAccess } from '@/features/device/UsbAccess';
 import { uiConnection } from '@/hooks/use-kivori';
 import { sessionState } from '@/lib/device-support';
 import type { ConnectionStatusDto } from '@/lib/ipc/types';
@@ -53,6 +54,7 @@ export function PlugIn({
 
   return (
     <StepFrame title={t.title} body={t.body}>
+      <UsbAccess />
       <div
         role="status"
         aria-live="polite"

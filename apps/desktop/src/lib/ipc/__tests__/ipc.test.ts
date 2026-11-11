@@ -34,7 +34,6 @@ import {
   setBinding,
   setBuddySettings,
   setRotate,
-  setHeldRotate,
   setDisplaySettings,
   listStates,
   onActivityLog,
@@ -62,7 +61,10 @@ import {
   snoozeUpdate,
   skipUpdateVersion,
   setAutoUpdateCheck,
+  fixSerialAccess,
   getFirmwareOffer,
+  getSerialAccess,
+  onSerialAccess,
   onFirmwareOffer,
   onFirmwareOfferRequested,
   acceptFirmwareOffer,
@@ -108,6 +110,7 @@ import {
   parseFirmwareStatus,
   parseUpdateStatus,
   parseFirmwareOffer,
+  parseSerialAccess,
 } from '../validate';
 
 afterEach(() => {
@@ -447,10 +450,10 @@ describe('action catalog ipc', () => {
     await expect(setRotate('media', { kind: 'appVolume', app: 'a'.repeat(129) })).rejects.toThrow(
       '128',
     );
-    const mute = await setBinding('media', 'hold', {
+    const mute = await setBinding('media', 'press', {
       action: { kind: 'appMute', app: 'Spotify.exe' },
     });
-    expect(mute.profiles[3].hold).toMatchObject({
+    expect(mute.profiles[3].press).toMatchObject({
       action: { kind: 'appMute', app: 'spotify.exe' },
       deviceLabel: 'Mute',
     });
@@ -651,38 +654,30 @@ describe('config ipc', () => {
     expect(config.profiles.map((p) => p.id)).toEqual([...PROFILE_IDS]);
     const [general, browser] = config.profiles;
     expect(general.rotate.spec).toEqual({ kind: 'systemVolume' });
-    expect(browser.buttons[1].hold).toBe('pin');
+    expect(browser.buttons[1].hold).toBe('micMute');
     expect(browser.buttons[0].press).toMatchObject({ deviceLabel: 'Back', overridden: false });
   });
 
-  it('validates and clears held-rotation shortcuts on built-in and custom profiles', async () => {
+  it('pins profiles to the device up to the picker’s limit and never reads a held-rotate pair', async () => {
     await resetConfig();
-    const pair = {
-      kind: 'shortcuts',
-      cw: 'Ctrl+Right',
-      ccw: 'Ctrl+Left',
-      label: 'Navigate',
-    } as const;
-    const saved = await setHeldRotate('general', pair);
-    expect(parseConfig(JSON.parse(JSON.stringify(saved))).profiles[0]).toMatchObject({
-      heldRotate: pair,
-      heldRotateOverridden: true,
+    const config = await getConfig();
+    // The six core built-in profiles are pinned by default, so two more fit.
+    expect(config.profiles.filter((p) => p.inPinCycle)).toHaveLength(6);
+    expect(await setProfilePinCycle('browser', false)).toMatchObject({
+      profiles: expect.arrayContaining([
+        expect.objectContaining({ id: 'browser', inPinCycle: false }),
+      ]),
     });
-    const old = JSON.parse(JSON.stringify(saved));
-    delete old.profiles[0].heldRotate;
-    delete old.profiles[0].heldRotateOverridden;
-    expect(parseConfig(old).profiles[0]).toMatchObject({
-      heldRotate: null,
-      heldRotateOverridden: false,
-    });
+    await setProfilePinCycle('codex', true);
+    await setProfilePinCycle('claudecode', true);
+    await setProfilePinCycle('opencode', true);
+    await setProfilePinCycle('blender', true);
+    await setProfilePinCycle('photoshop', true);
+    await expect(setProfilePinCycle('aftereffects', true)).rejects.toThrow('at most 10');
+    // An older core still sends a held-rotate pair; the app ignores it.
+    const old = JSON.parse(JSON.stringify(await getConfig()));
     old.profiles[0].heldRotate = { kind: 'systemVolume' };
-    expect(() => parseConfig(old)).toThrow('invalid held rotate');
-    await expect(setHeldRotate('general', { kind: 'systemVolume' })).rejects.toThrow('shortcuts');
-    expect((await setHeldRotate('general', null)).profiles[0].heldRotate).toBeNull();
-    const custom = (await addCustomProfile('notes.exe', 'Notes')).profiles.at(-1)!;
-    expect(custom.heldRotate).toBeNull();
-    await setHeldRotate(custom.id, pair);
-    expect((await setHeldRotate(custom.id, null)).profiles.at(-1)!.heldRotate).toBeNull();
+    expect(parseConfig(old).profiles[0]).not.toHaveProperty('heldRotate');
   });
 
   it('saves, validates and deletes macros in the mock, refusing a bound delete', async () => {
@@ -731,11 +726,14 @@ describe('config ipc', () => {
     expect((await getDeskStatus()).pressAction).toBeNull();
     const back = await setBinding('general', 'press', null);
     expect(back.profiles[0].press).toMatchObject({
-      action: { kind: 'playPause' },
+      action: { kind: 'systemMute' },
       overridden: false,
     });
     await expect(
-      setBinding('general', 'hold', { action: { kind: 'playPause' }, label: 'x'.repeat(33) }),
+      setBinding('general', 'button1Hold', {
+        action: { kind: 'playPause' },
+        label: 'x'.repeat(33),
+      }),
     ).rejects.toThrow('32 characters');
     await expect(
       setBinding('code', 'press', { action: { kind: 'shortcut', keys: 'Ctrl+' } }),
@@ -765,11 +763,6 @@ describe('config ipc', () => {
     expect(tauri.invoke).toHaveBeenLastCalledWith('set_rotate', {
       profile: 'browser',
       rotate: { kind: 'systemVolume' },
-    });
-    await setHeldRotate('browser', null);
-    expect(tauri.invoke).toHaveBeenLastCalledWith('set_held_rotate', {
-      profile: 'browser',
-      rotate: null,
     });
     await resetProfile('code');
     expect(tauri.invoke).toHaveBeenLastCalledWith('reset_profile', { profile: 'code' });
@@ -1194,5 +1187,61 @@ describe('firmware offer', () => {
 
   it('offers nothing in the plain browser mock', async () => {
     await expect(getFirmwareOffer()).resolves.toMatchObject({ kind: 'none', key: null });
+  });
+
+  describe('USB access', () => {
+    const denied = { denied: true, canFix: true, manualCommand: null };
+
+    it('validates the shape and keeps a manual command only while denied', () => {
+      expect(parseSerialAccess(denied)).toEqual(denied);
+      expect(parseSerialAccess({ denied: true, canFix: false, manualCommand: 'sudo x' })).toEqual({
+        denied: true,
+        canFix: false,
+        manualCommand: 'sudo x',
+      });
+      expect(parseSerialAccess({ denied: false, canFix: false, manualCommand: 'sudo x' })).toEqual({
+        denied: false,
+        canFix: false,
+        manualCommand: null,
+      });
+      expect(() => parseSerialAccess({ ...denied, denied: 'yes' })).toThrow();
+      expect(() => parseSerialAccess({ ...denied, canFix: 1 })).toThrow();
+      expect(() => parseSerialAccess({ ...denied, manualCommand: 5 })).toThrow();
+      expect(() => parseSerialAccess({ ...denied, manualCommand: 'x'.repeat(3000) })).toThrow();
+      expect(() => parseSerialAccess(null)).toThrow();
+    });
+
+    it('calls the typed native commands, takes no webview input, and validates the answers', async () => {
+      enterTauri();
+      tauri.invoke.mockResolvedValue(denied);
+      await expect(getSerialAccess()).resolves.toEqual(denied);
+      expect(tauri.invoke).toHaveBeenLastCalledWith('get_serial_access', undefined);
+      tauri.invoke.mockResolvedValue({ ...denied, denied: false });
+      await expect(fixSerialAccess()).resolves.toMatchObject({ denied: false });
+      expect(tauri.invoke).toHaveBeenLastCalledWith('fix_serial_access', undefined);
+      tauri.invoke.mockRejectedValue("Permission wasn't granted");
+      await expect(fixSerialAccess()).rejects.toBe("Permission wasn't granted");
+      tauri.invoke.mockResolvedValue({ denied: 'maybe' });
+      await expect(getSerialAccess()).rejects.toThrow();
+    });
+
+    it('drops an invalid serial-access://changed payload', async () => {
+      enterTauri();
+      const listeners: Record<string, (event: { payload: unknown }) => void> = {};
+      tauri.listen.mockImplementation((name: string, cb: (event: { payload: unknown }) => void) => {
+        listeners[name] = cb;
+        return Promise.resolve(() => {});
+      });
+      const handler = vi.fn();
+      await onSerialAccess(handler);
+      listeners['serial-access://changed']!({ payload: { denied: 'nope' } });
+      expect(handler).not.toHaveBeenCalled();
+      listeners['serial-access://changed']!({ payload: denied });
+      expect(handler).toHaveBeenCalledWith(denied);
+    });
+
+    it('is fine in the plain browser mock', async () => {
+      await expect(getSerialAccess()).resolves.toMatchObject({ denied: false });
+    });
   });
 });

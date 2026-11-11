@@ -99,14 +99,27 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   first reverse detent applies immediately at 1x.
 - A `Rotate` binding owns both directions. A profile may replace the whole binding,
   never one direction.
-- With negotiated support, pressing the knob before turning selects a separate, optional
-  hold-and-rotate shortcut pair. The first completed detent consumes that press, so it does not
+- With negotiated support, pressing the knob before turning opens the device's **profile
+  picker**: Auto and the pinned profiles, the highlight following the knob, a release selecting the
+  entry. It opens only after two completed detents while held and is fixed (not bindable). The first completed detent consumes that press, so it does not
   also fire Press, Hold, or Double press. An already-started recovery hold cannot be interrupted.
-- Short press fires only if released within **500 ms**. Discrete mappings fire once per
+  The picker shows a pick as confirmed only when the desktop reports it now runs it; without an
+  answer it says "Not confirmed" and the real state returns. Without the picker capability the
+  older held-rotation gesture is unchanged.
+- Knob Press toggles system output mute in every built-in profile; Double press changes view.
+  Knob Hold has no bindable action and never shows a hold ring. Old Hold overrides remain
+  readable but do not execute. Every built-in knob turns system output volume; saved rotate
+  overrides and custom profiles keep their existing targets. Browser tab switching, Premiere
+  frame stepping, and agent history/navigation are optional presets in Controls, never defaults.
+- **Hold ring:** contextual buttons with an action show progress over the 1 s Hold threshold.
+  Release when full to run the action; release early for Press. The middle button always mutes
+  every capture device in every profile. Left and right Holds remain profile-specific.
+  At ~2 s a contextual button's ring vanishes and releasing fires nothing.
+- Short press fires only if released within **1 s**. Discrete mappings fire once per
   press; no implicit key-repeat.
 - Contextual buttons give Press and Hold with the same timings, never recovery: held past ~2 s they
   fire nothing. Their labels on screen always match what they run.
-- Recovery button: release between 500 ms and ~2 s may run a mapped Hold. At ~2 s
+- Recovery button: release between 1 s and ~2 s fires nothing. At ~2 s
   recovery owns the gesture and the Hold is cancelled; at ~10 s from key-down the MCU
   reboots. Once recovery begins, rotation changes nothing. A hold-and-rotate gesture that
   started before recovery owns the press until release. Recovery itself is not configurable.
@@ -142,9 +155,10 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   included. One app belongs to exactly one profile: adding it elsewhere moves it, and says so.
   At most 16 custom profiles; a name longer than the panel's profile slot is shortened there,
   never replaced. Deleting a profile sends its apps back to General.
-- Holding the middle contextual button pins the next profile (Auto, then General and the built-in
-  profiles, then custom profiles marked "In pin cycle", then back to Auto); a pin ignores focus but
-  never Protected.
+- Holding the middle contextual button for 1 s, then releasing, toggles mute on every capture
+  device. This replaces the former profile-pin gesture automatically, including for existing configs.
+  The pinned profile list is retained for the knob's two-detent Hold + turn picker; a selected pin
+  ignores focus but never Protected.
 - In a protected context, shortcuts and launches are suspended: their labels disappear and a
   press says it can't run. System volume, media keys and mute keep working.
 - A knob bound to shortcuts sends one per detent with no badge per detent; the label is the
@@ -338,7 +352,7 @@ Numbers are fixed from the original user-story contract. Gaps are intentional; n
 33. **Recovery hold has absolute input arbitration.** Detents during a recovery hold never cancel it or run actions.
 36. **Takeover states preempt active gestures.** A takeover cancels the gesture without waiting for its end.
 38. **No ambiguous silence.** When it can render, every user-relevant condition has an intentional look.
-40. **Short press is release-qualified.** A short press is ineligible once 500 ms passes.
+40. **Short press is release-qualified.** A short press is ineligible once 1 s passes.
 42. **Only observed hardware input is actionable.** Kivori never reconstructs detents the device did not observe.
 45. **Composite confirmation is capped.** A macro is never more confirmed than its least-confirmed required step.
 46. **Input conditioning precedes gesture semantics.** Raw encoder edges may be filtered; only validated logical detents drive reversal and acceleration.

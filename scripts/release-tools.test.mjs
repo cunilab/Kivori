@@ -26,7 +26,7 @@ import {
   releaseNotes,
   releaseTitle,
 } from './release-info.mjs';
-import { buildManifest } from './updater-manifest.mjs';
+import { buildManifest, mergeManifests } from './updater-manifest.mjs';
 
 // --- release-bump.mjs ---------------------------------------------------------------------------
 
@@ -536,4 +536,66 @@ test('latest.json has the Tauri 2 shape', () => {
   assert.throws(() =>
     buildManifest({ ...m, version: 'x', signature: 's', installerName: 'a', repo: 'r' }),
   );
+});
+
+test('Linux updater uses AppImage and merges without losing Windows', () => {
+  const args = {
+    version: '1.2.3',
+    notes: 'release notes',
+    pubDate: '2026-11-01',
+    signature: 'sig',
+    repo: 'cunilab/Kivori',
+  };
+  const windows = buildManifest({ ...args, installerName: 'Kivori.exe' });
+  const linux = buildManifest({
+    ...args,
+    platform: 'linux-x86_64',
+    installerName: 'Kivori_1.2.3_amd64.AppImage',
+  });
+  const merged = mergeManifests(windows, linux);
+  assert.deepEqual(Object.keys(merged.platforms), ['windows-x86_64', 'linux-x86_64']);
+  assert.equal(merged.notes, windows.notes);
+  assert.match(merged.platforms['linux-x86_64'].url, /amd64\.AppImage$/);
+  assert.throws(() => mergeManifests(windows, { ...linux, version: '1.2.4' }), /version mismatch/);
+  assert.throws(() => mergeManifests(windows, windows), /duplicate platform/);
+  assert.throws(
+    () => buildManifest({ ...args, platform: 'linux-x86_64', installerName: 'Kivori.deb' }),
+    /AppImage/,
+  );
+  assert.throws(
+    () => buildManifest({ ...args, platform: 'unknown', installerName: 'Kivori.exe' }),
+    /unsupported platform/,
+  );
+});
+
+test('updater CLI reads signatures and merges CI platform artifacts', async () => {
+  const { mkdtempSync, readFileSync, rmSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'kivori-updater-'));
+  try {
+    const windows = join(dir, 'windows.json');
+    const linux = join(dir, 'linux.json');
+    const output = join(dir, 'latest.json');
+    const run = (...args) =>
+      execFileSync(process.execPath, ['scripts/updater-manifest.mjs', ...args]);
+    for (const [platform, filename, out] of [
+      ['windows-x86_64', 'Kivori_1.2.3_x64-setup.exe', windows],
+      ['linux-x86_64', 'Kivori_1.2.3_amd64.AppImage', linux],
+    ]) {
+      const installer = join(dir, filename);
+      writeFileSync(`${installer}.sig`, `${platform}-signature\n`);
+      run('--platform', platform, '--version', '1.2.3', '--installer', installer, '--out', out);
+    }
+    run('--base', windows, '--merge', linux, '--out', output);
+    const manifest = JSON.parse(readFileSync(output, 'utf8'));
+    assert.equal(manifest.platforms['linux-x86_64'].signature, 'linux-x86_64-signature');
+    assert.equal(manifest.platforms['windows-x86_64'].signature, 'windows-x86_64-signature');
+    assert.equal(
+      manifest.platforms['linux-x86_64'].url,
+      'https://github.com/cunilab/Kivori/releases/download/v1.2.3/Kivori_1.2.3_amd64.AppImage',
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

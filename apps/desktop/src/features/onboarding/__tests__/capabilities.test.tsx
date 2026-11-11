@@ -116,7 +116,7 @@ describe('capability-aware setup', () => {
     await next(user);
     await next(user);
     expect(screen.getByRole('heading', { level: 1, name: 'Make it yours' })).toBeInTheDocument();
-    expect(screen.getByText(/Hold the middle context button/)).toBeInTheDocument();
+    expect(screen.getByText(/Hold the knob and turn two detents/)).toBeInTheDocument();
     expect(screen.queryByText('Saved only')).not.toBeInTheDocument();
     const otherProduct = connectionFixture(['physicalInputV1'], { connectionGeneration: 9 });
     otherProduct.device!.identity!.product = 'Test dial';
@@ -127,7 +127,7 @@ describe('capability-aware setup', () => {
       controlLayout: null,
     };
     page.rerender(setup(otherProduct));
-    expect(screen.queryByText(/Hold the middle context button/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Hold the knob and turn two detents/)).not.toBeInTheDocument();
     expect(screen.getAllByText('Saved only')).toHaveLength(2);
     page.rerender(setup(connectionFixture(['deskStatusV1', 'mascotInteraction'])));
     expect(screen.queryByText('Saved only')).not.toBeInTheDocument();

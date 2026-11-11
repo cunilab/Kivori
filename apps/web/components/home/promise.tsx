@@ -17,8 +17,8 @@ export function OfflinePromise(): ReactElement {
           <span className="block">No telemetry.</span>
         </h2>
         <p className="max-w-[40ch] text-lg text-home-graphite lg:pb-3">
-          Nothing in the app needs the internet. Works with Windows 10 and 11; Apple Silicon Macs
-          are in validation.
+          Nothing in the app needs the internet. Works with Windows 10 and 11; Linux and Apple
+          Silicon Macs are in validation.
         </p>
       </div>
     </section>

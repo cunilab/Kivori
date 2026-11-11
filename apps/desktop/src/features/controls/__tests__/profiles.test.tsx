@@ -20,6 +20,7 @@ import * as ipc from '../../../lib/ipc';
 import * as mock from '../../../lib/ipc/mock';
 import { resetPageTabs } from '../../../components/kivori/page-tabs';
 import { ControlsPage } from '../ControlsPage';
+import { ProfilesCard } from '../ProfilesCard';
 
 function Harness(): ReactElement {
   const desk = useDeskStatus();
@@ -61,13 +62,83 @@ beforeEach(async () => {
 });
 
 describe('ProfilesCard', () => {
+  it('pins profiles to the device with one switch and lists the pinned ones', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const codex = await show(user, 'Codex');
+    const list = within(codex).getByTestId('pinned-list');
+    expect(list).toHaveTextContent(
+      'Pinned to your device: General, Browser, Code, Media, Zoom, Teams.',
+    );
+    const toggle = within(codex).getByRole('switch', { name: 'Pin to device' });
+    expect(toggle).not.toBeChecked();
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(within(profile('codex')).getByRole('switch', { name: 'Pin to device' })).toBeChecked(),
+    );
+    expect(within(profile('codex')).getByTestId('pinned-list')).toHaveTextContent('Teams, Codex.');
+    // Core built-in profiles can come off the device too.
+    await user.click(within(profile('codex')).getByRole('switch', { name: 'Pin to device' }));
+    await waitFor(() =>
+      expect(within(profile('codex')).getByTestId('pinned-list')).not.toHaveTextContent('Codex'),
+    );
+    const pinned = (await ipc.getConfig()).profiles.filter((p) => p.inPinCycle).length;
+    expect(pinned).toBe(6);
+  });
+
+  it('names the pinned profiles the device cannot hold instead of hiding them', async () => {
+    const config = structuredClone(mock.mockGetConfig());
+    for (const p of config.profiles) p.inPinCycle = true;
+    const extra = config.profiles.slice(10);
+    expect(extra.length).toBeGreaterThan(0);
+    render(
+      <ProfilesCard
+        config={config}
+        desk={null}
+        profile={config.profiles[0]!}
+        onShow={() => {}}
+        part="profile"
+      />,
+    );
+    const note = await screen.findByTestId('pinned-overflow');
+    expect(note).toHaveTextContent('holds only the first 10');
+    for (const p of extra) expect(note).toHaveTextContent(p.name);
+    const list = screen.getByTestId('pinned-list');
+    for (const p of extra) expect(list).not.toHaveTextContent(p.name);
+  });
+
+  it('refuses to pin more than the device can hold and says why', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    for (const [name, id] of [
+      ['Codex', 'codex'],
+      ['Claude Code', 'claudecode'],
+      ['OpenCode', 'opencode'],
+      ['Blender', 'blender'],
+    ] as const) {
+      await selectProfile(user, name);
+      const toggle = within(await screen.findByTestId(`profile-${id}`)).getByRole('switch', {
+        name: 'Pin to device',
+      });
+      await user.click(toggle);
+      await waitFor(() => expect(toggle).toBeChecked());
+    }
+    await selectProfile(user, 'Photoshop');
+    const toggle = within(await screen.findByTestId('profile-photoshop')).getByRole('switch', {
+      name: 'Pin to device',
+    });
+    await user.click(toggle);
+    expect(await screen.findByText(/holds at most 10 pinned profiles/)).toBeVisible();
+    expect(toggle).not.toBeChecked();
+  });
+
   it('pins an agent profile directly and returns to following the foreground app', async () => {
     const user = userEvent.setup();
     render(<Harness />);
     await selectProfile(user, 'Codex');
     const card = await screen.findByTestId('profile-codex');
     expect(card).toHaveTextContent('terminal does not identify');
-    const cycle = within(card).getByRole('switch', { name: 'In pin cycle' });
+    const cycle = within(card).getByRole('switch', { name: 'Pin to device' });
     expect(cycle).not.toBeChecked();
     await user.click(cycle);
     await waitFor(() => expect(cycle).toBeChecked());
@@ -155,7 +226,7 @@ describe('ProfilesCard', () => {
     expect(await within(added).findByTestId('app-icon-figma.exe')).toHaveAttribute('src', ICON);
     // It is selected and shows General's bindings.
     expect(await screen.findByRole('combobox', { name: 'Profile' })).toHaveTextContent('Figma');
-    expect(screen.getByTestId('gesture-press')).toHaveTextContent('Play / Pause');
+    expect(screen.getByTestId('gesture-press')).toHaveTextContent('Mute');
     expect(screen.getByText(/Later changes to General do not flow into it/)).toBeVisible();
   });
 
@@ -229,15 +300,19 @@ describe('ProfilesCard', () => {
     expect(screen.getByRole('combobox', { name: 'Profile' })).toHaveTextContent('Design');
   });
 
-  it('toggles the pin cycle, off by default and only for custom profiles', async () => {
+  it('pins a custom profile (off by default) and lets a core profile come off the device', async () => {
     const user = userEvent.setup();
     render(<Harness />);
     await ipc.addCustomProfile('figma.exe', 'Figma');
     await selectProfile(user, 'Code');
-    expect(within(profile('code')).queryByRole('switch')).toBeNull();
+    // The core profiles are pinned by default and can be taken off.
+    const code = within(profile('code')).getByRole('switch', { name: 'Pin to device' });
+    expect(code).toBeChecked();
+    await user.click(code);
+    await waitFor(() => expect(code).not.toBeChecked());
     await selectProfile(user, 'Figma');
     const card = await screen.findByTestId('profile-custom-1');
-    const toggle = within(card).getByRole('switch', { name: 'In pin cycle' });
+    const toggle = within(card).getByRole('switch', { name: 'Pin to device' });
     expect(toggle).not.toBeChecked();
     await user.click(toggle);
     await waitFor(() => expect(toggle).toBeChecked());
@@ -287,8 +362,6 @@ describe('ProfilesCard', () => {
       within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Reset' }),
     );
     await user.click(screen.getByRole('tab', { name: 'Controls' }));
-    await waitFor(() =>
-      expect(screen.getByTestId('gesture-press')).toHaveTextContent('Play / Pause'),
-    );
+    await waitFor(() => expect(screen.getByTestId('gesture-press')).toHaveTextContent('Mute'));
   });
 });

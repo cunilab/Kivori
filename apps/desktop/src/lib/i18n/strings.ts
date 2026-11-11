@@ -3,6 +3,43 @@
 
 export const strings = {
   appTitle: 'Kivori',
+  gnomeFocus: {
+    title: 'Let Kivori follow your apps',
+    logoutTitle: 'Almost done: log out and back in',
+    notInstalled: 'Your buttons follow the app you’re using, and shortcuts work too.',
+    disabled: 'Turn app profiles back on so your buttons follow your apps.',
+    needsLogout: 'Save your work, then log out and back in once.',
+    unsupported: 'App profiles aren’t available on this desktop yet.',
+    unavailable: 'App profiles couldn’t start. Try again.',
+    privacy: 'Kivori only sees which app is in front. Nothing leaves this computer.',
+    updateTitle: 'Update needed',
+    updateAvailable: 'Update so your buttons keep following your apps and shortcuts work.',
+    updateOnce: 'Needs one log-out.',
+    cliMissingTitle: 'Log out and back in to finish',
+    cliMissing: 'Log out and back in once to finish setting up app profiles.',
+    once: 'Needs one log-out.',
+    enable: 'Turn on',
+    update: 'Update',
+    logout: 'Log out now',
+    busy: 'Please wait…',
+    howItWorks: 'How this works',
+    details: {
+      sees: 'Kivori checks which app is in front when needed, never window titles or contents.',
+      approval:
+        'Shortcuts need your one-time Allow in a GNOME dialog showing the Kivori app’s full file path.',
+      remembered:
+        'Your approval lasts across restarts. If the Kivori app changes, you’ll be asked again.',
+      paused:
+        'Shortcuts pause on the lock screen and during password prompts and other system dialogs.',
+      malware:
+        'This relies on files in your home folder and can’t protect against malware already on this computer.',
+      docs: 'Technical details and troubleshooting: docs/linux.md.',
+    },
+    installFailed: 'Couldn’t turn on app profiles. Try again.',
+    updateFailed: 'Couldn’t update app profiles. Try again.',
+    logoutFailed: 'Couldn’t log out. Use your desktop menu to log out.',
+    readFailed: 'Couldn’t check app profiles. Try again.',
+  },
   tagline: 'Desk controller',
   unknown: '—',
   unknownValue: 'Unknown',
@@ -202,7 +239,7 @@ export const strings = {
     description: 'Choose a control to edit its actions.',
     doublePressFixed: 'Fixed. Choose the views under Display.',
     holdNote:
-      'Hold actions on the three buttons work, but the device does not show them on screen yet.',
+      'Hold a button for one second until the ring fills, then release. Middle button hold mutes every microphone.',
     howTitle: 'How controls work',
     newProfileToggle: 'New profile',
     tabsLabel: 'Controls sections',
@@ -217,7 +254,6 @@ export const strings = {
       title: 'Choose a control',
       hint: 'Select a control to see and edit its actions.',
       profileHint: 'Editing profile',
-      editing: 'Editing',
       left: 'Left',
       middle: 'Middle',
       right: 'Right',
@@ -303,8 +339,16 @@ export const strings = {
       newProfileTitle: 'New profile',
       remove: 'Remove {app}',
       removeHint: 'Removing an app sends it back to General.',
-      inPinCycle: 'In pin cycle',
-      inPinCycleHint: 'The middle button’s Hold visits this profile.',
+      inPinCycle: 'Pin to device',
+      inPinCycleHint: 'Offers this profile in the knob’s Hold + turn picker.',
+      pinnedTitle: 'Pinned to your device',
+      pinnedList: 'Pinned to your device: {names}.',
+      pinnedFew: 'Pin at least two profiles to choose between them on the device.',
+      pinnedNone:
+        'Nothing is pinned yet. Pin at least two profiles to choose between them on the device.',
+      pinLimit: 'The device holds at most {max} pinned profiles. Unpin one first.',
+      pinnedOverflow:
+        'Not on the device: it holds only the first {max} pinned profiles. {names} stay pinned here; unpin another profile to make room.',
       rename: 'Rename',
       renameLabel: 'Profile name',
       renameSave: 'Save name',
@@ -361,9 +405,17 @@ export const strings = {
     micScope:
       'Mic mute mutes the computer’s microphones, not an app’s own mute button. A call app can still show its own mute as off.',
     picker: {
+      shortcutPolicyUnavailable: 'Couldn’t check this shortcut. Try again.',
       title: 'Edit {control}',
       description: 'Choose what this control does in the {profile} profile.',
       actionGroup: 'Action',
+      rotateSuggestions: {
+        hint: 'Volume is the default in every profile. You can choose a different knob action here.',
+        browser: 'Use tab switching',
+        premiere: 'Use frame stepping',
+        history: 'Use prompt history',
+        opencode: 'Use navigation',
+      },
       notSet: 'Not set',
       notSetHint: 'The control does nothing.',
       groups: {
@@ -430,19 +482,32 @@ export const strings = {
       rotate: { name: 'Rotate', hint: 'Turn the knob. Faster turns take bigger steps.' },
       heldRotate: {
         name: 'Hold + rotate',
-        hint: 'Press the knob, then turn it while holding it down.',
+        hint: 'Hold the knob down and turn two detents to open the profile picker. Release to choose.',
       },
-      press: { name: 'Press', hint: 'Press and release within half a second.' },
+      press: { name: 'Press', hint: 'Press and release within one second.' },
       doublePress: { name: 'Double press', hint: 'Two quick presses.' },
-      hold: { name: 'Hold', hint: 'Hold for about one second, then release.' },
+      hold: {
+        name: 'Hold',
+        hint: 'Hold + turn switches profile. Holding the knob alone has no action.',
+      },
       button1: { name: 'Left button', hint: 'Press and release.' },
-      button2: { name: 'Middle button', hint: 'Press and release. Hold to pin a profile.' },
+      button2: {
+        name: 'Middle button',
+        hint: 'Press and release. Hold for one second to mute every microphone.',
+      },
       button3: { name: 'Right button', hint: 'Press and release.' },
-      button1Hold: { name: 'Left button hold', hint: 'Hold. Not shown on the device.' },
-      button2Hold: { name: 'Middle button hold', hint: 'Hold. Reserved for pinning a profile.' },
-      button3Hold: { name: 'Right button hold', hint: 'Hold. Not shown on the device.' },
+      button1Hold: { name: 'Left button hold', hint: 'Hold for one second until the ring fills.' },
+      button2Hold: {
+        name: 'Middle button hold',
+        hint: 'Hold for one second until the ring fills, then release to mute every microphone.',
+      },
+      button3Hold: { name: 'Right button hold', hint: 'Hold for one second until the ring fills.' },
     },
-    heldRotateUnsupported: 'Update the device firmware to use hold + rotate.',
+    heldRotateUnsupported: 'Update the device firmware to use the profile picker.',
+    profilePickerFixed:
+      'Fixed: picks a pinned profile. Turn two detents while held, then release to choose.',
+    knobHoldFixed: 'Fixed: Hold + turn switches profile.',
+    micMuteFixed: 'Fixed: Mic mute (every capture device).',
     macros: {
       title: 'Macros',
       description:
@@ -483,9 +548,11 @@ export const strings = {
     suspended: 'Paused in a protected window',
     profile: 'Active profile',
     profileGeneral: 'General',
-    followHint: 'Follows the app in front of you. Hold the middle button to pin a profile.',
+    followHint:
+      'Follows the app in front of you. Hold the knob and turn it to pick a pinned profile.',
     pinned: 'Pinned on the device',
-    pinnedHint: 'Hold the middle button for the next profile, or to follow the app again.',
+    pinnedHint:
+      'Hold the knob and turn it to pick another, or choose Auto to follow the app again.',
     systemVolume: 'System volume',
     recoveryTitle: 'Restart Kivori',
     recovery:
@@ -555,6 +622,20 @@ export const strings = {
     tabsLabel: 'Device sections',
     tabs: { overview: 'Overview', firmware: 'Firmware', internals: 'Internals' },
     sessionDeviceOnly: 'Connect your Kivori to see its protocol and reported state.',
+    usbAccess: {
+      title: 'Let Kivori connect',
+      body: 'Allow access to your Kivori using your computer password.',
+      fix: 'Allow USB access',
+      fixing: 'Waiting for your password…',
+      fixFailed: 'USB access was not set up.',
+      fixed: 'Done. Looking for your Kivori…',
+      manualTitle: 'Set up access manually',
+      errorDetails: 'Error details',
+      manualBody:
+        'Open a terminal, paste this command, and enter your password when asked. Then unplug and replug your Kivori.',
+      copy: 'Copy command',
+      copied: 'Copied',
+    },
     connection: 'Connection',
     details: 'Details',
     empty: {
@@ -597,7 +678,12 @@ export const strings = {
     retries: 'Reconnect attempts',
     startup: {
       title: 'Startup',
-      label: { windows: 'Start with Windows', macos: 'Start with macOS', other: 'Start at login' },
+      label: {
+        windows: 'Start with Windows',
+        macos: 'Start with macOS',
+        linux: 'Start at login',
+        other: 'Start at login',
+      },
       hint: 'Kivori starts quietly in the tray and reconnects your device. The window stays closed until you open it.',
       failed: 'Could not change the startup setting.',
     },
@@ -619,7 +705,7 @@ export const strings = {
       noKey: 'Updates are off in this build: it cannot verify them yet.',
       badEndpoint: 'Updates are off in this build.',
     },
-    unsupported: 'Automatic updates are not available on macOS yet.',
+    unsupported: 'To update, download and install the latest Kivori from our website.',
     dialog: {
       title: 'Kivori {version} is ready',
       current: 'You have {version}.',
@@ -960,7 +1046,7 @@ export const strings = {
       autoBody:
         'Saved profiles choose bindings for each app. You can edit those bindings in Controls.',
       pinBody:
-        'Hold the middle context button to pin a profile. Each further hold moves to the next profile in the cycle, then back to Auto to follow apps automatically.',
+        'Hold the knob and turn two detents to open the profile picker. Turn to choose, then release. Choose Auto to follow apps automatically. Hold the middle button for one second to mute every microphone.',
       viewHeading: 'Screen at start',
       viewBody: 'The saved default view for devices with display support.',
       intensityHeading: 'Buddy liveliness',
@@ -970,6 +1056,7 @@ export const strings = {
       launchLabel: {
         windows: 'Start with Windows',
         macos: 'Start with macOS',
+        linux: 'Start at login',
         other: 'Start at login',
       },
       launchNote: 'This is applied when you choose Finish.',

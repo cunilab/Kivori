@@ -47,3 +47,22 @@ describe('download page release states', () => {
     expect(unavailable).not.toContain('href="/download/macos/latest"');
   });
 });
+
+it('offers Linux formats and JSON-LD only when the latest release has Linux assets', async () => {
+  const absent = await page({ status: 'ok', releases: [release] });
+  expect(absent).not.toContain('href="/download/linux/latest');
+  expect(absent).not.toContain('Linux (Ubuntu/Debian x86_64)');
+  const present = await page({
+    status: 'ok',
+    releases: [{ ...release, linuxDeb: installer, linuxAppImage: installer }],
+  });
+  expect(present).toContain('href="/download/linux/latest"');
+  expect(present).toContain('href="/download/linux/latest?format=appimage"');
+  expect(present).toContain('Linux (Ubuntu/Debian x86_64)');
+  const imageOnly = await page({
+    status: 'ok',
+    releases: [{ ...release, linuxAppImage: installer }],
+  });
+  expect(imageOnly).not.toContain('href="/download/linux/latest"');
+  expect(imageOnly).toContain('href="/download/linux/latest?format=appimage"');
+});

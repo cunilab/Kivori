@@ -17,6 +17,7 @@ import type {
   AnimationTimeline,
   FirmwareOfferDto,
   FirmwareStatusDto,
+  SerialAccessDto,
   StartupSettingsDto,
   UpdateStatusDto,
   OnboardingDto,
@@ -47,6 +48,7 @@ import {
   parseDiagnostics,
   parseFirmwareOffer,
   parseFirmwareStatus,
+  parseSerialAccess,
   parseStartupSettings,
   parseUpdateStatus,
   parseOnboarding,
@@ -118,6 +120,41 @@ export async function getConnectionStatus(): Promise<ConnectionStatusDto> {
 export async function getFirmwareStatus(): Promise<FirmwareStatusDto> {
   if (isTauri()) return parseFirmwareStatus(await invoke<unknown>('get_firmware_status'));
   if (import.meta.env.DEV) return (await devMock()).mockFirmwareStatus();
+  return unavailable();
+}
+
+/** Whether Kivori may open its USB device (Linux asks for a udev rule; elsewhere always fine). */
+export async function getSerialAccess(): Promise<SerialAccessDto> {
+  if (isTauri()) return parseSerialAccess(await invoke<unknown>('get_serial_access'));
+  if (import.meta.env.DEV) return (await devMock()).mockGetSerialAccess();
+  return unavailable();
+}
+
+/** Subscribes to USB access changes (`serial-access://changed`); an invalid payload is dropped. */
+export async function onSerialAccess(
+  handler: (access: SerialAccessDto) => void,
+): Promise<Unlisten> {
+  if (isTauri()) {
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen<unknown>('serial-access://changed', (event) => {
+      try {
+        handler(parseSerialAccess(event.payload));
+      } catch {
+        // Invalid payloads never reach the UI.
+      }
+    });
+  }
+  if (import.meta.env.DEV) return (await devMock()).mockOnSerialAccess(handler);
+  return unavailable();
+}
+
+/**
+ * The one-click fix: asks the desktop for the password prompt, installs the udev rule and looks for
+ * the device again. Rejects with a short reason (prompt closed, `pkexec` missing, install failed).
+ */
+export async function fixSerialAccess(): Promise<SerialAccessDto> {
+  if (isTauri()) return parseSerialAccess(await invoke<unknown>('fix_serial_access'));
+  if (import.meta.env.DEV) return (await devMock()).mockFixSerialAccess();
   return unavailable();
 }
 
@@ -440,16 +477,6 @@ export async function setBinding(
 export async function setRotate(profile: ProfileId, rotate: RotateSpec | null): Promise<ConfigDto> {
   if (isTauri()) return parseConfig(await invoke<unknown>('set_rotate', { profile, rotate }));
   if (import.meta.env.DEV) return (await devMock()).mockSetRotate(profile, rotate);
-  return unavailable();
-}
-
-/** Sets the shortcut pair for turning while the knob is pressed; null clears it. */
-export async function setHeldRotate(
-  profile: ProfileId,
-  rotate: RotateSpec | null,
-): Promise<ConfigDto> {
-  if (isTauri()) return parseConfig(await invoke<unknown>('set_held_rotate', { profile, rotate }));
-  if (import.meta.env.DEV) return (await devMock()).mockSetHeldRotate(profile, rotate);
   return unavailable();
 }
 

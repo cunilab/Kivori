@@ -51,18 +51,78 @@
 .device-visual__screen {
   position: absolute;
   inset: 7.1%;
-  display: flex;
-  align-items: flex-start;
   overflow: hidden;
-  padding: 8%;
   border-radius: 3%;
-  color: #9ff7d4;
-  background: #080d19;
+  color: #eef0f5;
+  background: radial-gradient(120% 90% at 50% 0%, #161b2b 0%, transparent 70%), #080b14;
   box-shadow: inset 0 0 0 1px #000;
-  font-size: max(5px, 2.3cqw);
-  font-weight: 600;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'Noto Sans',
+    'Helvetica Neue',
+    sans-serif;
   line-height: 1.2;
-  overflow-wrap: anywhere;
+}
+
+/* A quiet glass surface around the buddy, without any competing screen copy. */
+.device-screen {
+  position: relative;
+  height: 100%;
+  isolation: isolate;
+  background: radial-gradient(ellipse at 50% 54%, rgb(125 242 196 / 0.1), transparent 67%);
+}
+
+.device-screen::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: linear-gradient(145deg, rgb(255 255 255 / 0.055), transparent 46%);
+  box-shadow: inset 0 0 2cqw rgb(0 0 0 / 0.35);
+  pointer-events: none;
+  content: '';
+}
+
+.device-screen__pose {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  transition: transform 220ms ease-out;
+}
+
+.device-screen__mascot {
+  /* The SVG includes whitespace: the character itself occupies 60% of the screen. */
+  width: 94%;
+  height: 94%;
+  object-fit: contain;
+  user-select: none;
+  transform: translateY(-4%);
+  animation: device-screen-breathe 5s ease-in-out infinite;
+}
+
+.device-screen[data-reaction='knob'] .device-screen__pose {
+  transform: translateY(-2%) rotate(-2deg);
+}
+
+.device-screen[data-reaction='button1'] .device-screen__pose {
+  transform: translate(-3%, 2%) rotate(-5deg);
+}
+
+.device-screen[data-reaction='button2'] .device-screen__pose {
+  transform: translateY(3%) scale(1.025, 0.975);
+}
+
+.device-screen[data-reaction='button3'] .device-screen__pose {
+  transform: translate(3%, 2%) rotate(5deg);
+}
+
+@keyframes device-screen-breathe {
+  50% {
+    transform: translateY(-6%);
+  }
 }
 
 /* White Ø42 halo ring under the knob (centre x 43, y 40). */
@@ -87,6 +147,9 @@
   box-shadow:
     0 1.6cqw 2.4cqw rgb(0 0 0 / 0.5),
     inset 0 -1cqw 1.6cqw rgb(0 0 0 / 0.5);
+  transition:
+    transform 140ms ease-out,
+    box-shadow 180ms ease-out;
 }
 
 .device-visual__knob::before {
@@ -108,13 +171,14 @@
     0 0 0 0.3cqw #0b0b0d,
     inset 0 -0.6cqw 1cqw rgb(0 0 0 / 0.12);
   content: '';
+  transition: background 180ms ease-out;
 }
 
 .device-visual__dial {
   position: absolute;
   inset: 0;
   z-index: 1;
-  transition: transform 180ms ease-out;
+  transition: transform 220ms cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 
 .device-visual__dial::after {
@@ -130,6 +194,25 @@
 
 .device-visual__knob[data-selected='true'] .device-visual__dial {
   transform: rotate(-35deg);
+}
+
+.device-visual__knob:not(:disabled, [data-selected='true']):hover .device-visual__dial {
+  transform: rotate(-12deg);
+}
+
+/* Selected: the cap is lit and the knob stands a little higher, with a deeper soft shadow. */
+.device-visual__knob[data-selected='true'] {
+  box-shadow:
+    0 2.4cqw 3.6cqw rgb(0 0 0 / 0.62),
+    inset 0 -1cqw 1.6cqw rgb(0 0 0 / 0.5);
+}
+
+.device-visual__knob[data-selected='true']::after {
+  background: radial-gradient(circle at 40% 32%, #fff, #f1f0eb 55%, #dedcd5);
+}
+
+button.device-visual__knob:not(:disabled):active {
+  transform: scale(0.985);
 }
 
 /* Three 13.4 mm white caps, 18 mm apart, centred on y 11. */
@@ -154,7 +237,9 @@
     0 0.35em 0 #060607,
     0 0.6em 0.8em rgb(0 0 0 / 0.5);
   font-size: max(6px, 3.4cqw);
-  transition: transform 120ms ease-out;
+  transition:
+    transform 120ms ease-out,
+    box-shadow 120ms ease-out;
 }
 
 button.device-visual__knob,
@@ -168,14 +253,28 @@ button.device-visual__key:disabled {
   opacity: 0.45;
 }
 
-button.device-visual__knob:focus-visible,
+/* Keyboard focus only: a soft neutral outline (the knob sits on white, so its outline is dark). */
 button.device-visual__key:focus-visible {
-  outline: 3px solid #67dca7;
+  outline: 2px solid rgb(255 255 255 / 0.85);
   outline-offset: 3px;
 }
 
+button.device-visual__knob:focus-visible {
+  outline: 2px solid rgb(22 23 26 / 0.7);
+  outline-offset: 3px;
+}
+
+button.device-visual__key:not(:disabled, [data-selected='true']):hover {
+  transform: translateY(-0.12em);
+  box-shadow:
+    inset 0 -0.55em 0 #c4c3bc,
+    0 0.47em 0 #060607,
+    0 0.8em 1em rgb(0 0 0 / 0.5);
+}
+
+/* Selected stays pressed in, its top face lit. */
 .device-visual__key[data-selected='true'],
-button.device-visual__key:active {
+button.device-visual__key:not(:disabled):active {
   transform: translateY(0.25em);
   box-shadow:
     inset 0 -0.25em 0 #c4c3bc,
@@ -183,15 +282,28 @@ button.device-visual__key:active {
     0 0.2em 0.3em rgb(0 0 0 / 0.45);
 }
 
-.device-visual__key[data-selected='true'],
-.device-visual__knob[data-selected='true']::after {
-  outline: 0.6cqw solid #67dca7;
-  outline-offset: 0.6cqw;
+.device-visual__key[data-selected='true'] {
+  background: linear-gradient(180deg, #fff, #f3f2ed 70%);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .device-visual__dial,
+  .device-visual__knob,
+  .device-visual__knob::after,
   .device-visual__key {
     transition: none;
+  }
+
+  .device-screen__pose {
+    transition: none;
+  }
+
+  .device-screen__mascot {
+    animation: none;
+  }
+
+  button.device-visual__key:hover,
+  button.device-visual__knob:active {
+    transform: none;
   }
 }

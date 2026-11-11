@@ -422,7 +422,7 @@ Desktop automation was unavailable, so no native click-through has been verified
 - [ ] 2.4 Play a reaction in Busy | nothing plays and Desktop does not claim it did
 - [ ] 2.5 Play a reaction in Sleeping | gentle sleepy response, then back to Sleeping
 - [ ] 2.6 Change state during a reaction | reaction stops and the normal eased transition runs
-- [ ] 2.7 Turn the knob so the volume overlay shows, in each state | the keycap shrinks and lifts to clear the volume bar (y 180 to 196), no overlap or flicker
+- [ ] 2.7 Turn the knob so the volume screen shows, in each state | the screen switches to the full Volume view (large percentage and arc) while turning, stays about 1.2 s after the last click, then returns to the previous view or buddy; no flicker
 - [ ] 2.8 Watch idle for 2 minutes | blinks and expression swaps look smooth, no crawling edges, no full-screen flashes
 - [ ] 2.9 Click Flash firmware in Device Studio | flashing completes and the app reconnects to the same port
 
@@ -489,12 +489,13 @@ Hold = master mute. Shortcut and launch run from Device Studio's Test action pan
 
 **Switch and recovery**
 
-- [ ] 4.1 Short press (well under 0.5 s), ten times | exactly one Play/Pause per press; the keycap dips (or a white frame shows) the moment you press; holding never auto-repeats
-- [ ] 4.2 Hold about 1 s and release, five times | exactly one mute toggle each time; never also a Play/Pause
+- [ ] 4.1 Short press (a quick tap, well under 1 s), ten times | exactly one Play/Pause per press; the keycap dips (or a white frame shows) the moment you press; holding never auto-repeats
+- [ ] 4.2 Hold about 1.5 s and release, five times | exactly one mute toggle each time; never also a Play/Pause
 - [ ] 4.3 Hold 3 s, release | the recovery screen with a filling bar appears at about 2 s; release cancels it; nothing runs
 - [ ] 4.4 Hold 10 s with Kivori Desktop running | "Restarting", the device reboots, the app shows the disconnect and reconnects by itself (gate 8)
 - [ ] 4.5 Hold 10 s with Kivori Desktop quit | the device still reboots (gate 8, invariant 24)
-- [ ] 4.6 With held-turn firmware, assign both Hold + rotate shortcuts, press before turning, then turn both ways and release | each direction runs only its assigned shortcut; no ordinary volume, Press, Hold or double-press action leaks (invariant 33)
+- [ ] 4.6 Pin two profiles, hold the knob and turn both ways, then release on each | the picker shows the name and the highlight moves; release pins that profile (Auto follows the app); "Pinned" appears only after Kivori reports it; no volume, Press, Hold or double-press action leaks (invariant 33)
+- [ ] 4.7 Hold the knob switch and a bound contextual button | a ring fills over 1 s and brightens when full; release early is a Press; an unbound Hold shows no ring; at 2 s the knob switch hands over to the recovery screen
 - [ ] 4.6a Keep a claimed hold-and-turn gesture pressed for more than 10 s | it does not reboot; release, then hold stationary for 10 s and confirm recovery still works
 - [ ] 4.6b Hold stationary until recovery starts, then turn | recovery remains in control; on firmware without held-turn support, switch-down detents remain ignored
 - [ ] 4.7 Press while the knob is still turning | no Play/Pause fires
@@ -545,7 +546,7 @@ right: Previous track, Play/Pause, Next track (Press only; Hold unbound by defau
 - [ ] 5.2 Power on with each button held in turn | B1 (GP6), B2 (GP7) and B3 (GP8): Kivori boots normally (no Pip input is a boot-critical pin). With the board's own BOOT button held at plug-in: the `RPI-RP2` drive appears (ROM UF2 bootloader). With the display connected and no button held, the board boots
 - [ ] 5.2a Repeat power-on, reset and recovery reboot with every combination of B1/B2/B3 held | record USB enumeration and boot mode; none of the combinations may change the boot mode (the RP2040 has no strapping pins; only the board's BOOT button does). Release the buttons and verify recovery by reset, with no stale input action. This is a physical check; restarting a virtual Runtime does not exercise the ROM.
 - [ ] 5.3 Each button, ten short presses while music plays | exactly one Previous / Play-Pause / Next per press; amber "?" badge (Unverified); a white frame on press
-- [ ] 5.4 Each button held about 1 s | nothing runs (Hold is unbound); held 12 s | nothing runs and the device never reboots
+- [ ] 5.4 Each button held about 1.5 s | nothing runs (Hold is unbound); held 12 s | nothing runs and the device never reboots
 - [ ] 5.5 Two buttons pressed together; a button pressed while the knob switch is down; a button pressed mid-turn | nothing fires from the second control (no chords)
 - [ ] 5.6 Hold the knob switch 10 s while a button is held | the device still reboots (invariant 24)
 - [ ] 5.7 Buddy view | button labels sit under the keycap, ticks line up with the physical buttons, `TURN Volume` top left; the keycap is full size
@@ -714,7 +715,7 @@ Software rules in [product.md](./product.md); design in ADR-0011 and ADR-0012. W
 - [ ] 13.5 Zoom's own mute on, Kivori's off | Kivori says unmuted (it reports the OS mic, not Zoom's button); the Controls page explains the difference
 - [ ] 13.6 Focus an app with no profile, "Add the app in front of me" | a new profile appears with that app's icon, starting as General; the panel shows its name within about ½ s of focusing it
 - [ ] 13.7 Add `idea64.exe` (or any app) to Code, then to a custom profile | it moves, and the app says it moved; never in two profiles
-- [ ] 13.8 Mark a custom profile "In pin cycle", hold the middle button repeatedly | it appears after the built-ins; unmarked profiles do not
+- [ ] 13.8 Mark a custom profile "Pin to device", hold the middle button repeatedly | it appears after the built-ins; unmarked profiles do not
 - [ ] 13.9 Leave the app idle 5 minutes, then pause the desktop app (debugger or Task Manager suspend) | the buddy keeps blinking and glancing; no frozen frame; eyes never close fully outside Sleeping
 - [ ] 13.10 Touch each control slowly with the app idle | the buddy looks towards it before the action's own feedback
 - [ ] 13.11 Move the brightness setting from highest to lowest | the backlight follows at once; the lowest step is still clearly on (never looks like Display Sleep); the setting survives a restart
@@ -1604,7 +1605,7 @@ NOT RUN, missing measurements and unsupported machine power modes cannot become 
 | Connection / 1.6, 1.15–1.17, 1.20 | Time cold connect (<5 s), disconnect indication and reconnect with state restore (<10 s). Repeat rapid unplug/replug 10 times; record each duration and any duplicate/stuck session. | NOT RUN |
 | Rotary / 3.1–3.13, G1/G2 | Count slow detents both ways, fast turns, edge wiggles, 0/100 reversal and default-output change mid-turn. Compare Windows mixer read-back with the panel; no phantom/reversed/stale action or invented confirmation. | NOT RUN |
 | Latency / 3.14, 4.28 | After wiring checks and an agreed firmware-flash step, use the dev-only latency image. Capture about 30 distinct detents in both directions, `L` samples and final `H` (<50 ms), plus `F/t/o/n` counters. Note the device view and dropped/invalid input. Restore the matching product image afterwards and record its version/hash. | NOT RUN |
-| Press/hold/double / 4.1–4.2, 4.24–4.25, 5.15 | On each supported control count 10 short presses and 5 roughly 1 s holds; on the double-press-capable knob count 10 natural double presses. Use recorded bindings; each gesture has exactly its intended action, no extra press on hold/double, no merged distinct presses. Note the 250 ms single-press delay and any lost/duplicate input. | NOT RUN |
+| Press/hold/double / 4.1–4.2, 4.24–4.25, 5.15 | On each supported control count 10 short presses and 5 roughly 1.5 s holds; on the double-press-capable knob count 10 natural double presses. Use recorded bindings; each gesture has exactly its intended action, no extra press on hold/double, no merged distinct presses. Note the 250 ms single-press delay and any lost/duplicate input. | NOT RUN |
 | Microphone / 13.1–13.5 | With built-in and USB mics active, compare every endpoint's actual mute state in Windows before/after Mic Mute. Hotplug a third mic while muted, then unmute externally and unplug/replug an endpoint. Record time to reconcile and per-endpoint result; incomplete/failed coverage must remain unknown/unverified, never a muted or confirmed claim. App-call mute is distinct from OS endpoint mute. | NOT RUN |
 | Disconnect during input / 3.12, 4.8, G2 | Disconnect during a turn and during a queued scratch-document shortcut/macro; press during the outage, then reconnect. Count output before/after; no pre-disconnect or outage input replays. Record actual delivery and feedback separately: keyboard delivery remains Unverified. | NOT RUN |
 | Context changes / G2, 5.18 | Queue a scratch-document action, switch focus/profile before dispatch or during a macro wait, and cancel a pending Controls Test. The remaining old-target input must not execute or retarget; another action's result must not become that test's result. Record which input had already completed before cancellation. | NOT RUN |

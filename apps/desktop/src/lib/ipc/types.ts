@@ -109,8 +109,19 @@ export interface OnboardingDto {
 export const ACCESSIBILITY_STATES = ['granted', 'missing', 'notApplicable'] as const;
 export type AccessibilityState = (typeof ACCESSIBILITY_STATES)[number];
 
-export const STARTUP_PLATFORMS = ['windows', 'macos', 'other'] as const;
+export const STARTUP_PLATFORMS = ['windows', 'macos', 'linux', 'other'] as const;
 export type StartupPlatform = (typeof STARTUP_PLATFORMS)[number];
+
+/**
+ * Whether Kivori may open its USB device. Only Linux can refuse (no udev rule yet): `denied` is
+ * true while the last attempt was refused for permission, `canFix` while the one-click fix can run
+ * (`pkexec` is installed), and `manualCommand` is that fix as one command to copy when it cannot.
+ */
+export interface SerialAccessDto {
+  denied: boolean;
+  canFix: boolean;
+  manualCommand: string | null;
+}
 
 /** Whether Kivori starts at login; read from the OS entry, never stored in the config file. */
 export interface StartupSettingsDto {
@@ -220,6 +231,8 @@ export const CAPABILITY_NAMES = [
   'productIdentityV1',
   'buildInfoV1',
   'heldRotationV1',
+  'profilePickerV1',
+  'holdRingV1',
 ] as const;
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
 
@@ -491,12 +504,11 @@ export type ProfileId = BuiltinProfileId | `custom-${number}`;
 /** A custom profile's id: `custom-` and 1 to 4 digits. */
 export const CUSTOM_PROFILE_ID = /^custom-\d{1,4}$/;
 /** The native limits, checked again there. */
-export const PROFILE_LIMITS = { customProfiles: 16, apps: 32, nameMax: 32 } as const;
+export const PROFILE_LIMITS = { customProfiles: 16, apps: 32, nameMax: 32, pinned: 10 } as const;
 
-/** Controls `setBinding` targets. The middle button's Hold is reserved for the profile pin. */
+/** Controls `setBinding` targets. Knob Hold and middle-button Hold are fixed. */
 export const CONTROL_REFS = [
   'press',
-  'hold',
   'button1Press',
   'button1Hold',
   'button2Press',
@@ -573,22 +585,20 @@ export interface ProfileConfigDto {
   name: string;
   /** The user's own profile: it can be renamed and deleted. Built-ins cannot. */
   custom: boolean;
-  /** The middle button's Hold cycle visits it. */
+  /** Pinned to the device: the knob's Hold-and-turn picker offers it and the middle button's Hold
+   *  cycle visits it. */
   inPinCycle: boolean;
   /** Foreground app ids that select this profile (empty for General). */
   apps: string[];
   rotate: { spec: RotateSpec; deviceLabel: string; overridden: boolean };
-  /** Optional shortcuts sent when the knob is held while turning. */
-  heldRotate: RotateSpec | null;
-  heldRotateOverridden: boolean;
   press: SlotDto;
   hold: SlotDto;
-  /** A button's Hold is `'pin'` for the middle one (reserved for profile pin). */
+  /** A button's Hold is `'micMute'` for the middle one (fixed mic mute on every capture device). */
   buttons: [ButtonDto, ButtonDto, ButtonDto];
 }
 export interface ButtonDto {
   press: SlotDto;
-  hold: SlotDto | 'pin';
+  hold: SlotDto | 'micMute';
 }
 
 /** Backlight steps, 1 (dimmest, still clearly on) to 5 (full). */

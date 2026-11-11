@@ -91,7 +91,7 @@ on Finish; Skip setup leaves it unchanged.
 | Saved buddy settings | Always editable; used by device idle life (`idleLifeV1`) or desktop reactions (`mascotInteraction`). |
 | Rotary inputs | `physicalInputV1`. |
 | Push-switch press and hold | `physicalInputV1` and `buttonInputV1`. |
-| Hold + rotate | `physicalInputV1`, `buttonInputV1`, and the optional `heldRotationV1`. |
+| Hold + rotate (profile picker) | `profilePickerV1`; the desktop no longer offers `heldRotationV1`. |
 | Push-switch double press | Physical input, push-switch and `doublePressV1`. |
 | Context buttons | `physicalInputV1` and `contextButtonsV1`. |
 | Device Studio reaction preview | Host renderer always; request device playback only with `mascotInteraction`. |
@@ -179,10 +179,32 @@ the window regains focus, so anything showing disappears once it is granted).
 | Microphone mute, app mute | No | CoreAudio / session controls |
 | Launch an app | No | Opens the app through the OS |
 | Keyboard shortcut (a button or the knob in a shortcut profile) | Yes | A synthesized key event is the only way to type into another app |
-| Hold + rotate shortcut pair | Yes | One shortcut per direction while the knob is held; requires `heldRotationV1`, physical input, and push-switch support |
+| Hold + rotate profile picker | Fixed | Pick Auto or a pinned profile on the device; requires `profilePickerV1`. Replaces the bindable shortcut pair |
 | Macro | Only if a step is a keyboard shortcut | Same |
 
 The default bindings (push switch: play/pause and mute; buttons: previous, play/pause, next; knob:
 volume) need none. The built-in Browser, Code, Zoom and Teams profiles use shortcuts, so they need it
 while those apps are in front. The Diagnostics "Input permission" row reads Not needed while the
 active profile presses no keys. Windows has no such permission and is unchanged.
+
+
+## Host platform capabilities
+
+| Host feature | Windows | macOS | Linux (Ubuntu) |
+| --- | --- | --- | --- |
+| Master volume / output mute | Native audio, read-back | CoreAudio, read-back where writable | libpulse, read-back (including PipeWire PulseAudio layer) |
+| Per-app volume / mute | Native sessions | Unavailable | PulseAudio streams |
+| Microphone mute | All devices, read-back | All devices, subject to writable mute support | All capture devices, read-back |
+| Media keys / now playing | Native media | Bundled media adapter | MPRIS on X11 and Wayland; with no player or unreachable bus, media-key fallback on X11 or via the authorized Kivori GNOME extension (quiet, unverified acknowledgement) |
+| Keyboard shortcuts | Native input | Accessibility required | X11; GNOME Wayland with Kivori App Profiles extension v5+ (one logout after install/update and one remembered Shell approval for the installed executable); keyboard portal on other Wayland desktops |
+| Automatic app profiles | Foreground app | Foreground app | X11 foreground app; GNOME Wayland works with the Kivori GNOME extension (46–50) |
+| CPU / RAM | Native | Native | `/proc` |
+| Sleep / wake / lock | Native | Native | systemd-logind D-Bus |
+| App launch / login startup | Native / Run entry | Native | XDG desktop entries / autostart |
+| Tray | Native | Native | libayatana-appindicator; GNOME extension required |
+| App updater | Signed NSIS | Manual DMG replacement | Signed AppImage only; `.deb` updates unsupported in app (install a newer package from the website or a package manager if available) |
+
+Linux implementation and host tests do not close physical acceptance. See [linux.md](./linux.md)
+for setup, the GNOME Wayland focus extension, XWayland limits, USB rules and pending hands-on checks.
+
+GNOME Wayland shortcuts use a verified, approved executable and one authorized bus peer. Trust and saved consent are snapshotted at enable; disk edits cannot silently authorize input in the running session. Reinstall/update requires re-login, and first shortcut use opens a Shell dialog showing the full executable path if consent is needed. This protects against other apps silently pressing keys in this session, relies on home-folder files like any GNOME extension, and does not defend against malware already running as you. Focus subscriptions alone cannot inject. Only Ctrl/Alt/Super chords or explicit lone non-text keys are allowed; plain text, lone Return, modifier-only keys, Alt+F2, Ctrl+Alt+F1–F12/Delete/Backspace, Super+L and clipboard-paste chords (Ctrl+V, Ctrl+Shift+V, Super+V) are blocked, with a reason in the action picker. Protection validation fails closed; every chord carries a bounded Shell-clock deadline and focus generation. Failed releases suspend injection and reset/dispose the virtual keyboard. See [Linux setup and shortcut policy](linux.md) for the complete allowed-key list and recovery steps.

@@ -69,6 +69,7 @@ import { Page } from '@/components/kivori/page';
 import { PageTabs } from '@/components/kivori/page-tabs';
 import { ProductArt } from '@/components/kivori/product-art';
 import type { DeviceControl } from '@/components/kivori/device-visual';
+import { DeviceScreen } from '@/components/kivori/device-screen';
 import { ResultBadge } from '@/components/kivori/result-badge';
 import {
   deleteMacro,
@@ -77,7 +78,6 @@ import {
   resetProfile,
   setBinding,
   setRotate,
-  setHeldRotate,
   testAction,
   testRotate,
 } from '@/lib/ipc';
@@ -99,7 +99,9 @@ import { controlSupported } from '@/lib/device-support';
 import type { ConnectionStatusDto } from '@/lib/ipc/types';
 import { format, strings } from '@/lib/i18n/strings';
 import { errorText } from '@/lib/utils';
+import { GnomeFocusHelp } from '../permissions/GnomeFocusHelp';
 import { AccessibilityHelp } from '../permissions/AccessibilityHelp';
+import { KeyboardShortcutsStatus } from '../permissions/KeyboardShortcutsStatus';
 import { needsKeyEvents } from '../permissions/needs-key-events';
 import { ActionPicker, catalogId } from './ActionPicker';
 import { MacroEditor, describeStep } from './MacroEditor';
@@ -117,7 +119,7 @@ interface Row {
   key: GestureKey;
   Icon: LucideIcon;
   /** What `setBinding` / `setRotate` edits; `null` = not editable. */
-  control: ControlRef | 'rotate' | 'heldRotate' | null;
+  control: ControlRef | 'rotate' | null;
   /** The bound action (`null` = unbound), or `undefined` for rows that are not bindings. */
   spec?: ActionSpec | RotateSpec | null;
   label?: string | null;
@@ -140,12 +142,12 @@ function slotRow(key: GestureKey, Icon: LucideIcon, control: ControlRef, slot: S
 }
 
 function rows(profile: ProfileConfigDto): Row[] {
-  const { rotate, press, hold, buttons } = profile;
+  const { rotate, press, buttons } = profile;
   const holdRow = (i: 0 | 1 | 2, key: GestureKey, control: ControlRef): Row => {
     const slot = buttons[i].hold;
-    // The middle button's Hold pins a profile; it can never be rebound.
-    return slot === 'pin'
-      ? { key, Icon: Hand, control: null, fixed: t.pinProfile }
+    // The middle button's Hold mutes every microphone; it cannot be rebound.
+    return slot === 'micMute'
+      ? { key, Icon: Hand, control: null, fixed: t.micMuteFixed }
       : slotRow(key, Hand, control, slot);
   };
   return [
@@ -157,16 +159,11 @@ function rows(profile: ProfileConfigDto): Row[] {
       deviceLabel: rotate.deviceLabel,
       overridden: rotate.overridden,
     },
-    {
-      key: 'heldRotate',
-      Icon: RotateCw,
-      control: 'heldRotate',
-      spec: profile.heldRotate,
-      overridden: profile.heldRotateOverridden,
-    },
+    // The device's own profile picker; nothing to bind (like Double press).
+    { key: 'heldRotate', Icon: RotateCw, control: null, fixed: t.profilePickerFixed },
     slotRow('press', MousePointerClick, 'press', press),
     { key: 'doublePress', Icon: RefreshCw, control: null, fixed: t.doublePressFixed },
-    slotRow('hold', Hand, 'hold', hold),
+    { key: 'hold', Icon: Hand, control: null, fixed: t.knobHoldFixed },
     slotRow('button1', CircleDot, 'button1Press', buttons[0].press),
     slotRow('button2', CircleDot, 'button2Press', buttons[1].press),
     slotRow('button3', CircleDot, 'button3Press', buttons[2].press),
@@ -268,6 +265,8 @@ export function ControlsPage({
 }): ReactElement {
   const [chosen, setChosen] = useState<ProfileId | null>(null);
   const [selectedControl, setSelectedControl] = useState<DeviceControl>('knob');
+  // The control the pointer or keyboard is on; the device screen previews it until it leaves.
+  const [previewControl, setPreviewControl] = useState<DeviceControl | undefined>(undefined);
   const [catalog, setCatalog] = useState<ActionCatalogEntryDto[] | null>(null);
   const [editing, setEditing] = useState<PickerTarget | null>(null);
   // The New profile block under the profile chips.
@@ -358,13 +357,9 @@ export function ControlsPage({
     }, 1000);
   };
 
-  const resetRow = (control: ControlRef | 'rotate' | 'heldRotate'): void => {
+  const resetRow = (control: ControlRef | 'rotate'): void => {
     const saved =
-      control === 'rotate'
-        ? setRotate(selected, null)
-        : control === 'heldRotate'
-          ? setHeldRotate(selected, null)
-          : setBinding(selected, control, null);
+      control === 'rotate' ? setRotate(selected, null) : setBinding(selected, control, null);
     saved.catch((error: unknown) => toast.error(t.resetFailed, { description: errorText(error) }));
   };
   const removeMacro = (target: MacroSpec): void => {
@@ -562,6 +557,9 @@ export function ControlsPage({
         </p>
       </div>
 
+      <GnomeFocusHelp />
+      <KeyboardShortcutsStatus hideWhenEnabled />
+
       {needsKeyEvents(config) ? (
         <AccessibilityHelp
           title={strings.accessibility.controlsTitle}
@@ -644,7 +642,8 @@ export function ControlsPage({
                     connection={connection}
                     selectedControl={selectedControl}
                     onSelectControl={selectControl}
-                    profileName={profile.name}
+                    onPreviewControl={setPreviewControl}
+                    screen={<DeviceScreen activeControl={previewControl ?? selectedControl} />}
                   />
                   <p className="text-center text-xs text-muted-foreground">{t.workbench.hint}</p>
                 </div>
@@ -815,19 +814,12 @@ export function ControlsPage({
         macros={macros}
         onClose={() => setEditing(null)}
         onSaveSlot={async (target, slot) => {
-          if (
-            target.control === 'rotate' ||
-            target.control === 'heldRotate' ||
-            target.control === 'step' ||
-            !target.profile
-          )
-            return;
+          if (target.control === 'rotate' || target.control === 'step' || !target.profile) return;
           await setBinding(target.profile.id, target.control, slot);
         }}
         onSaveRotate={async (target, rotate) => {
           if (!target.profile) return;
-          if (target.control === 'heldRotate') await setHeldRotate(target.profile.id, rotate);
-          else await setRotate(target.profile.id, rotate);
+          await setRotate(target.profile.id, rotate);
         }}
       />
 

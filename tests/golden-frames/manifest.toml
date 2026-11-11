@@ -49,49 +49,6 @@ look_button_middle = "0xCC3C0F77CC9A7EC5"
 look_button_right = "0xABAED790E5D63D55"
 evening_blink = "0x7D94F9AB66AB462D"
 
-# Task 10 — canonical volume overlay (kivori_renderer::overlay::render_volume_overlay), sampled at the
-# (percent, confidence, at_boundary) combinations exercised by tests/overlay_golden.rs.
-[[overlay.frame]]
-percent = 0
-confidence = "confirmed"
-at_boundary = false
-hash = "0xBC2ED144C58185E5"
-[[overlay.frame]]
-percent = 49
-confidence = "confirmed"
-at_boundary = false
-hash = "0xFA46442C70DB3145"
-[[overlay.frame]]
-percent = 50
-confidence = "confirmed"
-at_boundary = false
-hash = "0xD454B4041BAED395"
-[[overlay.frame]]
-percent = 51
-confidence = "confirmed"
-at_boundary = false
-hash = "0xE6C3040C16312CBD"
-[[overlay.frame]]
-percent = 100
-confidence = "confirmed"
-at_boundary = false
-hash = "0x416FA57FDB1E6145"
-[[overlay.frame]]
-percent = 100
-confidence = "confirmed"
-at_boundary = true
-hash = "0xA7059821BF58F325"
-[[overlay.frame]]
-percent = 50
-confidence = "preview"
-at_boundary = false
-hash = "0xEC9B2BEE3F4F44AD"
-[[overlay.frame]]
-percent = 50
-confidence = "unverified"
-at_boundary = false
-hash = "0x0682064E865BB565"
-
 # M1 desk views (kivori_renderer::desk render_views/render_recovery then render_chrome), the frames named in
 # tests/golden-frames/src/desk_frames.rs and asserted by tests/desk_golden.rs. Export PNGs to review them:
 #   cargo run -p kivori-golden-frames --example desk_review -- <dir>
@@ -103,6 +60,7 @@ volume_42 = "0x41542E76821BB5B1"
 volume_100_muted = "0x6022A63F64114323"
 volume_unknown = "0x99D8445CCF24A04F"
 volume_overlay_unverified_75 = "0xE74395C853F7D133"
+buddy_volume_takeover_confirmed_58 = "0x403E16D830EEFAC4"
 media_playing = "0x38126DAEDAA1054D"
 media_paused = "0xCCCB9F145A503C1F"
 media_stopped = "0x413575B72938C66F"
@@ -142,3 +100,18 @@ buddy_status_row = "0x89850E35B26DBB34"
 switch_clock_to_volume_mid = "0x08E8E3E77B01E035"
 switch_media_to_system_mid = "0x321BAE64BA1A3629"
 switch_buddy_to_clock_mid = "0x1F5FA92BC9895930"
+
+# Hold ring and profile picker (kivori_renderer::desk::picker): the knob switch held towards its Hold, and held and turned.
+buddy_hold_ring_30 = "0xCC4324EDA2390B4F"
+buddy_hold_ring_70 = "0x9B304430AFD2D0E4"
+buddy_hold_ring_ready = "0xF32A59355E249764"
+buddy_hold_ring_long_label = "0x631AC2CBA11118D5"
+picker_auto = "0xAC4E8D6559BEBC8B"
+picker_pin1 = "0x8DC67E25C8198C33"
+picker_pin2 = "0x202C6C30B166E37A"
+picker_long_name = "0x300C53F50F22A561"
+picker_pin1_waiting = "0x2FAC4DBE86BF8525"
+picker_pin1_confirmed = "0xCC291D62641852CE"
+picker_auto_confirmed = "0xF4F2C7C9AB50ECBA"
+picker_pin1_unconfirmed = "0x8FE2B82E0259E080"
+picker_slide_mid = "0xEEA0EE6BF8FA5CFE"

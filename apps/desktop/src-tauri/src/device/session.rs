@@ -22,15 +22,17 @@ use kivori_model::desk::{
     ActionFeedback, ControlLabels, DeskStatus, FeedbackKind, MediaInfo, MicState,
 };
 use kivori_model::internals::DeviceInternals;
+use kivori_model::picker::{HoldActions, ProfileChoices, ProfilePick};
 use kivori_model::{
     Capabilities, CompanionState, MascotAction, MascotPersonality, ProtocolVersion, SendableState,
 };
 use kivori_protocol::{
     decode_frame, decode_message, encode_message, evaluate_hello_ack, BuddySettings, BuildInfo,
     Bye, ByeReason, ControlLabelsUpdate, Feedback, FirmwareVersion, HandshakeOutcome, Hello,
-    InputEvent, InternalsRequest, MascotActionApplied, MediaInfoUpdate, Message, MicStateUpdate,
-    Ping, PlayMascotAction, Presentation, ProtoError, SeqClass, SequenceTracker, SetState, Status,
-    MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
+    HoldActionsUpdate, InputEvent, InternalsRequest, MascotActionApplied, MediaInfoUpdate, Message,
+    MicStateUpdate, Ping, PlayMascotAction, Presentation, ProfileChoicesUpdate, ProtoError,
+    SeqClass, SequenceTracker, SetState, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR,
+    PROTOCOL_MINOR,
 };
 
 /// Static session parameters (the desktop's advertised identity + compatibility).
@@ -76,7 +78,10 @@ impl Default for SessionConfig {
                 .union(Capabilities::MIC_STATE_V1)
                 .union(Capabilities::PRODUCT_IDENTITY_V1)
                 .union(Capabilities::BUILD_INFO_V1)
-                .union(Capabilities::HELD_ROTATION_V1),
+                // Turning with the knob switch held is the device's profile picker; the bindable
+                // `HELD_ROTATION_V1` gesture it replaced is no longer offered to the device.
+                .union(Capabilities::PROFILE_PICKER_V1)
+                .union(Capabilities::HOLD_RING_V1),
             supported_majors: vec![PROTOCOL_MAJOR],
         }
     }
@@ -136,6 +141,8 @@ pub struct Session {
     negotiated_caps: Capabilities,
     /// `InputEvent`s decoded by `pump()`, awaiting [`Session::take_input_events`].
     pending_inputs: Vec<InputEvent>,
+    /// Picks the device made in its profile picker since the last [`Self::take_profile_picks`].
+    pending_picks: Vec<ProfilePick>,
     last_mascot_action_applied: Option<MascotActionApplied>,
     connection_generation: u32,
     activity: Vec<SessionActivity>,
@@ -186,6 +193,7 @@ impl Session {
             reported: None,
             negotiated_caps: Capabilities::NONE,
             pending_inputs: Vec::new(),
+            pending_picks: Vec::new(),
             last_mascot_action_applied: None,
             connection_generation: 0,
             activity: Vec::new(),
@@ -223,6 +231,7 @@ impl Session {
         self.identity = None;
         self.build = None;
         self.pending_inputs.clear();
+        self.pending_picks.clear();
         self.last_mascot_action_applied = None;
         self.activity.clear();
         let nonce = match self.nonce_source.next_nonce() {
@@ -313,6 +322,11 @@ impl Session {
     /// Drains every `InputEvent` decoded by [`Session::pump`] since the last call.
     pub fn take_input_events(&mut self) -> Vec<InputEvent> {
         std::mem::take(&mut self.pending_inputs)
+    }
+
+    /// Drains every profile pick the device sent since the last call (only from this session).
+    pub fn take_profile_picks(&mut self) -> Vec<ProfilePick> {
+        std::mem::take(&mut self.pending_picks)
     }
 
     /// Whether both peers negotiated transient mascot interactions for this connection.
@@ -693,6 +707,56 @@ impl Session {
         Ok(true)
     }
 
+    /// Sends the profile picker's entries (Auto, then the pinned profiles) and the pin the desktop
+    /// runs. Returns `Ok(false)` without encoding anything when there is no session or
+    /// `PROFILE_PICKER_V1` was not negotiated.
+    ///
+    /// # Errors
+    /// [`SessionError::Transport`] if the write fails.
+    pub fn send_profile_choices<L: SerialLink>(
+        &mut self,
+        link: &mut L,
+        choices: ProfileChoices,
+    ) -> Result<bool, SessionError<L::Error>> {
+        let Some(session) = self.current_session else {
+            return Ok(false);
+        };
+        if !self
+            .effective_caps()
+            .contains(Capabilities::PROFILE_PICKER_V1)
+        {
+            return Ok(false);
+        }
+        self.send(
+            link,
+            &Message::ProfileChoices(ProfileChoicesUpdate { session, choices }),
+        )?;
+        Ok(true)
+    }
+
+    /// Sends which contextual buttons have a Hold. Returns `Ok(false)` without encoding anything
+    /// when there is no session or `HOLD_RING_V1` was not negotiated.
+    ///
+    /// # Errors
+    /// [`SessionError::Transport`] if the write fails.
+    pub fn send_hold_actions<L: SerialLink>(
+        &mut self,
+        link: &mut L,
+        actions: HoldActions,
+    ) -> Result<bool, SessionError<L::Error>> {
+        let Some(session) = self.current_session else {
+            return Ok(false);
+        };
+        if !self.effective_caps().contains(Capabilities::HOLD_RING_V1) {
+            return Ok(false);
+        }
+        self.send(
+            link,
+            &Message::HoldActions(HoldActionsUpdate { session, actions }),
+        )?;
+        Ok(true)
+    }
+
     /// Sends one action outcome for the current session. Returns `Ok(false)` without encoding
     /// anything when there is no session or `ACTION_FEEDBACK_V1` was not negotiated. `Triggered`
     /// goes out as `Unverified` unless `QUIET_ACK_V1` was negotiated.
@@ -974,6 +1038,16 @@ impl Session {
             Message::InputEvent(event) if self.supports_input(&event) => {
                 self.pending_inputs.push(event);
             }
+            // A pick counts only from this session with the picker negotiated; anything else is
+            // dropped unseen, so an old session's pick can never pin a profile in a new one.
+            Message::ProfilePick(report)
+                if self
+                    .effective_caps()
+                    .contains(Capabilities::PROFILE_PICKER_V1)
+                    && self.current_session == Some(report.session) =>
+            {
+                self.pending_picks.push(report.pick);
+            }
             // Only a snapshot answering this session counts; a stale one is dropped unseen.
             Message::Internals(report)
                 if self
@@ -1093,6 +1167,7 @@ impl Session {
         self.sent_hello = None;
         self.negotiated_caps = Capabilities::NONE;
         self.pending_inputs.clear();
+        self.pending_picks.clear();
         self.rx.clear();
         self.discard_rx = false;
         self.reported = None;

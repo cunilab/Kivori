@@ -29,6 +29,9 @@ vi.mock('../../../lib/ipc', () => ({
   onUpdateStatus: () => Promise.resolve(() => {}),
   getFirmwareOffer: () => new Promise(() => {}),
   onFirmwareOffer: () => Promise.resolve(() => {}),
+  getSerialAccess: () => new Promise(() => {}),
+  onSerialAccess: () => Promise.resolve(() => {}),
+  fixSerialAccess: vi.fn(),
 }));
 
 import { DevicePage } from '../DevicePage';

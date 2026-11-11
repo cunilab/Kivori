@@ -52,13 +52,27 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 getrandom = "0.4"  # session-nonce freshness (Slice 002). NOT a security credential; not a network crate.
 
 [target.'cfg(any(windows, target_os = "macos"))'.dependencies]
-# Media keys and keyboard shortcuts (M1): SendInput on Windows, Quartz events on macOS. Linux
-# would pull X11/Wayland stacks for an unsupported OS, so it stays NotImplemented there.
+# Media keys and keyboard shortcuts (M1): SendInput on Windows, Quartz events on macOS.
 enigo = { version = "0.6", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Mach host statistics (CPU/RAM) and localtime_r (M1 monitoring). CoreAudio is declared by hand.
 libc = "0.2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Keyboard shortcuts (and the media-key fallback) on X11 sessions: enigo's pure-Rust `x11rb`
+# backend, so no libxdo and no extra system package. Wayland uses the desktop portal.
+enigo = { version = "0.6", default-features = false, features = ["x11rb"] }
+# localtime_r (clock) and getuid/pid helpers. /proc/stat and /proc/meminfo are read as text.
+libc = "0.2"
+# PulseAudio client API (served by PipeWire through pipewire-pulse too): master volume/mute, per-app
+# volume (sink inputs) and the mute of every capture device. Links the system libpulse.
+libpulse-binding = "2.30"
+# Local D-Bus IPC only (session and system bus unix sockets, no network): MPRIS media players and
+# systemd-logind sleep/lock signals. Already in the tree via tauri.
+zbus = "5"
+# Pure-Rust X11 client: the focused window (`_NET_ACTIVE_WINDOW`) for per-app profiles.
+x11rb = "0.13"
 
 [target.'cfg(windows)'.dependencies]
 # Windows Core Audio (WASAPI) master-volume backend (Task 12), CPU/RAM and local time (M1), and

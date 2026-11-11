@@ -29,10 +29,11 @@
 
 use crate::health::{build_diagnostic, build_health, DeviceDiagnostic};
 use crate::identity::BootCheck;
-use crate::input::button::{ButtonEvent, ButtonGesture};
+use crate::input::button::{ButtonEvent, ButtonGesture, PRESS_MAX_MS};
 use crate::input::gesture::{RotaryEvent, RotaryGesture};
 use crate::input::quadrature::QuadratureDecoder;
 use crate::internals::{ChipProbe, LoadMeter, ASSET_BLOB_CAP_BYTES};
+use crate::picker::Picker;
 use crate::ports::{Clock, DisplaySink, InputSource, Transport};
 use crate::proto::{DeviceIdentity, Dispatcher, HostTakeover};
 use crate::render::{TileRenderer, TILE_ROWS};
@@ -40,18 +41,20 @@ use crate::state::{DeviceEvent, DeviceState};
 use kivori_assets::AssetBlob;
 use kivori_model::desk::{
     ActionFeedback, ControlLabels, CpuHistory, DeskStatus, DeskView, DisplayMode, MediaInfo,
-    MicState, BRIGHTNESS_STEPS, VIEW_TRANSITION_MS,
+    MediaText, MicState, BRIGHTNESS_STEPS, VIEW_TRANSITION_MS,
 };
 use kivori_model::input::InputLevels;
 use kivori_model::internals::DeviceInternals;
+use kivori_model::picker::{HoldActions, HoldRing, ProfileChoices};
 use kivori_model::presentation::{PrimaryState, ValueDisplay};
 use kivori_model::Capabilities;
 use kivori_model::{
     CompanionState, ElapsedMs, IdleLife, LookTarget, MascotAnimator, MascotPersonality,
 };
 use kivori_protocol::{
-    Bye, ByeReason, ControlId, ControlLabelsUpdate, Feedback, InputKind, InternalsReport,
-    MediaInfoUpdate, Message, MicStateUpdate, Nonce, Presentation, Status,
+    Bye, ByeReason, ControlId, ControlLabelsUpdate, Feedback, HoldActionsUpdate, InputKind,
+    InternalsReport, MediaInfoUpdate, Message, MicStateUpdate, Nonce, Presentation,
+    ProfileChoicesUpdate, Status,
 };
 
 /// Inactivity window, in milliseconds, after which an open rotary gesture ends
@@ -66,6 +69,10 @@ pub const HOST_SILENCE_MS: u32 = 4_000;
 
 /// The Updating takeover lapses after this long, so it cannot stick if the host dies mid-flash.
 pub const UPDATING_MAX_MS: u32 = 120_000;
+
+/// A switch held this long (ms) starts drawing the hold ring, so a quick tap never flashes it. The
+/// ring's progress still counts from the press itself.
+const HOLD_RING_SHOW_MS: u32 = 150;
 
 /// Input snapshots processed per tick: the physical edge queue plus the closing current sample.
 const INPUT_SAMPLES: usize = 129;
@@ -280,6 +287,10 @@ pub struct DeskState {
     feedback: Option<(ActionFeedback, u32)>,
     media_info: Option<MediaInfo>,
     controls: Option<ControlLabels>,
+    /// The picker's entries and the desktop's pin (`PROFILE_PICKER_V1`); `None` = none sent yet.
+    choices: Option<ProfileChoices>,
+    /// Which contextual buttons have a Hold (`HOLD_RING_V1`); all empty until sent.
+    holds: HoldActions,
     mic: MicState,
     cpu_history: CpuHistory,
     /// The view before the latest switch, and when the switch happened.
@@ -289,6 +300,7 @@ pub struct DeskState {
 
 impl DeskState {
     /// A new compatible host session: nothing known yet.
+    #[inline(never)]
     pub fn begin_session(&mut self, session: Nonce) {
         *self = Self {
             session: Some(session),
@@ -297,6 +309,7 @@ impl DeskState {
     }
 
     /// The session ended: forget everything.
+    #[inline(never)]
     pub fn end_session(&mut self) {
         *self = Self::default();
     }
@@ -334,6 +347,46 @@ impl DeskState {
         }
         self.controls = Some(update.labels);
         true
+    }
+
+    /// Applies the picker's entries of the current session.
+    pub fn apply_profile_choices(&mut self, update: &ProfileChoicesUpdate) -> bool {
+        if self.session != Some(update.session) {
+            return false;
+        }
+        self.choices = Some(update.choices);
+        true
+    }
+
+    /// Applies the contextual buttons' Hold labels of the current session.
+    pub fn apply_hold_actions(&mut self, update: &HoldActionsUpdate) -> bool {
+        if self.session != Some(update.session) {
+            return false;
+        }
+        self.holds = update.actions;
+        true
+    }
+
+    /// The picker's entries, or Auto alone while none were sent. Borrowed: copying the names
+    /// would cost the run loop's stack.
+    #[must_use]
+    pub fn choices(&self) -> &ProfileChoices {
+        self.choices.as_ref().unwrap_or(&ProfileChoices::NONE)
+    }
+
+    /// What a Hold of switch `control` (0 the knob's, 1 to 3 the contextual buttons) does, in the
+    /// desktop's words; empty when nothing is known to be bound (the ring is then not drawn).
+    #[must_use]
+    pub fn hold_label(&self, control: u8) -> MediaText {
+        match control {
+            0 => self.controls.map(|c| c.hold).unwrap_or_default(),
+            n => self
+                .holds
+                .buttons
+                .get(usize::from(n) - 1)
+                .copied()
+                .unwrap_or_default(),
+        }
     }
 
     /// Applies the microphone state of the current session.
@@ -374,6 +427,7 @@ impl DeskState {
     /// What to render at `now_ms`: the clock advanced locally, expired feedback dropped
     /// (wrap-safe elapsed comparison, as in [`PresentationState::value_at`]).
     #[must_use]
+    #[inline(never)]
     pub fn view_at(
         &self,
         now_ms: u32,
@@ -406,6 +460,8 @@ impl DeskState {
             mode_age_ms,
             controls: self.controls,
             mic: self.mic,
+            hold: None,
+            picker: None,
         }
     }
 }
@@ -445,6 +501,8 @@ pub struct Runtime<'a> {
     input_boundary_ms: Option<ElapsedMs>,
     /// Session-scoped desk status and feedback.
     desk: DeskState,
+    /// The profile picker (the knob switch held and turned).
+    picker: Picker,
     /// A switch edge or recovery step wants the panel redrawn on this tick.
     redraw: bool,
     reboot: bool,
@@ -496,6 +554,7 @@ impl<'a> Runtime<'a> {
             button_id: 0,
             input_boundary_ms: None,
             desk: DeskState::default(),
+            picker: Picker::new(),
             redraw: false,
             reboot: false,
             host_takeover: None,
@@ -641,6 +700,7 @@ impl<'a> Runtime<'a> {
         if let Some(update) = self.dispatcher.take_control_labels() {
             self.redraw |= self.desk.apply_control_labels(&update);
         }
+        self.take_picker_messages(now);
         if let Some(update) = self.dispatcher.take_media_info() {
             self.redraw |= self.desk.apply_media_info(&update);
         }
@@ -721,7 +781,7 @@ impl<'a> Runtime<'a> {
                 windows: 0,
                 failed: false,
             };
-            let view = self.desk.view_at(
+            let mut view = self.desk.view_at(
                 now,
                 (
                     self.button.is_down() || self.keys.iter().any(ButtonGesture::is_down),
@@ -730,6 +790,7 @@ impl<'a> Runtime<'a> {
                 self.button.recovery_percent(now),
                 matches!(self.host_takeover, Some((HostTakeover::Updating, _))),
             );
+            self.attach_overlays(&mut view, now);
             let mut pose = self.animator.pose_at(now);
             if (view.button_down || view.quiet_ack()) && view.status.mode == DisplayMode::Buddy {
                 pose.press_q8 = pose.press_q8.max(PRESS_ACK_Q8);
@@ -832,6 +893,48 @@ impl<'a> Runtime<'a> {
             }
         }
 
+        // 5-6b. The tick's diagnostic, heartbeat health and internals snapshot.
+        let outbound_failed = self.send_reports(transport, input, now, &mut tick, &mut worked);
+        if outbound_failed {
+            self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
+            self.dispatcher.link_lost();
+            self.apply_session_boundary(now);
+            let state = self.device.current();
+            if self.animator.target() != state {
+                self.animator.set_state(state, now);
+            }
+            tick.state = Some(state);
+            tick.link_dropped = true;
+        }
+
+        if tick.state.is_none() {
+            tick.state = Some(self.device.current());
+        }
+        tick.reboot = self.reboot;
+        tick.rejected_frames = self.dispatcher.rejected_frames();
+        // The loop never sleeps, so only ticks that did something count as busy.
+        let end = clock.now_ms();
+        worked |= tick.frame_rendered || tick.diagnostic.is_some() || tick.health_sent;
+        self.load.on_tick(
+            end,
+            if worked { end.wrapping_sub(now) } else { 0 },
+            tick.frame_rendered,
+        );
+        tick
+    }
+
+    /// The tick's outbound reports: one diagnostic, the heartbeat health, and an internals
+    /// snapshot when asked. Returns whether the link failed. Out of line: each is a large
+    /// `Message` temporary that would otherwise sit in the run loop's stack frame.
+    #[inline(never)]
+    fn send_reports<T: Transport, I: InputSource>(
+        &mut self,
+        transport: &mut T,
+        input: &I,
+        now: ElapsedMs,
+        tick: &mut Tick,
+        worked: &mut bool,
+    ) -> bool {
         // 5. At most one safe diagnostic per tick, category + code only (ADR-0005).
         let mut outbound_failed = false;
         if let Some(diagnostic) = self.dispatcher.take_diagnostic() {
@@ -861,38 +964,13 @@ impl<'a> Runtime<'a> {
                     session,
                     internals: self.internals_snapshot(now, input),
                 });
-                worked = true;
+                *worked = true;
                 if self.dispatcher.emit(transport, &message).is_err() {
                     outbound_failed = true;
                 }
             }
         }
-        if outbound_failed {
-            self.dispatcher.note_diagnostic(DeviceDiagnostic::LinkLost);
-            self.dispatcher.link_lost();
-            self.apply_session_boundary(now);
-            let state = self.device.current();
-            if self.animator.target() != state {
-                self.animator.set_state(state, now);
-            }
-            tick.state = Some(state);
-            tick.link_dropped = true;
-        }
-
-        if tick.state.is_none() {
-            tick.state = Some(self.device.current());
-        }
-        tick.reboot = self.reboot;
-        tick.rejected_frames = self.dispatcher.rejected_frames();
-        // The loop never sleeps, so only ticks that did something count as busy.
-        let end = clock.now_ms();
-        worked |= tick.frame_rendered || tick.diagnostic.is_some() || tick.health_sent;
-        self.load.on_tick(
-            end,
-            if worked { end.wrapping_sub(now) } else { 0 },
-            tick.frame_rendered,
-        );
-        tick
+        outbound_failed
     }
 
     /// The device internals snapshot at `now`: the board's figures first, then the loop's own.
@@ -941,7 +1019,13 @@ impl<'a> Runtime<'a> {
         self.dropped_edges = before;
         if lost && (self.button.is_down() || samples.iter().any(|(levels, _)| levels.sw)) {
             self.held_rotation_blocked = true;
-            if self.button.rotation_claimed() && self.dispatcher.accepted_session().is_some() {
+            if self.picker.is_choosing() || self.dispatcher.profile_picker_enabled() {
+                // The picker queues nothing until release, so there is no stale held input to
+                // discard: cancel it locally (the screen says so truthfully) and keep the link.
+                self.picker.close();
+                self.redraw = true;
+            } else if self.button.rotation_claimed() && self.dispatcher.accepted_session().is_some()
+            {
                 // Closing the session also discards any held detents waiting behind a stalled link.
                 transport.discard_unsent();
                 self.dispatcher.link_lost();
@@ -997,6 +1081,7 @@ impl<'a> Runtime<'a> {
             key.reset();
         }
         self.button_id = 0;
+        self.picker.close();
         self.redraw = true;
         session.is_none()
     }
@@ -1021,8 +1106,11 @@ impl<'a> Runtime<'a> {
         levels: InputLevels,
         at_ms: ElapsedMs,
     ) {
+        // The picker releases on the debounced edge (`on_button`), never on this raw level: a
+        // contact bounce while choosing must not send a pick.
         if !levels.sw
-            && (self.rotary_control == ControlId::PressedRotary || self.button.rotation_claimed())
+            && (self.rotary_control == ControlId::PressedRotary
+                || (self.button.rotation_claimed() && !self.picker.is_choosing()))
         {
             if let Some(RotaryEvent::GestureEnded { gesture_id }) = self.gesture.finish() {
                 self.dispatcher.send_rotary_event(
@@ -1071,7 +1159,11 @@ impl<'a> Runtime<'a> {
             }
         }
         // A partial turn during switch debounce must never start a held rotation.
-        if levels.sw && !self.button.is_down() && self.dispatcher.held_rotation_enabled() {
+        let picker_on = self.dispatcher.profile_picker_enabled();
+        if levels.sw
+            && !self.button.is_down()
+            && (picker_on || self.dispatcher.held_rotation_enabled())
+        {
             self.decoder.reset();
             return;
         }
@@ -1086,13 +1178,21 @@ impl<'a> Runtime<'a> {
         let control = if levels.sw
             && self.button.is_down()
             && !self.held_rotation_blocked
-            && self.dispatcher.held_rotation_enabled()
+            && (picker_on || self.dispatcher.held_rotation_enabled())
         {
             let Some(prior_press) = self.button.claim_rotation() else {
                 return;
             };
             if prior_press {
                 self.on_button(transport, ButtonEvent::Press, at_ms);
+            }
+            if picker_on {
+                // The picker is the device's own: no input event goes to the desktop until the
+                // switch is released with a pick.
+                self.animator.look_at(LookTarget::Knob, at_ms);
+                self.picker.turn(direction, self.desk.choices(), at_ms);
+                self.redraw = true;
+                return;
             }
             ControlId::PressedRotary
         } else if levels.sw || self.button.is_down() {
@@ -1133,6 +1233,68 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    /// The switch was released (debounced) while choosing: the entry on screen goes to the
+    /// desktop, which answers with what it now runs. Until then the picker claims nothing.
+    #[inline(never)]
+    fn send_picked<T: Transport>(&mut self, transport: &mut T, at_ms: ElapsedMs) {
+        if let Some((generation, index)) = self.picker.release(at_ms) {
+            if !self
+                .dispatcher
+                .send_profile_pick(transport, generation, index)
+            {
+                self.picker.send_failed(at_ms);
+            }
+        }
+    }
+
+    /// Applies the picker's entries and the Hold labels the desktop sent, and advances the picker.
+    /// Out of line: the two messages are big, and their temporaries would otherwise sit in the
+    /// run loop's stack frame (`just fw-budget`).
+    #[inline(never)]
+    fn take_picker_messages(&mut self, now: ElapsedMs) {
+        if let Some(update) = self.dispatcher.take_profile_choices() {
+            if self.desk.apply_profile_choices(&update) {
+                self.picker.on_choices(&update.choices, now);
+                self.redraw = true;
+            }
+        }
+        if let Some(update) = self.dispatcher.take_hold_actions() {
+            self.redraw |= self.desk.apply_hold_actions(&update);
+        }
+        self.redraw |= self.picker.poll(now);
+    }
+
+    /// Adds the picker and the hold ring to `view`. Out of line: its temporaries would otherwise
+    /// grow the run loop's stack frame (`just fw-budget`).
+    #[inline(never)]
+    fn attach_overlays(&self, view: &mut DeskView, now: ElapsedMs) {
+        view.hold = self.hold_ring(now);
+        view.picker = self.picker.view(self.desk.choices(), now);
+    }
+
+    /// The hold ring to draw at `now`: a switch held towards a Hold that the desktop said does
+    /// something. A control whose Hold is unknown or unbound shows nothing (never teased), and so
+    /// does a press that held rotation or the picker owns.
+    fn hold_ring(&self, now: ElapsedMs) -> Option<HoldRing> {
+        let (control, held) = (0..3u8).find_map(|i| {
+            self.keys[usize::from(i)]
+                .held_ms(now)
+                .map(|held| (i + 1, held))
+        })?;
+        if held < HOLD_RING_SHOW_MS || self.picker.is_open() {
+            return None;
+        }
+        let label = self.desk.hold_label(control);
+        if label.is_empty() {
+            return None;
+        }
+        Some(HoldRing {
+            control,
+            percent: (held.min(PRESS_MAX_MS) * 100 / PRESS_MAX_MS) as u8,
+            label,
+        })
+    }
+
     fn poll_buttons<T: Transport>(&mut self, transport: &mut T, at_ms: ElapsedMs) {
         if let Some(event) = self.button.poll(at_ms) {
             self.on_button(transport, event, at_ms);
@@ -1148,12 +1310,15 @@ impl<'a> Runtime<'a> {
     /// desktop owns action meaning); everything else is local.
     fn on_button<T: Transport>(&mut self, transport: &mut T, event: ButtonEvent, at_ms: ElapsedMs) {
         self.redraw = true;
+        if event == ButtonEvent::Released {
+            self.send_picked(transport, at_ms);
+        }
         if event == ButtonEvent::Down {
             self.animator.look_at(LookTarget::Knob, at_ms);
         }
         let kind = match event {
             ButtonEvent::Press => InputKind::Press,
-            ButtonEvent::Hold => InputKind::Hold,
+            ButtonEvent::Hold => return,
             ButtonEvent::DoublePress => InputKind::DoublePress,
             ButtonEvent::Reboot => {
                 if !self.reboot {

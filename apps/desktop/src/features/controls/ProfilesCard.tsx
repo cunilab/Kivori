@@ -318,6 +318,10 @@ export function ProfilesCard({
   const visible = showAll ? groups : groups.slice(0, APPS_SHOWN);
   const hidden = groups.length - visible.length;
   const others = config.profiles.filter((p) => p.id !== profile.id);
+  const pinnedAll = config.profiles.filter((p) => p.inPinCycle);
+  // The device holds the first few; a config can carry more (it is kept, never trimmed).
+  const pinned = pinnedAll.slice(0, PROFILE_LIMITS.pinned);
+  const offDevice = pinnedAll.slice(PROFILE_LIMITS.pinned);
 
   return (
     <div data-testid={part === 'new' ? 'new-profile-list' : 'profile-list'} className="space-y-4">
@@ -372,34 +376,28 @@ export function ProfilesCard({
               <span id={`pin-hint-${profile.id}`} className="sr-only">
                 {t.pinHint}
               </span>
-              {profile.custom ||
-              [
-                'capcut',
-                'photoshop',
-                'aftereffects',
-                'premiere',
-                'blender',
-                'claudecode',
-                'codex',
-                'opencode',
-              ].includes(profile.id) ? (
-                <div className="flex items-center gap-2">
-                  <Switch
-                    id={`cycle-${profile.id}`}
-                    checked={profile.inPinCycle}
-                    aria-describedby={`cycle-hint-${profile.id}`}
-                    onCheckedChange={(on) => {
-                      setProfilePinCycle(profile.id, on).catch(fail);
-                    }}
-                  />
-                  <Label htmlFor={`cycle-${profile.id}`} className="text-xs">
-                    {t.inPinCycle}
-                  </Label>
-                  <span id={`cycle-hint-${profile.id}`} className="sr-only">
-                    {t.inPinCycleHint}
-                  </span>
-                </div>
-              ) : null}
+              <div className="flex items-center gap-2">
+                <Switch
+                  id={`cycle-${profile.id}`}
+                  checked={profile.inPinCycle}
+                  aria-describedby={`cycle-hint-${profile.id}`}
+                  onCheckedChange={(on) => {
+                    if (on && pinnedAll.length >= PROFILE_LIMITS.pinned) {
+                      toast.error(t.failed, {
+                        description: format(t.pinLimit, { max: PROFILE_LIMITS.pinned }),
+                      });
+                      return;
+                    }
+                    setProfilePinCycle(profile.id, on).catch(fail);
+                  }}
+                />
+                <Label htmlFor={`cycle-${profile.id}`} className="text-xs">
+                  {t.inPinCycle}
+                </Label>
+                <span id={`cycle-hint-${profile.id}`} className="sr-only">
+                  {t.inPinCycleHint}
+                </span>
+              </div>
               {profile.id !== 'general' ? (
                 <Button size="sm" variant="outline" onClick={() => setPicking(profile)}>
                   <Plus data-icon="inline-start" aria-hidden="true" />
@@ -437,6 +435,20 @@ export function ProfilesCard({
             </div>
           </div>
 
+          <p data-testid="pinned-list" className="text-xs text-muted-foreground">
+            {pinned.length === 0
+              ? t.pinnedNone
+              : format(t.pinnedList, { names: pinned.map((p) => p.name).join(', ') })}{' '}
+            {pinned.length === 1 ? t.pinnedFew : ''}
+          </p>
+          {offDevice.length > 0 ? (
+            <p data-testid="pinned-overflow" role="status" className="text-xs text-warning">
+              {format(t.pinnedOverflow, {
+                max: PROFILE_LIMITS.pinned,
+                names: offDevice.map((p) => p.name).join(', '),
+              })}
+            </p>
+          ) : null}
           {['claudecode', 'codex', 'opencode'].includes(profile.id) ? (
             <p className="text-xs text-muted-foreground">{t.agentHint}</p>
           ) : null}

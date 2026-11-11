@@ -442,7 +442,12 @@ mod tests {
         // The unit (device_probe internals, connected desk): compose 79 ms, 12 fps, busy ~100%.
         let compose = i32::from(internals.compose_ms.expect("compose"));
         assert!((compose - 79).abs() <= 1, "compose {compose} ms");
-        assert_eq!(internals.fps, Some(12), "fps");
+        // Whole-frame sampling rounds the committed ~78 ms fixture to 12 or 13 fps.
+        assert!(
+            matches!(internals.fps, Some(12 | 13)),
+            "fps {:?}",
+            internals.fps
+        );
         let busy = internals.busy_percent.expect("busy");
         assert!((99..=100).contains(&busy), "busy {busy}%");
         let flush = internals.flush_ms.expect("flush");
@@ -654,9 +659,11 @@ mod tests {
         // 12.5 frames a second), and the heartbeat is still answered within a frame or two. The
         // host gives up after 2 s without a reply (3 heartbeats at 1 s).
         let (worst, turned, reported) = flood(5, 20);
-        // The last detent may still be in flight when the run ends.
+        // The last detents may still be in flight when the run ends: the full-screen Volume view
+        // flushes bigger windows than the bar did, so two (10 ms) can be, not one. Run on for 100 ms
+        // and all 4000 arrive.
         assert!(
-            turned - reported <= 1,
+            turned - reported <= 2,
             "{reported} of {turned} detents reached the host"
         );
         assert!(worst <= 250, "worst heartbeat round trip {worst} ms");

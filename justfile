@@ -158,6 +158,40 @@ macos-check:
 macos-audio-test:
     cargo test --locked -p kivori-desktop --test macos_platform write_round_trips_and_classifies_echo_versus_external -- --ignored --exact --test-threads=1
 
+# Print Ubuntu build dependencies; installation is a deliberate administrator action.
+linux-deps:
+    @echo "sudo apt-get install -y build-essential pkg-config libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libudev-dev libssl-dev libpulse-dev patchelf file"
+
+# Install USB access rules for local development or AppImage installations.
+linux-udev:
+    @echo "Installing Kivori USB access rules, reloading udev, and retriggering tty devices."
+    sudo install -m 0644 apps/desktop/src-tauri/linux/60-kivori.rules /usr/lib/udev/rules.d/60-kivori.rules
+    sudo udevadm control --reload-rules
+    sudo udevadm trigger --subsystem-match=tty
+
+# Build Linux deb + AppImage; only AppImage supports the signed in-app updater.
+bundle-linux:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [ "$(uname -s)" = Linux ] || { echo "Run bundle-linux on Linux." >&2; exit 1; }
+    firmware_dir="$(mktemp -d)"
+    trap 'rm -rf "$firmware_dir"' EXIT
+    unset KIVORI_FIRMWARE_PATH
+    manifest="$(bun scripts/build-firmware-set.mjs --out-dir "$firmware_dir/images" --manifest-out "$firmware_dir/manifest.json")"
+    [ -s "$manifest" ] || { echo "Missing firmware manifest" >&2; exit 1; }
+    bun install --frozen-lockfile
+    bun --filter kivori-desktop-ui build
+    cd apps/desktop
+    args=(--config src-tauri/tauri.release.conf.json --config src-tauri/tauri.release.linux.conf.json)
+    if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+        args+=(--config '{"bundle":{"createUpdaterArtifacts":false}}')
+    fi
+    KIVORI_FIRMWARE_MANIFEST="$manifest" bunx tauri build "${args[@]}" -- --no-default-features
+
+# Native Linux unit tests; no deliberate audio writes or key injection.
+linux-check:
+    cargo test --locked -p kivori-desktop --lib platform::linux
+
 # ---- dev ----
 
 # Run the desktop UI dev server.

@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { getGnomeShortcutPolicy } from '@/lib/ipc/gnome';
 import type { FormEvent, KeyboardEvent, ReactElement } from 'react';
 import { Button } from '@kivori/ui/components/button';
 import { Input } from '@kivori/ui/components/input';
@@ -19,6 +20,7 @@ import type {
   ControlRef,
   MacroSpec,
   ProfileConfigDto,
+  ProfileId,
   RotateSpec,
   SlotSpec,
   StepSpec,
@@ -35,6 +37,21 @@ export const LABEL_MAX = 32;
 export const LABEL_COMFORTABLE = 10;
 const NOT_SET = 'none';
 const DELAY = 'delay';
+
+const ROTATE_SUGGESTIONS: Partial<
+  Record<ProfileId, { label: string; cw: string; ccw: string; name: string }>
+> = {
+  browser: {
+    label: 'Tabs',
+    cw: 'Ctrl+Tab',
+    ccw: 'Ctrl+Shift+Tab',
+    name: p.rotateSuggestions.browser,
+  },
+  premiere: { label: 'Frame', cw: 'Right', ccw: 'Left', name: p.rotateSuggestions.premiere },
+  claudecode: { label: 'History', cw: 'Down', ccw: 'Up', name: p.rotateSuggestions.history },
+  codex: { label: 'History', cw: 'Down', ccw: 'Up', name: p.rotateSuggestions.history },
+  opencode: { label: 'Navigate', cw: 'Down', ccw: 'Up', name: p.rotateSuggestions.opencode },
+};
 
 /** The catalog id of a saved binding (a knob shortcut pair is `knobShortcuts` in the catalog). */
 export function catalogId(spec: ActionSpec | RotateSpec): string {
@@ -54,7 +71,7 @@ export function labelProblem(label: string): string | null {
 export interface PickerTarget {
   /** `null` when picking a macro step (no profile involved). */
   profile: ProfileConfigDto | null;
-  control: ControlRef | 'rotate' | 'heldRotate' | 'step';
+  control: ControlRef | 'rotate' | 'step';
   /** The control's name, for the sheet title. */
   name: string;
   /** What is bound now (`null` = unbound). */
@@ -113,11 +130,11 @@ function PickerForm({
   onSaveRotate,
   onPickStep,
 }: Omit<ActionPickerProps, 'target'> & { target: PickerTarget }): ReactElement {
-  const heldRotate = target.control === 'heldRotate';
-  const rotate = target.control === 'rotate' || heldRotate;
+  const rotate = target.control === 'rotate';
   const stepMode = target.control === 'step';
+  const suggestion = rotate && target.profile ? ROTATE_SUGGESTIONS[target.profile.id] : undefined;
   const spec = target.spec;
-  const [id, setId] = useState(spec ? catalogId(spec) : heldRotate ? 'knobShortcuts' : NOT_SET);
+  const [id, setId] = useState(spec ? catalogId(spec) : NOT_SET);
   const [app, setApp] = useState(
     spec && 'app' in spec ? spec.app : (target.profile?.apps[0] ?? ''),
   );
@@ -128,12 +145,7 @@ function PickerForm({
   const [label, setLabel] = useState(
     spec?.kind === 'shortcuts'
       ? spec.label
-      : (target.label ??
-          (spec?.kind === 'appVolume'
-            ? (spec.label ?? '')
-            : heldRotate
-              ? t.gestures.heldRotate.name
-              : '')),
+      : (target.label ?? (spec?.kind === 'appVolume' ? (spec.label ?? '') : '')),
   );
   const [macroId, setMacroId] = useState(spec?.kind === 'macro' ? spec.id : '');
   const [delayMs, setDelayMs] = useState('500');
@@ -142,10 +154,7 @@ function PickerForm({
 
   // A step is a discrete action that is not a macro (no nesting), or a wait.
   const entries = (catalog ?? []).filter(
-    (e) =>
-      e.slot === (rotate ? 'rotate' : 'discrete') &&
-      !(stepMode && e.id === 'macro') &&
-      (!heldRotate || e.id === 'knobShortcuts'),
+    (e) => e.slot === (rotate ? 'rotate' : 'discrete') && !(stepMode && e.id === 'macro'),
   );
   const entry = entries.find((e) => e.id === id) ?? null;
   const isDelay = stepMode && id === DELAY;
@@ -160,7 +169,6 @@ function PickerForm({
     );
   const showLabel =
     !stepMode &&
-    !heldRotate &&
     id !== NOT_SET &&
     id !== 'systemVolume' &&
     (!rotate || params === 'app' || params === 'shortcutPair');
@@ -176,7 +184,32 @@ function PickerForm({
     (stepMode && id === NOT_SET);
   const unavailable =
     id !== NOT_SET && !isDelay && (entry === null || entry.availability !== 'available');
-  const canSave = !saving && !problem && !missing && !unavailable;
+  const policyInput =
+    params === 'shortcut'
+      ? JSON.stringify([keys])
+      : params === 'shortcutPair'
+        ? JSON.stringify([cw, ccw])
+        : '';
+  const [policyResult, setPolicyResult] = useState({ input: '', reason: null as string | null });
+  useEffect(() => {
+    if (!policyInput) return;
+    let active = true;
+    const values = JSON.parse(policyInput) as string[];
+    void Promise.all(values.map((keys) => getGnomeShortcutPolicy(keys)))
+      .then((results) => {
+        if (active) setPolicyResult({ input: policyInput, reason: results.find(Boolean) ?? null });
+      })
+      .catch(() => {
+        if (active) setPolicyResult({ input: policyInput, reason: p.shortcutPolicyUnavailable });
+      });
+    return () => {
+      active = false;
+    };
+  }, [policyInput]);
+  const checkingPolicy = Boolean(policyInput) && policyResult.input !== policyInput;
+  const policyProblem = policyResult.input === policyInput ? policyResult.reason : null;
+  const canSave =
+    !saving && !problem && !missing && !unavailable && !checkingPolicy && !policyProblem;
 
   const discrete = (): ActionSpec | null => {
     switch (id) {
@@ -199,7 +232,6 @@ function PickerForm({
     }
   };
   const rotation = (): RotateSpec | null => {
-    if (heldRotate && id === NOT_SET) return null;
     const text = label.trim();
     if (id === 'appVolume') {
       return text ? { kind: 'appVolume', app, label: text } : { kind: 'appVolume', app };
@@ -248,13 +280,34 @@ function PickerForm({
       </SheetHeader>
 
       <div className="flex-1 space-y-5 overflow-y-auto px-4">
+        {suggestion && (
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">{p.rotateSuggestions.hint}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={
+                !entries.some((e) => e.id === 'knobShortcuts' && e.availability === 'available')
+              }
+              onClick={() => {
+                setId('knobShortcuts');
+                setCw(suggestion.cw);
+                setCcw(suggestion.ccw);
+                setLabel(suggestion.label);
+              }}
+            >
+              {suggestion.name}
+            </Button>
+          </div>
+        )}
         <RadioGroup
           aria-label={p.actionGroup}
           value={id}
           onValueChange={(value) => setId(value as string)}
           className="gap-4"
         >
-          {(!rotate || heldRotate) && !stepMode && (
+          {!rotate && !stepMode && (
             <Option
               value={NOT_SET}
               name={p.notSet}
@@ -400,6 +453,11 @@ function PickerForm({
             />
           </Field>
         )}
+        {policyProblem ? (
+          <p role="alert" className="text-sm text-destructive">
+            {policyProblem}
+          </p>
+        ) : null}
         {error ? (
           <p role="alert" className="text-sm text-destructive">
             {p.saveFailed}: {error}
