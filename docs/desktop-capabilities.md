@@ -196,7 +196,7 @@ active profile presses no keys. Windows has no such permission and is unchanged.
 | Per-app volume / mute | Native sessions | Unavailable | PulseAudio streams |
 | Microphone mute | All devices, read-back | All devices, subject to writable mute support | All capture devices, read-back |
 | Media keys / now playing | Native media | Bundled media adapter | MPRIS on X11 and Wayland; with no player or unreachable bus, media-key fallback on X11 or via the authorized Kivori GNOME extension (quiet, unverified acknowledgement) |
-| Keyboard shortcuts | Native input | Accessibility required | X11; GNOME Wayland with Kivori App Profiles extension v5+ (one logout after install/update and one remembered Shell approval for the installed executable); keyboard portal on other Wayland desktops |
+| Keyboard shortcuts | Native input | Accessibility required | X11; GNOME Wayland with Kivori App Profiles extension v7+ (one logout after install/update and one remembered Shell approval for the installed executable); keyboard portal on other Wayland desktops |
 | Automatic app profiles | Foreground app | Foreground app | X11 foreground app; GNOME Wayland works with the Kivori GNOME extension (46–50) |
 | CPU / RAM | Native | Native | `/proc` |
 | Sleep / wake / lock | Native | Native | systemd-logind D-Bus |

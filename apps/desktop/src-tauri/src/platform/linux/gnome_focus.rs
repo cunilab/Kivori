@@ -24,7 +24,7 @@ pub(super) const BUS: &str = "id.cunilab.KivoriFocus";
 const PATH: &str = "/id/cunilab/KivoriFocus";
 /// The extension version this build embeds (`metadata.json` "version", `bridge.js` VERSION).
 /// A running copy at least this new is trusted; an older one is never talked to.
-pub(super) const VERSION: u32 = 6;
+pub(super) const VERSION: u32 = 7;
 const TTL: Duration = Duration::from_secs(3);
 const HEARTBEAT: Duration = Duration::from_secs(1);
 const BACKOFF_FIRST: Duration = Duration::from_secs(2);
@@ -441,6 +441,9 @@ fn shortcut_call_error(error: zbus::Error) -> ActionError {
             "org.freedesktop.DBus.Error.LimitsExceeded" => {
                 "Keyboard shortcuts are arriving too quickly"
             }
+            "id.cunilab.KivoriFocus.Error.ModifiersHeld" => {
+                "Release Ctrl, Alt, Shift or Super, then try again"
+            }
             _ => "GNOME could not send the keyboard shortcut",
         },
         _ => return ActionError::Uncertain,
@@ -546,6 +549,14 @@ mod tests {
                 matches!(shortcut_call_error(error), ActionError::Failed(reason) if !reason.is_empty())
             );
         }
+        let error = method_error(
+            "id.cunilab.KivoriFocus.Error.ModifiersHeld",
+            "Modifier keys are held down",
+        );
+        assert_eq!(
+            shortcut_call_error(error),
+            ActionError::Failed("Release Ctrl, Alt, Shift or Super, then try again".into())
+        );
     }
 
     #[test]

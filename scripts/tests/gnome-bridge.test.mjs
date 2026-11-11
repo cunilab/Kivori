@@ -115,7 +115,12 @@ async function fixture({
   };
   let calls = 0,
     resets = 0;
-  keyboard ??= { send: () => calls++, reset: () => resets++, suspended: false };
+  keyboard ??= {
+    send: () => calls++,
+    reset: () => resets++,
+    modifiersHeld: () => false,
+    suspended: false,
+  };
   const bridge = new FocusBridge(read, { emit_signal: () => {} }, identity, approve, keyboard);
   await bridge.SubscribeAsync([], invocation());
   return { bridge, identity, peers, approved, calls: () => calls, resets: () => resets };
@@ -460,12 +465,15 @@ test('metadata, bridge version, and all extension ES modules parse', () => {
 
 test('stop revokes the injector, disposes the keyboard and retains unconfirmed releases', async () => {
   let disposed = 0;
-  const keyboard = new Keyboard(() => ({
-    notify: (_key, down) => {
-      if (!down) throw new Error('release unavailable');
-    },
-    dispose: () => disposed++,
-  }));
+  const keyboard = new Keyboard(
+    () => ({
+      notify: (_key, down) => {
+        if (!down) throw new Error('release unavailable');
+      },
+      dispose: () => disposed++,
+    }),
+    () => 0,
+  );
   const f = await fixture({ keyboard });
   await authorize(f.bridge);
   assert.match((await send(f.bridge)).error, /Failed$/);
@@ -698,4 +706,50 @@ test('older GNOME uses Clutter.get_default_backend when the stage has no context
   } finally {
     delete Clutter.get_default_backend;
   }
+});
+
+test('held seat modifiers refuse the chord: held Alt + lone F2 must not become Alt+F2', async () => {
+  let held = true;
+  let calls = 0;
+  const keyboard = {
+    send: () => calls++,
+    reset: () => {},
+    modifiersHeld: () => held,
+    suspended: false,
+  };
+  const f = await fixture({ keyboard });
+  await authorize(f.bridge);
+  assert.match((await send(f.bridge, { modifiers: 0, key: 0xffbf })).error, /ModifiersHeld$/);
+  assert.equal(calls, 0);
+  // A refusal does not consume the rate-limit slot.
+  held = false;
+  assert.equal((await send(f.bridge, { modifiers: 0, key: 0xffbf })).ok, true);
+  assert.equal(calls, 1);
+});
+
+test('seat modifier reading: chord modifiers held, lock keys ignored, unknown fails closed', () => {
+  const held = (read) => new Keyboard(() => ({}), read).modifiersHeld();
+  for (const mods of [1, 4, 8, 32, 64, 128, 1 << 26, 1 << 27, 1 << 28, 4 | 8])
+    assert.equal(
+      held(() => mods),
+      true,
+      `mods ${mods}`,
+    );
+  for (const mods of [0, 2, 16, 2 | 16, 1 << 8])
+    assert.equal(
+      held(() => mods),
+      false,
+      `mods ${mods}`,
+    );
+  assert.equal(
+    held(() => undefined),
+    true,
+  );
+  assert.equal(
+    held(() => {
+      throw new Error('no seat');
+    }),
+    true,
+  );
+  assert.equal(new Keyboard(() => ({})).modifiersHeld(), true);
 });

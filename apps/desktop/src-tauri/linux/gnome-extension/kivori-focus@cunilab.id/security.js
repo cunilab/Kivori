@@ -208,10 +208,15 @@ export function consentDescription(executable) {
   return `Executable: ${executable}\n\nThis executable will be able to press keyboard shortcuts in your apps. Keyboard control is paused while GNOME is locked or showing a modal prompt. This approval is remembered for this executable.`;
 }
 
+// Clutter.ModifierType Shift, Control, Mod1 (Alt), Mod3, Mod4, Mod5, Super, Hyper, Meta.
+// Caps Lock (Lock) and Num Lock (Mod2) do not change a chord and are ignored.
+const CHORD_MODIFIERS = 1 | 4 | 8 | 32 | 64 | 128 | (1 << 26) | (1 << 27) | (1 << 28);
+
 /** Failed releases remain tracked. No new chord can run while cleanup is uncertain. */
 export class Keyboard {
-  constructor(create) {
+  constructor(create, readModifiers = () => null) {
     this.create = create;
+    this.readModifiers = readModifiers;
     this.device = null;
     this.held = new Set();
     this.suspended = false;
@@ -244,6 +249,17 @@ export class Keyboard {
       this.device = null;
       this.disposed = false;
       this.suspended = false;
+    }
+  }
+
+  /** Seat modifiers already down would join the injected chord (held Alt + lone F2 is Alt+F2),
+   *  bypassing the policy. An unreadable seat state counts as held. */
+  modifiersHeld() {
+    try {
+      const mods = this.readModifiers();
+      return !Number.isInteger(mods) || (mods & CHORD_MODIFIERS) !== 0;
+    } catch {
+      return true;
     }
   }
 

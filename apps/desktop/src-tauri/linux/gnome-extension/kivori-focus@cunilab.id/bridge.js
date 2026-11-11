@@ -5,7 +5,7 @@ import { allowedShortcut } from './security.js';
 export const BUS = 'id.cunilab.KivoriFocus';
 export const PATH = '/id/cunilab/KivoriFocus';
 // Bump with metadata.json and desktop gnome_focus.rs on every protocol/behavior change.
-export const VERSION = 6;
+export const VERSION = 7;
 const MAX_SUBSCRIBERS = 4;
 const XML = `<node><interface name="${BUS}">
   <property name="Version" type="u" access="read"/>
@@ -209,6 +209,10 @@ export class FocusBridge {
         'AccessDenied',
         'Shortcut expired, focus changed, or desktop is protected',
       );
+      return;
+    }
+    if (this._keyboard.modifiersHeld()) {
+      invocation.return_dbus_error(`${BUS}.Error.ModifiersHeld`, 'Modifier keys are held down');
       return;
     }
     if (this._lastShortcut !== null && now - this._lastShortcut < 20000) {

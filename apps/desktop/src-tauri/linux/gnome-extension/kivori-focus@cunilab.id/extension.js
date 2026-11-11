@@ -27,7 +27,10 @@ function readFocus() {
 
 export default class KivoriFocus extends Extension {
   enable() {
-    this._keyboard ??= new Keyboard(() => createKeyboardDevice(global.stage));
+    this._keyboard ??= new Keyboard(
+      () => createKeyboardDevice(global.stage),
+      () => global.get_pointer()[2], // [x, y, Clutter.ModifierType] of the seat
+    );
     // Retain the snapshot across disable/re-enable; disk changes need a new Shell session.
     this._identity ??= new Identity(this.path);
     this._identity.watch();
