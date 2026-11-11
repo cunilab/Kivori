@@ -24,7 +24,14 @@ fn v1_to_v2(mut raw: Value) -> Result<Value, LoadError> {
     Ok(raw)
 }
 
-const MIGRATIONS: &[Migration] = &[v1_to_v2];
+fn v2_to_v3(mut raw: Value) -> Result<Value, LoadError> {
+    raw.as_object_mut()
+        .ok_or(LoadError::Corrupt)?
+        .insert("version".into(), Value::from(3));
+    Ok(raw)
+}
+
+const MIGRATIONS: &[Migration] = &[v1_to_v2, v2_to_v3];
 
 /// Upgrades `raw` to the current version. Returns the config and, when a migration ran, the version
 /// it started from.
@@ -57,8 +64,14 @@ pub(crate) fn migrate_with(
     if let Some(fields) = raw.as_object_mut() {
         fields.remove("led");
     }
+    let migrated = version < current;
     let mut file: ConfigFile = serde_json::from_value(raw).map_err(|_| LoadError::Corrupt)?;
-    file.drop_legacy();
+    // A pre-v3 `heldRotate` was an unused shortcut pair. A v3 file stores the real binding.
+    if migrated {
+        file.drop_legacy();
+    } else {
+        file.drop_empty();
+    }
     if file.version != current || file.display.validate().is_err() {
         return Err(LoadError::Corrupt);
     }
@@ -77,9 +90,60 @@ mod tests {
         let (old, from) = migrate(json!({ "version": 1 })).unwrap();
         assert_eq!(old, ConfigFile::default());
         assert_eq!(from, Some(1));
-        let (file, from) = migrate(json!({ "version": 2 })).unwrap();
+        let (migrated, from) = migrate(json!({ "version": 2 })).unwrap();
+        assert_eq!(migrated, ConfigFile::default());
+        assert_eq!(from, Some(2));
+        let (file, from) = migrate(json!({ "version": 3 })).unwrap();
         assert_eq!(file, ConfigFile::default());
         assert_eq!(from, None);
+    }
+
+    #[test]
+    fn a_version_2_file_without_overrides_keeps_mic_mute_and_view_switch() {
+        let (file, from) = migrate(json!({
+            "version": 2,
+            "customProfiles": [{
+                "id": "custom-1",
+                "name": "Design",
+                "apps": ["figma.exe"],
+                "bindings": {
+                    "press": { "action": { "kind": "playPause" } },
+                    "buttons": [
+                        { "press": { "action": { "kind": "previousTrack" } } },
+                        { "press": { "action": { "kind": "playPause" } } },
+                        { "press": { "action": { "kind": "nextTrack" } } }
+                    ]
+                }
+            }]
+        }))
+        .unwrap();
+        assert_eq!(from, Some(2));
+        let resolved =
+            crate::config::resolve::resolve(crate::desk::profile::builtins_for(false), &file)
+                .unwrap();
+        let general = &resolved.profiles[0];
+        assert_eq!(
+            general.bindings.buttons[1].hold.action,
+            Some(crate::desk::Action::ToggleMicMute)
+        );
+        assert_eq!(
+            general.bindings.double_press.action,
+            Some(crate::desk::Action::SwitchView)
+        );
+        let custom = resolved.profiles.last().unwrap();
+        assert_eq!(
+            custom.bindings.press.action,
+            Some(crate::desk::Action::PlayPause)
+        );
+        assert_eq!(
+            custom.bindings.buttons[1].hold.action,
+            Some(crate::desk::Action::ToggleMicMute),
+            "a stored profile with no middle-hold override keeps mic mute"
+        );
+        assert_eq!(
+            custom.bindings.double_press.action,
+            Some(crate::desk::Action::SwitchView)
+        );
     }
 
     #[test]
@@ -104,6 +168,30 @@ mod tests {
             !text.contains("{}") && !text.contains("heldRotate"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn a_version_3_held_rotate_is_a_binding_and_an_absent_one_is_the_picker() {
+        let (kept, from) = migrate(json!({
+            "version": 3,
+            "profiles": {
+                "general": { "heldRotate": { "kind": "systemVolume" } },
+            },
+        }))
+        .unwrap();
+        assert_eq!(from, None);
+        assert_eq!(
+            kept.profiles[&ProfileId::General].held_rotate,
+            Some(crate::config::RotateSpec::SystemVolume)
+        );
+        let (fresh, _) = migrate(json!({ "version": 3 })).unwrap();
+        let resolved =
+            crate::config::resolve::resolve(crate::desk::profile::builtins_for(false), &fresh)
+                .unwrap();
+        assert!(resolved
+            .profiles
+            .iter()
+            .all(|p| p.held_rotate == crate::desk::profile::RotateBinding::ProfilePicker));
     }
 
     #[test]

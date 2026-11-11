@@ -106,14 +106,16 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   The picker shows a pick as confirmed only when the desktop reports it now runs it; without an
   answer it says "Not confirmed" and the real state returns. Without the picker capability the
   older held-rotation gesture is unchanged.
-- Knob Press toggles system output mute in every built-in profile; Double press changes view.
-  Knob Hold has no bindable action and never shows a hold ring. Old Hold overrides remain
+- Knob Press toggles system output mute in every built-in profile. Double press switches the
+  screen view by default and can be bound to another action per profile; with nothing bound it
+  does nothing. Knob Hold has no bindable action and never shows a hold ring. Old Hold overrides remain
   readable but do not execute. Every built-in knob turns system output volume; saved rotate
   overrides and custom profiles keep their existing targets. Browser tab switching, Premiere
   frame stepping, and agent history/navigation are optional presets in Controls, never defaults.
 - **Hold ring:** contextual buttons with an action show progress over the 1 s Hold threshold.
-  Release when full to run the action; release early for Press. The middle button always mutes
-  every capture device in every profile. Left and right Holds remain profile-specific.
+  Release when full to run the action; release early for Press. The middle button's Hold is mic
+  mute by default in every profile and can be bound to another action; its ring label comes from
+  that binding. Left and right Holds remain profile-specific.
   At ~2 s a contextual button's ring vanishes and releasing fires nothing.
 - Short press fires only if released within **1 s**. Discrete mappings fire once per
   press; no implicit key-repeat.
@@ -156,9 +158,13 @@ Timings are initial targets. They may be tuned; the rule behind them may not cha
   At most 16 custom profiles; a name longer than the panel's profile slot is shortened there,
   never replaced. Deleting a profile sends its apps back to General.
 - Holding the middle contextual button for 1 s, then releasing, toggles mute on every capture
-  device. This replaces the former profile-pin gesture automatically, including for existing configs.
-  The pinned profile list is retained for the knob's two-detent Hold + turn picker; a selected pin
-  ignores focus but never Protected.
+  device unless that profile binds the Hold to something else. Existing configs that never stored
+  a middle-Hold override keep mic mute. This replaces the former profile-pin gesture. The pinned
+  profile list is retained for the knob's two-detent Hold + turn picker; a selected pin
+  ignores focus but never Protected. Knob Hold is unbound until a profile binds it: release
+  between 1 s and 2 s, and recovery at 2 s cancels it. Hold + turn is the on-device profile
+  picker until a profile binds volume or shortcuts instead. Both need a firmware that advertises
+  them; older firmware keeps today's picker and does not run a knob Hold.
 - In a protected context, shortcuts and launches are suspended: their labels disappear and a
   press says it can't run. System volume, media keys and mute keep working.
 - A knob bound to shortcuts sends one per detent with no badge per detent; the label is the
@@ -339,27 +345,27 @@ Numbers are fixed from the original user-story contract. Gaps are intentional; n
 4. **Confirm only what is knowable.** Known success, known failure and unknown outcome stay distinct.
 5. **No stale replay.** Expired input never runs after a connection or service recovers. Within one session a discrete action older than 750 ms is dropped too; detents and gesture boundaries are exempt (see Input and gestures).
 6. **Explicit action scope.** An action's meaning never changes because another profile is active.
-8. **Interaction commits intent.** Deliberate input commits a valid pending foreground app first.
-9. **Security context beats profile fallback.** Protected is classified first; never General.
-12. **Gesture ownership.** A gesture stays bound to the context in which it began.
-14. **Wake gestures are atomic.** A gesture that begins in Display Sleep is wake-only in full.
-17. **User isolation.** One OS user's mappings and presentation never show or act for another.
-19. **No hidden fallback.** If an action cannot run, Kivori says so instead of switching mechanism.
-21. **Known host/session state wins.** Sleep, lock, user switch or update outranks link symptoms.
-24. **Hardware recovery is out-of-band.** The recovery hold works regardless of Desktop, assignment, sleep or restrictions.
-30. **Continuous gestures reconcile at gesture boundaries.** External updates do not fight an active rotary gesture; confirmed state reconciles when it ends.
-31. **Execution health is separate from transport health.** A link drop does not fail a confirmed host job.
-33. **Recovery hold has absolute input arbitration.** Detents during a recovery hold never cancel it or run actions.
-36. **Takeover states preempt active gestures.** A takeover cancels the gesture without waiting for its end.
-38. **No ambiguous silence.** When it can render, every user-relevant condition has an intentional look.
-40. **Short press is release-qualified.** A short press is ineligible once 1 s passes.
-42. **Only observed hardware input is actionable.** Kivori never reconstructs detents the device did not observe.
-45. **Composite confirmation is capped.** A macro is never more confirmed than its least-confirmed required step.
-46. **Input conditioning precedes gesture semantics.** Raw encoder edges may be filtered; only validated logical detents drive reversal and acceleration.
-50. **Transient presentation restores current underlying truth.** A finished transient shows the real state (including Busy), not Idle.
-54. **A normal rotary binding owns both directions.** `Rotate` reserves both directions; unrelated scopes never split them.
-56. **Update artifacts are authenticated.** Nothing is installed without passing integrity checks.
-58. **Update availability is not consent.** A newer version never silently triggers a disruptive flash.
+7. **Interaction commits intent.** Deliberate input commits a valid pending foreground app first.
+8. **Security context beats profile fallback.** Protected is classified first; never General.
+9. **Gesture ownership.** A gesture stays bound to the context in which it began.
+10. **Wake gestures are atomic.** A gesture that begins in Display Sleep is wake-only in full.
+11. **User isolation.** One OS user's mappings and presentation never show or act for another.
+12. **No hidden fallback.** If an action cannot run, Kivori says so instead of switching mechanism.
+13. **Known host/session state wins.** Sleep, lock, user switch or update outranks link symptoms.
+14. **Hardware recovery is out-of-band.** The recovery hold works regardless of Desktop, assignment, sleep or restrictions.
+15. **Continuous gestures reconcile at gesture boundaries.** External updates do not fight an active rotary gesture; confirmed state reconciles when it ends.
+16. **Execution health is separate from transport health.** A link drop does not fail a confirmed host job.
+17. **Recovery hold has absolute input arbitration.** Detents during a recovery hold never cancel it or run actions.
+18. **Takeover states preempt active gestures.** A takeover cancels the gesture without waiting for its end.
+19. **No ambiguous silence.** When it can render, every user-relevant condition has an intentional look.
+20. **Short press is release-qualified.** A short press is ineligible once 1 s passes.
+21. **Only observed hardware input is actionable.** Kivori never reconstructs detents the device did not observe.
+22. **Composite confirmation is capped.** A macro is never more confirmed than its least-confirmed required step.
+23. **Input conditioning precedes gesture semantics.** Raw encoder edges may be filtered; only validated logical detents drive reversal and acceleration.
+24. **Transient presentation restores current underlying truth.** A finished transient shows the real state (including Busy), not Idle.
+25. **A normal rotary binding owns both directions.** `Rotate` reserves both directions; unrelated scopes never split them.
+26. **Update artifacts are authenticated.** Nothing is installed without passing integrity checks.
+27. **Update availability is not consent.** A newer version never silently triggers a disruptive flash.
 
 ## Product acceptance gates
 

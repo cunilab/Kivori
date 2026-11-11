@@ -1019,7 +1019,7 @@ impl<'a> Runtime<'a> {
         self.dropped_edges = before;
         if lost && (self.button.is_down() || samples.iter().any(|(levels, _)| levels.sw)) {
             self.held_rotation_blocked = true;
-            if self.picker.is_choosing() || self.dispatcher.profile_picker_enabled() {
+            if self.picker.is_choosing() || self.dispatcher.held_turn_is_picker() {
                 // The picker queues nothing until release, so there is no stale held input to
                 // discard: cancel it locally (the screen says so truthfully) and keep the link.
                 self.picker.close();
@@ -1159,11 +1159,9 @@ impl<'a> Runtime<'a> {
             }
         }
         // A partial turn during switch debounce must never start a held rotation.
-        let picker_on = self.dispatcher.profile_picker_enabled();
-        if levels.sw
-            && !self.button.is_down()
-            && (picker_on || self.dispatcher.held_rotation_enabled())
-        {
+        let picker_on = self.dispatcher.held_turn_is_picker();
+        let pressed_rotary = self.dispatcher.pressed_rotary_allowed();
+        if levels.sw && !self.button.is_down() && (picker_on || pressed_rotary) {
             self.decoder.reset();
             return;
         }
@@ -1178,7 +1176,7 @@ impl<'a> Runtime<'a> {
         let control = if levels.sw
             && self.button.is_down()
             && !self.held_rotation_blocked
-            && (picker_on || self.dispatcher.held_rotation_enabled())
+            && (picker_on || pressed_rotary)
         {
             let Some(prior_press) = self.button.claim_rotation() else {
                 return;
@@ -1261,6 +1259,11 @@ impl<'a> Runtime<'a> {
         if let Some(update) = self.dispatcher.take_hold_actions() {
             self.redraw |= self.desk.apply_hold_actions(&update);
         }
+        // Leaving the picker closes it; the next held turn then follows the new mode.
+        if self.dispatcher.take_held_turn_changed() && !self.dispatcher.held_turn_is_picker() {
+            self.picker.close();
+            self.redraw = true;
+        }
         self.redraw |= self.picker.poll(now);
     }
 
@@ -1276,12 +1279,24 @@ impl<'a> Runtime<'a> {
     /// something. A control whose Hold is unknown or unbound shows nothing (never teased), and so
     /// does a press that held rotation or the picker owns.
     fn hold_ring(&self, now: ElapsedMs) -> Option<HoldRing> {
-        let (control, held) = (0..3u8).find_map(|i| {
-            self.keys[usize::from(i)]
-                .held_ms(now)
-                .map(|held| (i + 1, held))
+        if self.picker.is_open() {
+            return None;
+        }
+        // The knob ring exists only once `KNOB_HOLD_V1` is negotiated. Without it the three
+        // contextual buttons are the only switches that can draw one, as before.
+        let knob = self
+            .dispatcher
+            .knob_hold_enabled()
+            .then(|| self.button.held_ms(now).map(|held| (0, held)))
+            .flatten();
+        let (control, held) = knob.or_else(|| {
+            (0..3u8).find_map(|i| {
+                self.keys[usize::from(i)]
+                    .held_ms(now)
+                    .map(|held| (i + 1, held))
+            })
         })?;
-        if held < HOLD_RING_SHOW_MS || self.picker.is_open() {
+        if held < HOLD_RING_SHOW_MS {
             return None;
         }
         let label = self.desk.hold_label(control);
@@ -1318,7 +1333,14 @@ impl<'a> Runtime<'a> {
         }
         let kind = match event {
             ButtonEvent::Press => InputKind::Press,
-            ButtonEvent::Hold => return,
+            // A release inside the Hold window (1 s to 2 s). Recovery at 2 s is a different event
+            // and never reaches here, and a press the picker or a held turn consumed is `Released`.
+            ButtonEvent::Hold => {
+                if !self.dispatcher.knob_hold_enabled() {
+                    return;
+                }
+                InputKind::Hold
+            }
             ButtonEvent::DoublePress => InputKind::DoublePress,
             ButtonEvent::Reboot => {
                 if !self.reboot {

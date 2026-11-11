@@ -15,7 +15,6 @@ import {
   SlidersHorizontal,
   Workflow,
   Hand,
-  Lock,
   MousePointerClick,
   RefreshCw,
   RotateCw,
@@ -73,6 +72,7 @@ import {
   resetConfig,
   resetProfile,
   setBinding,
+  setHeldRotate,
   setRotate,
   testAction,
   testRotate,
@@ -106,6 +106,8 @@ import { ActionPicker, catalogId } from './ActionPicker';
 import { NewProfileArt } from './illustrations';
 import { MacroEditor, describeStep } from './MacroEditor';
 import { macroTemplates } from './macro-templates';
+import { anySlotMutesMic } from './mic-warning';
+import { anyProfileKeepsPicker } from './picker-warning';
 import { macroUsage } from './macro-usage';
 import { ProfileRail } from './ProfileRail';
 import { ProfilesCard } from './ProfilesCard';
@@ -122,15 +124,13 @@ type GestureKey = keyof typeof t.gestures;
 interface Row {
   key: GestureKey;
   Icon: LucideIcon;
-  /** What `setBinding` / `setRotate` edits; `null` = not editable. */
-  control: ControlRef | 'rotate' | null;
+  /** What `setBinding` / `setRotate` / `setHeldRotate` edits. */
+  control: ControlRef | 'rotate' | 'heldRotate';
   /** The bound action (`null` = unbound), or `undefined` for rows that are not bindings. */
   spec?: ActionSpec | RotateSpec | null;
   label?: string | null;
   deviceLabel?: string;
   overridden?: boolean;
-  /** Fixed text for rows that cannot be edited. */
-  fixed?: string;
 }
 
 function slotRow(key: GestureKey, Icon: LucideIcon, control: ControlRef, slot: SlotDto): Row {
@@ -145,35 +145,31 @@ function slotRow(key: GestureKey, Icon: LucideIcon, control: ControlRef, slot: S
   };
 }
 
-function rows(profile: ProfileConfigDto): Row[] {
-  const { rotate, press, buttons } = profile;
-  const holdRow = (i: 0 | 1 | 2, key: GestureKey, control: ControlRef): Row => {
-    const slot = buttons[i].hold;
-    // The middle button's Hold mutes every microphone; it cannot be rebound.
-    return slot === 'micMute'
-      ? { key, Icon: Hand, control: null, fixed: t.micMuteFixed }
-      : slotRow(key, Hand, control, slot);
+function rotateRow(key: 'rotate' | 'heldRotate', spec: ProfileConfigDto['rotate']): Row {
+  return {
+    key,
+    Icon: RotateCw,
+    control: key,
+    spec: spec.spec,
+    deviceLabel: spec.deviceLabel,
+    overridden: spec.overridden,
   };
+}
+
+function rows(profile: ProfileConfigDto): Row[] {
+  const { rotate, heldRotate, press, doublePress, hold, buttons } = profile;
   return [
-    {
-      key: 'rotate',
-      Icon: RotateCw,
-      control: 'rotate',
-      spec: rotate.spec,
-      deviceLabel: rotate.deviceLabel,
-      overridden: rotate.overridden,
-    },
-    // The device's own profile picker; nothing to bind (like Double press).
-    { key: 'heldRotate', Icon: RotateCw, control: null, fixed: t.profilePickerFixed },
+    rotateRow('rotate', rotate),
+    rotateRow('heldRotate', heldRotate),
     slotRow('press', MousePointerClick, 'press', press),
-    { key: 'doublePress', Icon: RefreshCw, control: null, fixed: t.doublePressFixed },
-    { key: 'hold', Icon: Hand, control: null, fixed: t.knobHoldFixed },
+    slotRow('doublePress', RefreshCw, 'doublePress', doublePress),
+    slotRow('hold', Hand, 'hold', hold),
     slotRow('button1', CircleDot, 'button1Press', buttons[0].press),
     slotRow('button2', CircleDot, 'button2Press', buttons[1].press),
     slotRow('button3', CircleDot, 'button3Press', buttons[2].press),
-    holdRow(0, 'button1Hold', 'button1Hold'),
-    holdRow(1, 'button2Hold', 'button1Hold'),
-    holdRow(2, 'button3Hold', 'button3Hold'),
+    slotRow('button1Hold', Hand, 'button1Hold', buttons[0].hold),
+    slotRow('button2Hold', Hand, 'button2Hold', buttons[1].hold),
+    slotRow('button3Hold', Hand, 'button3Hold', buttons[2].hold),
   ];
 }
 
@@ -202,7 +198,12 @@ function describe(spec: ActionSpec | RotateSpec | null, macros: MacroSpec[]): st
 type TestSpec = ActionSpec | RotateSpec;
 
 function isRotateSpec(spec: TestSpec): spec is RotateSpec {
-  return spec.kind === 'systemVolume' || spec.kind === 'shortcuts' || spec.kind === 'appVolume';
+  return (
+    spec.kind === 'systemVolume' ||
+    spec.kind === 'shortcuts' ||
+    spec.kind === 'appVolume' ||
+    spec.kind === 'profilePicker'
+  );
 }
 
 function isKeyboard(
@@ -381,9 +382,13 @@ export function ControlsPage({
     }, 1000);
   };
 
-  const resetRow = (control: ControlRef | 'rotate'): void => {
+  const resetRow = (control: ControlRef | 'rotate' | 'heldRotate'): void => {
     const saved =
-      control === 'rotate' ? setRotate(selected, null) : setBinding(selected, control, null);
+      control === 'rotate'
+        ? setRotate(selected, null)
+        : control === 'heldRotate'
+          ? setHeldRotate(selected, null)
+          : setBinding(selected, control, null);
     saved.catch((error: unknown) => toast.error(t.resetFailed, { description: errorText(error) }));
   };
   const removeMacro = (target: MacroSpec): void => {
@@ -410,7 +415,7 @@ export function ControlsPage({
     const bound = row.spec ?? null;
     // Test runs the saved binding once: a discrete action, or for the knob one step up and back
     // (a shortcut pair sends its clockwise key).
-    const testable: TestSpec | null = bound;
+    const testable: TestSpec | null = bound?.kind === 'profilePicker' ? null : bound;
     const counting = countdown?.row === rowId;
     const entryInfo = bound ? catalog?.find((e) => e.id === catalogId(bound)) : undefined;
     const name = t.gestures[row.key].name;
@@ -419,11 +424,15 @@ export function ControlsPage({
       tested?.row === rowId &&
       (tested.result === 'stateConfirmed' || tested.result === 'executionConfirmed');
     const edit = (): void => {
-      const { control } = row;
-      if (control === null) return;
-      setEditing({ profile: entry, control, name, spec: bound, label: row.label ?? null });
+      setEditing({
+        profile: entry,
+        control: row.control,
+        name,
+        spec: bound,
+        label: row.label ?? null,
+      });
     };
-    const text = row.fixed ?? describe(bound, macros);
+    const text = describe(bound, macros);
     const deviceNote =
       bound && row.deviceLabel && row.deviceLabel !== text
         ? format(t.deviceLabel, { label: row.deviceLabel })
@@ -434,7 +443,7 @@ export function ControlsPage({
         data-testid={`gesture-${row.key}`}
         className={cn(
           'flex items-center gap-3 px-3 py-2.5',
-          !quiet && row.control !== null && 'transition-colors hover:bg-muted/50',
+          !quiet && 'transition-colors hover:bg-muted/50',
           flashed && 'motion-safe:animate-[kivori-row-flash_600ms_ease-out]',
         )}
       >
@@ -448,13 +457,9 @@ export function ControlsPage({
         {/* The text is a large click target for Edit; the Edit button is the keyboard route. */}
         <div
           className={
-            quiet
-              ? 'min-w-0 flex-1 text-xs text-muted-foreground'
-              : row.control === null
-                ? 'min-w-0 flex-1'
-                : 'min-w-0 flex-1 cursor-pointer'
+            quiet ? 'min-w-0 flex-1 text-xs text-muted-foreground' : 'min-w-0 flex-1 cursor-pointer'
           }
-          onClick={row.control === null ? undefined : edit}
+          onClick={edit}
         >
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
             <span className={quiet ? 'text-xs' : 'text-xs font-medium text-muted-foreground'}>
@@ -469,7 +474,7 @@ export function ControlsPage({
             {tested?.row === rowId && <ResultBadge result={tested.result} />}
           </div>
           <div className="flex items-center gap-1.5">
-            {unbound ? (
+            {unbound && row.key !== 'heldRotate' ? (
               <Button
                 size="sm"
                 variant="outline"
@@ -486,12 +491,6 @@ export function ControlsPage({
             ) : (
               <span className={quiet ? 'text-xs' : 'truncate font-medium'}>{text}</span>
             )}
-            {row.control === null && row.key === 'button2Hold' && (
-              <Lock
-                className="size-3.5 shrink-0 text-muted-foreground"
-                aria-label={t.gestures.button2Hold.hint}
-              />
-            )}
             {entryInfo && <StatusMark verification={entryInfo.verification} />}
           </div>
           {counting ? (
@@ -502,17 +501,17 @@ export function ControlsPage({
           ) : (
             <p className="text-xs text-muted-foreground">
               {t.gestures[row.key].hint}
-              {row.key === 'heldRotate' &&
+              {(row.key === 'heldRotate' || row.key === 'hold') &&
               connection?.connection === 'connected' &&
               connection.device?.identity?.known === true &&
-              !controlSupported(connection, 'heldRotate')
+              !controlSupported(connection, row.key)
                 ? ` ${t.heldRotateUnsupported}`
                 : ''}
               {deviceNote ? ` ${deviceNote}` : ''}
             </p>
           )}
         </div>
-        {row.control !== null && !quiet && (
+        {!quiet && (
           <div className="flex shrink-0 items-center gap-1">
             {counting && (
               <Button size="sm" variant="ghost" onClick={stopCountdown}>
@@ -566,7 +565,11 @@ export function ControlsPage({
     );
   };
 
-  const renderGroup = (entry: ProfileConfigDto, title: string, list: Row[]): ReactElement => (
+  const renderGroup = (
+    entry: ProfileConfigDto,
+    title: string,
+    list: readonly Row[],
+  ): ReactElement => (
     <section className="space-y-1.5">
       <h2 className="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {title}
@@ -576,14 +579,6 @@ export function ControlsPage({
       </ul>
     </section>
   );
-
-  const renderBuiltIn = (entry: ProfileConfigDto, list: Row[]): ReactElement | null =>
-    list.length === 0 ? null : (
-      <section className="space-y-1.5">
-        <h3 className="px-1 text-xs font-medium text-muted-foreground">{t.builtInTitle}</h3>
-        <ul aria-label={t.builtInTitle}>{list.map((row) => renderRow(entry, row, true))}</ul>
-      </section>
-    );
 
   const notes = (
     <details data-testid="controls-notes" className="group text-sm text-muted-foreground" open>
@@ -613,6 +608,18 @@ export function ControlsPage({
 
   const controlsTab = (
     <>
+      {config && !anySlotMutesMic(config.profiles) ? (
+        <Alert>
+          <TriangleAlert aria-hidden="true" />
+          <AlertDescription>{t.noMicMute}</AlertDescription>
+        </Alert>
+      ) : null}
+      {config && !anyProfileKeepsPicker(config.profiles) ? (
+        <Alert>
+          <TriangleAlert aria-hidden="true" />
+          <AlertDescription>{t.noProfilePicker}</AlertDescription>
+        </Alert>
+      ) : null}
       <div
         data-testid="active-profile"
         className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"
@@ -730,20 +737,15 @@ export function ControlsPage({
                         ['button2', t.gestures.button2.name, [profileRows[6]!, profileRows[9]!]],
                         ['button3', t.gestures.button3.name, [profileRows[7]!, profileRows[10]!]],
                       ] as const
-                    ).map(([control, title, entries]) => {
-                      const editable = entries.filter((row) => row.control !== null);
-                      const fixed = entries.filter((row) => row.control === null);
-                      return (
-                        <TabsContent
-                          key={control}
-                          value={control}
-                          className="mt-3 space-y-3 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200"
-                        >
-                          {editable.length > 0 ? renderGroup(profile, title, editable) : null}
-                          {renderBuiltIn(profile, fixed)}
-                        </TabsContent>
-                      );
-                    })}
+                    ).map(([control, title, entries]) => (
+                      <TabsContent
+                        key={control}
+                        value={control}
+                        className="mt-3 space-y-3 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200"
+                      >
+                        {entries.length > 0 ? renderGroup(profile, title, entries) : null}
+                      </TabsContent>
+                    ))}
                   </Tabs>
                 </div>
               </div>
@@ -975,12 +977,19 @@ export function ControlsPage({
           setCreatedMacroId(null);
         }}
         onSaveSlot={async (target, slot) => {
-          if (target.control === 'rotate' || target.control === 'step' || !target.profile) return;
+          if (
+            target.control === 'rotate' ||
+            target.control === 'heldRotate' ||
+            target.control === 'step' ||
+            !target.profile
+          )
+            return;
           await setBinding(target.profile.id, target.control, slot);
         }}
         onSaveRotate={async (target, rotate) => {
           if (!target.profile) return;
-          await setRotate(target.profile.id, rotate);
+          if (target.control === 'heldRotate') await setHeldRotate(target.profile.id, rotate);
+          else await setRotate(target.profile.id, rotate);
         }}
       />
 

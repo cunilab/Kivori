@@ -279,6 +279,9 @@ pub struct DeskOutput {
     pub picker: Option<ProfileChoices>,
     /// Which contextual buttons have a Hold: when that changes.
     pub holds: Option<HoldActions>,
+    /// Whether Hold + turn should open the profile picker. Sent on session start and whenever
+    /// the active profile's binding changes. `None` means nothing new to send.
+    pub held_turn_picker: Option<bool>,
 }
 
 /// The last action outcome, for the desktop UI.
@@ -334,6 +337,8 @@ pub struct DeskRuntime {
     sent_picker: Option<ProfileChoices>,
     /// The Hold labels the device was last sent, `None` = nothing sent this session.
     sent_holds: Option<HoldActions>,
+    /// The Hold + turn mode the device was last sent, `None` = nothing sent this session.
+    sent_held_turn: Option<bool>,
 }
 
 impl DeskRuntime {
@@ -407,6 +412,7 @@ impl DeskRuntime {
             picker_generation: 0,
             sent_picker: None,
             sent_holds: None,
+            sent_held_turn: None,
         }
     }
 
@@ -443,6 +449,7 @@ impl DeskRuntime {
         self.sent_controls = None;
         self.sent_picker = None;
         self.sent_holds = None;
+        self.sent_held_turn = None;
     }
 
     /// The device released its knob switch on a picker entry (`ProfilePick`): pin that profile, or
@@ -585,6 +592,15 @@ impl DeskRuntime {
         // Deliberate, like device input: classify Protected from the live foreground first.
         self.poll_focus(now);
         self.context.commit_pending();
+        if matches!(action, Action::SwitchView) {
+            // Same path as a knob double press: the view changes, with no action feedback.
+            self.next_mode(observe);
+            let _ = reply.try_send(Outcome {
+                kind: FeedbackKind::StateConfirmed,
+                permission_required: false,
+            });
+            return;
+        }
         if self.context.protected() && !action.is_system() {
             self.refuse(&action, now, observe);
             let _ = reply.try_send(Outcome::error());
@@ -697,7 +713,6 @@ impl DeskRuntime {
         self.poll_focus(now);
         self.context.commit_pending();
         match *input {
-            LogicalInput::DoublePress { .. } => self.next_mode(observe),
             // A gesture keeps the binding it began with until it ends (invariant 12).
             LogicalInput::GestureStarted { gesture_id }
             | LogicalInput::PressedGestureStarted { gesture_id } => {
@@ -706,11 +721,14 @@ impl DeskRuntime {
                     self.end_app_gesture(old.id, observe);
                 }
                 let pressed = matches!(input, LogicalInput::PressedGestureStarted { .. });
-                // Turning with the knob switch held is the device's own profile picker now: a
-                // device that still reports it (it cannot, the desktop no longer negotiates
-                // `HELD_ROTATION_V1`) is answered with an unbound gesture, never a binding.
-                let binding = match self.context.rotate() {
-                    _ if pressed => KnobTarget::Unbound,
+                let binding = match if pressed {
+                    self.context.held_rotate()
+                } else {
+                    self.context.rotate()
+                } {
+                    // The profile picker runs on the device. A pressed turn only arrives when the
+                    // device was told not to open it.
+                    Some(RotateBinding::ProfilePicker) => KnobTarget::Unbound,
                     Some(RotateBinding::Volume) => return true,
                     Some(RotateBinding::Shortcuts { cw, ccw, .. }) => {
                         KnobTarget::Shortcuts((!self.context.protected()).then_some((*cw, *ccw)))
@@ -741,6 +759,7 @@ impl DeskRuntime {
             }
             _ => match self.context.resolve(input) {
                 Resolved::Nothing => {}
+                Resolved::Run(Action::SwitchView) => self.next_mode(observe),
                 Resolved::Run(action) => self.run_within(action, now, remaining, observe),
                 Resolved::Suspended(action) => self.refuse(&action, now, observe),
             },
@@ -991,6 +1010,14 @@ impl DeskRuntime {
             self.sent_holds = Some(hold_actions);
             hold_actions
         });
+        let held_turn_picker = matches!(
+            self.context.profile().held_rotate,
+            RotateBinding::ProfilePicker
+        );
+        let held_turn_picker = (self.sent_held_turn != Some(held_turn_picker)).then(|| {
+            self.sent_held_turn = Some(held_turn_picker);
+            held_turn_picker
+        });
         while let Some(id) = self.worker.try_expired() {
             // Skipped, so nothing ran: no outcome, no feedback (it would claim a dispatch).
             self.ladder.cancel(id);
@@ -1040,6 +1067,7 @@ impl DeskRuntime {
             mic: mic_update,
             picker,
             holds,
+            held_turn_picker,
         }
     }
 
@@ -1095,6 +1123,7 @@ fn desk_activity(kind: ActivityEventKind, action: ActionToken) -> SessionActivit
 pub fn bound_action<'b>(bindings: &'b Bindings, input: &LogicalInput) -> Option<&'b Action> {
     match input {
         LogicalInput::Press { .. } => bindings.press.action.as_ref(),
+        LogicalInput::DoublePress { .. } => bindings.double_press.action.as_ref(),
         LogicalInput::Hold { .. } => bindings.hold.action.as_ref(),
         LogicalInput::ButtonPress { button, .. } => bindings
             .buttons
@@ -1731,6 +1760,59 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_rebound_double_press_runs_that_action_and_an_unbound_one_does_nothing() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        let switched = config(|file| {
+            override_of(file, crate::config::ProfileId::General).double_press =
+                Some(crate::config::SlotSpec {
+                    action: Some(crate::config::ActionSpec::Shortcut {
+                        keys: "Ctrl+Shift+K".into(),
+                    }),
+                    label: None,
+                });
+        });
+        desk.apply_config(&switched, &mut |_| {});
+        let mode = desk.mode();
+        desk.on_input(
+            &LogicalInput::DoublePress { gesture_id: 1 },
+            ms(10),
+            &mut |_| {},
+        );
+        assert_eq!(
+            desk.mode(),
+            mode,
+            "a rebound double press does not switch view"
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while sent(&synth).is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(ms(1));
+        }
+        assert_eq!(sent(&synth), ["Ctrl+Shift+K"]);
+
+        let cleared = config(|file| {
+            override_of(file, crate::config::ProfileId::General).double_press =
+                Some(crate::config::SlotSpec {
+                    action: None,
+                    label: None,
+                });
+        });
+        desk.apply_config(&cleared, &mut |_| {});
+        desk.on_input(
+            &LogicalInput::DoublePress { gesture_id: 2 },
+            ms(30),
+            &mut |_| {},
+        );
+        assert_eq!(desk.mode(), mode);
+        assert_eq!(
+            sent(&synth),
+            ["Ctrl+Shift+K"],
+            "an unbound double press does nothing"
+        );
+    }
+
     fn double_press(desk: &mut DeskRuntime, id: u16) {
         desk.on_input(
             &LogicalInput::DoublePress { gesture_id: id },
@@ -1913,15 +1995,9 @@ mod tests {
             None,
             "nothing changed"
         );
-        // Hold is not on the device legend, so these labels do not change.
-        let hold_only = config(|file| {
-            override_of(file, crate::config::ProfileId::General).hold =
-                Some(crate::config::SlotSpec {
-                    action: Some(crate::config::ActionSpec::PlayPause),
-                    label: None,
-                });
-        });
-        desk.apply_config(&hold_only, &mut |_| {});
+        // Saving without a label change still re-sends them.
+        let same = config(|_| {});
+        desk.apply_config(&same, &mut |_| {});
         assert_eq!(desk.bindings().hold.action, None);
         let again = desk.tick(ms(20), &mut |_| {}).controls;
         assert_eq!(again, Some(desk.labels()), "re-sent although identical");
@@ -2188,16 +2264,28 @@ mod tests {
     }
 
     #[test]
-    fn a_stored_held_rotate_pair_is_never_run_and_pressed_turns_stay_unbound() {
-        // "Hold + rotate" is the device's profile picker now. A pair an older config still holds
-        // loads, is ignored, and a device that somehow reported the gesture changes nothing.
+    fn knob_hold_runs_only_when_bound_and_held_turn_follows_the_profile() {
         let fg = Arc::new(FakeForeground::default());
         let synth = Arc::new(FakeInputSynth::new(Ok(())));
         let mut desk = desk_with(&fg, &synth);
-        focus(&fg, "notepad.exe");
-        let _ = desk.tick(ms(0), &mut |_| {});
-        let _ = desk.tick(ms(400), &mut |_| {});
-        let legacy = config(|file| {
+        desk.on_session_begin();
+        assert_eq!(
+            desk.tick(ms(0), &mut |_| {}).held_turn_picker,
+            Some(true),
+            "the default is the picker"
+        );
+        assert_eq!(desk.tick(ms(10), &mut |_| {}).held_turn_picker, None);
+        assert!(!desk.on_input(&LogicalInput::Hold { gesture_id: 1 }, ms(20), &mut |_| {}));
+        assert!(sent(&synth).is_empty(), "an unbound knob Hold does nothing");
+
+        let bound = config(|file| {
+            override_of(file, crate::config::ProfileId::General).hold =
+                Some(crate::config::SlotSpec {
+                    action: Some(crate::config::ActionSpec::Shortcut {
+                        keys: "Ctrl+M".into(),
+                    }),
+                    label: None,
+                });
             override_of(file, crate::config::ProfileId::General).held_rotate =
                 Some(crate::config::RotateSpec::Shortcuts {
                     cw: "Ctrl+Right".into(),
@@ -2205,24 +2293,36 @@ mod tests {
                     label: "Seek".into(),
                 });
         });
-        desk.apply_config(&legacy, &mut |_| {});
+        desk.apply_config(&bound, &mut |_| {});
+        assert_eq!(desk.tick(ms(30), &mut |_| {}).held_turn_picker, Some(false));
+        assert_eq!(text(desk.labels().hold), "Ctrl+M");
+        desk.on_input(&LogicalInput::Hold { gesture_id: 2 }, ms(40), &mut |_| {});
         assert!(!desk.on_input(
-            &LogicalInput::PressedGestureStarted { gesture_id: 1 },
-            ms(500),
+            &LogicalInput::PressedGestureStarted { gesture_id: 3 },
+            ms(50),
             &mut |_| {}
         ));
-        for direction in [Direction::Cw, Direction::Ccw] {
-            assert!(!desk.on_input(
-                &LogicalInput::PressedDetent {
-                    gesture_id: 1,
-                    direction
-                },
-                ms(510),
-                &mut |_| {}
-            ));
+        assert!(!desk.on_input(
+            &LogicalInput::PressedDetent {
+                gesture_id: 3,
+                direction: Direction::Cw,
+            },
+            ms(60),
+            &mut |_| {}
+        ));
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while sent(&synth).len() < 2 && std::time::Instant::now() < deadline {
+            std::thread::sleep(ms(1));
         }
-        std::thread::sleep(ms(50));
-        assert!(sent(&synth).is_empty(), "no shortcut, and no volume change");
+        assert_eq!(sent(&synth), ["Ctrl+M", "Ctrl+Right"]);
+
+        focus(&fg, "chrome.exe");
+        let _ = desk.tick(ms(500), &mut |_| {});
+        assert_eq!(
+            desk.tick(ms(900), &mut |_| {}).held_turn_picker,
+            Some(true),
+            "Browser still uses the picker, so the mode is sent again"
+        );
     }
 
     /// A desk whose General knob drives `spotify.exe`'s volume, over the given app backend.
@@ -2451,6 +2551,36 @@ mod tests {
             .iter()
             .any(|f| f.action == kivori_model::desk::ActionKind::Mute));
         assert_eq!(sent(&synth).len(), 1);
+    }
+
+    #[test]
+    fn rebinding_the_middle_hold_runs_that_action() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        let bound = config(|file| {
+            override_of(file, crate::config::ProfileId::General).buttons[1].hold =
+                Some(crate::config::SlotSpec {
+                    action: Some(crate::config::ActionSpec::Shortcut {
+                        keys: "Ctrl+Shift+M".into(),
+                    }),
+                    label: None,
+                });
+        });
+        desk.apply_config(&bound, &mut |_| {});
+        desk.on_input(
+            &LogicalInput::ButtonHold {
+                button: 1,
+                gesture_id: 1,
+            },
+            ms(10),
+            &mut |_| {},
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while sent(&synth).is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(ms(1));
+        }
+        assert_eq!(sent(&synth), ["Ctrl+Shift+M"]);
     }
 }
 

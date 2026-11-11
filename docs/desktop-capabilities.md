@@ -28,7 +28,6 @@ carry no measurements. Report age starts at native receipt, so cached IPC reads 
 Session transitions, polling failures and leaving instrumentation invalidate the frontend cache;
 late replies cannot restore it. Copy never starts internals polling.
 
-
 Home shows a small Link health card only while developer mode is on. It uses current connection
 status for link state and consecutive retries, and the existing safe diagnostics cache for the
 native reconnect total since app start (excluding the first connection). Cache reads occur about
@@ -74,29 +73,30 @@ on Finish; Skip setup leaves it unchanged.
 
 ## Surface mapping
 
-| Surface | Current rule |
-| --- | --- |
-| Home computer monitoring, microphone, media and last action | Host readings and host action outcomes; independent of device capabilities. Unknown readings retain their existing unavailable explanations. |
-| Controls Test / rotary Test | Host action execution, available offline and before identity resolves. Normal action validation and protected-foreground rules still apply; device feedback uses effective session support. |
-| Home product figure and setup figures | Catalog name/model only for a current connected identity with both product and board known. Only that product’s bundled artwork, otherwise a neutral figure; never infer hardware art from capabilities. |
-| Setup Plug-in Continue | Known current usable session, including legacy baseline; pending/unknown/identity-only cannot pass as ready. Skip stays available. |
-| Setup Tour | Non-blocking guidance using the same rotary/push-switch/context-button rules as Controls; no hardware verification or progress inferred from host status. |
-| Setup saved view/Buddy | Always editable; `Saved only` without the applicable current feature, including offline. Pin hint only with physical/context-button support. |
-| Home Showing chip, Change view | `deskStatusV1`. |
-| Home Buddy report | A current, resolved, usable session with an actual reported state. This is baseline protocol data, not proof of transient reaction support. |
-| Developer Social reactions | Developer mode and `mascotInteraction`. Direct reaction controls are absent from Home and Display. |
-| Display Show now | `deskStatusV1`, checked again by the backend. All five modes belong to this capability, including Buddy and Media. |
-| Saved default and secondary view | Always editable. Default view requires `deskStatusV1` to reach the device; secondary view requires physical input, push-switch and double-press support to be invoked. |
-| Saved brightness | Always editable; sent through `BuddySettings` only with `idleLifeV1`. |
-| Saved buddy settings | Always editable; used by device idle life (`idleLifeV1`) or desktop reactions (`mascotInteraction`). |
-| Rotary inputs | `physicalInputV1`. |
-| Push-switch press and hold | `physicalInputV1` and `buttonInputV1`. |
-| Hold + rotate (profile picker) | `profilePickerV1`; the desktop no longer offers `heldRotationV1`. |
-| Push-switch double press | Physical input, push-switch and `doublePressV1`. |
-| Context buttons | `physicalInputV1` and `contextButtonsV1`. |
-| Device Studio reaction preview | Host renderer always; request device playback only with `mascotInteraction`. |
-| Device Studio Mirror | Sendable state and a usable live session. Pending, unknown, disconnected and identity-only recovery sessions cannot change a later device's desired state. |
-| Developer Device Internals | Active Diagnostics tool with developer mode on, plus effective `deviceInternalsV1`; the existing visible-card polling and backend snapshot rules remain. |
+| Surface                                                     | Current rule                                                                                                                                                                                             |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Home computer monitoring, microphone, media and last action | Host readings and host action outcomes; independent of device capabilities. Unknown readings retain their existing unavailable explanations.                                                             |
+| Controls Test / rotary Test                                 | Host action execution, available offline and before identity resolves. Normal action validation and protected-foreground rules still apply; device feedback uses effective session support.              |
+| Home product figure and setup figures                       | Catalog name/model only for a current connected identity with both product and board known. Only that product’s bundled artwork, otherwise a neutral figure; never infer hardware art from capabilities. |
+| Setup Plug-in Continue                                      | Known current usable session, including legacy baseline; pending/unknown/identity-only cannot pass as ready. Skip stays available.                                                                       |
+| Setup Tour                                                  | Non-blocking guidance using the same rotary/push-switch/context-button rules as Controls; no hardware verification or progress inferred from host status.                                                |
+| Setup saved view/Buddy                                      | Always editable; `Saved only` without the applicable current feature, including offline. Pin hint only with physical/context-button support.                                                             |
+| Home Showing chip, Change view                              | `deskStatusV1`.                                                                                                                                                                                          |
+| Home Buddy report                                           | A current, resolved, usable session with an actual reported state. This is baseline protocol data, not proof of transient reaction support.                                                              |
+| Developer Social reactions                                  | Developer mode and `mascotInteraction`. Direct reaction controls are absent from Home and Display.                                                                                                       |
+| Display Show now                                            | `deskStatusV1`, checked again by the backend. All five modes belong to this capability, including Buddy and Media.                                                                                       |
+| Saved default and secondary view                            | Always editable. Default view requires `deskStatusV1` to reach the device; secondary view requires physical input, push-switch and double-press support to be invoked.                                   |
+| Saved brightness                                            | Always editable; sent through `BuddySettings` only with `idleLifeV1`.                                                                                                                                    |
+| Saved buddy settings                                        | Always editable; used by device idle life (`idleLifeV1`) or desktop reactions (`mascotInteraction`).                                                                                                     |
+| Rotary inputs                                               | `physicalInputV1`.                                                                                                                                                                                       |
+| Push-switch press                                           | `physicalInputV1` and `buttonInputV1`.                                                                                                                                                                   |
+| Knob Hold                                                   | `physicalInputV1` and `knobHoldV1`. Saved without it; the default is unbound. Release between 1 s and 2 s.                                                                                               |
+| Hold + rotate                                               | `physicalInputV1` and `heldTurnModeV1`. Default is the on-device profile picker (`profilePickerV1` still carries the picker). The desktop does not offer `heldRotationV1`.                               |
+| Push-switch double press                                    | Physical input, push-switch and `doublePressV1`. The action is the profile's Double press binding; the default switches the screen view.                                                                 |
+| Context buttons                                             | `physicalInputV1` and `contextButtonsV1`.                                                                                                                                                                |
+| Device Studio reaction preview                              | Host renderer always; request device playback only with `mascotInteraction`.                                                                                                                             |
+| Device Studio Mirror                                        | Sendable state and a usable live session. Pending, unknown, disconnected and identity-only recovery sessions cannot change a later device's desired state.                                               |
+| Developer Device Internals                                  | Active Diagnostics tool with developer mode on, plus effective `deviceInternalsV1`; the existing visible-card polling and backend snapshot rules remain.                                                 |
 
 Production desired-state changes retain the user's choice while offline or unresolved, then sync it
 only to a usable session. Studio Mirror deliberately does not stage state for a later device.
@@ -118,16 +118,16 @@ no advertised feature bits. This step does not invent a per-product baseline-sta
 
 The remaining message capabilities do not hide host readings or saved editors:
 
-| Capability | Surface or behavior |
-| --- | --- |
-| `presentationV1` | The native rotary pipeline's transient device overlay; no separate desktop navigation item. |
-| `actionFeedbackV1` | Device-side action outcome messages. Home and Controls still show native host outcomes without it. |
-| `controlLabelsV1` | Labels sent to the device. Saved binding labels remain editable without it. |
-| `hostTakeoversV1` | Native sleep/update lifecycle messages; no feature page is hidden by this bit. |
-| `quietAckV1` | Native trigger-feedback rendering policy; no extra desktop control. |
-| `micStateV1` | Device microphone indicator messages. Host microphone readings remain available independently. |
-| `productIdentityV1` | Identity exchange and legacy fallback under ADR-0014; not an ordinary interactive feature. |
-| `buildInfoV1` | The device reports its firmware source id (a hash of the committed firmware inputs) and an uncommitted-changes flag; shown on Device, never gates a feature. |
+| Capability          | Surface or behavior                                                                                                                                          |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `presentationV1`    | The native rotary pipeline's transient device overlay; no separate desktop navigation item.                                                                  |
+| `actionFeedbackV1`  | Device-side action outcome messages. Home and Controls still show native host outcomes without it.                                                           |
+| `controlLabelsV1`   | Labels sent to the device. Saved binding labels remain editable without it.                                                                                  |
+| `hostTakeoversV1`   | Native sleep/update lifecycle messages; no feature page is hidden by this bit.                                                                               |
+| `quietAckV1`        | Native trigger-feedback rendering policy; no extra desktop control.                                                                                          |
+| `micStateV1`        | Device microphone indicator messages. Host microphone readings remain available independently.                                                               |
+| `productIdentityV1` | Identity exchange and legacy fallback under ADR-0014; not an ordinary interactive feature.                                                                   |
+| `buildInfoV1`       | The device reports its firmware source id (a hash of the committed firmware inputs) and an uncommitted-changes flag; shown on Device, never gates a feature. |
 
 Known identity-only firmware shows firmware attention guidance and links to Device for the existing
 guarded matching-image workflow. Unknown identity shows app-update guidance and remains refused by
@@ -172,37 +172,37 @@ the window regains focus, so anything showing disappears once it is granted).
   `tccutil reset Accessibility` for Kivori's own bundle identifier only, asks once and opens the
   settings pane.
 
-| Action | Needs Accessibility on macOS | Why |
-| --- | --- | --- |
-| Play/pause, next, previous | No | Sent to the now-playing app through the bundled adapter (Apple's own `perl`). Only if the adapter is unavailable or fails does the media key event take over, and then it needs the permission |
-| System volume, output mute, knob volume | No | CoreAudio |
-| Microphone mute, app mute | No | CoreAudio / session controls |
-| Launch an app | No | Opens the app through the OS |
-| Keyboard shortcut (a button or the knob in a shortcut profile) | Yes | A synthesized key event is the only way to type into another app |
-| Hold + rotate profile picker | Fixed | Pick Auto or a pinned profile on the device; requires `profilePickerV1`. Replaces the bindable shortcut pair |
-| Macro | Only if a step is a keyboard shortcut | Same |
+| Action                                                         | Needs Accessibility on macOS          | Why                                                                                                                                                                                            |
+| -------------------------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Play/pause, next, previous                                     | No                                    | Sent to the now-playing app through the bundled adapter (Apple's own `perl`). Only if the adapter is unavailable or fails does the media key event take over, and then it needs the permission |
+| System volume, output mute, knob volume                        | No                                    | CoreAudio                                                                                                                                                                                      |
+| Microphone mute, app mute                                      | No                                    | CoreAudio / session controls                                                                                                                                                                   |
+| Launch an app                                                  | No                                    | Opens the app through the OS                                                                                                                                                                   |
+| Keyboard shortcut (a button or the knob in a shortcut profile) | Yes                                   | A synthesized key event is the only way to type into another app                                                                                                                               |
+| Knob Hold                                                      | When bound                            | Unbound by default. Needs `knobHoldV1`. The 1–2 s window ends when recovery starts at 2 s                                                                                                      |
+| Hold + rotate                                                  | When it is shortcuts                  | Default is the profile picker on the device. Volume or shortcuts need `heldTurnModeV1`; the picker also needs `profilePickerV1`                                                                |
+| Macro                                                          | Only if a step is a keyboard shortcut | Same                                                                                                                                                                                           |
 
 The default bindings (push switch: play/pause and mute; buttons: previous, play/pause, next; knob:
 volume) need none. The built-in Browser, Code, Zoom and Teams profiles use shortcuts, so they need it
 while those apps are in front. The Diagnostics "Input permission" row reads Not needed while the
 active profile presses no keys. Windows has no such permission and is unchanged.
 
-
 ## Host platform capabilities
 
-| Host feature | Windows | macOS | Linux (Ubuntu) |
-| --- | --- | --- | --- |
-| Master volume / output mute | Native audio, read-back | CoreAudio, read-back where writable | libpulse, read-back (including PipeWire PulseAudio layer) |
-| Per-app volume / mute | Native sessions | Unavailable | PulseAudio streams |
-| Microphone mute | All devices, read-back | All devices, subject to writable mute support | All capture devices, read-back |
-| Media keys / now playing | Native media | Bundled media adapter | MPRIS on X11 and Wayland; with no player or unreachable bus, media-key fallback on X11 or via the authorized Kivori GNOME extension (quiet, unverified acknowledgement) |
-| Keyboard shortcuts | Native input | Accessibility required | X11; GNOME Wayland with Kivori App Profiles extension v7+ (one logout after install/update and one remembered Shell approval for the installed executable); keyboard portal on other Wayland desktops |
-| Automatic app profiles | Foreground app | Foreground app | X11 foreground app; GNOME Wayland works with the Kivori GNOME extension (46–50) |
-| CPU / RAM | Native | Native | `/proc` |
-| Sleep / wake / lock | Native | Native | systemd-logind D-Bus |
-| App launch / login startup | Native / Run entry | Native | XDG desktop entries / autostart |
-| Tray | Native | Native | libayatana-appindicator; GNOME extension required |
-| App updater | Signed NSIS | Manual DMG replacement | Signed AppImage only; `.deb` updates unsupported in app (install a newer package from the website or a package manager if available) |
+| Host feature                | Windows                 | macOS                                         | Linux (Ubuntu)                                                                                                                                                                                        |
+| --------------------------- | ----------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Master volume / output mute | Native audio, read-back | CoreAudio, read-back where writable           | libpulse, read-back (including PipeWire PulseAudio layer)                                                                                                                                             |
+| Per-app volume / mute       | Native sessions         | Unavailable                                   | PulseAudio streams                                                                                                                                                                                    |
+| Microphone mute             | All devices, read-back  | All devices, subject to writable mute support | All capture devices, read-back                                                                                                                                                                        |
+| Media keys / now playing    | Native media            | Bundled media adapter                         | MPRIS on X11 and Wayland; with no player or unreachable bus, media-key fallback on X11 or via the authorized Kivori GNOME extension (quiet, unverified acknowledgement)                               |
+| Keyboard shortcuts          | Native input            | Accessibility required                        | X11; GNOME Wayland with Kivori App Profiles extension v7+ (one logout after install/update and one remembered Shell approval for the installed executable); keyboard portal on other Wayland desktops |
+| Automatic app profiles      | Foreground app          | Foreground app                                | X11 foreground app; GNOME Wayland works with the Kivori GNOME extension (46–50)                                                                                                                       |
+| CPU / RAM                   | Native                  | Native                                        | `/proc`                                                                                                                                                                                               |
+| Sleep / wake / lock         | Native                  | Native                                        | systemd-logind D-Bus                                                                                                                                                                                  |
+| App launch / login startup  | Native / Run entry      | Native                                        | XDG desktop entries / autostart                                                                                                                                                                       |
+| Tray                        | Native                  | Native                                        | libayatana-appindicator; GNOME extension required                                                                                                                                                     |
+| App updater                 | Signed NSIS             | Manual DMG replacement                        | Signed AppImage only; `.deb` updates unsupported in app (install a newer package from the website or a package manager if available)                                                                  |
 
 Linux implementation and host tests do not close physical acceptance. See [linux.md](./linux.md)
 for setup, the GNOME Wayland focus extension, XWayland limits, USB rules and pending hands-on checks.

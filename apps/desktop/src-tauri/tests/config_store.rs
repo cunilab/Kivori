@@ -33,7 +33,7 @@ fn v1_migrates_and_a_stored_hold_rotate_pair_is_read_ignored_and_dropped_on_the_
     )
     .unwrap();
     let mut store = ConfigStore::open(dir.path());
-    assert_eq!(store.file().version, 2);
+    assert_eq!(store.file().version, 3);
     assert!(store.file().profiles[&ProfileId::General].press.is_some());
     assert_eq!(store.file().macros[0].id, "macro-1");
     assert!(store.file().custom_profiles[0].bindings.press.is_some());
@@ -41,8 +41,8 @@ fn v1_migrates_and_a_stored_hold_rotate_pair_is_read_ignored_and_dropped_on_the_
     store.add_custom_profile("notepad.exe", "Notes").unwrap();
     let saved = fs::read_to_string(dir.path().join("config.json")).unwrap();
     assert!(
-        !saved.contains("heldRotate"),
-        "the next save drops the legacy pair"
+        !saved.contains("Ctrl+Right") && !saved.contains("Seek"),
+        "the next save drops the legacy pair: {saved}"
     );
     store.reset_profile(&general).unwrap();
     assert!(!store.file().profiles.contains_key(&ProfileId::General));
@@ -251,7 +251,7 @@ fn the_file_uses_the_documented_shape() {
     assert_eq!(
         json,
         serde_json::json!({
-            "version": 2,
+            "version": 3,
             "profiles": {},
             "customProfiles": [],
             "macros": [],
@@ -750,7 +750,7 @@ fn a_file_without_brightness_loads_at_full_and_the_setting_survives_a_reopen() {
     .unwrap();
     let mut store = ConfigStore::open(dir.path());
     assert_eq!(store.notice(), Some(ConfigNotice::Migrated));
-    assert_eq!(store.file().version, 2);
+    assert_eq!(store.file().version, 3);
     assert_eq!(store.file().display.brightness, 5);
     assert_eq!(names(dir.path()), ["config.json", "config.v1.bak"]);
 
@@ -806,7 +806,7 @@ mod profiles {
         let store = ConfigStore::open(dir.path());
         assert_eq!(store.notice(), Some(ConfigNotice::Migrated));
         assert!(store.file().custom_profiles.is_empty());
-        assert_eq!(store.file().version, 2);
+        assert_eq!(store.file().version, 3);
     }
 
     #[test]
@@ -997,7 +997,7 @@ mod profiles {
     #[test]
     fn a_newer_file_with_custom_profiles_is_still_set_aside() {
         let dir = tempfile::tempdir().unwrap();
-        let newer = r#"{ "version": 3, "customProfiles": [{ "id": "custom-1", "name": "A" }] }"#;
+        let newer = r#"{ "version": 4, "customProfiles": [{ "id": "custom-1", "name": "A" }] }"#;
         fs::write(dir.path().join("config.json"), newer).unwrap();
         let store = ConfigStore::open(dir.path());
         assert_eq!(store.notice(), Some(ConfigNotice::RecoveredNewerVersion));
@@ -1067,7 +1067,7 @@ fn a_file_with_a_stale_led_section_still_loads() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(
         dir.path().join("config.json"),
-        br##"{"version":2,"display":{"defaultView":"buddy","secondaryView":"system","brightness":3},"led":{"mode":"solid","color":"#FF8800","brightness":40,"speed":"fast","profileColors":{"zoom":"#00FF00"}}}"##,
+        br##"{"version":3,"display":{"defaultView":"buddy","secondaryView":"system","brightness":3},"led":{"mode":"solid","color":"#FF8800","brightness":40,"speed":"fast","profileColors":{"zoom":"#00FF00"}}}"##,
     )
     .unwrap();
     let store = ConfigStore::open(dir.path());

@@ -884,6 +884,11 @@ impl Sandbox {
                 .send_hold_actions(link, holds)
                 .map_err(|_| invalid("virtual hold actions failed"))?;
         }
+        if let Some(picker) = output.held_turn_picker {
+            self.session
+                .send_held_turn_mode(link, picker)
+                .map_err(|_| invalid("virtual held-turn mode failed"))?;
+        }
         if let Some(media) = output.media_info {
             self.session
                 .send_media_info(link, media)

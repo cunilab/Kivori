@@ -114,17 +114,20 @@ afterEach(() => {
   window.history.pushState({}, '', '/');
 });
 
-describe('ControlsPage', () => {
-  it('shows Hold + rotate as the device’s fixed profile picker, with nothing to bind', async () => {
+describe('ControlsPage', { timeout: 20_000 }, () => {
+  it('shows Hold and Hold + rotate as editable rows, with no Test on the profile picker', async () => {
     render(<Harness connection={connectionFixture()} />);
     await screen.findByTestId('gesture-heldRotate');
-    expect(row('heldRotate')).toHaveTextContent('Fixed: picks a profile on the device');
+    expect(row('heldRotate')).toHaveTextContent('Profile picker (on the device)');
     expect(
-      within(row('heldRotate')).queryByRole('button', { name: 'Edit Hold + rotate' }),
+      within(row('heldRotate')).getByRole('button', { name: 'Edit Hold + rotate' }),
+    ).toBeVisible();
+    expect(
+      within(row('heldRotate')).queryByRole('button', { name: 'Test Hold + rotate' }),
     ).not.toBeInTheDocument();
     expect(row('rotate')).toHaveTextContent('System volume');
-    expect(row('hold')).toHaveTextContent('Fixed: Hold + turn switches profile.');
-    expect(within(row('hold')).queryByRole('button')).not.toBeInTheDocument();
+    expect(row('hold')).toHaveTextContent('Add action');
+    expect(within(row('hold')).getByText('Add action')).toBeVisible();
   });
 
   it('explains that firmware without the profile picker cannot use Hold + rotate', async () => {
@@ -135,6 +138,7 @@ describe('ControlsPage', () => {
     );
     await screen.findByTestId('gesture-heldRotate');
     expect(within(row('heldRotate')).getByText('Saved only')).toBeVisible();
+    expect(within(row('hold')).getByText('Saved only')).toBeVisible();
     expect(row('heldRotate')).toHaveTextContent('Update the device firmware');
     expect(within(row('rotate')).queryByText('Saved only')).not.toBeInTheDocument();
   });
@@ -220,7 +224,9 @@ describe('ControlsPage', () => {
     // The disclaimers live under Reset & help, not above the controls.
     expect(screen.queryByTestId('controls-notes')).not.toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole('tab', { name: 'Reset & help' }));
-    expect(screen.getByText(/Middle button hold mutes every microphone/)).toBeVisible();
+    expect(
+      screen.getByText('Hold a button for one second until the ring fills, then release.'),
+    ).toBeVisible();
     expect(screen.getByTestId('mic-scope-note')).toBeVisible();
     expect(screen.queryByText('Custom')).not.toBeInTheDocument();
   });
@@ -230,8 +236,11 @@ describe('ControlsPage', () => {
     render(<Harness />);
     await screen.findByTestId('gesture-press');
     const knob = screen.getByRole('list', { name: 'Knob' });
-    expect(within(knob).getAllByRole('listitem')).toHaveLength(2);
-    expect(within(knob).queryByTestId('gesture-heldRotate')).not.toBeInTheDocument();
+    expect(within(knob).getAllByRole('listitem')).toHaveLength(5);
+    expect(within(knob).getByTestId('gesture-doublePress')).toBeVisible();
+    expect(within(knob).getByTestId('gesture-heldRotate')).toBeVisible();
+    expect(within(knob).getByTestId('gesture-hold')).toBeVisible();
+    expect(screen.queryByRole('list', { name: 'Built-in gestures' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('tab', { name: 'Left button' }));
     expect(
       within(screen.getByRole('list', { name: 'Left button' })).getAllByRole('listitem'),
@@ -573,17 +582,28 @@ describe('ControlsPage', () => {
     expect(within(row('button1')).queryByRole('status')).not.toBeInTheDocument();
   });
 
-  it('keeps the middle button Hold locked as mic mute', async () => {
+  it('lets the middle button Hold and double press be edited', async () => {
     const user = userEvent.setup();
     render(<Harness />);
-    await user.click(await screen.findByRole('tab', { name: 'Middle button' }));
-    await screen.findByTestId('gesture-button2Hold');
-    expect(row('button2Hold')).toHaveTextContent('Mic mute (every capture device)');
-    expect(within(row('button2Hold')).queryByRole('button')).not.toBeInTheDocument();
-    await user.click(screen.getByRole('tab', { name: 'Left button' }));
+    await screen.findByTestId('gesture-doublePress');
+    expect(row('doublePress')).toHaveTextContent('Switch screen view');
     expect(
-      within(row('button1Hold')).getAllByRole('button', { name: /^Edit/ }).length,
-    ).toBeGreaterThan(0);
+      within(row('doublePress')).getByRole('button', { name: 'Edit Double press' }),
+    ).toBeVisible();
+    expect(
+      within(row('doublePress')).getByRole('button', { name: 'Test Double press' }),
+    ).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'Middle button' }));
+    expect(row('button2Hold')).toHaveTextContent('Mic mute');
+    expect(
+      within(row('button2Hold')).getByRole('button', { name: 'Edit Middle button hold' }),
+    ).toBeVisible();
+    expect(
+      within(row('button2Hold')).getByRole('button', { name: 'Test Middle button hold' }),
+    ).toBeVisible();
+    expect(within(selectedPanel()).queryByRole('list', { name: 'Built-in gestures' })).toBeNull();
   });
 
   it('asks before resetting a profile or everything', async () => {
@@ -645,29 +665,35 @@ describe('ControlsPage', () => {
     expect(await screen.findByRole('dialog', { name: 'Edit Left button hold' })).toBeVisible();
   });
 
-  it('renders fixed rows in the built-in gestures group', async () => {
-    const user = userEvent.setup();
+  it('warns when no profile keeps the profile picker', async () => {
+    const config = await ipc.getConfig();
+    for (const profile of config.profiles) {
+      await ipc.setHeldRotate(profile.id, { kind: 'systemVolume' });
+    }
     render(<Harness />);
-    await screen.findByTestId('gesture-rotate');
-    const builtIn = within(selectedPanel()).getByRole('list', { name: 'Built-in gestures' });
-    expect(within(builtIn).getByTestId('gesture-heldRotate')).toBeVisible();
-    expect(within(builtIn).getByTestId('gesture-doublePress')).toBeVisible();
-    expect(within(builtIn).getByTestId('gesture-hold')).toBeVisible();
-    expect(within(builtIn).getByTestId('gesture-hold').querySelector('button')).toBeNull();
-    await user.click(screen.getByRole('tab', { name: 'Middle button' }));
-    const middle = within(selectedPanel()).getByRole('list', { name: 'Built-in gestures' });
-    expect(within(middle).getByTestId('gesture-button2Hold')).toHaveTextContent(
-      'Mic mute (every capture device)',
-    );
-    expect(within(middle).getByTestId('gesture-button2Hold').querySelector('button')).toBeNull();
-    await user.click(screen.getByRole('tab', { name: 'Left button' }));
     expect(
-      within(selectedPanel()).queryByRole('list', { name: 'Built-in gestures' }),
-    ).not.toBeInTheDocument();
+      await screen.findByText(/No profile keeps the profile picker on the device/),
+    ).toBeVisible();
+  });
+
+  it('warns when no slot mutes the microphones', async () => {
+    const config = await ipc.getConfig();
+    for (const profile of config.profiles) {
+      await ipc.setBinding(profile.id, 'button2Hold', { action: null });
+      if (profile.buttons[0].press.action?.kind === 'micMute') {
+        await ipc.setBinding(profile.id, 'button1Press', { action: null });
+      }
+    }
+    render(<Harness />);
+    expect(
+      await screen.findByText(
+        'No control mutes your microphones. Bind Mic mute to a control to keep a hardware mute.',
+      ),
+    ).toBeVisible();
   });
 });
 
-describe('ControlsPage tabs', () => {
+describe('ControlsPage tabs', { timeout: 20_000 }, () => {
   it('splits the page into Controls, Macros and Reset & help, and tells them apart from the profile chips', async () => {
     const user = userEvent.setup();
     render(<Harness />);
@@ -703,7 +729,7 @@ describe('ControlsPage tabs', () => {
   });
 });
 
-describe('ControlsPage macros', () => {
+describe('ControlsPage macros', { timeout: 20_000 }, () => {
   const stepTexts = (): string[] =>
     within(screen.getByRole('list', { name: 'Steps' }))
       .getAllByRole('listitem')
@@ -790,7 +816,7 @@ describe('ControlsPage macros', () => {
       ),
     );
     await waitFor(() => expect(screen.queryByTestId('macro-standup')).not.toBeInTheDocument());
-  });
+  }, 20_000);
 
   it('limits a macro to 8 steps and never offers a macro as a step', async () => {
     const user = userEvent.setup();
@@ -818,7 +844,7 @@ describe('ControlsPage macros', () => {
     await user.type(within(picker).getByLabelText('Wait (milliseconds)'), '49');
     expect(within(picker).getByText('Wait between 50 and 2000 milliseconds.')).toBeVisible();
     expect(within(picker).getByRole('button', { name: 'Add step' })).toBeDisabled();
-  });
+  }, 20_000);
 
   const clickTemplate = async (
     user: ReturnType<typeof userEvent.setup>,

@@ -22,6 +22,8 @@ pub const STABLE_FOR: Duration = Duration::from_millis(400);
 /// What the knob does.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RotateBinding {
+    /// Hold + turn opens the profile picker on the device. Not a desktop action.
+    ProfilePicker,
     /// Master volume (the rotary volume loop).
     Volume,
     /// One shortcut per detent, one per direction (invariant 54: the binding owns both).
@@ -38,6 +40,7 @@ impl RotateBinding {
     #[must_use]
     pub fn label(&self) -> &str {
         match self {
+            RotateBinding::ProfilePicker => "Profiles",
             RotateBinding::Volume => "Volume",
             RotateBinding::Shortcuts { label, .. } | RotateBinding::AppVolume { label, .. } => {
                 label
@@ -58,6 +61,8 @@ pub struct Profile {
     pub in_pin_cycle: bool,
     pub mood: ContextMood,
     pub rotate: RotateBinding,
+    /// Hold + turn. The built-in is the device's profile picker.
+    pub held_rotate: RotateBinding,
     pub bindings: Bindings,
 }
 
@@ -65,7 +70,9 @@ impl Profile {
     /// Whether this profile makes Kivori press keys (a shortcut on a button or on the knob).
     #[must_use]
     pub fn needs_key_events(&self) -> bool {
-        matches!(self.rotate, RotateBinding::Shortcuts { .. }) || self.bindings.needs_key_events()
+        matches!(self.rotate, RotateBinding::Shortcuts { .. })
+            || matches!(self.held_rotate, RotateBinding::Shortcuts { .. })
+            || self.bindings.needs_key_events()
     }
 }
 
@@ -88,9 +95,13 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
         press: Slot::bound(Action::ToggleMicMute),
         hold: Slot::default(),
     };
-    let with_buttons = |buttons: [ButtonSlots; 3]| Bindings {
-        buttons,
-        ..Bindings::default()
+    let with_buttons = |mut buttons: [ButtonSlots; 3]| {
+        // The table replaces the whole row. Middle Hold still starts as mic mute.
+        buttons[1].hold = Slot::named(Action::ToggleMicMute, "Mic mute");
+        Bindings {
+            buttons,
+            ..Bindings::default()
+        }
     };
     let ids = |ids: &[&str]| ids.iter().map(ToString::to_string).collect::<Vec<_>>();
     let general = Profile {
@@ -100,6 +111,7 @@ pub fn builtins_for(mac: bool) -> Vec<Profile> {
         in_pin_cycle: true,
         mood: ContextMood::Neutral,
         rotate: RotateBinding::Volume,
+        held_rotate: RotateBinding::ProfilePicker,
         bindings: Bindings::default(),
     };
     vec![
@@ -342,7 +354,7 @@ pub fn match_profile(profiles: &[Profile], id: &str) -> usize {
         .unwrap_or(0)
 }
 
-/// The contextual button whose Hold mutes every capture device.
+/// The middle contextual button. Its Hold defaults to mic mute.
 pub const MIC_BUTTON: u8 = 1;
 
 /// What a discrete input does under the active context.
@@ -509,23 +521,18 @@ impl Context {
             .map(|p| p.name.as_str())
     }
 
-    /// The Hold labels of the three contextual buttons, for the device's hold ring: the middle
-    /// button's Hold is always mic mute; the others show the bound Hold in the profile's
-    /// words, and nothing when it is unbound or suspended (a protected context).
+    /// The Hold labels of the three contextual buttons, for the device's hold ring. Each shows
+    /// the bound Hold in the profile's words, and nothing when it is unbound or suspended (a
+    /// protected context).
     #[must_use]
     pub fn hold_actions(&self) -> HoldActions {
         let protected = self.protected();
         let bindings = &self.profile().bindings;
         HoldActions {
-            buttons: std::array::from_fn(|i| {
-                if i == usize::from(MIC_BUTTON) {
-                    return MediaText::from_text("Mic mute");
-                }
-                match &bindings.buttons[i].hold.action {
-                    None => MediaText::default(),
-                    Some(action) if protected && !action.is_system() => MediaText::default(),
-                    Some(_) => MediaText::from_text(&bindings.buttons[i].hold.device_label()),
-                }
+            buttons: std::array::from_fn(|i| match &bindings.buttons[i].hold.action {
+                None => MediaText::default(),
+                Some(action) if protected && !action.is_system() => MediaText::default(),
+                Some(_) => MediaText::from_text(&bindings.buttons[i].hold.device_label()),
             }),
         }
     }
@@ -574,6 +581,17 @@ impl Context {
         &self.profiles[self.pinned.unwrap_or(self.app_profile)]
     }
 
+    /// Hold + turn. The profile picker is the device's own screen; volume still runs here.
+    #[must_use]
+    pub fn held_rotate(&self) -> Option<&RotateBinding> {
+        let held = &self.profile().held_rotate;
+        let runs = matches!(
+            held,
+            RotateBinding::ProfilePicker | RotateBinding::Volume | RotateBinding::AppVolume { .. }
+        );
+        (!self.protected() || runs).then_some(held)
+    }
+
     /// The knob's binding, `None` while it is suspended (a shortcut knob in a protected context).
     #[must_use]
     pub fn rotate(&self) -> Option<&RotateBinding> {
@@ -589,18 +607,6 @@ impl Context {
     /// What a discrete input does now.
     #[must_use]
     pub fn resolve(&self, input: &LogicalInput) -> Resolved {
-        if matches!(
-            input,
-            LogicalInput::ButtonHold {
-                button: MIC_BUTTON,
-                ..
-            }
-        ) {
-            return Resolved::Run(Action::ToggleMicMute);
-        }
-        if matches!(input, LogicalInput::Hold { .. }) {
-            return Resolved::Nothing;
-        }
         match super::bound_action(&self.profile().bindings, input) {
             None => Resolved::Nothing,
             Some(action) if self.protected() && !action.is_system() => {
@@ -876,6 +882,7 @@ mod tests {
         assert_eq!(button(&mac[5], 2), "Shift+Meta+H");
         for profile in win.iter().chain(&mac) {
             assert_eq!(profile.rotate, RotateBinding::Volume, "{}", profile.name);
+            assert_eq!(profile.held_rotate, RotateBinding::ProfilePicker);
             assert_eq!(profile.bindings.press.action, Some(Action::ToggleMute));
             assert_eq!(profile.bindings.hold, Slot::default());
         }
@@ -1068,18 +1075,44 @@ mod tests {
     }
 
     #[test]
-    fn a_button_hold_runs_its_bound_action_and_the_middle_one_mutes_mics() {
-        let mut profiles = builtins();
-        profiles[0].bindings.buttons[0].hold = Slot::bound(Action::ToggleMute);
-        profiles[0].bindings.buttons[1].hold = Slot::bound(Action::ToggleMute);
-        let ctx = Context::new(profiles);
+    fn a_button_hold_runs_its_bound_action_and_the_middle_one_defaults_to_mic_mute() {
         let hold = |button| LogicalInput::ButtonHold {
             button,
             gesture_id: 1,
         };
+        let ctx = Context::new(builtins());
+        assert_eq!(
+            ctx.resolve(&hold(MIC_BUTTON)),
+            Resolved::Run(Action::ToggleMicMute)
+        );
+        let mut profiles = builtins();
+        profiles[0].bindings.buttons[0].hold = Slot::bound(Action::ToggleMute);
+        profiles[0].bindings.buttons[1].hold = Slot::bound(Action::PlayPause);
+        let ctx = Context::new(profiles);
         assert_eq!(ctx.resolve(&hold(0)), Resolved::Run(Action::ToggleMute));
-        assert_eq!(ctx.resolve(&hold(1)), Resolved::Run(Action::ToggleMicMute));
+        assert_eq!(
+            ctx.resolve(&hold(MIC_BUTTON)),
+            Resolved::Run(Action::PlayPause)
+        );
         assert_eq!(ctx.resolve(&hold(2)), Resolved::Nothing);
+    }
+
+    #[test]
+    fn every_built_in_profile_mutes_on_middle_hold_and_switches_view_on_double_press() {
+        for profile in builtins_for(false) {
+            assert_eq!(
+                profile.bindings.buttons[usize::from(MIC_BUTTON)].hold,
+                Slot::named(Action::ToggleMicMute, "Mic mute"),
+                "{}",
+                profile.name
+            );
+            assert_eq!(
+                profile.bindings.double_press.action,
+                Some(Action::SwitchView),
+                "{}",
+                profile.name
+            );
+        }
     }
 
     /// Resolved profiles for `file`, as the device thread gets them.
