@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import type { ReactElement } from 'react';
+import type { KeyboardEvent, ReactElement } from 'react';
 import { toast } from 'sonner';
 import { Label } from '@kivori/ui/components/label';
 import { Switch } from '@kivori/ui/components/switch';
 import { ToggleGroup, ToggleGroupItem } from '@kivori/ui/components/toggle-group';
+import { cn } from '@kivori/ui/lib/utils';
 import { setBuddySettings, setDisplaySettings } from '@/lib/ipc';
-import { DISPLAY_MODES, INTENSITIES } from '@/lib/ipc/types';
+import { mascotUrl } from '@/lib/brand';
+import { DISPLAY_MODES, INTENSITIES, INTENSITY_PERSONALITY } from '@/lib/ipc/types';
 import type {
   ConfigDto,
   ConnectionStatusDto,
@@ -17,11 +19,18 @@ import { strings } from '@/lib/i18n/strings';
 import { controlSupported, hasCapability } from '@/lib/device-support';
 import { GnomeFocusHelp } from '../../permissions/GnomeFocusHelp';
 import { StepFrame } from './frame';
+import './onboarding-motion.css';
+
+const MASCOT_MOTION = {
+  calm: 'motion-safe:animate-[onboarding-breathe_4s_ease-in-out_infinite]',
+  cozy: 'motion-safe:animate-[onboarding-bob_2.4s_ease-in-out_infinite]',
+  playful: 'motion-safe:animate-[onboarding-playful_0.9s_ease-in-out_infinite]',
+} as const;
 
 const t = strings.onboarding.customize;
 
 /**
- * Explains Auto profiles and the pin, and sets the screen at start and the buddy's liveliness.
+ * Explains Auto profiles and the pin, and sets the screen at start and the buddy's personality.
  * Those two are saved as soon as they are chosen (the same commands as the Display page). Launch
  * at login is only a choice here: it is applied when the person finishes setup.
  */
@@ -73,6 +82,21 @@ export function Customize({
       setIntensity(null);
       toast.error(t.saveFailed);
     });
+  };
+  const moveIntensity = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
+    const direction =
+      event.key === 'ArrowRight' || event.key === 'ArrowDown'
+        ? 1
+        : event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+          ? -1
+          : 0;
+    if (direction === 0) return;
+    event.preventDefault();
+    const next = INTENSITIES[(index + direction + INTENSITIES.length) % INTENSITIES.length]!;
+    chooseIntensity(next);
+    event.currentTarget.parentElement
+      ?.querySelector<HTMLButtonElement>(`[data-testid="personality-${next}"]`)
+      ?.focus();
   };
 
   return (
@@ -134,22 +158,42 @@ export function Customize({
             </p>
           ) : null}
         </div>
-        <ToggleGroup
+        <div
+          role="radiogroup"
           aria-labelledby="onboarding-intensity"
-          value={shownIntensity ? [shownIntensity] : []}
-          disabled={buddy === null}
-          onValueChange={(value) => {
-            const picked = value[0] as Intensity | undefined;
-            if (picked) chooseIntensity(picked);
-          }}
-          variant="outline"
+          className="grid grid-cols-1 gap-3 sm:grid-cols-3"
         >
-          {INTENSITIES.map((level) => (
-            <ToggleGroupItem key={level} value={level} className="px-4">
-              {strings.companion.intensities[level]}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+          {INTENSITIES.map((level, index) => {
+            const personality = INTENSITY_PERSONALITY[level];
+            const checked = shownIntensity === level;
+            return (
+              <button
+                key={level}
+                type="button"
+                role="radio"
+                aria-checked={checked}
+                data-testid={`personality-${level}`}
+                disabled={buddy === null}
+                tabIndex={checked ? 0 : -1}
+                onClick={() => chooseIntensity(level)}
+                onKeyDown={(event) => moveIntensity(event, index)}
+                className={cn(
+                  'flex flex-col items-start gap-2 rounded-lg border p-4 text-left transition-colors',
+                  checked && 'border-primary bg-primary/10',
+                )}
+              >
+                <img
+                  src={mascotUrl}
+                  alt=""
+                  draggable={false}
+                  className={cn('size-14 select-none', MASCOT_MOTION[personality])}
+                />
+                <span className="text-sm font-medium">{t.personalities[personality]}</span>
+                <span className="text-xs text-muted-foreground">{t.personalityBody[level]}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="flex items-center justify-between gap-4 rounded-lg border px-4 py-3">

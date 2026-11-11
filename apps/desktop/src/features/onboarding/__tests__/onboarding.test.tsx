@@ -146,6 +146,7 @@ describe('onboarding steps follow real status', () => {
     await heading('Try your Kivori');
     expect(screen.getByText(/No device controls are available/)).toBeInTheDocument();
     await next(user);
+    await next(user);
     await heading('Make it yours');
   });
 });
@@ -159,7 +160,7 @@ describe('permissions', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled());
     await next(user);
     await heading('Try your Kivori');
-    expect(screen.getByText('Step 3 of 5')).toBeInTheDocument();
+    expect(screen.getByText('Step 3 of 6')).toBeInTheDocument();
     expect(screen.queryByText(/Accessibility/)).not.toBeInTheDocument();
   });
 
@@ -170,7 +171,7 @@ describe('permissions', () => {
     await next(user, 'Get started');
     await next(user, 'Skip this step');
     await heading('Let Kivori press keys for you');
-    expect(screen.getByText('Step 3 of 6')).toBeInTheDocument();
+    expect(screen.getByText('Step 3 of 7')).toBeInTheDocument();
     expect(await screen.findByText('Accessibility access is not on yet.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Allow' })).toBeInTheDocument();
@@ -191,7 +192,7 @@ describe('permissions', () => {
     await next(user, 'Get started');
     await next(user, 'Skip this step');
     await heading('Try your Kivori');
-    expect(screen.getByText('Step 3 of 5')).toBeInTheDocument();
+    expect(screen.getByText('Step 3 of 6')).toBeInTheDocument();
     expect(screen.queryByText(/Accessibility/)).not.toBeInTheDocument();
     expect((await ipc.getOnboarding()).accessibilityAsked).toBe(false);
   });
@@ -208,6 +209,7 @@ describe('permissions', () => {
     await heading('Try your Kivori');
     await next(user);
     await next(user);
+    await next(user);
     await heading('Almost done');
     expect(screen.getByTestId('onboarding-open-steps')).toHaveTextContent(/Allow Accessibility/);
   });
@@ -221,6 +223,7 @@ describe('finishing', () => {
     render(<Harness onComplete={onComplete} />);
     await next(user, 'Get started');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled());
+    await next(user);
     await next(user);
     await next(user);
     await heading('Make it yours');
@@ -244,6 +247,7 @@ describe('finishing', () => {
     await next(user, 'Get started');
     await next(user, 'Skip this step');
     await next(user);
+    await next(user);
     await user.click(await screen.findByRole('switch', { name: 'Start with Windows' }));
     await next(user);
     await next(user, 'Finish');
@@ -257,6 +261,7 @@ describe('finishing', () => {
     render(<Harness onComplete={() => Promise.resolve()} />);
     await next(user, 'Get started');
     await next(user, 'Skip this step');
+    await next(user);
     await next(user);
     await next(user);
     await heading('Almost done');
@@ -274,6 +279,7 @@ describe('finishing', () => {
     await next(user, 'Skip this step');
     await next(user);
     await next(user);
+    await next(user);
     await next(user, 'Finish');
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not finish setup');
     expect(screen.getByRole('button', { name: 'Finish' })).toBeEnabled();
@@ -286,6 +292,7 @@ describe('finishing', () => {
     await next(user, 'Get started');
     await next(user, 'Skip this step');
     await next(user);
+    await next(user);
     await heading('Make it yours');
     const clock = await screen.findByRole('button', { name: 'Clock' });
     await waitFor(() => expect(clock).toBeEnabled());
@@ -293,9 +300,12 @@ describe('finishing', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Clock' })).toHaveAttribute('aria-pressed', 'true'),
     );
-    await user.click(screen.getByRole('button', { name: 'High' }));
+    await user.click(screen.getByRole('radio', { name: /Playful/ }));
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'High' })).toHaveAttribute('aria-pressed', 'true'),
+      expect(screen.getByRole('radio', { name: /Playful/ })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      ),
     );
   });
 });
@@ -314,6 +324,7 @@ describe('in the app', () => {
       await next(user, 'Skip this step');
       await next(user);
       await next(user);
+      await next(user);
       await next(user, 'Finish');
       expect(await screen.findByRole('alert')).toHaveTextContent('Could not finish setup');
       expect((await ipc.getOnboarding()).completed).toBe(false);
@@ -323,6 +334,7 @@ describe('in the app', () => {
       await heading('Welcome to Kivori');
       await next(user, 'Get started');
       await next(user, 'Skip this step');
+      await next(user);
       await next(user);
       await next(user);
       await next(user, 'Finish');
@@ -345,6 +357,7 @@ describe('in the app', () => {
       await heading('Welcome to Kivori');
       await next(user, 'Get started');
       await next(user, 'Skip this step');
+      await next(user);
       await next(user);
       await next(user);
       await next(user, 'Finish');

@@ -10,6 +10,7 @@ import {
   Ellipsis,
   Pencil,
   Pin,
+  Play,
   Plus,
   SlidersHorizontal,
   Workflow,
@@ -56,15 +57,9 @@ import {
   ItemMedia,
 } from '@kivori/ui/components/item';
 import { Skeleton } from '@kivori/ui/components/skeleton';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@kivori/ui/components/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@kivori/ui/components/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@kivori/ui/components/tooltip';
+import { cn } from '@kivori/ui/lib/utils';
 import { Page } from '@/components/kivori/page';
 import { PageTabs } from '@/components/kivori/page-tabs';
 import { ProductArt } from '@/components/kivori/product-art';
@@ -73,6 +68,7 @@ import { DeviceScreen } from '@/components/kivori/device-screen';
 import { ResultBadge } from '@/components/kivori/result-badge';
 import {
   deleteMacro,
+  getStartupSettings,
   listActionCatalog,
   resetConfig,
   resetProfile,
@@ -94,9 +90,12 @@ import type {
   ProfileId,
   RotateSpec,
   SlotDto,
+  StartupPlatform,
+  StepSpec,
 } from '@/lib/ipc/types';
 import { controlSupported } from '@/lib/device-support';
 import type { ConnectionStatusDto } from '@/lib/ipc/types';
+import { mascotUrl } from '@/lib/brand';
 import { format, strings } from '@/lib/i18n/strings';
 import { errorText } from '@/lib/utils';
 import { GnomeFocusHelp } from '../permissions/GnomeFocusHelp';
@@ -104,9 +103,14 @@ import { AccessibilityHelp } from '../permissions/AccessibilityHelp';
 import { KeyboardShortcutsStatus } from '../permissions/KeyboardShortcutsStatus';
 import { needsKeyEvents } from '../permissions/needs-key-events';
 import { ActionPicker, catalogId } from './ActionPicker';
+import { NewProfileArt } from './illustrations';
 import { MacroEditor, describeStep } from './MacroEditor';
+import { macroTemplates } from './macro-templates';
+import { macroUsage } from './macro-usage';
+import { ProfileRail } from './ProfileRail';
 import { ProfilesCard } from './ProfilesCard';
 import type { PickerTarget } from './ActionPicker';
+import './controls-motion.css';
 
 const t = strings.controls;
 
@@ -274,6 +278,12 @@ export function ControlsPage({
   const [confirm, setConfirm] = useState<'profile' | 'all' | null>(null);
   // `undefined` = closed, `null` = a new macro, else the macro being edited.
   const [editingMacro, setEditingMacro] = useState<MacroSpec | null | undefined>(undefined);
+  const [macroDraft, setMacroDraft] = useState<{ name: string; steps: StepSpec[] } | undefined>(
+    undefined,
+  );
+  const [createdMacroId, setCreatedMacroId] = useState<string | null>(null);
+  const [deletingMacro, setDeletingMacro] = useState<MacroSpec | null>(null);
+  const [platform, setPlatform] = useState<StartupPlatform | null>(null);
   const [tested, setTested] = useState<{ row: string; result: DeskResult } | null>(null);
   const invocation = useRef(0);
   const [countdown, setCountdown] = useState<{ row: string; left: number } | null>(null);
@@ -284,6 +294,20 @@ export function ControlsPage({
     listActionCatalog()
       .then((entries) => active && setCatalog(entries))
       .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    getStartupSettings()
+      .then((settings) => {
+        if (active) setPlatform(settings.platform);
+      })
+      .catch(() => {
+        if (active) setPlatform('other');
+      });
     return () => {
       active = false;
     };
@@ -367,6 +391,12 @@ export function ControlsPage({
       toast.error(strings.controls.macros.deleteFailed, { description: errorText(error) }),
     );
   };
+  const doDeleteMacro = (): void => {
+    const target = deletingMacro;
+    setDeletingMacro(null);
+    if (!target || !config || macroUsage(config, target.id).length > 0) return;
+    removeMacro(target);
+  };
   const doReset = (): void => {
     const scope = confirm;
     setConfirm(null);
@@ -375,7 +405,7 @@ export function ControlsPage({
     );
   };
 
-  const renderRow = (entry: ProfileConfigDto, row: Row): ReactElement => {
+  const renderRow = (entry: ProfileConfigDto, row: Row, quiet = false): ReactElement => {
     const rowId = `${entry.id}:${row.key}`;
     const bound = row.spec ?? null;
     // Test runs the saved binding once: a discrete action, or for the knob one step up and back
@@ -384,6 +414,10 @@ export function ControlsPage({
     const counting = countdown?.row === rowId;
     const entryInfo = bound ? catalog?.find((e) => e.id === catalogId(bound)) : undefined;
     const name = t.gestures[row.key].name;
+    const unbound = row.control !== null && (row.spec === null || row.spec === undefined);
+    const flashed =
+      tested?.row === rowId &&
+      (tested.result === 'stateConfirmed' || tested.result === 'executionConfirmed');
     const edit = (): void => {
       const { control } = row;
       if (control === null) return;
@@ -398,18 +432,34 @@ export function ControlsPage({
       <li
         key={row.key}
         data-testid={`gesture-${row.key}`}
-        className="flex items-center gap-3 px-3 py-2.5"
+        className={cn(
+          'flex items-center gap-3 px-3 py-2.5',
+          !quiet && row.control !== null && 'transition-colors hover:bg-muted/50',
+          flashed && 'motion-safe:animate-[kivori-row-flash_600ms_ease-out]',
+        )}
       >
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <row.Icon className="size-4" aria-hidden="true" />
-        </div>
+        {quiet ? (
+          <row.Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        ) : (
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <row.Icon className="size-4" aria-hidden="true" />
+          </div>
+        )}
         {/* The text is a large click target for Edit; the Edit button is the keyboard route. */}
         <div
-          className={row.control === null ? 'min-w-0 flex-1' : 'min-w-0 flex-1 cursor-pointer'}
+          className={
+            quiet
+              ? 'min-w-0 flex-1 text-xs text-muted-foreground'
+              : row.control === null
+                ? 'min-w-0 flex-1'
+                : 'min-w-0 flex-1 cursor-pointer'
+          }
           onClick={row.control === null ? undefined : edit}
         >
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <span className="text-xs font-medium text-muted-foreground">{name}</span>
+            <span className={quiet ? 'text-xs' : 'text-xs font-medium text-muted-foreground'}>
+              {name}
+            </span>
             {connection?.connection === 'connected' &&
             connection.device?.identity?.known === true &&
             !controlSupported(connection, row.key) ? (
@@ -419,7 +469,23 @@ export function ControlsPage({
             {tested?.row === rowId && <ResultBadge result={tested.result} />}
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="truncate font-medium">{text}</span>
+            {unbound ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-dashed"
+                aria-label={format(t.editRow, { control: name })}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  edit();
+                }}
+              >
+                <Plus data-icon="inline-start" aria-hidden="true" />
+                {t.addAction}
+              </Button>
+            ) : (
+              <span className={quiet ? 'text-xs' : 'truncate font-medium'}>{text}</span>
+            )}
             {row.control === null && row.key === 'button2Hold' && (
               <Lock
                 className="size-3.5 shrink-0 text-muted-foreground"
@@ -446,13 +512,24 @@ export function ControlsPage({
             </p>
           )}
         </div>
-        {row.control !== null && (
+        {row.control !== null && !quiet && (
           <div className="flex shrink-0 items-center gap-1">
             {counting && (
               <Button size="sm" variant="ghost" onClick={stopCountdown}>
                 {t.cancelTest}
               </Button>
             )}
+            {testable && !counting ? (
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label={format(t.testRow, { control: name })}
+                title={t.test}
+                onClick={() => startTest(rowId, testable)}
+              >
+                <Play aria-hidden="true" />
+              </Button>
+            ) : null}
             <Button
               size="icon-sm"
               variant="ghost"
@@ -475,11 +552,6 @@ export function ControlsPage({
                 <Ellipsis aria-hidden="true" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-auto min-w-32">
-                {testable && !counting ? (
-                  <DropdownMenuItem onClick={() => startTest(rowId, testable)}>
-                    {t.test}
-                  </DropdownMenuItem>
-                ) : null}
                 <DropdownMenuItem
                   disabled={!row.overridden}
                   onClick={() => row.control && resetRow(row.control)}
@@ -504,6 +576,14 @@ export function ControlsPage({
       </ul>
     </section>
   );
+
+  const renderBuiltIn = (entry: ProfileConfigDto, list: Row[]): ReactElement | null =>
+    list.length === 0 ? null : (
+      <section className="space-y-1.5">
+        <h3 className="px-1 text-xs font-medium text-muted-foreground">{t.builtInTitle}</h3>
+        <ul aria-label={t.builtInTitle}>{list.map((row) => renderRow(entry, row, true))}</ul>
+      </section>
+    );
 
   const notes = (
     <details data-testid="controls-notes" className="group text-sm text-muted-foreground" open>
@@ -569,65 +649,32 @@ export function ControlsPage({
 
       {config ? (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1.5">
-              <label
-                htmlFor="controls-profile"
-                className="text-xs font-medium text-muted-foreground"
-              >
-                {t.workbench.profileHint}
-              </label>
-              <Select
-                value={selected}
-                onValueChange={(value) => value && setChosen(value as ProfileId)}
-                items={config.profiles.map((entry) => ({ value: entry.id, label: entry.name }))}
-              >
-                <SelectTrigger
-                  id="controls-profile"
-                  aria-label={t.profilesLabel}
-                  className="min-w-48 bg-card"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent align="start">
-                  {config.profiles.map((entry) => (
-                    <SelectItem key={entry.id} value={entry.id}>
-                      {entry.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <ProfileRail
+            profiles={config.profiles}
+            desk={desk}
+            selected={selected}
+            newOpen={newOpen}
+            onSelect={setChosen}
+            onNew={() => setNewOpen((open) => !open)}
+          />
+          {newOpen && profile ? (
+            <div data-testid="new-profile" className="space-y-3 rounded-xl border bg-card p-3">
+              <div className="flex items-center gap-3">
+                <NewProfileArt />
+                <img src={mascotUrl} alt="" className="size-12" />
+              </div>
+              <ProfilesCard
+                config={config}
+                desk={desk}
+                profile={profile}
+                onShow={(id) => {
+                  setChosen(id);
+                  setNewOpen(false);
+                }}
+                part="new"
+              />
             </div>
-            {profile ? (
-              <details
-                data-testid="new-profile"
-                open={newOpen}
-                onToggle={(event) => setNewOpen(event.currentTarget.open)}
-                className="group relative w-full pb-1.5 text-sm sm:w-auto"
-              >
-                <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-sm text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-                  <Plus className="size-3.5" aria-hidden="true" />
-                  {t.newProfileToggle}
-                  <ChevronDown
-                    className="size-3.5 transition-transform group-open:rotate-180"
-                    aria-hidden="true"
-                  />
-                </summary>
-                <div className="z-10 mt-2 w-full rounded-xl border bg-card p-3 shadow-lg sm:absolute sm:right-0 sm:w-80 sm:max-w-[calc(100vw-3rem)]">
-                  <ProfilesCard
-                    config={config}
-                    desk={desk}
-                    profile={profile}
-                    onShow={(id) => {
-                      setChosen(id);
-                      setNewOpen(false);
-                    }}
-                    part="new"
-                  />
-                </div>
-              </details>
-            ) : null}
-          </div>
+          ) : null}
           {profile ? (
             <ProfilesCard
               config={config}
@@ -636,7 +683,10 @@ export function ControlsPage({
               onShow={setChosen}
               part="profile"
             >
-              <div className="grid items-start gap-6 min-[900px]:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+              <div
+                key={profile.id}
+                className="grid items-start gap-6 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200 min-[900px]:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]"
+              >
                 <div className="mx-auto w-full max-w-sm space-y-3 min-[900px]:sticky min-[900px]:top-4 min-[900px]:max-w-none">
                   <ProductArt
                     connection={connection}
@@ -680,11 +730,20 @@ export function ControlsPage({
                         ['button2', t.gestures.button2.name, [profileRows[6]!, profileRows[9]!]],
                         ['button3', t.gestures.button3.name, [profileRows[7]!, profileRows[10]!]],
                       ] as const
-                    ).map(([control, title, entries]) => (
-                      <TabsContent key={control} value={control} className="mt-3">
-                        {renderGroup(profile, title, [...entries])}
-                      </TabsContent>
-                    ))}
+                    ).map(([control, title, entries]) => {
+                      const editable = entries.filter((row) => row.control !== null);
+                      const fixed = entries.filter((row) => row.control === null);
+                      return (
+                        <TabsContent
+                          key={control}
+                          value={control}
+                          className="mt-3 space-y-3 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200"
+                        >
+                          {editable.length > 0 ? renderGroup(profile, title, editable) : null}
+                          {renderBuiltIn(profile, fixed)}
+                        </TabsContent>
+                      );
+                    })}
                   </Tabs>
                 </div>
               </div>
@@ -697,46 +756,140 @@ export function ControlsPage({
     </>
   );
 
+  const mm = t.macros;
+  const atMacroLimit = !config || macros.length >= MACRO_LIMITS.macros;
+  const macroTemplateList = macroTemplates(platform);
+
   const macrosTab = (
     <Card data-testid="macros">
       <CardHeader>
-        <CardTitle>{strings.controls.macros.title}</CardTitle>
-        <CardDescription>{strings.controls.macros.description}</CardDescription>
+        <CardTitle>{mm.title}</CardTitle>
+        <CardDescription>{mm.description}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-4">
         {macros.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{strings.controls.macros.empty}</p>
+          <div className="flex items-center gap-3">
+            <img src={mascotUrl} alt="" className="size-12" />
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">{mm.empty}</p>
+              <p className="text-sm text-muted-foreground">{mm.emptyHint}</p>
+            </div>
+          </div>
         ) : (
-          <ul className="space-y-2" aria-label={strings.controls.macros.title}>
-            {macros.map((m) => (
-              <li
-                key={m.id}
-                data-testid={`macro-${m.id}`}
-                className="flex flex-wrap items-center gap-2 rounded-lg bg-muted px-3 py-2.5"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">{m.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {m.steps.map(describeStep).join(' → ')}
-                  </p>
-                </div>
-                <Button size="sm" variant="outline" onClick={() => setEditingMacro(m)}>
-                  {strings.controls.macros.edit}
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => removeMacro(m)}>
-                  {strings.controls.macros.delete}
-                </Button>
-              </li>
-            ))}
+          <ul className="space-y-2" aria-label={mm.title}>
+            {macros.map((macro) => {
+              const rowId = `macro:${macro.id}`;
+              const uses = config ? macroUsage(config, macro.id) : [];
+              const blockId = `macro-${macro.id}-delete-reason`;
+              const pending = countdown && countdown.row === rowId ? countdown : null;
+              return (
+                <li
+                  key={macro.id}
+                  data-testid={`macro-${macro.id}`}
+                  className="flex flex-wrap items-center gap-2 rounded-lg bg-muted px-3 py-2.5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium">{macro.name}</p>
+                      {tested?.row === rowId && <ResultBadge result={tested.result} />}
+                    </div>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {macro.steps.map(describeStep).join(' → ')}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {uses.length === 0
+                        ? mm.unused
+                        : format(mm.usedBy, {
+                            list: uses
+                              .map((use) => `${use.profileName} · ${use.controlName}`)
+                              .join(', '),
+                          })}
+                    </p>
+                    {pending ? (
+                      <p role="status" className="text-xs">
+                        {format(t.countdown, { seconds: pending.left })}{' '}
+                        <span className="text-muted-foreground">{t.countdownHint}</span>
+                      </p>
+                    ) : null}
+                    {uses.length > 0 ? (
+                      <p id={blockId} className="text-xs text-muted-foreground">
+                        {mm.deleteBlocked}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {pending ? (
+                      <Button size="sm" variant="ghost" onClick={stopCountdown}>
+                        {t.cancelTest}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label={format(mm.testMacro, { name: macro.name })}
+                        onClick={() => startTest(rowId, { kind: 'macro', id: macro.id })}
+                      >
+                        <Play aria-hidden="true" />
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setMacroDraft(undefined);
+                        setEditingMacro(macro);
+                      }}
+                    >
+                      {mm.edit}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={uses.length > 0}
+                      aria-describedby={uses.length > 0 ? blockId : undefined}
+                      onClick={() => setDeletingMacro(macro)}
+                    >
+                      {mm.delete}
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
         <Button
           variant="outline"
-          disabled={!config || macros.length >= MACRO_LIMITS.macros}
-          onClick={() => setEditingMacro(null)}
+          disabled={atMacroLimit}
+          onClick={() => {
+            setMacroDraft(undefined);
+            setEditingMacro(null);
+          }}
         >
-          {strings.controls.macros.create}
+          {mm.create}
         </Button>
+        <section className="space-y-2">
+          <h3 className="text-sm font-medium">{mm.templatesTitle}</h3>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {macroTemplateList.map((template) => {
+              const label = mm.templates[template.key];
+              return (
+                <button
+                  key={template.key}
+                  type="button"
+                  disabled={atMacroLimit || platform === null}
+                  className="rounded-xl border bg-card px-3 py-2.5 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60"
+                  onClick={() => {
+                    setMacroDraft({ name: label.name, steps: template.steps });
+                    setEditingMacro(null);
+                  }}
+                >
+                  <span className="block text-sm font-medium">{label.name}</span>
+                  <span className="block text-xs text-muted-foreground">{label.description}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
       </CardContent>
     </Card>
   );
@@ -812,7 +965,15 @@ export function ControlsPage({
         target={editing}
         catalog={catalog}
         macros={macros}
-        onClose={() => setEditing(null)}
+        newMacroId={createdMacroId}
+        onNewMacro={() => {
+          setMacroDraft(undefined);
+          setEditingMacro(null);
+        }}
+        onClose={() => {
+          setEditing(null);
+          setCreatedMacroId(null);
+        }}
         onSaveSlot={async (target, slot) => {
           if (target.control === 'rotate' || target.control === 'step' || !target.profile) return;
           await setBinding(target.profile.id, target.control, slot);
@@ -827,7 +988,14 @@ export function ControlsPage({
         macro={editingMacro}
         macros={macros}
         catalog={catalog}
-        onClose={() => setEditingMacro(undefined)}
+        initial={editingMacro === null ? macroDraft : undefined}
+        onSaved={(id) => {
+          if (editing) setCreatedMacroId(id);
+        }}
+        onClose={() => {
+          setEditingMacro(undefined);
+          setMacroDraft(undefined);
+        }}
       />
 
       <AlertDialog open={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>
@@ -852,6 +1020,26 @@ export function ControlsPage({
             <AlertDialogCancel>{t.keep}</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={doReset}>
               {t.confirmReset}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={deletingMacro !== null}
+        onOpenChange={(open) => !open && setDeletingMacro(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {format(mm.deleteTitle, { name: deletingMacro?.name ?? '' })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>{mm.deleteBody}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{mm.keep}</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={doDeleteMacro}>
+              {mm.confirmDelete}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
