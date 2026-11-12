@@ -146,66 +146,76 @@ LIP_COLLAR = (0.4, 0.5, 0.1)  # collar on the lip's underside that locates it in
 EYE_ELEV = 40.0             # seated eye above the desk, from the front (the concept sheet's viewpoint)
 RIM_HIDDEN_MAX = 0.5        # build check: the near rim may hide at most this much of the active area from that eye
 
-# Buttons: 12x12 tactile push switch, 10 mm tall (pads from KiCad SW_PUSH-12mm)
-BTN_MID = (43.0, 11.0)      # middle button centre
-BTN_PITCH = 18.0            # chord distance to the outer buttons (blueprint)
-BTN_OPEN = 14.0             # face opening (blueprint)
-BTN_CAP = 13.4              # cap body
-BTN_FLANGE = 15.2           # retaining flange behind the face
-BTN_FLANGE_T = 1.2
-BTN_CAP_PROUD = 5.0         # cap top above the face: 4 mm above the visor (v4 kept the same 4 mm above its top plate)
-BTN_CAP_TOP = 12.4          # cap top width: a slight taper
-# 12x12 projected-plunger switch, seller drawing TS-G005 (7.5 mm version; this one is 10 mm tall)
-SW_BODY, SW_BODY_H = 11.7, 3.6  # housing 11.7 x 11.7 x 3.6 (seller drawing, the 7.3 mm switch)
-SW_LEG = (0.7, 0.3, 3.5)    # flat legs: width, thickness, length below the housing (measured: 3.5);
-                            # 2.2 mm of it comes out of the pocket floor, to wrap and fold
-SW_BOSS_D, SW_BOSS_H = 6.4, 4.5   # round platform on the housing, top 4.5 mm above the PCB
-# Snap-fit stem (seller drawing): on the platform a short narrower neck, 1 mm tall, then the square
-# head (the grip) up to the top, so a cap clicks on under the head
-SW_NECK, SW_NECK_H = 3.0, 1.0  # stem neck, square: width, height above the platform
-SW_HEAD, SW_HEAD_H = 3.8, 1.7  # square head with a centre hole: width, height
-SW_TOTAL_H = SW_BOSS_H + SW_NECK_H + SW_HEAD_H  # head top 7.2 mm above the PCB
-CAP_WALL = 1.0              # hollow cap side wall
-# The cap holds the stem like a bought round 12x12 cap: round the square head, two opposite sides are
-# long fingers whose lips snap in under the head, and the other two are short stiff walls tied to the
-# cap's outer wall by a rib each, so the cap cannot rock on the head. A stop post on the cap top rests
-# on the head, so the cap is held both ways. (Four free fingers alone were springy and the cap wobbled;
-# a stiff socket all round had no snap.)
-CAP_TOP_T = 1.2             # flat cap top; the cap prints top down, so the top comes off the bed
-CAP_TOP_EDGE = 0.4          # 45° chamfer round the cap top edge
-CAP_FINGER = (5.5, 1.6)     # long sides: finger width (5.5 as on a bought round 12x12 cap, past the head's
-                            # corners), thickness
-CAP_RIB_T = 1.0             # rib from every plate (long and short) out to the cap wall: thickness
-CAP_RIB_SHARE = (0.37, 0.55)  # ... and its share of the plate's height from the cap top (the user's grip
-                            # support): long fingers, short side plates. The free rest below it is all that
-                            # bends as the cap snaps on: 5.9 mm of finger (2.5% strain at the old d 0.35, now ~2.9%, 3 t d / 2 L^2 with
-                            # d = lip reach + the 0.05 preload of CAP_SNAP_CLR = 0.40 now) and 4.6 mm of short
-                            # plate (1.7% at the old d 0.2, now ~2.1%), at PETG's limit of 2-2.5%. (A 0.75 share on both gave 15%
-                            # and 7%: the cap would not click on.)
-CAP_SNAP = 0.35             # lip reach in under the head (the neck is 0.4 narrower per side: 0.05 gap left; 0.40 would touch it;
-                            # was 0.30, raised to cut the cap wobble: test-fit on a real switch)
-CAP_SNAP_CLR = -0.05        # finger to head side: they press on it slightly (at 0.1 the printed fingers stood off)
-CAP_SNAP_DROP = 0.4         # lip catch this much lower than drawn (measured: at 0.2 the cap was still loose on the head)
-CAP_SIDE = (2.0, 1.2, 0.0)  # short sides (2 wide, as on the bought cap): plate width, thickness, play to the head
-CAP_SIDE_SNAP = 0.25        # (was 0.20) their lips reach this far in under the head (shorter, stiffer plates: less than
-                            # the long ones); the ribs make a "+" with the fingers, as on the bought cap
-CAP_STOP_D = 3.0            # stop post on the head, round its centre hole
-CAP_STOP_ROOT = (3.6, 1.0)  # the post widens to this Ø over this height where it meets the cap top
-SW_PADS = [(-6.25, -2.5), (6.25, -2.5), (-6.25, 2.5), (6.25, 2.5)]  # pin 1,1,2,2 (land pattern Ø1.5)
+# Buttons: Outemu MX-style, full height, 3-pin. Every switch number is from the Outemu drawing the owner
+# supplied (top housing 15.60 square, bottom housing 13.95 square and 15.03 over the clips on +-Y, bottom to
+# housing top 11.00, plate level 5.00, flange top 6.00, clip 1.90, stem 4.10 above the housing, stem cross
+# 4.00 with arms 1.10 / 1.30, centre post dia 3.85, pins 3.80 / 2.54 / 5.08 from the post and 2.85 below the
+# bottom). Keycap numbers are from the owner's 1u keycap drawing (18 x 18 base, side walls 80 deg, front 70 deg,
+# 9.4 back / 9.68 front tall, wall 0.91, stem tube dia 5.50, cross 4 x 1.26, socket 1.30 above the skirt bottom).
+BTN_MID = (43.0, 11.5)      # middle button centre (the 18 mm cap skirt needs 11.5 to keep its opening clear of the near wall)
+KEY_STYLE = 'well'          # 'well': a square opening per key, the cap skirt rides in it (ref: case well)
+                            # 'plate': one slot over the whole row, the switches stand on the plate frames below it
+BTN_PITCH = 20.0            # the 18 mm cap skirt rides in a face opening, so the webs between openings need 1.3 mm
+BTN_OPEN = 18.7             # face opening round the 18.0 cap base: 0.35 per side
+BTN_CAP = 18.0              # keycap base (drawing)
+CAP_H = 9.5                 # keycap height, skirt bottom to the flat top (drawing: 9.4 back / 9.68 front, the top is flat here)
+CAP_SIDE_DEG, CAP_FRONT_DEG, CAP_BACK_DEG = 80.0, 70.0, 80.0   # wall angles from the horizontal (drawing; the back wall is ASSUMED 80)
+CAP_WALL = 0.91             # skirt wall (drawing)
+CAP_TUBE_D = 5.50           # stem tube (drawing)
+CAP_SOCKET_UP = 1.30        # socket mouth above the skirt bottom (drawing)
+CAP_TOP_T = 1.5             # top above the ceiling (ASSUMED); the cap prints top down on its flat top
+CAP_RIB_T, CAP_RIB_UP = 0.8, 5.0   # ASSUMED support ribs: thickness, bottom above the skirt bottom (so they clear the housing at full press)
+CAP_CLR = 0.35              # skirt bottom over the housing flange at full press
+# Switch, heights above the switch bottom (= the PCB plane).
+SW_PLATE_T, SW_PLATE_Z = 1.5, 5.0   # plate level 5.00 (drawing); plate thickness 1.5 (Cherry plate, ASSUMED)
+SW_CUTOUT = 14.1            # plate cutout: the drawing's 14.00 plus 0.1 for FDM at most (14.3 let the clips slip out)
+SW_BASE = 15.60             # top housing flange, square
+SW_LOWER, SW_CLIPS = 13.95, 15.03   # bottom housing, and over the clips (clips on +-Y)
+SW_HOUSING_H = 11.00        # bottom to housing top
+SW_FLANGE_Z = 6.00          # flange top
+SW_CLIP_H = 1.90            # clip height
+SW_UPPER = (13.0, 11.6)     # ASSUMED upper housing width at the flange top and at the top (tapers, read off the front view)
+SW_STEM_H = 4.10            # stem above the housing, at rest
+SW_STEM_L = 4.00            # stem cross length (both ways)
+SW_STEM_ARMS = (1.10, 1.30)  # cross arm thickness: of the Y bar (along x), of the X bar (along y)
+SW_TRAVEL = 4.0
+SW_PIN_L = 2.85             # pins and post below the bottom
+SW_PIN = (0.85, 0.78)       # pin section, from the 0.78 - 0.85 callouts
+SW_POST_D, SW_POST_L = 3.85, 2.85  # post dia (drawing); its length is ASSUMED equal to the pins
+SW_WELL = (8.0, 5.0)        # ASSUMED stem well in the housing top: width, depth. The stem tube travels in it
+SW_CLIP_HALF = 2.3          # clip pocket half width at the plate underside (the hook is 4.0 wide): the flat catch strip is 4.6 x OVH_LEDGE
+SW_CLIP_LEAN = 0.4          # the pocket's ends and back wall lean in at 45 deg over this height under the plate
+SW_SINK = 0.8               # switch seat sunk into a pocket in the carrier front: the pins then stand 1.65 mm behind it (a 0.9 mm wrap fits)
+# Pins relative to the centre post: (-3.81, 2.54) and (2.54, 5.08) (drawing 3.80 / 2.54 / 5.08; KiCad
+# SW_Cherry_MX_1.00u_PCB has the same, Y flipped for this frame, whose +Y is away from the user).
+# Pad 0 is the ground pin (daisy chain); pad 1 is B1/B2/B3.
+SW_PADS = [(-3.81, 2.54), (2.54, 5.08)]
+# Keycap socket: the stem plus 0.10 FDM allowance (cross 4.00 -> 4.10, arms 1.10 / 1.30 -> 1.20 / 1.40). The drawing's 1.26
+# slot would pinch the 1.30 arm.
+CAP_SLOT_L, CAP_SLOT_ARMS = SW_STEM_L + 0.10, (SW_STEM_ARMS[0] + 0.10, SW_STEM_ARMS[1] + 0.10)
 
 # Printed PCB ("carrier"): same plane as a future real PCB
 C_FRONT = -10.2             # printed PCB front (the 7.2 mm switch top ends 3.0 below the face: the caps reach down)
 KNOB_H = 11.0               # held from the 1.8 mm gap (it was HW040_FRONT + EC11_SHAFT_H + KNOB_TIP_CLR + KNOB_TOP_T - KNOB_GAP)
 C_T = 2.0                   # flat printed carrier, no back-side component pockets
 C_BACK = C_FRONT - C_T
+SW_Z0 = C_FRONT - SW_SINK   # switch bottom (the PCB plane of the drawing)
+BTN_CAP_PROUD = SW_Z0 + SW_FLANGE_Z + CAP_CLR + SW_TRAVEL + CAP_H   # cap top above the face
 C_INSET = 0.8               # carrier outline inset from the inner walls
 HOLE_D = 1.2                # clearance for other 2.54 mm header pins
 RP_PIN_FIT_D = 0.90          # provisional PETG press fit; choose after coupon test
-SW_HOLE_D = HOLE_D          # switch legs: same hole as the header pins
-POSTS = [(6.0, 7.0), (6.0, H - 7.5), (W - 6.0, H - 7.5), (W - 6.0, 7.0),
-         (70.0, 40.0), (16.0, 40.0)]  # mirrored middle supports: six screws total
+SW_HOLE_D = 1.70            # printed hole for the Ø1.50 pin drill (FDM prints small; test-fit)
+SW_POST_HOLE = 4.20         # printed hole for the Ø3.99 centre post
+POSTS = [(6.0, 7.0), (6.0, H - 7.5), (W - 6.0, H - 7.5), (W - 6.0, 7.0)]  # four corner screws; the back plate pillars carry the loads
+# Back plate pillars: they reach up to the carrier back (PILLAR_GAP short of it) right under the load points, so a press on a key or on
+# the encoder goes straight into the back plate and does not bend the carrier. Under each key: its east side, under the pocket floor (the
+# pins, the post and the ground chain are on the west and south); the others stand under the frame walls between keys. Under the
+# encoder: round the HW-040 window, which the pillars keep PILLAR_WIN clear of.
+PILLAR_D, PILLAR_GAP, PILLAR_WIN = 3.2, 0.2, 0.5
+PILLARS = [(29.5, 12.0), (49.5, 12.0), (69.5, 12.0), (15.2, 12.0), (33.0, 17.0), (53.0, 17.0),
+           (36.0, 29.0), (50.0, 29.0), (36.0, 54.2), (50.0, 54.2)]
 
-POST_D = 4.2               # slim: the front-right post sits just outside the right cap's flange
+POST_D = 4.2               # slim: the front-right post sits just outside the right cap
 # Post spigot: right through the carrier and on into a socket in the back-plate column, so the
 # carrier is held over its whole thickness and the column lines up on the same spigot
 SPIGOT_D, SPIGOT_HOLE_D = 3.4, 3.9   # 0.25 mm/side: FDM holes print small
@@ -301,14 +311,11 @@ COWL_EDGE = 0.4             # 45 deg chamfer round the cowl's seating edge
 COWL_WIN = DISP_ACTIVE + 2 * DISP_WIN_MARGIN + 2 * (LIP_COLLAR[0] + LIP_COLLAR[2])   # the cowl's window: the lip's collar sits in it
 COWL_WIN_R = 1.0 + LIP_COLLAR[0] + LIP_COLLAR[2]
 COWL_CURVE_R = 22.0  # follows the halo, with clearance at rest and during knob press
-HALO_OD, HALO_ID, HALO_T = 42.0, 12.4, 0.6  # white trim ring on the face (glued on)
+HALO_OD, HALO_ID, HALO_T = 38.0, 12.4, 0.6  # white trim ring on the face (glued on); 38 keeps it 0.5 clear of the key caps
 
 KNOB_CAP_T, KNOB_CAP_D = 0.8, 31.0
 KNOB_CAP_PEGS = [(KNOB_C[0] + 10 * math.cos(math.radians(a)),
                   KNOB_C[1] + 10 * math.sin(math.radians(a))) for a in (0, 120, 240)]
-UNDER_CLR = 0.3
-
-
 OVH_MAX = 45.0              # steepest overhang that prints without support: degrees from vertical
 BRIDGE_MAX = 10.0           # longest bridge accepted (mm)
 OVH_LEDGE = 0.5             # a flat ledge this narrow (about a line width) needs no support either
@@ -433,7 +440,7 @@ def button_poses():
 
 
 BTNS = button_poses()
-SW_PLUNGER_TOP = C_FRONT + SW_TOTAL_H
+SW_STEM_TOP = SW_Z0 + SW_HOUSING_H + SW_STEM_H   # stem top at rest, face frame
 
 # Display. The module is built in its own untilted frame (x = u along the face x, y = the face y with DISP_C[1] at the pivot, z = w
 # along the board normal: glass front w = 0, glass back = board front w = -1.4, board back w = -3.0) and tilt() carries a shape
@@ -610,8 +617,11 @@ def make_shell():
             cyl(2 * KNOB_HALO[0], KNOB_C[0], KNOB_C[1], -KNOB_HALO[2] - 1, 2)))
     # Full module/peg clearance: the removable cowl forms the display roof.
     cuts.append(cav_prism(-FACE_T - 1, 1))
-    for (x, y, a) in BTNS:
-        cuts.append(rr_prism(BTN_OPEN + 2 * UNDER_CLR, BTN_OPEN + 2 * UNDER_CLR, 1.8, x, y, -FACE_T - 1, 1, a))
+    if KEY_STYLE == 'plate':   # one slot over the row: the plate frames on the carrier show as the switch plate
+        cuts.append(rr_prism(BTNS[-1][0] - BTNS[0][0] + BTN_OPEN, BTN_OPEN, 1.8, BTN_MID[0], BTN_MID[1], -FACE_T - 1, 1))
+    else:
+        for (x, y, a) in BTNS:
+            cuts.append(rr_prism(BTN_OPEN, BTN_OPEN, 1.8, x, y, -FACE_T - 1, 1, a))
     for (x, y) in POSTS:
         cuts.append(cyl(SCREW_PILOT, x, y, C_BACK - SPIGOT_INTO_COL - 1, -FACE_T - 1.5))
     cuts += usb_port_cuts()
@@ -739,6 +749,8 @@ def make_back_plate():
         adds.append(mirror_x(arm.fuse(tri), side))
     for (x, y) in POSTS:
         adds.append(cyl(COLUMN_D, x, y, z_back(y) + 0.5, C_BACK - 0.1))
+    for (x, y) in PILLARS:   # load pillars: up to PILLAR_GAP short of the carrier back
+        adds.append(cyl(PILLAR_D, x, y, z_back(y) + 0.5, C_BACK - PILLAR_GAP))
     plate = plate.fuse([a.common(above_back(0)) for a in adds])
 
     # White base: 1.2 mm visible vertical edge and a 45-degree underside chamfer.
@@ -839,14 +851,15 @@ def carrier_through_cuts(pcb=False):
     cuts.append(cyl(EC11_BUSH_D + 2 * EC11_HOLE_CLR, KNOB_C[0], KNOB_C[1], z0, z1))
     cuts += [cyl(HOLE_D, x, y, z0, z1) for (x, y) in enc_pins.values()]
     cuts += [cyl(RP_PIN_FIT_D, x, y, z0, z1) for x, y in sm_pins.values()]
-    cuts += [cyl(SW_HOLE_D, *btn_pin(i, k), z0, z1) for i in range(3) for k in range(4)]
+    cuts += [cyl(SW_HOLE_D, *btn_pin(i, k), z0, z1) for i in range(3) for k in range(2)]
+    cuts += [cyl(SW_POST_HOLE, x, y, z0, z1) for (x, y, _) in BTNS]
     cuts += [cyl(VIA_D, x, y, z0, z1) for _, x, y in wire_vias()]
     return cuts
 
 
 RP_PIN = {net: name for name, net in RP_NETS.items()}   # net -> RP2040 pin name
-LEG_NET = {(0, 1): 'GND', (1, 0): 'GND', (1, 1): 'GND', (2, 0): 'GND', (2, 1): 'GND',
-           (0, 3): 'B1', (1, 3): 'B2', (2, 3): 'B3'}      # switch leg (key, pad) -> net; the rest is n/c
+LEG_NET = {(0, 0): 'GND', (1, 0): 'GND', (2, 0): 'GND',
+           (0, 1): 'B1', (1, 1): 'B2', (2, 1): 'B3'}       # switch pin (key, pad) -> net
 ENC_NET = {'CLK': 'CLK', 'DT': 'DT', 'SW': 'SW', '+': '3V3', 'GND': 'GND'}
 
 
@@ -884,7 +897,7 @@ def wire_routes():
             back, end = [top, (col[n], e[1]), e], ('enc', e)
         else:
             i = int(n[1]) - 1                      # key 0..2
-            leg = btn_pin(i, 3)
+            leg = btn_pin(i, 1)                    # the signal pin
             yh = 21.9 + COL_PITCH * i              # turns east above its key; the rightmost key turns first (highest)
             back, end = [top, (col[n], yh), (leg[0], yh), leg], ('leg', leg)
         R.append((n, [('F', [p, top]), ('B', back)], (('rp', p), end)))
@@ -901,15 +914,19 @@ def wire_routes():
     R.append(('GND', [('F', [D['GND'], (X0 + 1.4, D['GND'][1] - 0.8), (ex2, D['GND'][1] - 0.8),
                              (ex2, yp - PITCH_MIN), (xg, yp - PITCH_MIN), via_g]),
                       ('B', [via_g, E['GND']])], (('disp', D['GND']), ('enc', E['GND']))))
-    # key ground: east of everything, down to the right key's free lower leg
-    leg = btn_pin(2, 1)
+    # key ground, south of the centre posts. A straight run at the pin's y passes 0.14 mm
+    # from the Ø4.2 post hole. The feed reaches the right pin from the south; each link to the
+    # next pin steps west of that pin (away from its post) before dropping to its own y.
+    ys, yb = BTN_MID[1] - 4.5, BTN_MID[1] - 5.9   # 6.5 and 5.1: both clear the post hole, and each other
     xk = 75.0
-    via_k = (xk, leg[1])
+    via_k = (xk, ys)
+    g = [btn_pin(i, 0) for i in range(3)]
     R.append(('GND', [('F', [D['GND'], (X0 + 1.9, D['GND'][1] + 0.8), (xk, D['GND'][1] + 0.8), via_k]),
-                      ('B', [via_k, leg])], (('disp', D['GND']), ('leg', leg))))
-    for a, b in (((0, 1), (1, 0)), ((1, 1), (2, 0))):   # key to key ground chain
-        pa, pb = btn_pin(*a), btn_pin(*b)
-        R.append(('GND', [('B', [pa, pb])], (('leg', pa), ('leg', pb))))
+                      ('B', [via_k, (g[2][0], ys), g[2]])], (('disp', D['GND']), ('leg', g[2]))))
+    R.append(('GND', [('B', [g[2], (g[2][0] - 3.0, g[2][1]), (g[2][0] - 3.0, yb), (g[1][0], yb), g[1]])],
+              (('leg', g[2]), ('leg', g[1]))))
+    R.append(('GND', [('B', [g[1], (g[1][0] - 3.0, g[1][1]), (g[1][0] - 3.0, ys), (g[0][0], ys), g[0]])],
+              (('leg', g[1]), ('leg', g[0]))))
     return R
 
 
@@ -951,8 +968,9 @@ def wire_features(face):
     F += [(net, "via %s" % net, _circle(x, y, VIA_D)) for net, x, y in wire_vias()]
     F += [(RP_NETS.get(n, 'n/c ' + n), "RP hole " + n, _circle(x, y, RP_PIN_FIT_D)) for n, (x, y) in sm_pins.items()]
     F += [(ENC_NET[n], "encoder hole " + n, _circle(x, y, HOLE_D)) for n, (x, y) in enc_pins.items()]
-    F += [(LEG_NET.get((i, k), 'n/c %d.%d' % (i, k)), "leg hole %d.%d" % (i, k), _circle(*btn_pin(i, k), SW_HOLE_D))
-          for i in range(3) for k in range(4)]
+    F += [(LEG_NET[(i, k)], "switch pin %d.%d" % (i, k), _circle(*btn_pin(i, k), SW_HOLE_D))
+          for i in range(3) for k in range(2)]
+    F += [('solid', "switch post", _circle(x, y, SW_POST_HOLE)) for (x, y, _) in BTNS]
     F += [('solid', "spigot hole", _circle(x, y, SPIGOT_HOLE_D)) for x, y in POSTS]
     F += [('solid', "encoder bushing hole", _circle(*KNOB_C, EC11_BUSH_D + 2 * EC11_HOLE_CLR))]
     if face == 'F':
@@ -960,6 +978,8 @@ def wire_features(face):
         F += [('solid', "standoff", _circle(x, y, DISP_STANDOFF_D)) for x, y in disp_standoffs]
         F += [(net, "pocket %s" % n, _circle(x, y, DPIN_POCKET[0])) for (n, (x, y)), net in
               zip(disp_pins.items(), ('GND', '3V3', 'SCL', 'SDA', 'RES', 'DC', 'BLK'))]
+    else:
+        F += [('solid', "pillar %d" % i, _circle(x, y, PILLAR_D)) for i, (x, y) in enumerate(PILLARS)]
     return F
 
 
@@ -1057,13 +1077,49 @@ def peg(x, y, hole_d, z0, z1, clr=PEG_CLR):
     return body.fuse(tip)
 
 
+def switch_plate(cx, cy):
+    """MX plate for one key, grown up from the carrier front: 1.5 thick, its top SW_PLATE_Z above the switch seat
+    (the pocket floor), the cutout SW_CUTOUT (corners rounded), continuous all round.
+
+    The 15.6 flange rests on the plate top and the clips snap in under it. Clips are on +-Y. The wall under
+    the plate is flush with the cutout everywhere (no overhang), except for a blind pocket on the inside of
+    each clip side: the plate overhangs it by OVH_LEDGE (0.5, a line width) and that crisp flat underside is
+    the catch. The pocket's side walls and back wall lean in at 45 deg over the last 0.4 mm below the plate
+    (they print without support and the internal corners are 135 deg, not 90), and there is no window
+    through the wall. The east and west walls run the full height, so the plate is part of the carrier."""
+    z0 = C_FRONT
+    zb = SW_Z0 + SW_PLATE_Z - SW_PLATE_T
+    zt = SW_Z0 + SW_PLATE_Z
+    h = SW_CUTOUT / 2
+    x_out = SW_BASE / 2 + 0.8
+    y_s, y_n = -(SW_BASE / 2 + 0.9), SW_BASE / 2 + 1.6   # the south wall stops at the carrier's edge
+    body = rr_prism(2 * x_out, y_n - y_s, 1.0, 0, (y_n + y_s) / 2, z0, zt)
+    body = body.cut(rr_prism(SW_CUTOUT, SW_CUTOUT, 0.5, 0, 0, z0 - 1, zt + 1))   # cutout, rounded corners (no sharp inside corner)
+    lean, strip = SW_CLIP_LEAN, OVH_LEDGE
+    wide, deep = SW_CLIP_HALF + lean, h + strip + lean                    # the pocket at its floor
+    for sg in (-1, 1):
+        # plan: a rounded slot (r 0.5, its inner end lost in the cutout); the last `lean` under the plate is a 45 deg
+        # chamfer all round, so the only flat ceiling is the catch strip: 2 * SW_CLIP_HALF wide, OVH_LEDGE deep
+        y_in = sg * (h - 1.0)
+        straight = rr_prism(2 * wide, abs(sg * deep - y_in), 0.5, 0, (y_in + sg * deep) / 2, z0 - 0.01, zb - lean)
+        w0, w1 = 2 * wide, 2 * SW_CLIP_HALF
+        d0, d1 = abs(sg * deep - y_in), abs(sg * (h + strip) - y_in)
+        top = Part.makeLoft([_cap_section(w0, d0, 0.5, zb - lean, (y_in + sg * deep) / 2),
+                             _cap_section(w1, d1, 0.4, zb, (y_in + sg * (h + strip)) / 2)], True, True)
+        body = body.cut(straight).cut(top)
+    body.translate(V(cx, cy, 0))
+    return body
+
+
 def make_carrier():
     """The printed PCB. Prints back side down; every holding feature points up from the front."""
     c = carrier_outline()
     cuts = carrier_through_cuts()
     c = c.cut(cuts)
+    c = c.cut([box(x - SW_CUTOUT / 2, y - SW_CUTOUT / 2, SW_Z0, x + SW_CUTOUT / 2, y + SW_CUTOUT / 2, C_FRONT + 1)
+               for (x, y, _) in BTNS])   # seat pocket: the bottom housing sinks in, the pins and post still pass the floor
 
-    c = c.fuse(display_pillars() + [wire_cradle()])
+    c = c.fuse(display_pillars() + [wire_cradle()] + [switch_plate(x, y) for (x, y, _) in BTNS])
     c = c.cut(groove_cuts())
     return c.removeSplitter()
 
@@ -1158,88 +1214,147 @@ def make_knob():
     return k.cut(cuts).removeSplitter()
 
 
-def cap_grip(z_ceil, r_wall):
-    """The grip round the stem head, round the origin, a "+" of ribs out to the cap wall at r_wall:
-    two wide snap plates (long sides, along x), two short snap plates (along y), each ribbed down
-    CAP_RIB_SHARE of its height, and the stop post. Every plate's lip snaps in under the head."""
-    z_k = SW_PLUNGER_TOP - SW_HEAD_H - 0.05 - CAP_SNAP_DROP  # catch face, just under the head
-    land = 0.1
-
-    def plate(w, t, clr, reach):
-        """A snap plate on the +x side: free below its rib, a lip under the head, a 45° lead-in below
-        it, ending 0.1 above the switch's round platform."""
-        r_i = SW_HEAD / 2 + clr
-        r_o, r_l = r_i + t, SW_HEAD / 2 - reach
-        z_b = max(z_k - land - (r_i - r_l), C_FRONT + SW_BOSS_H + 0.1)
-        prof = [(r_o, z_ceil + 0.01), (r_i, z_ceil + 0.01), (r_i, z_k), (r_l, z_k), (r_l, z_k - land),
-                (r_i, z_b), (r_o, z_b)]
-        f = Part.Face(Part.makePolygon([V(px, 0, pz) for (px, pz) in prof + [prof[0]]])).extrude(V(0, w, 0))
-        f.translate(V(0, -w / 2, 0))
-        return f, r_o, z_b
-
-    rt = CAP_RIB_T
-    w, t = CAP_FINGER
-    f, r_o, z_b = plate(w, t, CAP_SNAP_CLR, CAP_SNAP)
-    f = f.fuse(box(r_o - 0.01, -rt / 2, z_ceil - CAP_RIB_SHARE[0] * (z_ceil - z_b), r_wall + 0.3, rt / 2, z_ceil + 0.01))
-    parts = [place(f, 0, 0, k * 180.0) for k in range(2)]
-    sw, st, sc = CAP_SIDE
-    f, r_o, z_b = plate(sw, st, sc, CAP_SIDE_SNAP)
-    f = f.fuse(box(r_o - 0.01, -rt / 2, z_ceil - CAP_RIB_SHARE[1] * (z_ceil - z_b), r_wall + 0.3, rt / 2, z_ceil + 0.01))
-    parts += [place(f, 0, 0, k * 90.0) for k in (1, 3)]
-    parts.append(cyl(CAP_STOP_D, 0, 0, SW_PLUNGER_TOP, z_ceil + 0.01))
-    rd, rh = CAP_STOP_ROOT  # the post's foot: a cone into the cap top
-    parts.append(Part.makeCone(CAP_STOP_D / 2, rd / 2, rh + 0.01, V(0, 0, z_ceil - rh), V(0, 0, 1)))
-    return fuse_all(parts)
+def _mx_cross(length, arms, z0, z1):
+    """A + centred on the origin: the bar along x is arms[1] thick (in y), the bar along y arms[0] (in x)."""
+    return box(-length / 2, -arms[1] / 2, z0, length / 2, arms[1] / 2, z1).fuse(
+        box(-arms[0] / 2, -length / 2, z0, arms[0] / 2, length / 2, z1))
 
 
-def check_cap_grip():
-    """Measure the printed grip (not the constants): each lip's reach under the stem head must equal
-    CAP_SNAP / CAP_SIDE_SNAP and stay >= 0.05 mm clear of the stem neck. Returns (long, short) reach and
-    (long, short) neck clearance, raising if a rule fails."""
-    z_ceil = BTN_CAP_PROUD - CAP_TOP_T
-    grip = cap_grip(z_ceil, 6.0)
-    z_k = SW_PLUNGER_TOP - SW_HEAD_H - 0.05 - CAP_SNAP_DROP
-    z_lo, z_hi = z_k - 0.09, z_k - 0.01  # inside the lip's 0.1 land
-    long_lip = grip.common(box(0.5, -0.5, z_lo, 5, 0.5, z_hi))
-    short_lip = grip.common(box(-0.5, 0.5, z_lo, 0.5, 5, z_hi))
-    reach = (SW_HEAD / 2 - long_lip.BoundBox.XMin, SW_HEAD / 2 - short_lip.BoundBox.YMin)
-    neck = box(-SW_NECK / 2, -SW_NECK / 2, SW_PLUNGER_TOP - SW_HEAD_H - SW_NECK_H, SW_NECK / 2, SW_NECK / 2,
-               SW_PLUNGER_TOP - SW_HEAD_H)
-    clear = (long_lip.distToShape(neck)[0], short_lip.distToShape(neck)[0])
-    if abs(reach[0] - CAP_SNAP) > 1e-4 or abs(reach[1] - CAP_SIDE_SNAP) > 1e-4:
-        raise ValueError("cap lip reach %s differs from CAP_SNAP/CAP_SIDE_SNAP" % (reach,))
-    if min(clear) < 0.05 - 1e-6:
-        raise ValueError("cap lip to stem neck clearance %s below 0.05 mm" % (clear,))
-    return reach, clear
+def _cap_section(w, h, r, z, dy):
+    wire = rr_wire(w, h, r, z)
+    wire.translate(V(0, dy, 0))
+    return wire
+
+
+def _cap_loft(base, z0, z1, r):
+    """Cap body from the skirt bottom z0 up to z1: `base` wide square, side walls CAP_SIDE_DEG, front (-y) wall
+    CAP_FRONT_DEG, back wall CAP_BACK_DEG. The top stays flat, shifted back where the front leans more."""
+    t = z1 - z0
+    i_s, i_f, i_b = (t / math.tan(math.radians(d)) for d in (CAP_SIDE_DEG, CAP_FRONT_DEG, CAP_BACK_DEG))
+    return Part.makeLoft([_cap_section(base, base, r, z0, 0.0),
+                          _cap_section(base - 2 * i_s, base - i_f - i_b, r, z1, (i_f - i_b) / 2)], True, True)
 
 
 def make_cap(i):
-    """Hollow cap with a flat top, open underneath, that clicks onto the switch stem (cap_grip).
-    Prints top down: the top comes off the bed flat, the grip grows up from it."""
+    """1u keycap on an MX cross socket, from the keycap drawing: tapered walls (80 deg sides, 70 deg front), flat top,
+    a 5.5 mm stem tube with the cross socket, four ribs. No rounding on the top. Prints top down on the flat top.
+
+    The skirt bottom sits SW_TRAVEL + CAP_CLR over the flange top, so at a full press it stops 0.35 mm above it;
+    the skirt then rides inside the face opening, round the upper housing."""
     x, y, a = BTNS[i]
-    z_flange = -FACE_T - 0.3 - BTN_FLANGE_T
-    z_ceil = BTN_CAP_PROUD - CAP_TOP_T
-    # straight up through the face and the visor, then tapering in like a keycap
-    z_taper = VISOR_T + 0.5
-    # the top edge (on the bed) is a 45° chamfer lofted in as its own section: makeChamfer's faces came
-    # out 47-54° from vertical on the leaning sides and the corners
-    ch = CAP_TOP_EDGE
-    t = (BTN_CAP_PROUD - ch - z_taper) / (BTN_CAP_PROUD - z_taper)
-    w_c, r_c = BTN_CAP + (BTN_CAP_TOP - BTN_CAP) * t, 1.2 + (2.0 - 1.2) * t
-    body = rr_prism(BTN_CAP, BTN_CAP, 1.2, x, y, z_flange, z_taper + 0.01, a).fuse(place(Part.makeLoft(
-        [rr_wire(BTN_CAP, BTN_CAP, 1.2, z_taper), rr_wire(w_c, w_c, r_c, BTN_CAP_PROUD - ch),
-         rr_wire(w_c - 2 * ch, w_c - 2 * ch, r_c - ch, BTN_CAP_PROUD)], True, True), x, y, a))
-    # flange: a 0.3 mm land, then 45° in to the body (the cap prints top down: no flat ledge)
-    ch = (BTN_FLANGE - BTN_CAP) / 2
-    flange = Part.makeLoft([rr_wire(BTN_FLANGE, BTN_FLANGE, 1.2 + ch, z_flange),  # (corners 45° too)
-                            rr_wire(BTN_FLANGE, BTN_FLANGE, 1.2 + ch, z_flange + BTN_FLANGE_T - ch),
-                            rr_wire(BTN_CAP, BTN_CAP, 1.2, z_flange + BTN_FLANGE_T)], True, True)
-    flange = place(flange, x, y, a)
-    cap = body.fuse(flange)
-    inner = BTN_CAP_TOP - 2 * CAP_WALL - 0.6
-    cap = cap.cut(rr_prism(inner, inner, 0.6, x, y, z_flange - 1, z_ceil, a))  # hollow
-    cap = cap.fuse(place(cap_grip(z_ceil, inner / 2), x, y, a))
-    return cap.removeSplitter()
+    z_top = BTN_CAP_PROUD
+    z_bot = SW_Z0 + SW_FLANGE_Z + CAP_CLR + SW_TRAVEL
+    z_ceil = z_top - CAP_TOP_T
+    z_mouth = z_bot + CAP_SOCKET_UP
+    outer = _cap_loft(BTN_CAP, z_bot, z_top, 1.5)
+    hollow = _cap_loft(BTN_CAP - 2 * CAP_WALL, z_bot, z_ceil, 0.6).fuse(
+        rr_prism(BTN_CAP - 2 * CAP_WALL, BTN_CAP - 2 * CAP_WALL, 0.6, 0, 0, z_bot - 1, z_bot + 0.01))
+    tube = cyl(CAP_TUBE_D, 0, 0, z_mouth, z_ceil + 0.2)
+    zr = z_bot + CAP_RIB_UP
+    ribs = box(-BTN_CAP / 2, -CAP_RIB_T / 2, zr, BTN_CAP / 2, CAP_RIB_T / 2, z_ceil + 0.2).fuse(
+        box(-CAP_RIB_T / 2, -BTN_CAP / 2, zr, CAP_RIB_T / 2, BTN_CAP / 2, z_ceil + 0.2)).common(outer)
+    cap = outer.cut(hollow).fuse(tube).fuse(ribs)
+    # the cross stops on the stem top, so the cap is located there as well as by the cross
+    cap = cap.cut(_mx_cross(CAP_SLOT_L, CAP_SLOT_ARMS, z_mouth - 0.2, SW_STEM_TOP))
+    return place(cap, x, y, a).removeSplitter()
+
+
+def _void_half(cap, origin, step, axis, limit):
+    """How far `axis` runs from origin through empty space before it hits the cap."""
+    d = 0.0
+    while d < limit:
+        p = origin + axis * d
+        if cap.isInside(p, 1e-7, True):
+            return d
+        d += step
+    return limit
+
+
+def check_pillars():
+    """Measure the back plate pillars on the built solids: the gap from each pillar top to the carrier back, its plan
+    clearance to every groove, via, pin hole and post on the back (and to the HW-040 window), and its 3D clearance to the wires,
+    switch pins, encoder and RP2040. Returns (largest gap, smallest gap, tightest plan clearance, tightest 3D clearance)."""
+    plate, car = PRINTED["BackPlate"], PRINTED["Carrier"]
+    F = [f for f in wire_features('B') if not f[1].startswith("pillar")]
+    ex, ey = HW040[0] / 2 + ENC_RELIEF, HW040[1] / 2 + ENC_RELIEF
+    window = Part.Face(Part.makePolygon([V(hw_c[0] + sx * ex, hw_c[1] + sy * ey, 0) for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1), (-1, -1))]))
+    parts = [DUMMIES[n] for n in ("Dummy_Wire", "Dummy_Encoder", "Dummy_EncoderNut", "Dummy_RP2040_Zero",
+                                  "Dummy_SwitchLeft", "Dummy_SwitchMiddle", "Dummy_SwitchRight")]
+    gaps, plan, near3 = [], 9e9, 9e9
+    for i, (x, y) in enumerate(PILLARS):
+        top = max(z for z in (C_BACK - 3 + k * 0.01 for k in range(300)) if plate.isInside(V(x, y, z), 1e-7, True))
+        if abs(plate.distToShape(Part.Vertex(V(x, y, top)))[0]) > 1e-6:
+            raise ValueError("pillar %d at (%.1f, %.1f) is not on the back plate" % (i, x, y))
+        gap = C_BACK - top
+        gaps.append(gap)
+        circle = _circle(x, y, PILLAR_D)
+        p_win = 0.0 if window.isInside(V(x, y, 0), 1e-7, True) else circle.distToShape(window)[0]
+        p_plan = min([circle.distToShape(f[2])[0] for f in F if _near(circle, f[2], 3.0)] + [9e9])
+        pillar = cyl(PILLAR_D, x, y, top - 4.0, top)
+        p3 = min(pillar.distToShape(s)[0] for s in parts)
+        c_gap = pillar.distToShape(car)[0]
+        if abs(c_gap - gap) > 0.02 or gap > PILLAR_GAP + 0.02 or gap < 0.0:
+            raise ValueError("pillar %d: gap to the carrier back %.2f (want %.1f)" % (i, c_gap, PILLAR_GAP))
+        if p_plan < WIRE_RIDGE_MIN - 1e-6 or p3 < 0.5 or p_win < PILLAR_WIN - 1e-6:
+            raise ValueError("pillar %d at (%.1f, %.1f): plan clearance %.2f, to the HW-040 window %.2f, 3D clearance %.2f to the wires, pins, encoder or RP2040" % (
+                i, x, y, p_plan, p_win, p3))
+        plan, near3 = min(plan, p_plan), min(near3, p3)
+    return max(gaps), min(gaps), plan, near3
+
+
+def check_switch_plate():
+    """Measure the plate on the built solids, not the constants: top over the seat (the pocket floor), thickness, cutout,
+    and that each clip hook of the dummy switch reaches under the plate's underside. Returns the figures."""
+    car, sw = PRINTED["Carrier"], DUMMIES["Dummy_SwitchMiddle"]
+    x, y, _ = BTNS[1]
+
+    def span(shape, p, axis, lo, hi, step=0.01):
+        """First and last coordinate along `axis` that are solid, between lo and hi."""
+        hit = [v for v in (lo + k * step for k in range(int((hi - lo) / step) + 1))
+               if shape.isInside(V(*[p[i] if i != axis else v for i in range(3)]), 1e-7, True)]
+        return (hit[0], hit[-1]) if hit else (None, None)
+
+    floor = span(car, (x + 5.5, y - 5.0, 0), 2, C_BACK - 0.5, C_FRONT + 1)[1]          # pocket floor top
+    gy = y + SW_CUTOUT / 2 + 0.25                                                  # inside the clip pocket, only the plate is above it
+    p0, p1 = span(car, (x, gy, 0), 2, C_FRONT + 0.05, SW_Z0 + 8)
+    cut_w = 2 * (span(car, (0, y, SW_Z0 + SW_PLATE_Z - SW_PLATE_T / 2), 0, x, x + 9)[0] - x)
+    top, thick = p1 - floor, p1 - p0
+    hook = span(sw, (x, y + SW_CUTOUT / 2 + 0.3, 0), 2, SW_Z0, p0 - 0.001)[1]          # hook top, just under the plate
+    reach = (y + SW_CLIPS / 2) - (y + SW_CUTOUT / 2)
+    if abs(top - SW_PLATE_Z) > 0.05 or abs(thick - SW_PLATE_T) > 0.05 or cut_w > 14.1 + 0.02 or cut_w < SW_LOWER:
+        raise ValueError("switch plate: top %.2f over the seat (want %.1f), thickness %.2f (want %.1f), cutout %.2f (want <= 14.1)" % (
+            top, SW_PLATE_Z, thick, SW_PLATE_T, cut_w))
+    if hook is None or abs(hook - p0) > 0.05 or reach < 0.3:
+        raise ValueError("switch clip does not reach under the plate: hook top %s, plate underside %.2f, reach %.2f" % (hook, p0, reach))
+    return top, thick, cut_w, reach
+
+
+def check_cap_socket():
+    """Measure the middle cap's cross socket, and that a full travel still clears the housing, the plate and the face."""
+    cap = PRINTED["CapMiddle"]
+    x, y, _ = BTNS[1]
+    z = SW_STEM_TOP - 1.0
+    # out on each bar, past the other bar, so the thickness is the one being measured
+    arm_y = _void_half(cap, V(x + CAP_SLOT_L * 0.35, y, z), 0.01, V(0, 1, 0), 2.0)
+    arm_x = _void_half(cap, V(x, y + CAP_SLOT_L * 0.35, z), 0.01, V(1, 0, 0), 2.0)
+    length = _void_half(cap, V(x, y, z), 0.01, V(1, 0, 0), 4.0)
+    measured = (2 * arm_x, 2 * arm_y, 2 * length)
+    expect = CAP_SLOT_ARMS + (CAP_SLOT_L,)
+    if any(abs(m - e) > 0.04 for m, e in zip(measured, expect)):
+        raise ValueError("MX socket measures %s, wanted %s (arm x, arm y, length)" % (measured, expect))
+    extra = (CAP_SLOT_ARMS[0] - SW_STEM_ARMS[0], CAP_SLOT_ARMS[1] - SW_STEM_ARMS[1], CAP_SLOT_L - SW_STEM_L)
+    if min(extra) < 0.05 - 1e-6 or max(extra) > 0.15 + 1e-6:
+        raise ValueError("socket extra over the stem %s is outside 0.05-0.15 mm" % (extra,))
+    pressed = cap.copy()
+    pressed.translate(V(0, 0, -SW_TRAVEL))
+    # the stem rides with the cap, so test against the switch body without it (its stem well takes the tube)
+    gaps = {n: pressed.distToShape(s)[0] for n, s in (("housing", DUMMIES["Dummy_SwitchMiddle"]),
+                                                      ("plate", PRINTED["Carrier"]), ("face", PRINTED["Shell"]))}
+    if any(pressed.common(s).Volume > 0.01 for s in (DUMMIES["Dummy_SwitchMiddle"], PRINTED["Carrier"], PRINTED["Shell"])):
+        raise ValueError("cap hits the housing, the plate or the face before the switch bottoms")
+    if min(gaps.values()) < 0.3 - 1e-6:
+        raise ValueError("cap clearance at full travel below 0.3 mm: %s" % gaps)
+    return measured, extra
 
 
 # Stand-ins for the bought parts (interference checks and renders only, never printed)
@@ -1296,14 +1411,26 @@ def dummy_fpc():
 
 
 def dummy_switch(i):
+    """Outemu MX stand-in (without the stem, which is its own part so it can have its own colour): bottom housing
+    with clips, 15.6 flange on the plate, tapered upper housing with the stem well, centre post and two pins."""
     x, y, a = BTNS[i]
-    body = rr_prism(SW_BODY, SW_BODY, 0.3, x, y, C_FRONT, C_FRONT + SW_BODY_H, a)
-    boss = cyl(SW_BOSS_D, x, y, C_FRONT + SW_BODY_H - 0.01, C_FRONT + SW_BOSS_H)
-    neck = cbox(x, y, SW_NECK, SW_NECK, C_FRONT + SW_BOSS_H - 0.01, SW_PLUNGER_TOP - SW_HEAD_H + 0.01, a)
-    head = cbox(x, y, SW_HEAD, SW_HEAD, SW_PLUNGER_TOP - SW_HEAD_H, SW_PLUNGER_TOP, a)
-    head = head.cut(cyl(1.6, x, y, SW_PLUNGER_TOP - 1.2, SW_PLUNGER_TOP + 1))
-    legs = [cbox(*btn_pin(i, k), SW_LEG[0], SW_LEG[1], C_FRONT - SW_LEG[2], C_FRONT + 0.01, a) for k in range(4)]
-    return fuse_all([body, boss, neck, head] + legs)  # (legs straight, as pushed through)
+    z_p = SW_Z0 + SW_PLATE_Z
+    low = rr_prism(SW_LOWER, SW_LOWER, 0.4, x, y, SW_Z0, z_p + 0.1, a)
+    flange = rr_prism(SW_BASE, SW_BASE, 0.6, x, y, z_p, SW_Z0 + SW_FLANGE_Z, a)
+    upper = place(Part.makeLoft([rr_wire(SW_UPPER[0], SW_UPPER[0], 0.6, SW_Z0 + SW_FLANGE_Z - 0.01),
+                                 rr_wire(SW_UPPER[1], SW_UPPER[1], 0.6, SW_Z0 + SW_HOUSING_H)], True, True), x, y, a)
+    well = rr_prism(SW_WELL[0], SW_WELL[0], 0.4, x, y, SW_Z0 + SW_HOUSING_H - SW_WELL[1], SW_Z0 + SW_HOUSING_H + 0.2, a)
+    post = cyl(SW_POST_D, x, y, SW_Z0 - SW_POST_L, SW_Z0 + 0.01)
+    pins = [cbox(*btn_pin(i, k), SW_PIN[0], SW_PIN[1], SW_Z0 - SW_PIN_L, SW_Z0 + 0.01, a) for k in range(2)]
+    # clips on +-Y: hooks out to 15.03 over the clips, under the plate's underside (they run from 1.9 below the plate top)
+    clips = [place(box(-2.0, s * (SW_LOWER / 2 - 0.1), z_p - SW_CLIP_H, 2.0, s * SW_CLIPS / 2, z_p - SW_PLATE_T), x, y, a)
+             for s in (-1, 1)]
+    return fuse_all([low, flange, upper, post] + pins + clips).cut(well)
+
+
+def dummy_stem(i):
+    x, y, a = BTNS[i]
+    return place(_mx_cross(SW_STEM_L, SW_STEM_ARMS, SW_Z0 + SW_HOUSING_H - 1.0, SW_STEM_TOP), x, y, a)
 
 
 def dummy_rp2040_zero():
@@ -1341,7 +1468,7 @@ def dummy_wire():
     pins; grouped by net in WIRE_BY_NET."""
     groups, wraps = {}, {}
     DISP_TAILS.clear()
-    ring = lambda x, y, z0: cyl(WRAP[0], x, y, z0, z0 + WRAP[2]).cut(cyl(WRAP[1], x, y, z0 - 1, z0 + WRAP[2] + 1))
+    ring = lambda x, y, z0, g=0.0: cyl(WRAP[0] + g, x, y, z0, z0 + WRAP[2]).cut(cyl(WRAP[1] + g, x, y, z0 - 1, z0 + WRAP[2] + 1))
     name_at = {xy: n for n, xy in disp_pins.items()}   # pocket position -> display pin
     for net, segs, ends in wire_routes():
         parts = []
@@ -1368,7 +1495,7 @@ def dummy_wire():
                 else:
                     pts[end] = _toward(pin, nxt, WIRE_ATT)
                     z0 = {'rp': C_FRONT + 0.05, 'enc': C_BACK - 0.05 - WRAP[2], 'leg': C_BACK - 0.05 - WRAP[2]}[kind]
-                    parts.append(ring(pin[0], pin[1], z0))
+                    parts.append(ring(pin[0], pin[1], z0, 0.2 if kind == 'leg' else 0.0))   # a key pin is 0.85 x 0.78: its diagonal needs a wider bore
             if face == 'B':
                 parts.append(_pipe([(x, y, WIRE_Z_BACK) for x, y in pts]))
                 continue
@@ -1420,12 +1547,12 @@ def build():
     DUMMIES["Dummy_FPC"] = dummy_fpc()
     DUMMIES["Dummy_RP2040_Zero"] = dummy_rp2040_zero()
     DUMMIES["Dummy_Wire"] = dummy_wire()
-    for i, n in enumerate(["Dummy_SwitchLeft", "Dummy_SwitchMiddle", "Dummy_SwitchRight"]):
-        DUMMIES[n] = dummy_switch(i)
+    for i, n in enumerate(["Left", "Middle", "Right"]):
+        DUMMIES["Dummy_Switch" + n] = dummy_switch(i)
+        DUMMIES["Dummy_Stem" + n] = dummy_stem(i)
 
 
-PRESS_FITS = {("CapLeft", "Dummy_SwitchLeft"), ("CapMiddle", "Dummy_SwitchMiddle"),
-              ("CapRight", "Dummy_SwitchRight")}  # cap fingers pressing on the switch head
+PRESS_FITS = set()  # the MX socket is a clearance fit; it does not bite the stem in the model
 
 
 
@@ -1486,8 +1613,6 @@ def pin_labels():
     """(text, anchor x, y, align) for every pin and switch leg: what it is and the net its
     wire carries ("n/c": no wire). align is the side of the anchor the text sits on (+1 right of
     it, -1 left of it, 0 centred), as seen from the face."""
-    gnd = {(0, 0), (0, 1), (1, 0), (1, 1), (2, 0)}    # lower legs: the key ground chain
-    net = lambda i, k: "GND" if (i, k) in gnd else "B%d" % (i + 1) if k == 3 else "n/c"
     gap = 1.5                                         # from the pin to the text
     out = []
     for n, p in sm_pins.items():
@@ -1498,12 +1623,11 @@ def pin_labels():
         out.append(("Disp " + n, p[0] + gap, p[1], 1))
     for n, p in enc_pins.items():
         out.append(("Enc " + n, p[0] - 1.2, p[1], -1))
-    # switch legs: <switch L/M/R>-<leg: LL lower left, LR, UL, UR>, below the lower legs, above the upper
-    legs = ["LL", "LR", "UL", "UR"]
+    # switch pins: pad 0 ground (toward the left), pad 1 the key signal
     for i, sw in enumerate(["L", "M", "R"]):
-        for k in range(4):
+        for k, tag in ((0, "GND"), (1, "B%d" % (i + 1))):
             p = btn_pin(i, k)
-            out.append(("%s-%s %s" % (sw, legs[k], net(i, k)), p[0], p[1] + (-1.9 if k < 2 else 1.9), 0))
+            out.append(("%s %s" % (sw, tag), p[0], p[1] + (1.6 if k else -1.6), 0))
     return out
 
 
@@ -1908,8 +2032,8 @@ def report_new_features():
     print("USB hole vs the connector (shifted %.1f mm to its real position): margin %.2f mm" % (USB_HOLE_DZ, margin))
     if margin < 0.2:
         raise ValueError("USB hole does not clear the real connector")
-    print("wrap room: RP2040 pins %.1f mm above the carrier, encoder pins %.1f mm bare behind it, key legs %.1f mm; a wrap (%.1f mm) fits" % (
-        tip - C_FRONT, C_BACK - (HW040_FRONT + 2.5), C_BACK - (C_FRONT - SW_LEG[2]), WRAP[2]))
+    print("wrap room: RP2040 pins %.1f mm above the carrier, encoder pins %.1f mm bare behind it, key pins %.1f mm; a wrap (%.1f mm) fits" % (
+        tip - C_FRONT, C_BACK - (HW040_FRONT + 2.5), SW_PIN_L - C_T + SW_SINK, WRAP[2]))
     board = DUMMIES["Dummy_RP2040_Zero"]
     rx, ry = RESET_C
     plate = PRINTED["BackPlate"].cut(cyl(4.2, rx, ry, z_back(ry) - 1, RESET_SURFACE_Z))  # without the reset guide
@@ -1969,11 +2093,11 @@ def main():
         raise ValueError("RP2040-Zero clearance below 0.5 mm")
     for name in ("CapLeft", "CapMiddle", "CapRight"):
         pressed = PRINTED[name].copy()
-        pressed.translate(V(0, 0, -0.5))
+        pressed.translate(V(0, 0, -SW_TRAVEL))
         others = [shape for n, shape in PRINTED.items() if n != name]
         others += [board, DUMMIES["Dummy_Display"]]
         if any(pressed.common(shape).Volume > 0.01 for shape in others):
-            raise ValueError(name + " collides during 0.5 mm travel")
+            raise ValueError(name + " collides during %.1f mm travel" % SW_TRAVEL)
     pressed_knob = PRINTED["Knob"].fuse(PRINTED["KnobCap"])
     pressed_knob.translate(V(0, 0, -0.5))
     if any(pressed_knob.common(shape).Volume > 0.01 for shape in
@@ -1991,10 +2115,14 @@ def main():
         raise ValueError("printed part contains disconnected islands")
     if KNOB_GAP - 0.5 - HALO_T < 0.3-1e-6:
         raise ValueError("pressed knob to halo ring clearance below 0.3 mm")
-    print("all keys and knob: 0.5 mm travel clear")
-    reach, clear = check_cap_grip()
-    print("cap grip: lip under the head long %.2f / short %.2f mm; clearance to stem neck long %.2f / short %.2f mm (rule >= 0.05): ok" % (
-        reach + clear))
+    print("all keys and knob: %.1f mm key travel and 0.5 mm knob travel clear" % SW_TRAVEL)
+    g_hi, g_lo, c_plan, c_3d = check_pillars()
+    print("pillars: %d, gap to the carrier back %.2f - %.2f mm; clearance to grooves, vias, pin holes and the HW-040 window %.2f mm (rule %.1f), to wires, pins, encoder and RP2040 %.2f mm: ok" % (
+        len(PILLARS), g_lo, g_hi, c_plan, WIRE_RIDGE_MIN, c_3d))
+    top, thick, cut_w, reach = check_switch_plate()
+    print("switch plate: top %.2f over the seat, %.2f thick, cutout %.2f; clips reach %.2f mm under it, hook touching the underside: ok" % (top, thick, cut_w, reach))
+    slot, extra = check_cap_socket()
+    print("MX socket: arms %.2f / %.2f mm, length %.2f mm; extra over the stem %.2f / %.2f / %.2f mm: ok" % (slot + extra))
     report_new_features()
     if EXPORT:
         export(doc, here)
