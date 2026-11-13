@@ -42,7 +42,11 @@ pub mod physical_st7789 {
             .union(kivori_model::Capabilities::MIC_STATE_V1)
             .union(kivori_model::Capabilities::PRODUCT_IDENTITY_V1)
             .union(kivori_model::Capabilities::BUILD_INFO_V1)
-            .union(kivori_model::Capabilities::HELD_ROTATION_V1);
+            .union(kivori_model::Capabilities::HELD_ROTATION_V1)
+            .union(kivori_model::Capabilities::PROFILE_PICKER_V1)
+            .union(kivori_model::Capabilities::HOLD_RING_V1)
+            .union(kivori_model::Capabilities::KNOB_HOLD_V1)
+            .union(kivori_model::Capabilities::HELD_TURN_MODE_V1);
 
     /// SPI1 clock pin (display SCL).
     pub const SCK: u8 = 26;

@@ -24,11 +24,12 @@ pub enum ActionToken {
     AppVolume,
     AppMute,
     Macro,
+    SwitchView,
 }
 
 impl ActionToken {
     /// Every token, in the order of `DESK_ACTIONS` in `lib/ipc/types.ts`.
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::Volume,
         Self::PlayPause,
         Self::Mute,
@@ -40,6 +41,7 @@ impl ActionToken {
         Self::AppVolume,
         Self::AppMute,
         Self::Macro,
+        Self::SwitchView,
     ];
 
     /// The closed webview token.
@@ -57,6 +59,7 @@ impl ActionToken {
             Self::AppVolume => "appVolume",
             Self::AppMute => "appMute",
             Self::Macro => "macro",
+            Self::SwitchView => "switchView",
         }
     }
 
@@ -70,7 +73,7 @@ impl ActionToken {
             Self::PlayPause => ActionKind::PlayPause,
             Self::Mute | Self::MicMute | Self::AppMute => ActionKind::Mute,
             Self::Shortcut | Self::Macro => ActionKind::Shortcut,
-            Self::Launch => ActionKind::Launch,
+            Self::Launch | Self::SwitchView => ActionKind::Launch,
             Self::PreviousTrack => ActionKind::PreviousTrack,
             Self::NextTrack => ActionKind::NextTrack,
         }
@@ -207,6 +210,8 @@ pub enum Scope {
     Keyboard,
     Launch,
     Macro,
+    /// The device's own screen. No host service is involved.
+    Display,
 }
 
 /// How well the outcome can be observed, as the config UI says it.
@@ -292,7 +297,7 @@ const fn entry(
 /// Every action, in the order the picker shows them.
 ///
 /// App Volume and App Mute are unsupported on macOS: the config UI shows them disabled with a reason rather than hiding them.
-pub const CATALOG: [CatalogEntry; 12] = {
+pub const CATALOG: [CatalogEntry; 13] = {
     use ActionToken as T;
     use Verification::{Confirmed, LeastOfSteps, Started, Unverified};
     [
@@ -404,6 +409,15 @@ pub const CATALOG: [CatalogEntry; 12] = {
             Params::Macro,
             false,
         ),
+        entry(
+            "switchView",
+            T::SwitchView,
+            Slot::Discrete,
+            Scope::Display,
+            Confirmed,
+            Params::None,
+            true,
+        ),
     ]
 };
 
@@ -423,8 +437,8 @@ impl CatalogEntry {
             Scope::Media => &services.input,
             Scope::Keyboard => &services.keyboard,
             Scope::App => &services.app_volume,
-            // A launch needs no synthesized input.
-            Scope::Launch | Scope::Macro => {
+            // A launch, a macro and a view switch need no host service.
+            Scope::Launch | Scope::Macro | Scope::Display => {
                 return ActionAvailability::Available {
                     confirmation: self.verification.class(),
                 }
@@ -498,6 +512,7 @@ mod tests {
                 name: "M".into(),
                 steps: vec![Step::Run(Action::PlayPause), Step::Run(Action::ToggleMute)],
             })),
+            "switchView" => Action::SwitchView,
             _ => return None,
         })
     }
@@ -525,7 +540,7 @@ mod tests {
             assert_eq!(entry.token, action.token(), "{}", entry.id);
             checked += 1;
         }
-        assert_eq!(checked, 10, "every entry with a backend is checked");
+        assert_eq!(checked, 11, "every entry with a backend is checked");
     }
 
     #[test]

@@ -13,11 +13,11 @@ use kivori_model::input::Direction;
 use kivori_model::{Capabilities, ProtocolVersion};
 use kivori_protocol::{
     decode_message, encode_message, BuddySettings, BuildInfo, ByeReason, ControlId,
-    ControlLabelsUpdate, DeviceId, Feedback, FirmwareVersion, HelloAck, HoldActionsUpdate,
-    Identity, InputEvent, InputKind, MascotActionApplied, MediaInfoUpdate, Message, MicStateUpdate,
-    Nonce, PlayMascotAction, Presentation, ProfileChoicesUpdate, ProfilePickReport, ProtoError,
-    SeqClass, SequenceTracker, StateReport, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR,
-    PROTOCOL_MINOR,
+    ControlLabelsUpdate, DeviceId, Feedback, FirmwareVersion, HeldTurnModeUpdate, HelloAck,
+    HoldActionsUpdate, Identity, InputEvent, InputKind, MascotActionApplied, MediaInfoUpdate,
+    Message, MicStateUpdate, Nonce, PlayMascotAction, Presentation, ProfileChoicesUpdate,
+    ProfilePickReport, ProtoError, SeqClass, SequenceTracker, StateReport, Status, MAX_FRAME,
+    MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 /// Bounded storage for one inbound packet awaiting its delimiter.
@@ -143,6 +143,10 @@ pub struct Dispatcher {
     pending_choices: Option<ProfileChoicesUpdate>,
     /// The latest negotiated `HoldActions`, awaiting [`Self::take_hold_actions`].
     pending_holds: Option<HoldActionsUpdate>,
+    /// Hold + turn opens the picker until a negotiated `HeldTurnMode` says otherwise.
+    picker_mode: bool,
+    /// `picker_mode` changed; the runtime closes an open picker when turns are no longer picks.
+    held_turn_changed: bool,
     /// The latest accepted `BuddySettings`, awaiting [`Self::take_buddy_settings`].
     pending_buddy: Option<BuddySettings>,
     /// The latest accepted `MicState`, awaiting [`Self::take_mic_state`].
@@ -186,6 +190,8 @@ impl Dispatcher {
             pending_controls: None,
             pending_choices: None,
             pending_holds: None,
+            picker_mode: true,
+            held_turn_changed: false,
             pending_buddy: None,
             pending_mic: None,
             pending_takeover: None,
@@ -277,7 +283,7 @@ impl Dispatcher {
         {
             return false;
         }
-        if control == ControlId::PressedRotary && !self.held_rotation_enabled() {
+        if control == ControlId::PressedRotary && !self.pressed_rotary_allowed() {
             return false;
         }
         debug_assert!(matches!(
@@ -585,6 +591,72 @@ impl Dispatcher {
         self.accepted_session.is_some() && self.negotiated_caps.contains(Capabilities::HOLD_RING_V1)
     }
 
+    /// Whether the knob switch emits `InputKind::Hold` (`KNOB_HOLD_V1`).
+    #[must_use]
+    pub const fn knob_hold_enabled(&self) -> bool {
+        self.accepted_session.is_some() && self.negotiated_caps.contains(Capabilities::KNOB_HOLD_V1)
+    }
+
+    /// Whether Hold + turn follows [`Self::held_turn_is_picker`] (`HELD_TURN_MODE_V1`).
+    #[must_use]
+    pub const fn held_turn_mode_enabled(&self) -> bool {
+        self.accepted_session.is_some()
+            && self
+                .negotiated_caps
+                .contains(Capabilities::HELD_TURN_MODE_V1)
+    }
+
+    /// Hold + turn opens the picker. With `HELD_TURN_MODE_V1` that is the latest `HeldTurnMode`
+    /// (picker until one arrives). Otherwise it is today's `PROFILE_PICKER_V1` gate.
+    #[must_use]
+    pub const fn held_turn_is_picker(&self) -> bool {
+        if self.accepted_session.is_none() {
+            return false;
+        }
+        if self
+            .negotiated_caps
+            .contains(Capabilities::HELD_TURN_MODE_V1)
+        {
+            return self.picker_mode;
+        }
+        self.negotiated_caps
+            .contains(Capabilities::PROFILE_PICKER_V1)
+    }
+
+    /// Held detents may go out as `PressedRotary`. Non-picker `HeldTurnMode` allows it without
+    /// `HELD_ROTATION_V1`. The picker still wins when that mode is on.
+    #[must_use]
+    pub const fn pressed_rotary_allowed(&self) -> bool {
+        if self.accepted_session.is_none()
+            || !self
+                .negotiated_caps
+                .contains(Capabilities::PHYSICAL_INPUT_V1.union(Capabilities::BUTTON_INPUT_V1))
+        {
+            return false;
+        }
+        if self
+            .negotiated_caps
+            .contains(Capabilities::HELD_TURN_MODE_V1)
+        {
+            return !self.picker_mode;
+        }
+        self.negotiated_caps
+            .contains(Capabilities::HELD_ROTATION_V1)
+            && !self
+                .negotiated_caps
+                .contains(Capabilities::PROFILE_PICKER_V1)
+    }
+
+    /// Whether the latest `HeldTurnMode` turned the picker off. The runtime closes an open picker.
+    pub fn take_held_turn_changed(&mut self) -> bool {
+        core::mem::take(&mut self.held_turn_changed)
+    }
+
+    fn reset_held_turn(&mut self) {
+        self.picker_mode = true;
+        self.held_turn_changed = false;
+    }
+
     /// Reports the entry the knob switch was released on. Returns `false` and writes nothing when
     /// the picker is not negotiated or no session is accepted, and when the outbound queue had no
     /// room or the link failed (the caller then shows no confirmation). Like input, it never takes
@@ -661,6 +733,7 @@ impl Dispatcher {
         self.hello_caps = None;
         self.pending_action = None;
         self.pending_input.clear();
+        self.reset_held_turn();
         self.session_ended = true;
     }
 
@@ -754,6 +827,7 @@ impl Dispatcher {
         match message {
             Message::Hello(hello) => {
                 self.negotiated_caps = Capabilities::NONE;
+                self.reset_held_turn();
                 self.hello_caps = Some(hello.desktop_caps);
                 self.pending_action = None;
                 // Whatever is still queued was meant for a session that is over (or for no one).
@@ -894,6 +968,18 @@ impl Dispatcher {
             {
                 self.pending_holds = Some(*update);
             }
+            // Same inertness rule: without the capability the device stays on the picker.
+            Message::HeldTurnMode(HeldTurnModeUpdate { session, picker })
+                if self
+                    .negotiated_caps
+                    .contains(Capabilities::HELD_TURN_MODE_V1)
+                    && self.accepted_session == Some(session) =>
+            {
+                if self.picker_mode != picker {
+                    self.picker_mode = picker;
+                    self.held_turn_changed = true;
+                }
+            }
             // Settings only count from the accepted session, with the capability negotiated.
             Message::BuddySettings(settings)
                 if self.negotiated_caps.contains(Capabilities::IDLE_LIFE_V1)
@@ -954,6 +1040,7 @@ impl Dispatcher {
                 self.accepted_session = None;
                 self.negotiated_caps = Capabilities::NONE;
                 self.hello_caps = None;
+                self.reset_held_turn();
                 self.session_ended = true;
             }
             // The device→desktop message kinds are not acted on by the device.

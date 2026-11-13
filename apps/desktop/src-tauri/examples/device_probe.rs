@@ -130,6 +130,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Message::ProfileChoices(_) => "ProfileChoices",
                             Message::ProfilePick(_) => "ProfilePick",
                             Message::HoldActions(_) => "HoldActions",
+                            Message::HeldTurnMode(_) => "HeldTurnMode",
                         }
                     ),
                     Err(_) if !packet.is_empty() => invalid += 1,

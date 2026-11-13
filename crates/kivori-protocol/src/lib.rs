@@ -21,18 +21,18 @@ pub use frame::{crc32, decode_frame, encode_frame, Header};
 pub use handshake::{evaluate_hello_ack, HandshakeOutcome};
 pub use message::{
     BuddySettings, BuildInfo, Bye, ControlId, ControlLabelsUpdate, DeviceId, Diagnostic,
-    ErrorReport, Feedback, FirmwareVersion, Health, Hello, HelloAck, HoldActionsUpdate, Identity,
-    IdentitySource, InputEvent, InputKind, InternalsReport, InternalsRequest, MascotActionApplied,
-    MediaInfoUpdate, Message, MicStateUpdate, Nonce, Ping, PlayMascotAction, Pong, Presentation,
-    ProfileChoicesUpdate, ProfilePickReport, Ready, SetState, StateReport, Status, CONTEXT_BUTTONS,
-    SOURCE_ID_LEN,
+    ErrorReport, Feedback, FirmwareVersion, Health, HeldTurnModeUpdate, Hello, HelloAck,
+    HoldActionsUpdate, Identity, IdentitySource, InputEvent, InputKind, InternalsReport,
+    InternalsRequest, MascotActionApplied, MediaInfoUpdate, Message, MicStateUpdate, Nonce, Ping,
+    PlayMascotAction, Pong, Presentation, ProfileChoicesUpdate, ProfilePickReport, Ready, SetState,
+    StateReport, Status, CONTEXT_BUTTONS, SOURCE_ID_LEN,
 };
 pub use negotiate::negotiate;
 
 /// Current protocol major version.
 pub const PROTOCOL_MAJOR: u16 = 0;
 /// Current protocol minor version.
-pub const PROTOCOL_MINOR: u16 = 4;
+pub const PROTOCOL_MINOR: u16 = 5;
 /// Frame magic (`"KV"`, little-endian `0x4B56`).
 pub const MAGIC: u16 = 0x4B56;
 /// Maximum payload length, in bytes.

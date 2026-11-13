@@ -23,7 +23,8 @@ export function needsKeyEvents(config: ConfigDto | null): boolean {
     const slots = [
       profile.press,
       profile.hold,
-      ...profile.buttons.flatMap(({ press, hold }) => [press, hold === 'micMute' ? null : hold]),
+      profile.doublePress,
+      ...profile.buttons.flatMap(({ press, hold }) => [press, hold]),
     ];
     const bound = slots.some(
       (slot) =>
@@ -31,6 +32,9 @@ export function needsKeyEvents(config: ConfigDto | null): boolean {
     );
     const knob =
       (profile.custom || profile.rotate.overridden) && profile.rotate.spec.kind === 'shortcuts';
-    return bound || knob;
+    const held =
+      (profile.custom || profile.heldRotate.overridden) &&
+      profile.heldRotate.spec.kind === 'shortcuts';
+    return bound || knob || held;
   });
 }

@@ -36,6 +36,8 @@ impl Capabilities {
     //   bit 17 HELD_ROTATION_V1   rotary detents while its push switch is held
     //   bit 18 PROFILE_PICKER_V1  hold the knob switch and turn: the device's own pinned-profile picker (`ProfileChoicesUpdate` / `ProfilePick`)
     //   bit 19 HOLD_RING_V1       `HoldActionsUpdate`: which contextual buttons have a Hold, so the device draws the hold-progress ring only for those
+    //   bit 20 KNOB_HOLD_V1       the knob switch emits `InputKind::Hold` and may draw the hold ring from `ControlLabels.hold`
+    //   bit 21 HELD_TURN_MODE_V1  `HeldTurnMode`: Hold + turn is the profile picker, or forwarded as `PressedRotary`
 
     /// Bit 0 — device accepts deterministic social mascot actions and returns applied-time
     /// acknowledgments.
@@ -113,6 +115,14 @@ impl Capabilities {
     /// Bit 19 — the device accepts `HoldActionsUpdate` (which contextual buttons have a Hold, and
     /// what it does) and draws the hold-progress ring only for controls whose Hold does something.
     pub const HOLD_RING_V1: Capabilities = Capabilities(1 << 19);
+
+    /// Bit 20 — the knob switch emits `InputKind::Hold` (instead of dropping it) and draws the hold
+    /// ring for the knob when `ControlLabels.hold` is set. Without it a knob Hold is not an action.
+    pub const KNOB_HOLD_V1: Capabilities = Capabilities(1 << 20);
+
+    /// Bit 21 — the device accepts `HeldTurnMode`. Until one arrives, Hold + turn is the profile
+    /// picker. `picker: false` forwards held detents as `PressedRotary` and opens no picker.
+    pub const HELD_TURN_MODE_V1: Capabilities = Capabilities(1 << 21);
 
     /// Creates a capability set from a raw bitmask.
     #[must_use]

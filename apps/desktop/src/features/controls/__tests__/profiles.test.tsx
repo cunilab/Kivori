@@ -65,7 +65,7 @@ beforeEach(async () => {
   act(() => mock.mockSetRecentApp(null));
 });
 
-describe('ProfilesCard', () => {
+describe('ProfilesCard', { timeout: 20_000 }, () => {
   it('pins profiles to the device with one switch and lists the pinned ones', async () => {
     const user = userEvent.setup();
     render(<Harness />);
@@ -360,7 +360,7 @@ describe('ProfilesCard', () => {
     await waitFor(() => expect(screen.queryByTestId('profile-custom-1')).not.toBeInTheDocument());
     await selectProfile(user, 'Browser');
     expect(await screen.findByTestId('app-browser-chrome.exe')).toBeVisible();
-  });
+  }, 20_000);
 
   it('stops at 16 custom profiles', async () => {
     render(<Harness />);

@@ -8,11 +8,10 @@ export interface MacroUsage {
   controlName: string;
 }
 
-type SlotLike = SlotDto | 'micMute';
-
-/** Bindings a macro can sit on. Knob Hold is fixed, and a button Hold may be the mic-mute sentinel. */
-const CONTROLS: { name: string; slot: (profile: ProfileConfigDto) => SlotLike }[] = [
+/** Bindings a macro can sit on. Knob Hold is fixed. */
+const CONTROLS: { name: string; slot: (profile: ProfileConfigDto) => SlotDto }[] = [
   { name: g.press.name, slot: (profile) => profile.press },
+  { name: g.doublePress.name, slot: (profile) => profile.doublePress },
   { name: g.button1.name, slot: (profile) => profile.buttons[0].press },
   { name: g.button1Hold.name, slot: (profile) => profile.buttons[0].hold },
   { name: g.button2.name, slot: (profile) => profile.buttons[1].press },
@@ -27,7 +26,7 @@ export function macroUsage(config: ConfigDto, id: string): MacroUsage[] {
   for (const profile of config.profiles) {
     for (const control of CONTROLS) {
       const slot = control.slot(profile);
-      if (slot !== 'micMute' && slot.action?.kind === 'macro' && slot.action.id === id) {
+      if (slot.action?.kind === 'macro' && slot.action.id === id) {
         found.push({ profileName: profile.name, controlName: control.name });
       }
     }

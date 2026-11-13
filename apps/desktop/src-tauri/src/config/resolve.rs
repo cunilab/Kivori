@@ -27,22 +27,26 @@ use crate::platform::Shortcut;
 pub enum Control {
     Press,
     Hold,
+    DoublePress,
     ButtonPress(u8),
     ButtonHold(u8),
 }
 
 /// Every token [`Control::from_token`] accepts, for the Rust/TS vocabulary check.
-pub const CONTROL_TOKENS: [&str; 6] = [
+pub const CONTROL_TOKENS: [&str; 9] = [
     "press",
+    "hold",
+    "doublePress",
     "button1Press",
     "button1Hold",
     "button2Press",
+    "button2Hold",
     "button3Press",
     "button3Hold",
 ];
 
 /// Every `kind` an [`ActionSpec`] serializes with, for the Rust/TS vocabulary check.
-pub const ACTION_SPEC_KINDS: [&str; 9] = [
+pub const ACTION_SPEC_KINDS: [&str; 10] = [
     "playPause",
     "previousTrack",
     "nextTrack",
@@ -51,6 +55,7 @@ pub const ACTION_SPEC_KINDS: [&str; 9] = [
     "appMute",
     "shortcut",
     "launch",
+    "switchView",
     "macro",
 ];
 
@@ -58,21 +63,23 @@ pub const ACTION_SPEC_KINDS: [&str; 9] = [
 pub const STEP_SPEC_KINDS: [&str; 2] = ["action", "delay"];
 
 /// Every `kind` a [`RotateSpec`] serializes with.
-pub const ROTATE_SPEC_KINDS: [&str; 3] = ["systemVolume", "shortcuts", "appVolume"];
+pub const ROTATE_SPEC_KINDS: [&str; 4] =
+    ["systemVolume", "shortcuts", "appVolume", "profilePicker"];
 
 impl Control {
     /// Parses a webview control token.
     ///
     /// # Errors
-    /// A fixed reason; knob Hold and middle-button Hold are fixed.
+    /// A fixed reason for an unknown token.
     pub fn from_token(token: &str) -> Result<Self, &'static str> {
         match token {
             "press" => Ok(Self::Press),
-            "hold" => Err("knob Hold is reserved for Hold + turn: switch profile"),
+            "hold" => Ok(Self::Hold),
+            "doublePress" => Ok(Self::DoublePress),
             "button1Press" => Ok(Self::ButtonPress(0)),
             "button1Hold" => Ok(Self::ButtonHold(0)),
             "button2Press" => Ok(Self::ButtonPress(1)),
-            "button2Hold" => Err("the middle button's Hold is reserved for mic mute"),
+            "button2Hold" => Ok(Self::ButtonHold(1)),
             "button3Press" => Ok(Self::ButtonPress(2)),
             "button3Hold" => Ok(Self::ButtonHold(2)),
             _ => Err("unknown control"),
@@ -84,6 +91,7 @@ impl Control {
         match self {
             Self::Press => profile.press = slot,
             Self::Hold => profile.hold = slot,
+            Self::DoublePress => profile.double_press = slot,
             Self::ButtonPress(i) => profile.buttons[usize::from(i)].press = slot,
             Self::ButtonHold(i) => profile.buttons[usize::from(i)].hold = slot,
         }
@@ -200,6 +208,7 @@ pub fn resolve_action(spec: &ActionSpec, macros: &Macros) -> Result<Action, &'st
                 .map_err(|_| "not a valid application")?
                 .to_string(),
         ),
+        ActionSpec::SwitchView => Action::SwitchView,
     })
 }
 
@@ -216,6 +225,9 @@ fn slot(spec: &SlotSpec, macros: &Macros) -> Result<Slot, &'static str> {
 
 fn rotate(spec: &RotateSpec) -> Result<RotateBinding, &'static str> {
     Ok(match spec {
+        RotateSpec::ProfilePicker => {
+            return Err("the profile picker is only for hold and turn");
+        }
         RotateSpec::SystemVolume => RotateBinding::Volume,
         RotateSpec::Shortcuts {
             cw,
@@ -244,6 +256,9 @@ fn rotate(spec: &RotateSpec) -> Result<RotateBinding, &'static str> {
 /// Returns a fixed reason for an invalid shortcut or application.
 pub fn resolve_rotate_test(spec: &RotateSpec) -> Result<Action, &'static str> {
     Ok(match rotate(spec)? {
+        RotateBinding::ProfilePicker => {
+            return Err("the profile picker runs on the device");
+        }
         RotateBinding::Volume => Action::VolumeNudge { app: None },
         RotateBinding::AppVolume { app, .. } => Action::VolumeNudge { app: Some(app) },
         RotateBinding::Shortcuts { cw, .. } => Action::Shortcut(cw),
@@ -267,6 +282,7 @@ pub fn action_spec(action: &Action) -> Option<ActionSpec> {
         Action::Launch(target) => ActionSpec::Launch {
             target: target.clone(),
         },
+        Action::SwitchView => ActionSpec::SwitchView,
         Action::Macro(m) => ActionSpec::Macro { id: m.id.clone() },
         Action::AppVolumeStep { .. } | Action::VolumeNudge { .. } => return None,
     })
@@ -288,6 +304,10 @@ pub fn resolve_macro(spec: &MacroSpec) -> Result<Macro, &'static str> {
             StepSpec::Action {
                 action: ActionSpec::Macro { .. },
             } => return Err("a macro cannot contain a macro"),
+            // It runs on the desk (`next_mode`), which a macro step cannot reach.
+            StepSpec::Action {
+                action: ActionSpec::SwitchView,
+            } => return Err("a macro cannot switch the view"),
             StepSpec::Action { action } => Step::Run(resolve_action(action, &no_macros)?),
             StepSpec::Delay { ms } if DELAY_MS.contains(ms) => {
                 Step::Delay(Duration::from_millis(u64::from(*ms)))
@@ -355,6 +375,7 @@ fn resolve_macros(file: &ConfigFile) -> Result<Macros, &'static str> {
 #[must_use]
 pub fn rotate_spec(binding: &RotateBinding) -> RotateSpec {
     match binding {
+        RotateBinding::ProfilePicker => RotateSpec::ProfilePicker,
         RotateBinding::Volume => RotateSpec::SystemVolume,
         RotateBinding::Shortcuts { label, cw, ccw } => RotateSpec::Shortcuts {
             cw: cw.to_string(),
@@ -388,6 +409,21 @@ pub fn canonical_rotate(spec: &RotateSpec) -> Result<RotateSpec, &'static str> {
     rotate(spec).map(|binding| rotate_spec(&binding))
 }
 
+/// [`canonical_rotate`] for Hold + turn, which may also be the device's profile picker.
+///
+/// # Errors
+/// A fixed reason naming what is wrong.
+pub fn canonical_held_rotate(spec: &RotateSpec) -> Result<RotateSpec, &'static str> {
+    held_rotate(spec).map(|binding| rotate_spec(&binding))
+}
+
+fn held_rotate(spec: &RotateSpec) -> Result<RotateBinding, &'static str> {
+    if matches!(spec, RotateSpec::ProfilePicker) {
+        return Ok(RotateBinding::ProfilePicker);
+    }
+    rotate(spec)
+}
+
 fn apply(
     profile: &mut Profile,
     over: &ProfileOverride,
@@ -396,12 +432,19 @@ fn apply(
     if let Some(spec) = &over.rotate {
         profile.rotate = rotate(spec)?;
     }
+    if let Some(spec) = &over.held_rotate {
+        profile.held_rotate = held_rotate(spec)?;
+    }
     let bindings = &mut profile.bindings;
     if let Some(spec) = &over.press {
         bindings.press = slot(spec, macros)?;
     }
-    // Legacy knob Hold overrides remain readable but no longer execute.
-    bindings.hold = Slot::default();
+    if let Some(spec) = &over.hold {
+        bindings.hold = slot(spec, macros)?;
+    }
+    if let Some(spec) = &over.double_press {
+        bindings.double_press = slot(spec, macros)?;
+    }
     for (target, over) in bindings.buttons.iter_mut().zip(&over.buttons) {
         if let Some(spec) = &over.press {
             target.press = slot(spec, macros)?;
@@ -409,9 +452,6 @@ fn apply(
         if let Some(spec) = &over.hold {
             target.hold = slot(spec, macros)?;
         }
-    }
-    if over.buttons[1].hold.is_some() {
-        return Err("the middle button's Hold is reserved for mic mute");
     }
     Ok(())
 }
@@ -533,12 +573,13 @@ pub fn full_override(profile: &Profile) -> ProfileOverride {
     let bindings = &profile.bindings;
     ProfileOverride {
         rotate: Some(rotate_spec(&profile.rotate)),
+        held_rotate: Some(rotate_spec(&profile.held_rotate)),
         press: Some(spec(&bindings.press)),
         hold: Some(spec(&bindings.hold)),
+        double_press: Some(spec(&bindings.double_press)),
         buttons: std::array::from_fn(|i| ButtonOverride {
             press: Some(spec(&bindings.buttons[i].press)),
-            // The middle button's Hold is fixed mic mute and never written.
-            hold: (i != 1).then(|| spec(&bindings.buttons[i].hold)),
+            hold: Some(spec(&bindings.buttons[i].hold)),
         }),
         ..ProfileOverride::default()
     }
@@ -726,6 +767,7 @@ mod tests {
             ActionSpec::AppMute { app: "a".into() },
             ActionSpec::Shortcut { keys: "A".into() },
             ActionSpec::Launch { target: "a".into() },
+            ActionSpec::SwitchView,
             ActionSpec::Macro { id: "a".into() },
         ];
         let kinds: Vec<_> = actions
@@ -755,6 +797,7 @@ mod tests {
                 app: "a".into(),
                 label: None,
             },
+            RotateSpec::ProfilePicker,
         ];
         let kinds: Vec<_> = rotates
             .iter()
@@ -805,7 +848,7 @@ mod tests {
     }
 
     #[test]
-    fn bad_shortcuts_labels_targets_and_the_pin_button_are_rejected() {
+    fn bad_shortcuts_labels_and_targets_are_rejected() {
         let one = |press: SlotSpec| {
             file_with(
                 ProfileId::Code,
@@ -844,12 +887,6 @@ mod tests {
         };
         assert_eq!(invalid(&launch("  ")), "not a valid application");
         assert_eq!(invalid(&launch("a\0b")), "not a valid application");
-        let mut pin = ProfileOverride::default();
-        pin.buttons[1].hold = Some(spec(Some(ActionSpec::PlayPause), None));
-        assert_eq!(
-            invalid(&file_with(ProfileId::Code, pin)),
-            "the middle button's Hold is reserved for mic mute"
-        );
         let bad_knob = ProfileOverride {
             rotate: Some(RotateSpec::Shortcuts {
                 cw: "nope".into(),
@@ -887,7 +924,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_knob_hold_is_readable_but_never_runs_and_pin_list_is_kept() {
+    fn a_knob_hold_override_replaces_the_unbound_default_and_pin_list_is_kept() {
         let mut over = ProfileOverride {
             hold: Some(spec(Some(ActionSpec::SystemMute), Some("Old mute"))),
             in_pin_cycle: Some(false),
@@ -897,7 +934,10 @@ mod tests {
         let file = file_with(ProfileId::General, over);
         let resolved = resolve(crate::desk::profile::builtins(), &file).unwrap();
         let general = &resolved.profiles[0];
-        assert_eq!(general.bindings.hold, Slot::default());
+        assert_eq!(
+            general.bindings.hold,
+            Slot::named(Action::ToggleMute, "Old mute")
+        );
         assert!(!general.in_pin_cycle);
         assert_eq!(
             general.bindings.buttons[0].hold.action,
@@ -906,13 +946,72 @@ mod tests {
     }
 
     #[test]
-    fn control_tokens_parse_and_the_pin_hold_is_refused() {
+    fn control_tokens_parse_including_knob_hold() {
         for token in CONTROL_TOKENS {
             assert!(Control::from_token(token).is_ok(), "{token}");
         }
-        assert!(Control::from_token("button2Hold").is_err());
-        assert!(Control::from_token("hold").is_err());
+        assert_eq!(Control::from_token("hold"), Ok(Control::Hold));
+        assert_eq!(
+            Control::from_token("button2Hold"),
+            Ok(Control::ButtonHold(1))
+        );
+        assert_eq!(Control::from_token("doublePress"), Ok(Control::DoublePress));
         assert!(Control::from_token("rotate").is_err());
+    }
+
+    #[test]
+    fn held_rotate_defaults_to_the_picker_and_an_override_replaces_it() {
+        let fresh = run(false, &ConfigFile::default()).unwrap();
+        assert!(fresh
+            .profiles
+            .iter()
+            .all(|p| p.held_rotate == RotateBinding::ProfilePicker));
+        assert_eq!(fresh.profiles[0].bindings.hold, Slot::default());
+        let over = ProfileOverride {
+            held_rotate: Some(RotateSpec::SystemVolume),
+            ..ProfileOverride::default()
+        };
+        let general = &run(false, &file_with(ProfileId::General, over))
+            .unwrap()
+            .profiles[0];
+        assert_eq!(general.held_rotate, RotateBinding::Volume);
+        assert!(canonical_rotate(&RotateSpec::ProfilePicker).is_err());
+        assert_eq!(
+            canonical_held_rotate(&RotateSpec::ProfilePicker).unwrap(),
+            RotateSpec::ProfilePicker
+        );
+        assert!(resolve_rotate_test(&RotateSpec::ProfilePicker).is_err());
+    }
+
+    #[test]
+    fn rebinding_middle_hold_and_double_press_replaces_the_defaults() {
+        let mut over = ProfileOverride::default();
+        over.buttons[1].hold = Some(spec(Some(ActionSpec::PlayPause), None));
+        over.double_press = Some(spec(Some(ActionSpec::SystemMute), None));
+        let general = &run(false, &file_with(ProfileId::General, over))
+            .unwrap()
+            .profiles[0];
+        assert_eq!(
+            general.bindings.buttons[1].hold.action,
+            Some(Action::PlayPause)
+        );
+        assert_eq!(
+            general.bindings.double_press.action,
+            Some(Action::ToggleMute)
+        );
+        let cleared = ProfileOverride {
+            double_press: Some(spec(None, None)),
+            ..ProfileOverride::default()
+        };
+        let general = &run(false, &file_with(ProfileId::General, cleared))
+            .unwrap()
+            .profiles[0];
+        assert!(general.bindings.double_press.action.is_none());
+        assert_eq!(
+            general.bindings.buttons[1].hold.action,
+            Some(Action::ToggleMicMute),
+            "an absent middle-hold override keeps mic mute"
+        );
     }
 
     #[test]
@@ -1044,6 +1143,10 @@ mod tests {
                 vec![step(ActionSpec::Macro { id: "m".into() })]
             )),
             "a macro cannot contain a macro"
+        );
+        assert_eq!(
+            reason(macro_of("m", vec![step(ActionSpec::SwitchView)])),
+            "a macro cannot switch the view"
         );
         assert_eq!(
             reason(macro_of("m", vec![])),
@@ -1199,9 +1302,14 @@ mod tests {
             resolved.profiles.last().unwrap().bindings.press.action,
             Some(Action::NextTrack)
         );
-        // The middle button's Hold stays reserved.
         file.custom_profiles[0].bindings.buttons[1].hold =
             Some(spec(Some(ActionSpec::PlayPause), None));
-        assert!(matches!(run(false, &file), Err(ConfigError::Invalid(_))));
+        let resolved = run(false, &file).unwrap();
+        assert_eq!(
+            resolved.profiles.last().unwrap().bindings.buttons[1]
+                .hold
+                .action,
+            Some(Action::PlayPause)
+        );
     }
 }

@@ -63,7 +63,10 @@ describe('current device support', () => {
     }
     const press = connectionFixture(['physicalInputV1', 'buttonInputV1']);
     expect(controlSupported(press, 'press')).toBe(true);
-    expect(controlSupported(press, 'hold')).toBe(true);
+    expect(controlSupported(press, 'hold')).toBe(false);
+    expect(controlSupported(connectionFixture(['physicalInputV1', 'knobHoldV1']), 'hold')).toBe(
+      true,
+    );
     expect(controlSupported(press, 'doublePress')).toBe(false);
     expect(
       controlSupported(connectionFixture(['physicalInputV1', 'doublePressV1']), 'doublePress'),
@@ -81,10 +84,13 @@ describe('current device support', () => {
     expect(
       controlSupported(connectionFixture(['contextButtonsV1', 'buttonInputV1']), 'button1'),
     ).toBe(false);
-    // Hold + rotate is the device's profile picker: it needs that capability, not held rotation.
+    // Hold + turn is bindable only when the device accepts HeldTurnMode.
     expect(controlSupported(connectionFixture(['physicalInputV1']), 'heldRotate')).toBe(false);
     expect(
       controlSupported(connectionFixture(['physicalInputV1', 'profilePickerV1']), 'heldRotate'),
+    ).toBe(false);
+    expect(
+      controlSupported(connectionFixture(['physicalInputV1', 'heldTurnModeV1']), 'heldRotate'),
     ).toBe(true);
     expect(controlSupported(null, 'rotate')).toBe(false);
     const unknown = connectionFixture();

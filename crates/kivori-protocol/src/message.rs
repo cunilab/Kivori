@@ -396,6 +396,17 @@ pub struct HoldActionsUpdate {
     pub actions: HoldActions,
 }
 
+/// Desktop -> device: whether Hold + turn opens the profile picker (capability `HELD_TURN_MODE_V1`).
+/// Sent once per session and again when the active profile's Hold + turn binding changes. Until one
+/// arrives the device keeps the picker. `picker: false` forwards held detents as `PressedRotary`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeldTurnModeUpdate {
+    /// The handshake nonce of the session this applies to.
+    pub session: Nonce,
+    /// `true` is today's picker. `false` forwards held turns and opens no picker.
+    pub picker: bool,
+}
+
 /// The top-level wire message.
 ///
 /// **Append-only**: new variants are added at the end within a major version — the `postcard`
@@ -461,4 +472,7 @@ pub enum Message {
     /// Tag 27 — desktop -> device which contextual buttons have a Hold (capability
     /// `HOLD_RING_V1`).
     HoldActions(HoldActionsUpdate),
+    /// Tag 28 — desktop -> device whether Hold + turn is the profile picker (capability
+    /// `HELD_TURN_MODE_V1`).
+    HeldTurnMode(HeldTurnModeUpdate),
 }
