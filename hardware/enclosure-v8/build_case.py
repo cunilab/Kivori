@@ -39,7 +39,7 @@ T_NEAR, T_FAR = 18.8, 30.8  # case thickness at the near (y=0) and far (y=H) edg
 WALL = 2.0                  # side wall thickness (horizontal)
 WALL_TAPER = 6.0            # degrees the walls lean in towards the face (keycap draft)
 FACE_T = 2.5                # faceplate thickness (room for the visor pocket in front)
-FACE_BEVEL = 2.0            # bevel round the face (inset at the face); a true 45° even with the
+FACE_BEVEL = 1.2            # bevel round the face (2.0 left a 0.25 mm first-layer sliver in front of the keys); a true 45° even with the
                             # wall lean, so it prints face down without overhang
 BP_T = 2.0                  # back plate thickness
 BP_CLR = 0.2                # back plate to wall clearance (per side)
@@ -269,10 +269,9 @@ COL_PITCH = 1.5             # groove to groove in the west corridor (a via sits 
 PITCH_MIN = 1.3             # groove to groove elsewhere: the groove plus WIRE_RIDGE_MIN
 WIRE_RIDGE_MIN = 0.7        # plastic kept between different nets (grooves, vias, pin holes), or a hole and the edge
 WRAP = (1.3, 1.0, 0.9)      # wire-wrap ring modelled on each pin: outside, inside, height (3 turns of 0.3)
-DPIN_POCKET = (1.2, 1.0)    # entry pocket in the carrier under each display pin: diameter, depth
 DISP_PIN_L = 6.0            # display header: standard 2.54 mm header, pin past the plastic (NOMINAL). The pins stand free, tilted
                             # with the board, their tips DISP_PIN_TIP_CLR over the wire cradle; the wires are wrapped at the pin
-                            # root and each tail drops straight to a funnel in the cradle, a bore and the pocket under it
+                            # root and each tail drops straight into its slot in the flat cradle and turns 90° into the groove
 WIRE_Z_FRONT = C_FRONT - GROOVE_D + WIRE_D / 2 + 0.03   # wire centre in a front groove (0.03 off the floor)
 WIRE_Z_BACK = C_BACK + GROOVE_D - WIRE_D / 2 - 0.03      # ... in a back groove
 # RESET uses a bottom access guide; BOOT still requires opening the case.
@@ -482,7 +481,7 @@ W_TOP = DISP_GLASS_AIR + DISP_ROOF_T           # cowl top (the lip stands on it)
 W_HDR1 = W_PCB1 - DISP_HDR_BODY[2]             # header plastic bottom: the pins start here
 W_PIN_TIP = W_HDR1 - DISP_PIN_L
 W_ROOT = W_HDR1 - 0.2                          # first wire-wrap ring top, just under the header plastic
-W_CRADLE = W_PIN_TIP - DISP_PIN_TIP_CLR        # the wire cradle's top plane: parallel to the board, under the pin tips
+W_CRADLE = W_PIN_TIP - DISP_PIN_TIP_CLR        # board-parallel plane under the pin tips; the flat cradle top is its lowest point
 
 dpcb_c = (DISP_C[0] - DISP_HEADER_SIDE * DISP_ACTIVE_U, DISP_C[1])
 glass_c = (dpcb_c[0] + DISP_HEADER_SIDE * DISP_GLASS_U, DISP_C[1])
@@ -498,6 +497,7 @@ disp_standoffs = disp_seat
 # so it clears the tilted pin) to the funnel in the cradle top, straight, and the bore under it ends in the pocket. The pocket
 # sits at the pin's plan position at the board's back, so the wire leans a little the other way from the pin (clear of it).
 disp_pins = {n: (x + DISP_WIRE_DX, tp(x, y, W_PCB1).y) for n, (x, y) in disp_pins_m.items()}
+CRADLE_TOP = min(plane_z(y, W_CRADLE) for _, y in disp_pins.values())   # flat cradle top (face-frame z)
 
 
 def disp_root_z(n):
@@ -518,7 +518,6 @@ def cav_prism(z0, z1, r=1.0):
 
 
 CRADLE_W, CRADLE_END = 2.6, 1.2   # wire cradle under the header: width, and past the end pockets
-CRADLE_FUNNEL_R = 0.85            # funnel radius at the cradle's top plane (45°), bore radius DPIN_POCKET[0] / 2 at the bottom
 
 
 # HW-040 rotated 180° around the stationary shaft: header to the left, holes to the far side.
@@ -976,7 +975,7 @@ def wire_features(face):
     if face == 'F':
         F += [('solid', "post", _circle(x, y, POST_D)) for x, y in POSTS]
         F += [('solid', "standoff", _circle(x, y, DISP_STANDOFF_D)) for x, y in disp_standoffs]
-        F += [(net, "pocket %s" % n, _circle(x, y, DPIN_POCKET[0])) for (n, (x, y)), net in
+        F += [(net, "pocket %s" % n, _circle(x, y, GROOVE_W)) for (n, (x, y)), net in
               zip(disp_pins.items(), ('GND', '3V3', 'SCL', 'SDA', 'RES', 'DC', 'BLK'))]
     else:
         F += [('solid', "pillar %d" % i, _circle(x, y, PILLAR_D)) for i, (x, y) in enumerate(PILLARS)]
@@ -1152,21 +1151,25 @@ def display_pillars():
 
 
 def wire_cradle():
-    """Strain relief for the display wires: a low rib under the header whose top is parallel to the board, DISP_PIN_TIP_CLR under
-    the pin tips (the pins stand free). Each wire has a funnel, a straight bore and, under it, its pocket in the carrier."""
+    """Wire comb under the display header: a flat rib whose top is DISP_PIN_TIP_CLR under the lowest pin tip (the pins stand
+    free), with a slot per wire (cradle_cuts)."""
+    x0, y0, x1, y1 = cradle_rect()
+    return box(x0, y0, C_FRONT - 0.01, x1, y1, CRADLE_TOP)
+
+
+def cradle_rect():
     xs, ys = [p[0] for p in disp_pins.values()], [p[1] for p in disp_pins.values()]
-    blk = box(xs[0] - CRADLE_W / 2, min(ys) - CRADLE_END, C_FRONT - 0.01, xs[0] + CRADLE_W / 2, max(ys) + CRADLE_END - CRADLE_END_TRIM, DISP_Z + 8)
-    return blk.cut(above_plane(W_CRADLE))
+    return xs[0] - CRADLE_W / 2, min(ys) - CRADLE_END, xs[0] + CRADLE_W / 2, max(ys) + CRADLE_END - CRADLE_END_TRIM
 
 
 def cradle_cuts():
-    """Bore and funnel for every display wire (the pocket under the carrier's front is part of the bore)."""
-    cuts = []
-    for x, y in disp_pins.values():
-        zt = plane_z(y, W_CRADLE)
-        cuts.append(cyl(DPIN_POCKET[0], x, y, C_FRONT - DPIN_POCKET[1], zt + 1))
-        cuts.append(Part.makeCone(DPIN_POCKET[0] / 2, DPIN_POCKET[0] / 2 + 1.0, 1.0, V(x, y, zt - (CRADLE_FUNNEL_R - DPIN_POCKET[0] / 2)), V(0, 0, 1)))
-    return cuts
+    """Each display wire's groove carried up through the cradle: a slot of the groove's width along the wire's own run, open at the
+    cradle side it leaves by. The wire drops in at its pin and turns 90° straight into the groove."""
+    x0, y0, x1, y1 = cradle_rect()
+    keep = box(x0 - 0.01, y0 - 0.01, C_FRONT - GROOVE_D - 0.01, x1 + 0.01, y1 + 0.01, CRADLE_TOP + 1)
+    D = set(disp_pins.values())
+    return [band(pts, GROOVE_W, C_FRONT - GROOVE_D, CRADLE_TOP + 1).common(keep)
+            for _, segs, _e in wire_routes() for face, pts in segs if face == 'F' and (pts[0] in D or pts[-1] in D)]
 
 
 def knob_hub_z0():
@@ -1488,7 +1491,7 @@ def dummy_wire():
                     px, py = disp_pins_m[n]
                     parts.append(tilt(cyl(WRAP[0], px, py, top - WRAP[2], top).cut(cyl(WRAP[1], px, py, top - WRAP[2] - 1, top + 1))))
                     p0 = tp(pin[0], py, top - WRAP[2] / 2)
-                    zt = plane_z(pin[1], W_CRADLE)
+                    zt = CRADLE_TOP
                     tail = _pipe([(p0.x, p0.y, p0.z), (pin[0], pin[1], zt + 0.3), (pin[0], pin[1], WIRE_Z_FRONT)])
                     DISP_TAILS.append(tail)
                     parts.append(tail)
@@ -1918,11 +1921,11 @@ def check_display():
     for nme, (x, y) in disp_pins.items():
         px, py = disp_pins_m[nme]
         p0 = tp(x, py, W_ROOT - WRAP[2] / 2)
-        spans.append(math.dist((p0.x, p0.y, p0.z), (x, y, plane_z(y, W_CRADLE) + 0.3)))
+        spans.append(math.dist((p0.x, p0.y, p0.z), (x, y, CRADLE_TOP)))
     lead = math.degrees(math.atan2(abs(disp_pins[DISP_PINS[3]][1] - tp(*disp_pins_m[DISP_PINS[3]], W_ROOT).y),
-                                   tp(*disp_pins_m[DISP_PINS[3]], W_ROOT).z - plane_z(disp_pins[DISP_PINS[3]][1], W_CRADLE)))
-    print("wires: free span from the pin root to the cradle funnel %.1f..%.1f mm, straight (leans %.0f° the other way from the pins), funnel and "
-          "%.1f bore, foot bend R %.1f mm; wrap ring R %.2f" % (min(spans), max(spans), lead, DPIN_POCKET[0], DPIN_POCKET[0] / 2, WRAP[0] / 2))
+                                   tp(*disp_pins_m[DISP_PINS[3]], W_ROOT).z - CRADLE_TOP))
+    print("wires: free span from the pin root to the flat cradle top %.1f..%.1f mm, straight (leans %.0f° the other way from the pins), "
+          "%.1f mm slots along each groove, cradle %.2f mm high; wrap ring R %.2f" % (min(spans), max(spans), lead, GROOVE_W, CRADLE_TOP - C_FRONT, WRAP[0] / 2))
     hid, ang = eye_hidden()
     print("rim: hides %.2f mm of the active area for a seated eye (%.0f° over the desk, %.1f° over the glass); limit %.1f. Lip covers the glass edge by %.2f (near/far), %.2f (header end), %.2f (flex end) mm" % (
         hid, EYE_ELEV, ang, RIM_HIDDEN_MAX, DISP_GLASS[1] / 2 - DISP_ACTIVE / 2 - DISP_WIN_MARGIN,
