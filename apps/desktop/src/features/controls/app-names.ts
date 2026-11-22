@@ -73,9 +73,13 @@ export function friendlyAppName(id: string): string {
   return titleCase(base) || id;
 }
 
-/** True when the id belongs to the other OS (an exe name on macOS, a bundle id elsewhere). */
+/**
+ * True when the id belongs to another OS: an exe name on macOS, a bundle id on Windows, either on
+ * Linux (whose ids are plain executable names such as `firefox`).
+ */
 function foreign(id: string, platform: StartupPlatform | null): boolean {
   if (platform === 'macos') return /\.exe$/i.test(id);
+  if (platform === 'linux') return /\.exe$/i.test(id) || isBundleId(id);
   if (platform === null) return false;
   return isBundleId(id);
 }

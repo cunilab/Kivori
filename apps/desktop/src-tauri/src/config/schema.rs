@@ -1,7 +1,7 @@
-//! The persisted config file (version 2). Everything the user can change lives here and nowhere else.
+//! The persisted config file (version 3). Everything the user can change lives here and nowhere else.
 //!
 //! The file is strict (`deny_unknown_fields`): an unknown field is treated as corruption, backed up
-//! and reported, rather than silently dropped on the next save. Version 2 adds the held-rotation
+//! and reported, rather than silently dropped on the next save. Version 3 adds the double-press
 //! binding so older strict readers recognize the file as newer instead of corrupt.
 
 use std::collections::BTreeMap;
@@ -13,7 +13,7 @@ use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 
 /// The schema version this build reads and writes.
-pub const CONFIG_VERSION: u32 = 2;
+pub const CONFIG_VERSION: u32 = 3;
 
 /// The whole config file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,6 +121,7 @@ impl ConfigFile {
         let in_override = |over: &ProfileOverride| {
             is_it(&over.press)
                 || is_it(&over.hold)
+                || is_it(&over.double_press)
                 || over
                     .buttons
                     .iter()
@@ -131,6 +132,23 @@ impl ConfigFile {
                 .custom_profiles
                 .iter()
                 .any(|p| in_override(&p.bindings))
+    }
+
+    /// Drops a `heldRotate` stored before it meant a binding (a pre-v3 pair the picker ignored) and
+    /// then the override entries that held nothing else.
+    pub fn drop_legacy(&mut self) {
+        for over in self.profiles.values_mut() {
+            over.held_rotate = None;
+        }
+        for custom in &mut self.custom_profiles {
+            custom.bindings.held_rotate = None;
+        }
+        self.drop_empty();
+    }
+
+    /// Drops override entries that name nothing, so a load never leaves an empty `{}` behind.
+    pub fn drop_empty(&mut self) {
+        self.profiles.retain(|_, over| !over.is_empty());
     }
 
     /// Checks the rules serde cannot express.
@@ -279,7 +297,8 @@ pub struct CustomProfile {
     /// Lowercase foreground ids (Windows executables, macOS bundle ids).
     #[serde(default)]
     pub apps: Vec<String>,
-    /// Whether the middle button's Hold cycle includes it.
+    /// Whether the profile is pinned to the device: in the knob's Hold-and-turn picker and the
+    /// middle button's Hold cycle.
     #[serde(default)]
     pub in_pin_cycle: bool,
     #[serde(default)]
@@ -292,12 +311,17 @@ pub struct CustomProfile {
 pub struct ProfileOverride {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rotate: Option<RotateSpec>,
+    /// Hold + turn. Absent means the device's profile picker. A file from before this was a binding
+    /// has the field removed while migrating to version 3, so an old unused pair does not run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub held_rotate: Option<RotateSpec>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub press: Option<SlotSpec>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hold: Option<SlotSpec>,
+    /// Knob double press. Absent on a file from before it was bindable: the built-in view switch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub double_press: Option<SlotSpec>,
     #[serde(default, skip_serializing_if = "buttons_untouched")]
     pub buttons: [ButtonOverride; 3],
     /// Apps the user moved into this built-in profile (lowercase ids). Never used by a custom
@@ -307,9 +331,10 @@ pub struct ProfileOverride {
     /// Built-in apps the user moved out of this built-in profile to General.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub removed_apps: Vec<String>,
-    /// Starter profiles can be added to the physical pin cycle.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub in_pin_cycle: bool,
+    /// Pinned to the device, when the user decided: `None` keeps the profile's default (the core
+    /// built-in profiles are pinned, starter profiles are not).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub in_pin_cycle: Option<bool>,
 }
 
 fn buttons_untouched(buttons: &[ButtonOverride; 3]) -> bool {
@@ -324,7 +349,7 @@ impl ProfileOverride {
     }
 }
 
-/// A contextual button's overrides. The middle button's Hold is reserved for the profile pin.
+/// A contextual button's overrides. The middle button's Hold defaults to mic mute.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ButtonOverride {
@@ -366,6 +391,9 @@ pub enum ActionSpec {
     Launch {
         target: String,
     },
+    /// Switches the screen between the views chosen under Display. Not valid as a macro step:
+    /// it runs on the desk, not in the action worker.
+    SwitchView,
     /// Runs a user macro by id. Never valid as a macro's own step (no nesting).
     Macro {
         id: String,
@@ -376,6 +404,8 @@ pub enum ActionSpec {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 pub enum RotateSpec {
+    /// Hold + turn opens the profile picker on the device. Not valid for the plain knob.
+    ProfilePicker,
     SystemVolume,
     Shortcuts {
         cw: String,

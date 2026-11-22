@@ -31,6 +31,7 @@ import { useDevMode } from '@/lib/dev-mode';
 import { buildNotices } from './build';
 import { DeviceInternals } from './DeviceInternals';
 import { FirmwareUpdate } from './FirmwareUpdate';
+import { UsbAccess } from './UsbAccess';
 
 const t = strings.device;
 
@@ -110,6 +111,7 @@ export function DevicePage({
             <CardTitle>{t.connection}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <UsbAccess />
             {ui === 'loading' ? (
               <Skeleton className="h-10 w-full" />
             ) : ui === 'disconnected' && !device ? null : (

@@ -1,5 +1,5 @@
 //! Apps on this computer for the profile list: which are running ("pick a running app") and what
-//! their icons look like. Only Windows and macOS have a backend; elsewhere the list is empty and
+//! their icons look like. Windows, macOS and Linux have a backend; elsewhere the list is empty and
 //! no icon is found, and the webview shows a letter instead.
 //!
 //! Both calls do OS work that may take a moment, so callers run them off the UI thread and the
@@ -26,7 +26,9 @@ pub fn running_apps() -> Vec<RunningApp> {
     let mut apps = super::macos::apps::running_apps();
     #[cfg(windows)]
     let mut apps = super::windows::apps::running_apps();
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(target_os = "linux")]
+    let mut apps = super::linux::running_apps();
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     let mut apps: Vec<RunningApp> = Vec::new();
     apps.sort_by_cached_key(|a| a.name.to_lowercase());
     apps.dedup_by(|a, b| a.id == b.id);
@@ -85,7 +87,11 @@ fn icon_png(id: &str) -> Option<Vec<u8>> {
     {
         super::windows::apps::icon_png(id)
     }
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(target_os = "linux")]
+    {
+        super::linux::icon_png(id)
+    }
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     {
         let _ = id;
         None

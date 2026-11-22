@@ -258,14 +258,19 @@ fn scenarios(seed: u32, goldens: &Goldens) -> Result<Report, String> {
         IDS[2],
         vec![
             tick(
-                base + 720,
-                &[(base, 4), (base + 120, 0), (base + 170, 8), (base + 670, 0)],
+                base + 1_220,
+                &[
+                    (base, 4),
+                    (base + 120, 0),
+                    (base + 170, 8),
+                    (base + 1_170, 0),
+                ],
             ),
-            tick(base + 820, &[]),
+            tick(base + 1_320, &[]),
         ],
         vec![
             button(InputKind::Press, base + 170),
-            seen(ControlId::ContextButton(0), InputKind::Hold, base + 720),
+            seen(ControlId::ContextButton(0), InputKind::Hold, base + 1_220),
         ],
         &hashes[IDS[2]],
     )?);

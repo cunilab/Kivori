@@ -1,5 +1,6 @@
-//! Pure foreground classification, shared by the Windows and macOS observers so the protected
-//! rules (invariant 9) are unit-tested on every host. The OS backends only gather raw facts.
+//! Pure foreground classification, shared by the Windows, macOS and Linux observers so the
+//! protected rules (invariant 9) are unit-tested on every host. The OS backends only gather raw
+//! facts.
 
 use std::sync::OnceLock;
 
@@ -29,6 +30,16 @@ const WINDOWS_PROTECTED: [&str; 4] = [
 
 /// macOS bundle ids (lowercase) that are protected surfaces.
 const MAC_PROTECTED: [&str; 2] = ["com.apple.loginwindow", "com.apple.securityagent"];
+
+/// Linux executables (lowercase file names) that are protected surfaces: privilege prompts and
+/// secret-entry dialogs. `pinentry*` is matched by prefix, see [`classify_linux`].
+const LINUX_PROTECTED: [&str; 5] = [
+    "polkit-gnome-authentication-agent-1",
+    "polkit-kde-authentication-agent-1",
+    "polkit-mate-authentication-agent-1",
+    "lxqt-policykit-agent",
+    "gcr-prompter",
+];
 
 /// No foreground window. `input_desktop` is the input desktop's name, `None` when it can't be
 /// opened (which is itself what the secure desktop looks like from a normal process).
@@ -81,6 +92,31 @@ pub fn classify_mac(bundle_id: Option<&str>, name: Option<&str>, locked: bool) -
     }
     let name = name.filter(|n| !n.is_empty()).unwrap_or(bundle).to_string();
     Foreground::App { id, name }
+}
+
+/// Linux focused window owned by the process whose executable is `exe` (a file name or path).
+/// The id is the lowercase executable file name, the same key per-app volume matches on, and the
+/// name is that file name too. A locked screen wins over whatever window is still nominally
+/// focused. No executable (an unreadable or exited process) is unknown, never a guess.
+pub fn classify_linux(exe: Option<&str>, locked: bool) -> Foreground {
+    if locked {
+        return Foreground::Protected;
+    }
+    let file = exe
+        .and_then(|exe| exe.rsplit('/').next())
+        .map(str::trim)
+        .filter(|file| !file.is_empty());
+    let Some(file) = file else {
+        return Foreground::Unknown;
+    };
+    let id = file.to_lowercase();
+    if LINUX_PROTECTED.contains(&id.as_str()) || id.starts_with("pinentry") {
+        return Foreground::Protected;
+    }
+    Foreground::App {
+        id,
+        name: file.to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -208,6 +244,50 @@ mod tests {
         assert_eq!(classify_mac(None, None, false), Foreground::Unknown);
         assert_eq!(
             classify_mac(Some(""), Some("x"), false),
+            Foreground::Unknown
+        );
+    }
+
+    #[test]
+    fn linux_app_id_is_the_lowercase_executable_name() {
+        assert_eq!(
+            classify_linux(Some("/usr/share/code/Code"), false),
+            app("code", "Code")
+        );
+        assert_eq!(
+            classify_linux(Some("firefox"), false),
+            app("firefox", "firefox")
+        );
+    }
+
+    #[test]
+    fn linux_privilege_prompts_and_a_locked_screen_are_protected() {
+        for exe in [
+            "/usr/libexec/polkit-gnome-authentication-agent-1",
+            "/usr/libexec/gcr-prompter",
+            "/usr/bin/pinentry-gnome3",
+            "pinentry",
+        ] {
+            assert_eq!(
+                classify_linux(Some(exe), false),
+                Foreground::Protected,
+                "{exe}"
+            );
+        }
+        assert_eq!(
+            classify_linux(Some("firefox"), true),
+            Foreground::Protected,
+            "the lock screen wins over a stale focus"
+        );
+        assert_eq!(classify_linux(None, true), Foreground::Protected);
+    }
+
+    #[test]
+    fn linux_no_executable_is_unknown_not_a_guess() {
+        assert_eq!(classify_linux(None, false), Foreground::Unknown);
+        assert_eq!(classify_linux(Some(""), false), Foreground::Unknown);
+        assert_eq!(
+            classify_linux(Some("/usr/bin/"), false),
             Foreground::Unknown
         );
     }

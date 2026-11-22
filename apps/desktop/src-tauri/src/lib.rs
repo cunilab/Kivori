@@ -30,6 +30,7 @@ pub mod platform;
 pub mod presentation;
 pub mod render;
 pub mod runtime;
+pub mod serial_access;
 pub mod startup;
 pub mod uf2;
 pub mod updater;
@@ -164,6 +165,10 @@ pub fn run() {
 
     #[cfg(feature = "device-studio")]
     let builder = builder.invoke_handler(tauri::generate_handler![
+        ipc::gnome::get_gnome_focus_status,
+        ipc::gnome::gnome_shortcut_policy,
+        ipc::gnome::enable_gnome_focus,
+        ipc::gnome::logout_gnome,
         ipc::commands::get_app_info,
         ipc::commands::app_ready,
         ipc::commands::get_connection_status,
@@ -174,6 +179,8 @@ pub fn run() {
         ipc::commands::complete_onboarding,
         ipc::commands::restart_onboarding,
         ipc::commands::mark_accessibility_asked,
+        ipc::commands::keyboard_shortcuts_status,
+        ipc::commands::enable_keyboard_shortcuts,
         ipc::commands::get_accessibility,
         ipc::commands::request_accessibility,
         ipc::commands::reset_accessibility,
@@ -220,6 +227,8 @@ pub fn run() {
         ipc::commands::skip_update_version,
         ipc::commands::set_auto_update_check,
         ipc::commands::get_firmware_offer,
+        ipc::commands::get_serial_access,
+        ipc::commands::fix_serial_access,
         ipc::commands::accept_firmware_offer,
         ipc::commands::dismiss_firmware_offer,
         ipc::channels::open_preview_stream,
@@ -229,6 +238,10 @@ pub fn run() {
     ]);
     #[cfg(not(feature = "device-studio"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
+        ipc::gnome::get_gnome_focus_status,
+        ipc::gnome::gnome_shortcut_policy,
+        ipc::gnome::enable_gnome_focus,
+        ipc::gnome::logout_gnome,
         ipc::commands::get_app_info,
         ipc::commands::app_ready,
         ipc::commands::get_connection_status,
@@ -239,6 +252,8 @@ pub fn run() {
         ipc::commands::complete_onboarding,
         ipc::commands::restart_onboarding,
         ipc::commands::mark_accessibility_asked,
+        ipc::commands::keyboard_shortcuts_status,
+        ipc::commands::enable_keyboard_shortcuts,
         ipc::commands::get_accessibility,
         ipc::commands::request_accessibility,
         ipc::commands::reset_accessibility,
@@ -283,6 +298,8 @@ pub fn run() {
         ipc::commands::skip_update_version,
         ipc::commands::set_auto_update_check,
         ipc::commands::get_firmware_offer,
+        ipc::commands::get_serial_access,
+        ipc::commands::fix_serial_access,
         ipc::commands::accept_firmware_offer,
         ipc::commands::dismiss_firmware_offer,
     ]);

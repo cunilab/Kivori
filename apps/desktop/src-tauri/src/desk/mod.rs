@@ -17,6 +17,7 @@ use kivori_model::desk::{
     ActionFeedback, ActionKind, ClockTime, ControlLabels, DeskStatus, DisplayMode, FeedbackKind,
     MediaInfo, MediaStatus, MediaText, MicState,
 };
+use kivori_model::picker::{HoldActions, ProfileChoices};
 
 use crate::activity::{ActivityEventKind, ActivityMetadata, SessionActivity};
 use crate::config::{DisplaySettings, ResolvedConfig, SecondaryView};
@@ -273,6 +274,14 @@ pub struct DeskOutput {
     pub controls: Option<ControlLabels>,
     /// The microphone state to send: when it changes, and with each status refresh while known.
     pub mic: Option<MicState>,
+    /// The profile picker's entries and the pin the desktop runs: when either changes, and
+    /// always in answer to a pick.
+    pub picker: Option<ProfileChoices>,
+    /// Which contextual buttons have a Hold: when that changes.
+    pub holds: Option<HoldActions>,
+    /// Whether Hold + turn should open the profile picker. Sent on session start and whenever
+    /// the active profile's binding changes. `None` means nothing new to send.
+    pub held_turn_picker: Option<bool>,
 }
 
 /// The last action outcome, for the desktop UI.
@@ -319,6 +328,17 @@ pub struct DeskRuntime {
     sent_media: Option<Option<MediaInfo>>,
     /// The control labels the device was last sent, `None` = nothing sent this session.
     sent_controls: Option<ControlLabels>,
+    /// The picker's entries as the device last saw them, and their generation: a pick names the
+    /// generation it was made from, and only the list the device saw can be indexed.
+    picker_entries: Vec<crate::config::ProfileRef>,
+    picker_generation: u8,
+    /// The choices the device was last sent, `None` = nothing sent this session (or a pick asked
+    /// for an answer).
+    sent_picker: Option<ProfileChoices>,
+    /// The Hold labels the device was last sent, `None` = nothing sent this session.
+    sent_holds: Option<HoldActions>,
+    /// The Hold + turn mode the device was last sent, `None` = nothing sent this session.
+    sent_held_turn: Option<bool>,
 }
 
 impl DeskRuntime {
@@ -388,6 +408,11 @@ impl DeskRuntime {
             now_playing: None,
             sent_media: None,
             sent_controls: None,
+            picker_entries: Vec::new(),
+            picker_generation: 0,
+            sent_picker: None,
+            sent_holds: None,
+            sent_held_turn: None,
         }
     }
 
@@ -416,7 +441,35 @@ impl DeskRuntime {
     ) {
         self.context.set_profiles(config.profiles.clone());
         self.apply_display(config.display, observe);
+        self.resend_labels();
+    }
+
+    /// Forces the labels, the picker's entries and the Hold labels out again on the next tick.
+    fn resend_labels(&mut self) {
         self.sent_controls = None;
+        self.sent_picker = None;
+        self.sent_holds = None;
+        self.sent_held_turn = None;
+    }
+
+    /// The device released its knob switch on a picker entry (`ProfilePick`): pin that profile, or
+    /// follow the app in front again for Auto, and answer with what is now in force. A pick made
+    /// from a list the device no longer has (the pins changed meanwhile) is not applied; the
+    /// answer still goes out, so the device sees the real state and confirms nothing it did not get.
+    /// In a protected context nothing is changed either: the answer says what is in force, so the
+    /// device shows "not confirmed" instead of claiming a profile that Protected overrides.
+    pub fn on_profile_pick(&mut self, pick: kivori_model::picker::ProfilePick) {
+        if pick.generation == self.picker_generation && !self.context.protected() {
+            match usize::from(pick.index).checked_sub(1) {
+                None => self.context.pin(None),
+                Some(i) => {
+                    if let Some(id) = self.picker_entries.get(i).cloned() {
+                        self.context.pin(Some(&id));
+                    }
+                }
+            }
+        }
+        self.resend_labels();
     }
 
     /// Adopts new display settings. Moving the default view takes the device there now; changing
@@ -436,7 +489,7 @@ impl DeskRuntime {
     /// Pin a profile from the desktop, or follow the foreground app again.
     pub fn pin_profile(&mut self, profile: Option<&crate::config::ProfileRef>) {
         self.context.pin(profile);
-        self.sent_controls = None;
+        self.resend_labels();
     }
 
     /// The active profile's bindings.
@@ -539,6 +592,15 @@ impl DeskRuntime {
         // Deliberate, like device input: classify Protected from the live foreground first.
         self.poll_focus(now);
         self.context.commit_pending();
+        if matches!(action, Action::SwitchView) {
+            // Same path as a knob double press: the view changes, with no action feedback.
+            self.next_mode(observe);
+            let _ = reply.try_send(Outcome {
+                kind: FeedbackKind::StateConfirmed,
+                permission_required: false,
+            });
+            return;
+        }
         if self.context.protected() && !action.is_system() {
             self.refuse(&action, now, observe);
             let _ = reply.try_send(Outcome::error());
@@ -651,7 +713,6 @@ impl DeskRuntime {
         self.poll_focus(now);
         self.context.commit_pending();
         match *input {
-            LogicalInput::DoublePress { .. } => self.next_mode(observe),
             // A gesture keeps the binding it began with until it ends (invariant 12).
             LogicalInput::GestureStarted { gesture_id }
             | LogicalInput::PressedGestureStarted { gesture_id } => {
@@ -660,22 +721,21 @@ impl DeskRuntime {
                     self.end_app_gesture(old.id, observe);
                 }
                 let pressed = matches!(input, LogicalInput::PressedGestureStarted { .. });
-                let rotate = if pressed {
-                    self.context.profile().held_rotate.as_ref()
+                let binding = match if pressed {
+                    self.context.held_rotate()
                 } else {
                     self.context.rotate()
-                };
-                let binding = match rotate {
-                    Some(RotateBinding::Volume) if !pressed => return true,
-                    Some(RotateBinding::Volume) => KnobTarget::Unbound,
+                } {
+                    // The profile picker runs on the device. A pressed turn only arrives when the
+                    // device was told not to open it.
+                    Some(RotateBinding::ProfilePicker) => KnobTarget::Unbound,
+                    Some(RotateBinding::Volume) => return true,
                     Some(RotateBinding::Shortcuts { cw, ccw, .. }) => {
                         KnobTarget::Shortcuts((!self.context.protected()).then_some((*cw, *ccw)))
                     }
-                    Some(RotateBinding::AppVolume { .. }) if pressed => KnobTarget::Unbound,
                     Some(RotateBinding::AppVolume { app, .. }) => {
                         KnobTarget::AppVolume(app.clone())
                     }
-                    None if pressed => KnobTarget::Unbound,
                     None => KnobTarget::Shortcuts(None),
                 };
                 self.knob_count += 1;
@@ -699,11 +759,9 @@ impl DeskRuntime {
             }
             _ => match self.context.resolve(input) {
                 Resolved::Nothing => {}
+                Resolved::Run(Action::SwitchView) => self.next_mode(observe),
                 Resolved::Run(action) => self.run_within(action, now, remaining, observe),
                 Resolved::Suspended(action) => self.refuse(&action, now, observe),
-                // Not an action: the new labels are the feedback.
-                // ponytail: not in the activity log, no event kind fits; add one if users ask.
-                Resolved::CyclePin => self.context.cycle_pin(),
             },
         }
         false
@@ -879,7 +937,7 @@ impl DeskRuntime {
         self.sent_mic = MicState::UNKNOWN;
         self.publisher.invalidate();
         self.sent_media = None;
-        self.sent_controls = None;
+        self.resend_labels();
     }
 
     /// The session ended: nothing in flight reaches a later session.
@@ -929,6 +987,37 @@ impl DeskRuntime {
             self.sent_controls = Some(labels);
             labels
         });
+        let (entries, selected) = self.context.picker_entries();
+        if entries != self.picker_entries {
+            // An index only has to stay valid for the device: a list that merely grew or lost its
+            // tail (the desktop's own pin appearing or going) keeps every surviving index on the
+            // same profile, so a pick made from the older list still means what the device meant
+            // and its confirmation is not turned into a false "not confirmed".
+            let same_indexes = entries.starts_with(&self.picker_entries)
+                || self.picker_entries.starts_with(&entries);
+            if !same_indexes {
+                self.picker_generation = self.picker_generation.wrapping_add(1);
+            }
+            self.picker_entries = entries;
+        }
+        let picker = self.picker_choices(selected);
+        let picker = (self.sent_picker != Some(picker)).then(|| {
+            self.sent_picker = Some(picker);
+            picker
+        });
+        let hold_actions = self.context.hold_actions();
+        let holds = (self.sent_holds != Some(hold_actions)).then(|| {
+            self.sent_holds = Some(hold_actions);
+            hold_actions
+        });
+        let held_turn_picker = matches!(
+            self.context.profile().held_rotate,
+            RotateBinding::ProfilePicker
+        );
+        let held_turn_picker = (self.sent_held_turn != Some(held_turn_picker)).then(|| {
+            self.sent_held_turn = Some(held_turn_picker);
+            held_turn_picker
+        });
         while let Some(id) = self.worker.try_expired() {
             // Skipped, so nothing ran: no outcome, no feedback (it would claim a dispatch).
             self.ladder.cancel(id);
@@ -976,7 +1065,28 @@ impl DeskRuntime {
             media_info: media_update,
             controls,
             mic: mic_update,
+            picker,
+            holds,
+            held_turn_picker,
         }
+    }
+
+    /// The picker's entries as the device is offered them, with the pin in force.
+    fn picker_choices(&self, selected: u8) -> ProfileChoices {
+        let mut choices = ProfileChoices {
+            generation: self.picker_generation,
+            count: self.picker_entries.len() as u8,
+            selected,
+            ..ProfileChoices::default()
+        };
+        for (slot, id) in choices.names.iter_mut().zip(&self.picker_entries) {
+            let name = self
+                .context
+                .name_of(id)
+                .map_or_else(String::new, ToString::to_string);
+            *slot = kivori_model::picker::PickerName::from_text(&name);
+        }
+        choices
     }
 
     fn finish(
@@ -1013,6 +1123,7 @@ fn desk_activity(kind: ActivityEventKind, action: ActionToken) -> SessionActivit
 pub fn bound_action<'b>(bindings: &'b Bindings, input: &LogicalInput) -> Option<&'b Action> {
     match input {
         LogicalInput::Press { .. } => bindings.press.action.as_ref(),
+        LogicalInput::DoublePress { .. } => bindings.double_press.action.as_ref(),
         LogicalInput::Hold { .. } => bindings.hold.action.as_ref(),
         LogicalInput::ButtonPress { button, .. } => bindings
             .buttons
@@ -1241,8 +1352,8 @@ mod tests {
         let out = desk.tick(ms(500), &mut |_| {});
         let labels = out.controls.expect("new labels in the commit tick");
         assert_eq!(text(labels.profile), "Browser");
-        assert_eq!(text(labels.rotate), "Tabs");
-        assert_eq!(labels.buttons.map(text), ["Back", "Reload", "New tab"]);
+        assert_eq!(text(labels.rotate), "Volume");
+        assert_eq!(labels.buttons.map(text), ["Back", "Reload", "Forward"]);
         assert!(matches!(
             bound_action(desk.bindings(), &button(1, 1)),
             Some(Action::Shortcut(_))
@@ -1276,17 +1387,20 @@ mod tests {
         let fg = Arc::new(FakeForeground::default());
         let synth = Arc::new(FakeInputSynth::new(Ok(())));
         let mut desk = desk_with(&fg, &synth);
-        // Pin Browser (Auto -> General -> Browser), then a protected surface takes focus.
-        for id in 1..=2 {
-            desk.on_input(
-                &LogicalInput::ButtonHold {
-                    button: 1,
-                    gesture_id: id,
-                },
-                ms(0),
-                &mut |_| {},
-            );
-        }
+        desk.apply_config(
+            &config(|file| {
+                override_of(file, crate::config::ProfileId::Browser).rotate =
+                    Some(crate::config::RotateSpec::Shortcuts {
+                        cw: "Ctrl+Tab".into(),
+                        ccw: "Ctrl+Shift+Tab".into(),
+                        label: "Tabs".into(),
+                    });
+            }),
+            &mut |_| {},
+        );
+        desk.pin_profile(Some(&crate::config::ProfileRef::Builtin(
+            crate::config::ProfileId::Browser,
+        )));
         assert_eq!(text(desk.labels().profile), "Browser");
         assert!(
             desk.tick(ms(0), &mut |_| {}).feedback.is_empty(),
@@ -1331,7 +1445,7 @@ mod tests {
         }
         assert_eq!(desk.tick(ms(30), &mut |_| {}).feedback.len(), 1);
         // A system action still runs.
-        desk.on_input(&LogicalInput::Hold { gesture_id: 5 }, ms(40), &mut |_| {});
+        desk.on_input(&LogicalInput::Press { gesture_id: 5 }, ms(40), &mut |_| {});
         let feedback = settle(&mut desk, ms(50), |f| !f.is_empty());
         assert_eq!(feedback[0].action, ActionKind::Mute);
         assert_eq!(feedback[0].kind, FeedbackKind::StateConfirmed);
@@ -1449,6 +1563,17 @@ mod tests {
         let fg = Arc::new(FakeForeground::default());
         let synth = Arc::new(FakeInputSynth::new(Ok(())));
         let mut desk = desk_with(&fg, &synth);
+        desk.apply_config(
+            &config(|file| {
+                override_of(file, crate::config::ProfileId::Browser).rotate =
+                    Some(crate::config::RotateSpec::Shortcuts {
+                        cw: "Ctrl+Tab".into(),
+                        ccw: "Ctrl+Shift+Tab".into(),
+                        label: "Tabs".into(),
+                    });
+            }),
+            &mut |_| {},
+        );
         focus(&fg, "chrome.exe");
         let _ = desk.tick(ms(0), &mut |_| {});
         let _ = desk.tick(ms(400), &mut |_| {});
@@ -1525,6 +1650,17 @@ mod tests {
         let fg = Arc::new(FakeForeground::default());
         let synth = Arc::new(FakeInputSynth::new(Ok(())));
         let mut desk = desk_with(&fg, &synth);
+        desk.apply_config(
+            &config(|file| {
+                override_of(file, crate::config::ProfileId::Browser).rotate =
+                    Some(crate::config::RotateSpec::Shortcuts {
+                        cw: "Ctrl+Tab".into(),
+                        ccw: "Ctrl+Shift+Tab".into(),
+                        label: "Tabs".into(),
+                    });
+            }),
+            &mut |_| {},
+        );
         focus(&fg, "brave.exe");
         let start = LogicalInput::GestureStarted { gesture_id: 1 };
         assert!(!desk.on_input(&start, ms(0), &mut |_| {}));
@@ -1549,6 +1685,17 @@ mod tests {
         let fg = Arc::new(FakeForeground::default());
         let synth = Arc::new(FakeInputSynth::new(Err(ActionError::PermissionRequired)));
         let mut desk = desk_with(&fg, &synth);
+        desk.apply_config(
+            &config(|file| {
+                override_of(file, crate::config::ProfileId::Browser).rotate =
+                    Some(crate::config::RotateSpec::Shortcuts {
+                        cw: "Ctrl+Tab".into(),
+                        ccw: "Ctrl+Shift+Tab".into(),
+                        label: "Tabs".into(),
+                    });
+            }),
+            &mut |_| {},
+        );
         focus(&fg, "firefox.exe");
         for gesture_id in [1, 2] {
             let mut log = Vec::new();
@@ -1610,6 +1757,59 @@ mod tests {
         assert!(
             desk.tick(ms(0), &mut |_| {}).feedback.is_empty(),
             "not an action"
+        );
+    }
+
+    #[test]
+    fn a_rebound_double_press_runs_that_action_and_an_unbound_one_does_nothing() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        let switched = config(|file| {
+            override_of(file, crate::config::ProfileId::General).double_press =
+                Some(crate::config::SlotSpec {
+                    action: Some(crate::config::ActionSpec::Shortcut {
+                        keys: "Ctrl+Shift+K".into(),
+                    }),
+                    label: None,
+                });
+        });
+        desk.apply_config(&switched, &mut |_| {});
+        let mode = desk.mode();
+        desk.on_input(
+            &LogicalInput::DoublePress { gesture_id: 1 },
+            ms(10),
+            &mut |_| {},
+        );
+        assert_eq!(
+            desk.mode(),
+            mode,
+            "a rebound double press does not switch view"
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while sent(&synth).is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(ms(1));
+        }
+        assert_eq!(sent(&synth), ["Ctrl+Shift+K"]);
+
+        let cleared = config(|file| {
+            override_of(file, crate::config::ProfileId::General).double_press =
+                Some(crate::config::SlotSpec {
+                    action: None,
+                    label: None,
+                });
+        });
+        desk.apply_config(&cleared, &mut |_| {});
+        desk.on_input(
+            &LogicalInput::DoublePress { gesture_id: 2 },
+            ms(30),
+            &mut |_| {},
+        );
+        assert_eq!(desk.mode(), mode);
+        assert_eq!(
+            sent(&synth),
+            ["Ctrl+Shift+K"],
+            "an unbound double press does nothing"
         );
     }
 
@@ -1716,8 +1916,8 @@ mod tests {
         desk.on_session_begin();
         let labels = desk.tick(ms(0), &mut |_| {}).controls.unwrap();
         assert_eq!(labels.rotate.as_latin1(), b"Volume");
-        assert_eq!(labels.press.as_latin1(), b"Play/Pause");
-        assert_eq!(labels.hold.as_latin1(), b"Mute");
+        assert_eq!(labels.press.as_latin1(), b"Mute");
+        assert_eq!(labels.hold.as_latin1(), b"");
         let buttons = labels.buttons.map(|b| b.as_latin1().to_vec());
         assert_eq!(
             buttons,
@@ -1740,11 +1940,11 @@ mod tests {
         let bindings = Bindings::default();
         assert_eq!(
             bound_action(&bindings, &LogicalInput::Press { gesture_id: 1 }),
-            Some(&Action::PlayPause)
+            Some(&Action::ToggleMute)
         );
         assert_eq!(
             bound_action(&bindings, &LogicalInput::Hold { gesture_id: 2 }),
-            Some(&Action::ToggleMute)
+            None
         );
         assert_eq!(
             bound_action(&bindings, &LogicalInput::GestureStarted { gesture_id: 3 }),
@@ -1795,16 +1995,10 @@ mod tests {
             None,
             "nothing changed"
         );
-        // Hold is not on the device legend, so these labels do not change.
-        let hold_only = config(|file| {
-            override_of(file, crate::config::ProfileId::General).hold =
-                Some(crate::config::SlotSpec {
-                    action: Some(crate::config::ActionSpec::PlayPause),
-                    label: None,
-                });
-        });
-        desk.apply_config(&hold_only, &mut |_| {});
-        assert_eq!(desk.bindings().hold.action, Some(Action::PlayPause));
+        // Saving without a label change still re-sends them.
+        let same = config(|_| {});
+        desk.apply_config(&same, &mut |_| {});
+        assert_eq!(desk.bindings().hold.action, None);
         let again = desk.tick(ms(20), &mut |_| {}).controls;
         assert_eq!(again, Some(desk.labels()), "re-sent although identical");
         assert_eq!(
@@ -1820,14 +2014,9 @@ mod tests {
         let synth = Arc::new(FakeInputSynth::new(Ok(())));
         let mut desk = desk_with(&fg, &synth);
         let _ = desk.tick(ms(0), &mut |_| {});
-        desk.on_input(
-            &LogicalInput::ButtonHold {
-                button: profile::PIN_BUTTON,
-                gesture_id: 1,
-            },
-            ms(10),
-            &mut |_| {},
-        );
+        desk.pin_profile(Some(&crate::config::ProfileRef::Builtin(
+            crate::config::ProfileId::General,
+        )));
         assert!(desk.context().pinned());
         let renamed = config(|file| {
             override_of(file, crate::config::ProfileId::General).buttons[0].press =
@@ -1847,6 +2036,17 @@ mod tests {
         let fg = Arc::new(FakeForeground::default());
         let synth = Arc::new(FakeInputSynth::new(Ok(())));
         let mut desk = desk_with(&fg, &synth);
+        desk.apply_config(
+            &config(|file| {
+                override_of(file, crate::config::ProfileId::Browser).rotate =
+                    Some(crate::config::RotateSpec::Shortcuts {
+                        cw: "Ctrl+Tab".into(),
+                        ccw: "Ctrl+Shift+Tab".into(),
+                        label: "Tabs".into(),
+                    });
+            }),
+            &mut |_| {},
+        );
         focus(&fg, "chrome.exe");
         let _ = desk.tick(ms(0), &mut |_| {});
         let _ = desk.tick(ms(400), &mut |_| {});
@@ -1899,33 +2099,193 @@ mod tests {
     }
 
     #[test]
-    fn pressed_rotation_uses_its_own_shortcuts_and_unbound_never_changes_volume() {
+    fn the_picker_offers_the_pinned_profiles_and_a_pick_pins_one_and_is_answered() {
+        use kivori_model::picker::ProfilePick;
         let fg = Arc::new(FakeForeground::default());
         let synth = Arc::new(FakeInputSynth::new(Ok(())));
         let mut desk = desk_with(&fg, &synth);
-        focus(&fg, "notepad.exe");
-        let _ = desk.tick(ms(0), &mut |_| {});
-        let _ = desk.tick(ms(400), &mut |_| {});
-        assert!(!desk.on_input(
-            &LogicalInput::PressedGestureStarted { gesture_id: 1 },
-            ms(500),
-            &mut |_| {}
-        ));
-        assert!(!desk.on_input(
-            &LogicalInput::PressedDetent {
-                gesture_id: 1,
-                direction: Direction::Cw
-            },
-            ms(510),
-            &mut |_| {}
-        ));
-        assert!(sent(&synth).is_empty());
-        desk.on_input(
-            &LogicalInput::GestureEnded { gesture_id: 1 },
-            ms(520),
-            &mut |_| {},
+        let pinned = config(|file| {
+            let _ = crate::config::profiles::set_pin_cycle(
+                file,
+                &crate::config::ProfileRef::Builtin(crate::config::ProfileId::Zoom),
+                false,
+            );
+            let _ = crate::config::profiles::set_pin_cycle(
+                file,
+                &crate::config::ProfileRef::Builtin(crate::config::ProfileId::Codex),
+                true,
+            );
+        });
+        desk.apply_config(&pinned, &mut |_| {});
+        let out = desk
+            .tick(ms(0), &mut |_| {})
+            .picker
+            .expect("sent once per session");
+        let names: Vec<String> = out.names[..usize::from(out.count)]
+            .iter()
+            .map(|n| String::from_utf8_lossy(n.as_latin1()).into_owned())
+            .collect();
+        assert_eq!(
+            names,
+            ["General", "Browser", "Code", "Media", "Teams", "Codex"],
+            "pinned profiles in list order; Zoom was taken off, Codex put on"
         );
+        assert_eq!(out.selected, 0, "following the app: Auto");
+        assert!(
+            desk.tick(ms(20), &mut |_| {}).picker.is_none(),
+            "unchanged is not resent"
+        );
+
+        // A pick from the list the device saw pins that profile, and the answer says so.
+        desk.on_profile_pick(ProfilePick {
+            generation: out.generation,
+            index: 3,
+        });
+        assert!(desk.context().pinned());
+        let answer = desk
+            .tick(ms(40), &mut |_| {})
+            .picker
+            .expect("a pick is always answered");
+        assert_eq!((answer.generation, answer.selected), (out.generation, 3));
+        assert_eq!(text(desk.labels().profile), "Code");
+
+        // Auto follows the app in front again.
+        desk.on_profile_pick(ProfilePick {
+            generation: out.generation,
+            index: 0,
+        });
+        assert!(!desk.context().pinned());
+        assert_eq!(desk.tick(ms(60), &mut |_| {}).picker.unwrap().selected, 0);
+
+        // A pick made from an older list is not applied, but still answered with the truth.
+        desk.on_profile_pick(ProfilePick {
+            generation: out.generation.wrapping_add(1),
+            index: 2,
+        });
+        assert!(!desk.context().pinned(), "a stale pick pins nothing");
+        assert_eq!(desk.tick(ms(80), &mut |_| {}).picker.unwrap().selected, 0);
+    }
+
+    #[test]
+    fn a_pick_that_drops_the_desktops_own_pin_from_the_list_is_still_confirmable() {
+        use kivori_model::picker::ProfilePick;
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        // Codex is not pinned to the device, but the desktop pins it: it is appended as an extra.
+        let first = desk.tick(ms(0), &mut |_| {}).picker.unwrap();
+        desk.pin_profile(Some(&crate::config::ProfileRef::Builtin(
+            crate::config::ProfileId::Codex,
+        )));
+        let with_extra = desk.tick(ms(20), &mut |_| {}).picker.unwrap();
+        assert_eq!(with_extra.count, first.count + 1);
+        // The device picks another entry from that list: the extra goes, the answer must confirm.
+        desk.on_profile_pick(ProfilePick {
+            generation: with_extra.generation,
+            index: 2,
+        });
+        let answer = desk.tick(ms(40), &mut |_| {}).picker.unwrap();
+        assert_eq!(answer.count, first.count);
+        assert_eq!(answer.selected, 2);
+        assert_eq!(
+            answer.generation, with_extra.generation,
+            "the picked-from generation still names the surviving indexes"
+        );
+    }
+
+    #[test]
+    fn a_reordered_list_is_a_new_generation() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        let before = desk.tick(ms(0), &mut |_| {}).picker.unwrap();
+        let unpinned = config(|file| {
+            let _ = crate::config::profiles::set_pin_cycle(
+                file,
+                &crate::config::ProfileRef::Builtin(crate::config::ProfileId::Browser),
+                false,
+            );
+        });
+        desk.apply_config(&unpinned, &mut |_| {});
+        let after = desk.tick(ms(20), &mut |_| {}).picker.unwrap();
+        assert_ne!(
+            after.generation, before.generation,
+            "an index in the middle now means another profile"
+        );
+    }
+
+    #[test]
+    fn a_pick_in_a_protected_context_changes_nothing_and_confirms_nothing() {
+        use kivori_model::picker::ProfilePick;
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        let out = desk.tick(ms(0), &mut |_| {}).picker.unwrap();
+        *fg.0.lock().unwrap() = Foreground::Protected;
+        let _ = desk.tick(ms(10_000), &mut |_| {});
+        assert!(desk.context().protected());
+        desk.on_profile_pick(ProfilePick {
+            generation: out.generation,
+            index: 3,
+        });
+        assert!(!desk.context().pinned(), "no pin under Protected");
+        let answer = desk.tick(ms(10_020), &mut |_| {}).picker.expect("answered");
+        assert_eq!(
+            answer.selected, 0,
+            "nothing was applied, so nothing to confirm"
+        );
+    }
+
+    #[test]
+    fn hold_labels_cover_only_the_buttons_whose_hold_does_something() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        let holds = desk
+            .tick(ms(0), &mut |_| {})
+            .holds
+            .expect("sent once per session");
+        let labels: Vec<String> = holds.buttons.map(text).into();
+        // Nothing is bound to the side buttons' Hold in General; the middle one mutes every microphone.
+        assert_eq!(labels, ["", "Mic mute", ""]);
         let bound = config(|file| {
+            override_of(file, crate::config::ProfileId::General).buttons[0].hold =
+                Some(crate::config::SlotSpec {
+                    action: Some(crate::config::ActionSpec::SystemMute),
+                    label: None,
+                });
+        });
+        desk.apply_config(&bound, &mut |_| {});
+        let holds = desk
+            .tick(ms(20), &mut |_| {})
+            .holds
+            .expect("re-sent on a binding change");
+        assert_eq!(text(holds.buttons[0]), "Mute");
+    }
+
+    #[test]
+    fn knob_hold_runs_only_when_bound_and_held_turn_follows_the_profile() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        desk.on_session_begin();
+        assert_eq!(
+            desk.tick(ms(0), &mut |_| {}).held_turn_picker,
+            Some(true),
+            "the default is the picker"
+        );
+        assert_eq!(desk.tick(ms(10), &mut |_| {}).held_turn_picker, None);
+        assert!(!desk.on_input(&LogicalInput::Hold { gesture_id: 1 }, ms(20), &mut |_| {}));
+        assert!(sent(&synth).is_empty(), "an unbound knob Hold does nothing");
+
+        let bound = config(|file| {
+            override_of(file, crate::config::ProfileId::General).hold =
+                Some(crate::config::SlotSpec {
+                    action: Some(crate::config::ActionSpec::Shortcut {
+                        keys: "Ctrl+M".into(),
+                    }),
+                    label: None,
+                });
             override_of(file, crate::config::ProfileId::General).held_rotate =
                 Some(crate::config::RotateSpec::Shortcuts {
                     cw: "Ctrl+Right".into(),
@@ -1934,89 +2294,35 @@ mod tests {
                 });
         });
         desk.apply_config(&bound, &mut |_| {});
+        assert_eq!(desk.tick(ms(30), &mut |_| {}).held_turn_picker, Some(false));
+        assert_eq!(text(desk.labels().hold), "Ctrl+M");
+        desk.on_input(&LogicalInput::Hold { gesture_id: 2 }, ms(40), &mut |_| {});
         assert!(!desk.on_input(
-            &LogicalInput::PressedGestureStarted { gesture_id: 2 },
-            ms(600),
+            &LogicalInput::PressedGestureStarted { gesture_id: 3 },
+            ms(50),
             &mut |_| {}
         ));
-        for direction in [Direction::Cw, Direction::Ccw] {
-            assert!(!desk.on_input(
-                &LogicalInput::PressedDetent {
-                    gesture_id: 2,
-                    direction
-                },
-                ms(610),
-                &mut |_| {}
-            ));
-        }
+        assert!(!desk.on_input(
+            &LogicalInput::PressedDetent {
+                gesture_id: 3,
+                direction: Direction::Cw,
+            },
+            ms(60),
+            &mut |_| {}
+        ));
         let deadline = std::time::Instant::now() + Duration::from_secs(2);
         while sent(&synth).len() < 2 && std::time::Instant::now() < deadline {
             std::thread::sleep(ms(1));
         }
-        assert_eq!(sent(&synth), ["Ctrl+Right", "Ctrl+Left"]);
-        desk.on_input(
-            &LogicalInput::GestureEnded { gesture_id: 2 },
-            ms(620),
-            &mut |_| {},
-        );
-        assert!(desk.on_input(
-            &LogicalInput::GestureStarted { gesture_id: 3 },
-            ms(630),
-            &mut |_| {}
-        ));
-    }
+        assert_eq!(sent(&synth), ["Ctrl+M", "Ctrl+Right"]);
 
-    #[test]
-    fn pressed_rotation_shortcut_expires_while_waiting_behind_a_slow_action() {
-        let fg = Arc::new(FakeForeground::default());
-        let synth = Arc::new(FakeInputSynth::new(Ok(())));
-        let mut desk = desk_with(&fg, &synth);
-        focus(&fg, "notepad.exe");
-        let _ = desk.tick(ms(0), &mut |_| {});
-        let _ = desk.tick(ms(400), &mut |_| {});
-        let bound = config(|file| {
-            override_of(file, crate::config::ProfileId::General).held_rotate =
-                Some(crate::config::RotateSpec::Shortcuts {
-                    cw: "Ctrl+Right".into(),
-                    ccw: "Ctrl+Left".into(),
-                    label: "Seek".into(),
-                });
-        });
-        desk.apply_config(&bound, &mut |_| {});
-        desk.run_within(
-            Action::Macro(Arc::new(actions::Macro {
-                id: "slow".into(),
-                name: "Slow".into(),
-                steps: vec![actions::Step::Delay(ms(150))],
-            })),
-            ms(500),
-            None,
-            &mut |_| {},
+        focus(&fg, "chrome.exe");
+        let _ = desk.tick(ms(500), &mut |_| {});
+        assert_eq!(
+            desk.tick(ms(900), &mut |_| {}).held_turn_picker,
+            Some(true),
+            "Browser still uses the picker, so the mode is sent again"
         );
-        desk.on_input(
-            &LogicalInput::PressedGestureStarted { gesture_id: 1 },
-            ms(510),
-            &mut |_| {},
-        );
-        desk.on_input_within(
-            &LogicalInput::PressedDetent {
-                gesture_id: 1,
-                direction: Direction::Cw,
-            },
-            ms(520),
-            ms(20),
-            &mut |_| {},
-        );
-        let deadline = std::time::Instant::now() + Duration::from_secs(2);
-        let mut stale = false;
-        while !stale && std::time::Instant::now() < deadline {
-            desk.tick(ms(600), &mut |activity| {
-                stale |= activity.kind == ActivityEventKind::InputStale;
-            });
-            std::thread::sleep(ms(2));
-        }
-        assert!(stale, "the delayed held shortcut must be reported stale");
-        assert!(sent(&synth).is_empty());
     }
 
     /// A desk whose General knob drives `spotify.exe`'s volume, over the given app backend.
@@ -2210,7 +2516,7 @@ mod tests {
     }
 
     #[test]
-    fn a_bound_button_hold_runs_and_the_middle_hold_still_pins() {
+    fn a_bound_button_hold_runs_and_the_middle_hold_mutes_mics() {
         let fg = Arc::new(FakeForeground::default());
         let synth = Arc::new(FakeInputSynth::new(Ok(())));
         let mut desk = desk_with(&fg, &synth);
@@ -2236,8 +2542,45 @@ mod tests {
         assert_eq!(sent(&synth), ["Ctrl+Shift+K"]);
         assert!(!desk.context().pinned());
         desk.on_input(&hold(1), ms(20), &mut |_| {});
-        assert!(desk.context().pinned(), "the middle Hold is still CyclePin");
+        assert!(
+            !desk.context().pinned(),
+            "middle Hold must never change profile"
+        );
+        let feedback = settle(&mut desk, ms(30), |f| !f.is_empty());
+        assert!(feedback
+            .iter()
+            .any(|f| f.action == kivori_model::desk::ActionKind::Mute));
         assert_eq!(sent(&synth).len(), 1);
+    }
+
+    #[test]
+    fn rebinding_the_middle_hold_runs_that_action() {
+        let fg = Arc::new(FakeForeground::default());
+        let synth = Arc::new(FakeInputSynth::new(Ok(())));
+        let mut desk = desk_with(&fg, &synth);
+        let bound = config(|file| {
+            override_of(file, crate::config::ProfileId::General).buttons[1].hold =
+                Some(crate::config::SlotSpec {
+                    action: Some(crate::config::ActionSpec::Shortcut {
+                        keys: "Ctrl+Shift+M".into(),
+                    }),
+                    label: None,
+                });
+        });
+        desk.apply_config(&bound, &mut |_| {});
+        desk.on_input(
+            &LogicalInput::ButtonHold {
+                button: 1,
+                gesture_id: 1,
+            },
+            ms(10),
+            &mut |_| {},
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while sent(&synth).is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(ms(1));
+        }
+        assert_eq!(sent(&synth), ["Ctrl+Shift+M"]);
     }
 }
 

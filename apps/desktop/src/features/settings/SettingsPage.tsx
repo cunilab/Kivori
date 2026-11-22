@@ -30,6 +30,7 @@ import { Diagnostics } from '../device/Diagnostics';
 import { StartupCard } from '../device/StartupCard';
 import { DeveloperTools } from '../developer/DeveloperTools';
 import { AccessibilityStatus } from '../permissions/AccessibilityStatus';
+import { KeyboardShortcutsStatus } from '../permissions/KeyboardShortcutsStatus';
 import { AppUpdates } from '../updates/AppUpdates';
 
 const t = strings.settings;
@@ -101,6 +102,7 @@ export function SettingsPage({
           </div>
           <div className="flex flex-col gap-4">
             <AccessibilityStatus />
+            <KeyboardShortcutsStatus />
             <Card size="sm">
               <CardHeader>
                 <CardTitle>{strings.onboarding.runAgain.title}</CardTitle>

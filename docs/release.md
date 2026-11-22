@@ -356,7 +356,7 @@ Apple Silicon DMG with its `_aarch64.dmg` suffix; the website enables Mac downlo
 exactly one compatible artifact is present on the published release. Intel and ambiguous DMGs
 are not selected.
 
-The macOS override disables updater artifacts: automatic app updates currently support Windows
+The macOS override disables updater artifacts: automatic app updates currently support Windows and Linux AppImage
 only, so a local Mac bundle does not need the updater signing private key. Without an Apple
 Developer ID the bundle is not Developer ID signed; notarization is not implemented.
 
@@ -431,3 +431,37 @@ bun scripts/release-bump.mjs --app patch --firmware-overrides '{"product-a":"pat
 
 No actual release is triggered by local planning or tests. Hardware acceptance remains separate M2.8 work. Ambiguous recovery targets require an explicit
 product-and-board choice and confirmation before flashing.
+
+
+## Linux (Ubuntu / Debian)
+
+`just linux-deps` prints the Ubuntu build prerequisites; install them as an administrator.
+`just bundle-linux` builds the complete catalog firmware set, frontend and production native app,
+merging `tauri.release.conf.json` with `tauri.release.linux.conf.json`. Outputs are
+`target/release/bundle/deb/Kivori_X.Y.Z_amd64.deb` and
+`target/release/bundle/appimage/Kivori_X.Y.Z_amd64.AppImage`. The Debian package includes
+`/usr/lib/udev/rules.d/60-kivori.rules`; install/remove scripts reload udev when it is running.
+AppImage users can install the USB rule with the app’s **Grant access** button. See [linux.md](./linux.md).
+
+Linux builds always run alongside Windows for release workflow events (including packaging PRs),
+rather than an opt-in manual job: tagged releases need both assets and CI should exercise packaging.
+The Linux runner is `ubuntu-22.04`, which provides WebKitGTK 4.1 while keeping an older glibc
+baseline than 24.04. This reduces binary compatibility requirements; Ubuntu 24.04/26.04 desktop
+and physical acceptance still need hands-on checks.
+
+CI reuses `firmware-elfs`, validates the Debian rule and the production ELF's release surface,
+then uploads `linux-bundles`. Updater signing follows the Windows key/public-key checks, with
+no secrets on PRs. Without a signing key, local and CI packages omit updater artifacts.
+Only AppImage supports Linux in-app updates; `.deb` users download and install a newer package from
+the website, or use a package manager if available. The Debian build disables updater artifacts;
+the signed `linux-x86_64` manifest entry points to the AppImage.
+
+Windows first uploads its installer, Windows-only `latest.json` (when signed), and `SHA256SUMS` to
+the draft, so a Linux failure leaves a usable Windows release. After both Windows and Linux succeed,
+`release-platforms` combines their SHA256SUMS and merges
+`windows-x86_64` and `linux-x86_64` into a single `latest.json`. Windows supplies release notes and
+date; merging refuses mismatched versions or duplicate platforms. The final job replaces the draft
+manifest and checksums with the merged versions and adds the Linux packages/signature. It refuses a
+published release, and no job publishes the draft.
+The website's authenticated release sync carries Linux assets through the same validated snapshot;
+Linux download links appear only when the corresponding package exists on a published release.

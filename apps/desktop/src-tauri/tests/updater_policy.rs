@@ -4,9 +4,9 @@ use std::time::Duration;
 
 use kivori_desktop::config::{UpdateSettings, UpdateSnooze};
 use kivori_desktop::updater::policy::{
-    availability, decide, snooze, snooze_remaining, Availability, Busy, CheckOutcome, CheckReport,
-    DisabledReason, Machine, Offer, Refused, Release, Schedule, UpdateState, CHECK_INTERVAL,
-    ENDPOINT, FIRST_CHECK_DELAY, MAX_NOTES, SNOOZE_SECS,
+    availability, decide, self_updating, snooze, snooze_remaining, Availability, Busy,
+    CheckOutcome, CheckReport, DisabledReason, Machine, Offer, Refused, Release, Schedule,
+    UpdateState, CHECK_INTERVAL, ENDPOINT, FIRST_CHECK_DELAY, MAX_NOTES, SNOOZE_SECS,
 };
 use semver::Version;
 use serde_json::json;
@@ -32,10 +32,11 @@ fn secs(n: u64) -> Duration {
 // --- availability -----------------------------------------------------------------------------
 
 #[test]
-fn only_a_windows_release_config_with_the_endpoint_and_a_key_is_enabled() {
+fn only_a_self_updating_release_config_with_the_endpoint_and_a_key_is_enabled() {
     let good = json!({ "endpoints": [ENDPOINT], "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ=" });
     assert_eq!(availability(Some(&good), true), Availability::Enabled);
-    // macOS (and anything not Windows): nothing is checked, whatever the config says.
+    // An install that cannot update itself (macOS, a Linux .deb): nothing is checked, whatever
+    // the config says.
     assert_eq!(availability(Some(&good), false), Availability::Unsupported);
     assert_eq!(availability(None, false), Availability::Unsupported);
     // The development config has no updater section at all.
@@ -46,6 +47,33 @@ fn only_a_windows_release_config_with_the_endpoint_and_a_key_is_enabled() {
     assert_eq!(
         availability(Some(&serde_json::Value::Null), true),
         Availability::Disabled(DisabledReason::DevBuild)
+    );
+}
+
+#[test]
+fn linux_updates_only_as_an_appimage_and_a_deb_stays_unsupported() {
+    let good = json!({ "endpoints": [ENDPOINT], "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ=" });
+    let on = |os, appimage| availability(Some(&good), self_updating(os, appimage));
+    assert_eq!(on("linux", true), Availability::Enabled, "AppImage");
+    assert_eq!(on("linux", false), Availability::Unsupported, ".deb");
+    assert_eq!(on("windows", false), Availability::Enabled);
+    assert_eq!(on("macos", false), Availability::Unsupported);
+    assert_eq!(
+        on("macos", true),
+        Availability::Unsupported,
+        "no AppImage on macOS"
+    );
+    // An AppImage of a build without a release config is a development build, not a promise.
+    assert_eq!(
+        availability(None, self_updating("linux", true)),
+        Availability::Disabled(DisabledReason::DevBuild)
+    );
+    assert_eq!(
+        availability(
+            Some(&json!({ "endpoints": [ENDPOINT], "pubkey": "" })),
+            self_updating("linux", true)
+        ),
+        Availability::Disabled(DisabledReason::NoKey)
     );
 }
 

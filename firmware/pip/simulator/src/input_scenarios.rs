@@ -226,8 +226,8 @@ fn scenarios() -> Result<(), String> {
     for (duration, kind) in [
         (19, None),
         (20, Some(InputKind::Press)),
-        (499, Some(InputKind::Press)),
-        (500, Some(InputKind::Hold)),
+        (999, Some(InputKind::Press)),
+        (1_000, Some(InputKind::Hold)),
         (1_999, Some(InputKind::Hold)),
         (2_000, None),
     ] {

@@ -30,6 +30,8 @@ pub mod internals;
 /// Detent -> on-panel latency readout, development-only (Slice 002 checklist row 14).
 #[cfg(feature = "latency-probe")]
 pub mod latency_probe;
+/// The profile picker's device-side state (`PROFILE_PICKER_V1`): turn with the switch held, release to pick.
+pub mod picker;
 pub mod ports;
 /// Board profiles: the verified physical pin map and panel facts.
 pub mod profile;

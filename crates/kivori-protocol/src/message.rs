@@ -7,6 +7,7 @@ use kivori_model::desk::{
 };
 use kivori_model::input::Direction;
 use kivori_model::internals::DeviceInternals;
+use kivori_model::picker::{HoldActions, ProfileChoices, ProfilePick};
 use kivori_model::presentation::{PrimaryState, ValueDisplay};
 use kivori_model::{Capabilities, CompanionState, MascotAction, MascotPersonality, SendableState};
 use serde::{Deserialize, Serialize};
@@ -361,6 +362,51 @@ pub struct BuildInfo {
     pub dirty: bool,
 }
 
+/// Desktop -> device: the profiles the picker offers and the pin the desktop runs (capability
+/// `PROFILE_PICKER_V1`). Sent once per session and again whenever the list or the pin changes;
+/// session scoped like `Status`. The device confirms a pick only when `choices.selected` says the
+/// desktop now runs it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProfileChoicesUpdate {
+    /// The handshake nonce of the session this applies to.
+    pub session: Nonce,
+    /// Auto, then the pinned profiles.
+    pub choices: ProfileChoices,
+}
+
+/// Device -> desktop: the knob switch was released on a picker entry (capability
+/// `PROFILE_PICKER_V1`). The desktop pins it (or returns to Auto), and says what it now runs with
+/// a `ProfileChoicesUpdate`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProfilePickReport {
+    /// The handshake nonce of the session that produced this.
+    pub session: Nonce,
+    /// The entry picked and the list it was picked from.
+    pub pick: ProfilePick,
+}
+
+/// Desktop -> device: which contextual buttons have a Hold, and what it does (capability
+/// `HOLD_RING_V1`). Sent once per session and again when a binding or the context changes; session
+/// scoped like `ControlLabelsUpdate`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HoldActionsUpdate {
+    /// The handshake nonce of the session this applies to.
+    pub session: Nonce,
+    /// The Hold labels; an empty label means no Hold.
+    pub actions: HoldActions,
+}
+
+/// Desktop -> device: whether Hold + turn opens the profile picker (capability `HELD_TURN_MODE_V1`).
+/// Sent once per session and again when the active profile's Hold + turn binding changes. Until one
+/// arrives the device keeps the picker. `picker: false` forwards held detents as `PressedRotary`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeldTurnModeUpdate {
+    /// The handshake nonce of the session this applies to.
+    pub session: Nonce,
+    /// `true` is today's picker. `false` forwards held turns and opens no picker.
+    pub picker: bool,
+}
+
 /// The top-level wire message.
 ///
 /// **Append-only**: new variants are added at the end within a major version — the `postcard`
@@ -418,4 +464,15 @@ pub enum Message {
     Identity(Identity),
     /// Tag 24 — device -> desktop firmware source id and dirty flag (capability `BUILD_INFO_V1`).
     BuildInfo(BuildInfo),
+    /// Tag 25 — desktop -> device the profile picker's entries and the desktop's pin (capability
+    /// `PROFILE_PICKER_V1`).
+    ProfileChoices(ProfileChoicesUpdate),
+    /// Tag 26 — device -> desktop the picked entry (capability `PROFILE_PICKER_V1`).
+    ProfilePick(ProfilePickReport),
+    /// Tag 27 — desktop -> device which contextual buttons have a Hold (capability
+    /// `HOLD_RING_V1`).
+    HoldActions(HoldActionsUpdate),
+    /// Tag 28 — desktop -> device whether Hold + turn is the profile picker (capability
+    /// `HELD_TURN_MODE_V1`).
+    HeldTurnMode(HeldTurnModeUpdate),
 }

@@ -10,13 +10,15 @@ use kivori_desktop::config::{
 };
 
 #[test]
-fn held_rotation_migrates_v1_and_round_trips_without_losing_bindings() {
-    use kivori_desktop::config::{ProfileRef, RotateSpec};
+fn v1_migrates_and_a_stored_hold_rotate_pair_is_read_ignored_and_dropped_on_the_next_save() {
+    use kivori_desktop::config::ProfileRef;
     let dir = tempfile::tempdir().unwrap();
     let mut original = serde_json::to_value(ConfigFile::default()).unwrap();
     original["version"] = 1.into();
+    // "Hold + rotate" used to bind a shortcut pair; it is the device's profile picker now.
     original["profiles"]["general"] = serde_json::json!({
-        "press": {"action": {"kind": "shortcut", "keys": "Ctrl+A"}}
+        "press": {"action": {"kind": "shortcut", "keys": "Ctrl+A"}},
+        "heldRotate": {"kind": "shortcuts", "cw": "Ctrl+Right", "ccw": "Ctrl+Left", "label": "Seek"}
     });
     original["macros"] = serde_json::json!([{
         "id": "macro-1", "name": "Legacy", "steps": [{"kind": "action", "action": {"kind": "playPause"}}]
@@ -31,60 +33,17 @@ fn held_rotation_migrates_v1_and_round_trips_without_losing_bindings() {
     )
     .unwrap();
     let mut store = ConfigStore::open(dir.path());
-    assert_eq!(store.file().version, 2);
+    assert_eq!(store.file().version, 3);
     assert!(store.file().profiles[&ProfileId::General].press.is_some());
     assert_eq!(store.file().macros[0].id, "macro-1");
     assert!(store.file().custom_profiles[0].bindings.press.is_some());
     let general = ProfileRef::Builtin(ProfileId::General);
-    let pair = RotateSpec::Shortcuts {
-        cw: "Ctrl+Right".into(),
-        ccw: "Ctrl+Left".into(),
-        label: "Seek".into(),
-    };
-    store.set_held_rotate(&general, Some(pair.clone())).unwrap();
-    assert!(store
-        .set_held_rotate(&general, Some(RotateSpec::SystemVolume))
-        .is_err());
-    assert_eq!(
-        ConfigStore::open(dir.path()).file().profiles[&ProfileId::General].held_rotate,
-        Some(pair)
-    );
     store.add_custom_profile("notepad.exe", "Notes").unwrap();
-    let custom = ProfileRef::Custom(store.file().custom_profiles[1].id.clone());
-    assert!(store.file().custom_profiles[1]
-        .bindings
-        .held_rotate
-        .is_none());
-    store
-        .set_held_rotate(
-            &custom,
-            Some(RotateSpec::Shortcuts {
-                cw: "Ctrl+A".into(),
-                ccw: "Ctrl+B".into(),
-                label: "Tabs".into(),
-            }),
-        )
-        .unwrap();
-    store.reset_profile(&custom).unwrap();
-    assert!(store.file().custom_profiles[1]
-        .bindings
-        .held_rotate
-        .is_none());
-    store
-        .set_held_rotate(
-            &custom,
-            Some(RotateSpec::Shortcuts {
-                cw: "Ctrl+A".into(),
-                ccw: "Ctrl+B".into(),
-                label: "Tabs".into(),
-            }),
-        )
-        .unwrap();
-    store.set_held_rotate(&custom, None).unwrap();
-    assert!(store.file().custom_profiles[1]
-        .bindings
-        .held_rotate
-        .is_none());
+    let saved = fs::read_to_string(dir.path().join("config.json")).unwrap();
+    assert!(
+        !saved.contains("Ctrl+Right") && !saved.contains("Seek"),
+        "the next save drops the legacy pair: {saved}"
+    );
     store.reset_profile(&general).unwrap();
     assert!(!store.file().profiles.contains_key(&ProfileId::General));
 }
@@ -292,7 +251,7 @@ fn the_file_uses_the_documented_shape() {
     assert_eq!(
         json,
         serde_json::json!({
-            "version": 2,
+            "version": 3,
             "profiles": {},
             "customProfiles": [],
             "macros": [],
@@ -791,7 +750,7 @@ fn a_file_without_brightness_loads_at_full_and_the_setting_survives_a_reopen() {
     .unwrap();
     let mut store = ConfigStore::open(dir.path());
     assert_eq!(store.notice(), Some(ConfigNotice::Migrated));
-    assert_eq!(store.file().version, 2);
+    assert_eq!(store.file().version, 3);
     assert_eq!(store.file().display.brightness, 5);
     assert_eq!(names(dir.path()), ["config.json", "config.v1.bak"]);
 
@@ -847,7 +806,7 @@ mod profiles {
         let store = ConfigStore::open(dir.path());
         assert_eq!(store.notice(), Some(ConfigNotice::Migrated));
         assert!(store.file().custom_profiles.is_empty());
-        assert_eq!(store.file().version, 2);
+        assert_eq!(store.file().version, 3);
     }
 
     #[test]
@@ -1038,7 +997,7 @@ mod profiles {
     #[test]
     fn a_newer_file_with_custom_profiles_is_still_set_aside() {
         let dir = tempfile::tempdir().unwrap();
-        let newer = r#"{ "version": 3, "customProfiles": [{ "id": "custom-1", "name": "A" }] }"#;
+        let newer = r#"{ "version": 4, "customProfiles": [{ "id": "custom-1", "name": "A" }] }"#;
         fs::write(dir.path().join("config.json"), newer).unwrap();
         let store = ConfigStore::open(dir.path());
         assert_eq!(store.notice(), Some(ConfigNotice::RecoveredNewerVersion));
@@ -1108,7 +1067,7 @@ fn a_file_with_a_stale_led_section_still_loads() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(
         dir.path().join("config.json"),
-        br##"{"version":2,"display":{"defaultView":"buddy","secondaryView":"system","brightness":3},"led":{"mode":"solid","color":"#FF8800","brightness":40,"speed":"fast","profileColors":{"zoom":"#00FF00"}}}"##,
+        br##"{"version":3,"display":{"defaultView":"buddy","secondaryView":"system","brightness":3},"led":{"mode":"solid","color":"#FF8800","brightness":40,"speed":"fast","profileColors":{"zoom":"#00FF00"}}}"##,
     )
     .unwrap();
     let store = ConfigStore::open(dir.path());

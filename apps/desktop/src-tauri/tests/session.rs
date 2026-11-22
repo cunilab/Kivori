@@ -1691,9 +1691,28 @@ fn input_requires_the_specific_control_and_gesture_capabilities() {
             false,
         ),
         (
+            // The desktop no longer offers held rotation. Hold + turn needs `HELD_TURN_MODE_V1`.
             Capabilities::BUTTON_INPUT_V1.union(Capabilities::HELD_ROTATION_V1),
             ControlId::PressedRotary,
             InputKind::GestureStarted,
+            false,
+        ),
+        (
+            Capabilities::BUTTON_INPUT_V1.union(Capabilities::HELD_TURN_MODE_V1),
+            ControlId::PressedRotary,
+            InputKind::Detent(kivori_model::input::Direction::Cw),
+            true,
+        ),
+        (
+            Capabilities::BUTTON_INPUT_V1,
+            ControlId::Button,
+            InputKind::Hold,
+            false,
+        ),
+        (
+            Capabilities::BUTTON_INPUT_V1.union(Capabilities::KNOB_HOLD_V1),
+            ControlId::Button,
+            InputKind::Hold,
             true,
         ),
         (
@@ -1758,6 +1777,67 @@ fn input_requires_the_specific_control_and_gesture_capabilities() {
             usize::from(accepted),
             "{control:?}/{kind:?}"
         );
+    }
+}
+
+#[test]
+fn held_turn_mode_is_sent_only_when_the_device_negotiated_it() {
+    let (mut link, mut session, _, _) = connect_with_caps(
+        SendableState::Idle,
+        Capabilities::PHYSICAL_INPUT_V1.union(Capabilities::PROFILE_PICKER_V1),
+    );
+    let _ = desktop_drain(&mut link);
+    assert!(!session.send_held_turn_mode(&mut link, true).unwrap());
+    assert!(
+        desktop_drain(&mut link).is_empty(),
+        "old firmware is not sent the new message"
+    );
+
+    let (mut link, mut session, _, _) =
+        connect_with_caps(SendableState::Idle, Capabilities::HELD_TURN_MODE_V1);
+    let _ = desktop_drain(&mut link);
+    assert!(session.send_held_turn_mode(&mut link, false).unwrap());
+    let sent = desktop_drain(&mut link);
+    assert!(
+        matches!(sent.as_slice(), [Message::HeldTurnMode(mode)] if !mode.picker),
+        "{sent:?}"
+    );
+}
+
+#[test]
+fn a_profile_pick_counts_only_from_this_session_with_the_picker_negotiated() {
+    use kivori_model::picker::ProfilePick;
+    use kivori_protocol::ProfilePickReport;
+    for (caps, session_offset, accepted) in [
+        (Capabilities::NONE, 0, 0),
+        (Capabilities::PROFILE_PICKER_V1, 1, 0),
+        (Capabilities::PROFILE_PICKER_V1, 0, 1),
+    ] {
+        let (mut link, mut session, mut manager, mut orch) = connect_with_caps(
+            SendableState::Idle,
+            Capabilities::PHYSICAL_INPUT_V1.union(caps),
+        );
+        let nonce = session.current_session().expect("session");
+        device_push(
+            &mut link,
+            &Message::ProfilePick(ProfilePickReport {
+                session: nonce ^ session_offset,
+                pick: ProfilePick {
+                    generation: 3,
+                    index: 2,
+                },
+            }),
+            wire_version(),
+            1,
+        );
+        session
+            .pump(&mut link, &mut manager, &mut orch)
+            .expect("pump");
+        let picks = session.take_profile_picks();
+        assert_eq!(picks.len(), accepted, "{caps:?}/{session_offset}");
+        if let Some(pick) = picks.first() {
+            assert_eq!((pick.generation, pick.index), (3, 2));
+        }
     }
 }
 

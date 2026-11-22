@@ -3,8 +3,9 @@
 //!
 //! `tauri-plugin-updater` is used from Rust only: no JS package and no permission in
 //! `capabilities/`, so the webview reaches it only through our typed commands. The plugin is
-//! registered, and the worker thread started, only on Windows with a release config that names the
-//! release endpoint and a public key ([`policy::availability`]). Every other build is `disabled` or
+//! registered, and the worker thread started, only on Windows, or on Linux when running as the
+//! signed AppImage (`APPIMAGE` is set), with a release config that names the release endpoint and a
+//! public key ([`policy::availability`]). Every other build (a Linux `.deb`, macOS) is `disabled` or
 //! `unsupported` and makes no request at all. The worker makes one kind of request: the endpoint's
 //! `latest.json`, then (after "Install & restart") the installer it names, which the plugin checks
 //! against the public key before anything runs.
@@ -46,7 +47,11 @@ const MAX_SLEEP: Duration = Duration::from_secs(60 * 60);
 /// Whether this build may check for updates, from the merged Tauri config.
 #[must_use]
 pub fn availability(config: &tauri::Config) -> Availability {
-    policy::availability(config.plugins.0.get("updater"), cfg!(windows))
+    let appimage = std::env::var_os("APPIMAGE").is_some_and(|path| !path.is_empty());
+    policy::availability(
+        config.plugins.0.get("updater"),
+        policy::self_updating(std::env::consts::OS, appimage),
+    )
 }
 
 /// Registers the updater plugin only when it will be used. The plugin requires its config at

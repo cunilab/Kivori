@@ -1667,9 +1667,6 @@ fn presentation_scenario(
     display
 }
 
-/// Rows of the volume bar itself.
-const OVERLAY_BAR_ROWS: core::ops::Range<usize> = 180..196;
-
 #[test]
 fn a_negotiated_presentation_reaches_the_panel_as_a_real_tile_flush() {
     let with = presentation_scenario(Capabilities::PRESENTATION_V1, true);
@@ -1681,29 +1678,23 @@ fn a_negotiated_presentation_reaches_the_panel_as_a_real_tile_flush() {
         "a negotiated Presentation must actually reach the panel pixels, not just update \
          in-memory state"
     );
-    // The mascot makes room for the bar: below the lifted keycap and outside the bar only the
-    // background remains, where the twin run still shows the full-size base.
-    let background = with.pixel(0, 239);
-    let clear = |x: usize, y: usize| {
-        (176..240).contains(&y) && !((24..216).contains(&x) && OVERLAY_BAR_ROWS.contains(&y))
-    };
-    let mut twin_had_mascot_there = false;
+    // The live value takes the whole screen: the keycap is gone, not shrunk beside a bar. Its cap
+    // face colour is on the twin's panel and nowhere on this one.
+    let cap_face = without.pixel(120, 80);
+    assert_ne!(
+        cap_face,
+        without.pixel(0, 239),
+        "the twin shows the keycap at (120, 80)"
+    );
     for y in 0..240 {
         for x in 0..240 {
-            if clear(x, y) {
-                assert_eq!(
-                    with.pixel(x, y),
-                    background,
-                    "mascot overlaps the bar at ({x}, {y})"
-                );
-                twin_had_mascot_there |= without.pixel(x, y) != background;
-            }
+            assert_ne!(
+                with.pixel(x, y),
+                cap_face,
+                "keycap pixel left at ({x}, {y})"
+            );
         }
     }
-    assert!(
-        twin_had_mascot_there,
-        "the full-size base must reach below y176"
-    );
 }
 
 #[test]
@@ -1722,7 +1713,7 @@ fn an_unnegotiated_presentation_never_reaches_the_panel() {
 }
 
 #[test]
-fn render_with_overlay_composites_the_bar_into_the_flushed_pixels() {
+fn render_with_overlay_takes_the_screen_as_the_volume_view() {
     let blob_bytes = compile_default_blob();
     let blob = AssetBlob::parse(&blob_bytes).expect("valid blob");
 
@@ -1754,6 +1745,52 @@ fn render_with_overlay_composites_the_bar_into_the_flushed_pixels() {
         hash_rgb565(overlaid_display.frame()),
         "a Some overlay must actually change the rendered pixels, not just the in-memory value"
     );
+}
+
+/// A live volume value replaces whatever view is up with the full Volume view (the buddy
+/// included), and the underlying view comes back as soon as the value is gone.
+#[test]
+fn a_live_volume_value_shows_the_full_volume_view_then_the_buddy_returns() {
+    use kivori_model::desk::{DeskView, DisplayMode};
+    use kivori_model::MascotAnimator;
+
+    let blob_bytes = compile_default_blob();
+    let blob = AssetBlob::parse(&blob_bytes).expect("valid blob");
+    let pose = MascotAnimator::new(CompanionState::Idle, 0).pose_at(0);
+    let value = ValueDisplay {
+        kind: ValueKind::Volume,
+        current_percent: 60,
+        confidence: ValueConfidence::Confirmed,
+        at_boundary: false,
+    };
+    let frame = |mode: DisplayMode, overlay: Option<ValueDisplay>| {
+        let mut view = DeskView::default();
+        view.status.mode = mode;
+        let mut renderer = TileRenderer::new();
+        let mut display = CaptureDisplay::new();
+        renderer
+            .render_frame(
+                &blob,
+                CompanionState::Idle,
+                &pose,
+                overlay,
+                &view,
+                &mut display,
+            )
+            .expect("render");
+        hash_rgb565(display.frame())
+    };
+    let buddy = frame(DisplayMode::Buddy, None);
+    let volume = frame(DisplayMode::Volume, Some(value));
+    assert_ne!(buddy, volume);
+    for mode in [DisplayMode::Buddy, DisplayMode::Clock, DisplayMode::Media] {
+        assert_eq!(
+            frame(mode, Some(value)),
+            volume,
+            "{mode:?} + live value is the Volume view"
+        );
+    }
+    assert_eq!(frame(DisplayMode::Buddy, None), buddy, "the buddy returns");
 }
 
 #[test]

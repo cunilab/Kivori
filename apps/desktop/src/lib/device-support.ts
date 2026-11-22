@@ -52,12 +52,12 @@ export function controlSupported(
     case 'rotate':
       return true;
     case 'heldRotate':
-      return (
-        hasCapability(connection, 'buttonInputV1') && hasCapability(connection, 'heldRotationV1')
-      );
+      // Bindable Hold + turn. Without it the device keeps its own picker.
+      return hasCapability(connection, 'heldTurnModeV1');
     case 'press':
-    case 'hold':
       return hasCapability(connection, 'buttonInputV1');
+    case 'hold':
+      return hasCapability(connection, 'knobHoldV1');
     case 'doublePress':
       return (
         hasCapability(connection, 'buttonInputV1') && hasCapability(connection, 'doublePressV1')

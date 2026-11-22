@@ -5,6 +5,22 @@ use kivori_protocol::{
     encode_message, ControlId, InputEvent, InputKind, Message, PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
+/// An explicit customization for protocol tests that count media actions. Shipping Press is mute.
+pub(super) fn bind_media_press(sandbox: &mut Sandbox) -> Result<(), String> {
+    let mut file = crate::config::ConfigFile::default();
+    file.profiles
+        .entry(crate::config::ProfileId::General)
+        .or_default()
+        .press = Some(crate::config::SlotSpec {
+        action: Some(crate::config::ActionSpec::PlayPause),
+        label: None,
+    });
+    let config = crate::config::resolve::resolve(crate::desk::profile::builtins(), &file)
+        .map_err(|e| e.to_string())?;
+    sandbox.desk.apply_config(&config, &mut |_| {});
+    Ok(())
+}
+
 fn check(condition: bool, message: &str) -> Result<(), String> {
     condition.then_some(()).ok_or_else(|| message.to_string())
 }
@@ -55,6 +71,7 @@ fn settle(sandbox: &mut Sandbox, duration: Duration) -> Result<(), String> {
 /// Exercises the actual child runner, real desktop session and fake OS without a GUI or hardware.
 pub fn connection_smoke(executable: &Path) -> Result<(), String> {
     let mut sandbox = Sandbox::open(executable).map_err(|error| error.to_string())?;
+    super::scenarios::bind_media_press(&mut sandbox)?;
     connected(&mut sandbox)?;
     sandbox.input("clockwise")?;
     until(&mut sandbox, Duration::from_secs(5), |s| {

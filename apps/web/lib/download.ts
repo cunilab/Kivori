@@ -3,7 +3,7 @@ import { loadReleases, type Release } from '@/lib/releases';
 
 // Server-only. Streams installers through the Worker so the browser never sees the release host.
 
-export const SUPPORTED_OS = ['windows', 'macos'] as const;
+export const SUPPORTED_OS = ['windows', 'macos', 'linux'] as const;
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 export function isSupportedOs(os: string): boolean {
@@ -48,7 +48,17 @@ export async function downloadResponse(
     version === 'latest'
       ? releases.find((candidate) => !candidate.prerelease && !candidate.version.includes('-'))
       : releases.find((candidate) => candidate.version === version);
-  const installer = os === 'macos' ? release?.macInstaller : release?.installer;
+  const format = new URL(request.url).searchParams.get('format') ?? 'deb';
+  if (os === 'linux' && !['deb', 'appimage'].includes(format))
+    return new Response('Not found', { status: 404 });
+  const installer =
+    os === 'linux'
+      ? format === 'appimage'
+        ? release?.linuxAppImage
+        : release?.linuxDeb
+      : os === 'macos'
+        ? release?.macInstaller
+        : release?.installer;
   if (!release || !installer) return internalRedirect(request.url);
 
   const range = request.headers.get('range');
@@ -76,8 +86,13 @@ export async function downloadResponse(
   }
 
   const headers = new Headers({
-    'content-type': os === 'macos' ? 'application/x-apple-diskimage' : 'application/octet-stream',
-    'content-disposition': `attachment; filename="${os === 'macos' ? `Kivori-${release.version}-aarch64.dmg` : `Kivori-Setup-${release.version}.exe`}"`,
+    'content-type':
+      os === 'macos'
+        ? 'application/x-apple-diskimage'
+        : os === 'linux' && format === 'deb'
+          ? 'application/vnd.debian.binary-package'
+          : 'application/octet-stream',
+    'content-disposition': `attachment; filename="${os === 'linux' ? `Kivori_${release.version}_amd64.${format === 'appimage' ? 'AppImage' : 'deb'}` : os === 'macos' ? `Kivori-${release.version}-aarch64.dmg` : `Kivori-Setup-${release.version}.exe`}"`,
     'cache-control': 'no-store',
     'accept-ranges': 'bytes',
   });

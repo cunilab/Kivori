@@ -2,7 +2,11 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { connectionFixture } from '@/test/connection';
+import { readFileSync } from 'node:fs';
+import { DeviceScreen } from './device-screen';
 import { ProductArt } from './product-art';
+
+const css = readFileSync('src/components/kivori/device-visual.css', 'utf8');
 
 const ipc = vi.hoisted(() => ({ getProductArt: vi.fn() }));
 vi.mock('@/lib/ipc', () => ipc);
@@ -116,5 +120,60 @@ describe('bundled product artwork', () => {
     expect(screen.getByTestId('product-art-neutral')).toBeInTheDocument();
     expect(screen.getByText('Product a')).toBeInTheDocument();
     expect(screen.getByText('KV-T1')).toBeInTheDocument();
+  });
+
+  it('draws a default screen when the caller gives none, and a custom one when it does', () => {
+    const connection = connectionFixture();
+    connection.device!.presentation!.controlLayout = 'rotary-three-button';
+    const page = render(<ProductArt connection={connection} />);
+    expect(screen.getByTestId('device-screen').textContent).toBe('');
+    expect(screen.getByTestId('device-screen-mascot')).toHaveAttribute('src');
+    page.rerender(<ProductArt connection={connection} screen={<p>Custom screen</p>} />);
+    expect(screen.queryByTestId('device-screen')).not.toBeInTheDocument();
+    expect(screen.getByText('Custom screen')).toBeInTheDocument();
+  });
+
+  it('reports hover and focus on a control, and marks selection only with aria-pressed', async () => {
+    const user = userEvent.setup();
+    const connection = connectionFixture();
+    connection.device!.presentation!.controlLayout = 'rotary-three-button';
+    const preview = vi.fn();
+    render(
+      <ProductArt
+        connection={connection}
+        selectedControl="knob"
+        onSelectControl={vi.fn()}
+        onPreviewControl={preview}
+      />,
+    );
+    const middle = screen.getByRole('button', { name: 'Select Middle button' });
+    await user.hover(middle);
+    expect(preview).toHaveBeenLastCalledWith('button2');
+    await user.unhover(middle);
+    expect(preview).toHaveBeenLastCalledWith(undefined);
+    // Selection is exposed to assistive tech, not drawn as the old coloured ring.
+    expect(screen.getByRole('button', { name: 'Select Knob' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(middle).toHaveAttribute('aria-pressed', 'false');
+    expect(css).not.toMatch(/outline:[^;]*#67dca7/);
+  });
+
+  it('shows only the mascot and changes its pose for each control', () => {
+    const view = render(<DeviceScreen />);
+    expect(screen.getByTestId('device-screen')).toHaveAttribute('data-reaction', 'idle');
+    for (const control of ['knob', 'button1', 'button2', 'button3'] as const) {
+      view.rerender(<DeviceScreen activeControl={control} />);
+      expect(screen.getByTestId('device-screen')).toHaveAttribute('data-reaction', control);
+      expect(screen.getByTestId('device-screen').textContent).toBe('');
+      expect(screen.getByTestId('device-screen-mascot')).toHaveAttribute('alt', '');
+    }
+  });
+
+  it('disables idle animation and pose transitions for reduced motion', () => {
+    const reducedMotion = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));
+    expect(reducedMotion).toMatch(/\.device-screen__mascot\s*{\s*animation: none;/);
+    expect(reducedMotion).toMatch(/\.device-screen__pose\s*{\s*transition: none;/);
   });
 });

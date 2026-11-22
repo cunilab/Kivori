@@ -47,6 +47,9 @@ pub enum DeviceCommand {
     RestoreFirmwareFor(String, Option<String>),
     /// Re-publish the current status (used by an explicit UI resync).
     Refresh,
+    /// Forget any reconnect backoff and look for the device on the next tick (after USB access was
+    /// granted).
+    Rediscover,
     /// Ask the device for one internals snapshot (developer mode, while the card is visible).
     RequestInternals,
     /// Show another full-screen view on the device.

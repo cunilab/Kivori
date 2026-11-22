@@ -1,9 +1,9 @@
 //! The updater's decisions (ADR-0015; product.md, "App updates"). Pure: no network, no clock, no
 //! Tauri. The worker in [`super`] feeds it times and check results and does what it says.
 //!
-//! - [`availability`]: whether this build may check at all (Windows, a release config with the
-//!   release endpoint and a public key). Anything else is `disabled` or `unsupported` and never
-//!   touches the network.
+//! - [`availability`]: whether this build may check at all (Windows, or Linux running as the signed
+//!   AppImage, with a release config naming the release endpoint and a public key). Anything else
+//!   is `disabled` or `unsupported` and never touches the network.
 //! - [`Schedule`]: first check 30 s after start, then every 24 h while the automatic check is on;
 //!   a failed check waits for the next interval.
 //! - [`decide`]: only a version newer than the running one is offered, never a skipped one, and a
@@ -56,14 +56,30 @@ impl DisabledReason {
 pub enum Availability {
     Enabled,
     Disabled(DisabledReason),
-    /// Not on this OS yet (macOS): nothing is checked.
+    /// This install cannot update itself (macOS, or a Linux `.deb`, which is updated by installing
+    /// the new package): nothing is checked.
     Unsupported,
 }
 
-/// Decides from the merged Tauri config's `plugins.updater` section (`None` when absent) and the OS.
+/// Whether this OS and install can replace themselves from a signed update: Windows (the NSIS
+/// installer) and Linux only as an AppImage (the updater swaps the AppImage file). A `.deb` install
+/// is owned by the package manager and macOS has no updater yet, so both are unsupported. `os` is
+/// `std::env::consts::OS`; `appimage` is whether the `APPIMAGE` environment variable (set by the
+/// AppImage runtime) is present.
 #[must_use]
-pub fn availability(section: Option<&serde_json::Value>, windows: bool) -> Availability {
-    if !windows {
+pub fn self_updating(os: &str, appimage: bool) -> bool {
+    match os {
+        "windows" => true,
+        "linux" => appimage,
+        _ => false,
+    }
+}
+
+/// Decides from the merged Tauri config's `plugins.updater` section (`None` when absent) and
+/// whether this install can update itself ([`self_updating`]).
+#[must_use]
+pub fn availability(section: Option<&serde_json::Value>, self_updating: bool) -> Availability {
+    if !self_updating {
         return Availability::Unsupported;
     }
     let Some(section) = section.filter(|s| s.is_object()) else {

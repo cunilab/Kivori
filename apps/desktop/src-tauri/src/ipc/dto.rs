@@ -130,12 +130,12 @@ pub struct OnboardingDto {
 pub struct StartupSettingsDto {
     /// Whether the OS login entry exists.
     pub launch_at_login: bool,
-    /// Which OS this build runs on: `windows`, `macos` or `other` (for the switch's wording).
+    /// Which OS this build runs on: `windows`, `macos`, `linux` or `other` (for the switch's wording).
     pub platform: &'static str,
 }
 
 /// The platform tokens `StartupSettingsDto.platform` can carry (shared with the webview).
-pub const STARTUP_PLATFORM_TOKENS: [&str; 3] = ["windows", "macos", "other"];
+pub const STARTUP_PLATFORM_TOKENS: [&str; 4] = ["windows", "macos", "linux", "other"];
 
 impl StartupSettingsDto {
     /// Builds the DTO for this OS.
@@ -147,8 +147,41 @@ impl StartupSettingsDto {
                 "windows"
             } else if cfg!(target_os = "macos") {
                 "macos"
+            } else if cfg!(target_os = "linux") {
+                "linux"
             } else {
                 "other"
+            },
+        }
+    }
+}
+
+/// Whether Kivori may open its USB device, for the "needs permission" card (Linux only).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SerialAccessDto {
+    /// The last attempt to open the device was refused for lack of permission.
+    pub denied: bool,
+    /// The one-click fix can run here (Linux with `pkexec`).
+    pub can_fix: bool,
+    /// Where the fix cannot run: the same fix as one command to copy.
+    pub manual_command: Option<String>,
+}
+
+impl SerialAccessDto {
+    /// What is true now. The manual command is only offered while it is needed and the button is
+    /// not available.
+    #[must_use]
+    pub fn current() -> Self {
+        let denied = crate::serial_access::denied();
+        let can_fix = crate::serial_access::can_fix();
+        Self {
+            denied,
+            can_fix,
+            manual_command: if denied && !can_fix {
+                crate::serial_access::manual_command()
+            } else {
+                None
             },
         }
     }
@@ -1119,7 +1152,7 @@ pub struct ActionCatalogEntryDto {
     pub id: &'static str,
     /// `rotate` or `discrete`.
     pub slot: &'static str,
-    /// `system`, `app`, `media`, `keyboard`, `launch` or `macro`.
+    /// `system`, `app`, `media`, `display`, `keyboard`, `launch` or `macro`.
     pub scope: &'static str,
     /// `confirmed`, `started`, `unverified` or `leastOfSteps`.
     pub verification: &'static str,
@@ -1166,6 +1199,7 @@ pub fn action_catalog(
                     Scope::System | Scope::Mic => "system",
                     Scope::App => "app",
                     Scope::Media => "media",
+                    Scope::Display => "display",
                     Scope::Keyboard => "keyboard",
                     Scope::Launch => "launch",
                     Scope::Macro => "macro",
@@ -1335,12 +1369,11 @@ pub struct DeskStatusDto {
     /// Desk action tokens bound to Press and Hold (`null` = unbound).
     pub press_action: Option<&'static str>,
     pub hold_action: Option<&'static str>,
-    /// Always `nextView` in M1: a double press shows the next display mode.
-    pub double_press_action: &'static str,
+    /// The desk action bound to double press (`null` = unbound).
+    pub double_press_action: Option<&'static str>,
     /// Desk action tokens bound to the three contextual buttons' Press (`null` = unbound).
     pub button_actions: [Option<&'static str>; 3],
-    /// Desk action tokens bound to the three contextual buttons' Hold (`null` = unbound; the
-    /// middle one is always `null`, it pins the profile).
+    /// Desk action tokens bound to the three contextual buttons' Hold (`null` = unbound).
     pub button_hold_actions: [Option<&'static str>; 3],
     /// The active profile's id token (what the config UI keys its tabs by).
     pub profile_id: String,
@@ -1482,7 +1515,7 @@ pub fn initial_desk_status(config: &crate::config::ResolvedConfig) -> DeskStatus
         high_load: false,
         press_action: slot_token(&bindings.press),
         hold_action: slot_token(&bindings.hold),
-        double_press_action: "nextView",
+        double_press_action: slot_token(&bindings.double_press),
         button_actions: button_tokens(bindings),
         button_hold_actions: button_hold_tokens(bindings),
         profile_id: context.profile().id.token().to_string(),
@@ -1518,7 +1551,7 @@ pub fn desk_status_dto(desk: &crate::desk::DeskRuntime) -> DeskStatusDto {
         high_load: observed.system.high_load,
         press_action: slot_token(&desk.bindings().press),
         hold_action: slot_token(&desk.bindings().hold),
-        double_press_action: "nextView",
+        double_press_action: slot_token(&desk.bindings().double_press),
         button_actions: button_tokens(desk.bindings()),
         button_hold_actions: button_hold_tokens(desk.bindings()),
         profile_id: desk.context().profile().id.token().to_string(),
@@ -1607,15 +1640,16 @@ pub struct ProfileConfigDto {
     pub name: String,
     /// The user's own profile (renamable, deletable); built-ins are not.
     pub custom: bool,
-    /// Whether the middle button's Hold cycle visits it.
+    /// Pinned to the device: offered by the knob's Hold-and-turn profile picker and visited by the
+    /// middle button's Hold cycle.
     pub in_pin_cycle: bool,
     /// The foreground app ids that select this profile (empty for General).
     pub apps: Vec<String>,
     pub rotate: RotateDto,
-    pub held_rotate: Option<crate::config::RotateSpec>,
-    pub held_rotate_overridden: bool,
+    pub held_rotate: RotateDto,
     pub press: SlotDto,
     pub hold: SlotDto,
+    pub double_press: SlotDto,
     pub buttons: [ButtonDto; 3],
 }
 
@@ -1646,15 +1680,7 @@ pub struct SlotDto {
 #[serde(rename_all = "camelCase")]
 pub struct ButtonDto {
     pub press: SlotDto,
-    pub hold: HoldDto,
-}
-
-/// A button's Hold: a slot, or `"pin"` for the middle button (reserved for profile pin).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(untagged)]
-pub enum HoldDto {
-    Pin(&'static str),
-    Slot(SlotDto),
+    pub hold: SlotDto,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1791,11 +1817,7 @@ fn profile_dtos(store: &crate::config::ConfigStore) -> Vec<ProfileConfigDto> {
             let b = &profile.bindings;
             let button = |i: usize| ButtonDto {
                 press: slot_dto(&b.buttons[i].press, over.buttons[i].press.is_some()),
-                hold: if i == usize::from(crate::desk::profile::PIN_BUTTON) {
-                    HoldDto::Pin("pin")
-                } else {
-                    HoldDto::Slot(slot_dto(&b.buttons[i].hold, over.buttons[i].hold.is_some()))
-                },
+                hold: slot_dto(&b.buttons[i].hold, over.buttons[i].hold.is_some()),
             };
             ProfileConfigDto {
                 id: profile.id.token().to_string(),
@@ -1808,13 +1830,17 @@ fn profile_dtos(store: &crate::config::ConfigStore) -> Vec<ProfileConfigDto> {
                     device_label: profile.rotate.label().to_string(),
                     overridden: over.rotate.is_some(),
                 },
-                held_rotate: profile
-                    .held_rotate
-                    .as_ref()
-                    .map(crate::config::resolve::rotate_spec),
-                held_rotate_overridden: over.held_rotate.is_some(),
+                held_rotate: RotateDto {
+                    spec: crate::config::resolve::rotate_spec(&profile.held_rotate),
+                    device_label: match &profile.held_rotate {
+                        crate::desk::profile::RotateBinding::ProfilePicker => String::new(),
+                        other => other.label().to_string(),
+                    },
+                    overridden: over.held_rotate.is_some(),
+                },
                 press: slot_dto(&b.press, over.press.is_some()),
                 hold: slot_dto(&b.hold, over.hold.is_some()),
+                double_press: slot_dto(&b.double_press, over.double_press.is_some()),
                 buttons: [button(0), button(1), button(2)],
             }
         })
@@ -1839,7 +1865,7 @@ pub const fn availability_token(
 }
 
 /// Every capability flag with the name the diagnostics page lists it by, in bit order.
-const CAPABILITY_TABLE: [(Capabilities, &str); 18] = [
+const CAPABILITY_TABLE: [(Capabilities, &str); 22] = [
     (Capabilities::MASCOT_INTERACTION, "mascotInteraction"),
     (Capabilities::PHYSICAL_INPUT_V1, "physicalInputV1"),
     (Capabilities::PRESENTATION_V1, "presentationV1"),
@@ -1858,6 +1884,10 @@ const CAPABILITY_TABLE: [(Capabilities, &str); 18] = [
     (Capabilities::PRODUCT_IDENTITY_V1, "productIdentityV1"),
     (Capabilities::BUILD_INFO_V1, "buildInfoV1"),
     (Capabilities::HELD_ROTATION_V1, "heldRotationV1"),
+    (Capabilities::PROFILE_PICKER_V1, "profilePickerV1"),
+    (Capabilities::HOLD_RING_V1, "holdRingV1"),
+    (Capabilities::KNOB_HOLD_V1, "knobHoldV1"),
+    (Capabilities::HELD_TURN_MODE_V1, "heldTurnModeV1"),
 ];
 
 /// The capability names the diagnostics page lists, in bit order.
@@ -2036,6 +2066,7 @@ fn custom_bindings(file: &crate::config::ConfigFile) -> u32 {
             usize::from(over.rotate.is_some())
                 + usize::from(over.press.is_some())
                 + usize::from(over.hold.is_some())
+                + usize::from(over.double_press.is_some())
                 + over
                     .buttons
                     .iter()
@@ -2246,6 +2277,7 @@ pub fn vocabulary_json() -> serde_json::Value {
             "customProfiles": crate::config::MAX_CUSTOM_PROFILES,
             "apps": crate::config::MAX_PROFILE_APPS,
             "nameMax": crate::config::PROFILE_NAME_MAX,
+            "pinned": kivori_model::picker::PICKER_PINNED_MAX,
         },
         "controls": crate::config::resolve::CONTROL_TOKENS,
         "actionSpecKinds": crate::config::resolve::ACTION_SPEC_KINDS,

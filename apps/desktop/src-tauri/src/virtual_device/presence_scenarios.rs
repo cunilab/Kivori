@@ -58,6 +58,7 @@ fn ready(sandbox: &mut Sandbox, what: &str) -> Result<Duration, String> {
 
 fn lock_and_unlock(executable: &Path) -> Result<(), String> {
     let mut sandbox = Sandbox::open(executable).map_err(|error| error.to_string())?;
+    super::scenarios::bind_media_press(&mut sandbox)?;
     ready(&mut sandbox, "initial connection")?;
     let generation = sandbox.snapshot.generation;
     sandbox.host_event(HostEvent::Locked)?;
@@ -109,6 +110,7 @@ fn lock_and_unlock(executable: &Path) -> Result<(), String> {
 
 fn sleep_and_wake(executable: &Path) -> Result<(), String> {
     let mut sandbox = Sandbox::open(executable).map_err(|error| error.to_string())?;
+    super::scenarios::bind_media_press(&mut sandbox)?;
     ready(&mut sandbox, "initial connection")?;
     let generation = sandbox.snapshot.generation;
     let nonce = sandbox.session.current_session();
@@ -170,6 +172,7 @@ fn sleep_and_wake(executable: &Path) -> Result<(), String> {
 
 fn console_switch(executable: &Path) -> Result<(), String> {
     let mut sandbox = Sandbox::open(executable).map_err(|error| error.to_string())?;
+    super::scenarios::bind_media_press(&mut sandbox)?;
     ready(&mut sandbox, "initial connection")?;
     sandbox.host_event(HostEvent::ConsoleDisconnected)?;
     check(
@@ -208,6 +211,7 @@ fn console_switch(executable: &Path) -> Result<(), String> {
 
 fn power_cut_during_sleep(executable: &Path) -> Result<(), String> {
     let mut sandbox = Sandbox::open(executable).map_err(|error| error.to_string())?;
+    super::scenarios::bind_media_press(&mut sandbox)?;
     ready(&mut sandbox, "initial connection")?;
     sandbox.input("clockwise")?;
     until(
@@ -237,6 +241,7 @@ fn power_cut_during_sleep(executable: &Path) -> Result<(), String> {
 
 fn stray_wake(executable: &Path) -> Result<(), String> {
     let mut sandbox = Sandbox::open(executable).map_err(|error| error.to_string())?;
+    super::scenarios::bind_media_press(&mut sandbox)?;
     ready(&mut sandbox, "initial connection")?;
     let generation = sandbox.snapshot.generation;
     // Windows sends two resume notices; one with no suspend seen must not drop a live link.

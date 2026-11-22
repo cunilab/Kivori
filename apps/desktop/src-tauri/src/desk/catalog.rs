@@ -24,11 +24,12 @@ pub enum ActionToken {
     AppVolume,
     AppMute,
     Macro,
+    SwitchView,
 }
 
 impl ActionToken {
     /// Every token, in the order of `DESK_ACTIONS` in `lib/ipc/types.ts`.
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::Volume,
         Self::PlayPause,
         Self::Mute,
@@ -40,6 +41,7 @@ impl ActionToken {
         Self::AppVolume,
         Self::AppMute,
         Self::Macro,
+        Self::SwitchView,
     ];
 
     /// The closed webview token.
@@ -57,6 +59,7 @@ impl ActionToken {
             Self::AppVolume => "appVolume",
             Self::AppMute => "appMute",
             Self::Macro => "macro",
+            Self::SwitchView => "switchView",
         }
     }
 
@@ -70,7 +73,7 @@ impl ActionToken {
             Self::PlayPause => ActionKind::PlayPause,
             Self::Mute | Self::MicMute | Self::AppMute => ActionKind::Mute,
             Self::Shortcut | Self::Macro => ActionKind::Shortcut,
-            Self::Launch => ActionKind::Launch,
+            Self::Launch | Self::SwitchView => ActionKind::Launch,
             Self::PreviousTrack => ActionKind::PreviousTrack,
             Self::NextTrack => ActionKind::NextTrack,
         }
@@ -82,6 +85,7 @@ impl ActionToken {
 pub enum Os {
     Windows,
     MacOs,
+    Linux,
     Other,
 }
 
@@ -93,6 +97,8 @@ impl Os {
             Self::Windows
         } else if cfg!(target_os = "macos") {
             Self::MacOs
+        } else if cfg!(target_os = "linux") {
+            Self::Linux
         } else {
             Self::Other
         }
@@ -105,8 +111,11 @@ impl Os {
 pub struct Services {
     /// The system volume backend's availability (volume and mute).
     pub volume: ActionAvailability,
-    /// Whether key input can be synthesized (media keys and shortcuts).
+    /// Whether media keys can be sent.
     pub input: ActionAvailability,
+    /// Whether keyboard shortcuts can be synthesized. Separate from media keys because Linux sends
+    /// media keys through MPRIS (any session) but can type shortcuts on X11 only.
+    pub keyboard: ActionAvailability,
     /// The per-app volume backend's availability (App Volume and App Mute).
     pub app_volume: ActionAvailability,
     /// The microphone backend's availability (Mic Mute).
@@ -146,15 +155,26 @@ impl Services {
             Os::Windows => Self {
                 volume: state(ConfirmationClass::StateConfirmed),
                 input: state(ConfirmationClass::TriggeredUnverified),
+                keyboard: state(ConfirmationClass::TriggeredUnverified),
                 app_volume: state(ConfirmationClass::StateConfirmed),
                 mic: state(ConfirmationClass::StateConfirmed),
             },
             Os::MacOs => Self {
                 volume: state(ConfirmationClass::StateConfirmed),
                 input: state(ConfirmationClass::TriggeredUnverified),
+                keyboard: state(ConfirmationClass::TriggeredUnverified),
                 app_volume: ActionAvailability::Unsupported {
                     reason: APP_VOLUME_UNSUPPORTED_ON_MAC.to_string(),
                 },
+                mic: state(ConfirmationClass::StateConfirmed),
+            },
+            // Optimistic until the device thread publishes what the session really allows (shortcuts
+            // are unavailable on Wayland, see `platform::linux`).
+            Os::Linux => Self {
+                volume: state(ConfirmationClass::StateConfirmed),
+                input: state(ConfirmationClass::TriggeredUnverified),
+                keyboard: state(ConfirmationClass::TriggeredUnverified),
+                app_volume: state(ConfirmationClass::StateConfirmed),
                 mic: state(ConfirmationClass::StateConfirmed),
             },
             Os::Other => {
@@ -162,6 +182,7 @@ impl Services {
                 Self {
                     volume: ActionAvailability::NotImplementedYet { target },
                     input: ActionAvailability::NotImplementedYet { target },
+                    keyboard: ActionAvailability::NotImplementedYet { target },
                     app_volume: ActionAvailability::NotImplementedYet { target },
                     mic: ActionAvailability::NotImplementedYet { target },
                 }
@@ -189,6 +210,8 @@ pub enum Scope {
     Keyboard,
     Launch,
     Macro,
+    /// The device's own screen. No host service is involved.
+    Display,
 }
 
 /// How well the outcome can be observed, as the config UI says it.
@@ -274,7 +297,7 @@ const fn entry(
 /// Every action, in the order the picker shows them.
 ///
 /// App Volume and App Mute are unsupported on macOS: the config UI shows them disabled with a reason rather than hiding them.
-pub const CATALOG: [CatalogEntry; 12] = {
+pub const CATALOG: [CatalogEntry; 13] = {
     use ActionToken as T;
     use Verification::{Confirmed, LeastOfSteps, Started, Unverified};
     [
@@ -386,6 +409,15 @@ pub const CATALOG: [CatalogEntry; 12] = {
             Params::Macro,
             false,
         ),
+        entry(
+            "switchView",
+            T::SwitchView,
+            Slot::Discrete,
+            Scope::Display,
+            Confirmed,
+            Params::None,
+            true,
+        ),
     ]
 };
 
@@ -402,10 +434,11 @@ impl CatalogEntry {
         let backend = match self.scope {
             Scope::System => &services.volume,
             Scope::Mic => &services.mic,
-            Scope::Media | Scope::Keyboard => &services.input,
+            Scope::Media => &services.input,
+            Scope::Keyboard => &services.keyboard,
             Scope::App => &services.app_volume,
-            // A launch needs no synthesized input.
-            Scope::Launch | Scope::Macro => {
+            // A launch, a macro and a view switch need no host service.
+            Scope::Launch | Scope::Macro | Scope::Display => {
                 return ActionAvailability::Available {
                     confirmation: self.verification.class(),
                 }
@@ -479,6 +512,7 @@ mod tests {
                 name: "M".into(),
                 steps: vec![Step::Run(Action::PlayPause), Step::Run(Action::ToggleMute)],
             })),
+            "switchView" => Action::SwitchView,
             _ => return None,
         })
     }
@@ -506,7 +540,7 @@ mod tests {
             assert_eq!(entry.token, action.token(), "{}", entry.id);
             checked += 1;
         }
-        assert_eq!(checked, 10, "every entry with a backend is checked");
+        assert_eq!(checked, 11, "every entry with a backend is checked");
     }
 
     #[test]
@@ -550,7 +584,7 @@ mod tests {
 
     #[test]
     fn macros_are_available_on_every_os_that_can_run_a_step() {
-        for os in [Os::Windows, Os::MacOs, Os::Other] {
+        for os in [Os::Windows, Os::MacOs, Os::Linux, Os::Other] {
             assert_eq!(
                 entry_named("macro").availability(os, &Services::expected(os)),
                 ActionAvailability::Available {
@@ -562,15 +596,17 @@ mod tests {
     }
 
     #[test]
-    fn app_volume_and_mute_are_available_on_windows_and_unsupported_on_macos() {
+    fn app_volume_and_mute_are_available_on_windows_and_linux_and_unsupported_on_macos() {
         for id in ["appVolume", "appMute"] {
-            assert_eq!(
-                entry_named(id).availability(Os::Windows, &Services::expected(Os::Windows)),
-                ActionAvailability::Available {
-                    confirmation: ConfirmationClass::StateConfirmed
-                },
-                "{id}"
-            );
+            for os in [Os::Windows, Os::Linux] {
+                assert_eq!(
+                    entry_named(id).availability(os, &Services::expected(os)),
+                    ActionAvailability::Available {
+                        confirmation: ConfirmationClass::StateConfirmed
+                    },
+                    "{id} on {os:?}"
+                );
+            }
             // Whatever the services claim, macOS never offers it.
             for services in [
                 Services::expected(Os::MacOs),
@@ -638,6 +674,7 @@ mod tests {
         );
         let no_input = Services {
             input: ActionAvailability::NotImplementedYet { target: "linux" },
+            keyboard: ActionAvailability::NotImplementedYet { target: "linux" },
             ..services
         };
         assert_eq!(
@@ -649,6 +686,72 @@ mod tests {
             entry_named("playPause").availability(Os::Other, &no_input),
             ActionAvailability::NotImplementedYet { .. }
         ));
+    }
+
+    #[test]
+    fn linux_expects_every_action_to_work_and_media_keys_are_trigger_only() {
+        let services = Services::expected(Os::Linux);
+        for entry in &CATALOG {
+            assert!(
+                matches!(
+                    entry.availability(Os::Linux, &services),
+                    ActionAvailability::Available { .. }
+                ),
+                "{} on Linux",
+                entry.id
+            );
+        }
+        // The catalog assigns the class, whatever the backend: media keys stay trigger-only.
+        for id in ["playPause", "previousTrack", "nextTrack", "shortcut"] {
+            assert_eq!(
+                entry_named(id).availability(Os::Linux, &services),
+                ActionAvailability::Available {
+                    confirmation: ConfirmationClass::TriggeredUnverified
+                },
+                "{id}"
+            );
+        }
+        assert_eq!(
+            entry_named("systemMute").availability(Os::Linux, &services),
+            ActionAvailability::Available {
+                confirmation: ConfirmationClass::StateConfirmed
+            }
+        );
+        assert_eq!(
+            entry_named("launch").availability(Os::Linux, &services),
+            ActionAvailability::Available {
+                confirmation: ConfirmationClass::ExecutionConfirmed
+            }
+        );
+    }
+
+    #[test]
+    fn on_wayland_shortcuts_are_unavailable_while_media_keys_and_the_volume_still_work() {
+        let wayland = Services {
+            keyboard: ActionAvailability::RuntimeUnavailable {
+                reason: "Keyboard shortcuts can't be sent from Wayland yet.".into(),
+            },
+            ..Services::expected(Os::Linux)
+        };
+        assert!(matches!(
+            entry_named("shortcut").availability(Os::Linux, &wayland),
+            ActionAvailability::RuntimeUnavailable { .. }
+        ));
+        for id in [
+            "playPause",
+            "nextTrack",
+            "systemVolume",
+            "micMute",
+            "appVolume",
+        ] {
+            assert!(
+                matches!(
+                    entry_named(id).availability(Os::Linux, &wayland),
+                    ActionAvailability::Available { .. }
+                ),
+                "{id}"
+            );
+        }
     }
 
     #[test]

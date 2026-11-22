@@ -53,8 +53,8 @@
     },
     {
       "fn": "kivori_firmware::runtime::run_buffered::*",
-      "max": 7600,
-      "why": "The run loop's locals; lives for the whole session."
+      "max": 8000,
+      "why": "The run loop's locals; lives for the whole session. Raised from 7,600 B (it was 7,192 B) for the profile picker: the Runtime that lives in this frame now holds the picker's entries (10 names, 220 B), the contextual buttons' Hold labels (100 B) and the picker state, and the frame measured 7,952 B. The loop's call chain is about 25 KiB against a 119 KB stack region whose peak is the boot parse, so the extra 400 B costs no margin; the picker and ring overlays, the status/labels messages and the view builder are kept out of line."
     },
     {
       "fn": "kivori_firmware::physical_st7789::run_mode",

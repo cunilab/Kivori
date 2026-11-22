@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
 import { Usb } from 'lucide-react';
 import { cn } from '@kivori/ui/lib/utils';
 import type { ConnectionStatusDto } from '@/lib/ipc/types';
@@ -13,14 +13,16 @@ export function ProductArt({
   className,
   selectedControl,
   onSelectControl,
-  profileName,
+  onPreviewControl,
+  screen,
   showCaption = true,
 }: {
   connection: ConnectionStatusDto | null;
   className?: string;
   selectedControl?: DeviceControl;
   onSelectControl?: (control: DeviceControl) => void;
-  profileName?: string;
+  onPreviewControl?: (control: DeviceControl | undefined) => void;
+  screen?: ReactNode;
   showCaption?: boolean;
 }): ReactElement {
   const presentation =
@@ -72,7 +74,8 @@ export function ProductArt({
           selectedControl={selectedControl}
           onSelectControl={onSelectControl}
           availableControls={availableControls}
-          profileName={profileName}
+          onPreviewControl={onPreviewControl}
+          screen={screen}
         />
       ) : url ? (
         <img

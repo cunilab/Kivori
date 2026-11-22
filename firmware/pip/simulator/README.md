@@ -87,7 +87,7 @@ virtual firmware time; a mismatch fails the process. The hashes identify actual 
 claiming physical panel output or acting as fixed renderer golden images.
 
 Coverage includes CW/CCW cycles; illegal transitions and partial-cycle bounce followed by a valid
-cycle; 19/20 ms debounce, 499/500 ms Press/Hold and 1999/2000 ms recovery boundaries; switch bounce;
+cycle; 19/20 ms debounce, 999/1000 ms Press/Hold and 1999/2000 ms recovery boundaries; switch bounce;
 negotiated double-press gaps of 249/250/251 ms; delayed buffered edges on all four switches;
 knob/contextual/rotary ownership; 128-edge capacity and fail-closed 129-edge request rejection;
 session cancellation, recovery release and the exact virtual reboot boundary. Recovery pixels are

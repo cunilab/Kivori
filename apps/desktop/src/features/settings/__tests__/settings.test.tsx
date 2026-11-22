@@ -7,6 +7,7 @@ import { connectionFixture } from '../../../test/connection';
 import type { AppInfoDto } from '../../../lib/ipc/types';
 
 vi.mock('../../../lib/ipc', () => ({
+  isTauri: () => false,
   getStartupSettings: () => new Promise(() => {}),
   getAccessibility: () => Promise.resolve('notApplicable'),
   onStartupChanged: () => Promise.resolve(() => {}),

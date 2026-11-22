@@ -17,11 +17,11 @@ use kivori_assets::AssetBlob;
 use kivori_framebuffer::TileBand;
 use kivori_model::desk::{DeskView, DisplayMode};
 use kivori_model::presentation::ValueDisplay;
-use kivori_model::{CompanionState, ElapsedMs, MascotAnimator, MascotPose, Rect, Rgb565};
+use kivori_model::{CompanionState, ElapsedMs, MascotPose, Rect, Rgb565};
 use kivori_renderer::desk::{
-    render_chrome, render_recovery, render_updating, render_view, render_views, render_wrong_board,
+    render_chrome, render_picker, render_recovery, render_updating, render_view, render_views,
+    render_wrong_board,
 };
-use kivori_renderer::overlay::render_volume_overlay;
 use kivori_renderer::render_scene;
 
 /// Tile width.
@@ -178,10 +178,8 @@ impl<'a> TileRenderer<'a> {
         self.render_with_overlay(blob, state, elapsed_ms, None, sink)
     }
 
-    /// Renders `state` at `elapsed_ms` from `blob`, compositing `overlay` (if any) as the final
-    /// pass so it is included in the hash that decides which tiles are flushed, then flushes only
-    /// changed tiles to `sink`. While an overlay shows, the mascot uses
-    /// [`MascotPose::with_overlay_room`].
+    /// Renders `state` at `elapsed_ms` from `blob`; a live `overlay` (if any) takes the whole screen
+    /// as the Volume view. Flushes only changed tiles to `sink`.
     ///
     /// # Errors
     /// [`RenderError`] if the scene is missing, a tile can't be built, the compositor fails, or the
@@ -216,9 +214,8 @@ impl<'a> TileRenderer<'a> {
         self.render_animation_with_overlay(blob, state, pose, None, sink)
     }
 
-    /// Renders a resolved shared pose, then composites `overlay` (if any) on top of the pose
-    /// before hashing, so no second frame buffer is needed. While an overlay shows, the pose is
-    /// drawn with [`MascotPose::with_overlay_room`] so the keycap clears the bar.
+    /// Renders a resolved shared pose; a live `overlay` (if any) takes the whole screen as the
+    /// Volume view instead.
     ///
     /// # Errors
     /// [`RenderError`] if the scene is missing, a tile can't be built, the compositor fails, or the
@@ -235,7 +232,7 @@ impl<'a> TileRenderer<'a> {
     }
 
     /// Renders one full device frame (M1): the recovery takeover when it owns the screen;
-    /// otherwise the Buddy pose (plus volume overlay) or the selected desk view, then the
+    /// otherwise the Buddy pose or the selected desk view (a live volume value shows the Volume view instead), then the
     /// indicator / feedback chrome over it. Only changed tiles are flushed.
     ///
     /// # Errors
@@ -403,6 +400,9 @@ impl<'a> TileRenderer<'a> {
     }
 
     #[allow(clippy::too_many_arguments)]
+    // Out of line: inlined into `run_buffered` it grew that loop's stack frame past its budget
+    // (`just fw-budget`); one call per tile costs nothing next to composing a tile.
+    #[inline(never)]
     fn compose<S: DisplaySink>(
         &mut self,
         blob: &AssetBlob,
@@ -415,17 +415,7 @@ impl<'a> TileRenderer<'a> {
         sink: &mut S,
     ) -> Result<(), RenderError<S::Error>> {
         let scene = blob.scene(state).ok_or(RenderError::MissingScene)?;
-        // The mascot makes room for the overlay (shrunk and lifted clear of the bar).
-        // ponytail: instant switch in and out; ease `with_overlay_room` like state transitions
-        // if the jump reads as harsh on the panel.
-        let pose = match overlay {
-            Some(_) => Some(
-                pose.copied()
-                    .unwrap_or_else(|| MascotAnimator::new(state, 0).pose_at(elapsed_ms))
-                    .with_overlay_room(),
-            ),
-            None => pose.copied(),
-        };
+        let pose = pose.copied();
         let buffered = self.frame_buffer.is_some();
         for tile in tiles {
             let x = (tile % TILE_COLS) as u16 * TILE_W;
@@ -444,30 +434,32 @@ impl<'a> TileRenderer<'a> {
             } else if view.updating {
                 // Then the update takeover: the host is flashing this device.
                 render_updating(&mut band);
+            } else if view.picker.is_some() {
+                // The profile picker: the knob switch held and turned. Its own full screen, no
+                // chrome (the clock and the press border would only crowd it).
+                render_picker(&mut band, view);
             } else {
                 let mode = view.status.mode;
-                // The view layer, including the switch slide: `render_views` hands each mode a
-                // (possibly scrolled) row slice of the tile, so the mascot slides like any view.
-                render_views(&mut band, view, |band, m| {
-                    if m == DisplayMode::Buddy {
-                        match &pose {
-                            Some(pose) => kivori_renderer::render_pose(blob, scene, pose, band),
-                            None => render_scene(blob, scene, elapsed_ms, band),
+                if overlay.is_some() && mode != DisplayMode::Volume {
+                    // A live volume value takes the whole screen until it expires, then the
+                    // underlying view (or the mascot) comes straight back. A cut, not a slide:
+                    // it follows every knob click, so it must not lag behind the turn.
+                    render_view(&mut band, DisplayMode::Volume, view, overlay);
+                } else {
+                    // The view layer, including the switch slide: `render_views` hands each mode a
+                    // (possibly scrolled) row slice of the tile, so the mascot slides like any view.
+                    render_views(&mut band, view, |band, m| {
+                        if m == DisplayMode::Buddy {
+                            match &pose {
+                                Some(pose) => kivori_renderer::render_pose(blob, scene, pose, band),
+                                None => render_scene(blob, scene, elapsed_ms, band),
+                            }
+                            .map_err(|_| RenderError::Compositor)
+                        } else {
+                            render_view(band, m, view, overlay);
+                            Ok(())
                         }
-                        .map_err(|_| RenderError::Compositor)
-                    } else {
-                        render_view(band, m, view, overlay);
-                        Ok(())
-                    }
-                })?;
-                // The volume bar sits over any view except Volume, which shows the value itself.
-                if let (Some(value), true) = (overlay, mode != DisplayMode::Volume) {
-                    render_volume_overlay(
-                        &mut band,
-                        value.current_percent,
-                        value.confidence,
-                        value.at_boundary,
-                    );
+                    })?;
                 }
                 render_chrome(&mut band, view);
             }

@@ -28,4 +28,11 @@ describe('app names', () => {
     // Nothing for this OS: keep what is stored rather than hide the app.
     expect(groupApps(['com.google.chrome'], 'windows')[0]?.primary).toBe('com.google.chrome');
   });
+
+  it('on Linux prefers the plain executable name over another OS id', () => {
+    // Linux ids are lowercase executable names; an exe name and a bundle id are both foreign.
+    const ids = ['chrome.exe', 'com.google.chrome', 'chrome'];
+    expect(groupApps(ids, 'linux')[0]?.primary).toBe('chrome');
+    expect(groupApps(ids.slice(0, 2), 'linux')[0]?.primary).toBe('chrome.exe');
+  });
 });

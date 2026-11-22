@@ -278,17 +278,6 @@ impl MascotPose {
             state_weights,
         }
     }
-
-    /// This pose shrunk (x0.72) and lifted so the keycap clears the volume bar (y180..196): its
-    /// base bottom lands near y172. Pure; applied by every renderer that draws the overlay.
-    #[must_use]
-    pub const fn with_overlay_room(mut self) -> Self {
-        self.body_scale_q8 = (self.body_scale_q8 as u32 * 184 / 256) as u16;
-        // The press is an unscaled offset, so shrink it with the art to keep the cap on its base.
-        self.press_q8 = self.press_q8 * 184 / 256;
-        self.body_offset_q8.1 -= 34 * 256;
-        self
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

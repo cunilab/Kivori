@@ -1,6 +1,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import { cn } from '@kivori/ui/lib/utils';
 import { format, strings } from '@/lib/i18n/strings';
+import { DeviceScreen } from './device-screen';
 import './device-visual.css';
 
 export type DeviceControl = 'knob' | 'button1' | 'button2' | 'button3';
@@ -11,16 +12,18 @@ const controls: DeviceControl[] = ['knob', 'button1', 'button2', 'button3'];
 export function DeviceVisual({
   selectedControl,
   onSelectControl,
+  onPreviewControl,
   availableControls = controls,
-  profileName,
   className,
   screen,
 }: {
   selectedControl?: DeviceControl | undefined;
   onSelectControl?: ((control: DeviceControl) => void) | undefined;
+  /** Pointer or keyboard focus is on a control (`undefined` = left it). Shows it on the screen. */
+  onPreviewControl?: ((control: DeviceControl | undefined) => void) | undefined;
   availableControls?: DeviceControl[] | undefined;
-  profileName?: string | undefined;
   className?: string | undefined;
+  /** What the display shows; the buddy when omitted. */
   screen?: ReactNode | undefined;
 }): ReactElement {
   const names: Record<DeviceControl, string> = {
@@ -42,6 +45,10 @@ export function DeviceVisual({
         disabled={!availableControls.includes(control)}
         data-selected={selectedControl === control}
         onClick={() => onSelectControl(control)}
+        onPointerEnter={() => onPreviewControl?.(control)}
+        onPointerLeave={() => onPreviewControl?.(undefined)}
+        onFocus={() => onPreviewControl?.(control)}
+        onBlur={() => onPreviewControl?.(undefined)}
       >
         {contents}
       </button>
@@ -57,21 +64,7 @@ export function DeviceVisual({
       <div className="device-visual__well">{button('knob')}</div>
       <div className="device-visual__visor" aria-hidden="true" />
       <div className="device-visual__bezel" aria-hidden="true">
-        <div className="device-visual__screen">
-          {screen ?? (
-            <span>
-              {profileName ? (
-                <>
-                  {strings.controls.workbench.editing}
-                  <br />
-                  {profileName}
-                </>
-              ) : (
-                strings.appTitle
-              )}
-            </span>
-          )}
-        </div>
+        <div className="device-visual__screen">{screen ?? <DeviceScreen />}</div>
       </div>
       <div className="device-visual__keys">{controls.slice(1).map(button)}</div>
     </div>

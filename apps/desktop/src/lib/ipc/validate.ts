@@ -27,7 +27,6 @@ import {
   MIC_MUTED_STATES,
   DESK_RESULTS,
   DISPLAY_MODES,
-  DOUBLE_PRESS_ACTIONS,
   FIRMWARE_PHASES,
   FLASH_FAILURES,
   UPDATE_ADVICE,
@@ -59,6 +58,7 @@ import type {
   FirmwareStatusDto,
   AccessibilityState,
   OnboardingDto,
+  SerialAccessDto,
   StartupSettingsDto,
   UpdateStatusDto,
   FirmwareOfferDto,
@@ -222,6 +222,21 @@ export function parseStartupSettings(raw: unknown): StartupSettingsDto {
     launchAtLogin: r.launchAtLogin,
     platform: oneOf('startup platform', STARTUP_PLATFORMS, r.platform),
   };
+}
+
+/** The longest manual command accepted (the rule is a few hundred bytes). */
+const MAX_MANUAL_COMMAND = 2048;
+
+/** Validates a `SerialAccessDto`; the manual command is only meaningful while access is denied. */
+export function parseSerialAccess(raw: unknown): SerialAccessDto {
+  const r = record('serial access', raw);
+  if (typeof r.denied !== 'boolean') throw new Error('Kivori: invalid denied.');
+  if (typeof r.canFix !== 'boolean') throw new Error('Kivori: invalid canFix.');
+  const manual = r.manualCommand ?? null;
+  if (manual !== null && (typeof manual !== 'string' || manual.length > MAX_MANUAL_COMMAND)) {
+    throw new Error('Kivori: invalid manualCommand.');
+  }
+  return { denied: r.denied, canFix: r.canFix, manualCommand: r.denied ? manual : null };
 }
 
 /** Release notes longer than this are cut (the native side already bounds them). */
@@ -498,7 +513,7 @@ export function parseDeskStatus(raw: unknown): DeskStatusDto {
     highLoad: r.highLoad,
     pressAction: actionOrNull(r.pressAction),
     holdAction: actionOrNull(r.holdAction),
-    doublePressAction: oneOf('double-press action', DOUBLE_PRESS_ACTIONS, r.doublePressAction),
+    doublePressAction: actionOrNull(r.doublePressAction),
     buttonActions: buttonActions('buttonActions', r.buttonActions),
     buttonHoldActions: buttonActions('buttonHoldActions', r.buttonHoldActions),
     profileId: profileId(r.profileId),
@@ -587,8 +602,10 @@ function stepSpec(raw: unknown): StepSpec {
     return { kind: 'delay', ms };
   }
   const action = actionSpec(r.action);
-  // A step is never a macro (no nesting).
-  if (action.kind === 'macro') throw new Error('Kivori: invalid step.');
+  // A step is never a macro, and a view switch runs on the desk, not in a macro.
+  if (action.kind === 'macro' || action.kind === 'switchView') {
+    throw new Error('Kivori: invalid step.');
+  }
   return { kind: 'action', action };
 }
 
@@ -618,6 +635,8 @@ function rotateSpec(raw: unknown): RotateSpec {
         ccw: text('shortcut', r.ccw),
         label: text('label', r.label),
       };
+    case 'profilePicker':
+      return { kind: 'profilePicker' };
     default:
       return { kind: 'systemVolume' };
   }
@@ -636,15 +655,12 @@ function slotDto(raw: unknown): SlotDto {
 
 function buttonDto(raw: unknown): ButtonDto {
   const r = record('button', raw);
-  return { press: slotDto(r.press), hold: r.hold === 'pin' ? 'pin' : slotDto(r.hold) };
+  return { press: slotDto(r.press), hold: slotDto(r.hold) };
 }
 
 function profileDto(raw: unknown): ProfileConfigDto {
   const r = record('profile', raw);
   const rotate = record('rotate', r.rotate);
-  const heldRotate = r.heldRotate == null ? null : rotateSpec(r.heldRotate);
-  if (heldRotate && heldRotate.kind !== 'shortcuts')
-    throw new Error('Kivori: invalid held rotate.');
   if (typeof rotate.overridden !== 'boolean') throw new Error('Kivori: invalid overridden.');
   if (!Array.isArray(r.apps)) throw new Error('Kivori: invalid apps.');
   if (!Array.isArray(r.buttons) || r.buttons.length !== 3) {
@@ -661,13 +677,18 @@ function profileDto(raw: unknown): ProfileConfigDto {
       deviceLabel: text('device label', rotate.deviceLabel),
       overridden: rotate.overridden,
     },
-    heldRotate,
-    heldRotateOverridden:
-      r.heldRotateOverridden === undefined
-        ? false
-        : bool('heldRotateOverridden', r.heldRotateOverridden),
+    heldRotate: (() => {
+      const held = record('held rotate', r.heldRotate);
+      if (typeof held.overridden !== 'boolean') throw new Error('Kivori: invalid overridden.');
+      return {
+        spec: rotateSpec(held.spec),
+        deviceLabel: text('device label', held.deviceLabel),
+        overridden: held.overridden,
+      };
+    })(),
     press: slotDto(r.press),
     hold: slotDto(r.hold),
+    doublePress: slotDto(r.doublePress),
     buttons: [buttonDto(r.buttons[0]), buttonDto(r.buttons[1]), buttonDto(r.buttons[2])],
   };
 }

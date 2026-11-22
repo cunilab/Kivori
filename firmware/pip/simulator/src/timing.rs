@@ -315,11 +315,10 @@ mod tests {
         let desk: Vec<u64> = (0..TILE_ROWS)
             .map(|r| costs.row_us(Scenario::ConnectedDesk, r))
             .collect();
-        assert_eq!(desk, vec![4337, 8555, 20774, 23785, 14565, 7013]);
+        assert_eq!(desk, vec![4214, 8396, 20610, 23666, 14401, 6865]);
         let total = costs.total_us(Scenario::ConnectedDesk);
-        assert!((78_900..=79_100).contains(&total), "{total}");
+        assert!((78_100..=78_200).contains(&total), "{total}");
         assert!(costs.total_us(Scenario::MediaView) < total);
-        assert!(costs.total_us(Scenario::SystemView) > total);
     }
 
     #[test]

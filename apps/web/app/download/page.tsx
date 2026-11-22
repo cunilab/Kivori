@@ -40,7 +40,7 @@ export const dynamic = 'force-dynamic';
 export const metadata: Metadata = pageMetadata({
   title: 'Download',
   description:
-    'Download Kivori Desktop for Windows and Apple Silicon macOS, with the version history.',
+    'Download Kivori Desktop for Windows, Apple Silicon macOS and Linux, with the version history.',
   path: '/download',
 });
 
@@ -63,7 +63,12 @@ export default async function DownloadPage(): Promise<ReactElement> {
   return (
     <>
       <JsonLd
-        data={softwareApplicationJsonLd(stable?.version, undefined, Boolean(stable?.macInstaller))}
+        data={softwareApplicationJsonLd(
+          stable?.version,
+          undefined,
+          Boolean(stable?.macInstaller),
+          Boolean(stable?.linuxDeb || stable?.linuxAppImage),
+        )}
       />
       <section aria-labelledby="download-title" className="px-5 pt-14 pb-2 sm:px-8 sm:pt-20">
         <div className="mx-auto max-w-[1180px]">
@@ -212,6 +217,51 @@ export default async function DownloadPage(): Promise<ReactElement> {
               </div>
             </CardContent>
           </Card>
+          {stable?.linuxDeb || stable?.linuxAppImage ? (
+            <Card className="rounded-lg p-2 shadow-none ring-1 ring-border">
+              <CardHeader className="p-6 sm:p-8">
+                <CardTitle className="font-display text-3xl font-semibold tracking-tight">
+                  Linux
+                </CardTitle>
+                <CardDescription>Version {stable.version} · x86_64</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6 px-6 pb-6 sm:px-8 sm:pb-8">
+                <p className="text-base text-muted-foreground">
+                  Ubuntu / Debian. Volume and media controls work on X11 and Wayland; shortcuts and
+                  automatic app profiles require X11. AppImage updates automatically when signed;
+                  update Debian packages through a newer download.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  The Debian package installs USB access rules. AppImage users must install the
+                  Kivori udev rule separately. AppImage may need libfuse2 (libfuse2t64 on Ubuntu
+                  24.04+) or --appimage-extract-and-run.
+                </p>
+                <a href="/support#linux" className="text-primary underline">
+                  Linux setup and USB access
+                </a>
+                <div className="flex flex-wrap gap-3">
+                  {stable.linuxDeb ? (
+                    <Button
+                      className={pill}
+                      nativeButton={false}
+                      render={<a href="/download/linux/latest" />}
+                    >
+                      Download .deb
+                    </Button>
+                  ) : null}
+                  {stable.linuxAppImage ? (
+                    <Button
+                      className={pill}
+                      nativeButton={false}
+                      render={<a href="/download/linux/latest?format=appimage" />}
+                    >
+                      Download AppImage
+                    </Button>
+                  ) : null}
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       </Section>
 
@@ -231,7 +281,7 @@ export default async function DownloadPage(): Promise<ReactElement> {
                   <TableHead className="h-12">Date</TableHead>
                   <TableHead className="h-12">Bundled firmware</TableHead>
                   <TableHead className="h-12">Status</TableHead>
-                  <TableHead className="h-12 pr-6 text-right">Windows</TableHead>
+                  <TableHead className="h-12 pr-6 text-right">Downloads</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -267,6 +317,22 @@ export default async function DownloadPage(): Promise<ReactElement> {
                         ) : (
                           <span className="text-muted-foreground">Not available</span>
                         )}
+                        {release.linuxDeb ? (
+                          <a
+                            className="ml-3 font-medium text-primary hover:underline"
+                            href={`/download/linux/${release.version}`}
+                          >
+                            Linux .deb
+                          </a>
+                        ) : null}
+                        {release.linuxAppImage ? (
+                          <a
+                            className="ml-3 font-medium text-primary hover:underline"
+                            href={`/download/linux/${release.version}?format=appimage`}
+                          >
+                            AppImage
+                          </a>
+                        ) : null}
                       </TableCell>
                     </TableRow>
                     <TableRow className="hover:bg-transparent">

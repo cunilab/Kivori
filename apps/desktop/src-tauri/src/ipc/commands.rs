@@ -86,6 +86,38 @@ pub fn get_startup_settings(app: AppHandle) -> Result<StartupSettingsDto, String
     crate::runtime::lifecycle::startup_settings(&app)
 }
 
+/// Whether Kivori may open its USB device. Only Linux can refuse (no udev rule yet): `denied` is
+/// true while the last attempt to open it was refused for permission. `serial-access://changed`
+/// carries changes.
+#[tauri::command]
+pub fn get_serial_access() -> dto::SerialAccessDto {
+    dto::SerialAccessDto::current()
+}
+
+/// The one-click fix for [`get_serial_access`]: installs the udev rule through `pkexec` (the
+/// desktop's password prompt), reloads udev, and has the device thread look for the device again.
+/// Takes no input: the rule is the packaged file, the script a constant.
+///
+/// # Errors
+/// A short reason the user can read: the prompt was closed, `pkexec` is missing, or the install
+/// failed.
+#[tauri::command]
+pub async fn fix_serial_access(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+) -> Result<dto::SerialAccessDto, String> {
+    // Blocks while the user types their password, so not on the async runtime's worker.
+    tauri::async_runtime::spawn_blocking(crate::serial_access::install_rule)
+        .await
+        .map_err(|_| "The setup was interrupted".to_string())?
+        .map_err(|error| error.to_string())?;
+    // Permission now exists: do not make the user wait out a reconnect backoff.
+    let _ = app.send_command(DeviceCommand::Rediscover);
+    let access = dto::SerialAccessDto::current();
+    events::emit_serial_access(&handle, &access);
+    Ok(access)
+}
+
 /// Adds or removes the OS login entry and returns what the OS now says.
 ///
 /// # Errors
@@ -398,8 +430,8 @@ fn profile_ref(token: &str) -> Result<crate::config::ProfileRef, String> {
 /// profile cannot reset a single control.
 ///
 /// # Errors
-/// Returns an error for an unknown profile or control, the middle button's Hold (reserved for
-/// profile pin), an invalid label, shortcut or launch target, or a failed save.
+/// Returns an error for an unknown profile or control, an invalid label, shortcut or launch
+/// target, or a failed save.
 #[tauri::command]
 pub fn set_binding(
     handle: AppHandle,
@@ -462,10 +494,11 @@ pub fn set_rotate(
     })
 }
 
-/// Sets or clears the shortcut pair for turning while holding the knob.
+/// Changes what Hold + turn does in a profile, or (`rotate` = `null`) resets it to the profile
+/// picker. A custom profile cannot reset a single control. `profilePicker` is the built-in.
 ///
 /// # Errors
-/// Returns an error for an unknown profile, invalid shortcuts, or failed save.
+/// Returns an error for an unknown profile, an invalid shortcut or label, or a failed save.
 #[tauri::command]
 pub fn set_held_rotate(
     handle: AppHandle,
@@ -474,8 +507,36 @@ pub fn set_held_rotate(
     rotate: Option<crate::config::RotateSpec>,
 ) -> Result<ConfigDto, String> {
     let profile = profile_ref(&profile)?;
+    let rotate = rotate
+        .as_ref()
+        .map(crate::config::resolve::canonical_held_rotate)
+        .transpose()
+        .map_err(str::to_string)?;
+    let builtin_default = matches!(
+        rotate,
+        None | Some(crate::config::RotateSpec::ProfilePicker)
+    );
     commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
-        store.set_held_rotate(&profile, rotate)
+        let mut next = store.file().clone();
+        if matches!(profile, crate::config::ProfileRef::Custom(_)) && rotate.is_none() {
+            return Err(crate::config::ConfigError::Invalid(
+                "a custom profile is reset as a whole, back to General",
+            ));
+        }
+        let stored = if builtin_default && matches!(profile, crate::config::ProfileRef::Builtin(_))
+        {
+            None
+        } else {
+            rotate
+        };
+        crate::config::profiles::edit_bindings(
+            &mut next,
+            &profile,
+            stored.is_none() && matches!(profile, crate::config::ProfileRef::Builtin(_)),
+            |over| over.held_rotate = stored,
+        )
+        .map_err(crate::config::ConfigError::Invalid)?;
+        store.save(next)
     })
 }
 
@@ -886,4 +947,27 @@ async fn run_test(
         result: dto::feedback_token(outcome.kind),
         permission_required: outcome.permission_required,
     })
+}
+
+/// Status is read-only and never opens a system prompt.
+#[tauri::command]
+pub fn keyboard_shortcuts_status() -> &'static str {
+    #[cfg(target_os = "linux")]
+    if crate::platform::linux::session_kind() == crate::platform::linux::SessionKind::Wayland
+        && !crate::platform::linux::gnome::manages_shortcuts()
+    {
+        return crate::platform::linux::portal_keys::status();
+    }
+    "notApplicable"
+}
+
+/// Called only from the explicit settings action.
+#[tauri::command]
+pub fn enable_keyboard_shortcuts() {
+    #[cfg(target_os = "linux")]
+    if crate::platform::linux::session_kind() == crate::platform::linux::SessionKind::Wayland
+        && !crate::platform::linux::gnome::manages_shortcuts()
+    {
+        crate::platform::linux::portal_keys::enable();
+    }
 }

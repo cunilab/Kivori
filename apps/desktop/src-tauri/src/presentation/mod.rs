@@ -8,8 +8,10 @@ use crate::action::gesture_value::ValueUpdate;
 use kivori_model::presentation::{PrimaryState, ValueDisplay, ValueKind};
 use kivori_protocol::message::Presentation;
 
-/// How long a volume overlay stays up. Contract section 5 success-transient target.
-const VALUE_TRANSIENT_MS: u16 = 800;
+/// How long the full-screen Volume view stays up after the last volume change (each change sends a
+/// new `Presentation`, which restarts the clock on the device). About 1.2 s outlasts the gap between
+/// clicks of a slow, steady turn, so the screen does not flicker back mid-turn, yet returns promptly.
+const VALUE_TRANSIENT_MS: u16 = 1_200;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ProductSnapshot {

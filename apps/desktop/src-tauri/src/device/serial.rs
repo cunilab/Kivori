@@ -13,6 +13,22 @@ use std::time::Duration;
 /// Nominal baud (USB Serial/JTAG ignores the rate, but the API requires one).
 const BAUD: u32 = 115_200;
 
+/// How long one write may wait for room in the OS transmit buffer. The port's own timeout stays
+/// zero so reads never block, but on Linux/macOS `serialport` applies that same timeout to writes:
+/// a write that finds the CDC-ACM buffer momentarily full then fails at once with `TimedOut`, and
+/// the session would drop a healthy link (seen on Ubuntu as a connect/disconnect loop).
+const WRITE_TIMEOUT: Duration = Duration::from_millis(200);
+
+/// Whether opening a port failed because the user may not use it (Linux: no udev rule grants them
+/// the device). Not "busy" and not "gone": those are retried quietly, this one is shown to the user.
+#[must_use]
+pub fn is_permission_denied(error: &serialport::Error) -> bool {
+    matches!(
+        error.kind,
+        serialport::ErrorKind::Io(std::io::ErrorKind::PermissionDenied)
+    )
+}
+
 /// Enumerates the host's serial ports, mapping USB ports to their VID/PID.
 #[must_use]
 pub fn enumerate() -> Vec<PortCandidate> {
@@ -71,7 +87,10 @@ impl SerialPortLink {
                 Ok(())
             }
             Err(e) if e.kind() == std::io::ErrorKind::TimedOut => Ok(()),
-            Err(e) => Err(e),
+            Err(e) => {
+                tracing::debug!(error = %e, kind = ?e.kind(), "serial wait failed");
+                Err(e)
+            }
         }
     }
 }
@@ -90,11 +109,58 @@ impl SerialLink for SerialPortLink {
             Ok(n) => Ok(n),
             // A zero-timeout read reports "no data available now" as a timeout; that is 0 bytes, not an error.
             Err(e) if e.kind() == std::io::ErrorKind::TimedOut => Ok(0),
-            Err(e) => Err(e),
+            Err(e) => {
+                tracing::debug!(error = %e, kind = ?e.kind(), "serial read failed");
+                Err(e)
+            }
         }
     }
 
     fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
-        Write::write(&mut self.port, buf)
+        self.port.set_timeout(WRITE_TIMEOUT)?;
+        let result = Write::write(&mut self.port, buf);
+        self.port.set_timeout(Duration::ZERO)?;
+        result.inspect_err(|e| {
+            tracing::debug!(error = %e, kind = ?e.kind(), len = buf.len(), "serial write failed");
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serialport::{Error, ErrorKind};
+    use std::io;
+
+    #[test]
+    fn only_a_permission_failure_is_permission_denied() {
+        let io = |kind| Error::new(ErrorKind::Io(kind), "open failed");
+        assert!(is_permission_denied(&io(io::ErrorKind::PermissionDenied)));
+        // Busy, gone and unknown failures are retried quietly, not shown as a permission problem.
+        for kind in [
+            io::ErrorKind::NotFound,
+            io::ErrorKind::TimedOut,
+            io::ErrorKind::Other,
+            io::ErrorKind::AlreadyExists,
+        ] {
+            assert!(!is_permission_denied(&io(kind)), "{kind:?}");
+        }
+        assert!(!is_permission_denied(&Error::new(
+            ErrorKind::NoDevice,
+            "gone"
+        )));
+        assert!(!is_permission_denied(&Error::new(
+            ErrorKind::InvalidInput,
+            "bad"
+        )));
+    }
+
+    // Raw OS error 13 is EACCES on Unix; on Windows it is ERROR_INVALID_DATA.
+    #[cfg(unix)]
+    #[test]
+    fn a_real_eacces_from_the_os_is_classified() {
+        // What the posix backend produces for EACCES on open.
+        let from_os: Error = io::Error::from_raw_os_error(13).into();
+        assert!(is_permission_denied(&from_os), "{from_os:?}");
     }
 }

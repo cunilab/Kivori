@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { getGnomeShortcutPolicy } from '@/lib/ipc/gnome';
 import type { FormEvent, KeyboardEvent, ReactElement } from 'react';
 import { Button } from '@kivori/ui/components/button';
 import { Input } from '@kivori/ui/components/input';
@@ -19,6 +20,7 @@ import type {
   ControlRef,
   MacroSpec,
   ProfileConfigDto,
+  ProfileId,
   RotateSpec,
   SlotSpec,
   StepSpec,
@@ -36,6 +38,21 @@ export const LABEL_COMFORTABLE = 10;
 const NOT_SET = 'none';
 const DELAY = 'delay';
 
+const ROTATE_SUGGESTIONS: Partial<
+  Record<ProfileId, { label: string; cw: string; ccw: string; name: string }>
+> = {
+  browser: {
+    label: 'Tabs',
+    cw: 'Ctrl+Tab',
+    ccw: 'Ctrl+Shift+Tab',
+    name: p.rotateSuggestions.browser,
+  },
+  premiere: { label: 'Frame', cw: 'Right', ccw: 'Left', name: p.rotateSuggestions.premiere },
+  claudecode: { label: 'History', cw: 'Down', ccw: 'Up', name: p.rotateSuggestions.history },
+  codex: { label: 'History', cw: 'Down', ccw: 'Up', name: p.rotateSuggestions.history },
+  opencode: { label: 'Navigate', cw: 'Down', ccw: 'Up', name: p.rotateSuggestions.opencode },
+};
+
 /** The catalog id of a saved binding (a knob shortcut pair is `knobShortcuts` in the catalog). */
 export function catalogId(spec: ActionSpec | RotateSpec): string {
   return spec.kind === 'shortcuts' ? 'knobShortcuts' : spec.kind;
@@ -50,6 +67,17 @@ export function labelProblem(label: string): string | null {
   });
   return latin1 ? null : p.labelCharset;
 }
+
+const PROFILE_PICKER: ActionCatalogEntryDto = {
+  id: 'profilePicker',
+  slot: 'rotate',
+  scope: 'system',
+  verification: 'confirmed',
+  params: 'none',
+  availability: 'available',
+  reason: null,
+  runsWhenProtected: true,
+};
 
 export interface PickerTarget {
   /** `null` when picking a macro step (no profile involved). */
@@ -72,6 +100,10 @@ export interface ActionPickerProps {
   onSaveRotate: (target: PickerTarget, rotate: RotateSpec | null) => Promise<void>;
   /** Called with the chosen step when the target's control is `'step'`. */
   onPickStep?: ((step: StepSpec) => void) | undefined;
+  /** Opens the macro editor for a new macro while this picker stays open. */
+  onNewMacro?: (() => void) | undefined;
+  /** When this becomes an id in `macros`, the Macros choice selects it. */
+  newMacroId?: string | null | undefined;
 }
 
 /** Edit one control: pick an action, fill in what it needs, optionally name it for the device. */
@@ -83,6 +115,8 @@ export function ActionPicker({
   onSaveSlot,
   onSaveRotate,
   onPickStep,
+  onNewMacro,
+  newMacroId,
 }: ActionPickerProps): ReactElement {
   return (
     <Sheet open={target !== null} onOpenChange={(open) => !open && onClose()}>
@@ -97,6 +131,8 @@ export function ActionPicker({
             onSaveSlot={onSaveSlot}
             onSaveRotate={onSaveRotate}
             onPickStep={onPickStep}
+            onNewMacro={onNewMacro}
+            newMacroId={newMacroId}
           />
         ) : null}
       </SheetContent>
@@ -112,12 +148,15 @@ function PickerForm({
   onSaveSlot,
   onSaveRotate,
   onPickStep,
+  onNewMacro,
+  newMacroId,
 }: Omit<ActionPickerProps, 'target'> & { target: PickerTarget }): ReactElement {
-  const heldRotate = target.control === 'heldRotate';
-  const rotate = target.control === 'rotate' || heldRotate;
+  const heldTurn = target.control === 'heldRotate';
+  const rotate = target.control === 'rotate' || heldTurn;
   const stepMode = target.control === 'step';
+  const suggestion = rotate && target.profile ? ROTATE_SUGGESTIONS[target.profile.id] : undefined;
   const spec = target.spec;
-  const [id, setId] = useState(spec ? catalogId(spec) : heldRotate ? 'knobShortcuts' : NOT_SET);
+  const [id, setId] = useState(spec ? catalogId(spec) : NOT_SET);
   const [app, setApp] = useState(
     spec && 'app' in spec ? spec.app : (target.profile?.apps[0] ?? ''),
   );
@@ -128,25 +167,28 @@ function PickerForm({
   const [label, setLabel] = useState(
     spec?.kind === 'shortcuts'
       ? spec.label
-      : (target.label ??
-          (spec?.kind === 'appVolume'
-            ? (spec.label ?? '')
-            : heldRotate
-              ? t.gestures.heldRotate.name
-              : '')),
+      : (target.label ?? (spec?.kind === 'appVolume' ? (spec.label ?? '') : '')),
   );
   const [macroId, setMacroId] = useState(spec?.kind === 'macro' ? spec.id : '');
   const [delayMs, setDelayMs] = useState('500');
+  const appliedNewMacro = useRef<string | null>(null);
+  useEffect(() => {
+    if (!newMacroId || appliedNewMacro.current === newMacroId) return;
+    if (!macros.some((macro) => macro.id === newMacroId)) return;
+    appliedNewMacro.current = newMacroId;
+    setId('macro');
+    setMacroId(newMacroId);
+  }, [newMacroId, macros]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // A step is a discrete action that is not a macro (no nesting), or a wait.
-  const entries = (catalog ?? []).filter(
-    (e) =>
-      e.slot === (rotate ? 'rotate' : 'discrete') &&
-      !(stepMode && e.id === 'macro') &&
-      (!heldRotate || e.id === 'knobShortcuts'),
-  );
+  const entries = [
+    ...(heldTurn ? [PROFILE_PICKER] : []),
+    ...(catalog ?? []).filter(
+      (e) => e.slot === (rotate ? 'rotate' : 'discrete') && !(stepMode && e.id === 'macro'),
+    ),
+  ];
   const entry = entries.find((e) => e.id === id) ?? null;
   const isDelay = stepMode && id === DELAY;
   const params = entry?.params ?? 'none';
@@ -160,7 +202,6 @@ function PickerForm({
     );
   const showLabel =
     !stepMode &&
-    !heldRotate &&
     id !== NOT_SET &&
     id !== 'systemVolume' &&
     (!rotate || params === 'app' || params === 'shortcutPair');
@@ -176,7 +217,32 @@ function PickerForm({
     (stepMode && id === NOT_SET);
   const unavailable =
     id !== NOT_SET && !isDelay && (entry === null || entry.availability !== 'available');
-  const canSave = !saving && !problem && !missing && !unavailable;
+  const policyInput =
+    params === 'shortcut'
+      ? JSON.stringify([keys])
+      : params === 'shortcutPair'
+        ? JSON.stringify([cw, ccw])
+        : '';
+  const [policyResult, setPolicyResult] = useState({ input: '', reason: null as string | null });
+  useEffect(() => {
+    if (!policyInput) return;
+    let active = true;
+    const values = JSON.parse(policyInput) as string[];
+    void Promise.all(values.map((keys) => getGnomeShortcutPolicy(keys)))
+      .then((results) => {
+        if (active) setPolicyResult({ input: policyInput, reason: results.find(Boolean) ?? null });
+      })
+      .catch(() => {
+        if (active) setPolicyResult({ input: policyInput, reason: p.shortcutPolicyUnavailable });
+      });
+    return () => {
+      active = false;
+    };
+  }, [policyInput]);
+  const checkingPolicy = Boolean(policyInput) && policyResult.input !== policyInput;
+  const policyProblem = policyResult.input === policyInput ? policyResult.reason : null;
+  const canSave =
+    !saving && !problem && !missing && !unavailable && !checkingPolicy && !policyProblem;
 
   const discrete = (): ActionSpec | null => {
     switch (id) {
@@ -193,13 +259,14 @@ function PickerForm({
       case 'nextTrack':
       case 'systemMute':
       case 'micMute':
+      case 'switchView':
         return { kind: id };
       default:
         return null;
     }
   };
   const rotation = (): RotateSpec | null => {
-    if (heldRotate && id === NOT_SET) return null;
+    if (id === 'profilePicker') return { kind: 'profilePicker' };
     const text = label.trim();
     if (id === 'appVolume') {
       return text ? { kind: 'appVolume', app, label: text } : { kind: 'appVolume', app };
@@ -214,7 +281,9 @@ function PickerForm({
     if (stepMode) {
       const action = discrete();
       if (isDelay) onPickStep?.({ kind: 'delay', ms: delayValue });
-      else if (action && action.kind !== 'macro') onPickStep?.({ kind: 'action', action });
+      else if (action && action.kind !== 'macro' && action.kind !== 'switchView') {
+        onPickStep?.({ kind: 'action', action });
+      }
       onClose();
       return;
     }
@@ -231,7 +300,8 @@ function PickerForm({
 
   const groups = CATALOG_SCOPES.map((scope) => ({
     scope,
-    entries: entries.filter((e) => e.scope === scope),
+    // A view switch runs on the desk, so it cannot be a macro step.
+    entries: entries.filter((e) => e.scope === scope && !(stepMode && e.id === 'switchView')),
   })).filter((g) => g.entries.length > 0);
 
   return (
@@ -248,13 +318,34 @@ function PickerForm({
       </SheetHeader>
 
       <div className="flex-1 space-y-5 overflow-y-auto px-4">
+        {suggestion && (
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">{p.rotateSuggestions.hint}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={
+                !entries.some((e) => e.id === 'knobShortcuts' && e.availability === 'available')
+              }
+              onClick={() => {
+                setId('knobShortcuts');
+                setCw(suggestion.cw);
+                setCcw(suggestion.ccw);
+                setLabel(suggestion.label);
+              }}
+            >
+              {suggestion.name}
+            </Button>
+          </div>
+        )}
         <RadioGroup
           aria-label={p.actionGroup}
           value={id}
           onValueChange={(value) => setId(value as string)}
           className="gap-4"
         >
-          {(!rotate || heldRotate) && !stepMode && (
+          {!rotate && !stepMode && (
             <Option
               value={NOT_SET}
               name={p.notSet}
@@ -300,6 +391,7 @@ function PickerForm({
             {p.micNote}
           </p>
         )}
+        {id === 'switchView' && <p className="text-sm text-muted-foreground">{p.switchViewNote}</p>}
 
         {params === 'macro' && (
           <Field
@@ -307,19 +399,32 @@ function PickerForm({
             label={p.macro}
             hint={macros.length === 0 ? p.noMacros : undefined}
           >
-            <select
-              id="picker-macro"
-              value={macroId}
-              onChange={(e) => setMacroId(e.target.value)}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="">—</option>
-              {macros.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <select
+                id="picker-macro"
+                value={macroId}
+                onChange={(e) => setMacroId(e.target.value)}
+                className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">—</option>
+                {macros.map((macro) => (
+                  <option key={macro.id} value={macro.id}>
+                    {macro.name}
+                  </option>
+                ))}
+              </select>
+              {!stepMode && onNewMacro ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="shrink-0"
+                  disabled={macros.length >= MACRO_LIMITS.macros}
+                  onClick={onNewMacro}
+                >
+                  {t.macros.newInPicker}
+                </Button>
+              ) : null}
+            </div>
           </Field>
         )}
         {isDelay && (
@@ -400,6 +505,11 @@ function PickerForm({
             />
           </Field>
         )}
+        {policyProblem ? (
+          <p role="alert" className="text-sm text-destructive">
+            {policyProblem}
+          </p>
+        ) : null}
         {error ? (
           <p role="alert" className="text-sm text-destructive">
             {p.saveFailed}: {error}

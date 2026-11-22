@@ -307,58 +307,6 @@ fn run_on_desk(
 }
 
 #[test]
-fn fresh_held_rotation_runs_both_saved_shortcuts_through_the_input_pipeline() {
-    use kivori_desktop::config::{ConfigFile, ProfileId, RotateSpec};
-    let fg = Arc::new(FakeForeground::default());
-    *fg.0.lock().unwrap() = Foreground::App {
-        id: "notepad.exe".into(),
-        name: "Notepad".into(),
-    };
-    let synth = Arc::new(FakeInputSynth::new(Ok(())));
-    let mut desk = desk(&fg, &synth);
-    let _ = desk.tick(Duration::ZERO, &mut |_| {});
-    let mut file = ConfigFile::default();
-    file.profiles
-        .entry(ProfileId::General)
-        .or_default()
-        .held_rotate = Some(RotateSpec::Shortcuts {
-        cw: "Ctrl+Right".into(),
-        ccw: "Ctrl+Left".into(),
-        label: "Seek".into(),
-    });
-    let config =
-        kivori_desktop::config::resolve::resolve(kivori_desktop::desk::profile::builtins(), &file)
-            .unwrap();
-    desk.apply_config(&config, &mut |_| {});
-    let logged = run_on_desk(
-        &mut desk,
-        &[
-            ev(1, ControlId::PressedRotary, InputKind::GestureStarted, 200),
-            ev(
-                1,
-                ControlId::PressedRotary,
-                InputKind::Detent(Direction::Cw),
-                100,
-            ),
-            ev(
-                1,
-                ControlId::PressedRotary,
-                InputKind::Detent(Direction::Ccw),
-                100,
-            ),
-            ev(1, ControlId::PressedRotary, InputKind::GestureEnded, 90),
-        ],
-        Duration::from_millis(500),
-    );
-    assert!(logged.is_empty());
-    let deadline = std::time::Instant::now() + Duration::from_secs(2);
-    while synth.sent.lock().unwrap().len() < 2 && std::time::Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(2));
-    }
-    assert_eq!(*synth.sent.lock().unwrap(), ["Ctrl+Right", "Ctrl+Left"]);
-}
-
-#[test]
 fn a_stale_press_does_not_run_in_the_app_that_took_focus_meanwhile() {
     let fg = Arc::new(FakeForeground::default());
     let synth = Arc::new(FakeInputSynth::new(Ok(())));
