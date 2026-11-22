@@ -218,7 +218,7 @@ export const strings = {
     appVolume: 'App volume',
     appMute: 'App mute',
     macro: 'Macro',
-    nextView: 'Next view',
+    switchView: 'Switch screen view',
   },
   results: {
     processing: 'Working…',
@@ -237,9 +237,9 @@ export const strings = {
   controls: {
     title: 'Controls',
     description: 'Choose a control to edit its actions.',
-    doublePressFixed: 'Fixed. Choose the views under Display.',
-    holdNote:
-      'Hold a button for one second until the ring fills, then release. Middle button hold mutes every microphone.',
+    noMicMute:
+      'No control mutes your microphones. Bind Mic mute to a control to keep a hardware mute.',
+    holdNote: 'Hold a button for one second until the ring fills, then release.',
     howTitle: 'How controls work',
     newProfileToggle: 'New profile',
     tabsLabel: 'Controls sections',
@@ -266,12 +266,13 @@ export const strings = {
       unverified: 'Kivori can’t tell whether this worked',
       leastOfSteps: 'Only as certain as its least certain step',
     },
+    noProfilePicker:
+      'No profile keeps the profile picker on the device. You can still switch profiles from the desktop with Lock.',
     custom: 'Custom',
     edit: 'Edit',
     test: 'Test',
     testRow: 'Test {control}',
     addAction: 'Add action',
-    builtInTitle: 'Built-in gestures',
     rail: {
       active: 'Active now',
       locked: 'Locked',
@@ -437,12 +438,14 @@ export const strings = {
         keyboard: 'Keyboard',
         launch: 'Launch',
         macro: 'Macros',
+        display: 'Display',
         delay: 'Timing',
       },
       entries: {
         systemVolume: 'System volume',
         appVolume: 'App volume',
         knobShortcuts: 'Two shortcuts (one per direction)',
+        profilePicker: 'Profile picker (on the device)',
         playPause: 'Play / Pause',
         previousTrack: 'Previous track',
         nextTrack: 'Next track',
@@ -452,7 +455,9 @@ export const strings = {
         shortcut: 'Keyboard shortcut',
         launch: 'Launch app',
         macro: 'Macro',
+        switchView: 'Switch screen view',
       },
+      switchViewNote: 'Switches the screen between the views chosen under Display.',
       micNote:
         'Mutes every microphone this computer has, then checks each one. It is not an app’s own mute button, so Zoom or Teams may still show their own mute as off.',
       macro: 'Macro',
@@ -494,32 +499,28 @@ export const strings = {
       rotate: { name: 'Rotate', hint: 'Turn the knob. Faster turns take bigger steps.' },
       heldRotate: {
         name: 'Hold + rotate',
-        hint: 'Hold the knob down and turn two detents to open the profile picker. Release to choose.',
+        hint: 'Hold the knob and turn. The default opens the profile picker after two detents; release to choose. You can bind a volume or shortcuts instead.',
       },
       press: { name: 'Press', hint: 'Press and release within one second.' },
       doublePress: { name: 'Double press', hint: 'Two quick presses.' },
       hold: {
         name: 'Hold',
-        hint: 'Hold + turn switches profile. Holding the knob alone has no action.',
+        hint: 'Hold for one second, then release before two seconds. At two seconds recovery takes over.',
       },
       button1: { name: 'Left button', hint: 'Press and release.' },
       button2: {
         name: 'Middle button',
-        hint: 'Press and release. Hold for one second to mute every microphone.',
+        hint: 'Press and release.',
       },
       button3: { name: 'Right button', hint: 'Press and release.' },
       button1Hold: { name: 'Left button hold', hint: 'Hold for one second until the ring fills.' },
       button2Hold: {
         name: 'Middle button hold',
-        hint: 'Hold for one second until the ring fills, then release to mute every microphone.',
+        hint: 'Hold for one second until the ring fills.',
       },
       button3Hold: { name: 'Right button hold', hint: 'Hold for one second until the ring fills.' },
     },
-    heldRotateUnsupported: 'Update the device firmware to use the profile picker.',
-    profilePickerFixed:
-      'Fixed: picks a profile on the device. Turn two detents while held, then release to choose.',
-    knobHoldFixed: 'Fixed: Hold + turn switches profile.',
-    micMuteFixed: 'Fixed: Mic mute (every capture device).',
+    heldRotateUnsupported: 'Update the device firmware to bind Hold + turn.',
     macros: {
       title: 'Macros',
       description:

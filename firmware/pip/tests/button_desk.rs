@@ -17,8 +17,9 @@ use kivori_model::picker::{HoldActions, PickerName, ProfileChoices};
 use kivori_model::{Capabilities, CompanionState, ProtocolVersion, SendableState};
 use kivori_protocol::{
     decode_message, encode_message, ByeReason, ControlId, ControlLabelsUpdate, FirmwareVersion,
-    Hello, HoldActionsUpdate, InputEvent, InputKind, Message, Nonce, Ping, ProfileChoicesUpdate,
-    Ready, SetState, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
+    HeldTurnModeUpdate, Hello, HoldActionsUpdate, InputEvent, InputKind, Message, Nonce, Ping,
+    ProfileChoicesUpdate, Ready, SetState, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR,
+    PROTOCOL_MINOR,
 };
 
 const M1: Capabilities = Capabilities::PHYSICAL_INPUT_V1
@@ -93,7 +94,9 @@ impl Rig {
                 .union(Capabilities::CONTEXT_BUTTONS_V1)
                 .union(Capabilities::HELD_ROTATION_V1)
                 .union(Capabilities::PROFILE_PICKER_V1)
-                .union(Capabilities::HOLD_RING_V1),
+                .union(Capabilities::HOLD_RING_V1)
+                .union(Capabilities::KNOB_HOLD_V1)
+                .union(Capabilities::HELD_TURN_MODE_V1),
         };
         let mut rig = Self {
             runtime: Runtime::new(identity, RuntimeConfig::default()),
@@ -1504,4 +1507,152 @@ fn two_held_detents_open_the_picker_without_a_knob_hold_ring() {
     rig.switch(false);
     rig.run(100);
     assert_eq!(picks(&mut rig), [(1, 1)]);
+}
+
+fn held_turn(rig: &Rig, picker: bool) -> Message {
+    Message::HeldTurnMode(HeldTurnModeUpdate {
+        session: rig.nonce,
+        picker,
+    })
+}
+
+#[test]
+fn knob_hold_is_sent_and_rings_only_with_the_capability_and_a_label() {
+    let caps = M1
+        .union(Capabilities::KNOB_HOLD_V1)
+        .union(Capabilities::CONTROL_LABELS_V1);
+    let mut rig = Rig::new();
+    rig.connect(caps);
+    rig.send(&knob_labels(&rig, ""));
+    rig.run(50);
+    rig.switch(true);
+    rig.run(600);
+    assert_ne!(
+        ring_pixel(&rig),
+        RING_DOT,
+        "an empty Hold label draws no ring"
+    );
+    rig.switch(false);
+    rig.run(100);
+    assert_eq!(rig.button_kinds(), [InputKind::Press]);
+
+    rig.send(&knob_labels(&rig, "Mute"));
+    rig.run(50);
+    rig.switch(true);
+    rig.run(600);
+    assert_eq!(ring_pixel(&rig), RING_DOT, "a labelled Hold shows the ring");
+    rig.switch(false);
+    rig.run(100);
+    assert_eq!(
+        rig.button_kinds(),
+        [InputKind::Press],
+        "released inside the first second"
+    );
+
+    rig.press_for(1_200);
+    assert_eq!(rig.button_kinds(), [InputKind::Hold]);
+}
+
+#[test]
+fn a_held_turn_or_recovery_never_also_sends_knob_hold() {
+    let caps = PICKER
+        .union(Capabilities::KNOB_HOLD_V1)
+        .union(Capabilities::HELD_TURN_MODE_V1);
+    let mut rig = Rig::new();
+    rig.connect(caps);
+    rig.send(&knob_labels(&rig, "Mute"));
+    rig.send(&choices(&rig, 1, 0));
+    rig.run(50);
+    rig.switch(true);
+    rig.run(400);
+    assert_eq!(ring_pixel(&rig), RING_DOT);
+    rig.turn(Direction::Cw);
+    rig.turn(Direction::Cw);
+    rig.run(800);
+    assert_ne!(ring_pixel(&rig), RING_DOT, "the picker owns the press");
+    rig.switch(false);
+    rig.run(100);
+    let sent = rig.drain();
+    assert!(sent.iter().any(|m| matches!(m, Message::ProfilePick(_))));
+    assert!(
+        !sent.iter().any(|m| matches!(
+            m,
+            Message::InputEvent(e) if e.kind == InputKind::Hold
+        )),
+        "{sent:?}"
+    );
+
+    rig.switch(true);
+    assert!(
+        !rig.run_with_heartbeat(2_100),
+        "recovery at 2 s does not reboot"
+    );
+    rig.switch(false);
+    rig.run(100);
+    assert!(rig.button_kinds().is_empty(), "recovery cancels the Hold");
+}
+
+#[test]
+fn held_turn_mode_defaults_to_the_picker_and_can_switch_both_ways() {
+    let caps = PICKER
+        .union(Capabilities::HELD_TURN_MODE_V1)
+        .union(Capabilities::KNOB_HOLD_V1);
+    let mut rig = Rig::new();
+    rig.connect(caps);
+    rig.send(&choices(&rig, 1, 0));
+    rig.run(50);
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    rig.turn(Direction::Cw);
+    rig.switch(false);
+    rig.run(100);
+    let sent = rig.drain();
+    assert!(sent.iter().any(|m| matches!(m, Message::ProfilePick(_))));
+    assert!(
+        !sent.iter().any(|m| matches!(m, Message::InputEvent(_))),
+        "default mode is the picker: {sent:?}"
+    );
+
+    rig.send(&held_turn(&rig, false));
+    rig.run(50);
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    rig.turn(Direction::Ccw);
+    rig.switch(false);
+    rig.run(400);
+    let sent = rig.drain();
+    let inputs: Vec<_> = sent
+        .iter()
+        .filter_map(|m| match m {
+            Message::InputEvent(e) => Some((e.control, e.kind)),
+            _ => None,
+        })
+        .collect();
+    assert!(inputs.contains(&(ControlId::PressedRotary, InputKind::Detent(Direction::Cw))));
+    assert!(inputs.contains(&(ControlId::PressedRotary, InputKind::Detent(Direction::Ccw))));
+    assert!(!inputs.iter().any(|(control, kind)| {
+        *control == ControlId::Button
+            && matches!(
+                kind,
+                InputKind::Press | InputKind::Hold | InputKind::DoublePress
+            )
+    }));
+    assert!(
+        !sent.iter().any(|m| matches!(m, Message::ProfilePick(_))),
+        "non-picker mode opens no picker"
+    );
+
+    rig.send(&held_turn(&rig, true));
+    rig.run(50);
+    rig.switch(true);
+    rig.run(100);
+    rig.turn(Direction::Cw);
+    rig.turn(Direction::Cw);
+    rig.switch(false);
+    rig.run(100);
+    let sent = rig.drain();
+    assert!(sent.iter().any(|m| matches!(m, Message::ProfilePick(_))));
+    assert!(!sent.iter().any(|m| matches!(m, Message::InputEvent(_))));
 }

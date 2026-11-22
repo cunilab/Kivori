@@ -29,7 +29,7 @@ function desk(overrides: Partial<DeskStatusDto> = {}): DeskStatusDto {
     highLoad: false,
     pressAction: 'playPause',
     holdAction: 'mute',
-    doublePressAction: 'nextView',
+    doublePressAction: 'switchView',
     buttonActions: ['previousTrack', 'playPause', 'nextTrack'],
     profile: null,
     pinned: false,
