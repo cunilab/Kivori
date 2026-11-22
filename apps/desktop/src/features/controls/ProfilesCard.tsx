@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent, ReactElement, ReactNode } from 'react';
 import { toast } from 'sonner';
-import { Ellipsis, Plus } from 'lucide-react';
+import { Ellipsis, Lock, Plus } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,6 +57,7 @@ import { format, strings } from '@/lib/i18n/strings';
 import { errorText } from '@/lib/utils';
 import { friendlyAppName, groupApps } from './app-names';
 import type { AppGroup } from './app-names';
+import { NoAppsArt } from './illustrations';
 
 /** How many apps a profile shows before "+N more". */
 const APPS_SHOWN = 6;
@@ -69,7 +70,7 @@ export function appLabel(id: string): string {
 }
 
 /** The app's icon, or a neutral letter while there is none (or when this OS gives none). */
-function AppIcon({ id }: { id: string }): ReactElement {
+export function AppIcon({ id }: { id: string }): ReactElement {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
@@ -322,60 +323,193 @@ export function ProfilesCard({
   // The device holds the first few; a config can carry more (it is kept, never trimmed).
   const pinned = pinnedAll.slice(0, PROFILE_LIMITS.pinned);
   const offDevice = pinnedAll.slice(PROFILE_LIMITS.pinned);
+  const locked = desk !== null && desk.pinned && desk.profileId === profile.id;
 
   return (
     <div data-testid={part === 'new' ? 'new-profile-list' : 'profile-list'} className="space-y-4">
       {part !== 'new' ? (
-        <section
-          data-testid={`profile-${profile.id}`}
-          aria-label={profile.name}
-          className="space-y-3 rounded-xl border bg-card p-3 sm:p-4"
+        <div
+          key={profile.id}
+          className="space-y-4 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200"
         >
-          <div className="flex flex-wrap items-center gap-2">
-            {renaming?.id === profile.id ? (
-              <form onSubmit={saveName} className="flex flex-wrap items-center gap-2">
-                <Label htmlFor={`rename-${profile.id}`} className="sr-only">
-                  {t.renameLabel}
-                </Label>
-                <Input
-                  id={`rename-${profile.id}`}
-                  className="h-8 w-48"
-                  value={renaming.value}
-                  aria-invalid={nameProblem(renaming.value) !== null}
-                  onChange={(e) => setRenaming({ id: profile.id, value: e.target.value })}
-                />
-                <Button size="sm" type="submit" disabled={nameProblem(renaming.value) !== null}>
-                  {t.renameSave}
-                </Button>
-                <Button size="sm" type="button" variant="ghost" onClick={() => setRenaming(null)}>
-                  {t.renameCancel}
-                </Button>
-                <p role="status" className="basis-full text-xs text-muted-foreground">
-                  {nameProblem(renaming.value) ?? t.nameHint}
-                </p>
-              </form>
-            ) : (
-              <h2 className="text-base font-semibold">{profile.name}</h2>
-            )}
-            <Badge variant="outline">{profile.custom ? t.yourProfile : t.builtIn}</Badge>
-            <div className="ml-auto flex items-center gap-2">
-              {desk?.pinned && desk.profileId === profile.id ? (
-                <Button size="sm" variant="outline" onClick={() => pinProfile(null).catch(fail)}>
-                  {t.follow}
-                </Button>
+          <section
+            data-testid={`profile-${profile.id}`}
+            aria-label={profile.name}
+            className="space-y-4 rounded-xl border bg-card p-3 sm:p-4"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              {renaming?.id === profile.id ? (
+                <form onSubmit={saveName} className="flex flex-wrap items-center gap-2">
+                  <Label htmlFor={`rename-${profile.id}`} className="sr-only">
+                    {t.renameLabel}
+                  </Label>
+                  <Input
+                    id={`rename-${profile.id}`}
+                    className="h-8 w-48"
+                    value={renaming.value}
+                    aria-invalid={nameProblem(renaming.value) !== null}
+                    onChange={(e) => setRenaming({ id: profile.id, value: e.target.value })}
+                  />
+                  <Button size="sm" type="submit" disabled={nameProblem(renaming.value) !== null}>
+                    {t.renameSave}
+                  </Button>
+                  <Button size="sm" type="button" variant="ghost" onClick={() => setRenaming(null)}>
+                    {t.renameCancel}
+                  </Button>
+                  <p role="status" className="basis-full text-xs text-muted-foreground">
+                    {nameProblem(renaming.value) ?? t.nameHint}
+                  </p>
+                </form>
               ) : (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => pinProfile(profile.id).catch(fail)}
-                  aria-describedby={`pin-hint-${profile.id}`}
-                >
-                  {t.pin}
-                </Button>
+                <h2 className="text-base font-semibold">{profile.name}</h2>
               )}
-              <span id={`pin-hint-${profile.id}`} className="sr-only">
-                {t.pinHint}
-              </span>
+              <Badge variant="outline">{profile.custom ? t.yourProfile : t.builtIn}</Badge>
+              {profile.custom ? (
+                <div className="ml-auto">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={format(t.profileOptions, { profile: profile.name })}
+                        />
+                      }
+                    >
+                      <Ellipsis aria-hidden="true" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-auto min-w-40">
+                      <DropdownMenuItem
+                        onClick={() => setRenaming({ id: profile.id, value: profile.name })}
+                      >
+                        {t.rename}
+                        <span className="sr-only"> {profile.name}</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem variant="destructive" onClick={() => setDeleting(profile)}>
+                        {t.delete}
+                        <span className="sr-only"> {profile.name}</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium">{t.whenTitle}</h3>
+              {['claudecode', 'codex', 'opencode'].includes(profile.id) ? (
+                <p className="text-xs text-muted-foreground">{t.agentHint}</p>
+              ) : null}
+              {profile.id === 'general' ? (
+                <p className="text-xs text-muted-foreground">{t.generalApps}</p>
+              ) : groups.length === 0 ? (
+                <div className="flex items-center gap-3">
+                  <NoAppsArt />
+                  <p className="text-xs text-muted-foreground">{t.noApps}</p>
+                </div>
+              ) : (
+                <ul aria-label={t.appsLabel} className="flex flex-wrap gap-2">
+                  {visible.map((group) => (
+                    <li
+                      key={group.primary}
+                      data-testid={`app-${profile.id}-${group.primary}`}
+                      className="flex items-center gap-2 rounded-md bg-muted py-1 pr-1 pl-2 text-sm"
+                    >
+                      <AppIcon id={group.primary} />
+                      <span>{group.name}</span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              className="size-6"
+                              aria-label={format(t.appOptions, { app: group.name })}
+                            />
+                          }
+                        >
+                          <Ellipsis aria-hidden="true" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="max-h-72 w-auto min-w-44">
+                          {others
+                            .filter((p) => p.id !== 'general')
+                            .map((p) => (
+                              <DropdownMenuItem key={p.id} onClick={() => void moveGroup(p, group)}>
+                                {format(t.moveToItem, { profile: p.name })}
+                              </DropdownMenuItem>
+                            ))}
+                          {others.some((p) => p.id !== 'general') ? (
+                            <DropdownMenuSeparator />
+                          ) : null}
+                          <DropdownMenuGroup>
+                            <DropdownMenuLabel>{t.removeHint}</DropdownMenuLabel>
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => {
+                                const general = config.profiles.find((p) => p.id === 'general');
+                                if (general) void moveGroup(general, group);
+                              }}
+                            >
+                              {format(t.remove, { app: group.name })}
+                            </DropdownMenuItem>
+                          </DropdownMenuGroup>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </li>
+                  ))}
+                  {groups.length > APPS_SHOWN ? (
+                    <li>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        aria-expanded={showAll}
+                        onClick={() => setExpanded(showAll ? null : profile.id)}
+                      >
+                        {showAll ? t.fewerApps : format(t.moreApps, { count: hidden })}
+                      </Button>
+                    </li>
+                  ) : null}
+                </ul>
+              )}
+              {profile.id !== 'general' ? (
+                <Button size="sm" variant="outline" onClick={() => setPicking(profile)}>
+                  <Plus data-icon="inline-start" aria-hidden="true" />
+                  {t.addApp}
+                  <span className="sr-only"> {profile.name}</span>
+                </Button>
+              ) : null}
+              <div className="flex flex-wrap items-center gap-2">
+                {locked ? (
+                  <Lock className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                ) : null}
+                <p className="text-sm">{locked ? t.modeLocked : t.modeAuto}</p>
+                {locked ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => pinProfile(null).catch(fail)}
+                    aria-describedby={`pin-hint-${profile.id}`}
+                  >
+                    {t.follow}
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => pinProfile(profile.id).catch(fail)}
+                    aria-describedby={`pin-hint-${profile.id}`}
+                  >
+                    {t.pin}
+                  </Button>
+                )}
+                <span id={`pin-hint-${profile.id}`} className="sr-only">
+                  {t.pinHint}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium">{t.deviceTitle}</h3>
               <div className="flex items-center gap-2">
                 <Switch
                   id={`cycle-${profile.id}`}
@@ -394,134 +528,29 @@ export function ProfilesCard({
                 <Label htmlFor={`cycle-${profile.id}`} className="text-xs">
                   {t.inPinCycle}
                 </Label>
-                <span id={`cycle-hint-${profile.id}`} className="sr-only">
-                  {t.inPinCycleHint}
-                </span>
               </div>
-              {profile.id !== 'general' ? (
-                <Button size="sm" variant="outline" onClick={() => setPicking(profile)}>
-                  <Plus data-icon="inline-start" aria-hidden="true" />
-                  {t.addApp}
-                  <span className="sr-only"> {profile.name}</span>
-                </Button>
-              ) : null}
-              {profile.custom ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        aria-label={format(t.profileOptions, { profile: profile.name })}
-                      />
-                    }
-                  >
-                    <Ellipsis aria-hidden="true" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-auto min-w-40">
-                    <DropdownMenuItem
-                      onClick={() => setRenaming({ id: profile.id, value: profile.name })}
-                    >
-                      {t.rename}
-                      <span className="sr-only"> {profile.name}</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem variant="destructive" onClick={() => setDeleting(profile)}>
-                      {t.delete}
-                      <span className="sr-only"> {profile.name}</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+              <p id={`cycle-hint-${profile.id}`} className="text-xs text-muted-foreground">
+                {t.inPinCycleHint}
+              </p>
+              <p data-testid="pinned-list" className="text-xs text-muted-foreground">
+                {pinned.length === 0
+                  ? t.pinnedNone
+                  : format(t.pinnedList, { names: pinned.map((p) => p.name).join(', ') })}{' '}
+                {pinned.length === 1 ? t.pinnedFew : ''}
+              </p>
+              {offDevice.length > 0 ? (
+                <p data-testid="pinned-overflow" role="status" className="text-xs text-warning">
+                  {format(t.pinnedOverflow, {
+                    max: PROFILE_LIMITS.pinned,
+                    names: offDevice.map((p) => p.name).join(', '),
+                  })}
+                </p>
               ) : null}
             </div>
-          </div>
-
-          <p data-testid="pinned-list" className="text-xs text-muted-foreground">
-            {pinned.length === 0
-              ? t.pinnedNone
-              : format(t.pinnedList, { names: pinned.map((p) => p.name).join(', ') })}{' '}
-            {pinned.length === 1 ? t.pinnedFew : ''}
-          </p>
-          {offDevice.length > 0 ? (
-            <p data-testid="pinned-overflow" role="status" className="text-xs text-warning">
-              {format(t.pinnedOverflow, {
-                max: PROFILE_LIMITS.pinned,
-                names: offDevice.map((p) => p.name).join(', '),
-              })}
-            </p>
-          ) : null}
-          {['claudecode', 'codex', 'opencode'].includes(profile.id) ? (
-            <p className="text-xs text-muted-foreground">{t.agentHint}</p>
-          ) : null}
-          {profile.id === 'general' ? (
-            <p className="text-xs text-muted-foreground">{t.generalApps}</p>
-          ) : groups.length === 0 ? (
-            <p className="text-xs text-muted-foreground">{t.noApps}</p>
-          ) : (
-            <ul aria-label={t.appsLabel} className="flex flex-wrap gap-2">
-              {visible.map((group) => (
-                <li
-                  key={group.primary}
-                  data-testid={`app-${profile.id}-${group.primary}`}
-                  className="flex items-center gap-2 rounded-md bg-muted py-1 pr-1 pl-2 text-sm"
-                >
-                  <AppIcon id={group.primary} />
-                  <span>{group.name}</span>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button
-                          size="icon-sm"
-                          variant="ghost"
-                          className="size-6"
-                          aria-label={format(t.appOptions, { app: group.name })}
-                        />
-                      }
-                    >
-                      <Ellipsis aria-hidden="true" />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="max-h-72 w-auto min-w-44">
-                      {others
-                        .filter((p) => p.id !== 'general')
-                        .map((p) => (
-                          <DropdownMenuItem key={p.id} onClick={() => void moveGroup(p, group)}>
-                            {format(t.moveToItem, { profile: p.name })}
-                          </DropdownMenuItem>
-                        ))}
-                      {others.some((p) => p.id !== 'general') ? <DropdownMenuSeparator /> : null}
-                      <DropdownMenuGroup>
-                        <DropdownMenuLabel>{t.removeHint}</DropdownMenuLabel>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => {
-                            const general = config.profiles.find((p) => p.id === 'general');
-                            if (general) void moveGroup(general, group);
-                          }}
-                        >
-                          {format(t.remove, { app: group.name })}
-                        </DropdownMenuItem>
-                      </DropdownMenuGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </li>
-              ))}
-              {groups.length > APPS_SHOWN ? (
-                <li>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-expanded={showAll}
-                    onClick={() => setExpanded(showAll ? null : profile.id)}
-                  >
-                    {showAll ? t.fewerApps : format(t.moreApps, { count: hidden })}
-                  </Button>
-                </li>
-              ) : null}
-            </ul>
-          )}
-        </section>
+          </section>
+          {children}
+        </div>
       ) : null}
-
-      {part !== 'new' ? children : null}
 
       {part !== 'profile' ? (
         <section aria-label={t.newProfileTitle} className="space-y-2">

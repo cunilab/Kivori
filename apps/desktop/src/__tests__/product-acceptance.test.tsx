@@ -49,10 +49,9 @@ async function navigate(user: ReturnType<typeof userEvent.setup>, name: string):
 
 const gesture = (name: string) => within(screen.getByTestId(`gesture-${name}`));
 
-/** Runs "Test" from a control row's overflow menu. */
+/** Runs "Test" from a control row's visible Test button. */
 async function testRow(user: ReturnType<typeof userEvent.setup>, name: string): Promise<void> {
-  await user.click(gesture(name).getByRole('button', { name: /^More actions for/ }));
-  await user.click(await screen.findByRole('menuitem', { name: 'Test' }));
+  await user.click(gesture(name).getByRole('button', { name: /^Test / }));
 }
 
 beforeEach(async () => {
