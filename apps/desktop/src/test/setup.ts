@@ -63,3 +63,8 @@ window.scrollTo = (() => {}) as typeof window.scrollTo;
 
 // Pages remember their open tab for the session; every test starts from each page's first tab.
 afterEach(() => resetPageTabs());
+
+// jsdom drives requestAnimationFrame from setInterval. A test that fakes setInterval strands that
+// timer for the rest of the file, so Radix Presence never unmounts inactive tab content afterwards.
+window.requestAnimationFrame = (cb) => window.setTimeout(() => cb(performance.now()), 16);
+window.cancelAnimationFrame = (id) => window.clearTimeout(id);
