@@ -52,11 +52,12 @@ export function controlSupported(
     case 'rotate':
       return true;
     case 'heldRotate':
-      // The device's own profile picker (the knob switch held and turned).
-      return hasCapability(connection, 'profilePickerV1');
+      // Bindable Hold + turn. Without it the device keeps its own picker.
+      return hasCapability(connection, 'heldTurnModeV1');
     case 'press':
-    case 'hold':
       return hasCapability(connection, 'buttonInputV1');
+    case 'hold':
+      return hasCapability(connection, 'knobHoldV1');
     case 'doublePress':
       return (
         hasCapability(connection, 'buttonInputV1') && hasCapability(connection, 'doublePressV1')

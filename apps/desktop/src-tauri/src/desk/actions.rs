@@ -79,6 +79,9 @@ pub enum Action {
     VolumeNudge { app: Option<String> },
     /// Run a user macro's steps in order.
     Macro(Arc<Macro>),
+    /// Switch the screen between the views chosen under Display. The desk runs this by calling
+    /// `next_mode`; it is not a macro step.
+    SwitchView,
 }
 
 impl Action {
@@ -99,6 +102,8 @@ impl Action {
                 .actions()
                 .next()
                 .map_or(ActionKind::Shortcut, Action::wire_kind),
+            // Not sent as device action feedback: the desk changes the view itself.
+            Action::SwitchView => ActionKind::Launch,
         }
     }
 }
@@ -121,6 +126,7 @@ impl Action {
             }
             Action::VolumeNudge { app: None } => ActionToken::Volume,
             Action::Macro(_) => ActionToken::Macro,
+            Action::SwitchView => ActionToken::SwitchView,
         }
     }
 
@@ -137,7 +143,8 @@ impl Action {
             | Action::ToggleMicMute
             | Action::AppMute { .. }
             | Action::AppVolumeStep { .. }
-            | Action::VolumeNudge { .. } => true,
+            | Action::VolumeNudge { .. }
+            | Action::SwitchView => true,
             Action::Shortcut(_) | Action::Launch(_) | Action::Macro(_) => false,
         }
     }
@@ -158,7 +165,8 @@ impl Action {
             | Action::Launch(_)
             | Action::AppMute { .. }
             | Action::AppVolumeStep { .. }
-            | Action::VolumeNudge { .. } => false,
+            | Action::VolumeNudge { .. }
+            | Action::SwitchView => false,
         }
     }
 
@@ -171,6 +179,7 @@ impl Action {
             Action::NextTrack => "Next".into(),
             Action::ToggleMute | Action::AppMute { .. } => "Mute".into(),
             Action::ToggleMicMute => "Mic".into(),
+            Action::SwitchView => "View".into(),
             Action::AppVolumeStep { .. } | Action::VolumeNudge { .. } => "Volume".into(),
             Action::Macro(m) => m.name.clone(),
             Action::Shortcut(shortcut) => shortcut.to_string(),
@@ -230,23 +239,29 @@ pub struct ButtonSlots {
 pub struct Bindings {
     pub press: Slot,
     pub hold: Slot,
-    /// The three contextual buttons, left to right. The middle one's Hold is reserved for
-    /// muting every capture device and cannot be rebound.
+    /// Knob double press. Unbound does nothing.
+    pub double_press: Slot,
+    /// The three contextual buttons, left to right. The middle one's Hold defaults to mic mute.
     pub buttons: [ButtonSlots; 3],
 }
 
 impl Default for Bindings {
     fn default() -> Self {
-        Self {
-            press: Slot::bound(Action::ToggleMute),
-            hold: Slot::default(),
-            // A media row: the most common use, and every result is honest (Unverified).
-            buttons: [Action::PreviousTrack, Action::PlayPause, Action::NextTrack].map(|action| {
+        let mut buttons =
+            [Action::PreviousTrack, Action::PlayPause, Action::NextTrack].map(|action| {
                 ButtonSlots {
                     press: Slot::bound(action),
                     hold: Slot::default(),
                 }
-            }),
+            });
+        // The ring keeps the words it has always shown. The action's own label is only "Mic".
+        buttons[1].hold = Slot::named(Action::ToggleMicMute, "Mic mute");
+        Self {
+            press: Slot::bound(Action::ToggleMute),
+            hold: Slot::default(),
+            double_press: Slot::bound(Action::SwitchView),
+            // A media row: the most common use, and every result is honest (Unverified).
+            buttons,
         }
     }
 }
@@ -255,7 +270,7 @@ impl Bindings {
     /// Whether any bound action presses keys (see [`Action::needs_key_events`]).
     #[must_use]
     pub fn needs_key_events(&self) -> bool {
-        [&self.press, &self.hold]
+        [&self.press, &self.hold, &self.double_press]
             .into_iter()
             .chain(self.buttons.iter().flat_map(|b| [&b.press, &b.hold]))
             .any(|slot| slot.action.as_ref().is_some_and(Action::needs_key_events))
@@ -372,6 +387,9 @@ fn execute_while(
             }
         }
         Action::ToggleMicMute => toggle_mic_mute(platform.mic.as_ref()),
+        // The desk applies this by calling `next_mode` and does not enqueue it. The resulting
+        // view is the app's own state, so the outcome is confirmed.
+        Action::SwitchView => Outcome::of(FeedbackKind::StateConfirmed),
         Action::AppMute { app } => {
             // Never falls back to the system mute (invariant 19).
             if !matches!(
@@ -588,8 +606,9 @@ fn execute_macro(
                 }
                 continue;
             }
-            // Nesting is refused when a macro is resolved; refuse it here too, never recurse.
-            Step::Run(Action::Macro(_)) => Outcome::error(),
+            // Nesting and view switches are refused when a macro is resolved; refuse them here too.
+            // A view switch runs on the desk, which this worker cannot reach.
+            Step::Run(Action::Macro(_) | Action::SwitchView) => Outcome::error(),
             Step::Run(action) => {
                 let injects = matches!(action, Action::Shortcut(_) | Action::Launch(_));
                 if injects && !same_place(start, &platform.foreground.foreground()) {
@@ -1339,6 +1358,7 @@ mod tests {
             Action::ToggleMicMute,
             Action::Launch("notes".into()),
             Action::AppMute { app: "a".into() },
+            Action::SwitchView,
         ] {
             assert!(!action.needs_key_events(), "{action:?}");
         }

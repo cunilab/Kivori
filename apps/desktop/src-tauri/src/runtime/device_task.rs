@@ -891,6 +891,9 @@ fn device_loop(
                 if let Some(holds) = desk_out.holds {
                     write_failed |= session.send_hold_actions(open_link, holds).is_err();
                 }
+                if let Some(picker) = desk_out.held_turn_picker {
+                    write_failed |= session.send_held_turn_mode(open_link, picker).is_err();
+                }
                 if write_failed {
                     recover_link(
                         &mut activity_planner,
