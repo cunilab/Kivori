@@ -103,6 +103,8 @@ A **1.4 mm reset access hole in the bottom cover** is aligned to the flipped boa
 3. Wrap the RP2040 pins and lay the grooves, then the left-column wires through their holes. On the back wrap the encoder pins and the key pins (fit the encoder module after the key pins, as its board covers the area). Seat the three switches in the plate from the front.
 4. Check the display (step 6), glue the white lip into the cowl window, lower the cowl over the module (its four pads land on the board corners over the pegs, its four pegs go into the shell face) and press it flat. Nothing of the cowl or lip touches the glass or the flex cable.
 
+5. **Fasteners and feet.** Four M2 × 12 self-tapping screws (pan head up to 4 mm, counterbore Ø4.4) go from under the plinth through each back-plate column and the carrier into the face posts and clamp back plate, carrier and shell together. There are no printed feet: stick one round rubber bumper over each screw counterbore, four in all.
+
 **Service**: pull the cowl (friction pegs) and lift the board straight off its pegs; 6 mm of free wire between each pin root and the cradle lets you tilt it for a look, no more. To go further, unwrap the ten wires at the pin roots (they are re-wrapped like new; keep the 60 mm tails) and the board is free.
 
 ## PETG printing
