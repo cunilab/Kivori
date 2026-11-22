@@ -72,7 +72,7 @@ libpulse-binding = "2.30"
 # systemd-logind sleep/lock signals. Already in the tree via tauri.
 zbus = "5"
 # Pure-Rust X11 client: the focused window (`_NET_ACTIVE_WINDOW`) for per-app profiles.
-x11rb = "0.13"
+x11rb = "0.14"
 
 [target.'cfg(windows)'.dependencies]
 # Windows Core Audio (WASAPI) master-volume backend (Task 12), CPU/RAM and local time (M1), and
