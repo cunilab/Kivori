@@ -1,9 +1,9 @@
 # Hardware validation
 
 The one checklist for everything CI cannot prove: real RP2040-Zero + ST7789 + HW-040 hardware, real
-OS behavior, real timing. Rows ticked before 2026-11-05 were run on the ESP32-C3 SuperMini units; the
-board changed in #179 (ADR-0019), so rows about the board, pins, flashing and timing need a run on
-the RP2040-Zero before they count for it. Host-sim and other host tests are never promoted to physical evidence.
+OS behavior, real timing. Rows ticked before 2026-11-05 were run on the previous controller board
+(#179, ADR-0019), so rows about the board, pins, flashing and timing need a run on the RP2040-Zero
+before they count for it. Host-sim and other host tests are never promoted to physical evidence.
 
 For issues #164, #165 and #167, use the [Windows desktop checklist](./windows-validation.md)
 to record installed-app launch, close-to-tray and security-warning evidence. Those checks remain
@@ -453,7 +453,7 @@ Desktop automation was unavailable, so no native click-through has been verified
 **Latency and wiring**
 
 - [ ] 3.14 Flash `just fw-flash-latency`, turn single detents about 30 times, read `L` (last) and `H` (max) off the panel corner | max under 50 ms detent to flush complete; record several readings plus `H`. This is a gate: the phase is not done while this fails or is unmeasured. Scan-out adds up to one refresh on top. Worst case predicted at about 85 ms (50 ms desktop tick, serial, 33 ms frame), so expect to tune; remedies in order: blocking serial read instead of the 50 ms tick, then a shorter frame interval, then device-local feedback. Re-measure after any change, then `just fw-flash`
-- [ ] 3.15 Check wiring with a continuity test | CLK=GP5, DT=GP4, SW=GP3, COM to GND, VCC to 3V3. Do this first: rows 3.1 to 3.4 depend on it
+- [x] 3.15 2026-11-22 Check wiring with a continuity test | CLK=GP5, DT=GP4, SW=GP3, COM to GND, VCC to 3V3. Do this first: rows 3.1 to 3.4 depend on it
 
 Measured 2026-10-31 on the owner's assembled unit over USB on macOS (`device_probe PORT inputs`):
 with CLK as quadrature channel A, three clicks to the right arrived as `Detent(Ccw)` and three to
@@ -542,7 +542,7 @@ Wiring: three momentary tactile switches (12×12 mm, 10 mm tall, seller drawing 
 capacitors; firmware enables the internal pull-ups and debounces 20 ms. Default bindings, left to
 right: Previous track, Play/Pause, Next track (Press only; Hold unbound by default).
 
-- [ ] 5.1 Before wiring: inspect the board | a Waveshare RP2040-Zero whose pinout matches the profile (a clone with another pinout is set aside); header pins soldered only as `hardware/enclosure-v7/README.md` lists
+- [x] 5.1 2026-11-22 Before wiring: inspect the board | a Waveshare RP2040-Zero whose pinout matches the profile (a clone with another pinout is set aside); the full 23-pin male header soldered on, as `hardware/enclosure-v8/README.md` lists
 - [ ] 5.2 Power on with each button held in turn | B1 (GP6), B2 (GP7) and B3 (GP8): Kivori boots normally (no Pip input is a boot-critical pin). With the board's own BOOT button held at plug-in: the `RPI-RP2` drive appears (ROM UF2 bootloader). With the display connected and no button held, the board boots
 - [ ] 5.2a Repeat power-on, reset and recovery reboot with every combination of B1/B2/B3 held | record USB enumeration and boot mode; none of the combinations may change the boot mode (the RP2040 has no strapping pins; only the board's BOOT button does). Release the buttons and verify recovery by reset, with no stale input action. This is a physical check; restarting a virtual Runtime does not exercise the ROM.
 - [ ] 5.3 Each button, ten short presses while music plays | exactly one Previous / Play-Pause / Next per press; amber "?" badge (Unverified); a white frame on press
@@ -606,7 +606,7 @@ behavior and measured timings still need these rows. See [virtual-pip.md](./virt
 
 ## RP2040-Zero bring-up (#179)
 
-Run on a bare RP2040-Zero (USB only, no carrier) with firmware source `cd84f7e0d806` (clean). Rows needing the screen, knob, keys or LED wait for the v7 carrier.
+Run on a bare RP2040-Zero (USB only, no carrier) with firmware source `cd84f7e0d806` (clean). Rows needing the screen, knob or keys are R.7 and R.8.
 
 - [x] R.1 2026-11-06 Copy the app's UF2 (`kivori_desktop::uf2::elf_to_uf2`) onto `RPI-RP2` | accepted; `INFO_UF2.TXT` reads `Board-ID: RPI-RP2`, matching the app's drive check
 - [x] R.2 2026-11-06 Enumeration | `Kivori` / `Kivori Pip`, `2E8A:000A`, serial = 32 hex digits of the derived device id
@@ -614,8 +614,8 @@ Run on a bare RP2040-Zero (USB only, no carrier) with firmware source `cd84f7e0d
 - [x] R.4 2026-11-06 Internals (`KIVORI_PROBE_SECS=8 device_probe PORT internals`) | compose 110 ms, 9 fps, flush 0 to 5 ms, busy 100 %, stack min free 9,976 to 9,988 B, static RAM 151,088 B of 270,336 B
 - [x] R.5 2026-11-06 1200-baud touch on the running unit | `RPI-RP2` appears in about 2 s, no button
 - [x] R.6 2026-11-06 Reflash after the touch | back as `Kivori Pip` in about 2 s without a replug, handshake OK
-- [ ] R.7 On the v7 carrier: panel shows the buddy, knob, press and the three keys act
-- [ ] R.8 On the v7 carrier: the app's own Update and Restore (BOOT) flows against this board (Phase 8)
+- [ ] R.7 On the assembled unit: panel shows the buddy, knob, press and the three keys act
+- [ ] R.8 On the assembled unit: the app's own Update and Restore (BOOT) flows against this board (Phase 8)
 
 Found on the first unit: it enumerated but never answered (0 bytes in 2 minutes). On-device counters read 0 bytes received, 36 queued but never delivered, and a 750 ms loop: the USB interrupt only polled, and the RP2040 re-raises it until an OUT packet is read. Fixed by reading OUT data in the interrupt (architecture, Transport).
 
@@ -749,7 +749,6 @@ Rules in [product.md](./product.md#updates-us10-us11); design in ADR-0014 to ADR
 | 2026-09-07 | CI Windows startup smoke (automated)                    | `kivori-desktop.exe` alive for 10 s, no stack overflow. Not a manual row                                                                                                                                                                                                                                                                                                                                                                                     |
 | 2026-09-08 | Mascot automated checks                                 | 204 workspace tests, 36 firmware host-sim tests, clippy clean, blob 116,634 of 131,072 bytes. Panel fps, SPI time and playback not measured                                                                                                                                                                                                                                                                                                                  |
 | 2026-09-25 | macOS 27, debug build, no device                        | Rows 1.1, 1.3, 1.4 passed on macOS; 1.22 partial; 1.19 code review only                                                                                                                                                                                                                                                                                                                                                                                      |
-| 2026-10-02 | macOS 27, ESP32-C3 over USB, automated (no human input) | `espflash` flashed the product build (4 MB flash, rev v0.4); production `Session` handshake Connected in 25 to 776 ms over repeated warm reconnects, heartbeats stable for 8 s each. Found and fixed: a reconnect to a device already in the desired state never learned it (no `StateReport`); verified fixed on the board. Interrupt edge-capture and M1 firmware boot and connect. Not a manual row: cold plug, knob, switch and panel were not exercised |
 | 2026-10-02 | macOS 27, CoreAudio backend, automated                  | Volume set and read-back, mute toggle and read-back, an external `osascript` change arriving as External, own writes tagged Kivori; original volume and mute restored. CPU, RAM and local time read                                                                                                                                                                                                                                                          |
 
 Screenshots and logs from before this consolidation stay in git history.
@@ -1726,8 +1725,7 @@ one virtual session for 432 s and 107,684 alternating detents until both directi
 numbers had wrapped (host 1, device 1). It recorded no sequence gap, malformed frame, device error,
 stale-input rejection or reconnect, every detent arrived, the paired turns left volume at 50 and a
 press after the wrap still ran. A real Windows session wraps after roughly 65,536 frames, well within
-the soak and a workday. A second run on 2026-10-31, on modelled ESP32-C3 timing, passed with 201,286
-detents in 805 s (host 1, device 3 wraps) and the same checks; heartbeat round trip at most 94 ms.
+the soak and a workday.
 See [virtual-pip.md](./virtual-pip.md#endurance-run).
 
 Item 17 preparation, 2026-10-25, Andress-MacBook-Air. No Windows soak or workday was started here.
@@ -1890,138 +1888,3 @@ completion ticks; shortcut tests have a countdown and await their own result; a 
 not undo earlier steps; trigger-only feedback stays Unverified with a quiet device pulse. The guide
 also explains the single-press wait and no longer promises that signing removes a Windows warning.
 These documentation corrections have not yet been evaluated with a participant.
-
-## M2.9 assembled-enclosure acceptance (open)
-
-Owner-managed reference only as of 2026-10-26; this former item 19 is excluded from M2.9 software
-scope. Retained measurements, nominal checks and procedures are historical supporting material,
-not an active software task or a claim that the enclosure passed physical acceptance.
-
-Item 19 preparation, 2026-10-25, Andress-MacBook-Air. No component was physically measured, printed
-or assembled here. Item 19 remains unchecked; M2.9 remains 13/19.
-
-### Generator prerequisite fix and local evidence
-
-The hand-wired generator still used the old display/encoder GPIOs and button GPIO0/1/20, while
-firmware and its wiring README specify display 4/3/2/1/0, encoder 7/6/5 and buttons 9/8/10.
-These assignments drive real wire grooves and engraved labels, so correcting only the README
-would leave misleading printable parts. The generator is now aligned with `profile.rs`.
-`test_pin_map.py` (now `hardware/enclosure-v7/test_pin_map.py`, checking the RP2040-Zero map) independently reads the firmware's literal declarations and checks all thirteen
-nets (eleven signals plus power/ground), including button order, without importing FreeCAD.
-It failed on the old source and passes after the fix; Linux host CI runs it. Unrecognized future
-Rust declaration syntax fails the check for review rather than silently omitting the comparison.
-
-Local FreeCAD 1.1.4 regenerated original and corrected models in separate temporary directories:
-
-- Both generation reports: eight valid printed parts and `interference: none`. The corrected
-  document contains fourteen valid, nonempty single solids; every object's bounds are unchanged.
-- The original regeneration matched all nine pre-fix tracked exports at `918d2d4` byte-for-byte. After the fix, only
-  `Carrier.stl` differs; the seven other STLs and `pcb-outline.dxf` remain byte-identical. Only that
-  STL and the complete `kivori-case.FCStd` document were replaced. Carrier volume changes by
-  +20.066403 mm³; the other thirteen object volumes are unchanged.
-- The actual Carrier back projection was inspected for revised routes near the SuperMini and
-  updated B1/B2/B3 labels. This does not verify wire accessibility, insulation, groove capacity or
-  physical fit. The independent pin check is needed even when the interference report is clean.
-- Astra advised the bounded scope; its follow-up hit a usage limit. Sol independently reviewed the
-  final source/test/CI/docs, passed the test, rejected the old source in memory, verified export
-  hashes and document ZIP integrity, and inspected the back projection. No blocker was found for
-  this prerequisite fix; no reviewer claimed physical acceptance.
-
-Checks: Python unittest, targeted workflow Prettier, new links/anchors, nine NOT MEASURED rows,
-13/19 checklist and `git diff --check` passed. Desktop/firmware runtime suites were not rerun for
-this CAD/source-guard increment. Local evidence remains under `/tmp/kivori-m29-enclosure-*`;
-models, reports and images there are not cross-device memory or physical observations.
-
-The selected variant must be explicit: this checkout's `hardware/enclosure/` is hand-wired and
-screwless; `docs/assembly.md` describes the separate copper-tape/screw branch. Their mounting
-orientation, printed parts and assembly steps cannot be mixed. Experimental modules or another
-display/controller require their own evidence and do not inherit this design's acceptance.
-
-### Nominal closed-case BOOT/RST access check
-
-On 2026-10-25, FreeCAD 1.1.4 on Andress-MacBook-Air opened the tracked hand-wired document
-without regenerating or saving it. A 1 mm cylindrical probe follows each modeled access axis
-from face-frame z = -60 mm to 0.01 mm before the nominal button face at z = -12.9 mm.
-Its common volume with every printed part and bought-part stand-in is zero. A separate 0.1 mm
-tip segment straddling the button face intersects the nominal SuperMini switch stand-in.
-
-| Modeled access | Face-frame centre (mm) | Clear-path overlap (mm³) | Tip contact (mm³) | Probe shifted +2.5 mm in x: BackPlate overlap (mm³) |
-| -------------- | ---------------------- | ------------------------ | ----------------- | --------------------------------------------------- |
-| RST            | 50.5, 58.0             | 0                        | 0.039270          | 12.398782                                           |
-| BOOT           | 59.5, 58.0             | 0                        | 0.039270          | 12.398782                                           |
-
-Both deliberately off-centre probes fail the clearance check, providing obstruction controls.
-The document SHA-256 before/after is
-`8e925575dbbc0d2219bbf046bbd653c2ef39fdbc2b0eebbc4777f21fda2b4cc5`.
-The source/firmware pin-map unittest and diff checks also passed; no CAD or export changed.
-The FreeCAD connector could not locate its headless executable, so the installed application at
-`/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd` ran the check directly. The one-off
-script and JSON evidence are local-only at `/tmp/kivori-m29-enclosure-access.py` and
-`/tmp/kivori-m29-enclosure-access.json`.
-
-This verifies access only to nominal stand-ins along the modeled axes. It does not establish
-real switch positions/labels, printable tolerances, tool angle or actuation force, wiring clearance
-after assembly, or successful BOOT/RST operation. Item 19 and every physical row below remain open;
-progress stays 13/19. Desktop/firmware runtime suites were not rerun for this read-only CAD check.
-
-### Physical record
-
-Record operator/date, variant/source SHA, generator parameters and CAD/STL hashes, print/slicer
-revision, printer/material/orientation/layer/scaling, component suppliers/revisions and short unit
-label. Name the instrument, resolution and method for each measurement. Compare measured values
-with the selected CAD and actual component specifications; a nominal CAD clearance is not an
-observed clearance. Record missing dimensions/force limits as open rather than inventing a tolerance.
-
-| Check                 | Measurements and required observation                                                                                                                                                                                                                                                                                               | Result / evidence |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
-| Bought parts          | Measure actual display PCB/glass/FPC/header, controller-board USB and buttons, encoder PCB/shaft and switch body/stem/pin locations. Compare with the chosen model before committing to a full print; record each deviation.                                                                                                        | NOT MEASURED      |
-| Carrier and display   | Dry-fit components and mounting features; record hole/peg alignment, PCB seating, glass/FPC clearance and window alignment. No forced glass/PCB bend, obscured active area or trapped cable.                                                                                                                                        | NOT MEASURED      |
-| Button caps           | Measure resting/pressed clearance, available travel, stem/socket engagement and return for each cap. Exercise centre and edge presses on all three; record counts, rubbing, preload, sticking and unintended holds.                                                                                                                 | NOT MEASURED      |
-| Knob                  | Measure shaft engagement, resting and pressed axial gap and clearance through a full turn and push at several angles. No rubbing, neighbouring-cap contact, loss of push travel or loose/slipping shaft fit.                                                                                                                        | NOT MEASURED      |
-| USB                   | Use the actual intended data-cable plug. Record opening/plug clearance and measured peak insertion/removal force with the measurement method. Observe connector/PCB displacement and support path; the shell must not prevent full seating or transfer damaging loads to the board. Force without an instrument remains unmeasured. | NOT MEASURED      |
-| Wiring and closure    | With power removed, check continuity against the firmware map and inspect insulation/routing, especially crossings and the controller-board recess/edge. Close/open the selected case design, record fit and retention, then recheck for pinched wires, shifted parts and shorts before power.                                      | NOT MEASURED      |
-| RST access            | With the case fully closed, verify the labelled access point reaches the actual reset switch without disassembly or contacting other circuitry. Observe reset and normal reconnect; record tool, alignment and actuation. Do not infer location from another variant's instructions.                                                | NOT MEASURED      |
-| BOOT access/recovery  | With the case closed, demonstrate access to the actual BOOT switch, entry into recovery and return to normal operation using the existing recovery procedure. Record tool clearance, labels and actual app/device result; link item 16's flash/recovery evidence when applicable.                                                   | NOT MEASURED      |
-| Closed-unit operation | With the product firmware, repeat physical control and display checks after closure, including mic feedback and USB reconnect. Record any changed behaviour versus the open assembly and failures after reopening/reclosing.                                                                                                        | NOT MEASURED      |
-
-Retain photos/dimensioned notes and any failed fit. Link every parameter/design correction to the
-specific measured discrepancy, regenerate/review the affected geometry, reprint and remeasure.
-Do not fix only the CAD stand-in to match another unverified drawing. Close item 19 only when
-the actual selected assembled unit has evidence for every row and unresolved fit/access problems
-are fixed. Firmware/CAD source consistency, interference reports and electrical provisioning PASS
-remain distinct from these physical measurements.
-
-## PR #127 input loss and I/O fidelity follow-up
-
-Local checks on 2026-10-29, on the working changes based on `8d9bb4aa`:
-
-- The overflow regression failed before the fix with `loss mode 0 invented a detent`. It now
-  covers local sample overflow, capture loss between drains, during a drain and after its final
-  sample, plus counter saturation. The after-final-sample case also failed before the accounting
-  fix. Known-loss batches retain switch samples and suppress rotary motion; a concurrent loss
-  conservatively invalidates the next batch too. Clean motion resumes after settling, while a
-  saturated loss counter keeps rotary motion suppressed until reboot.
-- All 208 firmware host-simulation tests passed before the final review hardening; all 93 affected
-  button, production-runtime and rotary tests passed again afterward. Strict firmware and runner
-  Clippy, Rust formatting and launcher formatting passed. The RISC-V library build passed, and
-  the physical `physical-st7789` release build passed again after the final runtime change.
-- The final `node firmware/pip/simulator/run.mjs --smoke` passed all 15 stages, including 18
-  simulator tests, ten Node report/boundary tests, the unchanged replay goldens and the new `io`
-  stage requiring four `PASS IO` assertions. It exercises the buffered production Runtime and
-  transmit queue with a 64-byte FIFO, scheduled raw input and modeled SPI payload time.
-- The I/O assertions establish three windows / 46,080 microseconds for a full frame at 20 MHz,
-  a detent delivered before frame completion within one window plus modeled 1 ms host service,
-  exact `DisplayFault` on a second-window failure followed by a full repaint, and a fresh
-  handshake / detent after 121 virtual seconds of host backpressure. Render scheduling and
-  actual transferred windows are checked during the final ten stalled ticks. These are modeled
-  timings, not measured hardware latency.
-- Claude Opus 5.5 at medium effort reviewed the implementation, identified the loss-accounting
-  race and assertion improvements, then approved the hardened result with no remaining actionable
-  issues, subject to the final test runs above finishing green; those runs subsequently passed.
-
-The final local ignored report is `firmware/pip/simulator/target/reports/run-UhtSOs/report.json`;
-its logs retain the actual assertions and source fingerprint at execution. This evidence note
-followed that run. Two earlier standalone boundary-test attempts hit existing deadlines under
-concurrent builds; all ten Node report/boundary tests passed in both full runs without changing
-those deadlines. No new CI, physical I/O, real OS action, flashing or production acceptance is
-claimed. Paid simulation services are not used.

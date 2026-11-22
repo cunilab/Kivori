@@ -47,7 +47,7 @@ mute and native shortcuts still need a deliberate hands-on session.
 
 A local build does not require an Apple account. `APPLE_SIGNING_IDENTITY` enables Developer ID
 signing in the existing bundle script; without it the bundle is signed with a stable self-signed
-identity (`Kivori Dev` locally, `Kivori Release` in CI) so Accessibility approvals survive updates. Notarization is not yet implemented; locally built unsigned
+identity (`Kivori Dev` locally, `Kivori Release` in CI) so Accessibility approvals survive updates. Releases are not Developer ID signed or notarized (paid certificates declined); locally built unsigned
 or ad-hoc signed bundles are not evidence that Gatekeeper accepts a public release. Do not remove
 quarantine or disable Gatekeeper as a substitute for release verification.
 
@@ -94,7 +94,7 @@ On Andress-MacBook-Air, arm64 macOS 27.0.1 (26A434), with the working changes ba
 - Strict native Clippy, Rust formatting and diff whitespace checks passed.
 - `just bundle-macos` built `target/release/bundle/macos/Kivori.app` (34.80 MiB) and
   `target/release/bundle/dmg/Kivori_0.2.1_aarch64.dmg` (13.30 MiB). The executable is arm64;
-  bundled firmware, espflash, media helper and notices are present. The release-artifact guard
+  bundled firmware, media helper and notices are present. The release-artifact guard
   passed (development controls absent, firmware marker present), and `hdiutil verify` passed.
   DMG SHA-256: `42e76b981e8ad587c3ba4a1d3ea12022253ff009b408ff244951bfb71d7b0844`.
 - Claude Opus 5.5 at medium effort approved the microphone handling and the final Mac changes

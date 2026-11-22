@@ -11,8 +11,8 @@ the move to the RP2040-Zero (#179, [ADR-0019](./adr/0019-rp2040-zero-replaces-es
 - **Flashing a new unit** is the app's firmware update, or `just fw-flash` from a checkout: the board
   starts in the ROM UF2 bootloader when BOOT is held while plugging in (a blank board does this on
   its own), and the firmware is copied onto the `RPI-RP2` drive.
-- **Per-unit QA** is the hardware checklist in [validation.md](./validation.md) and the build steps
-  in [assembly.md](./assembly.md). The old guided input check (turn the knob, press each
-  button) is now a manual checklist step.
+- **Per-unit QA** is the hardware checklist in [validation.md](./validation.md); the build steps
+  are in [hardware/enclosure-v8/README.md](../hardware/enclosure-v8/README.md). The input check
+  (turn the knob, press each button) is a manual checklist step.
 - The ESP32-C3 SuperMini units that shipped in the beta keep the identity they were provisioned with;
   the app no longer updates their firmware.

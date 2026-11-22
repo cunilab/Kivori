@@ -2,11 +2,6 @@
 
 ## How to release (checklist)
 
-**Next release after the `pala` → `pip` rename (2026-10-30):** pick a firmware bump (`patch`, giving
-Pip firmware 0.1.3 tagged `fw-pip-v0.1.3`). The firmware folder moved, so the guard compares it as
-changed against `fw-pala-v0.1.2` and refuses `none`. The old `fw-pala-v*` tags stay Pip's released
-versions; later releases may use `none` again.
-
 **App identifier `id.immer.kivori` → `id.cunilab.kivori` (2026-10-30), first release after it:**
 settings are copied from the old data folder on first start (`adopt_earlier_config`), and the old
 folder is kept. On Windows the publisher becomes `cunilab`, so the installer records its folder
@@ -34,8 +29,8 @@ Releases start only when you decide. There is no standing release PR, and mergin
 never cuts a release. `.github/workflows/release-start.yml` (the **Release** button) has two stages:
 `prepare` opens an on-demand version PR; `finalize` tags its exact merged, CI-green commit.
 `.github/workflows/release.yml` builds, smoke-tests, signs for the updater and attaches files to a
-draft. Nothing is published until you publish the draft. Windows code
-signing still waits on owner certificates (#36); see
+draft. Nothing is published until you publish the draft. Windows releases are
+unsigned: there is no paid code-signing certificate (owner decision, 2026-10-31); see
 [architecture.md](./architecture.md#release-pipeline-m3-s5) and ADR-0014/0015.
 
 ## Release policy
@@ -318,7 +313,7 @@ bundle identifier from `tauri.conf.json`, no hardened runtime: the app sends App
 entitlements). Which identity:
 
 1. **Developer ID** (`APPLE_SIGNING_IDENTITY` and `APPLE_CERTIFICATE`): Tauri's and the script's
-   Developer ID path signs with hardened runtime, as before. Not available yet (#36).
+   Developer ID path signs with hardened runtime. Not used: paid certificates are declined (owner decision, 2026-10-31), so releases carry no Developer ID signature.
 2. **Release identity** (CI, no Developer ID): the repo secrets `KIVORI_MACOS_RELEASE_P12` (base64 of
    a legacy-format `.p12`) and `KIVORI_MACOS_RELEASE_P12_PASSWORD`. The macOS job imports it into a
    temporary keychain (deleted at the end), signs as `Kivori Release`, then verifies
