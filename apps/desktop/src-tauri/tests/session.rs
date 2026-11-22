@@ -1691,11 +1691,29 @@ fn input_requires_the_specific_control_and_gesture_capabilities() {
             false,
         ),
         (
-            // The desktop no longer offers held rotation: Hold + rotate is the device's picker.
+            // The desktop no longer offers held rotation. Hold + turn needs `HELD_TURN_MODE_V1`.
             Capabilities::BUTTON_INPUT_V1.union(Capabilities::HELD_ROTATION_V1),
             ControlId::PressedRotary,
             InputKind::GestureStarted,
             false,
+        ),
+        (
+            Capabilities::BUTTON_INPUT_V1.union(Capabilities::HELD_TURN_MODE_V1),
+            ControlId::PressedRotary,
+            InputKind::Detent(kivori_model::input::Direction::Cw),
+            true,
+        ),
+        (
+            Capabilities::BUTTON_INPUT_V1,
+            ControlId::Button,
+            InputKind::Hold,
+            false,
+        ),
+        (
+            Capabilities::BUTTON_INPUT_V1.union(Capabilities::KNOB_HOLD_V1),
+            ControlId::Button,
+            InputKind::Hold,
+            true,
         ),
         (
             Capabilities::NONE,
@@ -1760,6 +1778,30 @@ fn input_requires_the_specific_control_and_gesture_capabilities() {
             "{control:?}/{kind:?}"
         );
     }
+}
+
+#[test]
+fn held_turn_mode_is_sent_only_when_the_device_negotiated_it() {
+    let (mut link, mut session, _, _) = connect_with_caps(
+        SendableState::Idle,
+        Capabilities::PHYSICAL_INPUT_V1.union(Capabilities::PROFILE_PICKER_V1),
+    );
+    let _ = desktop_drain(&mut link);
+    assert!(!session.send_held_turn_mode(&mut link, true).unwrap());
+    assert!(
+        desktop_drain(&mut link).is_empty(),
+        "old firmware is not sent the new message"
+    );
+
+    let (mut link, mut session, _, _) =
+        connect_with_caps(SendableState::Idle, Capabilities::HELD_TURN_MODE_V1);
+    let _ = desktop_drain(&mut link);
+    assert!(session.send_held_turn_mode(&mut link, false).unwrap());
+    let sent = desktop_drain(&mut link);
+    assert!(
+        matches!(sent.as_slice(), [Message::HeldTurnMode(mode)] if !mode.picker),
+        "{sent:?}"
+    );
 }
 
 #[test]

@@ -178,7 +178,7 @@ const validDesk = {
   highLoad: false,
   pressAction: 'playPause',
   holdAction: 'mute',
-  doublePressAction: 'nextView',
+  doublePressAction: 'switchView',
   buttonActions: ['previousTrack', 'playPause', 'nextTrack'],
   profile: null,
   pinned: false,
@@ -654,7 +654,15 @@ describe('config ipc', () => {
     expect(config.profiles.map((p) => p.id)).toEqual([...PROFILE_IDS]);
     const [general, browser] = config.profiles;
     expect(general.rotate.spec).toEqual({ kind: 'systemVolume' });
-    expect(browser.buttons[1].hold).toBe('micMute');
+    expect(browser.buttons[1].hold).toMatchObject({
+      action: { kind: 'micMute' },
+      deviceLabel: 'Mic mute',
+      overridden: false,
+    });
+    expect(general.doublePress).toMatchObject({
+      action: { kind: 'switchView' },
+      overridden: false,
+    });
     expect(browser.buttons[0].press).toMatchObject({ deviceLabel: 'Back', overridden: false });
   });
 
@@ -674,10 +682,9 @@ describe('config ipc', () => {
     await setProfilePinCycle('blender', true);
     await setProfilePinCycle('photoshop', true);
     await expect(setProfilePinCycle('aftereffects', true)).rejects.toThrow('at most 10');
-    // An older core still sends a held-rotate pair; the app ignores it.
-    const old = JSON.parse(JSON.stringify(await getConfig()));
-    old.profiles[0].heldRotate = { kind: 'systemVolume' };
-    expect(parseConfig(old).profiles[0]).not.toHaveProperty('heldRotate');
+    const shown = await getConfig();
+    expect(shown.profiles[0].heldRotate.spec).toEqual({ kind: 'profilePicker' });
+    expect(shown.profiles[0].hold.action).toBeNull();
   });
 
   it('saves, validates and deletes macros in the mock, refusing a bound delete', async () => {

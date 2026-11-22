@@ -480,6 +480,16 @@ export async function setRotate(profile: ProfileId, rotate: RotateSpec | null): 
   return unavailable();
 }
 
+/** Changes what Hold + turn does; `rotate: null` or the profile picker resets it to the picker. */
+export async function setHeldRotate(
+  profile: ProfileId,
+  rotate: RotateSpec | null,
+): Promise<ConfigDto> {
+  if (isTauri()) return parseConfig(await invoke<unknown>('set_held_rotate', { profile, rotate }));
+  if (import.meta.env.DEV) return (await devMock()).mockSetHeldRotate(profile, rotate);
+  return unavailable();
+}
+
 /** Creates or replaces a macro by its id; rejects with the native error string. */
 export async function saveMacro(spec: MacroSpec): Promise<ConfigDto> {
   if (isTauri()) return parseConfig(await invoke<unknown>('save_macro', { spec }));

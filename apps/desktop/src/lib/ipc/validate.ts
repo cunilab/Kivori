@@ -27,7 +27,6 @@ import {
   MIC_MUTED_STATES,
   DESK_RESULTS,
   DISPLAY_MODES,
-  DOUBLE_PRESS_ACTIONS,
   FIRMWARE_PHASES,
   FLASH_FAILURES,
   UPDATE_ADVICE,
@@ -514,7 +513,7 @@ export function parseDeskStatus(raw: unknown): DeskStatusDto {
     highLoad: r.highLoad,
     pressAction: actionOrNull(r.pressAction),
     holdAction: actionOrNull(r.holdAction),
-    doublePressAction: oneOf('double-press action', DOUBLE_PRESS_ACTIONS, r.doublePressAction),
+    doublePressAction: actionOrNull(r.doublePressAction),
     buttonActions: buttonActions('buttonActions', r.buttonActions),
     buttonHoldActions: buttonActions('buttonHoldActions', r.buttonHoldActions),
     profileId: profileId(r.profileId),
@@ -603,8 +602,10 @@ function stepSpec(raw: unknown): StepSpec {
     return { kind: 'delay', ms };
   }
   const action = actionSpec(r.action);
-  // A step is never a macro (no nesting).
-  if (action.kind === 'macro') throw new Error('Kivori: invalid step.');
+  // A step is never a macro, and a view switch runs on the desk, not in a macro.
+  if (action.kind === 'macro' || action.kind === 'switchView') {
+    throw new Error('Kivori: invalid step.');
+  }
   return { kind: 'action', action };
 }
 
@@ -634,6 +635,8 @@ function rotateSpec(raw: unknown): RotateSpec {
         ccw: text('shortcut', r.ccw),
         label: text('label', r.label),
       };
+    case 'profilePicker':
+      return { kind: 'profilePicker' };
     default:
       return { kind: 'systemVolume' };
   }
@@ -652,7 +655,7 @@ function slotDto(raw: unknown): SlotDto {
 
 function buttonDto(raw: unknown): ButtonDto {
   const r = record('button', raw);
-  return { press: slotDto(r.press), hold: r.hold === 'micMute' ? 'micMute' : slotDto(r.hold) };
+  return { press: slotDto(r.press), hold: slotDto(r.hold) };
 }
 
 function profileDto(raw: unknown): ProfileConfigDto {
@@ -674,8 +677,18 @@ function profileDto(raw: unknown): ProfileConfigDto {
       deviceLabel: text('device label', rotate.deviceLabel),
       overridden: rotate.overridden,
     },
+    heldRotate: (() => {
+      const held = record('held rotate', r.heldRotate);
+      if (typeof held.overridden !== 'boolean') throw new Error('Kivori: invalid overridden.');
+      return {
+        spec: rotateSpec(held.spec),
+        deviceLabel: text('device label', held.deviceLabel),
+        overridden: held.overridden,
+      };
+    })(),
     press: slotDto(r.press),
     hold: slotDto(r.hold),
+    doublePress: slotDto(r.doublePress),
     buttons: [buttonDto(r.buttons[0]), buttonDto(r.buttons[1]), buttonDto(r.buttons[2])],
   };
 }
