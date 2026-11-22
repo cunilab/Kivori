@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { FormEvent, ReactElement } from 'react';
-import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Pencil, Plus, X } from 'lucide-react';
 import { Badge } from '@kivori/ui/components/badge';
 import { Button } from '@kivori/ui/components/button';
 import { Input } from '@kivori/ui/components/input';
@@ -81,20 +81,33 @@ export interface MacroEditorProps {
   macros: MacroSpec[];
   catalog: ActionCatalogEntryDto[] | null;
   onClose: () => void;
+  /** Name and steps for a new macro. Ignored when `macro` is an existing one. */
+  initial?: { name: string; steps: StepSpec[] } | undefined;
+  /** The saved id, after the native core accepts it. */
+  onSaved?: ((id: string) => void) | undefined;
 }
 
 /** Create or edit a macro: a name and an ordered list of steps. Saving goes to the native core. */
-export function MacroEditor({ macro, macros, catalog, onClose }: MacroEditorProps): ReactElement {
+export function MacroEditor({
+  macro,
+  macros,
+  catalog,
+  onClose,
+  initial,
+  onSaved,
+}: MacroEditorProps): ReactElement {
   return (
     <Sheet open={macro !== undefined} onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-md">
         {macro !== undefined ? (
           <EditorForm
-            key={macro?.id ?? 'new'}
+            key={macro?.id ?? initial?.name ?? 'new'}
             macro={macro}
             macros={macros}
             catalog={catalog}
             onClose={onClose}
+            initial={initial}
+            onSaved={onSaved}
           />
         ) : null}
       </SheetContent>
@@ -107,10 +120,14 @@ function EditorForm({
   macros,
   catalog,
   onClose,
+  initial,
+  onSaved,
 }: Omit<MacroEditorProps, 'macro'> & { macro: MacroSpec | null }): ReactElement {
-  const [name, setName] = useState(macro?.name ?? '');
-  const [steps, setSteps] = useState<StepSpec[]>(macro?.steps ?? []);
+  const [name, setName] = useState(macro?.name ?? initial?.name ?? '');
+  const [steps, setSteps] = useState<StepSpec[]>(macro?.steps ?? initial?.steps ?? []);
   const [adding, setAdding] = useState<PickerTarget | null>(null);
+  // Which step the open picker replaces. `null` appends.
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -129,6 +146,22 @@ function EditorForm({
     });
   };
 
+  const openAdd = (): void => {
+    setEditingIndex(null);
+    setAdding({ profile: null, control: 'step', name: m.addStep, spec: null, label: null });
+  };
+
+  const openEdit = (index: number, step: Extract<StepSpec, { kind: 'action' }>): void => {
+    setEditingIndex(index);
+    setAdding({
+      profile: null,
+      control: 'step',
+      name: format(m.editStep, { n: index + 1 }),
+      spec: step.action,
+      label: null,
+    });
+  };
+
   const submit = (event: FormEvent): void => {
     event.preventDefault();
     if (!canSave) return;
@@ -140,7 +173,10 @@ function EditorForm({
       steps,
     };
     saveMacro(spec)
-      .then(onClose)
+      .then(() => {
+        onSaved?.(spec.id);
+        onClose();
+      })
       .catch((e: unknown) => {
         setSaving(false);
         setError(errorText(e));
@@ -188,6 +224,18 @@ function EditorForm({
                   >
                     <span className="w-5 text-xs text-muted-foreground">{i + 1}</span>
                     <span className="min-w-0 flex-1 truncate text-sm">{describeStep(step)}</span>
+                    {/* A delay cannot be prefilled: PickerTarget has no field for the wait. */}
+                    {step.kind === 'action' ? (
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label={format(m.editStep, { n: i + 1 })}
+                        onClick={() => openEdit(i, step)}
+                      >
+                        <Pencil aria-hidden="true" />
+                      </Button>
+                    ) : null}
                     <Button
                       type="button"
                       size="icon-sm"
@@ -221,21 +269,7 @@ function EditorForm({
                 ))}
               </ol>
             )}
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={full}
-              onClick={() =>
-                setAdding({
-                  profile: null,
-                  control: 'step',
-                  name: m.addStep,
-                  spec: null,
-                  label: null,
-                })
-              }
-            >
+            <Button type="button" size="sm" variant="outline" disabled={full} onClick={openAdd}>
               <Plus data-icon="inline-start" aria-hidden="true" />
               {m.addStep}
             </Button>
@@ -262,10 +296,19 @@ function EditorForm({
       <ActionPicker
         target={adding}
         catalog={catalog}
-        onClose={() => setAdding(null)}
+        onClose={() => {
+          setAdding(null);
+          setEditingIndex(null);
+        }}
         onSaveSlot={() => Promise.resolve()}
         onSaveRotate={() => Promise.resolve()}
-        onPickStep={(step) => setSteps((current) => [...current, step])}
+        onPickStep={(step) => {
+          setSteps((current) =>
+            editingIndex === null
+              ? [...current, step]
+              : current.map((item, index) => (index === editingIndex ? step : item)),
+          );
+        }}
       />
     </>
   );

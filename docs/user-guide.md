@@ -46,7 +46,6 @@ in-app updates; `.deb` installs show updates as unsupported. Download and instal
 X11 and Wayland; keyboard shortcuts and automatic app profiles require X11. On Wayland use
 General or pin a profile. GNOME needs the AppIndicator extension for the tray icon.
 
-
 ## First run and setup
 
 Kivori walks you through a short setup. You can skip any step, and "Skip setup" is always at the top.
@@ -59,22 +58,24 @@ Kivori walks you through a short setup. You can skip any step, and "Skip setup" 
 4. **Try it.** Follow the guidance for your device's supported controls and check their assigned
    actions in Controls. This step does not automatically tick or verify the hardware; continue
    when you are ready.
-5. **Make it yours.** Pick the starting screen, how lively the buddy is, and whether Kivori starts
+5. **How will you use Kivori?** Pick what fits. Kivori puts the matching profiles on your device so
+   you can switch with the knob. You can change this later in Controls.
+6. **Make it yours.** Pick the starting screen, your buddy's personality, and whether Kivori starts
    at login.
 
 You can repeat setup any time: Device page, **Run setup again**.
 
 ## The controls
 
-| Control | What it does by default |
-|---|---|
-| Turn the knob | Volume (faster turns take bigger steps) |
-| Press the knob | System output mute / unmute (every profile) |
-| Hold + turn the knob (two detents) | Open profile picker; turn to choose, release to select |
-| Double-press the knob | Switch screen view |
-| Left / middle / right button | Previous track / Play-Pause / Next track |
+| Control                                           | What it does by default                                   |
+| ------------------------------------------------- | --------------------------------------------------------- |
+| Turn the knob                                     | Volume (faster turns take bigger steps)                   |
+| Press the knob                                    | System output mute / unmute (every profile)               |
+| Hold + turn the knob (two detents)                | Open profile picker; turn to choose, release to select    |
+| Double-press the knob                             | Switch screen view                                        |
+| Left / middle / right button                      | Previous track / Play-Pause / Next track                  |
 | Hold the middle button for 1 second, then release | Mic mute / unmute on every capture device (every profile) |
-| Hold the knob for about 10 seconds | Restarts Kivori, even if the app is closed |
+| Hold the knob for about 10 seconds                | Restarts Kivori, even if the app is closed                |
 
 A short press means pressed and released within one second. Holding the knob past about 2
 seconds starts recovery until the 10-second restart, and the screen shows its progress. The left and
@@ -92,11 +93,11 @@ the screen. The built-in profiles include General, Browser, Code, Media, Zoom an
 Teams the left button mutes your microphones. Editable [starter profiles](./starter-profiles.md)
 also cover CapCut, Photoshop, After Effects, Premiere Pro, Blender, Claude Code, Codex and OpenCode.
 
-On Controls, choose **Use this profile** to pin the selected profile, or **Follow foreground app**
+On Controls, choose **Lock to this profile** to pin the selected profile, or **Unlock (follow apps)**
 to return to Auto. Agent profiles need manual selection because Kivori cannot identify the agent
 inside a terminal window. Review the starter shortcuts for your app version and keymap before use.
 
-To stay on one profile, **pin it to the device**: on Controls, switch on **Pin to device** for the
+To stay on one profile, **pin it to the device**: on Controls, switch on **Show on device** for the
 profiles you want on the knob (General, Browser, Code, Media, Zoom and Teams start pinned; the
 starter and your own profiles start unpinned; the device holds up to 10). Then hold the knob down
 and turn it two detents: the screen shows the profile picker, with the profile name large and a row of marks for
@@ -163,12 +164,12 @@ off and set its intensity (Low, Normal, High).
 
 Feedback badges have these meanings:
 
-| Badge | Meaning |
-|---|---|
-| Green check | **Confirmed.** Kivori read the new state back from your computer. |
-| Blue arrow | **Started.** The computer accepted it and started it (for example launching an app). |
-| Amber "?" | **Unverified.** Kivori cannot confirm the final effect. |
-| Red cross | **Error.** Kivori could not complete the action. Earlier macro steps may already have run; check the computer's state before retrying. |
+| Badge       | Meaning                                                                                                                                |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Green check | **Confirmed.** Kivori read the new state back from your computer.                                                                      |
+| Blue arrow  | **Started.** The computer accepted it and started it (for example launching an app).                                                   |
+| Amber "?"   | **Unverified.** Kivori cannot confirm the final effect.                                                                                |
+| Red cross   | **Error.** Kivori could not complete the action. Earlier macro steps may already have run; check the computer's state before retrying. |
 
 Keyboard shortcuts and media keys remain **Unverified** in Activity. On the device they use a
 quiet press/label pulse instead of an amber badge; that pulse does not confirm the final effect.
@@ -237,14 +238,14 @@ Knob Hold alone has no action and no hold ring. Existing knob-Hold bindings are 
 
 The core profiles use these button presses. Left and right holds start unbound in every built-in profile.
 
-| Profile | Left press | Middle press | Right press | Turn target |
-| --- | --- | --- | --- | --- |
-| General | Previous track | Play / Pause | Next track | System volume |
-| Browser | Back | Reload | Forward | System volume |
-| Code | Terminal | Run | Git | System volume |
-| Media | Previous track | Play / Pause | Next track | System volume |
-| Zoom | Mic mute (all devices) | Camera | Leave | System volume |
-| Teams | Mic mute (all devices) | Camera | Leave | System volume |
+| Profile | Left press             | Middle press | Right press | Turn target   |
+| ------- | ---------------------- | ------------ | ----------- | ------------- |
+| General | Previous track         | Play / Pause | Next track  | System volume |
+| Browser | Back                   | Reload       | Forward     | System volume |
+| Code    | Terminal               | Run          | Git         | System volume |
+| Media   | Previous track         | Play / Pause | Next track  | System volume |
+| Zoom    | Mic mute (all devices) | Camera       | Leave       | System volume |
+| Teams   | Mic mute (all devices) | Camera       | Leave       | System volume |
 
 Media buttons use the system media backend (MPRIS on Linux); Browser and Code actions and Camera / Leave use application shortcuts. Microphone mute affects every capture device, so the call app's own mute icon may not change.
 
