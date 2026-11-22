@@ -107,8 +107,7 @@ The launcher also runs the native development example's `--desktop-smoke` mode; 
 JSON fault or runner CLI flag. It uses existing fake OS services and a disposable configuration
 directory owned by the native CLI. Labelled cases distinguish raw firmware/session execution from
 direct desktop action tests and configuration persistence. The normal development window remains
-memory-only. See [S5.4 evidence](../../../docs/validation.md#s54-simulated-desktop-behavior-evidence)
-for setup UI coverage and the limits of simulated state. No real OS actions or installed settings
+memory-only. No real OS actions or installed settings
 are used by this mode.
 
 ## Recovery rehearsal (S5.5)
@@ -116,7 +115,7 @@ are used by this mode.
 The launcher's `--recovery-smoke` belongs to the native development example, not this runner.
 Counting fake executors rehearse production flash/update policy and admission. The existing runner
 can reconnect as a compatible or wrong-major peer; no new firmware is written to it. BOOT and
-update UI checks use separate browser mocks. See [S5.5 evidence](../../../docs/validation.md#s55-recovery-and-compatibility-rehearsal-evidence).
+update UI checks use separate browser mocks.
 Real flashing, downloads, installation, signature validation and physical recovery remain outside
 this mode.
 
@@ -136,7 +135,7 @@ separate CI requirements, explicitly listed in the report.
 
 Golden updates require checking the intended renderer/action behavior and reviewing changed hashes;
 no verification mode rewrites expected values. This is fixed-recipe regression coverage, not a
-fuzzer or evidence of physical appearance/timing. See [S5.6 evidence](../../../docs/validation.md#s56-repeatable-reports-ci-and-boundary-evidence).
+fuzzer or evidence of physical appearance/timing.
 
 ## Hardware I/O stress checks
 

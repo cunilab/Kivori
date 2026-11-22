@@ -44,8 +44,7 @@ contracts only; extract additional common harness code when a second implemented
 
 The [virtual Pip plan](../virtual-pip.md) maps pending checks and implementation order. Passing
 simulation closes only explicitly scoped software tasks, never physical, signing, deployment,
-real-use or participant acceptance. S5.1 is implemented in the review branch; broader scenarios remain planned. See the
-[software evidence](../validation.md#m29-virtual-pip-software-acceptance). The ADR remains Proposed
+real-use or participant acceptance. S5.1 is implemented in the review branch; broader scenarios remain planned. The ADR remains Proposed
 until merge, following the ADR index policy.
 
 ## Alternatives considered

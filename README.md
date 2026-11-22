@@ -57,8 +57,8 @@ host-tested; the hardware checks are still open (see [Status](#status)).
 
 The app, firmware and website software are built and host-tested. The current milestone is M2.9
 (reliability and beta readiness); what remains is acceptance on a real Windows unit, sustained use
-and a session with an unfamiliar user. A milestone only counts as done once its hardware rows in
-[`docs/validation.md`](docs/validation.md) pass. The paid beta (M3) also waits on items that are
+and a session with an unfamiliar user. A milestone only counts as done once its hardware checks in
+[`docs/roadmap.md`](docs/roadmap.md) pass. The paid beta (M3) also waits on items that are
 not code: unit cost, regulatory check, packaging and the first units. Details in
 [`docs/roadmap.md`](docs/roadmap.md).
 
@@ -109,8 +109,8 @@ just golden                    # deterministic rendering, frame-hash goldens
 ```
 
 Host-sim tests and physical hardware are **separate classes of evidence** here, and a host-sim
-result is never promoted to physical proof. Hardware results are recorded in
-[`docs/validation.md`](docs/validation.md).
+result is never promoted to physical proof. Open hardware checks are listed in
+[`docs/roadmap.md`](docs/roadmap.md).
 
 ## Hardware and pin map
 
@@ -149,8 +149,7 @@ user's recovery control and holding it at power-on boots Kivori normally: no Pip
 boot-critical pin.
 
 **Panel parameters and pin map.** The display profile (offset, colour order, inversion, SPI mode)
-was physically verified on 2026-08-11 and is recorded in
-[`docs/validation.md`](docs/validation.md) (rows 1.9, 1.24, 1.25). The pin map is confirmed on the
+was physically verified on 2026-08-11. The pin map is confirmed on the
 v8 unit (printed, wired and assembled, 2026-11-22).
 
 Both live in one place, [`firmware/pip/src/profile.rs`](firmware/pip/src/profile.rs), so a
@@ -193,7 +192,7 @@ Kivori/
 ├── tests/           golden frames and cross-crate tests
 ├── tools/           asset compiler
 ├── scripts/         guard, build and release scripts
-└── docs/            product, architecture, ADRs, roadmap, validation, release, guides
+└── docs/            product, architecture, ADRs, roadmap, release, guides
 ```
 
 ## Documentation
@@ -206,7 +205,6 @@ One file per topic:
 | [`docs/architecture.md`](docs/architecture.md) | How it works: components, wire protocol, IPC, rendering, rotary loop, decisions, principles |
 | [`docs/adr/`](docs/adr/README.md) | Architecture decision records: one file per decision, with context and rejected options |
 | [`docs/roadmap.md`](docs/roadmap.md) | What gets built next: the current milestone, the paid beta and v1 |
-| [`docs/validation.md`](docs/validation.md) | The hardware checklist and how to run a validation session |
 | [`docs/release.md`](docs/release.md) | How to cut a Windows, macOS or Linux release, and the unsigned-installer limits |
 | [`docs/linux.md`](docs/linux.md) | Ubuntu installation, USB permissions, X11 / Wayland limits and troubleshooting |
 | [`docs/user-guide.md`](docs/user-guide.md) | Short guide for a beta customer: install, setup, controls, recovery |

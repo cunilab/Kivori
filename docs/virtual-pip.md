@@ -2,8 +2,7 @@
 
 Status: implementation authorized on 2026-10-26 after owner review. M2.9 S5.1–S5.6 are implemented
 and verified locally and in Linux/Windows CI. See
-[ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) and the
-[acceptance evidence](./validation.md#m29-virtual-pip-software-acceptance).
+[ADR-0018](./adr/0018-product-owned-virtual-device-processes.md).
 
 ## Scope and ownership
 
@@ -84,7 +83,7 @@ time advancement cannot prove desktop `Instant` deadlines, OS scheduling or phys
 
 ## Pending documentation coverage
 
-The pre-S5 audit found 205 unchecked entries: 34 in `roadmap.md` and 171 in `validation.md`.
+The pre-S5 audit found 205 unchecked entries: 34 in `roadmap.md` and 171 in the old validation checklist.
 These include repeated references, not 205 separate missing features. Counts below are that dated
 snapshot, before adding S5. Each phase retains all its physical rows; simulation adds software
 evidence alongside them, not substitute PASS marks.
@@ -258,8 +257,7 @@ Identity/protocol modes start a fresh child; silent/exit/host-stall require an e
 connection, and `host-resume` ends a stall without reconnecting. These controls remain outside the production protocol and release UI.
 Use Reconnect after a simulated error/reboot; only clock rollover still requires restarting the tool.
 The smoke command includes ten connection scenarios (the tenth is the host read stall below) with
-real desktop time and bounded deadlines;
-see [results and CI evidence](./validation.md#s52-connection-and-interruption-evidence).
+real desktop time and bounded deadlines.
 
 ### Host read stall
 
@@ -304,8 +302,7 @@ now keeps input that does not fit instead:
 
 The product-owned runner adds `--input-smoke`, also run by `just virtual-device-smoke`. It drives
 raw timestamped levels through the actual firmware runtime and checks complete wire-event traces,
-current session, captures and recovery lifecycle. Coverage and limits are recorded in
-[S5.3 evidence](./validation.md#s53-raw-input-fidelity-evidence). No new desktop command or
+current session, captures and recovery lifecycle. No new desktop command or
 production wire message is added. Normal invocation still serves bounded newline-delimited JSON.
 Firmware milliseconds are injected; desktop deadlines and physical timing are not simulated by
 this mode. Input-port overflow injection is explicitly distinct from a physical ISR queue test.
@@ -316,8 +313,7 @@ The native development example's `--desktop-smoke` runs production desktop polic
 fake OS backends and a CLI-owned disposable configuration directory. The normal development window
 retains memory-only settings. Raw firmware/session cases and direct desktop action tests are
 labelled separately; setup UI is checked with the existing browser mock rather than presented as
-a native IPC-to-runner path. See [S5.4 evidence](./validation.md#s54-simulated-desktop-behavior-evidence)
-for verified layers and limits. The smoke launcher includes these cases; production releases must
+a native IPC-to-runner path. The smoke launcher includes these cases; production releases must
 omit the `PASS S5.4` marker, with a positive control in the opt-in example.
 
 ## Recovery and compatibility scenarios (S5.5)
@@ -327,8 +323,7 @@ cases. Production flash workflow, identity/image selection, version-offer and up
 policies are rehearsed with counting in-process fake executors and local fixtures. An actual
 virtual reconnect checks post-flash compatibility admission, while the runner's firmware binary
 remains unchanged. No actual flash, eFuse, download or installer path is invoked.
-See [S5.5 evidence](./validation.md#s55-recovery-and-compatibility-rehearsal-evidence) for the
-separate policy/session/UI layers and limits. The `PASS S5.5` marker must be absent from production
+The `PASS S5.5` marker must be absent from production
 and observable in the explicitly enabled example.
 
 ## Repeatable reports and replay (S5.6)
@@ -338,7 +333,7 @@ product's simulator. It retains command logs, captured firmware pixels, source/b
 and layer/clock labels. Seeds 17 and 29 each replay four raw recipes twice and must match committed
 action/frame expectations and repeat byte-for-byte. Desktop/session checks keep real elapsed time.
 The report's `passed` status covers its declared stages; offline, production and no_std proof comes
-from the separate CI checks listed in it. See [S5.6 evidence](./validation.md#s56-repeatable-reports-ci-and-boundary-evidence).
+from the separate CI checks listed in it.
 
 Each product owns its replay recipes and golden fixture. A deliberate renderer change may require
 a reviewed fixture update after checking intended pixels and actions; the verification command
@@ -371,8 +366,8 @@ runner now reports the firmware companion `state` with each response, so Sleepin
 asserted directly rather than inferred from pixels.
 
 Cases (real elapsed time): lock/unlock, sleep/wake with input made while asleep, console switch
-without a goodbye, USB power cut during sleep, and a stray wake. Expectations follow validation
-[Phase 7](./validation.md#phase-7-host-presence-m3-s2) 7.1–7.4, 7.6 and 7.7. Mutation checks: skipping
+without a goodbye, USB power cut during sleep, and a stray wake. Expectations follow the sleep, lock and switch-user checks in the
+[roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness). Mutation checks: skipping
 the sleep goodbye or the lock override fails the stage. Not simulated: OS notification registration
 and delivery, the Windows suspend acknowledgement budget, real USB power and measured timings.
 

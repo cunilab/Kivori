@@ -51,7 +51,7 @@ fw-test:
 # Flashes through the `elf2uf2-rs -d` runner in .cargo/config.toml (`cargo install elf2uf2-rs`): it
 # converts the ELF to UF2 and copies it onto the RP2040's USB bootloader drive, so the board must be
 # in BOOTSEL mode first (hold BOOT while plugging in, or run the 1200-baud touch on its serial port).
-# The physical ST7789 profile is checked on hardware in docs/validation.md.
+# The physical ST7789 profile is checked on hardware (open checks: docs/roadmap.md).
 # `--features physical-st7789` is required to select that runtime; `embedded` alone builds only
 # main.rs's bare fallback (no display, no input) and would silently flash non-product firmware.
 

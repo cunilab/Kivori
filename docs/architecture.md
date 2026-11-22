@@ -1,6 +1,6 @@
 # Kivori architecture
 
-How Kivori is built today. Product goals are in [product.md](./product.md), open work in [roadmap.md](./roadmap.md), test and hardware evidence in [validation.md](./validation.md).
+How Kivori is built today. Product goals are in [product.md](./product.md), open work and hardware checks in [roadmap.md](./roadmap.md).
 
 ## 1. Overview
 
@@ -447,7 +447,7 @@ HW-040 A/B/SW -> InputSource port -> QuadratureDecoder -> RotaryGesture -> Input
 
 Everything between the two hardware adapters (`PhysicalRotary` in firmware, the Windows backend on the desktop) is a pure function or state machine and is host-testable.
 
-- Input port: `InputSource::sample() -> { a, b, sw }`. `PhysicalRotary` only reads and inverts the pins. All three lines are active-low with internal pull-ups. Pins: CLK GP5, DT GP4, SW GP3 (the push switch, read since M1). None is boot-critical on the RP2040 (BOOT is its own button). Power the HW-040 from 3V3, not 5V. This pin map is a specification until a dated physical check closes it (see validation.md).
+- Input port: `InputSource::sample() -> { a, b, sw }`. `PhysicalRotary` only reads and inverts the pins. All three lines are active-low with internal pull-ups. Pins: CLK GP5, DT GP4, SW GP3 (the push switch, read since M1). None is boot-critical on the RP2040 (BOOT is its own button). Power the HW-040 from 3V3, not 5V. The pin map is confirmed on the v8 unit (2026-11-22).
 - Decoder: a Gray-code state machine on phase `(a << 1) | b`, resting at `00`. It emits a `Direction` only when the knob returns to rest after four quarter-steps in one sense. The accumulator resets at every rest arrival. Bounce and partial motion emit nothing. An impossible transition (both bits change) is counted as `invalid_transitions`, resets the accumulator, and is a diagnostic only.
 - Gesture: the first detent opens a gesture (`gesture_id`, unique within the session, never 0). 250 ms without a detent (`GESTURE_END_MS`) emits exactly one `GestureEnded`. A direction reversal does not split a gesture.
 - Ingress: `InputIngress` rejects an event with a stale session (`StaleSession`). It also requires an observed `GestureStarted` before a `Detent` or `GestureEnded` (`UnknownGesture`), as defence in depth.
@@ -703,7 +703,7 @@ lists them all with their status and says how to add one.
 
 The implemented M2.8 contract is [ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md).
 It separates catalog metadata from negotiated UI support and defines developer/support boundaries.
-The [software closure audit](./validation.md#m28-software-closure-audit) maps implementation and
+The M2.8 software closure audit mapped implementation and
 automated evidence. The review stack is not a shipping release; hardware acceptance stays separate.
 
 ## 8. Engineering principles

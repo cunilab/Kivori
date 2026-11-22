@@ -1,6 +1,6 @@
 # Kivori Product
 
-What Kivori is, what the beta must do, and the rules every build keeps. See also [roadmap.md](roadmap.md), [validation.md](validation.md).
+What Kivori is, what the beta must do, and the rules every build keeps. See also [roadmap.md](roadmap.md).
 
 ## What Kivori is
 

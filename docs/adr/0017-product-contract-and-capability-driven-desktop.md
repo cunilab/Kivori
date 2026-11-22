@@ -198,7 +198,7 @@ the Device firmware card hosts the pair chooser. These fixtures perform no devic
 ## Consequences
 
 **As built (M2.8 software closure audit).** Product contract and capability-driven UI implementation
-are verified against the [acceptance and closure evidence](../validation.md#m28-software-closure-audit).
+were verified in the M2.8 software closure audit.
 The merged implementation completes the software checklist, including catalog-driven provisioning,
 packaging and release selection and current-session feature gating. Supported-feature additions need
 no shared-app product list; new hardware backends and interaction models remain separate feature work.
@@ -209,7 +209,7 @@ completion of hardware acceptance.
 **As built (M2.8 automated product acceptance).** The app-shell scenarios and native session/runtime
 admission checks now cover the planned synthetic product matrix. Existing catalog and image-set
 generators compile their temporary multi-product fixtures and exact indexes without shared product
-lists. The [acceptance evidence map](../validation.md#m28-product-acceptance-evidence) identifies each
+lists. The M2.8 acceptance evidence map identified each
 check and its limits. Hardware rows remain open. Live queued commands use the execution-time
 session; activity request entries are not proof of application. Host action testing and staging the
 user's desired state remain available offline, unlike device reactions, live views and Studio Mirror.

@@ -68,7 +68,7 @@ impl SerialPortLink {
     }
 
     /// Blocks until bytes arrive or `timeout` passes, so the device thread reacts to input as it
-    /// lands instead of on its next fixed tick (validation row 3.14). Received bytes are kept for
+    /// lands instead of on its next fixed tick (the latency check in docs/roadmap.md). Received bytes are kept for
     /// the next `read`; reads themselves stay non-blocking.
     ///
     /// # Errors

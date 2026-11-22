@@ -18,7 +18,7 @@ old one from Windows Settings. On macOS, Accessibility must be granted again (ne
 5. Run **Release** again: `stage=finalize`, `release_pr=<that PR number>`, `dry_run` off. It tags the
    commit and builds a draft release.
 6. Releases: check the draft and its notes, then **Publish** (never as a pre-release). For a beta,
-   do the [validation.md](./validation.md) Phase 10 rows on a real machine first.
+   run the installer checks in the [roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness) on a real machine first.
 
 Hotfix: merge the fix to `main` like any change, then release as above. The details of every step
 follow below.
@@ -224,7 +224,7 @@ publisher signing. Signed-beta installation and live updater acceptance remain s
    `.sig`, `latest.json` and `SHA256SUMS`.
 6. Open Releases on GitHub, check the draft (edit the notes if a line reads badly), and publish it as a
    normal release (never tick pre-release; the updater ignores pre-releases). Installed apps see it
-   within a day. Do the [validation.md](./validation.md) Phase 10 rows on a real machine first for a
+   within a day. Run the installer checks in the [roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness) on a real machine first for a
    beta build.
 
 **Release notes** come from `git log` between the previous `v*` tag and the new one
@@ -268,14 +268,13 @@ edit that changes another parsed value, before writing manifests or workflow out
 
 ## Verifying an app update end to end
 
-For M2.9 signed-beta acceptance, use the
-[Windows installation and recovery record](./validation.md#m29-windows-installation-and-recovery-acceptance-open)
-alongside this procedure. Windows publisher signing and Tauri updater signatures must each be
+For M2.9 beta acceptance, use the installer and recovery checks in the
+[roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness) alongside this procedure. Windows publisher signing and Tauri updater signatures must each be
 verified on the actual candidates; PR packaging smoke does not establish either live update or
 physical recovery acceptance.
 
-Once the public key is in the release config and both secrets are set (validation.md rows 14.6 to
-14.10, on a real Windows machine):
+Once the public key is in the release config and both secrets are set (the app update checks in the
+[roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness), on a real Windows machine):
 
 1. Release and publish version A (for example 0.2.0) as above, and install it from its draft's
    installer. Device page: the Updates rows show "Last checked" within 30 seconds of start.

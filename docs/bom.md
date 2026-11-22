@@ -2,8 +2,7 @@
 
 Drafted from the repo, not from purchase orders. Cells marked **OWNER** are blank on purpose:
 prices and suppliers need the owner. Roadmap M3 item "BOM and real unit cost" stays open until they
-are filled in. Related: [roadmap.md](./roadmap.md), [hardware/enclosure-v8/README.md](../hardware/enclosure-v8/README.md),
-[validation.md](./validation.md).
+are filled in. Related: [roadmap.md](./roadmap.md), [hardware/enclosure-v8/README.md](../hardware/enclosure-v8/README.md).
 
 ## Electronics and bought parts
 
