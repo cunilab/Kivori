@@ -539,7 +539,7 @@ The typed session activity log is the only runtime log.
 ### Per-unit QA (removed)
 
 The provisioning helper (`just provision`, its QA policy and the eFuse identity burn) was removed with
-the RP2040-Zero (#179, ADR-0019; [provisioning.md](./provisioning.md)). Identity comes from the build.
+the RP2040-Zero (#179, ADR-0019; [release.md](./release.md#firmware-flashing)). Identity comes from the build.
 
 ### Firmware image-set foundation (M2.8)
 

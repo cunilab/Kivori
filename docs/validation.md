@@ -699,7 +699,7 @@ Automated: Plug-in/permission gates follow current readiness or Skip; the capabi
 
 ## Phase 12: Per-unit QA (M3 S7)
 
-Run for every assembled unit. `just provision` was removed with the RP2040-Zero (#179, [provisioning.md](./provisioning.md)); these rows are manual and need a real unit and a person.
+Run for every assembled unit. `just provision` was removed with the RP2040-Zero (#179, [release.md](./release.md#firmware-flashing)); these rows are manual and need a real unit and a person.
 
 - [ ] 12.1 Plug in one new unit (BOOT held), flash it with the app or `just fw-flash` | the `RPI-RP2` drive appears, the firmware is copied, the unit restarts and connects with the catalog-required capabilities (incl. HOST_TAKEOVERS_V1 for Pip), identity from the build matches the target, state and health arrive, the heartbeat holds
 - [ ] 12.2 Turn the knob right x3 and left x3, press, hold, press the three buttons | each is seen in the app
@@ -1574,7 +1574,7 @@ production code change was needed. Documentation diff/checklist checks passed; M
 Item 15 preparation, 2026-10-25, Andress-MacBook-Air. The owner deferred the physical run to a later
 retry. This session runs on macOS; no Windows host with a connected unit was used. No physical checks below have run.
 Item 15 stays unchecked and progress remains 13/19. Windows CI startup/packaging and host simulation
-are software evidence only. Flashing a unit ([provisioning.md](./provisioning.md)) does not cover double-press, microphone hotplug, latency or sleep/lock behavior; do not run it as a
+are software evidence only. Flashing a unit ([release.md](./release.md#firmware-flashing)) does not cover double-press, microphone hotplug, latency or sleep/lock behavior; do not run it as a
 read-only substitute for this session.
 
 Preparation checks: the wiring table matches the nine corresponding firmware declarations,

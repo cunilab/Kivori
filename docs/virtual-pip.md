@@ -2,8 +2,7 @@
 
 Status: implementation authorized on 2026-10-26 after owner review. M2.9 S5.1–S5.6 are implemented
 and verified locally and in Linux/Windows CI. See
-[ADR-0018](./adr/0018-product-owned-virtual-device-processes.md), the
-[roadmap](./roadmap.md#s5-isolated-virtual-pip) and
+[ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) and the
 [acceptance evidence](./validation.md#m29-virtual-pip-software-acceptance).
 
 ## Scope and ownership
@@ -135,7 +134,7 @@ mixes and unnamed layout assumptions; test fixtures must not become shipping cat
 
 ## Implementation and evidence order
 
-The six authoritative checkboxes are [M2.9 S5](./roadmap.md#s5-isolated-virtual-pip):
+The six items are:
 runner/vertical slice, connection faults, raw input, simulated desktop behavior, recovery rehearsal,
 then repeatable reports/CI and final boundary proof. Implement and report one item at a time.
 The first slice includes safe fake services and initial release exclusion; safety is not deferred
@@ -161,8 +160,8 @@ just virtual-device          # owned Vite server + dedicated dev window + separa
 just virtual-device-smoke    # headless real core path; writes a firmware RGB565-derived PPM
 ```
 
-Both run the v1 (ESP32-C3) virtual device; `just virtual-device-v2` and `just virtual-device-smoke-v2`
-run v2 (RP2040-Zero). See [Virtual boards](#virtual-boards-v1-and-v2).
+Both run the v1 virtual board (a legacy ESP32-C3 model, not the product's hardware); `just virtual-device-v2` and `just virtual-device-smoke-v2`
+run v2, the product's board (RP2040-Zero). See [Virtual boards](#virtual-boards-v1-and-v2).
 
 Port 1420 must be free; the tool binds its own Vite server and never attaches to an unknown one.
 Closing the window stops the native owner, reaps the simulator and closes the owned server. The
@@ -181,11 +180,12 @@ network transport was added.
 
 ## Virtual boards (v1 and v2)
 
-The Pip has had two real boards, so the virtual Pip models both. v1 is the ESP32-C3 SuperMini the
-first units shipped on and stays the default: every command and test above behaves as it always has.
-v2 is the Waveshare RP2040-Zero the product is built for since #179 and is opt-in.
+The virtual Pip models two boards. v1 is a legacy virtual board modelled on the earlier ESP32-C3
+SuperMini; it is not the product's hardware, and it stays the default so every command and test above
+behaves as it always has. v2 is the Waveshare RP2040-Zero, the product's real board since #179, and is
+opt-in.
 
-| | v1 (default) | v2 (opt-in) |
+| | v1 (default, legacy model) | v2 (opt-in, the product's board) |
 |---|---|---|
 | Board | ESP32-C3 SuperMini, id `c3-supermini`, wire number 1 | Waveshare RP2040-Zero, id `rp2040-zero`, wire number 2 |
 | Pick it | set nothing (or `KIVORI_VIRTUAL_BOARD=c3-supermini`) | `KIVORI_VIRTUAL_BOARD=rp2040-zero` |
@@ -193,7 +193,7 @@ v2 is the Waveshare RP2040-Zero the product is built for since #179 and is opt-i
 | Identity it reports | product `pip` (1), board 1 | product `pip` (1), board 2 |
 | Chip in Device internals | ESP32-C3 rev v0.4, 4 MiB flash | RP2040, no revision (the firmware reads none), 2 MiB flash |
 | USB id of its port (recovery scenario) | `303A:1001` | `2E8A:000A` |
-| Compose time | the frame-cost model fitted to the unit | the same model x1.5, fitted to one measurement on an RP2040-Zero (idle session) |
+| Compose time | the frame-cost model fitted to an ESP32-C3 unit's measurement | the same model x1.5, fitted to one measurement on an RP2040-Zero (idle session) |
 | Flush time | SPI wire time | SPI wire time plus 100 ns a pixel of CPU, an ESTIMATE (the idle session's small flushes agree, but do not test it) |
 | Resource facts | `fixtures/resource-facts.json`, frozen C3 history | `fixtures/resource-facts-rp2040.json`, checked against the product ELF |
 
@@ -433,7 +433,7 @@ Comparing a real unit with the virtual one, using the production session (`devic
 The desktop logs `device link lost` with its cause (heartbeat timeout, I/O error, port removed),
 so a reconnect loop on hardware names its reason. `device_probe PORT internals` samples the device's busy %, compose and flush time and fps once a
 second; compare it before and after a rendering change on the unit, since host timings do not
-predict the ESP32-C3 (no 64-bit divide, flash-resident assets). Without a unit,
+predict the device. Without a unit,
 [Frame cost without hardware](#frame-cost-without-hardware) predicts the compose time.
 
 Not covered by the simulator: pin wiring and electrical bounce, the USB CDC transport and its
@@ -474,7 +474,7 @@ Re-measure `device_probe PORT internals` on the unit when the stack peak moves.
 
 ### Frame cost without hardware
 
-`just fw-frame-cost` predicts the ESP32-C3's compose time per frame without a unit, and the firmware
+`just fw-frame-cost` predicts the legacy v1 board's (ESP32-C3) compose time per frame without a unit, and the firmware
 CI job `frame-cost` runs the same check. It executes the real renderer, not a model of it:
 
 - `firmware/pip/frame-cost/bench/` is a `no_std` binary built for `riscv32imc-unknown-none-elf` with the
@@ -530,7 +530,7 @@ compose time (`connected_desk` rows 0 to 5, ms): 4.3, 8.6, 20.8, 23.8, 14.6, 7.0
 
 #### Accuracy
 
-Two measurements on the owner's unit (ESP32-C3 rev v0.4, 160 MHz):
+Two measurements on the ESP32-C3 unit the v1 model is fitted on (rev v0.4, 160 MHz):
 
 | Renderer | Measured compose | Predicted | Error |
 |---|---:|---:|---:|
@@ -636,7 +636,7 @@ control is unchanged.
 
 - **Compose.** After each tile row the clock advances by that row's cost from
   `firmware/pip/frame-cost/fixtures/frame-cost.json` (`row_ms_mean`, the RV32IMC simulation of the real
-  renderer, fitted to the ESP32-C3 unit's 79 ms; v2 scales it by 1.7, see
+  renderer, fitted to the ESP32-C3 unit's 79 ms; v2 scales it by 1.5, see
   [Virtual boards](#virtual-boards-v1-and-v2)). The scenario is picked from what the runtime is drawing:
 
   | The frame shows | Scenario |
@@ -676,7 +676,7 @@ capture can lead the host's time by up to one row or window.
 
 #### Virtual figures against the unit
 
-The first table is v1's, against the ESP32-C3 unit. Connected desk (buddy with clock, volume, media and legend), as in `device_probe PORT internals`:
+The first table is v1's (legacy model), against the ESP32-C3 unit it is fitted on. Connected desk (buddy with clock, volume, media and legend), as in `device_probe PORT internals`:
 
 | Figure | Unit | Virtual Pip |
 |---|---:|---:|

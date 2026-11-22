@@ -214,8 +214,7 @@ check and its limits. Hardware rows remain open. Live queued commands use the ex
 session; activity request entries are not proof of application. Host action testing and staging the
 user's desired state remain available offline, unlike device reactions, live views and Studio Mirror.
 
-Implementation and checks for this contract are tracked in
-[M2.8](../roadmap.md#m28-desktop-organization-and-product-contract). Existing legacy identity rules
+Existing legacy identity rules
 and wrong-product/board flashing refusals remain mandatory.
 
 Acceptance requires frontend rendering and navigation tests for Pip, a test-only product without

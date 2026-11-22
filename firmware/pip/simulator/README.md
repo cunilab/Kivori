@@ -61,7 +61,7 @@ With `--ideal-time` one request runs exactly one production runtime tick with th
 in-process scenarios (`--input-smoke`, `--io-smoke`, `--replay`) always use ideal time.
 
 The runner models one of two boards per process, chosen by the environment variable
-`KIVORI_VIRTUAL_BOARD`: unset or `c3-supermini` is v1 (ESP32-C3 SuperMini, board 1, the default);
+`KIVORI_VIRTUAL_BOARD`: unset or `c3-supermini` is v1 (a legacy virtual board modelled on the ESP32-C3 SuperMini, board 1, the default; not the product's hardware);
 `rp2040-zero` is v2 (Waveshare RP2040-Zero, board 2, with estimated timing). It sets the identity the
 runner reports, the Device internals chip facts and the timing; any other value exits nonzero. See
 [Virtual boards](../../../docs/virtual-pip.md#virtual-boards-v1-and-v2).

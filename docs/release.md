@@ -359,7 +359,7 @@ Developer ID the bundle is not Developer ID signed; notarization is not implemen
 
 No flashing tool is bundled. The app converts the embedded ARM ELF to UF2 (`src/uf2.rs`) and copies
 it to the RP2040's `RPI-RP2` bootloader drive, so there is nothing to fetch or pin.
-There is no per-unit provisioning either; see [provisioning.md](./provisioning.md).
+There is no per-unit provisioning: a unit's identity (product, board, revision) comes from its firmware build.
 
 ## Known limits
 

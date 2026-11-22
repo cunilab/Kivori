@@ -84,7 +84,7 @@ problems and uses it without developer help. Start charging for beta units here.
   apart, each under its 80 px label column (#14))
 - [ ] BOM and real unit cost (draft parts list in [bom.md](./bom.md); prices, suppliers and the real unit cost still need the owner)
 - [ ] Repeatable assembly process (wiring and build steps are in [hardware/enclosure-v8/README.md](../hardware/enclosure-v8/README.md); stays open until a second person has built a unit with them)
-- [ ] Device flashing process (UF2 through the app, or `just fw-flash`; no per-unit provisioning, see [provisioning.md](./provisioning.md); stays open until a person has run it on real RP2040-Zero units)
+- [ ] Device flashing process (UF2 through the app, or `just fw-flash`; no per-unit provisioning, see [release.md](./release.md#firmware-flashing); stays open until a person has run it on real RP2040-Zero units)
 - [ ] Hardware QA checklist per unit (built from the remaining Phase 1–3 rows in [validation.md](./validation.md); validation Phase 12 is now a manual checklist and still needs a human run)
 - [ ] Windows installer bundling the known-compatible firmware. It ships unsigned: no paid code-signing certificate (owner decision, 2026-10-31); `release.yml` builds, install-tests and drafts the NSIS installer. The SmartScreen and Defender warnings are documented in [release.md](./release.md)
 - [ ] macOS build (if shipped; `scripts/bundle-macos.sh` bundles the adapter, entitlements and Info.plist; it ships unsigned, no Developer ID certificate; the hardware rows are open)

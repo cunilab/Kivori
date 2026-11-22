@@ -148,11 +148,10 @@ running Kivori also reboots into the bootloader when the app opens its serial po
 user's recovery control and holding it at power-on boots Kivori normally: no Pip input is a
 boot-critical pin.
 
-**The panel parameters are measured evidence; the pin map is not.** The display profile (offset,
-colour order, inversion, SPI mode) was physically verified on 2026-08-11 and is recorded in
-[`docs/validation.md`](docs/validation.md) (rows 1.9, 1.24, 1.25). The pin map moved to the RP2040-Zero
-carrier (#179) and is a *specification* until rows 3.15, 5.1 and 5.2 of the same checklist are
-ticked on a board wired into the v7 enclosure.
+**Panel parameters and pin map.** The display profile (offset, colour order, inversion, SPI mode)
+was physically verified on 2026-08-11 and is recorded in
+[`docs/validation.md`](docs/validation.md) (rows 1.9, 1.24, 1.25). The pin map is confirmed on the
+v8 unit (printed, wired and assembled, 2026-11-22).
 
 Both live in one place, [`firmware/pip/src/profile.rs`](firmware/pip/src/profile.rs), so a
 rewire is a single constant change. The case and its printed carrier plate are in
@@ -210,7 +209,6 @@ One file per topic:
 | [`docs/validation.md`](docs/validation.md) | The hardware checklist and how to run a validation session |
 | [`docs/release.md`](docs/release.md) | How to cut a Windows, macOS or Linux release, and the unsigned-installer limits |
 | [`docs/linux.md`](docs/linux.md) | Ubuntu installation, USB permissions, X11 / Wayland limits and troubleshooting |
-| [`docs/provisioning.md`](docs/provisioning.md) | Why there is no per-unit provisioning, and where a unit's identity comes from |
 | [`docs/user-guide.md`](docs/user-guide.md) | Short guide for a beta customer: install, setup, controls, recovery |
 | [`docs/bom.md`](docs/bom.md) | Draft bill of materials (prices still to fill in) |
 

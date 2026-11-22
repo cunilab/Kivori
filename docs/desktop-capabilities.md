@@ -145,8 +145,7 @@ multi-image packaging and the identifier guard are implemented. The
 [software closure audit](./validation.md#m28-software-closure-audit) maps the product-contract and
 capability-UI criteria to their evidence. Hardware acceptance and PR review/merging remain separate.
 Catalog metadata does not implement a new interaction model. See
-[ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md) and the
-[M2.8 checklist](./roadmap.md#m28-desktop-organization-and-product-contract).
+[ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md).
 
 ## macOS Accessibility
 
