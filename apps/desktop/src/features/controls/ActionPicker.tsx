@@ -68,10 +68,21 @@ export function labelProblem(label: string): string | null {
   return latin1 ? null : p.labelCharset;
 }
 
+const PROFILE_PICKER: ActionCatalogEntryDto = {
+  id: 'profilePicker',
+  slot: 'rotate',
+  scope: 'system',
+  verification: 'confirmed',
+  params: 'none',
+  availability: 'available',
+  reason: null,
+  runsWhenProtected: true,
+};
+
 export interface PickerTarget {
   /** `null` when picking a macro step (no profile involved). */
   profile: ProfileConfigDto | null;
-  control: ControlRef | 'rotate' | 'step';
+  control: ControlRef | 'rotate' | 'heldRotate' | 'step';
   /** The control's name, for the sheet title. */
   name: string;
   /** What is bound now (`null` = unbound). */
@@ -89,6 +100,10 @@ export interface ActionPickerProps {
   onSaveRotate: (target: PickerTarget, rotate: RotateSpec | null) => Promise<void>;
   /** Called with the chosen step when the target's control is `'step'`. */
   onPickStep?: ((step: StepSpec) => void) | undefined;
+  /** Opens the macro editor for a new macro while this picker stays open. */
+  onNewMacro?: (() => void) | undefined;
+  /** When this becomes an id in `macros`, the Macros choice selects it. */
+  newMacroId?: string | null | undefined;
 }
 
 /** Edit one control: pick an action, fill in what it needs, optionally name it for the device. */
@@ -100,6 +115,8 @@ export function ActionPicker({
   onSaveSlot,
   onSaveRotate,
   onPickStep,
+  onNewMacro,
+  newMacroId,
 }: ActionPickerProps): ReactElement {
   return (
     <Sheet open={target !== null} onOpenChange={(open) => !open && onClose()}>
@@ -114,6 +131,8 @@ export function ActionPicker({
             onSaveSlot={onSaveSlot}
             onSaveRotate={onSaveRotate}
             onPickStep={onPickStep}
+            onNewMacro={onNewMacro}
+            newMacroId={newMacroId}
           />
         ) : null}
       </SheetContent>
@@ -129,8 +148,11 @@ function PickerForm({
   onSaveSlot,
   onSaveRotate,
   onPickStep,
+  onNewMacro,
+  newMacroId,
 }: Omit<ActionPickerProps, 'target'> & { target: PickerTarget }): ReactElement {
-  const rotate = target.control === 'rotate';
+  const heldTurn = target.control === 'heldRotate';
+  const rotate = target.control === 'rotate' || heldTurn;
   const stepMode = target.control === 'step';
   const suggestion = rotate && target.profile ? ROTATE_SUGGESTIONS[target.profile.id] : undefined;
   const spec = target.spec;
@@ -149,13 +171,24 @@ function PickerForm({
   );
   const [macroId, setMacroId] = useState(spec?.kind === 'macro' ? spec.id : '');
   const [delayMs, setDelayMs] = useState('500');
+  const appliedNewMacro = useRef<string | null>(null);
+  useEffect(() => {
+    if (!newMacroId || appliedNewMacro.current === newMacroId) return;
+    if (!macros.some((macro) => macro.id === newMacroId)) return;
+    appliedNewMacro.current = newMacroId;
+    setId('macro');
+    setMacroId(newMacroId);
+  }, [newMacroId, macros]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // A step is a discrete action that is not a macro (no nesting), or a wait.
-  const entries = (catalog ?? []).filter(
-    (e) => e.slot === (rotate ? 'rotate' : 'discrete') && !(stepMode && e.id === 'macro'),
-  );
+  const entries = [
+    ...(heldTurn ? [PROFILE_PICKER] : []),
+    ...(catalog ?? []).filter(
+      (e) => e.slot === (rotate ? 'rotate' : 'discrete') && !(stepMode && e.id === 'macro'),
+    ),
+  ];
   const entry = entries.find((e) => e.id === id) ?? null;
   const isDelay = stepMode && id === DELAY;
   const params = entry?.params ?? 'none';
@@ -226,12 +259,14 @@ function PickerForm({
       case 'nextTrack':
       case 'systemMute':
       case 'micMute':
+      case 'switchView':
         return { kind: id };
       default:
         return null;
     }
   };
   const rotation = (): RotateSpec | null => {
+    if (id === 'profilePicker') return { kind: 'profilePicker' };
     const text = label.trim();
     if (id === 'appVolume') {
       return text ? { kind: 'appVolume', app, label: text } : { kind: 'appVolume', app };
@@ -246,7 +281,9 @@ function PickerForm({
     if (stepMode) {
       const action = discrete();
       if (isDelay) onPickStep?.({ kind: 'delay', ms: delayValue });
-      else if (action && action.kind !== 'macro') onPickStep?.({ kind: 'action', action });
+      else if (action && action.kind !== 'macro' && action.kind !== 'switchView') {
+        onPickStep?.({ kind: 'action', action });
+      }
       onClose();
       return;
     }
@@ -263,7 +300,8 @@ function PickerForm({
 
   const groups = CATALOG_SCOPES.map((scope) => ({
     scope,
-    entries: entries.filter((e) => e.scope === scope),
+    // A view switch runs on the desk, so it cannot be a macro step.
+    entries: entries.filter((e) => e.scope === scope && !(stepMode && e.id === 'switchView')),
   })).filter((g) => g.entries.length > 0);
 
   return (
@@ -353,6 +391,7 @@ function PickerForm({
             {p.micNote}
           </p>
         )}
+        {id === 'switchView' && <p className="text-sm text-muted-foreground">{p.switchViewNote}</p>}
 
         {params === 'macro' && (
           <Field
@@ -360,19 +399,32 @@ function PickerForm({
             label={p.macro}
             hint={macros.length === 0 ? p.noMacros : undefined}
           >
-            <select
-              id="picker-macro"
-              value={macroId}
-              onChange={(e) => setMacroId(e.target.value)}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="">—</option>
-              {macros.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <select
+                id="picker-macro"
+                value={macroId}
+                onChange={(e) => setMacroId(e.target.value)}
+                className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">—</option>
+                {macros.map((macro) => (
+                  <option key={macro.id} value={macro.id}>
+                    {macro.name}
+                  </option>
+                ))}
+              </select>
+              {!stepMode && onNewMacro ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="shrink-0"
+                  disabled={macros.length >= MACRO_LIMITS.macros}
+                  onClick={onNewMacro}
+                >
+                  {t.macros.newInPicker}
+                </Button>
+              ) : null}
+            </div>
           </Field>
         )}
         {isDelay && (

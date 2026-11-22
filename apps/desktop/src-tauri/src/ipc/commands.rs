@@ -430,8 +430,8 @@ fn profile_ref(token: &str) -> Result<crate::config::ProfileRef, String> {
 /// profile cannot reset a single control.
 ///
 /// # Errors
-/// Returns an error for an unknown profile or control, the middle button's Hold (reserved for
-/// profile pin), an invalid label, shortcut or launch target, or a failed save.
+/// Returns an error for an unknown profile or control, an invalid label, shortcut or launch
+/// target, or a failed save.
 #[tauri::command]
 pub fn set_binding(
     handle: AppHandle,
@@ -489,6 +489,52 @@ pub fn set_rotate(
         crate::config::profiles::edit_bindings(&mut next, &profile, resetting, |over| {
             over.rotate = rotate;
         })
+        .map_err(crate::config::ConfigError::Invalid)?;
+        store.save(next)
+    })
+}
+
+/// Changes what Hold + turn does in a profile, or (`rotate` = `null`) resets it to the profile
+/// picker. A custom profile cannot reset a single control. `profilePicker` is the built-in.
+///
+/// # Errors
+/// Returns an error for an unknown profile, an invalid shortcut or label, or a failed save.
+#[tauri::command]
+pub fn set_held_rotate(
+    handle: AppHandle,
+    app: State<'_, AppState>,
+    profile: String,
+    rotate: Option<crate::config::RotateSpec>,
+) -> Result<ConfigDto, String> {
+    let profile = profile_ref(&profile)?;
+    let rotate = rotate
+        .as_ref()
+        .map(crate::config::resolve::canonical_held_rotate)
+        .transpose()
+        .map_err(str::to_string)?;
+    let builtin_default = matches!(
+        rotate,
+        None | Some(crate::config::RotateSpec::ProfilePicker)
+    );
+    commit_config(&handle, &app, ActivityEventKind::ConfigSaved, |store| {
+        let mut next = store.file().clone();
+        if matches!(profile, crate::config::ProfileRef::Custom(_)) && rotate.is_none() {
+            return Err(crate::config::ConfigError::Invalid(
+                "a custom profile is reset as a whole, back to General",
+            ));
+        }
+        let stored = if builtin_default && matches!(profile, crate::config::ProfileRef::Builtin(_))
+        {
+            None
+        } else {
+            rotate
+        };
+        crate::config::profiles::edit_bindings(
+            &mut next,
+            &profile,
+            stored.is_none() && matches!(profile, crate::config::ProfileRef::Builtin(_)),
+            |over| over.held_rotate = stored,
+        )
         .map_err(crate::config::ConfigError::Invalid)?;
         store.save(next)
     })

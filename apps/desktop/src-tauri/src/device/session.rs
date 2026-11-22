@@ -28,11 +28,11 @@ use kivori_model::{
 };
 use kivori_protocol::{
     decode_frame, decode_message, encode_message, evaluate_hello_ack, BuddySettings, BuildInfo,
-    Bye, ByeReason, ControlLabelsUpdate, Feedback, FirmwareVersion, HandshakeOutcome, Hello,
-    HoldActionsUpdate, InputEvent, InternalsRequest, MascotActionApplied, MediaInfoUpdate, Message,
-    MicStateUpdate, Ping, PlayMascotAction, Presentation, ProfileChoicesUpdate, ProtoError,
-    SeqClass, SequenceTracker, SetState, Status, MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR,
-    PROTOCOL_MINOR,
+    Bye, ByeReason, ControlLabelsUpdate, Feedback, FirmwareVersion, HandshakeOutcome,
+    HeldTurnModeUpdate, Hello, HoldActionsUpdate, InputEvent, InternalsRequest,
+    MascotActionApplied, MediaInfoUpdate, Message, MicStateUpdate, Ping, PlayMascotAction,
+    Presentation, ProfileChoicesUpdate, ProtoError, SeqClass, SequenceTracker, SetState, Status,
+    MAX_FRAME, MAX_WIRE, PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
 
 /// Static session parameters (the desktop's advertised identity + compatibility).
@@ -81,7 +81,9 @@ impl Default for SessionConfig {
                 // Turning with the knob switch held is the device's profile picker; the bindable
                 // `HELD_ROTATION_V1` gesture it replaced is no longer offered to the device.
                 .union(Capabilities::PROFILE_PICKER_V1)
-                .union(Capabilities::HOLD_RING_V1),
+                .union(Capabilities::HOLD_RING_V1)
+                .union(Capabilities::KNOB_HOLD_V1)
+                .union(Capabilities::HELD_TURN_MODE_V1),
             supported_majors: vec![PROTOCOL_MAJOR],
         }
     }
@@ -757,6 +759,32 @@ impl Session {
         Ok(true)
     }
 
+    /// Sends whether Hold + turn opens the profile picker. Returns `Ok(false)` without encoding
+    /// anything when there is no session or `HELD_TURN_MODE_V1` was not negotiated.
+    ///
+    /// # Errors
+    /// [`SessionError::Transport`] if the write fails.
+    pub fn send_held_turn_mode<L: SerialLink>(
+        &mut self,
+        link: &mut L,
+        picker: bool,
+    ) -> Result<bool, SessionError<L::Error>> {
+        let Some(session) = self.current_session else {
+            return Ok(false);
+        };
+        if !self
+            .effective_caps()
+            .contains(Capabilities::HELD_TURN_MODE_V1)
+        {
+            return Ok(false);
+        }
+        self.send(
+            link,
+            &Message::HeldTurnMode(HeldTurnModeUpdate { session, picker }),
+        )?;
+        Ok(true)
+    }
+
     /// Sends one action outcome for the current session. Returns `Ok(false)` without encoding
     /// anything when there is no session or `ACTION_FEEDBACK_V1` was not negotiated. `Triggered`
     /// goes out as `Unverified` unless `QUIET_ACK_V1` was negotiated.
@@ -1099,9 +1127,14 @@ impl Session {
                 ControlId::Rotary => true,
                 ControlId::PressedRotary => {
                     caps.contains(Capabilities::BUTTON_INPUT_V1)
-                        && caps.contains(Capabilities::HELD_ROTATION_V1)
+                        && (caps.contains(Capabilities::HELD_ROTATION_V1)
+                            || caps.contains(Capabilities::HELD_TURN_MODE_V1))
                 }
-                ControlId::Button => caps.contains(Capabilities::BUTTON_INPUT_V1),
+                ControlId::Button => {
+                    caps.contains(Capabilities::BUTTON_INPUT_V1)
+                        && (event.kind != InputKind::Hold
+                            || caps.contains(Capabilities::KNOB_HOLD_V1))
+                }
                 ControlId::ContextButton(_) => caps.contains(Capabilities::CONTEXT_BUTTONS_V1),
             }
             && (event.kind != InputKind::DoublePress

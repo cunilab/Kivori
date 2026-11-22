@@ -233,6 +233,8 @@ export const CAPABILITY_NAMES = [
   'heldRotationV1',
   'profilePickerV1',
   'holdRingV1',
+  'knobHoldV1',
+  'heldTurnModeV1',
 ] as const;
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
 
@@ -506,12 +508,15 @@ export const CUSTOM_PROFILE_ID = /^custom-\d{1,4}$/;
 /** The native limits, checked again there. */
 export const PROFILE_LIMITS = { customProfiles: 16, apps: 32, nameMax: 32, pinned: 10 } as const;
 
-/** Controls `setBinding` targets. Knob Hold and middle-button Hold are fixed. */
+/** Controls `setBinding` targets. */
 export const CONTROL_REFS = [
   'press',
+  'hold',
+  'doublePress',
   'button1Press',
   'button1Hold',
   'button2Press',
+  'button2Hold',
   'button3Press',
   'button3Hold',
 ] as const;
@@ -528,6 +533,8 @@ export type ActionSpec =
   | { kind: 'appMute'; app: string }
   | { kind: 'shortcut'; keys: string }
   | { kind: 'launch'; target: string }
+  /** Switches the screen between the views chosen under Display. Not valid as a macro step. */
+  | { kind: 'switchView' }
   /** Runs a saved macro by its id. Never valid as a macro's own step. */
   | { kind: 'macro'; id: string };
 export const ACTION_SPEC_KINDS = [
@@ -539,13 +546,17 @@ export const ACTION_SPEC_KINDS = [
   'appMute',
   'shortcut',
   'launch',
+  'switchView',
   'macro',
 ] as const;
 
 export const STEP_SPEC_KINDS = ['action', 'delay'] as const;
 /** One step of a macro: run an action (never a macro), or wait. */
 export type StepSpec =
-  | { kind: 'action'; action: Exclude<ActionSpec, { kind: 'macro' }> }
+  | {
+      kind: 'action';
+      action: Exclude<ActionSpec, { kind: 'macro' } | { kind: 'switchView' }>;
+    }
   | { kind: 'delay'; ms: number };
 /** A user macro: its steps run in order. `id` is stable (a-z, 0-9, - and _); bindings name it. */
 export interface MacroSpec {
@@ -556,12 +567,19 @@ export interface MacroSpec {
 /** The native limits, checked again there. */
 export const MACRO_LIMITS = { macros: 32, steps: 8, delayMin: 50, delayMax: 2000 } as const;
 
-export const ROTATE_SPEC_KINDS = ['systemVolume', 'shortcuts', 'appVolume'] as const;
+export const ROTATE_SPEC_KINDS = [
+  'systemVolume',
+  'shortcuts',
+  'appVolume',
+  'profilePicker',
+] as const;
 export type RotateSpec =
   | { kind: 'systemVolume' }
   | { kind: 'shortcuts'; cw: string; ccw: string; label: string }
   /** One app's volume. `label` defaults to the app's name without `.exe`. */
-  | { kind: 'appVolume'; app: string; label?: string };
+  | { kind: 'appVolume'; app: string; label?: string }
+  /** Hold + turn opens the profile picker on the device. */
+  | { kind: 'profilePicker' };
 
 /** A replacement for one slot: `action: null` = explicitly unbound. */
 export interface SlotSpec {
@@ -591,14 +609,17 @@ export interface ProfileConfigDto {
   /** Foreground app ids that select this profile (empty for General). */
   apps: string[];
   rotate: { spec: RotateSpec; deviceLabel: string; overridden: boolean };
+  /** Hold + turn. The default is the profile picker on the device. */
+  heldRotate: { spec: RotateSpec; deviceLabel: string; overridden: boolean };
   press: SlotDto;
   hold: SlotDto;
-  /** A button's Hold is `'micMute'` for the middle one (fixed mic mute on every capture device). */
+  /** Knob double press. The default action switches the screen view. */
+  doublePress: SlotDto;
   buttons: [ButtonDto, ButtonDto, ButtonDto];
 }
 export interface ButtonDto {
   press: SlotDto;
-  hold: SlotDto | 'micMute';
+  hold: SlotDto;
 }
 
 /** Backlight steps, 1 (dimmest, still clearly on) to 5 (full). */
@@ -632,6 +653,7 @@ export const DESK_ACTIONS = [
   'appVolume',
   'appMute',
   'macro',
+  'switchView',
 ] as const;
 export type DeskActionToken = (typeof DESK_ACTIONS)[number];
 export const DESK_RESULTS = [
@@ -642,10 +664,6 @@ export const DESK_RESULTS = [
   'error',
 ] as const;
 export type DeskResult = (typeof DESK_RESULTS)[number];
-
-/** What a double press does. Fixed in M1: show the next display mode. */
-export const DOUBLE_PRESS_ACTIONS = ['nextView'] as const;
-export type DoublePressAction = (typeof DOUBLE_PRESS_ACTIONS)[number];
 
 export interface DeskActionDto {
   action: DeskActionToken;
@@ -697,13 +715,13 @@ export interface DeskStatusDto {
   cpuPercent: number | null;
   ramPercent: number | null;
   highLoad: boolean;
-  /** Press and Hold; `null` = unbound. */
+  /** Press, Hold and Double press; `null` = unbound. */
   pressAction: DeskActionToken | null;
   holdAction: DeskActionToken | null;
-  doublePressAction: DoublePressAction;
+  doublePressAction: DeskActionToken | null;
   /** The three contextual buttons' Press, left to right; `null` = unbound. */
   buttonActions: [DeskActionToken | null, DeskActionToken | null, DeskActionToken | null];
-  /** The three contextual buttons' Hold; `null` = unbound (the middle one always is: it pins). */
+  /** The three contextual buttons' Hold; `null` = unbound. */
   buttonHoldActions: [DeskActionToken | null, DeskActionToken | null, DeskActionToken | null];
   /** The active profile (the config UI keys its tabs by it). */
   profileId: ProfileId;
@@ -725,7 +743,15 @@ export interface DeskStatusDto {
 }
 
 export const CATALOG_SLOTS = ['rotate', 'discrete'] as const;
-export const CATALOG_SCOPES = ['system', 'app', 'media', 'keyboard', 'launch', 'macro'] as const;
+export const CATALOG_SCOPES = [
+  'system',
+  'app',
+  'media',
+  'display',
+  'keyboard',
+  'launch',
+  'macro',
+] as const;
 export const CATALOG_VERIFICATIONS = [
   'confirmed',
   'started',

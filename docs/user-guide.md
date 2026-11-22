@@ -46,7 +46,6 @@ in-app updates; `.deb` installs show updates as unsupported. Download and instal
 X11 and Wayland; keyboard shortcuts and automatic app profiles require X11. On Wayland use
 General or pin a profile. GNOME needs the AppIndicator extension for the tray icon.
 
-
 ## First run and setup
 
 Kivori walks you through a short setup. You can skip any step, and "Skip setup" is always at the top.
@@ -59,26 +58,28 @@ Kivori walks you through a short setup. You can skip any step, and "Skip setup" 
 4. **Try it.** Follow the guidance for your device's supported controls and check their assigned
    actions in Controls. This step does not automatically tick or verify the hardware; continue
    when you are ready.
-5. **Make it yours.** Pick the starting screen, how lively the buddy is, and whether Kivori starts
+5. **How will you use Kivori?** Pick what fits. Kivori puts the matching profiles on your device so
+   you can switch with the knob. You can change this later in Controls.
+6. **Make it yours.** Pick the starting screen, your buddy's personality, and whether Kivori starts
    at login.
 
 You can repeat setup any time: Device page, **Run setup again**.
 
 ## The controls
 
-| Control | What it does by default |
-|---|---|
-| Turn the knob | Volume (faster turns take bigger steps) |
-| Press the knob | System output mute / unmute (every profile) |
-| Hold + turn the knob (two detents) | Open profile picker; turn to choose, release to select |
-| Double-press the knob | Switch screen view |
-| Left / middle / right button | Previous track / Play-Pause / Next track |
-| Hold the middle button for 1 second, then release | Mic mute / unmute on every capture device (every profile) |
-| Hold the knob for about 10 seconds | Restarts Kivori, even if the app is closed |
+| Control                                           | What it does by default                                                          |
+| ------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Turn the knob                                     | Volume (faster turns take bigger steps)                                          |
+| Press the knob                                    | System output mute / unmute (every profile)                                      |
+| Hold the knob for one second, then release        | Nothing, until you bind a Hold. Release before two seconds; recovery starts then |
+| Hold + turn the knob (two detents)                | Open profile picker; turn to choose, release to select (you can bind this)       |
+| Double-press the knob                             | Switch screen view (the default; you can bind another action)                    |
+| Left / middle / right button                      | Previous track / Play-Pause / Next track                                         |
+| Hold the middle button for 1 second, then release | Mic mute on every capture device (the default; you can bind another action)      |
+| Hold the knob for about 10 seconds                | Restarts Kivori, even if the app is closed                                       |
 
 A short press means pressed and released within one second. Holding the knob past about 2
-seconds starts recovery until the 10-second restart, and the screen shows its progress. The left and
-right buttons can also be given a Hold action in the app; holding them for a long time never
+seconds starts recovery until the 10-second restart, and the screen shows its progress. Each button can be given a Hold action in the app; holding one for a long time never
 restarts anything.
 
 With double press enabled, a single knob press waits about a quarter second after release so
@@ -92,18 +93,18 @@ the screen. The built-in profiles include General, Browser, Code, Media, Zoom an
 Teams the left button mutes your microphones. Editable [starter profiles](./starter-profiles.md)
 also cover CapCut, Photoshop, After Effects, Premiere Pro, Blender, Claude Code, Codex and OpenCode.
 
-On Controls, choose **Use this profile** to pin the selected profile, or **Follow foreground app**
+On Controls, choose **Lock to this profile** to pin the selected profile, or **Unlock (follow apps)**
 to return to Auto. Agent profiles need manual selection because Kivori cannot identify the agent
 inside a terminal window. Review the starter shortcuts for your app version and keymap before use.
 
-To stay on one profile, **pin it to the device**: on Controls, switch on **Pin to device** for the
+To stay on one profile, **pin it to the device**: on Controls, switch on **Show on device** for the
 profiles you want on the knob (General, Browser, Code, Media, Zoom and Teams start pinned; the
 starter and your own profiles start unpinned; the device holds up to 10). Then hold the knob down
 and turn it two detents: the screen shows the profile picker, with the profile name large and a row of marks for
 Auto and each pinned profile. Turn to move the highlight, release to select. **Auto** follows the
 app in front again. The picker says "Pinned" (or "Following your apps") only once Kivori reports it
 now runs that profile; if Kivori does not answer it says "Not confirmed" and shows what is really
-active. Middle-button hold always mutes every microphone; wait for its one-second ring to fill, then release. A dot
+active. Middle-button hold mutes every microphone unless you bind it to something else; wait for its one-second ring to fill, then release. A dot
 next to the name shows a profile is pinned. On a protected window (such as a Windows permission
 prompt or the lock screen) shortcuts and app launches pause, while volume, media keys and mute keep
 working.
@@ -136,15 +137,22 @@ saving. **Escape** or **Cancel** leaves the previous value in place; you can als
 the shortcut manually. Recording is available for buttons, both knob directions and macro steps.
 Some shortcuts are intercepted by the operating system or terminal and must be entered manually.
 
-**Hold + rotate** is the device's profile picker and is fixed: it cannot be bound to shortcuts any
-more. A shortcut pair you saved for it in an earlier version is no longer used (it is dropped the
-next time your settings are saved). It needs firmware that supports the picker; update the device
-from the Device page if the row says so.
+**Hold** on the knob is unbound until you give it an action. Hold for one second and release
+before two seconds. At about two seconds recovery takes the knob and the Hold does not run.
+Firmware that does not support knob Hold keeps the binding saved and does not run it.
 
-**Hold ring.** Hold a button, or the knob switch, and a ring on the device fills over one second;
-when it is full and bright, releasing runs the Hold. Release earlier and it is an ordinary press.
-The ring appears only for controls whose Hold does something, so an unbound Hold shows nothing. The
-restart hold (about 2 seconds on the knob switch) takes over from the ring.
+**Hold + rotate** opens the profile picker by default: two detents while the knob is held, then
+release to choose. You can bind it to volume or shortcuts instead, per profile. If no profile
+keeps the picker, switch profiles from the desktop with Lock. A shortcut pair saved for this
+gesture before it was the picker is dropped the next time those settings are opened. The row says
+when the connected firmware cannot use the binding; update the device from the Device page.
+
+**Hold ring.** Hold a button, or the knob switch when its Hold does something, and a ring on the
+device fills over one second; when it is full and bright, releasing runs the Hold. Release earlier
+and it is an ordinary press. The ring appears only for controls whose Hold does something, so an
+unbound Hold shows nothing. The restart hold (about 2 seconds on the knob switch) takes over from
+the ring. A turn that opens the picker, or a held turn you bound to something else, takes the
+press and shows no ring.
 
 A **macro** runs up to 8 steps in order, with optional waits. It stops at the first step that fails
 and does not undo earlier steps. Create macros on the Controls page, then bind one to a control.
@@ -163,12 +171,12 @@ off and set its intensity (Low, Normal, High).
 
 Feedback badges have these meanings:
 
-| Badge | Meaning |
-|---|---|
-| Green check | **Confirmed.** Kivori read the new state back from your computer. |
-| Blue arrow | **Started.** The computer accepted it and started it (for example launching an app). |
-| Amber "?" | **Unverified.** Kivori cannot confirm the final effect. |
-| Red cross | **Error.** Kivori could not complete the action. Earlier macro steps may already have run; check the computer's state before retrying. |
+| Badge       | Meaning                                                                                                                                |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Green check | **Confirmed.** Kivori read the new state back from your computer.                                                                      |
+| Blue arrow  | **Started.** The computer accepted it and started it (for example launching an app).                                                   |
+| Amber "?"   | **Unverified.** Kivori cannot confirm the final effect.                                                                                |
+| Red cross   | **Error.** Kivori could not complete the action. Earlier macro steps may already have run; check the computer's state before retrying. |
 
 Keyboard shortcuts and media keys remain **Unverified** in Activity. On the device they use a
 quiet press/label pulse instead of an amber badge; that pulse does not confirm the final effect.
@@ -233,18 +241,18 @@ package manager, or delete the AppImage; configuration remains in your user data
 Kivori works fully offline. It has no telemetry, no account and no cloud, and nothing in the app
 needs the internet. Your settings and the session activity list stay on your computer.
 
-Knob Hold alone has no action and no hold ring. Existing knob-Hold bindings are ignored; the old middle-button pin gesture automatically becomes mic mute, while your pinned profile list stays available in the picker.
+Knob Hold alone has no action and no hold ring. Existing knob-Hold bindings are ignored. Double press and the middle button's Hold keep their old behaviour unless you bind them to something else: view switching, and mic mute. Your pinned profile list stays available in the picker.
 
 The core profiles use these button presses. Left and right holds start unbound in every built-in profile.
 
-| Profile | Left press | Middle press | Right press | Turn target |
-| --- | --- | --- | --- | --- |
-| General | Previous track | Play / Pause | Next track | System volume |
-| Browser | Back | Reload | Forward | System volume |
-| Code | Terminal | Run | Git | System volume |
-| Media | Previous track | Play / Pause | Next track | System volume |
-| Zoom | Mic mute (all devices) | Camera | Leave | System volume |
-| Teams | Mic mute (all devices) | Camera | Leave | System volume |
+| Profile | Left press             | Middle press | Right press | Turn target   |
+| ------- | ---------------------- | ------------ | ----------- | ------------- |
+| General | Previous track         | Play / Pause | Next track  | System volume |
+| Browser | Back                   | Reload       | Forward     | System volume |
+| Code    | Terminal               | Run          | Git         | System volume |
+| Media   | Previous track         | Play / Pause | Next track  | System volume |
+| Zoom    | Mic mute (all devices) | Camera       | Leave       | System volume |
+| Teams   | Mic mute (all devices) | Camera       | Leave       | System volume |
 
 Media buttons use the system media backend (MPRIS on Linux); Browser and Code actions and Camera / Leave use application shortcuts. Microphone mute affects every capture device, so the call app's own mute icon may not change.
 

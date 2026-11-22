@@ -9,6 +9,7 @@
     "appMute",
     "shortcut",
     "launch",
+    "switchView",
     "macro"
   ],
   "capabilityNames": [
@@ -31,15 +32,20 @@
     "buildInfoV1",
     "heldRotationV1",
     "profilePickerV1",
-    "holdRingV1"
+    "holdRingV1",
+    "knobHoldV1",
+    "heldTurnModeV1"
   ],
   "chipModels": ["esp32c3", "rp2040"],
   "controlLayouts": ["rotary-three-button"],
   "controls": [
     "press",
+    "hold",
+    "doublePress",
     "button1Press",
     "button1Hold",
     "button2Press",
+    "button2Hold",
     "button3Press",
     "button3Hold"
   ],
@@ -54,7 +60,8 @@
     "nextTrack",
     "appVolume",
     "appMute",
-    "macro"
+    "macro",
+    "switchView"
   ],
   "firmwareOfferKinds": ["none", "offerOptional", "required", "updateApp", "deferredForAppUpdate"],
   "firmwareRequiredReasons": ["protocolTooOld", "missingCapabilities"],
@@ -99,7 +106,7 @@
     "pinned": 10
   },
   "resetReasons": ["powerOn", "software", "watchdog", "brownout", "deepSleep", "other"],
-  "rotateSpecKinds": ["systemVolume", "shortcuts", "appVolume"],
+  "rotateSpecKinds": ["systemVolume", "shortcuts", "appVolume", "profilePicker"],
   "startupPlatform": ["windows", "macos", "linux", "other"],
   "stepSpecKinds": ["action", "delay"],
   "updateAdvice": ["upToDate", "updateAvailable", "deviceNewer", "unknown"],
