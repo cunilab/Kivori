@@ -13,17 +13,19 @@ import { Done } from './steps/Done';
 import { Permissions } from './steps/Permissions';
 import { PlugIn } from './steps/PlugIn';
 import { Tour } from './steps/Tour';
+import { UseCase } from './steps/UseCase';
 import { Welcome } from './steps/Welcome';
 import { useAccessibility } from '../permissions/use-accessibility';
 
 const t = strings.onboarding;
 
-type StepId = 'welcome' | 'plug' | 'permissions' | 'tour' | 'customize' | 'done';
+type StepId = 'welcome' | 'plug' | 'permissions' | 'tour' | 'usecase' | 'customize' | 'done';
 const ALL_STEPS: readonly StepId[] = [
   'welcome',
   'plug',
   'permissions',
   'tour',
+  'usecase',
   'customize',
   'done',
 ];
@@ -130,6 +132,7 @@ export function Onboarding({
     plug: { ready: deviceReady, skippable: true },
     permissions: { ready: accessibility.state === 'granted', skippable: true },
     tour: { ready: true, skippable: false },
+    usecase: { ready: true, skippable: false },
     customize: { ready: true, skippable: false },
     done: { ready: true, skippable: false },
   };
@@ -180,6 +183,8 @@ export function Onboarding({
             <Permissions accessibility={accessibility} />
           ) : step === 'tour' ? (
             <Tour connection={connection} />
+          ) : step === 'usecase' ? (
+            <UseCase config={config} />
           ) : step === 'customize' ? (
             <Customize
               connection={connection}

@@ -117,6 +117,7 @@ describe('the one automatic Accessibility ask (setup already finished)', () => {
     await user.click(screen.getByRole('button', { name: 'Not now' }));
     await user.click(await screen.findByRole('button', { name: 'Continue' }));
     await user.click(await screen.findByRole('button', { name: 'Continue' }));
+    await user.click(await screen.findByRole('button', { name: 'Continue' }));
     await user.click(await screen.findByRole('button', { name: 'Finish' }));
     await home();
     await settle();
