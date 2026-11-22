@@ -965,6 +965,117 @@ describe('ControlsPage macros', { timeout: 20_000 }, () => {
     expect(screen.getByRole('dialog', { name: /Edit Press/ })).toBeVisible();
     expect(screen.queryByRole('dialog', { name: 'New macro' })).not.toBeInTheDocument();
   });
+
+  it('opens a template prefilled and saves it with saveMacro', async () => {
+    const user = userEvent.setup();
+    const save = vi.spyOn(ipc, 'saveMacro');
+    render(<Harness />);
+    await openTab(user, 'Macros');
+    const card = await screen.findByTestId('macros');
+    expect(card.querySelector('img')).toHaveAttribute('alt', '');
+    expect(card.querySelector('img')).toHaveClass('size-12');
+    expect(screen.getByText('No macros yet.')).toBeVisible();
+    expect(screen.getByText('Start from a template below, or create a new macro.')).toBeVisible();
+
+    await clickTemplate(user, /^Copy, then paste/);
+    expect(await screen.findByLabelText('Name')).toHaveValue('Copy, then paste');
+    expect(stepTexts().map((text) => text.replace(/^\d/, ''))).toEqual([
+      'Keyboard shortcut: Ctrl+C',
+      'Wait 150 ms',
+      'Keyboard shortcut: Ctrl+V',
+    ]);
+    await user.click(screen.getByRole('button', { name: 'Save macro' }));
+    const steps = macroTemplates('windows').find((template) => template.key === 'copyPaste')?.steps;
+    expect(save).toHaveBeenCalledWith({ id: 'copy-then-paste', name: 'Copy, then paste', steps });
+    expect(await screen.findByTestId('macro-copy-then-paste')).toBeVisible();
+    save.mockRestore();
+  });
+
+  it('tests a macro from the list, counting down when it sends keys', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await openTab(user, 'Macros');
+    await clickTemplate(user, /^Quiet mode/);
+    await user.click(screen.getByRole('button', { name: 'Save macro' }));
+    const quiet = await screen.findByTestId('macro-quiet-mode');
+    await user.click(within(quiet).getByRole('button', { name: 'Test Quiet mode' }));
+    expect(ipc.testAction).toHaveBeenCalledWith({ kind: 'macro', id: 'quiet-mode' });
+    expect(within(quiet).queryByRole('status')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(quiet.querySelector('[data-result]')).toHaveAttribute('data-result', 'unverified'),
+    );
+
+    vi.mocked(ipc.testAction).mockClear();
+    await clickTemplate(user, /^Select all and copy/);
+    await user.click(screen.getByRole('button', { name: 'Save macro' }));
+    const row = await screen.findByTestId('macro-select-all-and-copy');
+    const test = within(row).getByRole('button', { name: 'Test Select all and copy' });
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    await user.click(test);
+    expect(within(row).getByRole('status')).toHaveTextContent('Running in 3');
+    expect(within(row).getByRole('button', { name: 'Cancel' })).toBeVisible();
+    expect(ipc.testAction).not.toHaveBeenCalled();
+    await user.click(within(row).getByRole('button', { name: 'Cancel' }));
+    act(() => vi.advanceTimersByTime(5000));
+    expect(ipc.testAction).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
+    const again = within(row).getByRole('button', { name: 'Test Select all and copy' });
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    await user.click(again);
+    act(() => vi.advanceTimersByTime(3000));
+    expect(ipc.testAction).toHaveBeenCalledWith({ kind: 'macro', id: 'select-all-and-copy' });
+    await waitFor(() =>
+      expect(row.querySelector('[data-result]')).toHaveAttribute('data-result', 'unverified'),
+    );
+    vi.useRealTimers();
+  });
+
+  it('replaces a step in place and leaves a delay without Edit', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await openTab(user, 'Macros');
+    await user.click(await screen.findByRole('button', { name: 'New macro' }));
+    await user.type(await screen.findByLabelText('Name'), 'Swap');
+    await addStep(user, /^Mute/);
+    await addStep(user, /^Play \/ Pause/);
+    await addStep(user, /^Wait/);
+    expect(screen.queryByRole('button', { name: 'Edit step 3' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Edit step 1' }));
+    const picker = await screen.findByRole('dialog', { name: 'Add a step' });
+    expect(within(picker).getByRole('radio', { name: /^Mute/ })).toBeChecked();
+    await user.click(within(picker).getByRole('radio', { name: /^Next track/ }));
+    await user.click(within(picker).getByRole('button', { name: 'Add step' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Add a step' })).not.toBeInTheDocument(),
+    );
+    expect(stepTexts().map((text) => text.replace(/^\d/, ''))).toEqual([
+      'Next track',
+      'Play / Pause',
+      'Wait 500 ms',
+    ]);
+  });
+
+  it('selects a macro created from the open picker', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await openPressEditor(user);
+    await user.click(screen.getByRole('radio', { name: /^Macro/ }));
+    await user.click(screen.getByRole('button', { name: 'New macro…' }));
+    const editor = await screen.findByRole('dialog', { name: 'New macro' });
+    await user.type(within(editor).getByLabelText('Name'), 'From picker');
+    await user.click(within(editor).getByRole('button', { name: 'Add step' }));
+    const stepPicker = await screen.findByRole('dialog', { name: 'Add a step' });
+    await user.click(within(stepPicker).getByRole('radio', { name: /^Mute/ }));
+    await user.click(within(stepPicker).getByRole('button', { name: 'Add step' }));
+    await user.click(within(editor).getByRole('button', { name: 'Save macro' }));
+    await waitFor(() =>
+      expect(screen.getByLabelText('Macro', { selector: 'select' })).toHaveValue('from-picker'),
+    );
+    expect(screen.getByRole('dialog', { name: /Edit Press/ })).toBeVisible();
+    expect(screen.queryByRole('dialog', { name: 'New macro' })).not.toBeInTheDocument();
+  });
 });
 
 describe('ControlsPage notice', () => {
