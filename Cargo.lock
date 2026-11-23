@@ -1688,9 +1688,9 @@ dependencies = [
 
 [[package]]
 name = "heapless"
-version = "0.9.3"
+version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25ba4bd83f9415b58b4ed8dc5714c76e626a105be4646c02630ad730ad3b5aa4"
+checksum = "411fdef4df93751117bd9ef8caa0e7f99c65dafec5bd84313eb8e2fdd75e32f2"
 dependencies = [
  "hash32 0.3.1",
  "serde_core",
@@ -2200,7 +2200,7 @@ dependencies = [
 name = "kivori-asset-compiler"
 version = "0.3.1"
 dependencies = [
- "heapless 0.9.3",
+ "heapless 0.9.4",
  "kivori-assets",
  "kivori-model",
  "postcard",
@@ -2211,7 +2211,7 @@ dependencies = [
 name = "kivori-assets"
 version = "0.3.1"
 dependencies = [
- "heapless 0.9.3",
+ "heapless 0.9.4",
  "kivori-model",
  "postcard",
  "serde",
@@ -2223,7 +2223,7 @@ version = "0.3.1"
 dependencies = [
  "enigo",
  "getrandom 0.4.3",
- "heapless 0.9.3",
+ "heapless 0.9.4",
  "kivori-asset-compiler",
  "kivori-assets",
  "kivori-framebuffer",
@@ -2268,7 +2268,7 @@ version = "0.1.4"
 dependencies = [
  "embedded-graphics-core",
  "embedded-hal",
- "heapless 0.9.3",
+ "heapless 0.9.4",
  "kivori-asset-compiler",
  "kivori-assets",
  "kivori-framebuffer",
@@ -2310,7 +2310,7 @@ dependencies = [
 name = "kivori-protocol"
 version = "0.3.1"
 dependencies = [
- "heapless 0.9.3",
+ "heapless 0.9.4",
  "kivori-model",
  "postcard",
  "serde",
@@ -2321,7 +2321,7 @@ name = "kivori-renderer"
 version = "0.3.1"
 dependencies = [
  "embedded-graphics",
- "heapless 0.9.3",
+ "heapless 0.9.4",
  "kivori-assets",
  "kivori-framebuffer",
  "kivori-model",
