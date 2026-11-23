@@ -1,6 +1,5 @@
 //! One long virtual session that carries both protocol sequence counters past their `u16` wrap,
-//! with input flowing the whole time. Real elapsed time; it finds defects before a physical soak
-//! but earns no soak hours (the sustained-use checks in docs/roadmap.md stay open).
+//! with input flowing the whole time. Real elapsed time; it does not exercise physical hardware.
 use super::*;
 
 /// Keeps the edge queue fed without hitting its capacity check.

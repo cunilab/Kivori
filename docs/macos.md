@@ -15,7 +15,7 @@ native support, not Windows emulation. Intel Mac builds have not been verified.
 | Current media | Bundled media observer, with Spotify/Music Automation fallback; unavailable observations stay unknown |
 | Profiles / app launch / macros | Native bundle identifiers and foreground app checks; queued input retains cancellation guards |
 | CPU / RAM / clock | Native system observations |
-| Sleep / wake / lock / reconnect | Native handlers exist; physical acceptance is recorded separately below |
+| Sleep / wake / lock / reconnect | Native handlers |
 | Firmware update / BOOT recovery | Bundled product firmware (UF2, written by the app); physical recovery still requires a device |
 | App volume / app mute | Unavailable; never substitutes system volume or system mute |
 | App update | Manual replacement from a newer DMG; automatic updates are not enabled on macOS |
@@ -40,8 +40,7 @@ Automation prompts may appear for the optional Spotify/Music observation fallbac
 
 `macos-check` runs native unit and read-only backend checks without starting the media observer.
 It does not inject keys or change volume/mute. `just macos-audio-test` explicitly exercises output
-volume and mute and restores their original values, including on assertion failure. Microphone
-mute and native shortcuts still need a deliberate hands-on session.
+volume and mute and restores their original values, including on assertion failure. Microphone mute and native shortcuts are not exercised by these commands.
 
 ## Distribution
 
@@ -53,19 +52,3 @@ Gatekeeper as a substitute for release verification.
 The website serves a Mac download only when a compatible Apple Silicon DMG is present on a
 published release. Until then it reports that the Mac build has not been published. Publishing,
 code signing and notarization are separate release actions.
-
-## Acceptance record
-
-Mac acceptance is separate from the existing Windows M2.9 20/24 count. Neither shared host tests
-nor the virtual device close either platform's physical gates.
-
-- [x] Packaged Apple Silicon app starts, displays setup and quits cleanly.
-- [ ] Accessibility denial, grant and revocation behave honestly for the installed copy.
-- [ ] Real volume/mute read-back and external changes; unsupported output devices are handled.
-- [ ] Multiple microphones, unreadable / unsettable devices and hotplug never falsely confirm mute.
-- [ ] Media controls, shortcuts to the intended app, app launch and macro cancellation work.
-- [ ] Device discovery, buffered inputs, display output, USB reconnect, sleep/wake and lock/unlock work.
-- [ ] Bundled firmware update and interrupted-flash BOOT recovery work on a physical unit.
-- [ ] Login startup and a manual app replacement preserve configuration.
-- [ ] Installation and first-open instructions work on a clean Mac before public distribution.
-- [ ] Actual idle soak, sustained use and unfamiliar-user observation are recorded on Mac.

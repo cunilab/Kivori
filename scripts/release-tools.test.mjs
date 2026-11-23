@@ -328,7 +328,7 @@ function fakeLog(commits) {
 const log = fakeLog([
   ['a1', 'feat(m2.7): in-app updater', '', ['apps/desktop/src-tauri/src/updater/mod.rs']],
   ['a2', 'fix(mic): say "can\'t tell"', 'Longer body.\n\nCo-Authored-By: x', ['crates/x.rs']],
-  ['a3', 'docs: roadmap', '', ['docs/roadmap.md']],
+  ['a3', 'docs: architecture', '', ['docs/architecture.md']],
   ['a4', 'chore(release): v0.1.0', '', ['Cargo.toml', 'Cargo.lock']],
   ['a5', 'feat(firmware): idle life', '', ['firmware/pip/src/idle.rs']],
   ['a6', 'fix(firmware): marker log', '', ['firmware/esp32-c3/src/log.rs']],

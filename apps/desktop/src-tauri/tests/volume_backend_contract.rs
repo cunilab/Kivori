@@ -161,8 +161,7 @@ mod windows_backend {
             other => {
                 eprintln!(
                     "SKIPPED: no default render endpoint on this machine ({other:?}). \
-                     Real Core Audio behaviour is PHYSICAL WINDOWS EVIDENCE, open check in \
-                     docs/roadmap.md"
+                     Real Core Audio behaviour requires a physical Windows audio endpoint"
                 );
             }
         }

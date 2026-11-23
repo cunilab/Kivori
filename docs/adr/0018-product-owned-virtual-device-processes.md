@@ -1,8 +1,7 @@
 # ADR-0018: Product-owned virtual device processes
 
-- **Status:** Proposed (PR not merged); owner authorized implementation on 2026-10-26
+- **Status:** Proposed
 - **Date:** 2026-10-26
-- **Milestone:** M2.9 S5
 - **Related:** [ADR-0001](./0001-two-cargo-workspaces.md), [ADR-0002](./0002-one-wire-protocol-crate.md), [ADR-0017](./0017-product-contract-and-capability-driven-desktop.md)
 
 ## Context
@@ -41,10 +40,7 @@ offline and release-surface checks with positive controls; preserve standalone e
 Future products own separate runner/scenario implementations and share existing wire/model
 contracts only; extract additional common harness code when a second implemented product needs it.
 
-The [virtual Pip guide](../virtual-pip.md) describes simulation and its limits. Passing
-simulation closes only explicitly scoped software tasks, never physical, signing, deployment,
-real-use or participant acceptance. S5.1 is implemented in the review branch; broader scenarios remain planned. The ADR remains Proposed
-until merge, following the ADR index policy.
+The [virtual Pip guide](../virtual-pip.md) describes simulation and its limits. Simulation does not exercise physical hardware, signing or deployment.
 
 ## Alternatives considered
 

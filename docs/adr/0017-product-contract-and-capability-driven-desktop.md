@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-15
-- **Milestone:** M2.8
 - **Related:** [ADR-0014](./0014-versions-product-identity-and-product-catalog.md), [ADR-0013](./0013-device-internals-on-request.md), [issue #76](https://github.com/cunilab/Kivori/issues/76)
 
 ## Context
@@ -28,15 +27,11 @@ The registry owns machine ids and wire numbers. The catalog owns customer names,
 USB discovery hints, firmware build/artifact paths, required capabilities and optional product art.
 Firmware declares its identity and supported capabilities. Build, packaging, provisioning and
 release tools consume that metadata rather than choosing a product through a hardcoded default.
-The existing hand-maintained catalog embedding list must be replaced by build-time discovery or
-generation before claiming catalog-only additions; no runtime product download is introduced.
+Build-time discovery embeds the catalog; there is no runtime product download.
 
-**Firmware bundles.** M2.8 includes replacing the current single-image bundle with a catalog-driven
-set of supported product/board images. Build validation checks each image against its catalog
+**Firmware bundles.** A catalog-driven set contains supported product/board images. Build validation checks each image against its catalog
 identity and firmware version; update advice and flashing select the matching image, never the
-first catalog entry. Packaging and release tools build and describe the same set. This is explicit
-implementation work, not something catalog discovery alone supplies. Test it with two supported
-product fixtures, including a wrong-image refusal. It does not add simultaneous multi-device UI.
+first catalog entry. Packaging and release tools build and describe the same set. It does not add simultaneous multi-device UI.
 
 Recovery with no handshake identity uses catalog USB/board hints only to find candidate images,
 never as proof of identity. One candidate may be offered under the existing explicit flash
@@ -53,13 +48,12 @@ identity exchange and guarded recovery remain possible. Legacy identity counts a
 ADR-0014. Whether identity is resolved gates features; which product id it names never selects
 feature behavior. Keep backend checks: hiding a control is not a safety boundary.
 
-M2.8 must document and implement a capability-to-surface mapping for navigation, cards, controls
-and display views, reusing the current capability definitions. Separate offline configuration from
-live device actions. Binding/display configuration remains editable when unplugged, using configured
+The capability-to-surface mapping covers navigation, cards, controls and display views, separating
+offline configuration from live device actions. Binding/display configuration remains editable when unplugged, using configured
 or last-known product metadata where available, otherwise a neutral configuration state. Retained
 metadata never authorizes commands or masquerades as a connected device. Host-only action tests
 keep their existing permission/safety rules; they do not require device capabilities.
-M2.8 preserves the existing OS-user/machine binding storage and control-id semantics; it does not
+The app preserves OS-user/machine binding storage and control-id semantics; it does not
 add independent per-product profile stores. Switching products must not erase or rewrite bindings
 for controls absent on the new product. Product-specific profile storage needs a separate design
 when a real product requires it.
@@ -106,7 +100,7 @@ Firmware remains bundled with the app; there are no downloaded per-device softwa
 Configuration belongs to the active OS user and machine, not on-device hardware profiles. The
 existing isolated signed app updater remains the network exception, not a product plugin system.
 
-**As built (M2.8 capability-aware setup).** Plug-in readiness uses the current known usable-session
+**Capability-aware setup.** Plug-in readiness uses the current known usable-session
 rule, including legacy baseline support, with separate pending/unknown/identity-only guidance and
 Skip. The Tour is a non-blocking guide filtered by the same effective control policy as Controls.
 It no longer infers physical input from host volume or generic `lastAction`, which have no
@@ -117,7 +111,7 @@ profile guidance is generic and the middle-button pin hint requires physical/con
 support. Session switches never rewrite configuration. Launch-at-login consent still applies only
 on Finish. No protocol, catalog schema, per-product profile store or hardware-test claim is added.
 
-**As built (M2.8 firmware build recipes).** Optional `firmware.build` metadata carries target and
+**Firmware build recipes.** Optional `firmware.build` metadata carries target and
 features; shipping boards must supply it. One Bun helper builds the explicitly selected catalog pair
 (or the sole active pair), with no default based on catalog order. Local build/desktop/provision/bundle
 recipes, PowerShell and the release firmware job consume its verified artifact path. Builds pin the
@@ -127,7 +121,7 @@ Provision identity flags remain assertions, separate from build selection. Board
 flash/test recipes remain explicit. Whole-catalog packaging is implemented below; pair-level recovery
 choices and release-set metadata are implemented below.
 
-**As built (M2.8 recovery target guard).** A live session identity associated with the selected port takes
+**Recovery target guard.** A live session identity associated with the selected port takes
 precedence over USB hints; mismatching/unknown identities cannot fall back to identity-free recovery.
 Recovery refuses a missing/unknown image identity, a port
 with no catalog candidates, a product choice outside that port's candidates. Multiple possible boards now require
@@ -138,7 +132,7 @@ replaces single-image mismatch refusal with exact lookup. Candidate refusals use
 under the existing recovery rules. Queued requests cannot replace an active flash workflow.
 Per-device image selection and pair-level recovery choices are implemented below.
 
-**As built (M2.8 image-set foundation).** Explicit legacy-path or manifest input is validated as an
+**Image-set foundation.** Explicit legacy-path or manifest input is validated as an
 immutable image set. Exact product/board lookup never falls back to catalog order; duplicate keys,
 ambiguous markers and invalid catalog/version/protocol records are refused. Generated sources are
 ordered by wire pair. Native consumers now select the exact current identity's image; no bundle
@@ -147,10 +141,10 @@ before lookup, refuses pending live identities and requires an explicit choice f
 port's identity. Missing target images are unavailable. Status version/size/advice follow the selected
 identity, while accepted operations retain their image and idle refresh preserves queued reservations.
 Incompatible recovery offers carry no assumed version. Provisioning flags select an exact embedded
-pair, and no-argument provisioning requires a sole image. Multiple images can now be embedded;
-hardware acceptance remains open; pair-level recovery and release orchestration are implemented below. Synthetic fixtures are not shipping products.
+pair, and no-argument provisioning requires a sole image. Multiple images can be embedded.
+Synthetic fixtures are not shipping products.
 
-**As built (M2.8 catalog firmware packaging).** Desktop development/bundle recipes, PowerShell and
+**Catalog firmware packaging.** Desktop development/bundle recipes, PowerShell and
 release CI build every active pair in deterministic wire order. Each successful build is copied
 before a later board can overwrite the same Cargo output. Fresh staging directories and exclusive
 manifest creation prevent stale output reuse. Only ELF files cross runner boundaries; Windows
@@ -160,7 +154,7 @@ records before emission. The single-image path remains available for targeted de
 provisioning. Targets derive from catalog recipes; release CI expects stable crate toolchains.
 Single-target selectors cannot narrow desktop packages.
 
-**As built (M2.8 catalog release orchestration).** Release tooling reads the same complete catalog
+**Catalog release orchestration.** Release tooling reads the same complete catalog
 and names every bundled product/version in wire order. Independent per-product override maps permit
 mixed bumps/exact versions in one release. All product/crate guards run before any version/output
 write, including unchanged products and planned manifest edits. Each product's boards require one
@@ -169,9 +163,9 @@ require consistent resolved versions across their product lineages. Every unique
 refreshed, only planned version/lock paths may be staged, and the app plus new firmware tags are
 pushed atomically. Single-product title/notes behavior and legacy firmware history are preserved.
 Synthetic two-product fixtures execute planning, notes and the actual workflow shell against local
-bare remotes; tests do not trigger a real release. Hardware acceptance remains open; pair-level recovery is implemented below.
+bare remotes; tests do not trigger a real release.
 
-**As built (M2.8 recovery pair choices).** Ambiguous no-handshake recovery offers exact catalog
+**Recovery pair choices.** Ambiguous no-handshake recovery offers exact catalog
 product/board pairs. Each button opens the existing BOOT confirmation with both names visible;
 cancel never queues a restore. The selected pair must still be present in the latest failed-choice
 status, and connection changes close the dialog. The existing `chooseProduct` token is retained;
@@ -188,48 +182,7 @@ the Device firmware card hosts the pair chooser. These fixtures perform no devic
 
 ## Consequences
 
-**As built (M2.8 software closure audit).** Product contract and capability-driven UI implementation
-were verified in the M2.8 software closure audit.
-The merged implementation completes the software checklist, including catalog-driven provisioning,
-packaging and release selection and current-session feature gating. Supported-feature additions need
-no shared-app product list; new hardware backends and interaction models remain separate feature work.
-PRs #77–#103 are merged into `main`, with post-merge CI passing as recorded in the closure evidence.
-This does not change this ADR's Proposed status or claim a release, a second physical product or
-completion of hardware acceptance.
-
-**As built (M2.8 automated product acceptance).** The app-shell scenarios and native session/runtime
-admission checks now cover the planned synthetic product matrix. Existing catalog and image-set
-generators compile their temporary multi-product fixtures and exact indexes without shared product
-lists. The M2.8 acceptance evidence map identified each
-check and its limits. Hardware rows remain open. Live queued commands use the execution-time
-session; activity request entries are not proof of application. Host action testing and staging the
-user's desired state remain available offline, unlike device reactions, live views and Studio Mirror.
-
-Existing legacy identity rules
-and wrong-product/board flashing refusals remain mandatory.
-
-Acceptance requires frontend rendering and navigation tests for Pip, a test-only product without
-screen/mascot/media, and mixed capability sets. Cover old firmware, missing art, pending/unknown
-identity, known identity-only recovery, offline configuration, disconnect and switching sessions.
-Test a command attempted before identity resolves, and a reconnect with a late internals reply
-while the card stays mounted. A test must show supported controls remain usable as well as
-unsupported ones disappearing. Rust fake-catalog identity tests alone do not prove frontend behavior.
-Catalog/build tests must also prove a supported product can be registered and embedded without
-editing a product list in shared app source, and that each firmware image is selected by matching
-product/board identity rather than catalog order.
-Keep fake catalog entries outside shipping discovery roots and inject them only in tests. Synthetic
-images may exercise metadata/selection checks but are not hardware evidence or shipping firmware.
-Release validation must prove that bundled images match the shipping catalog's supported
-product/board set and exclude test entries. Registry numbers reserved for retired/future products
-do not themselves require a bundled image. Acceptance also covers preserving bindings when a
-product without those controls connects.
-
-A scoped CI identifier guard supplements those tests. Derive product names/ids from the catalog,
-and allow explicit contract files, product firmware/art, legacy handling, tests, docs and the guard's
-own fixtures. Document exceptions. Include a positive control that inserts a known leak and proves
-the guard fails. A clean grep cannot detect unnamed assumptions about screen or button layout.
-
-**As built (M2.8 identifier guard).** `just check-identifiers` runs the Bun guard and its fixtures;
+**Identifier guard.** `just check-identifiers` runs the Bun guard and its fixtures;
 Ubuntu/Windows host CI run both. Identifiers come from all registry ids (including reservations),
 active catalog names/models/board labels and firmware crate paths. Compound board-label words such
 as `SuperMini` are derived only when the catalog contains that camel-cased word; chip tokens are
@@ -262,8 +215,7 @@ firmware workspace and its source root, using NUL-delimited paths to preserve sp
 failure stops the check. Its fixtures verify a second custom crate is visited and a network API
 there is rejected. The identifier positive controls inject leaks in isolated Git repositories and
 require actual CLI failure, including untracked files, camelCase and production code after test
-modules. A separate test asserts the real repository is scanned and clean. These guards supplement
-the behavioral acceptance evidence; they do not complete hardware/recovery rows.
+modules. A separate test asserts the real repository is scanned and clean. These guards supplement behavioral tests.
 
 ## Alternatives considered
 

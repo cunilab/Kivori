@@ -1,6 +1,6 @@
 # Kivori architecture
 
-How Kivori is built today. Product goals are in [product.md](./product.md), open work and hardware checks in [roadmap.md](./roadmap.md).
+How Kivori is built. Product behavior is described in [product.md](./product.md).
 
 ## 1. Overview
 
@@ -33,7 +33,7 @@ The wire carries meaning (state, input, presentation), never pixels. Both sides 
 
 The root host workspace and the isolated Pip firmware workspace are the current production
 boundaries. Shared crates are `no_std`, no-alloc, and the single source of truth. The development-only
-virtual Pip runner adds a separate host workspace (ADR-0018, M2.9 S5.1).
+virtual Pip runner adds a separate host workspace (ADR-0018).
 
 | Path                                        | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -69,11 +69,10 @@ It complements the capability/firmware-selection tests. The offline dependency g
 firmware workspaces/source roots from packaging's validated catalog plans; it requires Bun as well
 as Cargo/jq and refuses catalog discovery failure.
 
-### Product-owned virtual devices (M2.9 S5)
+### Product-owned virtual devices
 
 [ADR-0018](./adr/0018-product-owned-virtual-device-processes.md) and the
-[virtual Pip plan](./virtual-pip.md) describe the owner-authorized development/test path. S5.1–S5.6
-are implemented as a dedicated opt-in desktop example and frontend entry with connection/fault
+[virtual Pip guide](./virtual-pip.md) describe the development/test path. A dedicated opt-in desktop example and frontend entry provide connection/fault
 and raw-input/desktop-policy scenarios, deterministic replay and report artifacts. It adds no shipping product
 or change to the physical device protocol.
 
@@ -90,25 +89,24 @@ session still validates identity and capabilities. Physical discovery remains un
 Timestamped raw encoder/button levels enter `InputSource::drain` and the real `Runtime`; its
 `CaptureDisplay` output supplies firmware pixels. Fake OS services and isolated in-memory settings
 exercise interactive desktop behavior without real keyboard/media/volume, flash or installer
-effects. S5.4's native smoke additionally owns a disposable directory for production ConfigStore
+effects. The native smoke additionally owns a disposable directory for production ConfigStore
 save/reopen checks. Its setup UI tests use browser IPC mocks; they do not verify a native
 WebView-to-runner setup flow.
-The first slice has a dedicated development owner sharing production Session, RotaryPipeline,
+The development bridge shares production Session, RotaryPipeline,
 session synchronization and DeskRuntime; it does not start or verify the full shipping device loop.
 It owns child lifecycle/queues and compiles only with the explicit `virtual-device` feature.
 Release/offline guards and the independent no_std build remain gates.
 Interactive mode uses real elapsed time; deterministic headless firmware time does not imply
-whole-desktop time control. S5.1–S5.6 have local macOS and Linux/Windows CI evidence;
-see the acceptance record for exact exercised layers and source heads.
-S5.3 uses a runner-only mode with an explicit stack budget, exact logical event traces and
+whole-desktop time control. The host workspace runs on macOS, Linux and Windows.
+The runner-only mode uses with an explicit stack budget, exact logical event traces and
 firmware captures. Its oversized input-port injection does not test the physical interrupt queue.
-S5.5's recovery CLI rehearses flash/update policy with in-process fake executors and feeds
+The recovery CLI rehearses flash/update policy with in-process fake executors and feeds
 actual virtual-session compatibility into post-flash admission. The firmware binary is unchanged;
 physical programming, signature validation and shipping updater orchestration are not exercised.
-S5.6 keeps replay recipes/goldens and file-backed reports in the product-owned simulator. Fixed
+The simulator keeps replay recipes/goldens and file-backed reports in the product-owned simulator. Fixed
 firmware clocks are distinguished from real desktop time. Reports bind checkout/build fingerprints
 to expected/actual results; separate CI guards prove offline, production and no_std boundaries.
-The acceptance record distinguishes verified paths from planned scenarios. None is physical evidence.
+These scenarios do not exercise physical hardware.
 
 ### State axes
 
@@ -518,7 +516,7 @@ The typed session activity log is the only runtime log.
 - Raw payload output exists only behind the `debug-payloads` Cargo feature. It is off by default and must not ship.
 - Tests: native redaction tests, frontend runtime-cast privacy tests, ordering and 256-entry retention tests.
 
-### Host presence (sleep, lock, console; M3 S2)
+### Host presence (sleep, lock, console)
 
 - `platform/host_events.rs` is pure. A per-OS source turns notifications into `HostEvent`s (`Suspending, Resumed, Locked, Unlocked, ConsoleDisconnected, ConsoleConnected`) on a channel the device thread drains next to its commands (`HostSignal`, with an ack channel on `Suspending`). `HostPresenceTracker::on_event` returns the actions to take; an event that changes nothing returns none, so Windows' two resume notices and repeated lock events are harmless.
 - Sleep: the OS callback sends `Suspending` and waits at most 500 ms (`SUSPEND_ACK_BUDGET`). The device thread writes `Bye(HostSleeping)` (`Bye(Shutdown)` if the device did not negotiate `HOST_TAKEOVERS_V1`) with `Session::close`, drops the link, clears the connection timers, leaves the manager `Disconnected` with no retry count, then acks. macOS answers `IOAllowPowerChange` after the ack or the timeout; `kIOMessageCanSystemSleep` is allowed at once. While asleep, or while another user session has the console, discovery does not run, so the port is never reopened before the machine is really suspended.
@@ -529,7 +527,7 @@ The typed session activity log is the only runtime log.
 - `ConnectionStatusDto.host` is `locked` while the override is set and `sleeping` while the link is released for a suspend. Activity records: `hostSuspending`, `hostResumed`, `hostLocked`, `hostUnlocked` (source `connection`, info).
 - If the OS refuses the registration the app logs one warning and runs without it; the device then falls back to its host-silence timeout and shows Offline.
 
-### Launch at login and tray (M3 S4)
+### Launch at login and tray
 
 - `tauri-plugin-autostart` is used from Rust only: `init(MacosLauncher::LaunchAgent, Some(["--autostart"]))` and `app.autolaunch()`. There is no JS package and no permission in `capabilities/default.json`, so the webview reaches it only through `get_startup_settings` and `set_launch_at_login(enabled)`. The OS entry (Windows `Run` key, macOS LaunchAgent) is the source of truth: nothing is stored in `config.json`, and each command returns what the OS reports after the change. Its own dependencies (`auto-launch`, `dirs`, `os_info`, registry and `smappservice` bindings) have no network crate.
 - Hidden start: `tauri.conf.json` creates the window with `visible: false`. `setup` shows it unless `std::env::args()` contains `--autostart` (`window_lifecycle::launched_at_login`); a login launch starts `WindowLifecycle::hidden()` (tray only, a close request is a no-op, `Reactivated` shows the window). The device task runs either way.
@@ -541,7 +539,7 @@ The typed session activity log is the only runtime log.
 The provisioning helper (`just provision`, its QA policy and the eFuse identity burn) was removed with
 the RP2040-Zero (#179, ADR-0019; [release.md](./release.md#firmware-flashing)). Identity comes from the build.
 
-### Firmware image-set foundation (M2.8)
+### Firmware image-set foundation
 
 `firmware_bundle` parses immutable images, orders them by product/board wire identity, rejects duplicate
 keys and offers exact lookup with no fallback. Every image must be ELF32 little-endian RISC-V and
@@ -571,9 +569,9 @@ Flash until an exact image is known, while Restore remains available.
 
 The multi-image runtime build gate is removed. Synthetic two-product and two-board
 fixtures exercise lookup, recovery and metadata. Desktop/release recipes now build
-every active pair. Whole-catalog packaging is implemented below; hardware acceptance remains open; catalog release orchestration is implemented below.
+every active pair. Whole-catalog packaging and catalog release orchestration are described below.
 
-### Firmware build recipes (M2.8)
+### Firmware build recipes
 
 `firmware.build.target` and `firmware.build.features` in each board's catalog entry define its
 release recipe. The block is optional for runtime-only/test catalogs; every shipping board must
@@ -611,18 +609,18 @@ Existing `fw-check`, `fw-test`, `fw-flash`, latency recipes and firmware feature
 explicit Pip/C3 developer checks. Local targets/toolchains must already be installed. Multi-product
 release notes and version/bump/tag orchestration use the same catalog through `release-catalog.mjs`; every product/crate is guarded before writes, and all new lineage tags push atomically. Neither helper flashes.
 
-### First-run onboarding (M3 S6)
+### First-run onboarding
 
 - State: `config.json` gains `onboarding: { completed, accessibilityAsked }` (`#[serde(default)]`, still schema v1). `get_onboarding`, `complete_onboarding` and `restart_onboarding` (the last backs the Device page's "Run setup again") read and save it; `mark_accessibility_asked` sets `accessibilityAsked` once (never cleared, kept by "Reset all settings"); the writers go through the normal config path, so they publish `config://changed` like any save, and all return `{ completed, accessibilityAsked }`. `accessibilityAsked` makes the Accessibility ask a one-time event: the setup step marks it when it shows with the permission off, `AccessibilityAskDialog` (existing installs, decided once per run when setup is complete and the state is known) marks it when it shows, and any ask button marks it; a file from before the field loads as not asked.
-- Existing users: a file that parses and has no `onboarding` key was written before the field existed, so `ConfigStore::open` loads it as `completed: true` and the stored settings are never questioned. A missing file (fresh install) or a file that is recovered as corrupt or newer starts at `completed: false`, so first-run setup shows once and can always be skipped. A file that does name the field is taken at its word. `reset` keeps `completed` as it was, so "Reset all settings" does not send anyone back through setup. Downgrading to a build older than this field makes the strict parser set the file aside as corrupt (the known M2 consequence of `deny_unknown_fields`, only before the beta).
+- Existing users: a file that parses and has no `onboarding` key was written before the field existed, so `ConfigStore::open` loads it as `completed: true` and the stored settings are never questioned. A missing file (fresh install) or a file that is recovered as corrupt or newer starts at `completed: false`, so first-run setup shows once and can always be skipped. A file that does name the field is taken at its word. `reset` keeps `completed` as it was, so "Reset all settings" does not send anyone back through setup. Downgrading to a build older than this field makes the strict parser set the file aside as corrupt (a consequence of `deny_unknown_fields`).
 - Permissions (`platform/permissions.rs`): `accessibility()` (`AXIsProcessTrusted`), `request_accessibility()` (`AXIsProcessTrustedWithOptions` with the prompt option, so macOS shows its own dialog) and `open_accessibility_settings()` (`/usr/bin/open` with one fixed `x-apple.systempreferences:` URL, no caller input) return `Granted`, `Missing` or `NotApplicable` (every other OS). The FFI is declared by hand like the other macOS code. The webview reaches them through `get_accessibility`, `request_accessibility` and `open_accessibility_settings`, which return the tokens `granted`, `missing`, `notApplicable`.
 - Diagnostics: the "input permission" row reads `accessibility()` (cached for a second in the device loop) only while the active profile presses keys (`Profile::needs_key_events`: a shortcut on a button or the knob, or a macro step): `granted` or `required` on macOS, otherwise `notNeeded`, and `required` also while the last desk action was refused by the OS. `reset_accessibility` validates the bundle identifier read from the main bundle (reverse-DNS characters only) before it reaches `/usr/bin/tccutil`, and the synthesizer never prompts (`open_prompt_to_get_permissions: false`): only `request_accessibility` and `reset_accessibility` do.
 - UI (`features/onboarding/`): while `completed` is `false`, `App.tsx` renders `Onboarding` instead of the sidebar layout. Steps are Welcome, Plug in, Permissions, Tour, Make it yours, Done; Permissions is in the list only while `get_accessibility` says `missing` (never when `granted` or `notApplicable`), turns green and continues by itself when the focus re-check reads `granted`, and its skip button reads "Not now". Outside setup, `AccessibilityAskDialog` shows the one-time card for an install that finished setup without being asked and `AccessibilityStatus` is the permanent Settings row. `Skip setup` remains in the header. Plug-in Continue requires a known usable current session, including legacy baseline support. Pending identity waits, unknown identity gives app-update guidance, and known identity-only firmware directs the person to Device after setup. Incompatible/stuck transport keeps the existing BOOT recovery; firmware update hints require a ready session.
-- Onboarding recovery (M2.9): Plug in embeds the Device firmware component in recovery-only mode. Its existing 750 ms native polling follows preparing, flashing, reconnecting and terminal results even after setup navigation; command acceptance is not completion. All failed restores retain BOOT retry while disconnected; ambiguous targets use catalog product/board choices and a fresh BOOT confirmation. Native choice changes invalidate open confirmations. A known usable reconnect clears inactive recovery and stale request errors, including rejection arriving after reconnect. Normal flash controls stay hidden during setup.
-- Tour (M2.8): a non-blocking capability-filtered guide using the same control policy as Controls. Rotary input requires `physicalInputV1`, push-switch requires that plus `buttonInputV1`, and context buttons require physical input plus `contextButtonsV1`. Host volume changes and `lastAction` have no input-source/control/session attribution, so `useTour` and its automatic completion ticks were removed. Continue is always available; the list reacts to session/capability changes without progress to carry over. This does not verify hardware. Attributed input verification requires separate backend/IPC work.
+- Onboarding recovery: Plug in embeds the Device firmware component in recovery-only mode. Its existing 750 ms native polling follows preparing, flashing, reconnecting and terminal results even after setup navigation; command acceptance is not completion. All failed restores retain BOOT retry while disconnected; ambiguous targets use catalog product/board choices and a fresh BOOT confirmation. Native choice changes invalidate open confirmations. A known usable reconnect clears inactive recovery and stale request errors, including rejection arriving after reconnect. Normal flash controls stay hidden during setup.
+- Tour: a non-blocking capability-filtered guide using the same control policy as Controls. Rotary input requires `physicalInputV1`, push-switch requires that plus `buttonInputV1`, and context buttons require physical input plus `contextButtonsV1`. Host volume changes and `lastAction` have no input-source/control/session attribution, so `useTour` and its automatic completion ticks were removed. Continue is always available; the list reacts to session/capability changes without progress to carry over. This does not verify hardware. Attributed input verification requires separate backend/IPC work.
 - Make it yours: saved default view and Buddy intensity remain editable offline through the existing save commands. `Saved only` notes appear without their effective features, including disconnected/pending/unknown sessions. Profile text is generic; middle-button pin guidance requires physical/context-button support. Session/product switches change wording without writes or config resets. Launch at login is on by default and applied only on Finish, never on Skip setup. Done describes completing setup rather than asserting that hardware works.
 
-### Splash screen (M2.6)
+### Splash screen
 
 On a normal launch the main window stays hidden and `setup` starts a watcher thread. If the frontend has not called `app_ready` ~300 ms after launch, the watcher opens a small undecorated `splash` window (a second Vite page, `splash.html`, bundled locally: no remote assets, no React) and keeps its one status line in step with the real core state ("Starting", then "Looking for your Kivori" once the device task has begun connecting); there is no percentage. When `app_ready` arrives (the frontend sends it after its first native answer) the splash fades and is destroyed and the main window shows; a fast start never opens the splash. A login launch (`--autostart`, from the autostart plugin) starts no watcher: no splash, window hidden, `app_ready` is a no-op. If the frontend never reports ready, the window is shown anyway after 10 s so a broken page cannot leave only a splash. The splash window has a capability for events only, no app commands. The decisions live in the pure `startup` module.
 
@@ -646,7 +644,7 @@ On a normal launch the main window stays hidden and `setup` starts a watcher thr
 - Basic Copy diagnostics is available on Device and Developer even with the toggle off. With developer mode on, the copy may include an `internals` group from visible instrumentation's latest reply; unmounting the internals card clears that shared cache. Connection-generation and report-age checks reject stale or prior-session data; copying never starts internals polling (see Device internals).
 - Sources: `Session` keeps `Health.free_bytes`, `Pong.uptime_ms` with its receive instant, and counters for malformed frames, sequence gaps and device `Error`s. All of it is connection-scoped and reset by `Session::open` (the free-memory and uptime figures also clear when the link drops). The round trip comes from `HeartbeatMonitor` (`on_ping_sent(t_ms)`, `on_pong(t_ms_echo, now_ms)`), taken only from the echo of the latest ping.
 - The device thread writes a `DiagnosticsSnapshot` (raw figures and `Instant`s) at most once a second; `get_diagnostics` turns it into ages and adds the config summary from the config store at read time. Host-service tokens come from the live backends (`available`, `unsupported`, `unavailable`; media `observable`; focus `detecting`; input permission `required`, `granted`, `notNeeded` or `unknown`). Input permission is `granted` or `required` on macOS (from the Accessibility check, see First-run onboarding), `required` also after the OS refused synthesized input, and `notNeeded` elsewhere.
-- Firmware update advice (bundled version, update available) belongs in `FirmwareStatus` (M3); diagnostics will read it from there rather than duplicate it.
+- Firmware update advice (bundled version and update availability) belongs in `FirmwareStatus`.
 
 ### Firmware flashing from the app
 
@@ -655,7 +653,7 @@ On a normal launch the main window stays hidden and `setup` starts a watcher thr
 - `FirmwareStatusDto`: `available`, `phase` (`idle, preparing, flashing, reconnecting, succeeded, failed`), `message`, `imageSize`. The UI polls it every 750 ms. Timeouts: flash 90 s, reconnect 20 s.
 - Embedding: `scripts/build-desktop-firmware.ps1` builds the complete catalog firmware set, then embeds its manifest in the desktop. Other complete-set pipelines use `KIVORI_FIRMWARE_MANIFEST`; targeted development can use `KIVORI_FIRMWARE_PATH`. The build rejects a non-ARM or non-ELF32 image. A host build without the variable disables the action, so a stale artifact cannot slip in.
 - No flashing tool is shipped or looked up: the app writes UF2 itself. Mirror to device sends a state command only. It does not install anything.
-- The offer (M2.7, `src/firmware_offer.rs`, pure): the device thread evaluates it every tick from the connection, the session identity, the bundled image's identity record, the updater state and whether a flash or knob gesture runs, and publishes `FirmwareOfferDto` (`kind`: `none | offerOptional | required | updateApp | deferredForAppUpdate`; product name, `from` and `to` versions (a protocol recovery offer has no `to` until a target is resolved), required `reason`: `protocolTooOld | missingCapabilities`, and an opaque `key`) on `firmware://offer`. Rules:
+- The offer (`src/firmware_offer.rs`, pure): the device thread evaluates it every tick from the connection, the session identity, the bundled image's identity record, the updater state and whether a flash or knob gesture runs, and publishes `FirmwareOfferDto` (`kind`: `none | offerOptional | required | updateApp | deferredForAppUpdate`; product name, `from` and `to` versions (a protocol recovery offer has no `to` until a target is resolved), required `reason`: `protocolTooOld | missingCapabilities`, and an opaque `key`) on `firmware://offer`. Rules:
   - Only the bundled image whose record names the device's product and board counts, compared with `update_advice`. An unknown or foreign product, or an identity not yet reported, gets `none`; the native exact-match guard still decides what may be written.
   - The question (`offerOptional`, `required`) appears only after the connection has been idle (no gesture, no flash) for 5 s; once shown, a gesture does not take it away. A flash always makes it `none`.
   - App first: while the updater holds, offers, downloads or is about to install an app update (`Machine::app_update_due`), a question becomes `deferredForAppUpdate`; the new app may bundle newer firmware. The tray then shows only the app item, and the dialog never opens by itself while an app update is offered.
@@ -663,7 +661,7 @@ On a normal launch the main window stays hidden and `setup` starts a watcher thr
   - `required`: an incompatible handshake with an older (or unknown) protocol major, or a connected device older than the bundled firmware that lacks a capability the catalog requires of its product. It has "Update now" and "Not now", which only closes the dialog. An incompatible device's generic offer has no target version or product and requires at least one bundled image. Its "Update now" takes the restore path, like Flash firmware does. A device newer than the app (newer firmware, or a newer protocol major) is `updateApp`: the Device page says to update the app and, when an app update is offered, links to its dialog.
   - "Update now" (`accept_firmware_offer`) queues the ordinary `FlashFirmware` (takeover screen, phases, verification); `features/updates/FirmwareOfferDialog.tsx` follows `get_firmware_status` until `succeeded` or `failed`. The tray shows "Update Kivori firmware…" while a question is open and no app update is offered; it opens the window on the dialog (`firmware://show-offer`). Activity: `firmwareOfferShown` (once per key), `firmwareOfferAccepted`, `firmwareOfferLater`, all without metadata.
 
-### Release pipeline (M3 S5)
+### Release pipeline
 
 - Trunk-based release requests: the manual Release button prepares an on-demand version PR into
   protected `main`; it never pushes directly to `main`. After squash merge and successful host,
@@ -676,7 +674,7 @@ On a normal launch the main window stays hidden and `setup` starts a watcher thr
 - Signing is not implemented: the installer is unsigned and a placeholder step (repository variable `WINDOWS_SIGNING`) fails closed until owner certificates exist (#36). Unsigned binaries trigger SmartScreen, and Defender may flag the app.
 - macOS (ADR-0009): `scripts/bundle-macos.sh` is the main path; CI builds it on manual dispatch. The adapter is staged by `build.rs` in `target/release/mediaremote-adapter/` and bundled to `Contents/Resources/mediaremote-adapter`. Bundles use a self-signed identity when available, or ad-hoc signing; notarization is not done.
 
-### App updates (M2.7, ADR-0015)
+### App updates (ADR-0015)
 
 - Native only: `tauri-plugin-updater` (no `zip` feature) is used from `src/updater/` alone. There is no JS package and no permission in `capabilities/`; the webview gets the typed commands and events above.
 - Availability (`updater::policy::availability`, read from the merged Tauri config at startup): Windows, `plugins.updater` with exactly the endpoint `https://github.com/cunilab/Kivori/releases/latest/download/latest.json` and a non-empty `pubkey`. Only then is the plugin registered and the `kivori-updater` thread started. Otherwise the status is `disabled` (`devBuild`: the base `tauri.conf.json` has no updater section; `noKey`: the release config's key is still empty; `badEndpoint`) or `unsupported` (macOS), and no request is ever made. The plugin needs its config at init, so not registering it is also what keeps a dev build from failing to start.
@@ -701,10 +699,8 @@ Core function needs no internet, cloud, CDN, telemetry or licence check. Discove
 Each architecture decision is its own record in [`docs/adr/`](./adr/). The [ADR index](./adr/README.md)
 lists them all with their status and says how to add one.
 
-The implemented M2.8 contract is [ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md).
+The product contract is [ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md).
 It separates catalog metadata from negotiated UI support and defines developer/support boundaries.
-The M2.8 software closure audit mapped implementation and
-automated evidence. The review stack is not a shipping release; hardware acceptance stays separate.
 
 ## 8. Engineering principles
 

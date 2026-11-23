@@ -28,7 +28,7 @@ Runner Cargo commands must name their manifest and host target, with separate ta
 without inheriting Pip's embedded runner/linker flags. Product release recipes remain unchanged.
 The dedicated `virtual_device` desktop example owns the development bridge and UI, sharing
 production Session/RotaryPipeline/DeskRuntime and session synchronization without starting the
-shipping app/device loop. S5.4 separately checks temporary ConfigStore persistence and setup UI
+shipping app/device loop. The native smoke separately checks temporary ConfigStore persistence and setup UI
 contracts; it does not establish the shipping app's native setup/device-loop integration.
 The bridge selects an explicit local runner; no arbitrary shell command text, native simulator network listener,
 virtual COM driver, fake catalog registration or bypass of identity/capability admission.
@@ -146,7 +146,7 @@ firmware behaviour is the one `Runtime` both run.
 - The endurance run (`just virtual-device-endurance`) also passes on v2 (`KIVORI_VIRTUAL_BOARD=rp2040-zero`, 2026-11-06): one session, 305,058 detents in 1,248 s, both sequence counters wrapped with no gap, slowest heartbeat round trip 814 ms.
 
 
-## Connection and fault controls (S5.2)
+## Connection and fault controls
 
 The development window adds Disconnect, Reconnect and a fixed Fault mode selector. Reconnect
 always starts a fresh normal child/session, retaining fake OS state but dropping old wire, raw
@@ -202,7 +202,7 @@ now keeps input that does not fit instead:
   frames (a stall long enough for the once-a-second `Health` alone to fill it: a minute or more, and
   unchanged by this work).
 
-## Raw input scenarios (S5.3)
+## Raw input scenarios
 
 The product-owned runner adds `--input-smoke`, also run by `just virtual-device-smoke`. It drives
 raw timestamped levels through the actual firmware runtime and checks complete wire-event traces,
@@ -211,7 +211,7 @@ production wire message is added. Normal invocation still serves bounded newline
 Firmware milliseconds are injected; desktop deadlines and physical timing are not simulated by
 this mode. Input-port overflow injection is explicitly distinct from a physical ISR queue test.
 
-## Simulated desktop scenarios (S5.4)
+## Simulated desktop scenarios
 
 The native development example's `--desktop-smoke` runs production desktop policies with existing
 fake OS backends and a CLI-owned disposable configuration directory. The normal development window
@@ -220,7 +220,7 @@ labelled separately; setup UI is checked with the existing browser mock rather t
 a native IPC-to-runner path. The smoke launcher includes these cases; production releases must
 omit the `PASS S5.4` marker, with a positive control in the opt-in example.
 
-## Recovery and compatibility scenarios (S5.5)
+## Recovery and compatibility scenarios
 
 The native development example adds `--recovery-smoke`; the launcher runs it after the desktop
 cases. Production flash workflow, identity/image selection, version-offer and updater/admission
@@ -230,7 +230,7 @@ remains unchanged. No actual flash, eFuse, download or installer path is invoked
 The `PASS S5.5` marker must be absent from production
 and observable in the explicitly enabled example.
 
-## Repeatable reports and replay (S5.6)
+## Repeatable reports and replay
 
 `just virtual-device-smoke` prints a new `target/reports/run-*/report.json` location below this
 product's simulator. It retains command logs, captured firmware pixels, source/build fingerprints
@@ -242,7 +242,7 @@ from the separate CI checks listed in it.
 Each product owns its replay recipes and golden fixture. A deliberate renderer change may require
 a reviewed fixture update after checking intended pixels and actions; the verification command
 does not accept or regenerate new goldens. CI retains reports even after smoke failure, while a
-job that fails before smoke starts may have no report. Physical and real-use acceptance stays open.
+job that fails before smoke starts may have no report.
 
 ## Host presence scenarios
 
@@ -255,8 +255,7 @@ runner now reports the firmware companion `state` with each response, so Sleepin
 asserted directly rather than inferred from pixels.
 
 Cases (real elapsed time): lock/unlock, sleep/wake with input made while asleep, console switch
-without a goodbye, USB power cut during sleep, and a stray wake. Expectations follow the sleep, lock and switch-user checks in the
-[roadmap](./roadmap.md#m29-reliability-truthful-feedback-and-beta-readiness). Mutation checks: skipping
+without a goodbye, USB power cut during sleep, and a stray wake. Mutation checks: skipping
 the sleep goodbye or the lock override fails the stage. Not simulated: OS notification registration
 and delivery, the Windows suspend acknowledgement budget, real USB power and measured timings.
 

@@ -1,6 +1,6 @@
 # Kivori Product
 
-What Kivori is, what the beta must do, and the rules every build keeps. See also [roadmap.md](roadmap.md).
+What Kivori is and the behavior rules it follows.
 
 ## What Kivori is
 
@@ -16,17 +16,13 @@ reports the desktop; it is not a virtual pet with its own goals.
 The first product is **Kivori Pip** (short name Pip, model KV-P1, machine id `pip` in
 `products/`). A product's machine id is its short name in lowercase; the customer name, short name and model code live in its catalog entry.
 
-**Beta target:** a non-maintainer on Windows receives a unit, installs, configures, updates and
-recovers Kivori using only the shipped docs, and pays for it. **v1 target:** decided from beta
-evidence (see [roadmap.md](roadmap.md#m4-v1)).
-
 ## Scope
 
-### In the paid beta
+### Features
 
 - One Kivori on one active desktop session, on Windows or macOS. Initial Mac builds target Apple Silicon.
   Mac app updates are installed manually; per-app volume and mute are unavailable on macOS.
-  Public distribution and physical acceptance are tracked separately in [macOS support](./macos.md).
+  See [macOS support](./macos.md) for platform details.
 - Rotary + button input (press, hold). Actions: system volume, media, master mute, mic mute,
   keyboard shortcut, app launch, simple ordered macros.
 - Monitoring: CPU, RAM, volume / mute, mic mute and mic in use, current media, clock, connection and
@@ -49,33 +45,8 @@ evidence (see [roadmap.md](roadmap.md#m4-v1)).
 - App updates found through GitHub Releases and offered in the app; a firmware update offered when
   a device with older firmware connects.
 
-### After the beta (decided from beta evidence)
-
-- Wider macOS hardware/version coverage and automatic app updates.
-- Call indicators; GPU temperature and custom sources.
-- App-free basic controls (volume, media) on the v1 controller, when no Kivori Desktop session
-  exists ([ADR-0010](./adr/0010-v1-controller-with-native-usb.md), proposed).
-- Display idle and burn-in protection beyond the basics.
-- `Update All` in one step; update channels; rollback-safe (A/B) firmware install; macOS
-  auto-update.
-- Production hardware with an app-independent recovery path, detected by Desktop; secure boot on
-  production units that can act as a USB keyboard (ADR-0016).
-- OS user switching; Passive handling of extra devices; factory reset.
-
-### Not planned
-
-- Linux (until demand shows); cloud sync; news/weather dashboards; pet progression; workflow
-  orchestration.
-- Implicit chords, implicit key-repeat, split rotary directions, guessing sub-apps.
-- Replaying input or transients after reconnect; auto-restarting uncertain host jobs.
-- More than one Active Kivori; Passive as Monitor Mode; waking the host.
-- Process injection, memory inspection or anti-cheat hooks to detect overlays.
-- Silent flashing, unauthenticated or known-incompatible installs, fake progress.
-- Firmware downloaded apart from the app (it ships inside the app; ADR-0014 keeps the format open).
-- Locking firmware against copying onto clone boards.
-
-The rules below are written for the whole product. A rule for a feature that is not shipped yet
-(profiles, macOS, multi-user) applies when that feature ships.
+The app works offline except for update checks. It does not replay expired input, silently
+flash firmware, or download firmware independently of the app.
 
 ## Core behavior
 
@@ -365,18 +336,3 @@ Numbers are fixed from the original user-story contract. Gaps are intentional; n
 25. **A normal rotary binding owns both directions.** `Rotate` reserves both directions; unrelated scopes never split them.
 26. **Update artifacts are authenticated.** Nothing is installed without passing integrity checks.
 27. **Update availability is not consent.** A newer version never silently triggers a disruptive flash.
-
-## Product acceptance gates
-
-An increment is aligned only if it keeps all ten. The roadmap cites them by number.
-
-1. **No false confirmation:** an unverified outcome is never shown as confirmed success.
-2. **No stale replay:** intent that expires during an interruption is never replayed later.
-3. **No silent context mutation:** profile changes come from stable, explicit context.
-4. **No cross-user leakage:** one OS user's config never stays active for another user.
-5. **No hidden execution fallback:** unavailable actions never switch mechanism silently.
-6. **No state invention:** Kivori shows observable state only.
-7. **No passive-device ambiguity:** Passive devices never act like Active or Monitor devices.
-8. **Recoverability:** recovery works without healthy desktop software; production hardware has a path that does not need valid app firmware.
-9. **No ambiguous silence:** when Kivori can render, every user-relevant state has intentional feedback, never a frozen or accidental blank look.
-10. **Compatibility-safe updates:** updates are authenticated, compatibility-checked, ordered safely, and leave a recovery path if they fail.

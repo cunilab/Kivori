@@ -14,8 +14,7 @@ Beta users start with the [user guide](docs/user-guide.md).
 
 ## What it does
 
-Two pillars carry equal weight, with monitoring in support. Everything below is built and
-host-tested; the hardware checks are still open (see [Status](#status)).
+Two pillars carry equal weight, with monitoring in support.
 
 **The buddy**
 
@@ -52,15 +51,6 @@ host-tested; the hardware checks are still open (see [Status](#status)).
 - Device internals (flash, RAM, CPU, frame times, link counters) in developer mode, a splash on
   start, launch at login, a tray icon, first-run onboarding, flashing and recovery of the bundled
   firmware. Core features work offline; the only network use is the update check.
-
-## Status
-
-The app, firmware and website software are built and host-tested. The current milestone is M2.9
-(reliability and beta readiness); what remains is acceptance on a real Windows unit, sustained use
-and a session with an unfamiliar user. A milestone only counts as done once its hardware checks in
-[`docs/roadmap.md`](docs/roadmap.md) pass. The paid beta (M3) also waits on items that are
-not code: unit cost, regulatory check, packaging and the first units. Details in
-[`docs/roadmap.md`](docs/roadmap.md).
 
 ## Quick start for developers
 
@@ -108,9 +98,7 @@ just fw-test                   # firmware core against host-sim adapters
 just golden                    # deterministic rendering, frame-hash goldens
 ```
 
-Host-sim tests and physical hardware are **separate classes of evidence** here, and a host-sim
-result is never promoted to physical proof. Open hardware checks are listed in
-[`docs/roadmap.md`](docs/roadmap.md).
+Host-sim tests and physical hardware are separate classes of evidence; a host-sim result does not establish physical behavior.
 
 ## Hardware and pin map
 
@@ -192,7 +180,7 @@ Kivori/
 ├── tests/           golden frames and cross-crate tests
 ├── tools/           asset compiler
 ├── scripts/         guard, build and release scripts
-└── docs/            product, architecture, ADRs, roadmap, release, guides
+└── docs/            product, architecture, ADRs, release, guides
 ```
 
 ## Documentation
@@ -201,10 +189,9 @@ One file per topic:
 
 | File | What it answers |
 |---|---|
-| [`docs/product.md`](docs/product.md) | What Kivori must do: scope, behavior rules, numbered invariants, acceptance gates |
+| [`docs/product.md`](docs/product.md) | What Kivori must do: scope, behavior rules and numbered invariants |
 | [`docs/architecture.md`](docs/architecture.md) | How it works: components, wire protocol, IPC, rendering, rotary loop, decisions, principles |
 | [`docs/adr/`](docs/adr/README.md) | Architecture decision records: one file per decision, with context and rejected options |
-| [`docs/roadmap.md`](docs/roadmap.md) | What gets built next: the current milestone, the paid beta and v1 |
 | [`docs/release.md`](docs/release.md) | How to cut a Windows, macOS or Linux release, and the unsigned-installer limits |
 | [`docs/linux.md`](docs/linux.md) | Ubuntu installation, USB permissions, X11 / Wayland limits and troubleshooting |
 | [`docs/user-guide.md`](docs/user-guide.md) | Short guide for a beta customer: install, setup, controls, recovery |
@@ -241,7 +228,7 @@ just web-dev           # website dev server on :3000
 
 - Use trunk-based development: `main` is the only long-lived development branch. Start small,
   short-lived branches from current `main`, target PRs at `main`, and merge frequently rather than
-  collecting a milestone-sized stack. Keep incomplete work safe behind existing capability/build
+  collecting a large stack. Keep incomplete work safe behind existing capability/build
   gates or split it into usable increments.
 - Squash-merge after required CI passes and owner review, using the conventional PR title as the
   commit subject; delete the merged branch. Do not push directly to `main`, force-push it or rewrite

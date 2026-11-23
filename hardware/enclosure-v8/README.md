@@ -102,7 +102,7 @@ Locating pins on the cowl, lip, halo and knob cap and the post spigots use hexag
 
 The overhang audit samples **every BRep face**, including faces below the previous 0.05 mm² cutoff. Tessellation interior/boundary samples supplement a full UV grid, so trimmed curved faces cannot disappear between sample rows. The carrier has no component pockets. Unsupported slopes must be ≤45° from vertical, bridges must have supported edges and span ≤**10.0 mm**, and the existing one-extrusion-width ledge allowance remains **0.5 mm** (the cap socket's bridge is 0.40 mm; the switch-plate clip lip is 0.5 mm). A 0.001° tolerance handles OCCT approximation of 45° chamfers. Bed faces are counted separately; the report distinguishes self-supporting angles from steep faces certified as bridges/line-width ledges.
 
-The latest changed parts need a fresh overhang and fit check; inspect the exported orientation in the slicer.
+Inspect the exported orientation in the slicer.
 
 The cowl has a 0.6 mm roof (3 layers at 0.20); inspect its pegs, lip-pin holes and window in the slicer. Inspect the lip first layer. Print the fit coupon first, then test one keycap, the switch plate, cowl pegs, reset guide and USB plug with the actual hardware.
 

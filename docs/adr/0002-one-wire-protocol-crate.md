@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-08-04
-- **Amended:** 2026-10-15 (M2.8 additive wire-change discipline)
+- **Amended:** 2026-10-15 (additive wire-change discipline)
 
 ## Context
 
@@ -12,7 +12,7 @@ Both peers share one schema. COBS resyncs after corruption where a length prefix
 
 One wire protocol crate: COBS framing, CRC-32, postcard payloads, an append-only `Message` enum, major-gated compatibility, minor and capability negotiation.
 
-Change discipline (M2.8): adding a post-handshake wire message or appending a variant to a wire
+Change discipline: adding a post-handshake wire message or appending a variant to a wire
 enum increments `PROTOCOL_MINOR` in the change that introduces it and declares its capability gate.
 Both peers must negotiate support before the new message or variant is sent. The minor is a
 descriptive wire revision shown in diagnostics, not a feature gate: an
