@@ -1,8 +1,4 @@
-# Virtual Pip: software verification plan
-
-Status: implementation authorized on 2026-10-26 after owner review. M2.9 S5.1–S5.6 are implemented
-and verified locally and in Linux/Windows CI. See
-[ADR-0018](./adr/0018-product-owned-virtual-device-processes.md).
+# Virtual Pip: software verification
 
 ## Scope and ownership
 
@@ -81,101 +77,9 @@ Interactive mode uses real elapsed time for firmware and desktop. Headless cases
 firmware time and seeds and control only the clocks their harness actually exposes. Firmware-only
 time advancement cannot prove desktop `Instant` deadlines, OS scheduling or physical latency.
 
-## Pending documentation coverage
+## Running the virtual device
 
-The pre-S5 audit found 205 unchecked entries: 34 in `roadmap.md` and 171 in the old validation checklist.
-These include repeated references, not 205 separate missing features. Counts below are that dated
-snapshot, before adding S5. Each phase retains all its physical rows; simulation adds software
-evidence alongside them, not substitute PASS marks.
-
-| Validation phase | Open entries | Software behavior to exercise | What simulation cannot establish |
-|---|---:|---|---|
-| 1: Connection | 20 | Handshake/rejection, heartbeat, reconnect, restored state, semantic activity and privacy. | Real USB enumeration/stalls, native window/process/tray behavior and measured connection timings. |
-| 2: Mascot, reactions, flashing | 9 | Firmware scenes, reactions, interruptions, overlays and animation frames. | Physical panel appearance, tearing/scan-out and successful flash. |
-| 3: Rotary volume | 17 | Quadrature, invalid edges, bounds, read-back truth, endpoint change, stale gesture rejection. | Actual switch/wiring fidelity, Windows mixer and detent-to-panel latency. |
-| 4: Push switch/actions/views | 31 | Press/hold/double thresholds, recovery state, action certainty, unknown values and view transitions. | Physical reboot, native action/permission delivery, real metrics/clock drift and human timing comfort. |
-| 5: Context buttons | 8 | Ownership, hold suppression, labels, outage rejection and reboot request policy. | Crystal/strapping checks, power-on BOOT behavior and physical label alignment. |
-| 5b: Config UI | 10 | Save/reopen/reset, labels, macro order/cancel/delete protection, capability restrictions. | Installed-upgrade retention, actual app mixer changes and shortcut destination. |
-| 6: Profiles/layout | 7 | Focus/protected state, pin cycle, labels and causally correct faces. | Native UAC/focus detection, desk-distance readability and physical alignment. |
-| 7: Host presence | 12 | Injected lock/suspend/resume/console events, stale input rejection and state restoration. | Actual notification registration/delivery, power modes, USB power and OS user switching. |
-| 8: Firmware recovery | 8 | Production workflow decisions with fake flasher: failure, progress, restore, advice and exclusion. | Real sidecar stderr, interrupted flash, erased-chip or BOOT recovery and installed resources. |
-| 9: Login/tray | 6 | Status/settings logic; device state for tray presentation. | Real sign-in, startup registration, native tray and uninstall cleanup. |
-| 10: Installer/release | 7 | Device readiness after a modeled install; use separate packaging/VM checks for installation. | SmartScreen, Defender, privilege prompts, signing, bundled helpers and Automation permission. |
-| 11: Onboarding | 5 | Known usable sessions, capability guidance, completion/reopen/persistence with isolated config. | Native permission prompts, installed migration and actual fresh-user environment. |
-| 12: Per-unit QA | 3 | Protocol/identity checks, scripted input reporting and redacted log format with a test harness. | Real flash, physical operator inputs and per-unit manufacturing PASS. |
-| 13: Hero features | 18 | Modeled mic coverage/hotplug/errors, profiles, autonomous animation, brightness request, diagnostics privacy. | Real mic/call observations, backlight, chip/performance measurements and cold/login startup. |
-| 14: Identity/updates | 10 | Legacy/known/unknown identity, wrong-target refusal, offers, ordering, skip and failure decisions. | eFuse writes, deployed authenticated update/install, real network-off observations and physical restore. |
-
-The 34 roadmap references comprise M0 (1), M1 (2), M2 (3), M2.5 (2), M2.6 (2), M2.7 (3),
-M2.9 (5) and M3 (16). Earlier milestone hardware/gate references map to the phases above. Gate
-invariants such as no false confirmation, stale replay, context mutation, hidden fallback or
-invented state can receive modeled regression evidence. Actual per-user separation, physical
-recoverability and authenticated installation still need their OS/hardware/release checks.
-
-The additional M2.9 open acceptance records and M3 dependencies stay separate:
-
-| Pending record | Useful virtual/software work | Remaining acceptance |
-|---|---|---|
-| Public website configuration | Existing local API/D1 rehearsal; independent web integration tests. | Public Access policy, real Turnstile/contact mailbox, approved deployment, signup and deletion. A device simulator does not solve this. |
-| Windows unit | Rehearse all control/state/fault cases and record modeled outcomes. | Actual Windows unit, driver/OS state, microphone coverage and measured physical timings. Owner's deferred run remains deferred. |
-| Installation/recovery | Fake executors and workflow integration; separate unsigned Windows VM/packaging checks. | Trusted signed artifacts, real updater, installed sidecar, interrupted flash and BOOT recovery. Publisher signing remains owner-deferred; updater signing is separate. |
-| Sustained use | Deterministic traffic/sequence/time rollover and interruption stress, with explicit clock scope. | Eight actual idle hours and ten actual Windows workdays. Accelerated virtual time earns no hours/days. |
-| Unfamiliar user | Optional virtual UI/instructions study, explicitly scoped to virtual interaction. | Uncoached participant using/installing/recovering the physical unit; subjective gesture feel. |
-| M3 production readiness | Rehearse provisioning policy and documentation flows with fake executors. | Physical assembly, real QA/provisioning/eFuse, BOM/suppliers/cost, packaging, regulatory review, signing, building/shipping units and all shipping gates. |
-
-CAD/enclosure reference measurements are owner-managed and excluded. The BOM's OWNER cells,
-release key/certificate setup and unimplemented macOS notarization are not device-simulation
-tasks. M4/Later items (new controllers/inputs, A/B/secure boot, native USB, integrations, extra
-platforms, multiple devices, reset, haptics and external sources) remain future scope. Simulation
-may test their logic once implemented; do not add them or relax their physical/security gates now.
-The ADR-0017 identifier guard's documented limits still require behavioral tests for capability
-mixes and unnamed layout assumptions; test fixtures must not become shipping catalog products.
-
-## Implementation and evidence order
-
-The six items are:
-runner/vertical slice, connection faults, raw input, simulated desktop behavior, recovery rehearsal,
-then repeatable reports/CI and final boundary proof. Implement and report one item at a time.
-The first slice includes safe fake services and initial release exclusion; safety is not deferred
-until the final CI task. Ask for review of the working slice before expanding scenario tooling.
-
-Each implemented scenario has explicit expected actions/state/frame assertions, not just a demo
-or screenshot. Record source SHA/build, scenario id, seed, clock mode, raw inputs, expected/actual
-outcomes, exercised layers and trace/frame references. Failures fail the command/CI job. Mark
-unexercised layers NOT RUN. Replaying the same inputs, injected time and seed must produce the
-same firmware action trace and frame hashes. Interactive desktop timing is reported separately.
-
-Use affected tests first and retain the no_std, offline, capability/product-identifier and release
-guards. Do not add a new dependency, common crate or framework unless the implemented slice
-demonstrates the need. The owner authorized S5 implementation after reviewing this plan. No external deployment is
-authorized by simulator testing; report each item before proceeding.
-
-## Running the first slice
-
-From the repository root, with Bun and the pinned Rust toolchain installed:
-
-```sh
-just virtual-device          # owned Vite server + dedicated dev window + separate Pip runner
-just virtual-device-smoke    # headless real core path; writes a firmware RGB565-derived PPM
-```
-
-Both run the v1 virtual board (a legacy ESP32-C3 model, not the product's hardware); `just virtual-device-v2` and `just virtual-device-smoke-v2`
-run v2, the product's board (RP2040-Zero). See [Virtual boards](#virtual-boards-v1-and-v2).
-
-Port 1420 must be free; the tool binds its own Vite server and never attaches to an unknown one.
-Closing the window stops the native owner, reaps the simulator and closes the owned server. The
-launcher clears inherited firmware/flag overrides, selects the Rust host target and uses separate
-runner build output. macOS uses a local unsigned development .app under ignored target output;
-it is not installed or a signed release candidate. Linux/Windows smoke is wired into CI but local
-interactive verification was on macOS only.
-
-The UI labels simulated device and OS, displays actual firmware pixels and shows fake volume/media
-results. `Press once` schedules 120 ms raw down/up; Hold accepts pointer or Space/Enter and Release
-sends raw up. A 2 s hold failsafe prevents a missed browser release from keeping the knob held.
-Only in-memory settings are used. Do not count this as normal-app configuration/setup coverage.
-The runner pipe contract and explicit-host commands are in its
-[README](../firmware/pip/simulator/README.md). No new framework, common simulator crate or runtime
-network transport was added.
+The [simulator README](../firmware/pip/simulator/README.md) has commands, board selection and the runner protocol.
 
 ## Virtual boards (v1 and v2)
 
@@ -339,21 +243,6 @@ Each product owns its replay recipes and golden fixture. A deliberate renderer c
 a reviewed fixture update after checking intended pixels and actions; the verification command
 does not accept or regenerate new goldens. CI retains reports even after smoke failure, while a
 job that fails before smoke starts may have no report. Physical and real-use acceptance stays open.
-
-## Interactive macOS pass (2026-10-30)
-
-Driven with synthetic clicks on the dev window at the M2.9 PR #127 head; complements, does not
-replace, the headless smoke (which also passed locally on macOS: 70 PASS lines, all 15 report stages,
-seeds 17/29 byte-identical). Observed: three right detents 50→56% and one left →54% with the
-firmware volume bar; Press once → Play/Pause (media triggers +1); Hold shows the PRESS/HOLD hint, and
-release toggles output mute with a confirmed check (firmware muted icon, fake OS muted), a second
-hold unmutes. Faults: `silent` → Unavailable with "virtual heartbeat timeout" and a cleared panel;
-`exit` → "virtual child closed its output"; `wrong-major` → "device protocol major v1 is unsupported
-(host supports v0)"; `unknown-product`/`unknown-board` → "virtual product or board identity is
-unknown"; each Reconnect started a fresh normal session (generation advanced to 9). Closing the
-window and SIGTERM to the owner both left no runner, simulator or Vite process. `fragmented` input
-was not exercised interactively (the run was stopped). The panel now shows the fake output mute,
-and disabled controls are visibly dimmed.
 
 ## Host presence scenarios
 

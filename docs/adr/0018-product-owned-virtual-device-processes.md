@@ -16,10 +16,9 @@ or depending on Pip's hardware assumptions. The no_std feature firewall and offl
 ## Decision
 
 Propose one product-owned simulator executable in its own host workspace beside that product's
-firmware: initially `firmware/pala/simulator/`. It consumes the parent firmware with `host-sim`,
+firmware: initially `firmware/pip/simulator/`. It consumes the parent firmware with `host-sim`,
 default features disabled, and existing shared crates. It must select the host target explicitly
-rather than inherit the embedded target/runner/linker configuration. Do not rename the permanent
-`pala` machine id. No runtime plugin system, shared simulator framework or second product is added.
+rather than inherit the embedded target/runner/linker configuration. No runtime plugin system, shared simulator framework or second product is added.
 
 Desktop uses a generic, explicit, development-only child-process pipe bridge. Bounded envelopes
 carry simulator controls/captured frames separately from unchanged protocol bytes. Protocol
@@ -42,7 +41,7 @@ offline and release-surface checks with positive controls; preserve standalone e
 Future products own separate runner/scenario implementations and share existing wire/model
 contracts only; extract additional common harness code when a second implemented product needs it.
 
-The [virtual Pip plan](../virtual-pip.md) maps pending checks and implementation order. Passing
+The [virtual Pip guide](../virtual-pip.md) describes simulation and its limits. Passing
 simulation closes only explicitly scoped software tasks, never physical, signing, deployment,
 real-use or participant acceptance. S5.1 is implemented in the review branch; broader scenarios remain planned. The ADR remains Proposed
 until merge, following the ADR index policy.

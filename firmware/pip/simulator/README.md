@@ -60,6 +60,20 @@ With `--ideal-time` one request runs exactly one production runtime tick with th
 `now_ms`, so frames cost 0 ms and pending protocol input may need subsequent ticks to drain. The
 in-process scenarios (`--input-smoke`, `--io-smoke`, `--replay`) always use ideal time.
 
+## Run the virtual device
+
+From the repository root, with Bun and the pinned Rust toolchain installed:
+
+```sh
+just virtual-device          # development window and Pip runner
+just virtual-device-smoke    # headless smoke check
+just virtual-device-v2       # RP2040-Zero virtual board
+just virtual-device-smoke-v2  # RP2040-Zero headless smoke check
+```
+
+Port 1420 must be free. Closing the window stops its owned server and simulator process.
+The virtual device uses simulated OS services and isolated settings; it does not verify physical hardware.
+
 The runner models one of two boards per process, chosen by the environment variable
 `KIVORI_VIRTUAL_BOARD`: unset or `c3-supermini` is v1 (a legacy virtual board modelled on the ESP32-C3 SuperMini, board 1, the default; not the product's hardware);
 `rp2040-zero` is v2 (Waveshare RP2040-Zero, board 2, with estimated timing). It sets the identity the
