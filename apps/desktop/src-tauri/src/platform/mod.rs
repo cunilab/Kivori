@@ -320,7 +320,6 @@ pub type LocalClock = fn() -> Option<ClockTime>;
 pub struct FakeVolumeBackend {
     state: Mutex<u8>,
     muted: Mutex<bool>,
-    changes: Mutex<VecDeque<VolumeChange>>,
     availability: ActionAvailability,
     quantise_step: Option<u8>,
     readable_after_write: bool,
@@ -331,7 +330,6 @@ impl FakeVolumeBackend {
         Self {
             state: Mutex::new(initial),
             muted: Mutex::new(false),
-            changes: Mutex::new(VecDeque::new()),
             availability: ActionAvailability::Available {
                 confirmation: ConfirmationClass::StateConfirmed,
             },
@@ -414,7 +412,7 @@ impl VolumeBackend for FakeVolumeBackend {
     }
 
     fn try_recv_change(&self) -> Option<VolumeChange> {
-        self.changes.lock().expect("fake backend mutex").pop_front()
+        None
     }
 }
 

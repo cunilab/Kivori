@@ -13,7 +13,6 @@ export interface ProductHero {
 export interface ProductFeature {
   title: string;
   body: string;
-  icon?: string;
 }
 
 export interface SpecRow {
