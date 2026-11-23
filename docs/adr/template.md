@@ -2,7 +2,6 @@
 
 - **Status:** Proposed | Accepted | Superseded by ADR-XXXX
 - **Date:** YYYY-MM-DD
-- **Milestone:** <e.g. M2.6; omit the line if none>
 - **Related:** <links to other ADR files or docs sections; omit if none>
 
 ## Context

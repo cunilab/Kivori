@@ -1,6 +1,6 @@
 # Firmware CI. Proves no_std/no-alloc feature isolation by compiling the shared crates for
 # the Cortex-M0+ target. NO hardware tests run here (isolation requirement); on-device
-# checks are manual (docs/validation.md). The rp2040-hal firmware binary is built per feature set in
+# checks are manual. The rp2040-hal firmware binary is built per feature set in
 # the adapters step below.
 name: firmware
 on:

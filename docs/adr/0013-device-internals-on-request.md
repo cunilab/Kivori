@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-11
-- **Milestone:** M2.6
 - **Related:** [ADR-0005](./0005-typed-activity-log-with-allowlist.md)
 
 ## Context

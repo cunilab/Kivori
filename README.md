@@ -14,8 +14,7 @@ Beta users start with the [user guide](docs/user-guide.md).
 
 ## What it does
 
-Two pillars carry equal weight, with monitoring in support. Everything below is built and
-host-tested; the hardware checks are still open (see [Status](#status)).
+Two pillars carry equal weight, with monitoring in support.
 
 **The buddy**
 
@@ -52,22 +51,6 @@ host-tested; the hardware checks are still open (see [Status](#status)).
 - Device internals (flash, RAM, CPU, frame times, link counters) in developer mode, a splash on
   start, launch at login, a tray icon, first-run onboarding, flashing and recovery of the bundled
   firmware. Core features work offline; the only network use is the update check.
-
-## Status
-
-All software through M2.7 is done and host-tested. A milestone only counts as done once its
-hardware rows in [`docs/validation.md`](docs/validation.md) pass, and that session is still open.
-The paid beta (M3) also waits on items that are not code. Details in
-[`docs/roadmap.md`](docs/roadmap.md).
-
-| Milestone | Software | Still open |
-|---|---|---|
-| M0 Working foundation | done | hardware rows (Phases 1 to 3) |
-| M1 Useful desk device | done | hardware rows (Phase 4) |
-| M2 Configurable product, M2.5 Contextual profiles | done | hardware rows (Phases 5, 5b, 6) |
-| M2.6 Beta hero features | done | hardware rows (Phase 13) |
-| M2.7 Identity, versions and updates | done | hardware rows (Phase 14) |
-| M3 Paid beta | done for the app (installer, recovery, onboarding) | hardware validation (#38), signing certificates (#36), enclosure (#33) |
 
 ## Quick start for developers
 
@@ -115,16 +98,14 @@ just fw-test                   # firmware core against host-sim adapters
 just golden                    # deterministic rendering, frame-hash goldens
 ```
 
-Host-sim tests and physical hardware are **separate classes of evidence** here, and a host-sim
-result is never promoted to physical proof. Hardware results are recorded in
-[`docs/validation.md`](docs/validation.md).
+Host-sim tests and physical hardware are separate classes of evidence; a host-sim result does not establish physical behavior.
 
 ## Hardware and pin map
 
 Kivori Pip (KV-P1) is one Waveshare RP2040-Zero, one ST7789 240×240 panel, one HW-040 rotary
 encoder, three momentary push buttons. USB provides power, flashing and the product
-data link (USB CDC, `2E8A:000A`), with no external UART bridge. The first beta units used an
-ESP32-C3 SuperMini; the board changed with the v7 enclosure ([ADR-0019](docs/adr/0019-rp2040-zero-replaces-esp32-c3.md)).
+data link (USB CDC, `2E8A:000A`), with no external UART bridge
+([ADR-0019](docs/adr/0019-rp2040-zero-replaces-esp32-c3.md)).
 
 | Signal | GPIO | Notes |
 |---|---:|---|
@@ -155,16 +136,13 @@ running Kivori also reboots into the bootloader when the app opens its serial po
 user's recovery control and holding it at power-on boots Kivori normally: no Pip input is a
 boot-critical pin.
 
-**The panel parameters are measured evidence; the pin map is not.** The display profile (offset,
-colour order, inversion, SPI mode) was physically verified on 2026-08-11 and is recorded in
-[`docs/validation.md`](docs/validation.md) (rows 1.9, 1.24, 1.25). The pin map moved to the RP2040-Zero
-carrier (#179) and is a *specification* until rows 3.15, 5.1 and 5.2 of the same checklist are
-ticked on a board wired into the v7 enclosure.
+**Panel parameters and pin map.** The display profile (offset, colour order, inversion, SPI mode)
+was physically verified on 2026-08-11. The pin map is confirmed on the
+v8 unit (printed, wired and assembled, 2026-11-22).
 
 Both live in one place, [`firmware/pip/src/profile.rs`](firmware/pip/src/profile.rs), so a
 rewire is a single constant change. The case and its printed carrier plate are in
-[`hardware/enclosure-v7/`](hardware/enclosure-v7/README.md); building a unit is in
-[`docs/assembly.md`](docs/assembly.md).
+[`hardware/enclosure-v8/`](hardware/enclosure-v8/README.md).
 
 ## Products, versions and releases
 
@@ -174,13 +152,11 @@ rewire is a single constant change. The case and its printed carrier plate are i
   required capabilities), compiled into the app ([ADR-0014](docs/adr/0014-versions-product-identity-and-product-catalog.md)).
 - **Product ids.** A product's id is its short name in lowercase: `pip` is Kivori Pip, so its
   firmware lives in `firmware/pip` and its catalog entry in
-  [`products/pip/product.toml`](products/pip/product.toml). It was the codename `pala` until
-  2026-10-30; devices identify themselves by number, so the rename did not affect shipped units.
+  [`products/pip/product.toml`](products/pip/product.toml).
 - **Version numbers.** The app has one version (the `vX.Y.Z` tag, the only thing users install).
   Each product's firmware has its own version (tag `fw-<product>-vA.B.C`). Every bundled product's inputs are guarded before release.
   Compatibility is decided by the protocol version and capabilities alone, never by pairing app
-  and firmware numbers. Before the first release the app and the Kivori Pip firmware are 0.1.0 and
-  the protocol is 0.1.
+  and firmware numbers.
 - **Releasing.** Actions, **Release**, Run workflow on `main`: pick the app bump and, if the
   firmware changed, a firmware bump (try a dry run first; app bump `none` ships the current version,
   as the first release does). It builds a **draft** titled
@@ -204,7 +180,7 @@ Kivori/
 ├── tests/           golden frames and cross-crate tests
 ├── tools/           asset compiler
 ├── scripts/         guard, build and release scripts
-└── docs/            product, architecture, ADRs, roadmap, validation, release, guides
+└── docs/            product, architecture, ADRs, release, guides
 ```
 
 ## Documentation
@@ -213,15 +189,11 @@ One file per topic:
 
 | File | What it answers |
 |---|---|
-| [`docs/product.md`](docs/product.md) | What Kivori must do: scope, behavior rules, numbered invariants, acceptance gates |
+| [`docs/product.md`](docs/product.md) | What Kivori must do: scope, behavior rules and numbered invariants |
 | [`docs/architecture.md`](docs/architecture.md) | How it works: components, wire protocol, IPC, rendering, rotary loop, decisions, principles |
 | [`docs/adr/`](docs/adr/README.md) | Architecture decision records: one file per decision, with context and rejected options |
-| [`docs/roadmap.md`](docs/roadmap.md) | What gets built next, milestone by milestone (M0 to paid beta to v1) |
-| [`docs/validation.md`](docs/validation.md) | The hardware checklist and how to run a validation session |
-| [`docs/assembly.md`](docs/assembly.md) | Building one beta unit: wiring, checks, closing the case |
 | [`docs/release.md`](docs/release.md) | How to cut a Windows, macOS or Linux release, and the unsigned-installer limits |
 | [`docs/linux.md`](docs/linux.md) | Ubuntu installation, USB permissions, X11 / Wayland limits and troubleshooting |
-| [`docs/provisioning.md`](docs/provisioning.md) | Why there is no per-unit provisioning, and where a unit's identity comes from |
 | [`docs/user-guide.md`](docs/user-guide.md) | Short guide for a beta customer: install, setup, controls, recovery |
 | [`docs/bom.md`](docs/bom.md) | Draft bill of materials (prices still to fill in) |
 
@@ -256,7 +228,7 @@ just web-dev           # website dev server on :3000
 
 - Use trunk-based development: `main` is the only long-lived development branch. Start small,
   short-lived branches from current `main`, target PRs at `main`, and merge frequently rather than
-  collecting a milestone-sized stack. Keep incomplete work safe behind existing capability/build
+  collecting a large stack. Keep incomplete work safe behind existing capability/build
   gates or split it into usable increments.
 - Squash-merge after required CI passes and owner review, using the conventional PR title as the
   commit subject; delete the merged branch. Do not push directly to `main`, force-push it or rewrite

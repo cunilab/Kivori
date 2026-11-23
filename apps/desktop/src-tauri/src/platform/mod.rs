@@ -320,7 +320,6 @@ pub type LocalClock = fn() -> Option<ClockTime>;
 pub struct FakeVolumeBackend {
     state: Mutex<u8>,
     muted: Mutex<bool>,
-    changes: Mutex<VecDeque<VolumeChange>>,
     availability: ActionAvailability,
     quantise_step: Option<u8>,
     readable_after_write: bool,
@@ -331,7 +330,6 @@ impl FakeVolumeBackend {
         Self {
             state: Mutex::new(initial),
             muted: Mutex::new(false),
-            changes: Mutex::new(VecDeque::new()),
             availability: ActionAvailability::Available {
                 confirmation: ConfirmationClass::StateConfirmed,
             },
@@ -365,18 +363,6 @@ impl FakeVolumeBackend {
     /// Simulates a change made outside Kivori (the Windows flyout, a media key).
     pub fn external_change(&self, percent: u8) {
         *self.state.lock().expect("fake backend mutex") = percent;
-    }
-
-    /// Simulates an observed external change, delivered through `try_recv_change`.
-    pub fn push_change(&self, change: VolumeChange) {
-        *self.state.lock().expect("fake backend mutex") = change.percent;
-        if let Some(muted) = change.muted {
-            *self.muted.lock().expect("fake backend mutex") = muted;
-        }
-        self.changes
-            .lock()
-            .expect("fake backend mutex")
-            .push_back(change);
     }
 }
 
@@ -426,7 +412,7 @@ impl VolumeBackend for FakeVolumeBackend {
     }
 
     fn try_recv_change(&self) -> Option<VolumeChange> {
-        self.changes.lock().expect("fake backend mutex").pop_front()
+        None
     }
 }
 

@@ -1,6 +1,6 @@
 //! Host presence (lock, sleep, console switch) through the production tracker and actions, the real
 //! desktop session and the actual firmware Runtime. Every deadline uses real elapsed time; nothing
-//! here observes OS notification delivery, USB power or physical timing (validation Phase 7).
+//! here observes OS notification delivery, USB power or physical timing.
 use super::*;
 
 fn check(ok: bool, message: &str) -> Result<(), String> {

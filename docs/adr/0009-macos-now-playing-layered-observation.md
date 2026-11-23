@@ -20,7 +20,7 @@ Titles and artists are never logged (ADR-0005).
 
 ## Consequences
 
-Accepted risk: a private framework reached through an Apple binary that Apple may remove or lock down; then Kivori degrades to layer 2 or unknown and never reports a guessed state. Release builds must bundle and sign the helper (roadmap M3).
+Accepted risk: a private framework reached through an Apple binary that Apple may remove or lock down; then Kivori degrades to layer 2 or unknown and never reports a guessed state. Release builds must bundle and sign the helper.
 
 ## Alternatives considered
 

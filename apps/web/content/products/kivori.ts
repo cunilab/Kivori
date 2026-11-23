@@ -25,37 +25,30 @@ export const kivori: Product = {
     {
       title: 'App-aware profiles',
       body: 'The controls change to suit the app in front of you: media keys in a player, tab switching in a browser. Built in: General, Browser, Code, Media, Zoom and Teams. Hold the middle button to pin one.',
-      icon: 'layers',
     },
     {
       title: 'Honest confirmations',
       body: 'Every action ends in a badge that says what Kivori actually knows: Confirmed, Started, Unverified or Error. A shortcut is never shown as a success it cannot prove.',
-      icon: 'shield-check',
     },
     {
       title: 'Macros',
       body: 'A macro runs up to 8 steps in order, with optional waits. It stops at the first step that fails and reports its least-confirmed step.',
-      icon: 'list',
     },
     {
       title: 'Display views',
       body: 'The screen is home to your buddy, with the profile, clock and control labels around it. Switch between Buddy, Clock, Volume, Media and System (CPU and memory) with a double press.',
-      icon: 'monitor',
     },
     {
       title: 'Buddy reactions',
       body: 'The buddy looks strained under heavy load, muted when you are muted and happy after a confirmed action. Turn reactions on or off and set their intensity to Low, Normal or High.',
-      icon: 'smile',
     },
     {
       title: 'Always recoverable',
       body: 'Hold the knob for about 10 seconds to restart Kivori even if the app is closed. If an update ever goes wrong, the device can always be restored from the app.',
-      icon: 'life-buoy',
     },
     {
       title: 'Offline by design',
       body: 'No account, no cloud and no telemetry. Nothing in the app needs the internet, and your settings stay on your computer.',
-      icon: 'wifi-off',
     },
   ],
   specs: [

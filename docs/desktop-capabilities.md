@@ -140,13 +140,9 @@ identity pending/unknown/recovery, offline preview, binding retention and focus 
 sessions. Native session tests cover control-specific input refusal and Mirror refusing to stage
 state while pending or disconnected. Fake devices are injected in tests, never registered for shipping.
 
-Catalog artwork delivery, capability-aware setup, product acceptance,
-multi-image packaging and the identifier guard are implemented. The
-[software closure audit](./validation.md#m28-software-closure-audit) maps the product-contract and
-capability-UI criteria to their evidence. Hardware acceptance and PR review/merging remain separate.
+Catalog artwork delivery, capability-aware setup, multi-image packaging and the identifier guard are implemented.
 Catalog metadata does not implement a new interaction model. See
-[ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md) and the
-[M2.8 checklist](./roadmap.md#m28-desktop-organization-and-product-contract).
+[ADR-0017](./adr/0017-product-contract-and-capability-driven-desktop.md).
 
 ## macOS Accessibility
 
@@ -204,7 +200,6 @@ active profile presses no keys. Windows has no such permission and is unchanged.
 | Tray                        | Native                  | Native                                        | libayatana-appindicator; GNOME extension required                                                                                                                                                     |
 | App updater                 | Signed NSIS             | Manual DMG replacement                        | Signed AppImage only; `.deb` updates unsupported in app (install a newer package from the website or a package manager if available)                                                                  |
 
-Linux implementation and host tests do not close physical acceptance. See [linux.md](./linux.md)
-for setup, the GNOME Wayland focus extension, XWayland limits, USB rules and pending hands-on checks.
+See [linux.md](./linux.md) for setup, the GNOME Wayland focus extension, XWayland limits and USB rules.
 
 GNOME Wayland shortcuts use a verified, approved executable and one authorized bus peer. Trust and saved consent are snapshotted at enable; disk edits cannot silently authorize input in the running session. Reinstall/update requires re-login, and first shortcut use opens a Shell dialog showing the full executable path if consent is needed. This protects against other apps silently pressing keys in this session, relies on home-folder files like any GNOME extension, and does not defend against malware already running as you. Focus subscriptions alone cannot inject. Only Ctrl/Alt/Super chords or explicit lone non-text keys are allowed; plain text, lone Return, modifier-only keys, Alt+F2, Ctrl+Alt+F1–F12/Delete/Backspace, Super+L and clipboard-paste chords (Ctrl+V, Ctrl+Shift+V, Super+V) are blocked, with a reason in the action picker. Protection validation fails closed; every chord carries a bounded Shell-clock deadline and focus generation. Failed releases suspend injection and reset/dispose the virtual keyboard. See [Linux setup and shortcut policy](linux.md) for the complete allowed-key list and recovery steps.

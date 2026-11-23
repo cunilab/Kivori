@@ -155,7 +155,7 @@ pub mod physical_st7789 {
     /// (`input::gesture`).
     ///
     /// **This is a SPECIFICATION, not measured evidence.** The pin map moved to the RP2040-Zero
-    /// carrier (#179), so until `docs/validation.md` rows 3.15 and 5.1 are checked on a board in
+    /// carrier (#179), so until the wiring is checked on a board in
     /// the v7 enclosure, none of these GPIOs is confirmed hardware fact. The panel parameters
     /// (geometry, SPI mode, orientation, colour order, inversion) stay verified.
     ///

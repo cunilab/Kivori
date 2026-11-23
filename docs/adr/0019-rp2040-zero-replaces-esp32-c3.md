@@ -6,7 +6,8 @@
 
 ## Context
 
-The v7 enclosure (`hardware/enclosure-v7`) is built around the Waveshare RP2040-Zero: its carrier, wiring and pin map assume that board. The beta units were ESP32-C3 SuperMini boards (ADR-0010 kept the C3 for the beta). The C3 identified itself through a user eFuse record and was flashed with `espflash`; the RP2040 has neither an eFuse block nor an ESP flash protocol.
+Pip's enclosure and wiring use the RP2040-Zero. Its native USB bootloader supports UF2 recovery,
+and its firmware build supplies the product and board identity.
 
 ## Decision
 
@@ -21,12 +22,3 @@ The v7 enclosure (`hardware/enclosure-v7`) is built around the Waveshare RP2040-
 - C3 beta units no longer get firmware updates from the app; they keep the firmware and the identity they have.
 - The v2 timing and resource-budget figures are estimates until measured on a real RP2040-Zero (issue #179, hardware step).
 - The RP2040 has no secure boot, so tier B of ADR-0016 needs the RP2350, as ADR-0010 already proposes; until then only tier A applies.
-
-## Validation (2026-11-06, bare RP2040-Zero over USB)
-
-- The app's UF2 output is accepted by the ROM bootloader, the real `INFO_UF2.TXT` matches the drive check, the unit enumerates as `Kivori Pip` `2E8A:000A`, answers the handshake in 54 to 75 ms and reports compose 110 ms (9 fps) and about 9,980 B of never-used stack. The 1200-baud touch reaches the bootloader in about 2 s and a reflash reconnects without a replug.
-- The first unit found one bug no host test could: the USB interrupt must read OUT data itself (see architecture, Transport). Screen, knob and keys are still to be checked on the v7 carrier ([validation](../validation.md#rp2040-zero-bring-up-179)).
-
-## Alternatives considered
-
-- Keep the ESP32-C3 as the real board: rejected, the v7 enclosure is built around the RP2040-Zero.

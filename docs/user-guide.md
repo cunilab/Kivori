@@ -217,7 +217,7 @@ BOOT is the pinhole in the base labelled BOOT; a paperclip reaches it.
 - **Charge-only cable.** Some USB-C cables only carry power. Use a data cable.
 - **Another program has the port.** Close serial monitors and other apps that use USB serial devices.
 - **Windows blocks Kivori or the flashing tool.** Record the exact warning and affected file using
-  the [Windows checklist](./windows-validation.md#windows-security-warning). SmartScreen warnings
+  the [Windows security guidance](./windows-validation.md#windows-security-warning). SmartScreen warnings
   and antivirus detections need different investigation; do not assume a detection is a false positive.
 - **Shortcuts do nothing (macOS).** Allow Kivori under System Settings, Privacy & Security,
   Accessibility. If you switched it on and Kivori still says it is off, choose **Reset and ask

@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-11
-- **Milestone:** M2.6
 - **Related:** [ADR-0003](./0003-integer-millisecond-timebase.md)
 
 ## Context

@@ -135,13 +135,11 @@ It verifies normalized signup, identical duplicate responses, oversized attribut
 parameterized deletion across products while preserving another address, failure paths and the
 rendered privacy contact link/fallback. No public mailbox, Cloudflare credentials, email delivery
 or production deployment is needed. This is an API/server-rendering test, not a browser or live
-Turnstile test; it does not close the public launch checks below.
+Turnstile test; it does not exercise the public deployment.
 
-### Public launch and deletion verification
+### Live deployment and deletion verification
 
-The [M2.9 acceptance record](../../docs/validation.md#m29-public-website-readiness-and-acceptance)
-records the completed live checks. Use the procedure below when revalidating future launches;
-test keys and a successful local form response do not establish readiness.
+Test keys and a successful local form response do not verify the live deployment.
 
 1. The owner selected the public support/privacy address in `wrangler.jsonc` `vars.CONTACT_EMAIL`.
    Confirm mailbox delivery and select a consented test email before live verification.
@@ -171,8 +169,7 @@ test keys and a successful local form response do not establish readiness.
 
    Bind `?1` to the approved test address; these are parameterized SQL templates, not standalone
    Wrangler commands. Check the address and initial count before deletion. Record receipt and
-   deletion outcomes without publishing personal data. Close the roadmap item only when every
-   live check passes.
+   deletion outcomes without publishing personal data.
 
 Sign-up counts (product and utm_source only, no email) go to the `SIGNUPS` Analytics Engine dataset
 `kivori_signups`. R2 and Cloudflare Web Analytics are not bound yet.
@@ -188,5 +185,4 @@ PR CI builds and checks the Worker without uploading preview versions or posting
 Pushes to main retain the existing migration/deployment path. An approved production deployment
 from a reviewed branch can happen without merging its PR; PR #127 remains unmerged.
 The Turnstile widget must allow a preview hostname before signups can work there; retain the
-permanent hostname. Deployment evidence and remaining signup/deletion acceptance are recorded in
-[validation](../../docs/validation.md#m29-public-website-readiness-and-acceptance).
+permanent hostname.

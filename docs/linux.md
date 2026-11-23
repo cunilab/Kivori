@@ -1,7 +1,7 @@
 # Linux support
 
 Kivori Desktop targets x86_64 Ubuntu (24.04 / 26.04) and compatible Debian desktops.
-Linux hardware acceptance is pending. Firmware and the wire protocol are shared with Windows
+Firmware and the wire protocol are shared with Windows
 and macOS; host features depend on the desktop session and available services.
 
 ## Install
@@ -118,13 +118,3 @@ open it in Files and check that your user can write to it. Do not use a raw-disk
 - **Shortcuts unavailable:** inspect `echo "$XDG_SESSION_TYPE"`. On GNOME Wayland, enable or update Kivori App Profiles in Controls, then log out and back in once to load version 7 or newer and approve the GNOME keyboard dialog. Other Wayland desktops need keyboard access through the desktop portal.
 - **No media info:** start an MPRIS-capable player on the same user session D-Bus.
 - **No tray:** enable GNOME's AppIndicator extension, then restart the app.
-
-## Acceptance record
-
-- [ ] Clean Ubuntu installation of `.deb` and AppImage, USB permissions and tray reachability.
-- [ ] Real audio read-back, multiple microphones, hotplug and external state changes.
-- [ ] X11 shortcuts and profiles; on GNOME Wayland, update the extension, log out and back in, and verify shortcuts and profiles (including lock/modal refusal).
-- [ ] Real media, login startup, lock/unlock, sleep/wake and USB reconnect.
-- [ ] Physical UF2 update, interrupted-flash recovery, and signed AppImage self-update.
-
-These checks remain separate from host tests and Windows/macOS acceptance records.

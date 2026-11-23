@@ -1,11 +1,6 @@
 # Cutting a release
 
-## How to release (checklist)
-
-**Next release after the `pala` → `pip` rename (2026-10-30):** pick a firmware bump (`patch`, giving
-Pip firmware 0.1.3 tagged `fw-pip-v0.1.3`). The firmware folder moved, so the guard compares it as
-changed against `fw-pala-v0.1.2` and refuses `none`. The old `fw-pala-v*` tags stay Pip's released
-versions; later releases may use `none` again.
+## How to release
 
 **App identifier `id.immer.kivori` → `id.cunilab.kivori` (2026-10-30), first release after it:**
 settings are copied from the old data folder on first start (`adopt_earlier_config`), and the old
@@ -22,8 +17,7 @@ old one from Windows Settings. On macOS, Accessibility must be granted again (ne
 4. Wait until host, firmware and determinism CI pass on `main` for that merge commit.
 5. Run **Release** again: `stage=finalize`, `release_pr=<that PR number>`, `dry_run` off. It tags the
    commit and builds a draft release.
-6. Releases: check the draft and its notes, then **Publish** (never as a pre-release). For a beta,
-   do the [validation.md](./validation.md) Phase 10 rows on a real machine first.
+6. Releases: check the draft and its notes, then **Publish** (never as a pre-release).
 
 Hotfix: merge the fix to `main` like any change, then release as above. The details of every step
 follow below.
@@ -34,13 +28,13 @@ Releases start only when you decide. There is no standing release PR, and mergin
 never cuts a release. `.github/workflows/release-start.yml` (the **Release** button) has two stages:
 `prepare` opens an on-demand version PR; `finalize` tags its exact merged, CI-green commit.
 `.github/workflows/release.yml` builds, smoke-tests, signs for the updater and attaches files to a
-draft. Nothing is published until you publish the draft. Windows code
-signing still waits on owner certificates (#36); see
-[architecture.md](./architecture.md#release-pipeline-m3-s5) and ADR-0014/0015.
+draft. Nothing is published until you publish the draft. Windows releases are
+unsigned: there is no paid code-signing certificate (owner decision, 2026-10-31); see
+[architecture.md](./architecture.md#release-pipeline) and ADR-0014/0015.
 
 ## Release policy
 
-**Version promises.** App 1.0.0 ships with M4/v1, after its acceptance gates pass. From 1.0.0,
+**Version promises.** From 1.0.0,
 forward config migrations preserve supported user configuration, the app maintains the current
 and previous protocol-major support window, and breaking changes to supported app behavior require
 an app major bump. Wire compatibility has its own protocol version and capability rules
@@ -53,7 +47,7 @@ has already been tested. Downgrade support is not promised.
 Update prompts cost attention. Keep the manual Release button, Later and Skip this version;
 urgency of a safety or recovery fix can justify an earlier release.
 
-**Firmware release guard (M2.8).** The Release button runs `scripts/firmware-release-guard.mjs`
+**Firmware release guard.** The Release button runs `scripts/firmware-release-guard.mjs`
 through `release-bump.mjs` before writing versions or outputs. It needs Rust/Cargo and full Git
 history/tags, including for a dry run; the workflow installs Rust before computing the plan.
 The guard checks every active catalog product and every firmware crate used by its boards, including
@@ -109,8 +103,7 @@ build inputs, and new build/packaging inputs must extend that list. Hand-pushed 
 Release button, so their author must still review firmware changes and bump/tag it when needed.
 
 Release titles and the Firmware notes section must cover every bundled product using catalog names
-and independent firmware versions. M2.8 must also replace the single-image bundle with validated
-catalog-driven images per supported product/board and resolve update/flash targets by identity.
+and independent firmware versions. The bundle contains validated catalog-driven images per supported product/board and resolves update/flash targets by identity.
 Test two isolated product fixtures through packaging selection and release metadata; refuse
 mismatched images before flashing. Release validation must verify that the bundled image set equals
 the shipping catalog's supported product/board set, with no test products or images. The pipeline below builds and names every active catalog product. There remains one app release, firmware tags have
@@ -172,7 +165,7 @@ For a local development installer on Windows, run `just bundle-windows`. With no
 `TAURI_SIGNING_PRIVATE_KEY`, it disables updater artifact generation, matching PR CI, so an
 unsigned local build does not require the updater private key. If that key is supplied, the
 recipe retains updater signing and its normal key/password validation. Neither path adds Windows
-publisher signing. Signed-beta installation and live updater acceptance remain separate checks.
+publisher signing.
 
 1. Merge pull requests with conventional commit titles (`feat:`, `fix:`, `perf:`, scoped like
    `feat(mic): ...`); they become the release notes.
@@ -229,8 +222,7 @@ publisher signing. Signed-beta installation and live updater acceptance remain s
    `.sig`, `latest.json` and `SHA256SUMS`.
 6. Open Releases on GitHub, check the draft (edit the notes if a line reads badly), and publish it as a
    normal release (never tick pre-release; the updater ignores pre-releases). Installed apps see it
-   within a day. Do the [validation.md](./validation.md) Phase 10 rows on a real machine first for a
-   beta build.
+   within a day.
 
 **Release notes** come from `git log` between the previous `v*` tag and the new one
 (`scripts/release-info.mjs`; no changelog files): `feat` commits under Features, `fix` under Fixes,
@@ -273,14 +265,7 @@ edit that changes another parsed value, before writing manifests or workflow out
 
 ## Verifying an app update end to end
 
-For M2.9 signed-beta acceptance, use the
-[Windows installation and recovery record](./validation.md#m29-windows-installation-and-recovery-acceptance-open)
-alongside this procedure. Windows publisher signing and Tauri updater signatures must each be
-verified on the actual candidates; PR packaging smoke does not establish either live update or
-physical recovery acceptance.
-
-Once the public key is in the release config and both secrets are set (validation.md rows 14.6 to
-14.10, on a real Windows machine):
+With the public key in the release config and both signing secrets set, use a Windows machine:
 
 1. Release and publish version A (for example 0.2.0) as above, and install it from its draft's
    installer. Device page: the Updates rows show "Last checked" within 30 seconds of start.
@@ -317,16 +302,14 @@ with the same identity, by `scripts/sign-macos-bundle.sh` (`--deep --force --tim
 bundle identifier from `tauri.conf.json`, no hardened runtime: the app sends Apple Events and has no
 entitlements). Which identity:
 
-1. **Developer ID** (`APPLE_SIGNING_IDENTITY` and `APPLE_CERTIFICATE`): Tauri's and the script's
-   Developer ID path signs with hardened runtime, as before. Not available yet (#36).
-2. **Release identity** (CI, no Developer ID): the repo secrets `KIVORI_MACOS_RELEASE_P12` (base64 of
+1. **Release identity** (CI): the repo secrets `KIVORI_MACOS_RELEASE_P12` (base64 of
    a legacy-format `.p12`) and `KIVORI_MACOS_RELEASE_P12_PASSWORD`. The macOS job imports it into a
    temporary keychain (deleted at the end), signs as `Kivori Release`, then verifies
    `codesign --verify --deep --strict` and that the designated requirement shows the pinned
    `certificate leaf = H"f49eb18d72654cbffdc4aec5e17dc7d67e47de2c"` (`KIVORI_MACOS_RELEASE_LEAF` in
    `release.yml`). If the secret is set and signing or verification fails, the release fails; it
    never falls back to ad-hoc. With no secret at all it signs ad-hoc and prints a warning.
-3. **Local builds**: `KIVORI_MACOS_SIGNING_IDENTITY` if set, else `Kivori Dev` when it is in your
+2. **Local builds**: `KIVORI_MACOS_SIGNING_IDENTITY` if set, else `Kivori Dev` when it is in your
    keychain, else ad-hoc with a warning. Run `just macos-dev-identity` once to create `Kivori Dev` (a
    self-signed identity in your login keychain; safe to rerun). A local build then keeps its
    Accessibility approval across rebuilds, though not across a switch to the release identity.
@@ -350,8 +333,8 @@ message about Kivori and chooses **Open Anyway** (see [the user guide](./user-gu
 people to turn Gatekeeper off. Notarization needs the Developer ID and is not implemented.
 
 Run `just macos-check` before packaging. For a deliberate output-volume/mute round trip with
-restoration, run `just macos-audio-test`. See [macOS support and acceptance](./macos.md) for
-permissions, feature limits and the checks that still require a physical device. Publish the
+restoration, run `just macos-audio-test`. See [macOS support](./macos.md) for
+permissions and feature limits. Publish the
 Apple Silicon DMG with its `_aarch64.dmg` suffix; the website enables Mac downloads only when
 exactly one compatible artifact is present on the published release. Intel and ambiguous DMGs
 are not selected.
@@ -364,12 +347,12 @@ Developer ID the bundle is not Developer ID signed; notarization is not implemen
 
 No flashing tool is bundled. The app converts the embedded ARM ELF to UF2 (`src/uf2.rs`) and copies
 it to the RP2040's `RPI-RP2` bootloader drive, so there is nothing to fetch or pin.
-There is no per-unit provisioning either; see [provisioning.md](./provisioning.md).
+There is no per-unit provisioning: a unit's identity (product, board, revision) comes from its firmware build.
 
 ## Known limits
 
 - Unsigned: SmartScreen warns, and Defender may block the app. These are different protection mechanisms; collect the exact warning and affected
-  file using the [Windows validation checklist](./windows-validation.md) before choosing a remedy.
+  file using the [Windows security guidance](./windows-validation.md) before choosing a remedy.
 - The WebView2 bootstrapper needs a network connection on a PC that does not have WebView2 yet.
 
 ## Catalog firmware builds and packaging
@@ -429,7 +412,7 @@ For example (test product ids shown):
 bun scripts/release-bump.mjs --app patch --firmware-overrides '{"product-a":"patch","product-b":"0.3.0"}' --dry-run
 ```
 
-No actual release is triggered by local planning or tests. Hardware acceptance remains separate M2.8 work. Ambiguous recovery targets require an explicit
+No actual release is triggered by local planning or tests. Ambiguous recovery targets require an explicit
 product-and-board choice and confirmation before flashing.
 
 
@@ -446,8 +429,7 @@ AppImage users can install the USB rule with the app’s **Grant access** button
 Linux builds always run alongside Windows for release workflow events (including packaging PRs),
 rather than an opt-in manual job: tagged releases need both assets and CI should exercise packaging.
 The Linux runner is `ubuntu-22.04`, which provides WebKitGTK 4.1 while keeping an older glibc
-baseline than 24.04. This reduces binary compatibility requirements; Ubuntu 24.04/26.04 desktop
-and physical acceptance still need hands-on checks.
+baseline than 24.04, reducing binary compatibility requirements.
 
 CI reuses `firmware-elfs`, validates the Debian rule and the production ELF's release surface,
 then uploads `linux-bundles`. Updater signing follows the Windows key/public-key checks, with

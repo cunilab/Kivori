@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-11
-- **Milestone:** M2.6
 - **Related:** [ADR-0008](./0008-desk-state-as-two-new-messages.md)
 
 ## Context

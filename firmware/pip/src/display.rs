@@ -10,7 +10,7 @@
 //! This module never names a panel controller. It is generic over `mipidsi`'s [`Model`], so the same
 //! adapter drives an ST7789, a GC9A01, or any other MIPI-DCS model, and the choice stays a
 //! [`kivori_model::DeviceProfile`] parameter exactly as R-3 requires. The Kivori panel is a verified ST7789
-//! (validation.md 1.23), but that choice lives in the board profile, so no controller is hard-coded and
+//! (checked 2026-08-11), but that choice lives in the board profile, so no controller is hard-coded and
 //! no initialisation sequence is asserted in this module.
 //!
 //! # Deliberately hardware-neutral
@@ -123,16 +123,6 @@ where
     #[must_use]
     pub const fn geometry(&self) -> PanelGeometry {
         self.geometry
-    }
-
-    /// Borrows the underlying display (orientation, sleep/wake, tearing effect).
-    pub fn display_mut(&mut self) -> &mut Display<DI, M, RST> {
-        &mut self.display
-    }
-
-    /// Releases the display back to the caller.
-    pub fn into_display(self) -> Display<DI, M, RST> {
-        self.display
     }
 }
 

@@ -183,7 +183,7 @@ impl Rig {
     }
 }
 
-/// docs/validation.md 13.10: touch a control and the buddy looks towards it before the action's own
+/// Touch a control and the buddy looks towards it before the action's own
 /// feedback. The look starts on the touch itself (no round trip, no event sent yet) and is gone a
 /// moment after the last touch.
 #[test]
@@ -243,7 +243,7 @@ fn settings_without_the_negotiated_capability_are_ignored() {
     assert_eq!(rig.display.brightness, None);
 }
 
-/// docs/validation.md 13.9: with the host silent (but not yet timed out) the buddy keeps animating.
+/// With the host silent (but not yet timed out) the buddy keeps animating.
 #[test]
 fn the_buddy_keeps_moving_while_the_host_sends_nothing() {
     let mut rig = Rig::idle();

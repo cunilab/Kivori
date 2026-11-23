@@ -139,10 +139,11 @@ DISP_PIN_TIP_CLR = 0.8      # header pin tips to the wire cradle's top plane (th
 DISP_WIRE_DX = -0.7         # the wires leave a display pin's root this far to its west (clear of the pin) and drop to the cradle there
 PIN_PILLAR_CLR = 0.8          # slot in the far pillars round the leaning header pins (and their wire-wrap rings)
 DISP_HDR_BODY = (2.54, 7 * 2.54, 2.5)   # header plastic: width, length, height under the board
-LIP_W, LIP_H = 1.4, 0.6     # white lip: width and height above the cowl top (v7's bezel: 2.0 x 0.8)
+LIP_W, LIP_H = 2.4, 0.6     # (was 1.4) white lip: width and height above the cowl top (v7's bezel: 2.0 x 0.8)
 LIP_CHAMFER = 0.4           # 45° bevel on the lip's window edge, over 0.4 mm (0.2 mm vertical remains): the seated eye (59° over the glass) is steeper
                             # than the bevel, so what hides the screen is the bevel's foot, at the cowl top
 LIP_COLLAR = (0.4, 0.5, 0.1)  # collar on the lip's underside that locates it in the cowl window: wall, height, play per side
+LIP_PEG_D, LIP_PEG_L = 1.2, 0.5   # dowel pins under the lip's four corners, into hex holes in the cowl top
 EYE_ELEV = 40.0             # seated eye above the desk, from the front (the concept sheet's viewpoint)
 RIM_HIDDEN_MAX = 0.5        # build check: the near rim may hide at most this much of the active area from that eye
 
@@ -153,7 +154,7 @@ RIM_HIDDEN_MAX = 0.5        # build check: the near rim may hide at most this mu
 # bottom). Keycap numbers are from the owner's 1u keycap drawing (18 x 18 base, side walls 80 deg, front 70 deg,
 # 9.4 back / 9.68 front tall, wall 0.91, stem tube dia 5.50, cross 4 x 1.26, socket 1.30 above the skirt bottom).
 BTN_MID = (43.0, 11.5)      # middle button centre (the 18 mm cap skirt needs 11.5 to keep its opening clear of the near wall)
-KEY_STYLE = 'well'          # 'well': a square opening per key, the cap skirt rides in it (ref: case well)
+KEY_STYLE = 'plate'         # 'well': a square opening per key, the cap skirt rides in it (ref: case well)
                             # 'plate': one slot over the whole row, the switches stand on the plate frames below it
 BTN_PITCH = 20.0            # the 18 mm cap skirt rides in a face opening, so the webs between openings need 1.3 mm
 BTN_OPEN = 18.7             # face opening round the 18.0 cap base: 0.35 per side
@@ -312,6 +313,7 @@ COWL_WIN_R = 1.0 + LIP_COLLAR[0] + LIP_COLLAR[2]
 COWL_CURVE_R = 22.0  # follows the halo, with clearance at rest and during knob press
 HALO_OD, HALO_ID, HALO_T = 38.0, 12.4, 0.6  # white trim ring on the face (glued on); 38 keeps it 0.5 clear of the key caps
 
+HALO_PEG_D, HALO_PEG_L = 1.6, 1.2   # dowel pins under the halo ring, into hex holes in the shell face
 KNOB_CAP_T, KNOB_CAP_D = 0.8, 31.0
 KNOB_CAP_PEGS = [(KNOB_C[0] + 10 * math.cos(math.radians(a)),
                   KNOB_C[1] + 10 * math.sin(math.radians(a))) for a in (0, 120, 240)]
@@ -379,6 +381,13 @@ def cbox(cx, cy, w, h, z0, z1, ang=0.0):
 
 def cyl(d, cx, cy, z0, z1):
     return Part.makeCylinder(d / 2.0, z1 - z0, V(cx, cy, z0), V(0, 0, 1))
+
+
+def hex_hole(pin_d, cx, cy, z0, z1):
+    """Hexagonal hole for a round locating pin: flat-to-flat 10% over the pin, so it locates on six flats."""
+    rc = 1.1 * pin_d / 2 / math.cos(math.radians(30))
+    pts = [V(cx + rc * math.cos(math.radians(60 * i)), cy + rc * math.sin(math.radians(60 * i)), z0) for i in range(7)]
+    return Part.Face(Part.makePolygon(pts)).extrude(V(0, 0, z1 - z0))
 
 
 TAPER = math.tan(math.radians(WALL_TAPER))
@@ -624,7 +633,8 @@ def make_shell():
     for (x, y) in POSTS:
         cuts.append(cyl(SCREW_PILOT, x, y, C_BACK - SPIGOT_INTO_COL - 1, -FACE_T - 1.5))
     cuts += usb_port_cuts()
-    cuts += [cyl(COWL_PEG_HOLE_D, x, y, -FACE_T - 1, 1) for x, y in COWL_PEGS]  # the cowl's pegs
+    cuts += [hex_hole(COWL_PEG_D, x, y, -FACE_T - 1, 1) for x, y in COWL_PEGS]  # the cowl's pegs
+    cuts += [hex_hole(HALO_PEG_D, x, y, -HALO_PEG_L - 0.3, 1) for x, y in halo_pegs()]  # the halo ring's pegs
     return shell.cut(cuts).removeSplitter()
 
 
@@ -671,17 +681,19 @@ def make_cowl():
     c = c.cut(Part.makeCone(COWL_CURVE_R, COWL_CURVE_R + 0.2, 30.02, V(*KNOB_C, -0.01), V(0, 0, 1)))
     c = c.cut(cav_prism(-1, 30, 0.5).cut(above_plane(W_ROOF0)))
     c = c.cut(tilt(rr_prism(COWL_WIN, COWL_WIN, COWL_WIN_R, *DISP_C, W_ROOF0 - 1, W_TOP + 6)))
-    pads = []
-    for x, y in disp_holes:
-        pad = cyl(DISP_PAD[0], x, y, W_GLASS1 + DISP_PAD_GAP, W_ROOF0 + 0.3)
-        pads.append(tilt(pad.cut(cyl(DISP_PAD[1], x, y, W_GLASS1 - 1, W_GLASS1 + PEG_PROUD + 0.4))))
-    c = c.fuse(pads)
+    c = c.cut([tilt(hex_hole(LIP_PEG_D, x, y, W_TOP - LIP_PEG_L - 0.1, W_TOP + 1)) for x, y in lip_pegs()])
+    # owner: no hold-down pads on the board's corner holes
     # Plain pegs on the underside: they go through the shell face, 0.25 per side in their holes.
     c = c.fuse(cowl_pegs()).removeSplitter()
     # Chamfer the seating edge so the first layer's squish never shows as a gap against the face.
     seat = [f for f in c.Faces if f.Surface.TypeId == "Part::GeomPlane" and f.BoundBox.ZMax < 1e-6 and f.BoundBox.ZMin > -1e-6
             and f.Area > 100][0]
     return c.makeChamfer(COWL_EDGE, [e for e in seat.OuterWire.Edges]).removeSplitter()
+
+
+def lip_pegs():
+    s = (DISP_ACTIVE + 2 * DISP_WIN_MARGIN + LIP_W) / 2   # mid-band of the lip, on its diagonals
+    return [(DISP_C[0] + i * s, DISP_C[1] + j * s) for i in (-1, 1) for j in (-1, 1)]
 
 
 def make_lip():
@@ -693,6 +705,7 @@ def make_lip():
     cw = win + 2 * LIP_COLLAR[0]
     lip = lip.fuse(rr_prism(cw, cw, 1.0 + LIP_COLLAR[0], *DISP_C, W_TOP - LIP_COLLAR[1], W_TOP + 0.01))
     lip = lip.cut(rr_prism(win, win, 1.0, *DISP_C, W_TOP - 1, W_TOP + LIP_H + 1))
+    lip = lip.fuse([cyl(LIP_PEG_D, x, y, W_TOP - LIP_PEG_L, W_TOP + 0.01) for x, y in lip_pegs()])
     c = LIP_CHAMFER
     lip = lip.cut(place(Part.makeLoft([rr_wire(win, win, 1.0, W_TOP + LIP_H - c), rr_wire(win + 2 * c, win + 2 * c, 1.0 + c, W_TOP + LIP_H + 0.001)],
                                       True, True), *DISP_C))
@@ -702,7 +715,13 @@ def make_lip():
 def make_halo():
     """White trim ring on the face, glued on."""
     cx, cy = KNOB_C
-    return cyl(HALO_OD, cx, cy, 0, HALO_T).cut(cyl(HALO_ID, cx, cy, -1, 1))
+    ring = cyl(HALO_OD, cx, cy, 0, HALO_T).cut(cyl(HALO_ID, cx, cy, -1, 1))
+    return ring.fuse([cyl(HALO_PEG_D, x, y, -HALO_PEG_L, 0.01) for x, y in halo_pegs()]).removeSplitter()
+
+
+def halo_pegs():
+    r = (HALO_OD + HALO_ID) / 4
+    return [(KNOB_C[0] + r * math.cos(math.radians(a)), KNOB_C[1] + r * math.sin(math.radians(a))) for a in (90, 210, 330)]
 
 
 def make_pin_coupon():
@@ -778,7 +797,7 @@ def make_back_plate():
                         x + SCREW_HEAD_D, y + SCREW_CLR / 2, SCREW_SEAT_Z + SEAT_LAYER).common(bore))
         cuts.append(box(x - SCREW_CLR / 2, y - SCREW_CLR / 2, SCREW_SEAT_Z + SEAT_LAYER - 0.01,
                         x + SCREW_CLR / 2, y + SCREW_CLR / 2, SCREW_SEAT_Z + 2 * SEAT_LAYER))
-        cuts.append(cyl(SPIGOT_HOLE_D, x, y, C_BACK - SPIGOT_INTO_COL - SPIGOT_SOCKET_CLR, C_BACK + 1))
+        cuts.append(hex_hole(SPIGOT_D, x, y, C_BACK - SPIGOT_INTO_COL - SPIGOT_SOCKET_CLR, C_BACK + 1))
     # Guide stops 0.6 mm short of the outward-facing RESET button.
     rx, ry = RESET_C
     plate = plate.fuse(cyl(4.0, rx, ry, z_back(ry)+1.0, RESET_SURFACE_Z-0.6))
@@ -845,7 +864,7 @@ def carrier_through_cuts(pcb=False):
         x0, x1 = (0, WALL + 2.8) if side < 0 else (W - WALL - 2.8, W)
         cuts.append(box(x0, yc - HOOK_W / 2 - 1.2, z0, x1, yc + HOOK_W / 2 + 1.2, z1))
     for (x, y) in POSTS:
-        cuts.append(cyl(SPIGOT_HOLE_D, x, y, z0, z1))
+        cuts.append(cyl(SPIGOT_HOLE_D, x, y, z0, z1) if pcb else hex_hole(SPIGOT_D, x, y, z0, z1))
     # the EC11 bushing reaches through from the HW-040 hanging behind (its body stops just behind)
     cuts.append(cyl(EC11_BUSH_D + 2 * EC11_HOLE_CLR, KNOB_C[0], KNOB_C[1], z0, z1))
     cuts += [cyl(HOLE_D, x, y, z0, z1) for (x, y) in enc_pins.values()]
@@ -1213,7 +1232,7 @@ def make_knob():
     bore = cyl(EC11_SHAFT_D + 0.25, cx, cy, hub_z0 - 1, shaft_top + KNOB_TIP_CLR)  # snug once FDM shrinks it
     flat = box(cx - 5, cy + EC11_SHAFT_D / 2 - EC11_FLAT + 0.1, shaft_top - EC11_FLAT_L + 0.5, cx + 5, cy + 5, shaft_top + 1)
     cuts.append(bore.cut(flat))
-    cuts += [cyl(2.0, x, y, z1 - 1.2, z1 + 1) for x, y in KNOB_CAP_PEGS]
+    cuts += [hex_hole(1.6, x, y, z1 - 1.2, z1 + 1) for x, y in KNOB_CAP_PEGS]
     return k.cut(cuts).removeSplitter()
 
 
@@ -1900,8 +1919,8 @@ def check_display():
     pad = pcb.distToShape(PRINTED["DisplayCowl"])[0]
     pegs = pcb.distToShape(PRINTED["DisplayCowl"])[0]
     peg_pad = min(q.distToShape(PRINTED["DisplayCowl"])[0] for q in pil[1::2])
-    print("board: the cowl's pads stand %.2f mm over it (hold-down, never a load); the pegs' tips are %.2f from the pad bores" % (pad, peg_pad))
-    if abs(pad - DISP_PAD_GAP) > 0.05 or peg_pad < 0.3:
+    print("board: the cowl (no pads) stands %.2f mm over it; the pegs' tips are %.2f from the cowl" % (pad, peg_pad))
+    if pad < 0.2 or peg_pad < 0.3:
         problems.append("pad gap %.2f / peg to pad %.2f" % (pad, peg_pad))
     fpc = DUMMIES["Dummy_FPC"]
     fd = {nm: fpc.distToShape(sh)[0] for nm, sh in PRINTED.items()}

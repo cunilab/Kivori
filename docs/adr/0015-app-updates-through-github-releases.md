@@ -2,7 +2,6 @@
 
 - **Status:** Proposed
 - **Date:** 2026-10-12
-- **Milestone:** M2.7
 - **Related:** [ADR-0014](./0014-versions-product-identity-and-product-catalog.md), [architecture.md, offline-first rule](../architecture.md#offline-first-rule), product.md (UX and timing rules)
 
 ## Context
