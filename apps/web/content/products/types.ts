@@ -13,7 +13,6 @@ export interface ProductHero {
 export interface ProductFeature {
   title: string;
   body: string;
-  /** Key into the icon set in `components/feature-icon.tsx`. */
   icon?: string;
 }
 

@@ -366,18 +366,6 @@ impl FakeVolumeBackend {
     pub fn external_change(&self, percent: u8) {
         *self.state.lock().expect("fake backend mutex") = percent;
     }
-
-    /// Simulates an observed external change, delivered through `try_recv_change`.
-    pub fn push_change(&self, change: VolumeChange) {
-        *self.state.lock().expect("fake backend mutex") = change.percent;
-        if let Some(muted) = change.muted {
-            *self.muted.lock().expect("fake backend mutex") = muted;
-        }
-        self.changes
-            .lock()
-            .expect("fake backend mutex")
-            .push_back(change);
-    }
 }
 
 impl VolumeBackend for FakeVolumeBackend {

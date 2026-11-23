@@ -86,12 +86,6 @@ impl SimPipe {
         self.to_host.clear();
         out
     }
-
-    /// Whether the device has produced any unread output.
-    #[must_use]
-    pub fn host_has_output(&self) -> bool {
-        !self.host_stalled && !self.to_host.is_empty()
-    }
 }
 
 impl Default for SimPipe {

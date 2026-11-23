@@ -124,16 +124,6 @@ where
     pub const fn geometry(&self) -> PanelGeometry {
         self.geometry
     }
-
-    /// Borrows the underlying display (orientation, sleep/wake, tearing effect).
-    pub fn display_mut(&mut self) -> &mut Display<DI, M, RST> {
-        &mut self.display
-    }
-
-    /// Releases the display back to the caller.
-    pub fn into_display(self) -> Display<DI, M, RST> {
-        self.display
-    }
 }
 
 impl<DI, M, RST> DisplaySink for MipidsiSink<DI, M, RST>
