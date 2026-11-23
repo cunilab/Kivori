@@ -311,16 +311,14 @@ with the same identity, by `scripts/sign-macos-bundle.sh` (`--deep --force --tim
 bundle identifier from `tauri.conf.json`, no hardened runtime: the app sends Apple Events and has no
 entitlements). Which identity:
 
-1. **Developer ID** (`APPLE_SIGNING_IDENTITY` and `APPLE_CERTIFICATE`): Tauri's and the script's
-   Developer ID path signs with hardened runtime. Not used: paid certificates are declined (owner decision, 2026-10-31), so releases carry no Developer ID signature.
-2. **Release identity** (CI, no Developer ID): the repo secrets `KIVORI_MACOS_RELEASE_P12` (base64 of
+1. **Release identity** (CI): the repo secrets `KIVORI_MACOS_RELEASE_P12` (base64 of
    a legacy-format `.p12`) and `KIVORI_MACOS_RELEASE_P12_PASSWORD`. The macOS job imports it into a
    temporary keychain (deleted at the end), signs as `Kivori Release`, then verifies
    `codesign --verify --deep --strict` and that the designated requirement shows the pinned
    `certificate leaf = H"f49eb18d72654cbffdc4aec5e17dc7d67e47de2c"` (`KIVORI_MACOS_RELEASE_LEAF` in
    `release.yml`). If the secret is set and signing or verification fails, the release fails; it
    never falls back to ad-hoc. With no secret at all it signs ad-hoc and prints a warning.
-3. **Local builds**: `KIVORI_MACOS_SIGNING_IDENTITY` if set, else `Kivori Dev` when it is in your
+2. **Local builds**: `KIVORI_MACOS_SIGNING_IDENTITY` if set, else `Kivori Dev` when it is in your
    keychain, else ad-hoc with a warning. Run `just macos-dev-identity` once to create `Kivori Dev` (a
    self-signed identity in your login keychain; safe to rerun). A local build then keeps its
    Accessibility approval across rebuilds, though not across a switch to the release identity.

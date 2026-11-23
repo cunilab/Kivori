@@ -45,11 +45,10 @@ mute and native shortcuts still need a deliberate hands-on session.
 
 ## Distribution
 
-A local build does not require an Apple account. `APPLE_SIGNING_IDENTITY` enables Developer ID
-signing in the existing bundle script; without it the bundle is signed with a stable self-signed
-identity (`Kivori Dev` locally, `Kivori Release` in CI) so Accessibility approvals survive updates. Releases are not Developer ID signed or notarized (paid certificates declined); locally built unsigned
-or ad-hoc signed bundles are not evidence that Gatekeeper accepts a public release. Do not remove
-quarantine or disable Gatekeeper as a substitute for release verification.
+A local build does not require an Apple account. Builds use a self-signed identity (`Kivori Dev`
+locally, `Kivori Release` in CI) when available so Accessibility approvals survive updates;
+otherwise they are signed ad-hoc. Releases are not notarized. Do not remove quarantine or disable
+Gatekeeper as a substitute for release verification.
 
 The website serves a Mac download only when a compatible Apple Silicon DMG is present on a
 published release. Until then it reports that the Mac build has not been published. Publishing,
@@ -68,87 +67,5 @@ nor the virtual device close either platform's physical gates.
 - [ ] Device discovery, buffered inputs, display output, USB reconnect, sleep/wake and lock/unlock work.
 - [ ] Bundled firmware update and interrupted-flash BOOT recovery work on a physical unit.
 - [ ] Login startup and a manual app replacement preserve configuration.
-- [ ] Signed and notarized installation works on a clean Mac before public distribution.
+- [ ] Installation and first-open instructions work on a clean Mac before public distribution.
 - [ ] Actual idle soak, sustained use and unfamiliar-user observation are recorded on Mac.
-
-## Local validation — 2026-10-30
-
-On Andress-MacBook-Air, arm64 macOS 27.0.1 (26A434), with the working changes based on
-`8d9bb4aa` (not a published release):
-
-- `just macos-check`: 19 native unit tests, five read-only native backend tests and eight volume
-  contract tests passed. Three unit tests and the output-write integration test remain opt-in;
-  the media-observer integration test is deliberately excluded from this command.
-- `just macos-audio-test`: passed against the actual output endpoint, including independent
-  external change observation and asserted restoration of the original volume and mute. Two
-  earlier runs exposed test-isolation assumptions about coalesced changes and the external
-  command changing mute; the test now settles the actually observed baseline. Production echo
-  classification remains conservative and unchanged. AppleScript restoration is only a fallback
-  if exact native restoration fails, avoiding unnecessary rounding after a successful restore.
-- Six microphone fault-injection regressions passed; three first failed against the old logic.
-  Discovery/capability failures and failed notification rescans cannot retain all-muted certainty.
-  Missing device/system subscriptions retry during existing rescans.
-- Website: all 123 tests, typecheck, scoped ESLint and formatting passed. Downloads are selected
-  independently per OS, reject ambiguous / incompatible DMGs, and remain unavailable until the
-  matching artifact is published. Server rendering does not initially link Mac visitors to EXEs.
-- Strict native Clippy, Rust formatting and diff whitespace checks passed.
-- `just bundle-macos` built `target/release/bundle/macos/Kivori.app` (34.80 MiB) and
-  `target/release/bundle/dmg/Kivori_0.2.1_aarch64.dmg` (13.30 MiB). The executable is arm64;
-  bundled firmware, media helper and notices are present. The release-artifact guard
-  passed (development controls absent, firmware marker present), and `hdiutil verify` passed.
-  DMG SHA-256: `42e76b981e8ad587c3ba4a1d3ea12022253ff009b408ff244951bfb71d7b0844`.
-- Claude Opus 5.5 at medium effort approved the microphone handling and the final Mac changes
-  after the web availability wording was corrected. Its optional restoration improvement was
-  applied and the live output-audio test passed again.
-
-The bundle is not Developer ID signed or notarized. Native GUI inspection was attempted but the
-Computer Use service refused with `sky requires node_repl; configure NODE_REPL_TRUSTED_SERVICES`;
-no startup, setup-screen or permission-grant result is claimed. Real microphone writes, native
-shortcuts, USB, firmware flashing, sleep/wake, login and long-use acceptance remain open. No
-website deployment, artifact publication or paid CI was performed. All checklist rows above remain
-open until their complete observations are available; the single-output audio result does not
-establish multiple-device or hotplug coverage.
-
-
-Follow-up, 2026-10-30: GUI access was retried and remains blocked by the Computer Use trusted-service
-configuration. Read-only USB inspection found no compatible Pip (`303a:1001`) connected, and the
-available keychains have no Developer ID Application signing identity. GUI setup/Accessibility, physical
-controls/reconnect/power transitions and signed distribution therefore remain NOT RUN.
-
-Follow-up, 2026-10-30 (packaged-app smoke from the terminal): screen capture and the window server
-work from Claude Code, so the packaged app was driven without Computer Use; Accessibility cannot see
-the Tauri window, so windows are found by CoreGraphics window ID. With a temporarily removed config
-(restored byte-identical afterwards), the app started and showed setup step 1 of 6 ("Welcome to
-Kivori"). Quitting through the Quit Apple event then **failed** to quit cleanly: the app exited but
-the now-playing helper (`mediaremote-adapter.pl … stream`) stayed running, reparented to launchd.
-Cause: a macOS terminate (Quit Apple event, Cmd+Q, logout) reaches Tauri only as `RunEvent::Exit`,
-which did not run `AppState::shutdown()`, so the observer that reaps the helper was never dropped.
-SIGTERM, Force Quit and crashes skip shutdown entirely and orphaned it too.
-
-Fixed: `RunEvent::Exit` now runs the idempotent shutdown, and the stream helper runs behind a forked
-watcher holding a stdin pipe from Kivori; when Kivori dies by any route the pipe closes and the watcher
-terminates the helper. Two unit tests cover the watcher (each fails when its mechanism is removed),
-the live MediaRemote observer test still streams and stops promptly, and `just macos-check`, strict
-Clippy and formatting pass. On the rebuilt bundle, quitting by Apple event, SIGTERM and SIGKILL each
-left no Kivori process. The setup screen was not re-captured on the rebuilt bundle because the
-display locked mid-run; it was captured later on the installed copy (below).
-
-Follow-up, 2026-10-30 (installed copy, `/Applications/Kivori.app`, driven with CoreGraphics clicks):
-
-- Setup: fresh config shows step 1 of 6; Get started and Skip this step advance; with no Pip the
-  plug-in step keeps Continue disabled. First row closed.
-- App icon: the macOS bundle had no icon (no `CFBundleIconFile`, generic icon in the Dock and in
-  System Settings) because only Windows picked up a default. `tauri.release.macos.conf.json` now
-  lists the icons; the rebuilt bundle carries `icon.icns` and System Settings shows it.
-- Denial: with Kivori's entry reset (`tccutil reset Accessibility id.immer.kivori`, the identifier at the time), Allow access
-  showed macOS's prompt; Deny left Kivori off in System Settings and the step at "not on yet" with
-  Continue disabled.
-- Grant: switching Kivori on while the step was open turned it green by itself with Continue enabled.
-  In two earlier runs Kivori was switched on without the test's own action; that was not reproduced
-  when Deny was repeated and is not attributed to Kivori.
-- Revocation: removing the entry while Kivori runs is **not** seen until restart. Kivori calls
-  `AXIsProcessTrusted()` fresh every second (permission step and the device-thread probe), but macOS
-  keeps answering "trusted" to the running process; a relaunch reports "not on yet". The permission
-  step now keeps polling after a grant (it previously stopped), so it follows macOS where macOS
-  reports the change. The second row stays open: whether input posting actually stops before restart,
-  and how Kivori should report it, needs a session with Pip and a shortcut binding.
