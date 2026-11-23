@@ -15,7 +15,6 @@ are filled in. Related: [roadmap.md](./roadmap.md), [hardware/enclosure-v8/READM
 | Wire | 0.3 mm copper wire, treated as possibly bare | 1 set | Wire-wrapped on the pins and laid in the carrier's grooves | **OWNER** | **OWNER** |
 | USB cable | USB-C **data** cable (not charge-only) | 1 | Power, flashing and the data link; no UART bridge | **OWNER** | **OWNER** |
 | Screws | M2 x 12 self-tapping, pan head up to 4 mm | 4 | One from under the plinth through each back-plate column, the carrier and into a face post; clamps back plate, carrier and shell | **OWNER** | **OWNER** |
-| Rubber bumpers | Round, stick-on, Ø8 to Ø12 mm | 4 | On the flat bottom of the back plate, over the screw counterbores | **OWNER** | **OWNER** |
 
 ## Printed parts
 
